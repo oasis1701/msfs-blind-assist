@@ -657,6 +657,23 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         PerfLvar("IFLY_TRANS_ALT", "iFly737MAX_Lvar_Transition_Altitude_VAL", "Transition Altitude", "feet");
         PerfLvar("IFLY_TRANS_LVL", "iFly737MAX_Lvar_Transition_Level_VAL", "Transition Level");
         PerfLvar("IFLY_LDG_ALT", "iFly737MAX_Lvar_LDG_ALT_VAL", "Landing Altitude", "feet");
+
+        // Flap maneuvering speeds — CALCULATED from live gross weight (see
+        // IFly737FlapSpeeds: FCTM additive schedule over a weight-derived VREF40;
+        // the iFly exposes the speed-tape flap bugs nowhere, 2026-07-24
+        // investigation). The var doubles as the synchronous weight source for
+        // the output-mode Shift+1..6 hotkey readouts (GetCachedVariableValue).
+        _vars["IFLY_FLAP_SPEEDS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT",
+            DisplayName = "Flap Maneuver Speeds (calculated)",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "kilograms",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = false,
+            ExcludeFromMonitorManager = true,
+        };
+        DisplayList(P).Add("IFLY_FLAP_SPEEDS");
     }
 
     // =========================================================================
@@ -842,6 +859,25 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// verified clicks to the nearest channel. The readback announces the ACTUAL
     /// landed frequency, so an unreachable in-between target degrades to an honest
     /// nearest-channel result.</summary>
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. Reads the
+    /// live gross weight from the IFLY_FLAP_SPEEDS Continuous var's cache
+    /// (synchronous — no async request round-trip) and speaks the calculated
+    /// speed; out-of-range/cold cache speaks unavailable, never a garbage number.</summary>
+    private bool AnnounceFlapManeuverSpeed(int scheduleIndex,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        double? kg = simConnect.GetCachedVariableValue("IFLY_FLAP_SPEEDS");
+        if (kg is not { } weight || !IFly737FlapSpeeds.IsPlausibleWeight(weight))
+        {
+            announcer.AnnounceImmediate("Flap speeds unavailable.");
+            return true;
+        }
+        announcer.AnnounceImmediate(
+            $"{IFly737FlapSpeeds.FlapName(scheduleIndex)} maneuver speed " +
+            $"{IFly737FlapSpeeds.ManeuverSpeedKnots(weight, scheduleIndex)} knots, calculated");
+        return true;
+    }
+
     private void SetRtpStandbyFrequency(int rtp, double target, ScreenReaderAnnouncer announcer)
     {
         var snap = Sdk.Snapshot;
@@ -1801,6 +1837,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 // Sentinel: the SDK reports <= -100 when the gauge is unpowered/invalid.
                 displayText = value <= -100 ? "Not available" : $"{value:0} degrees";
                 return true;
+            case "IFLY_FLAP_SPEEDS":
+                // value = live gross weight in kg (the registration's Units).
+                displayText = IFly737FlapSpeeds.ComposePanelText(value);
+                return true;
             case "Spoiler_Lever_Status":
             {
                 // The T10 self-announce (ProcessSimVarUpdate, "Speedbrake lever" case)
@@ -1932,6 +1972,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     (int)SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_GROSS_WEIGHT_KG,
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
+
+            // ------------------------------------------------------------------
+            // Flap maneuvering speeds — output-mode Shift+1..6 (the FBW speed
+            // hotkey slots). CALCULATED from live gross weight per the FCTM
+            // schedule (see IFly737FlapSpeeds); the readout says "calculated"
+            // because these approximate the FMC's speed-tape bugs, they are not
+            // read from the aircraft (nothing exposes them — 2026-07-24).
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadSpeedGD:  return AnnounceFlapManeuverSpeed(0, simConnect, announcer); // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   return AnnounceFlapManeuverSpeed(1, simConnect, announcer); // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   return AnnounceFlapManeuverSpeed(2, simConnect, announcer); // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: return AnnounceFlapManeuverSpeed(3, simConnect, announcer); // Shift+4: flaps 10
+            case HotkeyAction.ReadSpeedVS:  return AnnounceFlapManeuverSpeed(4, simConnect, announcer); // Shift+5: flaps 15
+            case HotkeyAction.ReadSpeedVFE: return AnnounceFlapManeuverSpeed(5, simConnect, announcer); // Shift+6: flaps 25
 
             // ------------------------------------------------------------------
             // Flaps (L) — SDK flap-lever detent + the TE flap transit lights.

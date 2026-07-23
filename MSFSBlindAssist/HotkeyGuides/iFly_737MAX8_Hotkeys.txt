@@ -55,6 +55,17 @@ Weight:
 Flaps:
   L          Read Flap Position
 
+Flap Maneuver Speeds (calculated from live gross weight per the Boeing FCTM
+schedule — the iFly does not expose the speed-tape flap bugs, so these are
+computed, typically within a few knots of the drawn bugs; the full schedule
+is also shown on the FMS Data panel):
+  Shift+1    Flaps up maneuver speed
+  Shift+2    Flaps 1 maneuver speed
+  Shift+3    Flaps 5 maneuver speed
+  Shift+4    Flaps 10 maneuver speed
+  Shift+5    Flaps 15 maneuver speed
+  Shift+6    Flaps 25 maneuver speed
+
 Landing Gear:
   Shift+G    Read Gear Position
 
