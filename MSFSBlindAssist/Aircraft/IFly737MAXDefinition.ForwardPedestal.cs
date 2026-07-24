@@ -110,11 +110,12 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.INSTRUMENT_CONTROL_PANEL_SET, new[] { "Both on 1", "Normal", "Both on 2" });
 
         // FMC source transfer switch. Status and Value2 share the 0 BOTH ON L /
-        // 1 NORMAL / 2 BOTH ON R encoding. SDK doc names the SET command "...Switch -
-        // Click" (the same vendor naming slip as the VHF NAV transfer in RegisterRadios
-        // and the IRS transfer in RegisterIrs). LIVE-VERIFY the SET actually takes an
-        // absolute position; FMS_FMC_SOURCE_SELECT_DEC/INC exist as a click-through
-        // fallback if it turns out to be a relative toggle instead.
+        // 1 NORMAL / 2 BOTH ON R encoding — the raw SDK v1.5 key_command.h
+        // documents the absolute Value2 explicitly (the "...Switch - Click" name
+        // is a naming slip shared by the whole three-switch transfer family; the
+        // generated IFlyKeyCommand.cs strips the ValueN columns, which is why the
+        // absolute-vs-relative doubt existed). In-sim confirmation still pending;
+        // FMS_FMC_SOURCE_SELECT_DEC/INC remain a click-through fallback.
         Sw(P, "FMC_Switch_Status", "FMC Source Select",
             IFlyKeyCommand.FMS_FMC_SOURCE_SELECT_SET, new[] { "Both on left", "Normal", "Both on right" });
 
@@ -352,9 +353,10 @@ public partial class IFly737MAXDefinition
             NumSet(P, $"ADF{n}_FREQ_SET", $"ADF {n} Frequency", test, 190.0, 1750.0, units: "kilohertz");
 
             // ADF_Mode_Switch_Status[2]: 0 ADF / 1 ANT / 2 OFF. MODE_SET Value2
-            // assumed to match status directly (no encoding-trap doc note, same
-            // "matches status" default as the GPWS/EFIS-mode SETs elsewhere in
-            // this file) — LIVE-VERIFY.
+            // is vendor-documented in the raw SDK v1.5 key_command.h ("0:switch
+            // ADF; 1:switch ANT; 2:switch OFF" — matches the status directly; the
+            // generated IFlyKeyCommand.cs strips the ValueN columns, which is why
+            // this once read as undocumented).
             Sw(P, $"ADF_Mode_Switch_Status_{unit}", $"ADF {n} Mode",
                 modeSet, new[] { "ADF", "ANT", "Off" });
             Btn(P, $"BTN_ADF{n}_TEST", $"ADF {n} Test", test);
@@ -371,11 +373,12 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FMS_ADF_TONE_SET, new[] { "Tone 1", "Off", "Tone 2" });
 
         // VHF NAV source transfer switch. Status and Value2 share the 0 BOTH ON 1 /
-        // 1 NORMAL / 2 BOTH ON 2 encoding. SDK doc names the SET command "...Switch -
-        // Click" (the same vendor naming slip as the IRS transfer in RegisterIrs and
-        // the FMC source transfer in RegisterDisplaySelect). LIVE-VERIFY the SET
-        // actually takes an absolute position; FMS_VHF_NAV_DEC/INC exist as a
-        // click-through fallback if it turns out to be a relative toggle instead.
+        // 1 NORMAL / 2 BOTH ON 2 encoding — the raw SDK v1.5 key_command.h
+        // documents the absolute Value2 explicitly (the "...Switch - Click" name
+        // is a naming slip shared by the whole three-switch transfer family; the
+        // generated IFlyKeyCommand.cs strips the ValueN columns). In-sim
+        // confirmation still pending; FMS_VHF_NAV_DEC/INC remain a click-through
+        // fallback.
         Sw(P, "VHF_NAV_Switch_Status", "VHF NAV Transfer",
             IFlyKeyCommand.FMS_VHF_NAV_SET, new[] { "Both on 1", "Normal", "Both on 2" });
     }
@@ -472,9 +475,10 @@ public partial class IFly737MAXDefinition
         // selected (light off/dim/bright) — same composite shape as the Cargo Fire
         // arm switches and the engine start levers (RegisterFire/RegisterEnginesApu):
         // a base select/deselect bit with a light state folded on top. The *_SET
-        // command's doc is the bare "...Switch - Set" (no Value2 detail beyond the
-        // family name) — inferred by symmetry with those other confirmed-working
-        // composite SETs: Value2 0 = deselect, 1 = select.
+        // Value2 is vendor-documented in the raw SDK v1.5 key_command.h
+        // ("0:switch OFF; 1:switch ON"; the generated IFlyKeyCommand.cs strips
+        // the ValueN columns, which is why this once had to be inferred): 0 =
+        // deselect, 1 = select.
         var rvcEnableStates = new Dictionary<double, string>
         {
             [0] = "Deselected",
@@ -512,9 +516,11 @@ public partial class IFly737MAXDefinition
                     Cmd($"RVC_{field}_SET"), rvcEnableStates, map: v => v >= 3 ? 1 : 0,
                     announced: false);
 
-                // LIVE-VERIFY: discrete 0-6 with an absolute _VOL_SET (not a
-                // continuous knob) — the def's continuous-knob exclusion elsewhere
-                // does not apply here. See the panel-header LIVE-VERIFY note.
+                // Discrete 0-6 with an absolute _VOL_SET (not a continuous knob —
+                // the def's continuous-knob exclusion elsewhere does not apply
+                // here); the raw SDK v1.5 key_command.h documents Value2 as
+                // "0~6, from min to max". The only remaining LIVE-VERIFY is
+                // whether volume writes are audible at all (panel-header note).
                 Sw(P, $"ACP_RVC_{field}_Volume_Status_{i}", $"{unitName} {display} receiver volume",
                     Cmd($"RVC_{field}_VOL_SET"),
                     new[] { "0 Min", "1", "2", "3", "4", "5", "6 Max" },

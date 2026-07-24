@@ -658,6 +658,34 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         PerfLvar("IFLY_TRANS_LVL", "iFly737MAX_Lvar_Transition_Level_VAL", "Transition Level");
         PerfLvar("IFLY_LDG_ALT", "iFly737MAX_Lvar_LDG_ALT_VAL", "Landing Altitude", "feet");
 
+        // Engine bowed rotor motoring — the LEAP-1B's extended dry-motoring phase
+        // before fuel-on, published by the WASM as a plain L:var (SDK PDF table:
+        // 1 = engine in BRM mode). Announce-only, no panel row: BRM can hold a
+        // start for minutes with no fuel flow and no N2 rise past motoring speed,
+        // and the edge announce is the only cue a blind pilot gets for why the
+        // start is "stuck". Announced from ProcessSimVarUpdate (baseline-first);
+        // listed in Ctrl+M (muted via the Step-2.5 Suppressed-wrap like every
+        // other self-announced iFly var).
+        void BrmLvar(string key, string lvar, string display)
+        {
+            _vars[key] = new SimConnect.SimVarDefinition
+            {
+                Name = lvar,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.LVar,
+                Units = "number",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string>
+                {
+                    [0] = "Off",
+                    [1] = "Active",
+                },
+            };
+        }
+        BrmLvar("IFLY_ENG1_BRM", "iFly737MAX_Lvar_ENG1_BRM_VAL", "Engine 1 Bowed Rotor Motoring");
+        BrmLvar("IFLY_ENG2_BRM", "iFly737MAX_Lvar_ENG2_BRM_VAL", "Engine 2 Bowed Rotor Motoring");
+
         // Flap maneuvering speeds — CALCULATED from live gross weight (see
         // IFly737FlapSpeeds: FCTM additive schedule over a weight-derived VREF40;
         // the iFly exposes the speed-tape flap bugs nowhere, 2026-07-24
@@ -1378,6 +1406,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // baseline not yet seen; the first read after launch/reconnect stays silent.
     private readonly Dictionary<string, double> _lastComFreq = new();
 
+    // Engine BRM announce baselines (key = var key). Absent key = baseline not
+    // yet seen; the first read stays silent so a launch mid-motoring doesn't
+    // announce stale history — only a live edge speaks.
+    private readonly Dictionary<string, bool> _lastBrmActive = new();
+
     // Speedbrake lever announce state (PR #163, minor 9). null initial means the
     // first post-launch event announces (announceInitialChange semantics for this
     // aircraft — the initial snapshot sweep never reaches ProcessSimVarUpdate, so
@@ -1686,6 +1719,24 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 _ => "COM2 standby",
             };
             announcer.Announce($"{comLabel} {value:F3}");
+            return true;
+        }
+
+        // Engine bowed rotor motoring (see the BrmLvar registration note): edge
+        // announces only, both directions — the "complete" edge is the go-ahead
+        // that the start sequence is moving again.
+        if (varName is "IFLY_ENG1_BRM" or "IFLY_ENG2_BRM")
+        {
+            bool active = value > 0.5;
+            bool had = _lastBrmActive.TryGetValue(varName, out bool last);
+            _lastBrmActive[varName] = active;
+            if (had && active != last)
+            {
+                string eng = varName == "IFLY_ENG1_BRM" ? "1" : "2";
+                announcer.Announce(active
+                    ? $"Engine {eng} bowed rotor motoring"
+                    : $"Engine {eng} bowed rotor motoring complete");
+            }
             return true;
         }
 

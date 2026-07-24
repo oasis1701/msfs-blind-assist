@@ -267,12 +267,12 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FMS_IRS_R_MODE_SET, new[] { "Off", "Align", "Nav", "Attitude" });
 
         // IRS source transfer switch. Status and Value2 share the 0 BOTH ON L /
-        // 1 NORMAL / 2 BOTH ON R encoding. SDK doc names the SET command "...Switch -
-        // Click" (a vendor naming slip shared by this whole three-switch transfer
-        // family — see the VHF NAV transfer in RegisterRadios and the FMC source
-        // transfer in RegisterDisplaySelect). LIVE-VERIFY the SET actually takes an
-        // absolute position; FMS_IRS_TFR_DEC/INC exist as a click-through fallback
-        // if it turns out to be a relative toggle instead.
+        // 1 NORMAL / 2 BOTH ON R encoding — the raw SDK v1.5 key_command.h
+        // documents the absolute Value2 explicitly (the "...Switch - Click" name
+        // is a naming slip shared by this whole three-switch transfer family; the
+        // generated IFlyKeyCommand.cs strips the ValueN columns). In-sim
+        // confirmation still pending; FMS_IRS_TFR_DEC/INC remain a click-through
+        // fallback.
         Sw(P, "IRS_Switch_Status", "IRS Transfer",
             IFlyKeyCommand.FMS_IRS_TFR_SET, new[] { "Both on left", "Normal", "Both on right" });
 
