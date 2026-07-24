@@ -471,22 +471,30 @@ public partial class IFly737MAXDefinition
             ("SPKR", "Speaker"),
         };
 
-        // ACP_RVC_*_Switch_Status: 0-2 deselected (light off/dim/bright), 3-5
-        // selected (light off/dim/bright) — same composite shape as the Cargo Fire
-        // arm switches and the engine start levers (RegisterFire/RegisterEnginesApu):
-        // a base select/deselect bit with a light state folded on top. The *_SET
+        // ACP_RVC_*_Switch_Status: raw 0-2 deselected × light, 3-5 selected × light
+        // (vendor-documented in SDK_Defines.h). UNLIKE the superficially identical
+        // Cargo Fire arm / engine start lever composites, the folded-in light here
+        // carries ZERO independent information: it is the receiver key's own
+        // backlight, lit exactly when selected, with brightness slaved to the
+        // master LIGHTS TEST/BRT/DIM switch (live-verified 2026-07-24: a
+        // deselected key reads 0 in ALL master positions — even LIGHTS TEST never
+        // produces 1/2 — and a selected key reads 3/4/5 purely tracking the
+        // master at TEST/BRT/DIM). So the pilot-meaningful state is binary, and
+        // the six raw keys collapse to TWO combo positions via duplicate labels
+        // (all six keys stay registered so every live value still resolves on the
+        // read-back paths; the panel builder adds each distinct label once and
+        // resolves a pick to its first key: Deselected→0, Selected→3). The *_SET
         // Value2 is vendor-documented in the raw SDK v1.5 key_command.h
         // ("0:switch OFF; 1:switch ON"; the generated IFlyKeyCommand.cs strips
-        // the ValueN columns, which is why this once had to be inferred): 0 =
-        // deselect, 1 = select.
+        // the ValueN columns): 0 = deselect, 1 = select → map v >= 3 ? 1 : 0.
         var rvcEnableStates = new Dictionary<double, string>
         {
             [0] = "Deselected",
-            [1] = "Deselected, light dim",
-            [2] = "Deselected, light bright",
+            [1] = "Deselected",
+            [2] = "Deselected",
             [3] = "Selected",
-            [4] = "Selected, light dim",
-            [5] = "Selected, light bright",
+            [4] = "Selected",
+            [5] = "Selected",
         };
 
         void Unit(int n, string unitName)
