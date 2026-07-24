@@ -6582,6 +6582,41 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // Per-tank fuel readout (output Ctrl/Alt+digit): 1 = Main 1 (left), 2 = Main 2
+        // (right), 3 = Center, 4 = Aux when it holds fuel. Reads the PMDG SDK tank
+        // fields — the stock FUELSYSTEM vars read 0 on this aircraft (legacy fuel
+        // model), so the universal slot-table path is bypassed by this def handler.
+        if (action >= HotkeyAction.ReadFuelTank1 && action <= HotkeyAction.ReadFuelTankKg9)
+        {
+            var fuelDm = simConnect.PMDGDataManager;
+            if (fuelDm == null || !fuelDm.IsReady)
+            {
+                announcer.AnnounceImmediate("Fuel data not available yet.");
+                return true;
+            }
+            bool kilograms = action >= HotkeyAction.ReadFuelTankKg1;
+            int slotNumber = kilograms
+                ? action - HotkeyAction.ReadFuelTankKg1 + 1
+                : action - HotkeyAction.ReadFuelTank1 + 1;
+            double auxLbs = fuelDm.GetFieldValue("FUEL_QtyAux");
+            (string Label, double Lbs)? tank = slotNumber switch
+            {
+                1 => ("Main 1", fuelDm.GetFieldValue("FUEL_QtyLeft")),
+                2 => ("Main 2", fuelDm.GetFieldValue("FUEL_QtyRight")),
+                3 => ("Center tank", fuelDm.GetFieldValue("FUEL_QtyCenter")),
+                4 when auxLbs > 0.5 => ("Aux tank", auxLbs),
+                _ => null
+            };
+            if (tank == null)
+            {
+                announcer.AnnounceImmediate($"No fuel tank {slotNumber}.");
+                return true;
+            }
+            announcer.AnnounceImmediate(Services.FuelTankReadout.Format(
+                new FuelTankSlot(tank.Value.Label, (null, 1)), new[] { tank.Value.Lbs }, kilograms));
+            return true;
+        }
+
         switch (action)
         {
             // ------------------------------------------------------------------
@@ -6670,8 +6705,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
                 int aux    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux"));
                 int total  = left + center + right + aux;
-                announcer.AnnounceImmediate(
-                    $"Total {total} pounds, left {left}, center {center}, right {right}, aux {aux}");
+                // Per-tank breakdown moved to the dedicated output Ctrl+1..4 keys.
+                announcer.AnnounceImmediate($"Total {total} pounds");
                 return true;
             }
 
@@ -6905,8 +6940,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight") * 0.453592);
                 int auxKg    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux") * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg + auxKg;
-                announcer.AnnounceImmediate(
-                    $"Total {totalKg} kilograms, left {leftKg}, center {centerKg}, right {rightKg}, aux {auxKg}");
+                // Per-tank breakdown moved to the dedicated output Alt+1..4 keys.
+                announcer.AnnounceImmediate($"Total {totalKg} kilograms");
                 return true;
             }
 
