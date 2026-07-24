@@ -632,7 +632,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Annun(P, "CDU_FAIL_Status_1", "Right CDU Fail light");
 
         // FMS performance values published by the iFly WASM as plain L:vars.
-        void PerfLvar(string key, string lvar, string display, string units = "")
+        // announced: true joins the L:var continuous batch (IsAnnounced=false
+        // Continuous vars have NO live stream — the IFLY_FLAP_SPEEDS note below)
+        // and lists the var in Ctrl+M; the announcement itself comes from the
+        // var's ProcessSimVarUpdate handler, not the generic path.
+        void PerfLvar(string key, string lvar, string display, string units = "", bool announced = false)
         {
             _vars[key] = new SimConnect.SimVarDefinition
             {
@@ -641,15 +645,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 Units = "number",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = false,
-                ExcludeFromMonitorManager = true,
+                IsAnnounced = announced,
+                ExcludeFromMonitorManager = !announced,
             };
             DisplayList(P).Add(key);
         }
 
-        PerfLvar("IFLY_V1", "iFly737MAX_Lvar_V1_VAL", "V1", "knots");
-        PerfLvar("IFLY_VR", "iFly737MAX_Lvar_VR_VAL", "VR", "knots");
-        PerfLvar("IFLY_V2", "iFly737MAX_Lvar_V2_VAL", "V2", "knots");
+        // V1/VR/V2 announce on FMC entry/change ("V1 142 knots" — the PMDG 737
+        // wording verbatim, baseline-first, silent on clear) and feed the takeoff
+        // roll callout machine; see the IFLY_V1/VR/V2 + IFLY_IAS handlers in
+        // ProcessSimVarUpdate.
+        PerfLvar("IFLY_V1", "iFly737MAX_Lvar_V1_VAL", "V1", "knots", announced: true);
+        PerfLvar("IFLY_VR", "iFly737MAX_Lvar_VR_VAL", "VR", "knots", announced: true);
+        PerfLvar("IFLY_V2", "iFly737MAX_Lvar_V2_VAL", "V2", "knots", announced: true);
         PerfLvar("IFLY_VREF", "iFly737MAX_Lvar_LDG_VREF_VAL", "VREF", "knots");
         PerfLvar("IFLY_TO_FLAP", "iFly737MAX_Lvar_TO_FLAP_VAL", "Takeoff Flaps");
         PerfLvar("IFLY_LDG_FLAP", "iFly737MAX_Lvar_LDG_FLAP_VAL", "Landing Flaps");
@@ -685,6 +693,28 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         BrmLvar("IFLY_ENG1_BRM", "iFly737MAX_Lvar_ENG1_BRM_VAL", "Engine 1 Bowed Rotor Motoring");
         BrmLvar("IFLY_ENG2_BRM", "iFly737MAX_Lvar_ENG2_BRM_VAL", "Engine 2 Bowed Rotor Motoring");
+
+        // Indicated airspeed feed for the takeoff V-speed callouts ("V1" /
+        // "Rotate" / "V2" — the iFly plays no native aural callouts, unlike the
+        // PMDG). G_FORCE registration pattern: IsAnnounced=true is required to
+        // be monitored at all, ExcludeFromBatch + HighFrequency route it through
+        // a per-var SIM_FRAME subscription — the 1 Hz continuous batch would
+        // call "Rotate" up to a second (~5 kt) late, useless as an action cue.
+        // Never spoken itself: the IFLY_IAS handler in ProcessSimVarUpdate feeds
+        // the callout machine and returns true, and the var is hidden from
+        // Ctrl+M (mute the callouts via the listed V1/VR/V2 vars instead).
+        _vars["IFLY_IAS"] = new SimConnect.SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED",
+            DisplayName = "Indicated Airspeed",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "knots",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
+            HighFrequency = true,
+            ExcludeFromMonitorManager = true,
+        };
 
         // Flap maneuvering speeds — CALCULATED from live gross weight (see
         // IFly737FlapSpeeds: FCTM additive schedule over a weight-derived VREF40;
@@ -1411,6 +1441,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // announce stale history — only a live edge speaks.
     private readonly Dictionary<string, bool> _lastBrmActive = new();
 
+    // Takeoff V-speed announce baselines (key = var key). Absent key = baseline
+    // not yet seen; the first read after launch/reconnect stays silent so speeds
+    // already in the FMC don't replay — only a live entry/change speaks.
+    private readonly Dictionary<string, double> _lastVSpeed = new();
+
+    // Takeoff roll "V1"/"Rotate"/"V2" callout state machine (pure; see
+    // IFly737TakeoffCallouts). Fed here from IFLY_IAS samples + the cached
+    // SIM_ON_GROUND state; V-speed targets from the IFLY_V1/VR/V2 handlers.
+    private readonly IFly737TakeoffCallouts _takeoffCallouts = new();
+    private bool _calloutOnGround = true; // last SIM_ON_GROUND sample (ramp default)
+
     // Speedbrake lever announce state (PR #163, minor 9). null initial means the
     // first post-launch event announces (announceInitialChange semantics for this
     // aircraft — the initial snapshot sweep never reaches ProcessSimVarUpdate, so
@@ -1641,6 +1682,59 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
 
         EnsureRegistered();
+
+        // Air/ground for the takeoff V-speed callouts, cached from the base
+        // SIM_ON_GROUND var. Peek only — MUST fall through so the generic
+        // "On ground"/"Airborne" announcement (Step 6) still fires.
+        if (varName == "SIM_ON_GROUND")
+            _calloutOnGround = value >= 0.5;
+
+        // Takeoff roll V-speed callouts, fed per SIM_FRAME (hot path — first
+        // branch). AnnounceImmediate, deliberately: "V1"/"Rotate" are action
+        // cues whose value IS the timing, and a queued announce would wait out
+        // an in-progress ground-speed callout. That bypasses the Suppressed
+        // wrap AND the Ctrl+M mute, so both gates are re-applied explicitly —
+        // per speed, keyed on the listed IFLY_V1/VR/V2 vars, so muting "V1" in
+        // Ctrl+M silences its set-announce and its roll callout together.
+        if (varName == "IFLY_IAS")
+        {
+            var callouts = _takeoffCallouts.ProcessSample(value, _calloutOnGround);
+            if (callouts.Count > 0 && !announcer.Suppressed)
+            {
+                var muted = Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet;
+                foreach (string callout in callouts)
+                {
+                    string gateKey = callout == "V1" ? "IFLY_V1"
+                                   : callout == "Rotate" ? "IFLY_VR" : "IFLY_V2";
+                    if (!muted.Contains(gateKey))
+                        announcer.AnnounceImmediate(callout);
+                }
+            }
+            return true;
+        }
+
+        // Takeoff V-speeds (FMC PERF entry, via the WASM L:vars): announce
+        // entry/changes with the PMDG 737 wording ("V1 142 knots"), baseline-
+        // first (a launch with speeds already set stays silent), silent when
+        // the FMC clears them — the WASM's unset sentinel is -1, live-verified
+        // 2026-07-24, and the value > 0 gate swallows both -1 and 0. Always
+        // feeds the roll-callout machine — including the silent baseline, so
+        // callouts work when the speeds were set before the app connected.
+        if (varName is "IFLY_V1" or "IFLY_VR" or "IFLY_V2")
+        {
+            if (varName == "IFLY_V1") _takeoffCallouts.SetV1(value);
+            else if (varName == "IFLY_VR") _takeoffCallouts.SetVR(value);
+            else _takeoffCallouts.SetV2(value);
+
+            bool had = _lastVSpeed.TryGetValue(varName, out double lastV);
+            _lastVSpeed[varName] = value;
+            if (had && Math.Abs(value - lastV) > 0.5 && value > 0)
+            {
+                string label = varName == "IFLY_V1" ? "V1" : varName == "IFLY_VR" ? "VR" : "V2";
+                announcer.Announce($"{label} {(int)Math.Round(value)} knots");
+            }
+            return true;
+        }
 
         // Annunciator lights: announce lit-edge only; both DIM and BRT count as lit.
         // Master LIGHTS TEST would flood every light on — suppress while held.
