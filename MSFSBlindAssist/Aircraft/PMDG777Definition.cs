@@ -6758,11 +6758,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     var monitor = pfTod.GetPMDGProgPageMonitor();
                     if (monitor != null)
                     {
-                        // Fire-and-forget. The probe takes ~100-500 ms in the
-                        // worst case (off-PROG cold cache); during that
-                        // window the user hears nothing, then the
-                        // announcement arrives. Subsequent presses within
-                        // 30 s reuse the cache and announce instantly.
+                        // Fire-and-forget. Every press live-reads the PROG
+                        // page (~150 ms on-PROG, ~500 ms if it must switch
+                        // pages first) so the distance is always current —
+                        // the FMC ticks every mile and the readout must too.
                         _ = Task.Run(async () =>
                         {
                             var prog = await monitor.ReadProgPageAsync();
