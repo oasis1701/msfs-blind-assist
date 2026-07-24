@@ -44,10 +44,20 @@ public partial class IFly737MAXDefinition
         // (without it the SDK requires held pedals, which a hotkey user can't do).
         // Fleet parity: every aircraft announces a single "Parking brake on/off"
         // (A380 OnOff helper, Fenix, PMDG 737 — see FlyByWireA320Definition.cs:1806).
-        // The lever is the one announcing source; the brake LIGHT is a quiet
-        // read-only row so one brake action never speaks twice. (PR #163, M6.)
+        // The ONE announcing source is the stock BRAKE PARKING POSITION SimVar
+        // (IFLY_PARK_BRAKE, registered in RegisterStockVars, spoken from
+        // ProcessSimVarUpdate with the PMDG wording) — the iFly WASM is wired to
+        // the stock brake system in both directions (binary references both
+        // "BRAKE PARKING POSITION" and the "PARKING_BRAKES" key event), so the
+        // stock var reflects the physical brake on EVERY toggle path: this combo,
+        // a keyboard/joystick binding, a cockpit click. This SDK lever combo is
+        // therefore announced: false (a lever-field change and a stock-state
+        // change are the same brake action — announcing both would double-speak),
+        // and the brake LIGHT stays a quiet read-only row. (PR #163 M6; reworked
+        // 2026-07-24 — keybinding toggles never announced through the lever field.)
         Sw(P, "Parking_Brake_Lever_Status", "Parking brake",
-            IFlyKeyCommand.GEAR_PARKING_BRAKE_SET, new[] { "off", "on" }, value3: 1);
+            IFlyKeyCommand.GEAR_PARKING_BRAKE_SET, new[] { "off", "on" }, value3: 1,
+            announced: false);
         SwD(P, "Parking_Brake_Light_Status", "Parking Brake light", set: null,
             descriptions: new Dictionary<double, string> { [0] = "off", [1] = "on", [2] = "on" }, announced: false);
 
