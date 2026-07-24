@@ -20,13 +20,15 @@ namespace MSFSBlindAssist.Services;
 ///    they navigate the right CDU somewhere else.
 ///
 /// 2. <b>On-demand reads (<see cref="ReadProgPageAsync"/>).</b> Called
-///    from the Output D / Shift+D distance handlers. Reuses a recently
-///    cached <see cref="LastProgData"/> when fresh; otherwise probes the
-///    CDU live. If the user has navigated away from PROG, the probe sends
+///    from the Output D / Shift+D distance handlers. ALWAYS probes the
+///    CDU live — the press IS the poll. (An earlier 30-second reuse of
+///    <see cref="LastProgData"/> made cruise distances update in ~3-4 nm
+///    jumps at jet ground speeds while the FMC ticked every mile; the
+///    ~150 ms live-read latency is imperceptible next to that.) If the
+///    user has navigated away from PROG, the probe sends
 ///    <c>EVT_CDU_R_PROG</c>, waits for the page to render, requests a
 ///    fresh CDU snapshot, parses, and returns. Worst-case latency
-///    (cold-cache, off-PROG) is ~400-500 ms; warm-cache reads are
-///    instant.
+///    (off-PROG) is ~400-500 ms; on-PROG reads are ~150 ms.
 ///
 /// <para><b>Why we still init.</b></para>
 ///
@@ -47,9 +49,6 @@ public class PMDGProgPageMonitor : IDisposable
 
     /// <summary>Init-phase tick when the CDU is unpowered. User's spec: retry every 30 s.</summary>
     private const int InitRetryMs = 30_000;
-
-    /// <summary>How long a cached <see cref="LastProgData"/> can be reused without re-probing.</summary>
-    private const int CacheValiditySeconds = 30;
 
     /// <summary>Time to wait for PMDG to render PROG after sending <c>EVT_CDU_R_PROG</c>.</summary>
     private const int PageRenderDelayMs = 250;
@@ -169,9 +168,9 @@ public class PMDGProgPageMonitor : IDisposable
     }
 
     /// <summary>
-    /// On-demand probe used by the Output D / Shift+D handlers. Reuses
-    /// <see cref="LastProgData"/> if it was updated within
-    /// <see cref="CacheValiditySeconds"/>; otherwise lives-fetches.
+    /// On-demand probe used by the Output D / Shift+D handlers. Always
+    /// live-fetches — the press is the poll; no staleness window. See the
+    /// class doc for why the old 30 s cache was removed.
     ///
     /// Live-fetch flow:
     ///   1. Request a fresh CDU 1 snapshot, wait <see cref="SnapshotDelayMs"/>
@@ -189,14 +188,6 @@ public class PMDGProgPageMonitor : IDisposable
     public async Task<PMDGProgPageReader.ProgPageData?> ReadProgPageAsync()
     {
         if (_disposed) return null;
-
-        // Cache reuse: rapid back-to-back D / Shift+D presses don't re-probe.
-        if (LastProgData != null
-            && LastProgData.IsValid
-            && (DateTime.Now - LastProgData.LastUpdated).TotalSeconds < CacheValiditySeconds)
-        {
-            return LastProgData;
-        }
 
         // Step 1 — fresh snapshot of whatever the right CDU is currently showing.
         _dataManager.RequestCDUScreen(RIGHT_CDU);
