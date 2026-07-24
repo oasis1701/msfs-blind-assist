@@ -36,7 +36,7 @@ Fuel:
   F          Read Total Fuel (pounds)
   Shift+F    Read Total Fuel (kilograms)
   Ctrl+1-4   Read one fuel tank in pounds (Alt+1-4 for kilograms):
-             1 Main 1 (left), 2 Main 2 (right), 3 Center,
+             1 Left main, 2 Right main, 3 Center,
              4 Aux (only when it holds fuel)
 
 Weight:

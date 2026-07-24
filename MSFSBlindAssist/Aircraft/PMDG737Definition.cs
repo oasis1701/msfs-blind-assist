@@ -5439,7 +5439,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight")  * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg;
                 // Per-tank breakdown moved to the dedicated output Alt+1..3 keys.
-                announcer.AnnounceImmediate($"Total {totalKg} kilograms");
+                announcer.AnnounceImmediate($"Total fuel {totalKg} kilograms");
                 return true;
             }
 
@@ -5453,7 +5453,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
                 int total  = left + center + right;
                 // Per-tank breakdown moved to the dedicated output Ctrl+1..3 keys.
-                announcer.AnnounceImmediate($"Total {total} pounds");
+                announcer.AnnounceImmediate($"Total fuel {total} pounds");
                 return true;
             }
 
