@@ -360,6 +360,11 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -416,6 +421,11 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000

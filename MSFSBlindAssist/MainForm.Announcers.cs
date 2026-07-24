@@ -48,6 +48,8 @@ public partial class MainForm
         // Step 1: ALWAYS store the value first (needed by all consumers)
         currentSimVarValues[e.VarName] = e.Value;
 
+        if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+
         // Initial-snapshot fast path: populate caches and refresh UI controls
         // but skip all announcement paths. These events represent "what the
         // cockpit looked like when the app started", not user-triggered
@@ -345,6 +347,13 @@ public partial class MainForm
 
             processedCount++;
         }
+    }
+
+    /// <summary>Universal auto-gear/AP feed — runs for every aircraft, independent of the
+    /// First Officer window. Gated inside the service by the per-feature settings.</summary>
+    private void OnUniversalAircraftPosition(object? sender, SimConnect.SimConnectManager.AircraftPosition pos)
+    {
+        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl);
     }
 
     /// <summary>

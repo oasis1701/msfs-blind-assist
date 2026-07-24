@@ -196,6 +196,12 @@ public partial class MainForm
         // to push into; apply it here so it takes effect immediately (next route build).
         if (_augmentingProvider != null)
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
+
+        // First Officer automation toggles — push the saved settings into any open First
+        // Officer window so a change takes effect without reopening it (moved from the
+        // retired FOSettingsMenuItem_Click).
+        foreach (var foForm in OpenFirstOfficerForms())
+            foForm.ApplySettings();
     }
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)

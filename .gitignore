@@ -160,3 +160,7 @@ node_modules/
 # OSM census/audit collector artifacts (not part of the augmentation feature)
 tools/osm-audit/
 tools/taxi-census/
+
+# Superpowers SDD scratch (briefs, reports, review packages, ledger)
+.superpowers/
+*.zip

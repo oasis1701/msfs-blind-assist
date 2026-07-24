@@ -71,8 +71,10 @@ public static class SettingsManager
                 {
                     Log.Debug("Settings", "Settings file not found, using defaults");
                     UserSettings defaultSettings = new UserSettings();
+                    MigrateFOGearSplit(defaultSettings);
                     SeedTakeoffAssistToneConvention(defaultSettings, freshInstall: true);
                     SeedFenixMonitorDefaults(defaultSettings); // sets flag + saves
+                    SeedPmdgMonitorDefaults(defaultSettings);
                     return defaultSettings;
                 }
 
@@ -91,6 +93,7 @@ public static class SettingsManager
                     Log.Debug("Settings", "Settings loaded successfully from JSON");
                 }
 
+                MigrateFOGearSplit(settings);       // one-time: seed split gear flags from the legacy flag
                 // SeedFenixMonitorDefaults only saves when ITS OWN flag was just set, so a
                 // stored file that already has FenixMonitorDefaultsSeeded=true would leave
                 // our migration unpersisted on disk if we didn't guard+save it ourselves here
@@ -101,6 +104,7 @@ public static class SettingsManager
                     Save(settings);
                 }
                 SeedFenixMonitorDefaults(settings); // one-time: default-disable the noisy clock counters
+                SeedPmdgMonitorDefaults(settings);  // one-time: default-silence the cycling window-heat ON annunciators
                 // Deserialization bypasses the property setters' usual mutation path, so the
                 // *DisabledMonitorVariablesSet sidecars (populated by field initializers to
                 // empty, pre-deserialization) must be rebuilt explicitly here.
@@ -113,6 +117,28 @@ public static class SettingsManager
                 // Return default settings on error
                 return new UserSettings();
             }
+        }
+
+        /// <summary>
+        /// One-time migration of the legacy single First-Officer auto-gear flag into the
+        /// two split flags (raise on climb / lower on descent). Existing users who had
+        /// auto-gear enabled keep both behaviours; everyone else stays at the false default.
+        /// Guarded by FOAutoGearSplitMigrated so a deliberate single-side choice is never
+        /// overwritten on a later load.
+        /// </summary>
+        private static void MigrateFOGearSplit(UserSettings s)
+        {
+            if (s.FOAutoGearSplitMigrated) return;
+            s.FOAutoGearSplitMigrated = true;
+            if (s.FOAutoGearEnabled)
+            {
+                s.FOAutoGearUpEnabled   = true;
+                s.FOAutoGearDownEnabled = true;
+            }
+            // Persist the guard NOW so the migration doesn't re-run every launch. The
+            // follow-up SeedFenixMonitorDefaults early-returns without saving for any
+            // already-seeded (i.e. upgrading) user, so we cannot rely on its Save.
+            Save(s);
         }
 
         /// <summary>
@@ -168,6 +194,33 @@ public static class SettingsManager
             {
                 if (!s.FenixDisabledMonitorVariables.Contains(key))
                     s.FenixDisabledMonitorVariables.Add(key);
+            }
+            Save(s);
+        }
+
+        /// <summary>
+        /// One-time seed of PMDG vars that should be auto-monitored but NOT spoken by
+        /// default — added to the shared PMDG disabled-monitor list (panel displays
+        /// still track them; only the spoken call-out is gated off):
+        ///   * the 737 window-heat ON annunciators (ICE_annunON_0..3, "Window N Heat
+        ///     On") — the window-heat controller cycles them thermostatically as the
+        ///     windows reach temperature, most visibly on the ground, so every cycle
+        ///     spoke an on/off announcement while no switch moved (reported 2026-07-03).
+        /// Re-enable any of them in the PMDG Announcement Monitor (Ctrl+M); this runs
+        /// once (guarded by PmdgMonitorDefaultsSeeded) so that choice sticks.
+        /// </summary>
+        private static void SeedPmdgMonitorDefaults(UserSettings s)
+        {
+            if (s.PmdgMonitorDefaultsSeeded) return;
+            s.PmdgMonitorDefaultsSeeded = true;
+            string[] defaultSilent =
+            {
+                "ICE_annunON_0", "ICE_annunON_1", "ICE_annunON_2", "ICE_annunON_3",
+            };
+            foreach (var key in defaultSilent)
+            {
+                if (!s.PMDGDisabledMonitorVariables.Contains(key))
+                    s.PMDGDisabledMonitorVariables.Add(key);
             }
             Save(s);
         }

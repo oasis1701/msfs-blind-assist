@@ -197,7 +197,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Electrical", "ADIRU", "Hydraulics", "Fuel", "Engines",
                 "Anti-Ice", "Air Systems", "Lights", "Signs", "Oxygen",
-                "Wipers", "Flight Controls", "Flight Recorder"
+                "Wipers", "Flight Controls", "Flight Recorder", "Warning Tests"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -205,7 +205,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS", "Fire Protection", "Cargo Fire",
+                "Control Stand", "Transponder/TCAS", "Weather Radar", "Fire Protection", "Cargo Fire",
                 "Radio", "Calls", "Flight Deck Door", "Boris Audio Works"
             },
             ["Glareshield"] = new List<string>
@@ -896,6 +896,27 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // only the event, no state field.
         d["AIR_BleedOvhtTest"]       = Momentary("AIR_BleedOvhtTest", "Bleed Overheat Test");
 
+        // Manual stick-shaker / overspeed-clacker warning tests (aft overhead P5). No SDK
+        // state exists for these, so they are app-tracked TOGGLES (RenderAsButton): each
+        // press flips engaged/released and fires the transmit press (LEFTSINGLE = hold the
+        // spring switch, shaker/clacker sounds) or release (LEFTRELEASE = stop). Handled by
+        // the dedicated 4e branch in HandleUIVariableSet; the def announces the new state
+        // (the button label is static). Live-verified 2026-07-13 that LEFTSINGLE holds
+        // open-ended until LEFTRELEASE. NOT in _simpleEventMap.
+        static SimConnect.SimVarDefinition WarnTest(string name, string display) =>
+            new SimConnect.SimVarDefinition
+            {
+                Name = name,
+                DisplayName = display,
+                Type = SimConnect.SimVarType.PMDGVar,
+                UpdateFrequency = SimConnect.UpdateFrequency.Never,
+                RenderAsButton = true,
+            };
+        d["WARN_StickShakerTest1"]      = WarnTest("WARN_StickShakerTest1", "Stick Shaker Test 1");
+        d["WARN_StickShakerTest2"]      = WarnTest("WARN_StickShakerTest2", "Stick Shaker Test 2");
+        d["WARN_OverspeedClackerTest1"] = WarnTest("WARN_OverspeedClackerTest1", "Overspeed Clacker Test 1");
+        d["WARN_OverspeedClackerTest2"] = WarnTest("WARN_OverspeedClackerTest2", "Overspeed Clacker Test 2");
+
         // Doors
         d["DOOR_annunFWD_ENTRY"]          = Door("DOOR_annunFWD_ENTRY", "Forward Entry Door");
         d["DOOR_annunFWD_SERVICE"]        = Door("DOOR_annunFWD_SERVICE", "Forward Service Door");
@@ -1238,6 +1259,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // GPWS system test — momentary push; plays the EGPWS self-test sequence
         // (visual + audible). SDK exposes only the event, no state field.
         d["GPWS_SysTest"]              = Momentary("GPWS_SysTest", "GPWS System Test");
+        // GPWS long self-test — same button HELD 5 s (extended callout sequence). Synthetic
+        // key: dispatched by a dedicated HandleUIVariableSet branch (held transmit), NOT the
+        // generic momentary path (SendPMDGMomentaryToggle can't hold).
+        d["GPWS_SysTestLong"]          = Momentary("GPWS_SysTestLong", "GPWS System Test (Long)");
 
         // =================================================================
         // CONTROL STAND — CDU annunciators, COMM counters, ACP, stab trim, fire, xpdr, etc.
@@ -1429,6 +1454,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // TCAS self-test — momentary push; plays the TCAS test sequence (TA/RA
         // audio + display callouts). SDK exposes only the event, no state field.
         d["XPDR_TcasTest"]        = Momentary("XPDR_TcasTest", "TCAS Test");
+        // Weather radar / predictive-windshear test — synthetic managed sequence (the EFIS
+        // WXR overlay is a blind toggle with NO readable state in the NG3 SDK, and the WXR
+        // TEST mode latches): overlay ON → settle → TEST ("MONITOR RADAR DISPLAY …
+        // WINDSHEAR" aural) → wait → WX mode → overlay OFF. Assumes the overlay starts OFF.
+        d["WXR_Test"]                  = Momentary("WXR_Test", "Weather Radar Test");
         // Transponder IDENT — momentary push; squawks IDENT to make the aircraft
         // blip flash on ATC radar for ~18 seconds. SDK exposes only the event.
         d["XPDR_Ident"]           = Momentary("XPDR_Ident", "Ident");
@@ -1950,6 +1980,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "FLTREC_SwNormal"
             },
+            ["Warning Tests"] = new List<string>
+            {
+                "WARN_StickShakerTest1", "WARN_StickShakerTest2",
+                "WARN_OverspeedClackerTest1", "WARN_OverspeedClackerTest2",
+            },
 
             // ===== Glareshield =====
             ["Warnings"] = new List<string>
@@ -2000,7 +2035,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["GPWS"] = new List<string>
             {
                 "GPWS_FlapInhibitSw_NORM", "GPWS_GearInhibitSw_NORM", "GPWS_TerrInhibitSw_NORM",
-                "GPWS_SysTest"
+                "GPWS_SysTest", "GPWS_SysTestLong"
             },
             ["Instruments"] = new List<string>
             {
@@ -2028,6 +2063,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "XPDR_XpndrSelector_2", "XPDR_AltSourceSel_2", "XPDR_ModeSel",
                 "TRANSPONDER_CODE_SET",
                 "XPDR_Ident", "XPDR_TcasTest"
+            },
+            ["Weather Radar"] = new List<string>
+            {
+                "WXR_Test"
             },
             ["Fire Protection"] = new List<string>
             {
@@ -3473,7 +3512,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["LTS_RunwayTurnoffSw_1"]      = "EVT_OH_LIGHTS_R_TURNOFF",
             ["LTS_TaxiSw"]                 = "EVT_OH_LIGHTS_TAXI",
             ["LTS_LogoSw"]                 = "EVT_OH_LIGHTS_LOGO",
-            ["LTS_PositionSw"]             = "EVT_OH_LIGHTS_POS_STROBE",
+            // LTS_PositionSw is deliberately ABSENT: the position-lights switch ignores
+            // the CDA position write this map dispatches (live-probed 2026-07-06 — probe
+            // heat moved via the identical CDA write in the same session, this switch
+            // never did) — it is handled by the closed-loop click-walk branch (4c) in
+            // HandleUIVariableSet, which looks up EVT_OH_LIGHTS_POS_STROBE directly.
+            // Do not re-add it here.
             ["LTS_AntiCollisionSw"]        = "EVT_OH_LIGHTS_ANT_COL",
             ["LTS_WingSw"]                 = "EVT_OH_LIGHTS_WING",
             ["LTS_WheelWellSw"]            = "EVT_OH_LIGHTS_WHEEL_WELL",
@@ -3637,6 +3681,70 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         simConnect.SendPMDGEvent(eventName, eventId, 1);
         await Task.Delay(350).ConfigureAwait(false);
         simConnect.SendPMDGEvent(eventName, eventId, 0);
+    }
+
+    private const uint MOUSE_FLAG_LEFTSINGLE_U  = 0x20000000u;
+    private const uint MOUSE_FLAG_LEFTRELEASE_U = 0x00020000u;
+
+    // Manual warning-test toggles: app-tracked engaged state (no SDK readback) + the
+    // var-key → PMDG event map. Engaging fires LEFTSINGLE (holds the spring switch so the
+    // shaker/clacker sounds); releasing fires LEFTRELEASE. Released on aircraft swap
+    // (ReleaseEngagedWarningTests) so a held test can't leak into the next aircraft.
+    private readonly Dictionary<string, bool> _warnTestEngaged = new();
+    private static readonly IReadOnlyDictionary<string, string> _warnTestEventMap =
+        new Dictionary<string, string>
+        {
+            ["WARN_StickShakerTest1"]      = "EVT_OH_WARNING_TEST_STALL_1_PUSH",
+            ["WARN_StickShakerTest2"]      = "EVT_OH_WARNING_TEST_STALL_2_PUSH",
+            ["WARN_OverspeedClackerTest1"] = "EVT_OH_WARNING_TEST_MACH_IAS_1_PUSH",
+            ["WARN_OverspeedClackerTest2"] = "EVT_OH_WARNING_TEST_MACH_IAS_2_PUSH",
+        };
+
+    /// <summary>Held transmit press/release — for the spring test buttons that only commit
+    /// via the '#id' transmit path (GPWS long test, the WXR sequence's presses).</summary>
+    private static async Task HeldTransmitAsync(
+        SimConnect.SimConnectManager simConnect, uint eventId, int holdMs)
+    {
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTSINGLE_U);
+        await Task.Delay(holdMs).ConfigureAwait(false);
+        simConnect.SendPMDGEventViaTransmitWithTarget(eventId, MOUSE_FLAG_LEFTRELEASE_U);
+    }
+
+    /// <summary>Release any warning test left ENGAGED — called on aircraft swap so a held
+    /// stick-shaker / overspeed-clacker (LEFTSINGLE holds open-ended) can't sound forever or
+    /// bleed into the next aircraft. Best-effort; a swap must never throw.</summary>
+    public void ReleaseEngagedWarningTests(SimConnect.SimConnectManager? simConnect)
+    {
+        if (simConnect == null) return;
+        foreach (var kv in _warnTestEngaged.Where(e => e.Value).ToList())
+        {
+            try
+            {
+                if (_warnTestEventMap.TryGetValue(kv.Key, out string? evName) &&
+                    EventIds.TryGetValue(evName, out int evId))
+                    simConnect.SendPMDGEventViaTransmitWithTarget((uint)evId, MOUSE_FLAG_LEFTRELEASE_U);
+            }
+            catch { /* swap teardown must not throw */ }
+            _warnTestEngaged[kv.Key] = false;
+        }
+    }
+
+    /// <summary>WXR/PWS test managed sequence — see the WXR_Test def comment. Restore
+    /// (WX mode + overlay off) runs unconditionally after the wait.</summary>
+    private static async Task WxrTestSequenceAsync(SimConnect.SimConnectManager simConnect)
+    {
+        if (!EventIds.TryGetValue("EVT_EFIS_CPT_WXR", out int overlayEv) ||
+            !EventIds.TryGetValue("EVT_WXR_TEST", out int testEv) ||
+            !EventIds.TryGetValue("EVT_WXR_L_WX", out int wxEv))
+            return;
+        const int quick = MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.QuickTestHoldMs;
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrOverlaySettleMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)testEv, quick).ConfigureAwait(false);
+        await Task.Delay(MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.WxrTestWaitMs).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)wxEv, quick).ConfigureAwait(false);
+        await Task.Delay(350).ConfigureAwait(false);
+        await HeldTransmitAsync(simConnect, (uint)overlayEv, quick).ConfigureAwait(false);
     }
 
     // Overhead bins: rows 1–18 left/right + the two small TC-layout row-3 bins.
@@ -3913,6 +4021,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             simConnect.SendPMDGEventViaTransmitWithTarget(switchEventId, clickFlag);
             if (i < steps - 1) await Task.Delay(80);
         }
+    }
+
+    /// <summary>
+    /// Engage the autopilot via MCP CMD A — the NG3 momentary MCP push commits only via a
+    /// LEFTSINGLE+LEFTRELEASE pair (<see cref="SimConnect.SimConnectManager.SendPMDGMomentaryToggle"/>);
+    /// the stock <c>AUTOPILOT_ON</c> engages the basic AFDS, not CMD. Guarded on the CMD A
+    /// annunciator so re-engaging (CMD A is a toggle) can't disconnect an already-engaged AP.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm != null && dm.GetFieldValue("MCP_annunCMD_A") > 0.5) return;   // already engaged
+        if (EventIds.TryGetValue("EVT_MCP_CMD_A_SWITCH", out int id))
+            _ = simConnect.SendPMDGMomentaryToggle((uint)id, 1);
     }
 
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
@@ -4679,6 +4801,121 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 4c. Position lights (LTS_PositionSw) — the second CDA-deaf rotary.
+        //     Identical mechanism and handling to the transponder branch (4b)
+        //     above: the switch ignores the CDA position write (live-probed
+        //     2026-07-06 — probe heat moved via the identical write in the same
+        //     session, this switch never did) and transmit-with-target, and
+        //     only steps on transmit mouse-clicks (RIGHTSINGLE up / LEFTSINGLE
+        //     down, verified 0→1→2 and back). Shares the same closed-loop walk;
+        //     see 4b's comments for the chaining / suppression / off-target
+        //     replay rationale — this branch mirrors it with its own state trio.
+        // ------------------------------------------------------------------
+        if (varKey == "LTS_PositionSw")
+        {
+            if (_posLtWalkOp is { IsCompleted: false })
+            {
+                Interlocked.Exchange(ref _posLtPendingTarget, (int)value);
+                announcer.AnnounceImmediate("Still setting position lights, please wait.");
+                return true;
+            }
+            var posLtDm = simConnect.PMDGDataManager;
+            if (posLtDm == null || !posLtDm.IsReady)
+            {
+                announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                return true;
+            }
+            if (EventIds.TryGetValue("EVT_OH_LIGHTS_POS_STROBE", out int posLtEvId))
+            {
+                int target = (int)value;
+                Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                _posLtWalkSuppress = true;
+                async Task RunPosLtWalkAsync()
+                {
+                    try
+                    {
+                        int? landed = null;
+                        int currentTarget = target;
+                        while (true)
+                        {
+                            landed = await simConnect.WalkPMDGSelectorClosedLoop(
+                                (uint)posLtEvId, "LTS_PositionSw", currentTarget);
+                            if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
+                            int next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                            if (next >= 0 && next != currentTarget)
+                            {
+                                currentTarget = next;
+                                continue;
+                            }
+                            if (landed == currentTarget) return;
+                            if (landed is null)
+                            {
+                                await Task.Delay(1300);
+                                if (!ReferenceEquals(simConnect.PMDGDataManager, posLtDm)) return;
+                                if ((int)Math.Round(posLtDm.GetFieldValue("LTS_PositionSw")) == currentTarget) return;
+                                next = Interlocked.Exchange(ref _posLtPendingTarget, -1);
+                                if (next >= 0 && next != currentTarget)
+                                {
+                                    currentTarget = next;
+                                    continue;
+                                }
+                            }
+                            _posLtWalkSuppress = false;
+                            (posLtDm as SimConnect.PMDGNG3DataManager)?.RaiseFieldChanged("LTS_PositionSw");
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        // SimConnect drop mid-walk — never fault the fire-and-forget task.
+                    }
+                    finally
+                    {
+                        _posLtWalkSuppress = false;
+                    }
+                }
+                _posLtWalkOp = RunPosLtWalkAsync();
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4d. Synthetic system-test buttons (transmit press/hold/release — the
+        //     same live-verified mechanism as the FO executor's pseudo-keys;
+        //     timings shared from the executor's public consts). Fire-and-forget:
+        //     the test announces itself aurally in-sim, no app-side announcement.
+        // ------------------------------------------------------------------
+        if (varKey == "GPWS_SysTestLong" && EventIds.TryGetValue("EVT_GPWS_SYS_TEST_BTN", out int gpwsLongEv))
+        {
+            _ = HeldTransmitAsync(simConnect, (uint)gpwsLongEv,
+                MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.GpwsLongTestHoldMs);
+            return true;
+        }
+        if (varKey == "WXR_Test")
+        {
+            _ = WxrTestSequenceAsync(simConnect);
+            return true;
+        }
+
+        // ------------------------------------------------------------------
+        // 4e. Manual warning-test TOGGLES (stick shaker / overspeed clacker).
+        //     App-tracked engaged state; each press flips it and fires the
+        //     transmit press (LEFTSINGLE, holds the spring switch so the aural
+        //     sounds) or release (LEFTRELEASE). The def announces the new state
+        //     (static button label). Live-verified: LEFTSINGLE holds open-ended.
+        // ------------------------------------------------------------------
+        if (_warnTestEventMap.TryGetValue(varKey, out string? warnEvName) &&
+            EventIds.TryGetValue(warnEvName, out int warnEvId))
+        {
+            bool nowEngaged = !(_warnTestEngaged.TryGetValue(varKey, out bool wasOn) && wasOn);
+            _warnTestEngaged[varKey] = nowEngaged;
+            simConnect.SendPMDGEventViaTransmitWithTarget((uint)warnEvId,
+                nowEngaged ? MOUSE_FLAG_LEFTSINGLE_U : MOUSE_FLAG_LEFTRELEASE_U);
+            announcer.Announce($"{varDef.DisplayName} {(nowEngaged ? "engaged" : "released")}");
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 5. Generic _simpleEventMap lookup — covers every remaining mapped
         //    var-key. The parameter shape is determined by the var def:
         //
@@ -4795,16 +5032,37 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // OFF/XPNDR/TA and each detent would otherwise announce AND churn
             // the combo (return-true also skips MainForm's combo re-sync,
             // which is desired mid-walk: the combo holds the user's pick
-            // until the outcome). Gate = THIS def's _xpdrWalkSuppress, set by
-            // the 4b dispatch and cleared in the walk task's finally on every
-            // exit path, so leftover state can never mute a later genuine
-            // background change — a knob turned in the VC announces normally.
-            // A walk that lands off target replays the final state through
-            // RaiseFieldChanged after clearing the gate, so the combo re-syncs
-            // and the failure announces via the standard monitor path.
+            // until the outcome). Two producers gate it, both self-clearing on
+            // every exit path so leftover state can never mute a later genuine
+            // background change (a knob turned in the VC announces normally):
+            //   • the PANEL path sets THIS def's _xpdrWalkSuppress (instance)
+            //     around its own walk task; a walk that lands off target
+            //     replays the final state through RaiseFieldChanged after
+            //     clearing the gate, so the combo re-syncs and the failure
+            //     announces via the standard monitor path.
+            //   • the FIRST OFFICER executor drives the SAME shared walk but
+            //     can't reach this def instance (and ProcessSimVarUpdate has no
+            //     SimConnectManager handle to read the manager's walk counter),
+            //     so it exposes AircraftActionExecutor.XpdrWalkInProgress — a
+            //     self-clearing static read only here, in the 737 def.
             // -------------------------------------------------------------
             case "XPDR_ModeSel":
-                return _xpdrWalkSuppress;
+                return _xpdrWalkSuppress
+                    || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
+
+            // -------------------------------------------------------------
+            // Position lights: same per-detent swallow as the transponder
+            // above — walking STEADY→STROBE & STEADY passes OFF, which would
+            // otherwise announce mid-walk and churn the combo off the user's
+            // pick. Same two self-clearing producers: the panel walk's own
+            // suppress flag (4c) and the FO executor's walk counter (which
+            // counts BOTH walked selectors; a concurrent cross-suppression
+            // window is at most one walk long and ends with the landed value
+            // either matching the pick, or replayed via RaiseFieldChanged).
+            // -------------------------------------------------------------
+            case "LTS_PositionSw":
+                return _posLtWalkSuppress
+                    || MSFSBlindAssist.FirstOfficer.PMDG737.AircraftActionExecutor.XpdrWalkInProgress;
 
             // -------------------------------------------------------------
             // Stabilizer trim, in units (~0–17). Sourced from the PMDG L-var
@@ -5968,6 +6226,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Target queued by a combo pick made while a walk is running (-1 = none).
     // Written on the UI thread, consumed by the walk task via Interlocked.
     private int _xpdrPendingTarget = -1;
+
+    // Position-lights closed-loop walk state — the same trio as the transponder's
+    // above (HandleUIVariableSet 4c). LTS_PositionSw is the second switch proven to
+    // ignore CDA position writes and step only on transmit mouse-clicks
+    // (live-probed 2026-07-06; RIGHTSINGLE up / LEFTSINGLE down, the EVT_TCAS_MODE
+    // convention, so it shares WalkSelectorClosedLoop unchanged).
+    private Task? _posLtWalkOp;
+    private volatile bool _posLtWalkSuppress;
+    private int _posLtPendingTarget = -1;
+
 
     /// <summary>
     /// PMDG owns the baro and ignores absolute writes (KOHLSMAN_SET event and direct

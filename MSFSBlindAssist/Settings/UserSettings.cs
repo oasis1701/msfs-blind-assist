@@ -223,6 +223,44 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> FenixDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // First Officer (PMDG 777/737) automation.
+        // Gear management is split into two independent toggles: raise on the climb
+        // (positive rate) and lower on the descent (2000 ft AGL). The legacy single
+        // FOAutoGearEnabled flag is kept ONLY so old settings files still deserialize;
+        // SettingsManager.MigrateFOGearSplit seeds the two new flags from it once.
+        public bool FOAutoGearEnabled     { get; set; } = false;  // legacy — migrated, do not read directly
+        public bool FOAutoGearUpEnabled   { get; set; } = false;  // auto-raise gear on positive rate (climb)
+        public bool FOAutoGearDownEnabled { get; set; } = false;  // auto-lower gear at 2000 ft AGL (descent)
+        public bool FOAutoGearSplitMigrated { get; set; } = false; // one-time migration guard
+        public bool FOAutoFlapsEnabled    { get; set; } = false;
+        public bool FOAutoApEnabled       { get; set; } = false;
+
+        // Height (ft AGL) at which the FO auto-engages the autopilot on climbout —
+        // one global value shared by all four aircraft (default 350).
+        public int FOAutoApEngageAltitudeAgl { get; set; } = 350;
+
+        // Phase-monitor light automation: switch the landing (and nose, where fitted)
+        // lights at the 10,000 ft crossing. Default ON — matches the behavior before
+        // this toggle existed; a missing key in old settings files deserializes to it.
+        public bool FOAutoLights10kEnabled { get; set; } = true;
+
+        // PMDG 737/777 center-tank fuel pump auto-management. Default OFF (F11): opt-in like
+        // every other FO automation, it actuates a safety-relevant switch and speaks unprompted,
+        // and it has a long defect history — it should not be on for users who never asked.
+        // Only the two PMDG jets act on it; other aircraft store-and-ignore.
+        public bool FOAutoCenterPumpsEnabled { get; set; } = false;
+
+        // Auto seat-belt-sign automation, actuated via each aircraft's own seatbelt control:
+        // 0 = Disabled (default), 1 = switch at the 10,000 ft crossing, 2 = off at Top of
+        // Climb / on at Top of Descent (vertical-speed profile). See FoSeatbeltMode.
+        public int FOAutoSeatbeltMode { get; set; } = 0;
+
+        /// <summary>737 GPWS self-test variant run by the First Officer preflight flow and
+        /// checklist tick: false = short test (quick press), true = long test (5 s hold).
+        /// Both panel buttons exist regardless; this only selects the flow/checklist variant.
+        /// Read at DISPATCH time by the 737 executor, so a change applies immediately.</summary>
+        public bool FOGpws737LongTest { get; set; } = false;
+
         // One-time seed marker (SettingsManager.SeedFenixMonitorDefaults). Two groups
         // are added to FenixDisabledMonitorVariables by default so they don't speak:
         //   * the raw-seconds clock counters (CLOCK CHRONO / CLOCK ELAPSED), which tick
@@ -232,6 +270,15 @@ public class UserSettings
         // All stay toggleable in the Ctrl+M monitor; this flag stops them being re-seeded
         // after the user deliberately re-enables one.
         public bool FenixMonitorDefaultsSeeded { get; set; } = false;
+
+        // One-time seed marker (SettingsManager.SeedPmdgMonitorDefaults). The 737's
+        // window-heat ON annunciators (ICE_annunON_0..3) are added to
+        // PMDGDisabledMonitorVariables by default: the window-heat controller cycles
+        // them thermostatically (especially on the ground), so every cycle spoke
+        // "Window N Heat On: on/off" with no switch moving. They stay toggleable in
+        // the PMDG Announcement Monitor; this flag stops re-seeding after a
+        // deliberate re-enable.
+        public bool PmdgMonitorDefaultsSeeded { get; set; } = false;
 
         // PMDG Announcement Monitor Settings — variable keys that the user has
         // unticked in PMDGAnnouncementMonitorForm. The MainForm continuous-
@@ -533,7 +580,19 @@ public class UserSettings
             GroundDistanceUnit = GroundDistanceUnit,
             GroundTrafficUseMetres = GroundTrafficUseMetres,
             FenixDisabledMonitorVariables = new List<string>(FenixDisabledMonitorVariables),
+            FOAutoGearEnabled     = FOAutoGearEnabled,
+            FOAutoGearUpEnabled   = FOAutoGearUpEnabled,
+            FOAutoGearDownEnabled = FOAutoGearDownEnabled,
+            FOAutoGearSplitMigrated = FOAutoGearSplitMigrated,
+            FOAutoFlapsEnabled = FOAutoFlapsEnabled,
+            FOAutoApEnabled    = FOAutoApEnabled,
+            FOAutoApEngageAltitudeAgl = FOAutoApEngageAltitudeAgl,
+            FOAutoLights10kEnabled = FOAutoLights10kEnabled,
+            FOAutoCenterPumpsEnabled = FOAutoCenterPumpsEnabled,
+            FOAutoSeatbeltMode = FOAutoSeatbeltMode,
+            FOGpws737LongTest = FOGpws737LongTest,
             FenixMonitorDefaultsSeeded = FenixMonitorDefaultsSeeded,
+            PmdgMonitorDefaultsSeeded = PmdgMonitorDefaultsSeeded,
             PMDGDisabledMonitorVariables = new List<string>(PMDGDisabledMonitorVariables),
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             HS787DisabledMonitorVariables = new List<string>(HS787DisabledMonitorVariables),

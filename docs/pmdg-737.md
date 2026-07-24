@@ -151,6 +151,15 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 
 `FIRE_HandlePos[3]` array indexing: `[0]=Engine 1, [1]=APU, [2]=Engine 2`. Inferred from sequential SDK event-ID ordering (`EVT_FIRE_HANDLE_ENGINE_1_TOP=697`, `_APU_TOP=698`, `_ENGINE_2_TOP=699`; `EVT_FIRE_UNLOCK_SWITCH_ENGINE_1=976`, `_APU=977`, `_ENGINE_2=978`). Same convention applies to `FIRE_HandleIlluminated[3]`. Verify in sim under an active fire scenario; if a tester reports the wrong handle moves on a fire press, swap the `DisplayName` strings on `FIRE_HandlePos_1` / `_2` (and on `FIRE_HandleIlluminated_1` / `_2`).
 
+The OVHT/FIRE detection TEST switch, by contrast, needs no fire: `FIRE_DetTestSw` is
+0=FAULT/INOP / 1=neutral / 2=OVHT/FIRE, and a Control-CDA position write MOVES AND
+HOLDS the spring-loaded switch (live-probed 2026-07-11 — write 2: fire bell + both
+FIRE WARN masters + all three handle lights, staggered over ~1.7 s; the write back to
+1 is mandatory, nothing auto-releases). The aft-overhead stall / Mach-IAS warning-test
+buttons are the opposite: NO CDA state field and NO CDA actuation — transmit-only
+(`#id` LEFTSINGLE press … LEFTRELEASE), sound-only feedback (PMDG does not drive the
+stock `STALL WARNING`/`OVERSPEED WARNING` simvars).
+
 ## EFB support
 
 The PMDG 737-600 / -700 / -800 / -900 EFB has full parity with the PMDG 777. The 737 ships the
@@ -242,3 +251,17 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   failed; the app's state-change announcement is the confirmation channel.
 - Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
   visibility selectors, not positions. Headrests are the only adjustable seat part.
+
+### Manual warning-test panel toggles (stick shaker / overspeed clacker, 2026-07-13)
+
+The Overhead → **Warning Tests** panel section exposes four app-tracked toggle buttons —
+**Stick Shaker Test 1/2** and **Overspeed Clacker Test 1/2** — for manual engage/release of
+the aft-overhead P5 warning-test buttons (`EVT_OH_WARNING_TEST_STALL_1/2_PUSH`,
+`EVT_OH_WARNING_TEST_MACH_IAS_1/2_PUSH`). The NG3 SDK exposes NO state for these, so each
+button is a `RenderAsButton` toggle whose engaged/released state lives in the def
+(`_warnTestEngaged`); pressing fires a transmit **LEFTSINGLE** (engage — holds the spring
+switch so the shaker/clacker sounds continuously, live-verified open-ended) or **LEFTRELEASE**
+(release — stop), and the def announces the new state (the label is static). The keys are NOT
+in `_simpleEventMap` (the 4e branch in `HandleUIVariableSet` owns them). `SwitchAircraft`
+calls `ReleaseEngagedWarningTests` so a held test can't leak into the next aircraft. The FO
+preflight auto-timed stall/overspeed tests are unchanged.
