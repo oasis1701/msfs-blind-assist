@@ -6602,10 +6602,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             double auxLbs = fuelDm.GetFieldValue("FUEL_QtyAux");
             (string Label, double Lbs)? tank = slotNumber switch
             {
-                1 => ("Left main tank", fuelDm.GetFieldValue("FUEL_QtyLeft")),
-                2 => ("Right main tank", fuelDm.GetFieldValue("FUEL_QtyRight")),
-                3 => ("Center tank", fuelDm.GetFieldValue("FUEL_QtyCenter")),
-                4 when auxLbs > 0.5 => ("Aux tank", auxLbs),
+                1 => ("Left main", fuelDm.GetFieldValue("FUEL_QtyLeft")),
+                2 => ("Right main", fuelDm.GetFieldValue("FUEL_QtyRight")),
+                3 => ("Center", fuelDm.GetFieldValue("FUEL_QtyCenter")),
+                4 when auxLbs > 0.5 => ("Aux", auxLbs),
                 _ => null
             };
             if (tank == null)

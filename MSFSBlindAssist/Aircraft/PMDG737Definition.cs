@@ -5340,7 +5340,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 1 => ("Main 1", fuelDm.GetFieldValue("FUEL_QtyLeft")),
                 2 => ("Main 2", fuelDm.GetFieldValue("FUEL_QtyRight")),
-                3 => ("Center tank", fuelDm.GetFieldValue("FUEL_QtyCenter")),
+                3 => ("Center", fuelDm.GetFieldValue("FUEL_QtyCenter")),
                 _ => null
             };
             if (tank == null)
