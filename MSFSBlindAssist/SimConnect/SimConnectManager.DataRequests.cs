@@ -491,6 +491,44 @@ public partial class SimConnectManager
         }
     }
 
+    // Per-tank fuel readout (output-mode Ctrl/Alt+digit). One-shot read of
+    // FUELSYSTEM TANK WEIGHT:1..16 in pounds; the callback receives all 16 values
+    // (0 for tank indices the loaded aircraft doesn't model). The definition is
+    // rebuilt per call (same dynamic-def pattern as RequestSingleValue) because
+    // this is an on-demand readout, not a monitored stream.
+    public void RequestFuelTankWeights(Action<double[]> callback)
+    {
+        if (!IsConnected || simConnect == null || callback == null) return;
+
+        try
+        {
+            EventHandler<FuelTankWeightsData>? handler = null;
+            handler = (sender, data) =>
+            {
+                FuelTankWeightsReceived -= handler!;
+                callback(data.ToArray());
+            };
+            FuelTankWeightsReceived += handler;
+
+            var defId = DATA_DEFINITIONS.DEF_FUEL_TANK_WEIGHTS;
+            SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
+            for (int i = 1; i <= 16; i++)
+            {
+                simConnect.AddToDataDefinition(defId,
+                    $"FUELSYSTEM TANK WEIGHT:{i}", "pounds",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            }
+            simConnect.RegisterDataDefineStruct<FuelTankWeightsData>(defId);
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FUEL_TANK_WEIGHTS,
+                defId, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error requesting fuel tank weights: {ex.Message}");
+        }
+    }
+
     public void RequestNavRadioInfo(Action<NavRadioData> callback)
     {
         if (!IsConnected || callback == null) return;

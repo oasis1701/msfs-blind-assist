@@ -33,8 +33,11 @@ Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
 
 Fuel:
-  F          Read Fuel Quantity per tank (pounds)
-  Shift+F    Read Fuel Quantity per tank (kilograms)
+  F          Read Total Fuel (pounds)
+  Shift+F    Read Total Fuel (kilograms)
+  Ctrl+1-4   Read one fuel tank in pounds (Alt+1-4 for kilograms):
+             1 Left main, 2 Right main, 3 Center,
+             4 Aux (only when it holds fuel)
 
 Weight:
   W          Read Gross Weight (pounds)

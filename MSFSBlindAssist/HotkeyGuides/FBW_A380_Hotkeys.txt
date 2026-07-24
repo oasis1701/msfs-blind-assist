@@ -47,6 +47,10 @@ Characteristic Speeds:
 Fuel:
   F          Read Fuel On Board (pounds)
   Shift+F    Read Fuel On Board (kilograms)
+  Ctrl+1-8   Read one fuel tank in pounds (Alt+1-8 for kilograms):
+             1 Feed 1, 2 Feed 2, 3 Feed 3, 4 Feed 4,
+             5 Outer tanks (left and right), 6 Mid tanks (left and right),
+             7 Inner tanks (left and right), 8 Trim tank
 
 Weight:
   W          Read Gross Weight (pounds) + center of gravity

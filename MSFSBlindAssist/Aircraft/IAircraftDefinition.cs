@@ -314,6 +314,14 @@ public interface IAircraftDefinition
     VisualGuidanceProfile GetVisualGuidanceProfile();
 
     /// <summary>
+    /// Ordered per-tank fuel readout slots for the output-mode Ctrl+digit (pounds) /
+    /// Alt+digit (kilograms) hotkeys: slot N is read by Ctrl/Alt+N (max 9 slots).
+    /// Null (the <c>BaseAircraftDefinition</c> default) means the aircraft has no
+    /// per-tank readout wired and the hotkeys announce it as unavailable.
+    /// </summary>
+    System.Collections.Generic.IReadOnlyList<FuelTankSlot>? GetFuelTankSlots();
+
+    /// <summary>
     /// Taxi-turn rollout-anticipation lead, seconds. The steering tone's
     /// heading error is projected this far ahead by the yaw rate so the tone
     /// centres BEFORE the nose reaches the new heading (pilot reaction time +

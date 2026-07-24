@@ -73,6 +73,14 @@ public partial class MainForm
             return; // Action was handled by aircraft
         }
 
+        // Per-tank fuel readout (output Ctrl/Alt+digit) — universal, driven by the
+        // aircraft's GetFuelTankSlots() table (null = not wired for this aircraft).
+        if (e.Action >= HotkeyAction.ReadFuelTank1 && e.Action <= HotkeyAction.ReadFuelTankKg9)
+        {
+            HandleFuelTankReadout(e.Action);
+            return;
+        }
+
         // Fall through to universal actions (truly universal, not aircraft-specific)
         switch (e.Action)
         {
@@ -762,6 +770,32 @@ public partial class MainForm
         }
 
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    // Per-tank fuel readout (output Ctrl+1..9 = pounds, Alt+1..9 = kilograms).
+    // The slot table comes from the aircraft definition; the weights are a one-shot
+    // stock-fuel-system read, formatted by the pure FuelTankReadout helper.
+    private void HandleFuelTankReadout(HotkeyAction action)
+    {
+        bool kilograms = action >= HotkeyAction.ReadFuelTankKg1;
+        int slotNumber = kilograms
+            ? action - HotkeyAction.ReadFuelTankKg1 + 1
+            : action - HotkeyAction.ReadFuelTank1 + 1;
+
+        var slots = currentAircraft?.GetFuelTankSlots();
+        if (slots == null || slots.Count == 0)
+        {
+            announcer.AnnounceImmediate("Per-tank fuel readout is not available on this aircraft.");
+            return;
+        }
+        if (slotNumber > slots.Count)
+        {
+            announcer.AnnounceImmediate($"No fuel tank {slotNumber}.");
+            return;
+        }
+        var slot = slots[slotNumber - 1];
+        simConnectManager.RequestFuelTankWeights(weights =>
+            announcer.AnnounceImmediate(Services.FuelTankReadout.Format(slot, weights, kilograms)));
     }
 
     protected override void WndProc(ref Message m)
