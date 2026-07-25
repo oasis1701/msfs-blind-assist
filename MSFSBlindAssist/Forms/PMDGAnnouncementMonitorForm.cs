@@ -89,6 +89,14 @@ public partial class PMDGAnnouncementMonitorForm : Form
     public void ShowForm()
     {
         previousWindow = GetForegroundWindow();
+        // Rebuild check states from the CURRENT persisted set on every open — the
+        // form is cached by MainForm (constructed once, reused), so the constructor's
+        // one-time ApplyFilter would show stale checkboxes whenever the disabled set
+        // changed after first open (a settings reload, or a var whose IsAnnounced flag
+        // flipped across an app update). ApplyFilter already guards its SetItemChecked
+        // loop with _suppressItemCheck, so this fires no Save writes; it also re-honors
+        // the persisted filter text.
+        ApplyFilter(filterTextBox.Text);
         Show();
         BringToFront();
         Activate();

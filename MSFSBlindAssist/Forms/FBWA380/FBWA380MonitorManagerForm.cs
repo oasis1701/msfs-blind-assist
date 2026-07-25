@@ -31,6 +31,7 @@ public partial class FBWA380MonitorManagerForm : Form
     private readonly List<string> _keys = new();   // parallel to _list.Items
     private IntPtr _previousWindow;
     private static int _lastIndex;
+    private bool _populating;
 
     public FBWA380MonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
     {
@@ -68,6 +69,13 @@ public partial class FBWA380MonitorManagerForm : Form
     public void ShowForm()
     {
         _previousWindow = GetForegroundWindow();
+        // Rebuild check states from the CURRENT persisted set on every open — the
+        // form is cached by MainForm (constructed once, reused), so a populate that
+        // ran only in the constructor would show stale checkboxes whenever the
+        // disabled set changed after first open (a settings reload, or a var whose
+        // IsAnnounced flag flipped across an app update, silently dropping it from /
+        // re-adding it to _keys). Guarded by _populating so it fires no Save writes.
+        Populate();
         Show();
         BringToFront();
         Activate();
@@ -124,19 +132,31 @@ public partial class FBWA380MonitorManagerForm : Form
 
     private void Populate()
     {
-        var disabled = SettingsManager.Current.A380DisabledMonitorVariables;
-        _list.BeginUpdate();
-        _list.Items.Clear();
-        for (int i = 0; i < _labels.Count; i++)
+        // _populating suppresses the ItemCheck handler: SetItemChecked raises
+        // ItemCheck, and without this guard each populate would fire a (no-op but
+        // file-writing) Save per row — a storm on every construct AND every reopen.
+        _populating = true;
+        try
         {
-            _list.Items.Add(_labels[i]);
-            _list.SetItemChecked(i, !disabled.Contains(_keys[i])); // checked = announcing
+            var disabled = SettingsManager.Current.A380DisabledMonitorVariables;
+            _list.BeginUpdate();
+            _list.Items.Clear();
+            for (int i = 0; i < _labels.Count; i++)
+            {
+                _list.Items.Add(_labels[i]);
+                _list.SetItemChecked(i, !disabled.Contains(_keys[i])); // checked = announcing
+            }
+            _list.EndUpdate();
         }
-        _list.EndUpdate();
+        finally
+        {
+            _populating = false;
+        }
     }
 
     private void OnItemCheck(object? sender, ItemCheckEventArgs e)
     {
+        if (_populating) return;
         if (e.Index < 0 || e.Index >= _keys.Count) return;
         string key = _keys[e.Index];
         var settings = SettingsManager.Current;
