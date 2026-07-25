@@ -34,21 +34,21 @@ public class IFly737CDUForm : Form
     private readonly ListBox _display;
     private readonly TextBox _scratchpadInput;
     private readonly ComboBox _unitSelector;
-    private readonly Label _helpLabel;
+    private readonly TextBox _helpBox;
     private readonly System.Windows.Forms.Timer _pollTimer;
 
     private string _lastScreenHash = "";
     private string _lastTitle = "";
-    private string _lastScratchpad = "";
     private bool _execLit, _msgLit;
     private bool _firstRender = true;
-    private DateTime _suppressScratchpadUntil = DateTime.MinValue;
+    private readonly CduScratchpadAnnouncer _scratchpad = new();
     private IntPtr _previousWindow;
 
     // Paced key queue: consecutive CDU keys are spaced so the FMC registers
     // repeated characters as separate presses.
     private readonly BlockingCollection<IFlyKeyCommand> _keyQueue = new();
     private readonly CancellationTokenSource _keyPumpCts = new();
+    private Task? _keyPumpTask;
     private const int KeyPumpSpacingMs = 80;
 
     private int CduUnit => _unitSelector.SelectedIndex == 1 ? 2 : 1;   // command channel: 1 = Captain, 2 = FO
@@ -168,23 +168,30 @@ public class IFly737CDUForm : Form
         Controls.Add(clrBtn);
         y += btnH + 8;
 
-        _helpLabel = new Label
+        // Read-only TextBox, not a Label — reachable text beats an untabbable
+        // Label (repo rule); a blind user must be able to tab to the keyboard
+        // help and review it like any other control.
+        _helpBox = new TextBox
         {
             Location = new Point(10, y),
             Size = new Size(565, 34),
             Text = "Type in the scratchpad and press Enter to send. " +
                    "Ctrl+1-6 left keys, Alt+1-6 right keys, Alt+E EXEC, Alt+C CLR/DEL.",
-            TabStop = false,
+            ReadOnly = true,
+            Multiline = true,
+            TabStop = true,
+            BorderStyle = BorderStyle.None,
+            AccessibleName = "Keyboard help",
         };
 
         Controls.Add(_statusBox);
         Controls.Add(_unitSelector);
         Controls.Add(_display);
         Controls.Add(_scratchpadInput);
-        Controls.Add(_helpLabel);
+        Controls.Add(_helpBox);
 
         // Logical tab order: status, display, scratchpad, unit selector, then the
-        // buttons (already added in visual order).
+        // buttons (already added in visual order), then the help text last.
         int tab = 0;
         _statusBox.TabIndex = tab++;
         _display.TabIndex = tab++;
@@ -192,6 +199,7 @@ public class IFly737CDUForm : Form
         _unitSelector.TabIndex = tab++;
         foreach (Control c in Controls)
             if (c is Button) c.TabIndex = tab++;
+        _helpBox.TabIndex = tab++;
 
         KeyDown += Form_KeyDown;
         FormClosing += (s, e) =>
@@ -208,7 +216,7 @@ public class IFly737CDUForm : Form
         _pollTimer.Tick += (_, _) => RefreshDisplay();
 
         // Key pump: 80 ms spacing between CDU key presses.
-        Task.Run(async () =>
+        _keyPumpTask = Task.Run(async () =>
         {
             try
             {
@@ -219,6 +227,7 @@ public class IFly737CDUForm : Form
                 }
             }
             catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) { }
         });
     }
 
@@ -227,6 +236,7 @@ public class IFly737CDUForm : Form
         _previousWindow = NativeMethods.GetForegroundWindow();
         _lastScreenHash = "";
         _firstRender = true;
+        _scratchpad.Reset();
         _pollTimer.Start();
         Show();
         Activate();
@@ -256,6 +266,8 @@ public class IFly737CDUForm : Form
                 _display.Items.Clear();
                 _display.Items.Add("iFly 737 not detected.");
             }
+            // force a full redraw on reconnect — a byte-identical screen would otherwise leave "not detected" on the list forever
+            _lastScreenHash = "";
             return;
         }
 
@@ -263,6 +275,12 @@ public class IFly737CDUForm : Form
             _statusBox.Text = "FMC Connected";
 
         int unit = CduIndex;
+        string scratchpad = snap.CduLine(unit, 13).Trim();
+        // Scratchpad read-back is poll-driven, independent of the screen-hash gate
+        // below — see CduScratchpadAnnouncer.
+        if (_scratchpad.OnPoll(scratchpad, DateTime.UtcNow) is { } sayScratchpad)
+            _announcer.Announce(sayScratchpad);
+
         string screen = snap.CduScreenText(unit);
         string annun = $"{snap.CduExecLit(unit)}|{snap.CduMsgLit(unit)}";
         // The color plane (grey/inverse = code 4) is the only cue for the active option
@@ -275,7 +293,6 @@ public class IFly737CDUForm : Form
         _lastScreenHash = hash;
 
         string title = snap.CduLine(unit, 0).Trim();
-        string scratchpad = snap.CduLine(unit, 13).Trim();
 
         var lines = new List<string> { title.Length > 0 ? title : "(no title)" };
         for (int pair = 0; pair < 6; pair++)
@@ -321,7 +338,8 @@ public class IFly737CDUForm : Form
             _display.EndUpdate();
         }
 
-        // Announcements: page change, scratchpad change, annunciator edges.
+        // Announcements: page change, annunciator edges (scratchpad read-back
+        // happens above, poll-driven, independent of this hash-gated block).
         if (!_firstRender)
         {
             if (title != _lastTitle && title.Length > 0)
@@ -330,25 +348,12 @@ public class IFly737CDUForm : Form
                 _display.SelectedIndex = 0;
             }
 
-            // Scratchpad: while typing (or while a queued text entry is still
-            // being keyed) the change is NOT recorded, so the final content is
-            // read back on the first poll after the suppression window expires.
-            if (scratchpad != _lastScratchpad && DateTime.UtcNow >= _suppressScratchpadUntil)
-            {
-                _announcer.Announce(scratchpad.Length > 0 ? scratchpad : "Cleared");
-                _lastScratchpad = scratchpad;
-            }
-
             bool exec = snap.CduExecLit(unit);
             if (exec != _execLit)
                 _announcer.Announce(exec ? "EXEC light on" : "EXEC light off");
             bool msg = snap.CduMsgLit(unit);
             if (msg != _msgLit)
                 _announcer.Announce(msg ? "FMC message" : "FMC message cleared");
-        }
-        else
-        {
-            _lastScratchpad = scratchpad;
         }
 
         _lastTitle = title;
@@ -440,14 +445,14 @@ public class IFly737CDUForm : Form
         string current = _sdk.Snapshot?.CduLine(CduIndex, 13).Trim() ?? "";
         if (current.Length == 0)
         {
-            _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(700);
+            _scratchpad.SuppressUntil = DateTime.UtcNow.AddMilliseconds(700);
             SendKey("DEL");
             return;
         }
         for (int i = 0; i < current.Length; i++)
             SendKey("CLR");
         // Hold the per-poll announce until the whole CLR burst has been keyed.
-        _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(current.Length * KeyPumpSpacingMs + 500);
+        _scratchpad.SuppressUntil = DateTime.UtcNow.AddMilliseconds(current.Length * KeyPumpSpacingMs + 500);
     }
 
     // NOTE: no Display_KeyPress type-through — text entry is scratchpad-box-only
@@ -475,7 +480,7 @@ public class IFly737CDUForm : Form
             }
             // Suppress per-poll chatter until the queue has drained; the first
             // poll after that reads the final scratchpad content back.
-            _suppressScratchpadUntil = DateTime.UtcNow.AddMilliseconds(queued * KeyPumpSpacingMs + 400);
+            _scratchpad.SuppressUntil = DateTime.UtcNow.AddMilliseconds(queued * KeyPumpSpacingMs + 400);
         }
         // Backspace on an empty box (CLR) is handled globally in Form_KeyDown.
     }
@@ -585,7 +590,8 @@ public class IFly737CDUForm : Form
                 SendKey("DEL");
                 e.Handled = true;
                 break;
-            case Keys.Escape:
+            // while the unit dropdown is open, Escape belongs to the combo (closes the list), not the window
+            case Keys.Escape when !_unitSelector.DroppedDown:
                 Hide();
                 RestorePreviousWindow();
                 e.Handled = true;
@@ -600,7 +606,13 @@ public class IFly737CDUForm : Form
             _pollTimer.Dispose();
             _keyPumpCts.Cancel();
             _keyQueue.CompleteAdding();
-            _keyPumpCts.Dispose();
+            // Dispose the CTS + queue only after the pump has observed the
+            // cancellation — a synchronous Dispose here races the pump's
+            // GetConsumingEnumerable/Task.Delay token reads.
+            var cts = _keyPumpCts;
+            var queue = _keyQueue;
+            (_keyPumpTask ?? Task.CompletedTask)
+                .ContinueWith(_ => { cts.Dispose(); queue.Dispose(); }, TaskScheduler.Default);
         }
         base.Dispose(disposing);
     }

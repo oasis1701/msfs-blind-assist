@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
@@ -72,9 +73,8 @@ public partial class FBWA380MonitorManagerForm : Form
         // Rebuild check states from the CURRENT persisted set on every open — the
         // form is cached by MainForm (constructed once, reused), so a populate that
         // ran only in the constructor would show stale checkboxes whenever the
-        // disabled set changed after first open (a settings reload, or a var whose
-        // IsAnnounced flag flipped across an app update, silently dropping it from /
-        // re-adding it to _keys). Guarded by _populating so it fires no Save writes.
+        // disabled set changed after first open (e.g. a settings reload). Guarded
+        // by _populating so it fires no Save writes.
         Populate();
         Show();
         BringToFront();
@@ -122,36 +122,16 @@ public partial class FBWA380MonitorManagerForm : Form
 
     private void SetupAccessibility()
     {
-        FormClosing += (_, e) =>
+        MonitorManagerShared.HideOnClose(this, () =>
         {
-            e.Cancel = true;
-            Hide();
             if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
-        };
+        });
     }
 
     private void Populate()
     {
-        // _populating suppresses the ItemCheck handler: SetItemChecked raises
-        // ItemCheck, and without this guard each populate would fire a (no-op but
-        // file-writing) Save per row — a storm on every construct AND every reopen.
-        _populating = true;
-        try
-        {
-            var disabled = SettingsManager.Current.A380DisabledMonitorVariables;
-            _list.BeginUpdate();
-            _list.Items.Clear();
-            for (int i = 0; i < _labels.Count; i++)
-            {
-                _list.Items.Add(_labels[i]);
-                _list.SetItemChecked(i, !disabled.Contains(_keys[i])); // checked = announcing
-            }
-            _list.EndUpdate();
-        }
-        finally
-        {
-            _populating = false;
-        }
+        MonitorManagerShared.Populate(_list, _labels, _keys,
+            SettingsManager.Current.A380DisabledMonitorVariables, ref _populating);
     }
 
     private void OnItemCheck(object? sender, ItemCheckEventArgs e)

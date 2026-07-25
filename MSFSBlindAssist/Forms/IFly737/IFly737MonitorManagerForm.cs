@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
@@ -56,11 +57,10 @@ public partial class IFly737MonitorManagerForm : Form
         // Rebuild the check states from the CURRENT persisted set on every open.
         // The form is cached by MainForm (constructed once, reused), so a
         // populate that ran only in the constructor would show stale checkboxes
-        // whenever the disabled set changed by any path after first open — e.g. a
-        // settings reload, or a var whose IsAnnounced flag flipped across an app
-        // update (which silently drops it from / re-adds it to _keys). Re-populating
-        // here guarantees the displayed check marks always match what actually
-        // gates announcements. Cheap (a few dozen items) and guarded by _populating.
+        // whenever the disabled set changed by any path after first open —
+        // e.g. a settings reload. Re-populating here guarantees the displayed
+        // check marks always match what actually gates announcements. Cheap
+        // (a few dozen items) and guarded by _populating.
         PopulateVariables();
         Show();
         BringToFront();
@@ -108,33 +108,16 @@ public partial class IFly737MonitorManagerForm : Form
 
     private void SetupAccessibility()
     {
-        FormClosing += (_, e) =>
+        MonitorManagerShared.HideOnClose(this, () =>
         {
-            e.Cancel = true;
-            Hide();
             if (previousWindow != IntPtr.Zero) SetForegroundWindow(previousWindow);
-        };
+        });
     }
 
     private void PopulateVariables()
     {
-        _populating = true;
-        try
-        {
-            var disabledVars = SettingsManager.Current.IFlyDisabledMonitorVariables;
-            variableListBox.BeginUpdate();
-            variableListBox.Items.Clear();
-            for (int i = 0; i < _labels.Count; i++)
-            {
-                variableListBox.Items.Add(_labels[i]);
-                variableListBox.SetItemChecked(i, !disabledVars.Contains(_keys[i])); // checked = announcing
-            }
-            variableListBox.EndUpdate();
-        }
-        finally
-        {
-            _populating = false;
-        }
+        MonitorManagerShared.Populate(variableListBox, _labels, _keys,
+            SettingsManager.Current.IFlyDisabledMonitorVariables, ref _populating);
     }
 
     private void VariableListBox_ItemCheck(object? sender, ItemCheckEventArgs e)

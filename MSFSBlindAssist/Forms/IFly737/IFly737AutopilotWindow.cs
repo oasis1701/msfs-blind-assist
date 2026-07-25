@@ -191,15 +191,10 @@ public class IFly737AutopilotWindow : Form
             apDiscButton, atDiscButton, _closeButton,
         });
 
-        CancelButton = _closeButton;
+        CancelButton = _closeButton; // Escape presses Close (HideWindow) via ProcessDialogKey
 
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _refreshTimer.Tick += (_, _) => RefreshButtonStates();
-
-        KeyDown += (_, e) =>
-        {
-            if (e.KeyCode == Keys.Escape) { e.Handled = true; HideWindow(); }
-        };
 
         // Hide-on-close so the cached instance survives reopen; the refresh timer
         // stops while hidden and restarts in ShowForm. Escape and the Close button

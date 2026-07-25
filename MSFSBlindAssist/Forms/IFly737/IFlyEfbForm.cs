@@ -311,7 +311,7 @@ public class IFlyEfbForm : Form
             AutoSize = true,
             Location = new Point(12, 120),
         };
-        _retryButton.Click += (_, _) => Navigate();
+        _retryButton.Click += (_, _) => RetryFromErrorPanel();
 
         // Read-only multiline TextBox, not a Label — readouts must be a tab-stoppable
         // control so NVDA/JAWS can review the failure text on demand (repo rule).
@@ -348,7 +348,7 @@ public class IFlyEfbForm : Form
             {
                 if (_errorPanel.Visible)
                 {
-                    Navigate();
+                    RetryFromErrorPanel();
                 }
                 else
                 {
@@ -384,7 +384,7 @@ public class IFlyEfbForm : Form
         };
     }
 
-    public async void ShowForm()
+    public void ShowForm()
     {
         // Remember who had focus so we can restore it when the window is dismissed.
         _previousWindow = GetForegroundWindow();
@@ -401,8 +401,12 @@ public class IFlyEfbForm : Form
             return;
         }
 
-        if (_initStarted) return; // init already running from a previous ShowForm() call; it will Navigate() itself once ready.
+        InitWebViewAsync();
+    }
 
+    private async void InitWebViewAsync()
+    {
+        if (_initStarted) return; // a previous call is mid-init; it will Navigate() itself
         _initStarted = true;
         try
         {
@@ -415,8 +419,16 @@ public class IFlyEfbForm : Form
         catch (Exception ex)
         {
             _initStarted = false;
-            ShowError($"The browser component could not start. {ex.Message}");
+            ShowError($"The browser component could not start. {ex.Message} Press Retry to try again.");
         }
+    }
+
+    private void RetryFromErrorPanel()
+    {
+        // After a failed WebView2 INIT, Navigate() is a dead end (it refuses while
+        // !_webViewReady and re-shows the error) — re-run the init instead.
+        if (_webViewReady) Navigate();
+        else InitWebViewAsync();
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -464,7 +476,13 @@ public class IFlyEfbForm : Form
         // Optimistically show the browser; OnNavigationCompleted flips to the error
         // panel if the load fails.
         ShowBrowser();
-        _webView.CoreWebView2.Navigate($"http://localhost:{port}/");
+        try { _webView.CoreWebView2.Navigate($"http://localhost:{port}/"); }
+        catch (Exception ex)
+        {
+            // A crashed WebView2 browser process throws here (the Reload call sites
+            // are already guarded); surface it instead of the app ThreadException dialog.
+            ShowError($"The browser could not navigate. {ex.Message} Press Retry to try again.");
+        }
     }
 
     private void ShowBrowser()
