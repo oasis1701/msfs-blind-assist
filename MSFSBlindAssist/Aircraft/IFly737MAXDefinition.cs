@@ -799,16 +799,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
             }
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(800); // let the plugin act and the poll refresh
-                if (Sdk.Snapshot is { } snap && snap.ByteAt(IFlySdkOffsets.Battery_Switch_Mode) != target)
-                    // Announce on the UI thread: the Tolk/JAWS path has thread affinity and
-                    // silently drops speech from worker threads (the A380 RMP lesson —
-                    // docs/a380x.md). RunOnUi posts through the SDK client's captured context.
-                    Sdk.RunOnUi(() => announcer.AnnounceImmediate("Battery switch did not move. " +
-                        "Open the battery switch guard in the cockpit and try again."));
-            });
+            VerifyWriteAfterDelay(announcer, snap => snap.ByteAt(IFlySdkOffsets.Battery_Switch_Mode) != target,
+                "Battery switch did not move. Open the battery switch guard in the cockpit and try again.");
             return true;
         }
 
@@ -837,17 +829,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (varKey.StartsWith("Refuel_Valve", StringComparison.Ordinal)
                 || varKey == "Fueling_Indication_Test_Switch_Status")
             {
-                _ = Task.Run(async () =>
-                {
-                    await Task.Delay(800); // let the plugin act and the poll refresh
-                    if (Sdk.Snapshot is { } snap
-                        && ReadRawField(snap, varKey) is { } cur
-                        && (int)Math.Round(cur) != posIdx
-                        && snap.ByteAt(IFlySdkOffsets.Refuel_Power_Control_Switch_Status) == 0)
-                        Sdk.RunOnUi(() => announcer.AnnounceImmediate(
-                            "Fueling station did not respond. The refuel access panel is closed — " +
-                            "open the Fuel service door from the EFB Ground Services page first."));
-                });
+                VerifyWriteAfterDelay(announcer,
+                    snap => ReadRawField(snap, varKey) is { } cur && (int)Math.Round(cur) != posIdx
+                            && snap.ByteAt(IFlySdkOffsets.Refuel_Power_Control_Switch_Status) == 0,
+                    "Fueling station did not respond. The refuel access panel is closed — " +
+                    "open the Fuel service door from the EFB Ground Services page first.");
             }
             return true;
         }
@@ -873,9 +859,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             // SYN_MCP_COURSE_1/2 background-change wording above) — "Course 1 005",
             // not the bare "5" a plain F0 would speak.
             if (_numSetRanges.ContainsKey(varKey))
+            {
                 announcer.AnnounceImmediate(varKey is "MCP_COURSE_1_SET" or "MCP_COURSE_2_SET"
                     ? $"{varDef.DisplayName} {value:000}"
                     : $"{varDef.DisplayName} {value:F0}");
+                PrimeWindowAnnounceForSet(varKey, value);
+            }
             return true;
         }
 
@@ -899,6 +888,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return false;
     }
 
+    /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll
+    /// refresh), if the check still fails against the live snapshot, speaks the
+    /// hint on the UI thread (Tolk thread affinity — the A380 RMP lesson).</summary>
+    private void VerifyWriteAfterDelay(ScreenReaderAnnouncer announcer,
+        Func<IFlySdkSnapshot, bool> writeFailed, string hint)
+    {
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(800);
+            if (Sdk.Snapshot is { } snap && writeFailed(snap))
+                Sdk.RunOnUi(() => announcer.AnnounceImmediate(hint));
+        });
+    }
+
     /// <summary>Ticks (Environment.TickCount64) until which background COM1/COM2
     /// active/standby announcements stay quiet. App-driven RTP tuning steps the
     /// standby through many intermediate channels — each one changes the stock
@@ -907,20 +910,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// baselines still update during the quiet window (see ProcessSimVarUpdate).</summary>
     private long _comAnnounceQuietUntilTicks;
 
-    /// <summary>RTP standby tuning — steps the WHOLE/FRACT rotaries to the target.
-    ///
-    /// STEP-SIZE TRAP (live-verified 2026-07-23, resolves the old LIVE-VERIFY
-    /// note): the FRACT knob does NOT step uniform 25 kHz — with the sim's 8.33 kHz
-    /// spacing it walks the mixed channel-name table (display steps of 5 and
-    /// 10 kHz, e.g. 124.860 -> 124.865 -> 124.875), so a precomputed click count
-    /// lands on the wrong channel. The WHOLE knob is a uniform 1 MHz per click
-    /// (live-verified both directions). So: burst the whole-MHz clicks, then walk
-    /// the fraction with measured verify rounds — each burst is sized against the
-    /// LARGEST step the knob could take (25 kHz mode), which can only undershoot,
-    /// never overshoot; re-read the display between rounds and finish with single
-    /// verified clicks to the nearest channel. The readback announces the ACTUAL
-    /// landed frequency, so an unreachable in-between target degrades to an honest
-    /// nearest-channel result.</summary>
     /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. REQUESTS a
     /// fresh gross-weight read on every press, then announces from the cache:
     /// the IFLY_FLAP_SPEEDS var has NO continuous stream (IsAnnounced=false, so
@@ -946,6 +935,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             $"{IFly737FlapSpeeds.ManeuverSpeedKnots(weight, scheduleIndex)} knots, calculated");
     }
 
+    /// <summary>RTP standby tuning — steps the WHOLE/FRACT rotaries to the target.
+    ///
+    /// STEP-SIZE TRAP (live-verified 2026-07-23, resolves the old LIVE-VERIFY
+    /// note): the FRACT knob does NOT step uniform 25 kHz — with the sim's 8.33 kHz
+    /// spacing it walks the mixed channel-name table (display steps of 5 and
+    /// 10 kHz, e.g. 124.860 -> 124.865 -> 124.875), so a precomputed click count
+    /// lands on the wrong channel. The WHOLE knob is a uniform 1 MHz per click
+    /// (live-verified both directions). So: burst the whole-MHz clicks, then walk
+    /// the fraction with measured verify rounds — each burst is sized against the
+    /// LARGEST step the knob could take (25 kHz mode), which can only undershoot,
+    /// never overshoot; re-read the display between rounds and finish with single
+    /// verified clicks to the nearest channel. The readback announces the ACTUAL
+    /// landed frequency, so an unreachable in-between target degrades to an honest
+    /// nearest-channel result.</summary>
     private void SetRtpStandbyFrequency(int rtp, double target, ScreenReaderAnnouncer announcer)
     {
         var snap = Sdk.Snapshot;
@@ -1111,7 +1114,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// targets >= 1000 kHz will land short of the target. That failure mode is
     /// safe: the mandatory readback below always announces the ACTUAL landed
     /// frequency (never an assumed one), so a wrong model here degrades to an
-    /// honest "didn't reach the target" rather than a false confirmation.
+    /// honest "didn't reach the target" rather than a false confirmation.</summary>
     private void SetAdfFrequency(int unit, double target, ScreenReaderAnnouncer announcer)
     {
         var snap = Sdk.Snapshot;
@@ -1223,21 +1226,26 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         bool ok1 = await TuneNavActiveAsync(1, settings.Nav1FreqMHz, simConnect);
         Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_1_SET, settings.Nav1Course);
+        PrimeWindowAnnounceForSet("MCP_COURSE_1_SET", settings.Nav1Course);
         bool ok2 = await TuneNavActiveAsync(2, settings.Nav2FreqMHz, simConnect);
         Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_COURSE_2_SET, settings.Nav2Course);
+        PrimeWindowAnnounceForSet("MCP_COURSE_2_SET", settings.Nav2Course);
 
-        var snap = Sdk.Snapshot;
-        string W(int panel, int window)
-        {
-            string t = snap?.NavWindowText(panel, window) ?? "";
-            return t.Length > 0 ? t : "blank";
-        }
         string msg = ok1 && ok2
-            ? $"NAV 1 active {W(0, 0)}, course {settings.Nav1Course}. " +
-              $"NAV 2 active {W(1, 0)}, course {settings.Nav2Course}."
-            : $"Warning: transfer did not complete. NAV 1 active {W(0, 0)}, standby {W(0, 1)}. " +
-              $"NAV 2 active {W(1, 0)}, standby {W(1, 1)}. Courses set {settings.Nav1Course} and {settings.Nav2Course}.";
+            ? $"NAV 1 active {NavWindowOrBlank(0, 0)}, course {settings.Nav1Course}. " +
+              $"NAV 2 active {NavWindowOrBlank(1, 0)}, course {settings.Nav2Course}."
+            : $"Warning: transfer did not complete. NAV 1 active {NavWindowOrBlank(0, 0)}, standby {NavWindowOrBlank(0, 1)}. " +
+              $"NAV 2 active {NavWindowOrBlank(1, 0)}, standby {NavWindowOrBlank(1, 1)}. Courses set {settings.Nav1Course} and {settings.Nav2Course}.";
         announcer.AnnounceImmediate(msg);
+    }
+
+    /// <summary>NAV panel window text, or "blank" when the field reads empty
+    /// (unpowered radio, no snapshot yet). Shared by ApplyNavRadiosAsync's
+    /// transfer-confirmation readback and the ReadNavRadioInfo hotkey.</summary>
+    private string NavWindowOrBlank(int panel, int window)
+    {
+        string t = Sdk.Snapshot?.NavWindowText(panel, window) ?? "";
+        return t.Length > 0 ? t : "blank";
     }
 
     /// <summary>Keys a VOR/ILS frequency into the NAV panel's standby window
@@ -1432,6 +1440,35 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, string> _lastWindowAnnounce = new();
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // Cross-reference: the primed strings below MUST stay byte-identical to the
+    // AnnounceWindow compositions in the SYN_* switch in ProcessSimVarUpdate
+    // (search for "Cross-reference" there).
+    /// <summary>Pre-primes the SYN_* window-announce dedup for a panel MCP numeric
+    /// set, so the background window-change announcement ~0.5 s later dedups against
+    /// the confirmation just spoken (the SetSquawkCodeAsync pattern). Value-keyed
+    /// deliberately, NOT a time window: if the aircraft clamps or rejects the entry,
+    /// the window text differs from the primed text and the ACTUAL landed value
+    /// still announces once — the readback-of-actual-landed-value convention.</summary>
+    private void PrimeWindowAnnounceForSet(string varKey, double value)
+    {
+        switch (varKey)
+        {
+            case "MCP_HEADING_SET": _lastWindowAnnounce["SYN_MCP_HEADING"] = $"MCP heading {value:000}"; break;
+            case "MCP_ALTITUDE_SET": _lastWindowAnnounce["SYN_MCP_ALTITUDE"] = $"MCP altitude {value:F0}"; break;
+            case "MCP_VS_SET": _lastWindowAnnounce["SYN_MCP_VS"] = $"MCP vertical speed {value:+0;-0;0}"; break;
+            case "MCP_COURSE_1_SET": _lastWindowAnnounce["SYN_MCP_COURSE_1"] = $"Course 1 {value:000}"; break;
+            case "MCP_COURSE_2_SET": _lastWindowAnnounce["SYN_MCP_COURSE_2"] = $"Course 2 {value:000}"; break;
+        }
+    }
+
+    /// <summary>Altimeter announce phrase — 29.92 inHg reads as "Altimeter standard";
+    /// otherwise dual-unit (hPa, inHg). Shared by the background ALTIMETER_SETTING
+    /// change announce and the B hotkey readout so a set and a read sound alike.</summary>
+    private static string AltimeterPhrase(double inHg) =>
+        Math.Abs(inHg - 29.92) < 0.005
+            ? "Altimeter standard"
+            : $"Altimeter: {(int)Math.Round(inHg * 33.8639)}, {inHg:0.00}";
+
     // COM1/COM2 active/standby announce baselines (key = var key). Absent key =
     // baseline not yet seen; the first read after launch/reconnect stays silent.
     private readonly Dictionary<string, double> _lastComFreq = new();
@@ -1519,8 +1556,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // fields — FD, A/T arm, disengage bar — which announce from the generic path).
     private readonly Dictionary<string, long> _windowWriteEcho = new();
     internal void NoteWindowWrite(string field) => _windowWriteEcho[field] = Environment.TickCount64;
+    // 4000 ms: a window-originated light-OFF lands at (poll lag ~0.5 s) + 2.0 s
+    // off-hold + ≤0.5 s sweep granularity ≈ up to 3.0 s after NoteWindowWrite —
+    // 2500 lost the race about half the time (PR #163 review).
     internal bool WindowEchoActive(string field) =>
-        _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 2500;
+        _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 4000;
 
     // Flattened SDK field-name -> (byte offset, Kind) map, built once from
     // IFlySdkFields.All using the SAME flattening IFlySdkClient.RaiseFieldEvents uses
@@ -1618,14 +1658,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             bool alreadyAnnounced = _announcedLit.TryGetValue(varName, out bool a) && a;
             if (!LightsTestActive)
             {
-                // State updates even when the speech is skipped by the window echo —
-                // so the window-suppressed "on" isn't re-spoken later — but NOT during
-                // a LIGHTS TEST: leaving _announcedLit=false there keeps the post-test
-                // off-sweep's wasAnnounced gate from flooding "<light>: off" for every
-                // lamp the test lit.
-                _announcedLit[varName] = true;
-                if (!alreadyAnnounced && !WindowEchoActive(varName) && _vars.TryGetValue(varName, out var def))
-                    announcer.Announce($"{def.DisplayName}: {onWord}");
+                bool mutedNow = Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(varName);
+                // A muted "on" must NOT latch _announcedLit: the user never heard it, so a
+                // later unmute-then-extinguish would speak an orphan "<light>: off". The
+                // window-echo skip DOES still latch (NVDA read the state off the renamed
+                // button, so the off IS expected speech).
+                if (!mutedNow)
+                {
+                    _announcedLit[varName] = true;
+                    if (!alreadyAnnounced && !WindowEchoActive(varName) && _vars.TryGetValue(varName, out var def))
+                        announcer.Announce($"{def.DisplayName}: {onWord}");
+                }
             }
         }
         else
@@ -1675,6 +1718,30 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
     private bool LightsTestActive =>
         Sdk.Snapshot is { } s && s.ByteAt(IFlySdkOffsets.Lights_Test_Status) == 0; // 0 = TEST
+
+    // Composite switch+light combos whose announced value folds annunciator-bulb
+    // bits (fire / armed / INOP / ON lights) into the switch position. A held
+    // master LIGHTS TEST drives every folded bulb bright, shifting each raw value
+    // with no real switch movement — and these announce on MainForm's generic
+    // Step-6 path, which has no lights-test gate of its own (HandleLightEdge's
+    // filter only covers the def-side announce paths). MainForm consults this
+    // through SuppressGenericAnnounceDuringLightsTest and swallows the event
+    // WITHOUT updating the monitor baseline, so the release edge (value reverting
+    // to the held baseline) stays silent too, while a REAL switch change during
+    // the test still announces once the test releases.
+    private static readonly HashSet<string> _lightsFoldedComboKeys = new()
+    {
+        "Engine_Start_Lever_Status_0", "Engine_Start_Lever_Status_1",
+        "EEC_Switch_Status_0", "EEC_Switch_Status_1",
+        "Engine_Fire_Switch_Status_0", "Engine_Fire_Switch_Status_1",
+        "APU_Fire_Switch_Status",
+        "FWD_Cargo_FIRE_Switch_Status", "AFT_Cargo_FIRE_Switch_Status",
+        "CARGO_FIRE_Discharge_Switch_Status",
+        "High_Altitude_Landing_Switch_Status",
+    };
+
+    internal bool SuppressGenericAnnounceDuringLightsTest(string varName) =>
+        LightsTestActive && _lightsFoldedComboKeys.Contains(varName);
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
@@ -1783,10 +1850,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (Math.Abs(value - _lastAnnouncedAltimeter) < 0.005)
                 return true;
             _lastAnnouncedAltimeter = value;
-            if (Math.Abs(value - 29.92) < 0.005)
-                announcer.Announce("Altimeter standard");
-            else
-                announcer.Announce($"Altimeter: {(int)Math.Round(value * 33.8639)}, {value:0.00}");
+            announcer.Announce(AltimeterPhrase(value));
             return true;
         }
 
@@ -1848,13 +1912,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // During the master LIGHTS TEST every window shows the 888 test pattern —
-        // announcing it (and the restore) is noise. State catches up on the next
-        // real change because AnnounceWindow dedups on text.
-        if (varName.StartsWith("SYN_MCP_", StringComparison.Ordinal) && LightsTestActive)
+        // During the master LIGHTS TEST every window — the MCP value windows AND the
+        // transponder code window — shows the 888 test pattern; announcing it (and the
+        // restore) is noise. State catches up on the next real change because
+        // AnnounceWindow dedups on text.
+        if ((varName.StartsWith("SYN_MCP_", StringComparison.Ordinal) || varName == "SYN_XPDR_CODE")
+            && LightsTestActive)
             return true;
 
         // Synthetic display windows: announce the new value once per composed change.
+        // Cross-reference: the SYN_MCP_HEADING/ALTITUDE/VS/COURSE_1/COURSE_2 strings
+        // composed below MUST stay byte-identical to PrimeWindowAnnounceForSet's
+        // primed strings (near _lastWindowAnnounce, above) — that's the whole
+        // dedup mechanism for the MCP NumSet confirmation double-announce.
         switch (varName)
         {
             case "SYN_MCP_SPEED":
@@ -2077,19 +2147,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     announcer.AnnounceImmediate("NAV radios unavailable.");
                     return true;
                 }
-                string W(int panel, int window)
-                {
-                    string t = s.NavWindowText(panel, window);
-                    return t.Length > 0 ? t : "blank";
-                }
                 string C(int side)
                 {
                     string t = s.McpCourseText(side);
                     return t.Length > 0 ? t : "blank";
                 }
                 announcer.AnnounceImmediate(
-                    $"NAV 1 active {W(0, 0)}, standby {W(0, 1)}, course {C(0)}. " +
-                    $"NAV 2 active {W(1, 0)}, standby {W(1, 1)}, course {C(1)}.");
+                    $"NAV 1 active {NavWindowOrBlank(0, 0)}, standby {NavWindowOrBlank(0, 1)}, course {C(0)}. " +
+                    $"NAV 2 active {NavWindowOrBlank(1, 0)}, standby {NavWindowOrBlank(1, 1)}, course {C(1)}.");
                 return true;
             }
             case HotkeyAction.ReadDistanceToDest:
@@ -2193,10 +2258,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     return true;
                 }
                 double inHg = inHgRaw.Value;
-                if (Math.Abs(inHg - 29.92) < 0.005)
-                    announcer.AnnounceImmediate("Altimeter standard");
-                else
-                    announcer.AnnounceImmediate($"Altimeter: {(int)Math.Round(inHg * 33.8639)}, {inHg:0.00}");
+                announcer.AnnounceImmediate(AltimeterPhrase(inHg));
                 return true;
             }
 

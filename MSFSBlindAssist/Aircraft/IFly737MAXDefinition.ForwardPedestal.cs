@@ -165,6 +165,13 @@ public partial class IFly737MAXDefinition
         Inhibit("Terr_Inhibit_Switch_Status", "Terrain Inhibit", IFlyKeyCommand.WARNING_GPWS_TERR_INHIBIT_SET);
         Inhibit("Runway_Inhibit_Switch_Status", "Runway Inhibit", IFlyKeyCommand.WARNING_GPWS_RUNWAY_INHIBIT_SET);
 
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        foreach (var k in new[] { "Flap_Inhibit_Switch_Status", "Gear_Inhibit_Switch_Status",
+                                  "Terr_Inhibit_Switch_Status", "Runway_Inhibit_Switch_Status" })
+            _vars[k].UiEchoMatchesAnyValue = true;
+
         Btn(P, "BTN_GPWS_SYS_TEST", "Ground Proximity System Test", IFlyKeyCommand.WARNING_GPWS_SYS_TEST);
 
         Annun(P, "GPWS_INOP_Light_Status", "GPWS Inoperative light");
@@ -617,13 +624,15 @@ public partial class IFly737MAXDefinition
         Btn(P, "BTN_FIRE_BELL_CUTOUT", "Fire Warning Bell Cutout", IFlyKeyCommand.FIRE_BELL_CUTOUT);
 
         // Spring-loaded 3-position test switches, driven by their SET commands
-        // (EXT_TEST_SET / FIRE_TEST_SET Value2: 0 / 1 neutral / 2). If the switch
-        // turns out to latch in the test position in-sim, add a "release" press
-        // (SET Value2 1) or move to the DEC/INC click commands.
+        // (EXT_TEST_SET / FIRE_TEST_SET Value2: 0 / 1 neutral / 2). The Release
+        // buttons send the neutral position so a switch that latches in-sim can
+        // always be centred from the panel; if it self-centres they are no-ops.
         Btn(P, "BTN_FIRE_EXT_TEST_1", "Extinguisher Test 1", IFlyKeyCommand.FIRE_EXT_TEST_SET, value2: 0);
         Btn(P, "BTN_FIRE_EXT_TEST_2", "Extinguisher Test 2", IFlyKeyCommand.FIRE_EXT_TEST_SET, value2: 2);
+        Btn(P, "BTN_FIRE_EXT_TEST_RELEASE", "Extinguisher Test Release", IFlyKeyCommand.FIRE_EXT_TEST_SET, value2: 1);
         Btn(P, "BTN_FIRE_TEST_FAULT", "Fire Test Fault Inoperative", IFlyKeyCommand.FIRE_TEST_SET, value2: 0);
         Btn(P, "BTN_FIRE_TEST_OVHT", "Fire Test Overheat Fire", IFlyKeyCommand.FIRE_TEST_SET, value2: 2);
+        Btn(P, "BTN_FIRE_TEST_RELEASE", "Fire Test Release", IFlyKeyCommand.FIRE_TEST_SET, value2: 1);
 
         // Overheat detector loop selectors. LEFT = engine 1, RIGHT = engine 2 per the
         // command docs. SET Value2: 0 A / 1 NORMAL / 2 B — matches status.
@@ -780,6 +789,10 @@ public partial class IFly737MAXDefinition
                 [1] = "Off",
                 [2] = "On",
             }, map: v => v >= 2 ? 1 : 0, value3: 1);
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        _vars["Elevator_Jam_Landing_Assist_Switch_Status"].UiEchoMatchesAnyValue = true;
         Annun(P, "ASSIST_ON_Light_Status", "Elevator Jam Landing Assist On light");
     }
 

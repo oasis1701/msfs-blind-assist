@@ -102,6 +102,10 @@ public partial class IFly737MAXDefinition
                 [2] = "Armed",
                 [3] = "On",
             }, map: v => v == 0 ? 0 : v - 1);
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        _vars["Emergency_Light_Switch_Status"].UiEchoMatchesAnyValue = true;
         Annun(PS, "NOT_ARMED_Light_Status", "Emergency Exit Lights Not Armed light");
         // Skipped: Emergency_Exit_Light_Switch_Status (v1.1 duplicate of the same switch;
         // its 0-3 encoding carries cover state but no ARMED position — the original field above is used).
@@ -175,6 +179,10 @@ public partial class IFly737MAXDefinition
                 [1] = "Normal",
                 [2] = "On",
             }, map: v => v >= 2 ? 1 : 0, value3: 1);
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        _vars["Oxygen_Switch_Status"].UiEchoMatchesAnyValue = true;
         Annun(P, "PASS_OXY_ON_Light_Status", "Passenger Oxygen On light");
 
         Disp(P, "Oxygen_Pointer_Status", "Crew Oxygen Pressure PSI");
@@ -189,6 +197,10 @@ public partial class IFly737MAXDefinition
                 [1] = "Armed",
                 [2] = "On",
             }, map: v => v >= 2 ? 1 : 0, value3: 1);
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        _vars["ELT_Switch_Status"].UiEchoMatchesAnyValue = true;
         Annun(P, "ELT_Light_Status", "Emergency Locator Transmitter light");
     }
 
@@ -329,6 +341,10 @@ public partial class IFly737MAXDefinition
                 [1] = "Normal",
                 [2] = "Test",
             }, map: v => v >= 2 ? 1 : 0, value3: 1);
+        // Readback legitimately differs from the picked value (guard bit folded
+        // into the same field) — suppress the post-set echo on the time window
+        // alone. (PR #163 review.)
+        _vars["Flight_Recorder_Switch_Status"].UiEchoMatchesAnyValue = true;
         Annun(P, "Flight_Recorder_Light_Status", "Flight Recorder Off light");
 
         // CVR selector (SDK v1.5, MSFS only): readable state, but the only write
