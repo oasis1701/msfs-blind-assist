@@ -20,6 +20,10 @@ internal static class MonitorManagerShared
             for (int i = 0; i < labels.Count; i++)
             {
                 listBox.Items.Add(labels[i]);
+                // disabledVars is the live backing List (not the rebuilt-on-Save HashSet
+                // sidecar) on purpose: the List is the source of truth, the sidecar can
+                // lag between mutation and Save, and this runs once per form open over a
+                // few dozen rows — correctness beats an O(1) lookup here.
                 listBox.SetItemChecked(i, !disabledVars.Contains(keys[i])); // checked = announcing
             }
             listBox.EndUpdate();

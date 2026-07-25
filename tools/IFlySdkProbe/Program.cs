@@ -98,7 +98,7 @@ switch (mode)
                             'D' => BitConverter.ToDouble(prev, off),
                             _ => prev[off],
                         };
-                        if (nv != ov && f.Name != "Tick18")
+                        if (nv != ov)
                             Console.WriteLine($"{DateTime.Now:HH:mm:ss} {(f.Count > 1 ? $"{f.Name}_{i}" : f.Name)}: {ov} -> {nv}");
                     }
                 }

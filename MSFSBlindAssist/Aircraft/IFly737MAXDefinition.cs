@@ -1418,7 +1418,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
         // Prime the background SYN_XPDR_CODE announce dedup with the expected text
         // so the code-change announcement and this confirmation don't double-speak.
-        _lastWindowAnnounce["SYN_XPDR_CODE"] = $"Squawk {digits}";
+        PrimeWindowAnnounce("SYN_XPDR_CODE", $"Squawk {digits}");
 
         foreach (char d in digits)
             await ClickAsync(387 + 2 * (d - '0'));
@@ -1426,7 +1426,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         await Task.Delay(700); // commit on the 4th digit + the SDK poll refresh
         string result = Sdk.Snapshot?.TransponderCodeText() ?? "";
         if (result.Length == 4)
-            _lastWindowAnnounce["SYN_XPDR_CODE"] = $"Squawk {result}";
+            PrimeWindowAnnounce("SYN_XPDR_CODE", $"Squawk {result}");
         announcer.AnnounceImmediate(result.Length == 4
             ? $"Squawk {result}"
             : "Squawk entry did not complete.");
@@ -1440,6 +1440,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, string> _lastWindowAnnounce = new();
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // A value-primed dedup entry is honoured only this long: past it, the set
+    // evidently never landed on the window, and a matching text later is a
+    // genuine background change that must speak (final-review residual, PR #163).
+    private const int WindowPrimeLifetimeMs = 5000;
+    private readonly Dictionary<string, long> _windowPrimeDeadline = new();
+
+    private void PrimeWindowAnnounce(string key, string text)
+    {
+        _lastWindowAnnounce[key] = text;
+        _windowPrimeDeadline[key] = Environment.TickCount64 + WindowPrimeLifetimeMs;
+    }
+
     // Cross-reference: the primed strings below MUST stay byte-identical to the
     // AnnounceWindow compositions in the SYN_* switch in ProcessSimVarUpdate
     // (search for "Cross-reference" there).
@@ -1448,16 +1460,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// the confirmation just spoken (the SetSquawkCodeAsync pattern). Value-keyed
     /// deliberately, NOT a time window: if the aircraft clamps or rejects the entry,
     /// the window text differs from the primed text and the ACTUAL landed value
-    /// still announces once — the readback-of-actual-landed-value convention.</summary>
+    /// still announces once — the readback-of-actual-landed-value convention.
+    /// The prime itself IS time-bound (see <see cref="WindowPrimeLifetimeMs"/>):
+    /// if the set never lands, a later genuine change to that same value still
+    /// announces once the prime expires.</summary>
     private void PrimeWindowAnnounceForSet(string varKey, double value)
     {
         switch (varKey)
         {
-            case "MCP_HEADING_SET": _lastWindowAnnounce["SYN_MCP_HEADING"] = $"MCP heading {value:000}"; break;
-            case "MCP_ALTITUDE_SET": _lastWindowAnnounce["SYN_MCP_ALTITUDE"] = $"MCP altitude {value:F0}"; break;
-            case "MCP_VS_SET": _lastWindowAnnounce["SYN_MCP_VS"] = $"MCP vertical speed {value:+0;-0;0}"; break;
-            case "MCP_COURSE_1_SET": _lastWindowAnnounce["SYN_MCP_COURSE_1"] = $"Course 1 {value:000}"; break;
-            case "MCP_COURSE_2_SET": _lastWindowAnnounce["SYN_MCP_COURSE_2"] = $"Course 2 {value:000}"; break;
+            case "MCP_HEADING_SET": PrimeWindowAnnounce("SYN_MCP_HEADING", $"MCP heading {value:000}"); break;
+            case "MCP_ALTITUDE_SET": PrimeWindowAnnounce("SYN_MCP_ALTITUDE", $"MCP altitude {value:F0}"); break;
+            case "MCP_VS_SET": PrimeWindowAnnounce("SYN_MCP_VS", $"MCP vertical speed {value:+0;-0;0}"); break;
+            case "MCP_COURSE_1_SET": PrimeWindowAnnounce("SYN_MCP_COURSE_1", $"Course 1 {value:000}"); break;
+            case "MCP_COURSE_2_SET": PrimeWindowAnnounce("SYN_MCP_COURSE_2", $"Course 2 {value:000}"); break;
         }
     }
 
@@ -1970,7 +1985,15 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
     private void AnnounceWindow(string key, string text, ScreenReaderAnnouncer announcer)
     {
-        if (_lastWindowAnnounce.TryGetValue(key, out var last) && last == text) return;
+        if (_lastWindowAnnounce.TryGetValue(key, out var last) && last == text)
+        {
+            // Normal dedup (no prime pending), or a prime still inside its
+            // lifetime being absorbed by the window change it predicted.
+            if (!_windowPrimeDeadline.TryGetValue(key, out long deadline)
+                || Environment.TickCount64 <= deadline)
+                return;
+        }
+        _windowPrimeDeadline.Remove(key);
         _lastWindowAnnounce[key] = text;
         announcer.Announce(text);
     }
