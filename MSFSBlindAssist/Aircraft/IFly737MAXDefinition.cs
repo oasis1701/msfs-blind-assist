@@ -1987,11 +1987,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         if (_lastWindowAnnounce.TryGetValue(key, out var last) && last == text)
         {
-            // Normal dedup (no prime pending), or a prime still inside its
-            // lifetime being absorbed by the window change it predicted.
+            // Normal dedup (no prime pending), or a prime inside its lifetime being
+            // absorbed by the window change it predicted. Either way the prime (if
+            // any) is consumed NOW — a stale deadline left behind would later force
+            // a duplicate announce of this same unchanged text (e.g. the lights-test
+            // gate's silent 888 detour re-presents it after expiry).
             if (!_windowPrimeDeadline.TryGetValue(key, out long deadline)
                 || Environment.TickCount64 <= deadline)
+            {
+                _windowPrimeDeadline.Remove(key);
                 return;
+            }
         }
         _windowPrimeDeadline.Remove(key);
         _lastWindowAnnounce[key] = text;
