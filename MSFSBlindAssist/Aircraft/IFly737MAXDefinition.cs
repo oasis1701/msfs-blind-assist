@@ -2341,6 +2341,28 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 return true;
             }
 
+            // ------------------------------------------------------------------
+            // AI display reading — Alt+P / Alt+N / Alt+I / Alt+E (mirrors PMDG 737)
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadDisplayPFD:
+                ReadDisplay(Services.GeminiService.DisplayType.PFDiFly, "PFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayND:
+                ReadDisplay(Services.GeminiService.DisplayType.NDiFly, "ND", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayISIS:
+                ReadDisplay(Services.GeminiService.DisplayType.ISFDiFly, "ISFD", announcer, parentForm);
+                return true;
+
+            case HotkeyAction.ReadDisplayUpperECAM:
+                ReadDisplay(Services.GeminiService.DisplayType.EICASiFly, "EICAS", announcer, parentForm);
+                return true;
+
+            // Lower system display (Alt+S / ReadDisplayLowerECAM) intentionally not handled
+            // (out of scope — matches PMDG 737/777); it falls through to base as a no-op.
+
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
         }

@@ -89,6 +89,15 @@ Position:
   C          Read Nearest City
   Ctrl+Shift+T  Cold Temperature Altitude Correction calculator
 
+AI Display Reading (needs an AI provider configured in Settings > AI tab):
+  Alt+P      Describe the PFD (Primary Flight Display)
+  Alt+N      Describe the ND (Navigation Display)
+  Alt+I      Describe the ISFD (standby instrument)
+  Alt+E      Describe the engine display and crew alerts (EICAS)
+  Each captures the simulator window and reads the chosen display aloud in a
+  result window, so have that display visible when you press the key — the
+  normal forward cockpit view shows all of them at once.
+
 Checklists and EFB:
   Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
   Shift+E    Open Flight Planning EFB
