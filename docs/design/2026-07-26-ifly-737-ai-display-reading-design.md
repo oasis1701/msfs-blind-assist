@@ -219,10 +219,14 @@ Recorded so this isn't re-litigated:
   "Instrument" views** in order: `PFD`, `MCP_EFIS`, `EFB`, `FMC`, `Overhead`, `OverheadAFT`,
   `Throttle`, `Radio`, `HUD` (`PANEL_CAMERA_INSTRUMENTS_01…09`), plus four "Pilot" views and
   the quickview/external cameras.
-- **In this MSFS 2024 setup, `CTRL+N` does not switch cockpit instrument views** — pressing
-  Ctrl+1 in cockpit mode was a confirmed no-op (verified live).
-- **Setting `CAMERA_VIEW_TYPE_AND_INDEX` via SimConnect is unreliable** — writes landed on
-  external/porthole views, not the requested instrument view (verified live).
+- **`CTRL+1` selects the forward cockpit view** that shows PFD, ND, engine strip and ISFD
+  together — this is the view to be in when reading a display, and it is now noted in the
+  iFly hotkey guide (mirroring the PMDG guide's cockpit-view note). An earlier live test where
+  Ctrl+1 appeared to do nothing was simply because the sim was already on that view (confirmed
+  with the owner), not because the key is unbound.
+- **Programmatic per-display framing is still avoided:** setting `CAMERA_VIEW_TYPE_AND_INDEX`
+  via SimConnect is unreliable — writes landed on external/porthole views, not the requested
+  instrument view (verified live) — so the app never switches cameras itself.
 - The **normal forward cockpit view shows PFD, ND, engine strip, ISFD, and the CDU all
   legibly at once** (verified via in-sim screenshot at 4K). This is why whole-window capture
   (the PMDG approach) is sufficient and camera framing is unnecessary.
