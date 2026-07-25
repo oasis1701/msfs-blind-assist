@@ -140,30 +140,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         ComVar("COM1_STANDBY_FREQ", "COM STANDBY FREQUENCY:1", "COM1 Standby");
         ComVar("COM2_ACTIVE_FREQ", "COM ACTIVE FREQUENCY:2", "COM2 Active");
         ComVar("COM2_STANDBY_FREQ", "COM STANDBY FREQUENCY:2", "COM2 Standby");
-
-        // Parking brake — the ONE announcing source for the brake, spoken from
-        // ProcessSimVarUpdate with the fleet-parity PMDG wording ("Parking brake
-        // on/off"). The stock var, not the SDK's Parking_Brake_Lever_Status: the
-        // iFly WASM is wired to the stock brake system in both directions (its
-        // binary references "BRAKE PARKING POSITION" and the "PARKING_BRAKES"
-        // key event), so the stock state tracks EVERY toggle path — the panel
-        // combo, a keyboard/joystick binding, a cockpit click — while the SDK
-        // lever field only provably tracks the iFly's own lever. The lever combo
-        // is announced: false for this reason (see RegisterLandingGear).
-        _vars["IFLY_PARK_BRAKE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "BRAKE PARKING POSITION",
-            DisplayName = "Parking Brake",
-            Type = SimConnect.SimVarType.SimVar,
-            Units = "Bool",
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "off",
-                [1] = "on",
-            },
-        };
     }
 
     private List<string> PanelList(string panel) =>
@@ -892,12 +868,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
             }
-            // The parking-brake announce source is the STOCK BRAKE PARKING
-            // POSITION var (IFLY_PARK_BRAKE), not this combo's SDK field — open
-            // its echo window so the stock-state readback of a combo set the
-            // screen reader already spoke stays silent (time-window only).
-            if (varKey == "Parking_Brake_Lever_Status")
-                _parkBrakeUiEchoTicks = Environment.TickCount64;
             // Numeric entry confirmation (screen-reader rule: numeric inputs DO confirm).
             // Course fields zero-pad to match the MCP window's 3-digit display (and the
             // SYN_MCP_COURSE_1/2 background-change wording above) — "Course 1 005",
@@ -1476,15 +1446,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // already in the FMC don't replay — only a live entry/change speaks.
     private readonly Dictionary<string, double> _lastVSpeed = new();
 
-    // Parking brake announce baseline (-1 = not yet seen; the first read after
-    // launch stays silent) + the app-combo echo window: a combo set is already
-    // spoken by the screen reader, and the stock brake state follows the SDK
-    // command with polling lag, so suppression must be by TIME window only
-    // (never value-matched — the global echo rule).
-    private int _lastParkBrake = -1;
-    private long _parkBrakeUiEchoTicks = long.MinValue;
-    private const int ParkBrakeUiEchoMs = 3000;
-
     // Takeoff roll "V1"/"Rotate"/"V2" callout state machine (pure; see
     // IFly737TakeoffCallouts). Fed here from IFLY_IAS samples + the cached
     // SIM_ON_GROUND state; V-speed targets from the IFLY_V1/VR/V2 handlers.
@@ -1748,29 +1709,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     if (!muted.Contains(gateKey))
                         announcer.AnnounceImmediate(callout);
                 }
-            }
-            return true;
-        }
-
-        // Parking brake (stock BRAKE PARKING POSITION — the one announcing
-        // source for the brake; see RegisterStockVars for why the SDK lever
-        // field is not it). Baseline-first, then both edges with the PMDG 737
-        // wording + immediacy. AnnounceImmediate bypasses the Step-2.5
-        // Suppressed wrap and the Ctrl+M mute, so both gates are re-applied
-        // explicitly (the takeoff-callout pattern), plus the app-combo echo
-        // window opened by HandleUIVariableSet (the screen reader already
-        // spoke the combo pick; baseline still updates during the window).
-        if (varName == "IFLY_PARK_BRAKE")
-        {
-            int on = value >= 0.5 ? 1 : 0;
-            int was = _lastParkBrake;
-            _lastParkBrake = on;
-            if (was >= 0 && on != was
-                && Environment.TickCount64 - _parkBrakeUiEchoTicks >= ParkBrakeUiEchoMs
-                && !announcer.Suppressed
-                && !Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains("IFLY_PARK_BRAKE"))
-            {
-                announcer.AnnounceImmediate(on == 1 ? "Parking brake on" : "Parking brake off");
             }
             return true;
         }
