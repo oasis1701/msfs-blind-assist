@@ -62,6 +62,7 @@ public class IFlySdkClient : IDisposable
     // (initial-snapshot semantics), never replaying the gap as announcements.
     private const int StaleDisconnectPolls = 12; // ~3 s at 250 ms
     private int _staleCount;
+    private int _mutexSkipCount;
     private bool _staleMode;
     private int _lastTick = int.MinValue;
 
@@ -114,8 +115,17 @@ public class IFlySdkClient : IDisposable
                     catch (AbandonedMutexException) { gotMutex = true; }
                 }
                 if (_sdkMutex != null && !gotMutex)
-                    return; // writer held the mutex >50 ms — a torn read could ANNOUNCE a
-                            // garbage value before self-healing; 250 ms late beats wrong once
+                {
+                    // writer held the mutex >50 ms — a torn read could ANNOUNCE a
+                    // garbage value before self-healing; 250 ms late beats wrong once
+                    // A CHRONICALLY held mutex (writer frozen mid-write) would otherwise skip
+                    // every poll before the Tick18 staleness check below and present frozen
+                    // data as live forever — feed consecutive skips into the same stale flow.
+                    if (!_staleMode && ++_mutexSkipCount >= StaleDisconnectPolls)
+                        EnterStaleMode("SDK mutex held across ~3 s of polls — treating as stale until it frees");
+                    return;
+                }
+                _mutexSkipCount = 0;
                 _accessor!.ReadArray(0, data, 0, data.Length);
             }
             finally
@@ -134,17 +144,8 @@ public class IFlySdkClient : IDisposable
             {
                 if (++_staleCount >= StaleDisconnectPolls)
                 {
-                    _staleMode = true;
-                    _staleCount = 0;
-                    _lastData = null;
-                    lock (_lastSynthetic) _lastSynthetic.Clear();
                     _lastTick = tick;
-                    if (_connected)
-                    {
-                        _connected = false;
-                        Post(() => ConnectionChanged?.Invoke(this, false));
-                    }
-                    Log.Info("ifly", "SDK shared memory went stale (sim/plugin stopped or paused) — suspending until it resumes");
+                    EnterStaleMode("SDK shared memory went stale (sim/plugin stopped or paused) — suspending until it resumes");
                     return;
                 }
             }
@@ -196,6 +197,26 @@ public class IFlySdkClient : IDisposable
         {
             Interlocked.Exchange(ref _pollBusy, 0);
         }
+    }
+
+    /// <summary>Common entry into stale mode, reached either from a frozen Tick18 (mutex
+    /// acquired, data just isn't advancing) or from a chronically held mutex (data can't
+    /// even be read). Only the log text differs between the two call sites; the tick-frozen
+    /// caller still sets <see cref="_lastTick"/> itself since a mutex-skip has no fresh tick
+    /// to record.</summary>
+    private void EnterStaleMode(string logMessage)
+    {
+        _staleMode = true;
+        _staleCount = 0;
+        _mutexSkipCount = 0;
+        _lastData = null;
+        lock (_lastSynthetic) _lastSynthetic.Clear();
+        if (_connected)
+        {
+            _connected = false;
+            Post(() => ConnectionChanged?.Invoke(this, false));
+        }
+        Log.Info("ifly", logMessage);
     }
 
     /// <summary>Re-fires every field as an initial-snapshot event (used when a panel needs re-seeding).</summary>
@@ -407,6 +428,7 @@ public class IFlySdkClient : IDisposable
         lock (_lastSynthetic) _lastSynthetic.Clear();
         _lastTick = int.MinValue;
         _staleCount = 0;
+        _mutexSkipCount = 0;
     }
 
     private void Post(Action action)
@@ -425,9 +447,13 @@ public class IFlySdkClient : IDisposable
             // running against the accessor; the WaitHandle overload signals when
             // all callbacks have completed (bounded wait — never hang a UI-thread
             // aircraft swap on a wedged pool thread).
-            using var callbacksDone = new ManualResetEvent(false);
+            var callbacksDone = new ManualResetEvent(false);
             _pollTimer.Dispose(callbacksDone);
-            callbacksDone.WaitOne(1000);
+            // Dispose the handle only if all callbacks completed — a wedged callback
+            // finishing after a timeout would signal a disposed handle and crash the
+            // process on a pool thread; leaking one handle is the safe trade.
+            if (callbacksDone.WaitOne(1000))
+                callbacksDone.Dispose();
             _pollTimer = null;
         }
         CloseMapping();

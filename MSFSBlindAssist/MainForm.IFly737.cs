@@ -39,7 +39,12 @@ public partial class MainForm
         {
             graceTimer.Stop();
             graceTimer.Dispose();
-            simVarMonitor.EnableAnnouncements();
+            // Re-check at fire time: the 5 s window can span an aircraft switch or a
+            // SimConnect reconnect. If the iFly is no longer active, or SimConnect has
+            // connected meanwhile (its own settle grace now owns the enable), enabling
+            // here would pre-empt that grace and let early announcements through.
+            if (currentAircraft is IFly737MAXDefinition && !simConnectManager.IsConnected)
+                simVarMonitor.EnableAnnouncements();
         };
         graceTimer.Start();
     }
