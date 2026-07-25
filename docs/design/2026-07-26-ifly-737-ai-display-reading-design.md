@@ -12,10 +12,14 @@ selected AI provider (Gemini or Claude) to read one cockpit display into plain t
 
 | Hotkey | Display | `DisplayType` (new) |
 |--------|---------|---------------------|
-| Alt+P   | PFD (Primary Flight Display)            | `PFDiFly`   |
-| Shift+N | ND (Navigation Display)                 | `NDiFly`    |
-| Alt+I   | ISFD (Integrated Standby Flight Display)| `ISFDiFly`  |
-| Alt+E   | Engine / crew-alert display ("EICAS")   | `EICASiFly` |
+| Alt+P | PFD (Primary Flight Display)            | `PFDiFly`   |
+| Alt+N | ND (Navigation Display)                 | `NDiFly`    |
+| Alt+I | ISFD (Integrated Standby Flight Display)| `ISFDiFly`  |
+| Alt+E | Engine / crew-alert display ("EICAS")   | `EICASiFly` |
+
+(Bindings verified in `HotkeyManager.cs:735-739` `RegisterHotKey` calls: Alt+P=0x50,
+Alt+N=0x4E, Alt+I=0x49, Alt+E=0x45. The PMDG 737 code *comment* says "Shift+N" but the
+actual registration is Alt+N — the registration is authoritative.)
 
 This is a small, low-risk change: the capture pipeline, result window, error handling,
 hotkey routing, and provider abstraction are all already shared. The only genuinely new
@@ -177,14 +181,15 @@ implementation.**
 
 ## Testing
 
-**T1 — prompt coverage (unit, `tests/MSFSBlindAssist.Tests`).** Assert
-`GeminiService.GetPromptForDisplay(x)` returns a non-empty, display-specific prompt for each
-new value (`PFDiFly`, `NDiFly`, `ISFDiFly`, `EICASiFly`) — i.e. not the generic `_ =>`
-fallback, and mentioning the display name / "737 MAX". Cheap guard against a missing switch
-arm. (Follows the existing pure-logic characterization-test convention; sim-facing paths are
-not unit-tested.)
+**No unit test.** The change is declarative — four `DisplayType` values, four static prompt
+strings, four switch arms, four hotkey-dispatch cases, one doc file — not pure logic, and its
+value is entirely sim-facing (the AI reading a live display). `GetPromptForDisplay` is also
+`internal`, and the test project (`tests/MSFSBlindAssist.Tests`) tests only public API (no
+`InternalsVisibleTo`). This matches the PMDG 737 display-capture feature, which added no
+prompt test, and CLAUDE.md's rule that sim-facing paths are validated in-sim, not unit-tested.
+The build succeeding + the in-sim plan below is the verification.
 
-**T2 — in-sim (owner-run; describe in PR).** Load the iFly 737 MAX 8, forward cockpit view:
+**In-sim test (owner-run; describe in PR).** Load the iFly 737 MAX 8, forward cockpit view:
 - Press **Alt+P / Shift+N / Alt+I / Alt+E**; confirm each result window reads the correct
   display, and that values roughly match the SDK-driven readouts (e.g. Alt+P altitude vs the
   altimeter hotkey).
