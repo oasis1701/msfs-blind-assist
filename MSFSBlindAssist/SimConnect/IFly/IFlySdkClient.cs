@@ -50,6 +50,7 @@ public class IFlySdkClient : IDisposable
     private volatile bool _connected;
     private volatile IFlySdkSnapshot? _snapshot;
     private int _pollBusy;
+    private bool _lastOpenFailed;
 
     // Staleness watchdog: a named section survives while ANY handle is open (ours),
     // so when the sim/plugin exits our reads keep "succeeding" against frozen data —
@@ -68,9 +69,6 @@ public class IFlySdkClient : IDisposable
 
     /// <summary>Fired on the UI thread for every changed field. Array elements use the "Name_i" key form.</summary>
     public event EventHandler<IFlyVariableChangedEventArgs>? VariableChanged;
-
-    /// <summary>Fired on the UI thread after every poll in which anything changed (CDU screens included).</summary>
-    public event EventHandler? SnapshotUpdated;
 
     /// <summary>Fired on the UI thread when the shared-memory connection is established or lost.</summary>
     public event EventHandler<bool>? ConnectionChanged;
@@ -113,6 +111,9 @@ public class IFlySdkClient : IDisposable
                     try { gotMutex = _sdkMutex.WaitOne(50); }
                     catch (AbandonedMutexException) { gotMutex = true; }
                 }
+                if (_sdkMutex != null && !gotMutex)
+                    return; // writer held the mutex >50 ms — a torn read could ANNOUNCE a
+                            // garbage value before self-healing; 250 ms late beats wrong once
                 _accessor!.ReadArray(0, data, 0, data.Length);
             }
             finally
@@ -169,7 +170,6 @@ public class IFlySdkClient : IDisposable
                 // with real state (announce-suppressed via IsInitialSnapshot).
                 RaiseFieldEvents(null, data, isInitial: true);
                 RaiseSyntheticEvents(isInitial: true);
-                Post(() => SnapshotUpdated?.Invoke(this, EventArgs.Empty));
                 return;
             }
 
@@ -178,7 +178,6 @@ public class IFlySdkClient : IDisposable
 
             RaiseFieldEvents(previous, data, isInitial: false);
             RaiseSyntheticEvents(isInitial: false);
-            Post(() => SnapshotUpdated?.Invoke(this, EventArgs.Empty));
         }
         catch (Exception)
         {
@@ -224,7 +223,7 @@ public class IFlySdkClient : IDisposable
                 if (previous != null)
                 {
                     double oldVal = ReadField(previous, off, f.Kind);
-                    if (oldVal == newVal) continue;
+                    if (oldVal.Equals(newVal)) continue; // .Equals: NaN == NaN is false and would re-fire a NaN field at 4 Hz forever
                 }
                 string key = f.Count > 1 ? $"{f.Name}_{i}" : f.Name;
                 changes.Add((key, newVal));
@@ -371,13 +370,24 @@ public class IFlySdkClient : IDisposable
             _mmf = MemoryMappedFile.OpenExisting(FileMappingName, MemoryMappedFileRights.Read);
             _accessor = _mmf.CreateViewAccessor(0, IFlySdkOffsets.StructSize, MemoryMappedFileAccess.Read);
             try { _sdkMutex = Mutex.OpenExisting(MutexName); }
-            catch { _sdkMutex = null; } // pre-v1.5 plugin: no mutex — reads are still safe (torn reads self-heal next poll)
+            catch { _sdkMutex = null; } // pre-v1.5 plugin: no mutex exists — reads are unserialized
+                                        // and a torn read CAN announce one wrong value before the
+                                        // next poll corrects it; inherent to that ABI version
             _lastData = null;
+            _lastOpenFailed = false;
+            if (_disposed) { CloseMapping(); return false; } // Dispose ran between the entry check and the open
             return true;
         }
-        catch
+        catch (Exception ex)
         {
             CloseMapping();
+            // FileNotFoundException is the idle "sim not running" norm — never log it.
+            // Anything else (access denied across an elevation mismatch, a short
+            // section) is a persistent, otherwise-invisible failure: log once per
+            // failure streak, edge-triggered like the send-failure gate.
+            if (!_lastOpenFailed && ex is not System.IO.FileNotFoundException)
+                Log.Warn("ifly", $"SDK shared-memory open failed ({ex.GetType().Name}: {ex.Message}) — will keep re-probing");
+            _lastOpenFailed = true;
             return false;
         }
     }
@@ -407,8 +417,17 @@ public class IFlySdkClient : IDisposable
     public void Dispose()
     {
         _disposed = true;
-        _pollTimer?.Dispose();
-        _pollTimer = null;
+        if (_pollTimer != null)
+        {
+            // Timer.Dispose() alone returns while a Poll callback may still be
+            // running against the accessor; the WaitHandle overload signals when
+            // all callbacks have completed (bounded wait — never hang a UI-thread
+            // aircraft swap on a wedged pool thread).
+            using var callbacksDone = new ManualResetEvent(false);
+            _pollTimer.Dispose(callbacksDone);
+            callbacksDone.WaitOne(1000);
+            _pollTimer = null;
+        }
         CloseMapping();
         GC.SuppressFinalize(this);
     }
@@ -446,11 +465,11 @@ public class IFlySdkClient : IDisposable
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, IntPtr wParam, ref COPYDATASTRUCT lParam, uint flags, uint timeout, out IntPtr result);
 
-    private static uint _registeredMessage;
+    private uint _registeredMessage;
 
     // Edge-triggered log gate: only speak on the transition into failure, never
     // once per send in a sustained-failure loop (commands are user- or 40-120 ms-paced).
-    private static bool _lastSendFailed;
+    private bool _lastSendFailed;
 
     private static IntPtr FindPluginWindow()
     {
@@ -491,8 +510,11 @@ public class IFlySdkClient : IDisposable
         IntPtr buffer = Marshal.AllocHGlobal(size + 2);
         try
         {
+            // Zero the whole buffer first: StructureToPtr writes fields, not the 4 pack(8)
+            // padding bytes at offset 4, which would otherwise ship process-heap garbage
+            // cross-process (the SDK ignores them, but don't leak heap bytes).
+            for (int i = 0; i < size + 2; i++) Marshal.WriteByte(buffer, i, 0);
             Marshal.StructureToPtr(msg, buffer, false);
-            Marshal.WriteInt16(buffer, size, 0);
             var cds = new COPYDATASTRUCT
             {
                 dwData = (IntPtr)_registeredMessage,

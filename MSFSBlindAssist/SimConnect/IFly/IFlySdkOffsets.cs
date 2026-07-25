@@ -11,7 +11,9 @@ namespace MSFSBlindAssist.SimConnect.IFly;
 /// <summary>Field offsets (and array dims) for the iFly shared-memory state block.</summary>
 public static class IFlySdkOffsets
 {
-    /// <summary>Total computed struct size in bytes.</summary>
+    /// <summary>Cumulative field extent in bytes (end of the last field). NOT the
+    /// C++ sizeof — MSVC pads the pack(8) struct tail to 3240; never use this
+    /// constant in a sizeof-equality check against the native side.</summary>
     public const int StructSize = 3236;
 
     /// <summary>int iFly737MAX_STATE — iFly737MAX_NOT_RUNNING or iFly737MAX_RUNNING</summary>

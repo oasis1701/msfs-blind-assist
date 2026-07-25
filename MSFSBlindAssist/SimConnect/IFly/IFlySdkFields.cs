@@ -15,7 +15,6 @@ public static class IFlySdkFields
     [
         new("iFly737MAX_STATE", 0, 'I', 1, 4),
         new("Aircraft_Model", 4, 'I', 1, 4),
-        new("Tick18", 8, 'I', 1, 4),
         new("UNITstyle", 12, 'B', 1, 1),
         new("Lights_Test_Status", 13, 'B', 1, 1),
         new("Landing_Light_1_Switch_Status", 14, 'B', 1, 1),
