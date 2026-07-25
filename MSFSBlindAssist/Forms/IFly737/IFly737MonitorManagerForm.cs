@@ -53,6 +53,15 @@ public partial class IFly737MonitorManagerForm : Form
     public void ShowForm()
     {
         previousWindow = GetForegroundWindow();
+        // Rebuild the check states from the CURRENT persisted set on every open.
+        // The form is cached by MainForm (constructed once, reused), so a
+        // populate that ran only in the constructor would show stale checkboxes
+        // whenever the disabled set changed by any path after first open — e.g. a
+        // settings reload, or a var whose IsAnnounced flag flipped across an app
+        // update (which silently drops it from / re-adds it to _keys). Re-populating
+        // here guarantees the displayed check marks always match what actually
+        // gates announcements. Cheap (a few dozen items) and guarded by _populating.
+        PopulateVariables();
         Show();
         BringToFront();
         Activate();
