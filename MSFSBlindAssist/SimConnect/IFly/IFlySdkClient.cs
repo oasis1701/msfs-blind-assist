@@ -31,7 +31,9 @@ public class IFlyVariableChangedEventArgs : EventArgs
 ///        absolute _SET semantics; no MobiFlight or SimConnect involvement.
 ///
 /// The client is fully independent of SimConnect — it works whenever the sim
-/// and the iFly plugin are running.
+/// and the iFly plugin are running — and MainForm arms its own announce-grace
+/// path so generic announcements don't depend on a SimConnect connection either
+/// (StartIFlyAnnouncementGrace).
 /// </summary>
 public class IFlySdkClient : IDisposable
 {

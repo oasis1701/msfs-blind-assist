@@ -196,7 +196,24 @@ public partial class MainForm
             // which can interfere with aircraft-specific processing — we tried it and combo
             // programmatic updates appear to trigger the user-action SIC handler despite the
             // updatingFromSim flag for HS787 vars whose write handler toggles state).
-            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            //
+            // iFly self-announced BUTTON vars (the 14 MCP mode lights): their
+            // ProcessSimVarUpdate returns true, which skips Step 4's control refresh, so
+            // an open panel's button labels froze on background state changes. The Button
+            // branch of UpdateControlFromSimVar is a pure label update — no user-action
+            // handler can fire (the combo caveat in the comment above is combo-specific),
+            // so refreshing it here is safe. Everything else keeps the StateVariable-only
+            // path.
+            if (currentAircraft is IFly737MAXDefinition &&
+                currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
+                iflyBtnDef.RenderAsButton)
+            {
+                UpdateControlFromSimVar(e.VarName, e.Value);
+            }
+            else
+            {
+                UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
@@ -310,6 +327,19 @@ public partial class MainForm
                     // otherwise a later genuine change BACK to the pre-click value is
                     // swallowed because the monitor still holds the stale pre-echo baseline.
                     simVarMonitor.SetBaseline(e.VarName, e.Value);
+                    return;
+                }
+
+                // A held master LIGHTS TEST shifts the composite switch+light combo values
+                // (start levers, EEC, fire switches, cargo arm/discharge, high-altitude
+                // landing) with no real switch movement — this generic path would speak every
+                // row on the press AND the release. Swallow WITHOUT SetBaseline (unlike the
+                // echo gates above): the release edge reverts each value to the held baseline
+                // and stays silent, while a REAL switch change during the test still
+                // announces once the test releases.
+                if (currentAircraft is IFly737MAXDefinition iflyLtDef &&
+                    iflyLtDef.SuppressGenericAnnounceDuringLightsTest(e.VarName))
+                {
                     return;
                 }
 

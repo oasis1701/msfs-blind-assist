@@ -248,6 +248,10 @@ public partial class MainForm
             this.Text = "MSFS Blind Assist";
             // Disable announcements when disconnected
             simVarMonitor.Reset();
+            // The iFly keeps feeding over shared memory through a SimConnect drop — re-arm
+            // the announce grace so its combo announcements resume instead of going silent
+            // while the def's self-announced lights keep speaking (PR #163 review).
+            if (currentAircraft is IFly737MAXDefinition) StartIFlyAnnouncementGrace();
             // Reset ECAM suppression flag for next connection
             simConnectManager.SuppressECAMAnnouncements = true;
 
@@ -671,6 +675,7 @@ public partial class MainForm
             gracePeriodTimer.Start();
             Log.Debug("MainForm", "Aircraft switch grace period started (5 seconds)");
         }
+        else if (newAircraft is IFly737MAXDefinition) { StartIFlyAnnouncementGrace(); }
 
         // Update window title
         this.Text = "MSFS Blind Assist";
@@ -945,6 +950,7 @@ public partial class MainForm
         pmdg737MenuItem.Checked = false;
         horizonSim787MenuItem.Checked = false;
         headwindA330MenuItem.Checked = false;
+        ifly737MaxMenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -976,6 +982,10 @@ public partial class MainForm
         else if (currentAircraft is HorizonSim787Definition)
         {
             horizonSim787MenuItem.Checked = true;
+        }
+        else if (currentAircraft is IFly737MAXDefinition)
+        {
+            ifly737MaxMenuItem.Checked = true;
         }
     }
 

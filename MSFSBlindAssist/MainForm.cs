@@ -475,7 +475,8 @@ public partial class MainForm : Form
             StartHS787IrsMonitor();
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
-        // it works whenever the sim + iFly plugin are running).
+        // it works whenever the sim + iFly plugin are running). Generic announcements
+        // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
         StartIFlySdkBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
@@ -845,6 +846,15 @@ public partial class MainForm : Form
         hs787IrsClient = null;
         hs787CasClient?.Dispose();
         hs787CasClient = null;
+
+        // Clean up the iFly SDK client (otherwise only shut down on aircraft swap — a
+        // quit with the iFly active would leave the 250 ms poll + off-sweep timers
+        // firing into the teardown, the same leak class as the PMDG EFB clients above).
+        if (currentAircraft is IFly737MAXDefinition iflyExitDef)
+        {
+            iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            iflyExitDef.Shutdown();
+        }
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

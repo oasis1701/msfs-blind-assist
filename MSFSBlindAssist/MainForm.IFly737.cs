@@ -27,6 +27,23 @@ public partial class MainForm
         ifly.Sdk.Start();
     }
 
+    /// <summary>Enables monitor announcements after the standard 5 s settle grace
+    /// when the iFly is active WITHOUT SimConnect: the iFly feed is shared memory,
+    /// so Step-6 announcements must not stay hostage to the SimConnect-gated grace
+    /// timers (which are the only other enable sites). Harmless alongside them —
+    /// EnableAnnouncements is idempotent.</summary>
+    private void StartIFlyAnnouncementGrace()
+    {
+        var graceTimer = new System.Windows.Forms.Timer { Interval = 5000 };
+        graceTimer.Tick += (s, e) =>
+        {
+            graceTimer.Stop();
+            graceTimer.Dispose();
+            simVarMonitor.EnableAnnouncements();
+        };
+        graceTimer.Start();
+    }
+
     private void OnIFlyVariableChanged(object? sender, SimConnect.IFly.IFlyVariableChangedEventArgs e)
     {
         if (currentAircraft is not IFly737MAXDefinition) return;

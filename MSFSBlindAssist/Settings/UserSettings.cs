@@ -469,8 +469,8 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the five *DisabledMonitorVariables HashSet sidecars from their backing Lists.
-    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX monitor-manager
+    /// Rebuilds the six *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
     /// which calls this — so a mutation is never visible to the List without also being visible
