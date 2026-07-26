@@ -21,7 +21,7 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution.
+The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
 
 ## Testing
 
@@ -515,6 +515,10 @@ Details: [docs/pmdg-777.md](docs/pmdg-777.md).
 
 Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 737 EFB has full parity with the 777 (Dashboard / Preferences / Navdata / Performance / Ground Ops / W&B / Manuals) via the shared `FbwEfbForm` over the Coherent debugger (`CoherentPmdgEfbClient` + `coherent-pmdg-efb-agent.js`), opened with Shift+T — the EFB app is byte-identical across all four 737 variants and the 777, so one shared in-page agent serves them all (NO Community-folder package; the retired `zzz-pmdg-efb-accessibility` is auto-removed by `LegacyEfbBridgeCleanup`).
 
+### iFly 737 MAX8 (official SDK shared memory + WM_COPYDATA — NO MobiFlight, NO L:var writes) (deliberate exceptions: cockpit-clickspot trigger replays via SetLVar where the SDK command is broken/absent — the autopilot window's engage fallback (`VC_Automatic_Flight_trigger_VAL`), the NAV transfer fallback, and the transponder squawk keypad (both `VC_Navigation_trigger_VAL`; the SDK XPNDR keypad clicks cannot commit an entry))
+
+Details: [docs/ifly-737.md](docs/ifly-737.md).
+
 ### PMDG EFB (Coherent debugger)
 
 Details: [docs/pmdg-efb.md](docs/pmdg-efb.md).
@@ -559,6 +563,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
+- **Working on the iFly 737 MAX8 (official SDK shared memory, WM_COPYDATA writes, synthetic `SYN_*` fields)** → [iFly 737 MAX8](docs/ifly-737.md)
 - **Working on the PMDG 777 (CDA switches, CDU array indexing, System Display synoptic pages)** → [PMDG 777](docs/pmdg-777.md)
 - **Working on the PMDG or HS787 EFB (Coherent debugger scrape agent, shared `FbwEfbForm`)** → [PMDG EFB](docs/pmdg-efb.md)
 - **Working on the FlyByWire A380X (MFD/MCDU, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad specifics)** → [FlyByWire A380X](docs/a380x.md)
@@ -582,6 +587,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
 - **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
+- **[iFly 737 MAX8](docs/ifly-737.md)** - official iFly SDK transport (shared memory + WM_COPYDATA), generated offsets, synthetic `SYN_*` fields, command-encoding traps
 - **[PMDG 777](docs/pmdg-777.md)** - CDA switch patterns, fuel-lever/ground-power exceptions, CDU crew-index convention, System Display
 - **[PMDG EFB](docs/pmdg-efb.md)** - Coherent-debugger EFB scrape agent shared by the PMDG 737/777 (and HS787's CDU transport pattern)
 - **[FlyByWire A380X](docs/a380x.md)** - MCDU/MFD, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad-specific A380 notes, and all A380X invariants

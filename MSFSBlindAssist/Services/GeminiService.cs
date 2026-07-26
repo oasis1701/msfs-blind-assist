@@ -215,7 +215,11 @@ public class GeminiService : IAiProvider
         PFD737,        // Primary Flight Display (Boeing 737 NG3)
         ND737,         // Navigation Display (Boeing 737 NG3)
         ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
-        EICAS737       // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        EICAS737,      // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        PFDiFly,       // Primary Flight Display (iFly 737 MAX 8)
+        NDiFly,        // Navigation Display (iFly 737 MAX 8)
+        ISFDiFly,      // Integrated Standby Flight Display (iFly 737 MAX 8)
+        EICASiFly      // Engine indications + crew alerts, "EICAS-equivalent" (iFly 737 MAX 8)
     }
 
     /// <summary>
@@ -491,6 +495,53 @@ Any crew alert messages in the lower portion of the display (caution/warning tex
 Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
 Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.PFDiFly => @"You are reading the Primary Flight Display (PFD) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the display showing the artificial-horizon attitude indicator with a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine indications, the ISFD standby, the flight-information/data page, and the CDU.
+Report in this order:
+Flight Mode Annunciator (FMA) across the top, left to right: autothrottle mode (e.g. N1, RETARD, ARM, FMC SPD), roll mode (e.g. LNAV, HDG SEL, VOR/LOC, LOC), pitch mode (e.g. VNAV PTH, VNAV SPD, ALT, V/S, G/S, FLARE), and AFDS status (FD, CMD, or single/dual channel).
+Airspeed: current indicated airspeed, the selected/MCP speed if shown, and any relevant speed bugs.
+Attitude: pitch and bank only if unusual (otherwise say wings level).
+Altitude: current altitude, the selected altitude, and the barometric setting (e.g. 29.71 IN, 1013 HPA, or STD).
+Vertical speed if shown.
+Heading and track at the bottom, plus the selected heading.
+Radio altitude if displayed.
+Localizer and glideslope deviation if an approach is shown.
+Any flags, failure flags, or amber/red annunciations.
+Skip normal colors (green, white, magenta); only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain what things mean. Just state the data.",
+
+            DisplayType.NDiFly => @"You are reading the Navigation Display (ND) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the ND — the display showing the compass arc or map with the aircraft symbol. Engine indications may appear on the same physical display unit, to the right of the map; do NOT report engine data — describe only the navigation/map portion.
+Report in this order:
+Mode and range (e.g. MAP 5, VOR, PLAN, APP; range in nautical miles).
+Current track and heading (e.g. TRK 008 MAG); ground speed and true airspeed if shown.
+Active waypoint: name, distance, and time or ETA (e.g. TIKNI 51.8 NM).
+Next waypoints along the magenta route line, in order, if legible.
+Wind: direction and speed.
+Weather radar returns: whether any are painted, their intensity (green, amber/yellow, red), and rough bearing and distance.
+Terrain: any terrain shading and its color.
+Traffic (TCAS): any traffic symbols, with relative bearing, range, and relative altitude if shown.
+VOR/ADF pointers and tuned stations if shown.
+RNP/ANP figures and any navigation flags or messages.
+Skip normal colors; only call out amber and red. Put each item on its own line. Do not use markdown. Do not explain. Just state the data.",
+
+            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument on the right side of the main panel, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
+Report: airspeed; attitude (pitch and bank only if unusual); altitude; barometric setting (e.g. 1013 HPA, 29.71 IN, or STD); and any mode annunciations (e.g. APP, ILS) or flags.
+Skip normal colors; only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain. Just state the data.",
+
+            DisplayType.EICASiFly => @"You are reading the engine indications and crew-alert messages of an iFly Boeing 737 MAX 8 for a screen reader user. On the 737 MAX these appear on the inboard display unit, to the right of the navigation display. The image may contain several displays. Describe ONLY the engine indications and the crew-alert message text; ignore the PFD attitude, the ND map, the ISFD, and the CDU.
+Important: on the 737 MAX the engine display shows N1, N2, EGT, fuel flow, and oil indications together (unlike the 737 NG, where N2 is on a separate lower display). Report all of them.
+Report in this order:
+Thrust mode label if shown (e.g. TO, R-TO, CLB, CLB1, CLB2, CON, CRZ, GA).
+TAT and SAT if shown, in degrees Celsius.
+For each engine, ENG 1 then ENG 2 (left then right):
+  N1 percent, and the N1 reference/limit bug value if shown.
+  EGT in degrees Celsius.
+  N2 percent.
+  Fuel flow (e.g. 2.26 meaning 2260 pounds per hour).
+  Oil pressure, oil temperature, oil quantity, and vibration if shown.
+Flap position and landing-gear indications if shown on this display.
+Fuel quantity: left, center, right, and total if shown, in thousands of pounds.
+Then, most important, the crew alert messages: read every caution (amber) and warning (red) message line exactly as written, top to bottom. If there are none, say ""No alerts"".
+Skip normal colors (green, white); call out amber and red. Put the thrust mode first, then TAT/SAT, then each engine on its own line, then flaps/gear, then fuel, then the alerts. Do not use markdown. Do not explain. Just state the data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };

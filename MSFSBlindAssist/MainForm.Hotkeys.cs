@@ -216,6 +216,11 @@ public partial class MainForm
                 {
                     ShowHS787FMCDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
+                {
+                    // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
+                    ShowIFlyCDUDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
                     // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
@@ -240,6 +245,11 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
+                {
+                    // iFly SP1 EFB — served over HTTP by the iFly EFB process, hosted in WebView2.
+                    ShowIFlyEfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {

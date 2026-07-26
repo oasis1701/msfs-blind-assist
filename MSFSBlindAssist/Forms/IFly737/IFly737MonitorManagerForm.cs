@@ -3,18 +3,22 @@ using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
-namespace MSFSBlindAssist.Forms.HS787;
+namespace MSFSBlindAssist.Forms.IFly737;
 
 /// <summary>
-/// Per-variable background-announcement manager for the HorizonSim 787 (Ctrl+M).
+/// Per-variable background-announcement manager for the iFly 737 MAX8 (Ctrl+M).
 ///
-/// Enumerates EVERY auto-announced variable (UpdateFrequency.Continuous + IsAnnounced) from the
-/// aircraft definition dynamically — mirroring the Fenix / A380 / A32NX monitor managers — so the
-/// 107+ announced HS787 vars can each be muted. Unchecked items are written to
-/// UserSettings.HS787DisabledMonitorVariables; MainForm.OnSimVarUpdated skips the announcement for
-/// any key in that list.
+/// Enumerates EVERY auto-announced variable (UpdateFrequency.Continuous + IsAnnounced)
+/// from the aircraft definition dynamically — mirroring the Fenix / A380 / A32NX / HS787
+/// monitor managers — so every announced annunciator, MCP mode light and switch can be
+/// muted individually. Unchecked items are written to
+/// UserSettings.IFlyDisabledMonitorVariables. MainForm.OnSimVarUpdated honours the list
+/// TWICE: the Step-2.5 Suppressed-wrap covers the vars the iFly def announces from
+/// INSIDE ProcessSimVarUpdate (annunciators, MCP mode lights, warning push lights,
+/// synthetic display windows — the HS787 pattern), and the generic Step-6 gate covers
+/// the plain switch combos that announce on the generic path.
 /// </summary>
-public partial class HS787MonitorManagerForm : Form
+public partial class IFly737MonitorManagerForm : Form
 {
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -26,12 +30,13 @@ public partial class HS787MonitorManagerForm : Form
     private static int lastSelectedItemIndex;
     private bool _populating;
 
-    public HS787MonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
+    public IFly737MonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
     {
         // Build the manageable list: every announced continuous var, by display name.
         foreach (var kv in variables)
         {
-            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced) continue;
+            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced
+                || kv.Value.ExcludeFromMonitorManager) continue;
             _keys.Add(kv.Key);
         }
         _keys.Sort((a, b) =>
@@ -49,11 +54,13 @@ public partial class HS787MonitorManagerForm : Form
     public void ShowForm()
     {
         previousWindow = GetForegroundWindow();
-        // Rebuild check states from the CURRENT persisted set on every open — the
-        // form is cached by MainForm (constructed once, reused), so a populate that
-        // ran only in the constructor would show stale checkboxes whenever the
-        // disabled set changed after first open (e.g. a settings reload). Guarded
-        // by _populating so it fires no Save writes.
+        // Rebuild the check states from the CURRENT persisted set on every open.
+        // The form is cached by MainForm (constructed once, reused), so a
+        // populate that ran only in the constructor would show stale checkboxes
+        // whenever the disabled set changed by any path after first open —
+        // e.g. a settings reload. Re-populating here guarantees the displayed
+        // check marks always match what actually gates announcements. Cheap
+        // (a few dozen items) and guarded by _populating.
         PopulateVariables();
         Show();
         BringToFront();
@@ -67,7 +74,7 @@ public partial class HS787MonitorManagerForm : Form
 
     private void InitializeComponent()
     {
-        Text = "787 Monitor Manager";
+        Text = "iFly 737 Monitor Manager";
         Size = new Size(460, 380);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -110,7 +117,7 @@ public partial class HS787MonitorManagerForm : Form
     private void PopulateVariables()
     {
         MonitorManagerShared.Populate(variableListBox, _labels, _keys,
-            SettingsManager.Current.HS787DisabledMonitorVariables, ref _populating);
+            SettingsManager.Current.IFlyDisabledMonitorVariables, ref _populating);
     }
 
     private void VariableListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
@@ -120,9 +127,9 @@ public partial class HS787MonitorManagerForm : Form
         string key = _keys[e.Index];
         var settings = SettingsManager.Current;
         if (e.NewValue == CheckState.Checked)
-            settings.HS787DisabledMonitorVariables.Remove(key);
-        else if (!settings.HS787DisabledMonitorVariables.Contains(key))
-            settings.HS787DisabledMonitorVariables.Add(key);
+            settings.IFlyDisabledMonitorVariables.Remove(key);
+        else if (!settings.IFlyDisabledMonitorVariables.Contains(key))
+            settings.IFlyDisabledMonitorVariables.Add(key);
         SettingsManager.Save();
     }
 

@@ -1,0 +1,128 @@
+[Preflight - Power Up]
+Battery on (Electrical panel, guarded)
+Standby power auto
+Ground power on, if available, or APU
+APU start (APU switch to Start, springs back to On)
+APU generator 1 and 2 on (after APU running)
+Position lights steady
+IRS left and right to Nav (IRS panel)
+Flight recorder guard closed, Normal
+Voice recorder auto
+
+[Preflight - Setup]
+EFB fuel and payload set (Shift+T, Payload and Balance)
+FMC route entered or loaded (Shift+M: RTE, DEP ARR, LEGS)
+FMC PERF INIT complete (weights, cost index, cruise altitude)
+FMC N1 LIMIT and takeoff flaps, V speeds set (check FMS Data panel)
+MCP courses set (MCP panel, Set Course 1 and 2)
+MCP initial heading set (Ctrl+H)
+MCP initial altitude set (Ctrl+A)
+Flight directors both on
+Autobrake RTO
+Altimeters set (Ctrl+B), both crossed checked
+Transponder code set (Transponder panel)
+Fuel pumps on as required (center tanks only with fuel)
+Crossfeed closed
+Window heat all four on
+Probe heat auto
+Pressurization flight altitude and landing altitude set
+Packs auto, bleeds on, isolation valve auto
+Recirculation fans auto
+Emergency exit lights armed
+No smoking auto
+Fasten belts on
+
+[Before Start]
+Doors closed
+Fuel quantity checked (Fuel panel gauges)
+Hydraulic pumps, electric pumps on
+Anti collision light on
+Parking brake set
+Transponder mode as required
+
+[Engine Start]
+Air conditioning packs off, if bleed start
+Ignition select both
+Engine 2 start switch to Ground
+At 25 percent N2, engine 2 start lever to Idle
+Engine 2 stabilized, repeat for engine 1
+Engine start switches to Off, generators on
+Probe heat auto
+Packs auto
+APU bleed off, APU off
+
+[Before Taxi]
+Generators on the buses (Electrical panel lights out)
+Engine anti-ice as required
+Wing anti-ice as required
+Flaps set for takeoff (Control Stand panel)
+Flight controls checked
+Stabilizer trim set (Trim panel, Stabilizer Trim Units)
+Taxi light on
+Transponder TA/RA
+
+[Before Takeoff]
+Master caution checked (recall, six pack clear)
+Flaps set, green light
+Stabilizer trim in the green band
+Speedbrake down detent
+MCP heading runway heading (Ctrl+H)
+MCP altitude initial clearance (Ctrl+A)
+MCP speed V2 (Ctrl+S)
+Landing lights on
+Strobes on (position lights strobe and steady)
+Runway turnoff lights on
+Autothrottle armed
+Takeoff config checked
+
+[After Takeoff]
+Gear up
+Flaps up on schedule
+Autopilot CMD A as desired
+Climb thrust set (N1)
+Landing lights off at 10,000 feet
+Altimeters standard at transition altitude (Ctrl+B, Standard)
+Packs and bleeds checked
+Engine start switches off
+
+[Descent]
+ATIS and landing information obtained
+Landing altitude set (Pressurization panel)
+VREF checked (FMS Data panel)
+Altimeters set at transition level (Ctrl+B)
+Landing lights on at 10,000 feet
+Autobrake set for landing
+Approach briefed, minimums set (EFIS panel, Set Minimums)
+
+[Approach]
+MCP course set for approach (both sides)
+Flaps on schedule
+Gear down, three green
+Speedbrake armed
+Flaps landing setting, green light
+Missed approach altitude set after glideslope capture
+
+[After Landing]
+Speedbrake down
+Flaps up
+Strobes steady, landing lights off
+Runway turnoff lights on until clear
+Taxi light on
+APU start if no ground power
+Autobrake off
+Transponder XPNDR or as directed
+Weather radar off (EFIS WXR overlay off)
+
+[Shutdown]
+Parking brake set
+Engine start levers cutoff
+Fasten belts off
+Anti collision light off
+Fuel pumps off, one left forward pump on if APU running
+Ground power on if available, APU off
+Flight directors off
+Taxi light off
+Window heat off if staying cold
+IRS both off
+Emergency exit lights off
+Battery off, if leaving the aircraft

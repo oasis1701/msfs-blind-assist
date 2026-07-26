@@ -98,6 +98,7 @@ public partial class MainForm
             "PMDG_737" => new PMDG737Definition(),
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
+            "IFLY_737MAX8" => new IFly737MAXDefinition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -247,6 +248,10 @@ public partial class MainForm
             this.Text = "MSFS Blind Assist";
             // Disable announcements when disconnected
             simVarMonitor.Reset();
+            // The iFly keeps feeding over shared memory through a SimConnect drop — re-arm
+            // the announce grace so its combo announcements resume instead of going silent
+            // while the def's self-announced lights keep speaking (PR #163 review).
+            if (currentAircraft is IFly737MAXDefinition) StartIFlyAnnouncementGrace();
             // Reset ECAM suppression flag for next connection
             simConnectManager.SuppressECAMAnnouncements = true;
 
@@ -670,6 +675,7 @@ public partial class MainForm
             gracePeriodTimer.Start();
             Log.Debug("MainForm", "Aircraft switch grace period started (5 seconds)");
         }
+        else if (newAircraft is IFly737MAXDefinition) { StartIFlyAnnouncementGrace(); }
 
         // Update window title
         this.Text = "MSFS Blind Assist";
@@ -879,6 +885,18 @@ public partial class MainForm
         else
             DisposeHS787Forms();
 
+        // The iFly def owns the shared-memory SDK client — stop its poll and close the
+        // mapping so it doesn't keep firing events at the new aircraft.
+        if (oldAircraft is IFly737MAXDefinition oldIFly && oldAircraft != newAircraft)
+        {
+            oldIFly.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            oldIFly.Shutdown();
+            DisposeIFlyForms();
+        }
+
+        // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
+        StartIFlySdkBridge();
+
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
         {
@@ -932,6 +950,7 @@ public partial class MainForm
         pmdg737MenuItem.Checked = false;
         horizonSim787MenuItem.Checked = false;
         headwindA330MenuItem.Checked = false;
+        ifly737MaxMenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -963,6 +982,10 @@ public partial class MainForm
         else if (currentAircraft is HorizonSim787Definition)
         {
             horizonSim787MenuItem.Checked = true;
+        }
+        else if (currentAircraft is IFly737MAXDefinition)
+        {
+            ifly737MaxMenuItem.Checked = true;
         }
     }
 
