@@ -2342,6 +2342,23 @@ public class TaxiAssistForm : Form
                                 : "Pick the holding point to taxi to.");
                         return;
                     }
+                    // This is the only terminator whose target is resolved purely by
+                    // NAME against the whole graph — every other one derives it from the
+                    // aircraft node or the cleared taxiway, so it cannot land off the
+                    // aircraft's component. Disconnected taxiway islands are routine
+                    // (LOWW/KJFK 6 components, EHAM 4, GCLP's 13-node S5 island), and
+                    // LoadRoute picks its start node in the DESTINATION's component with
+                    // no distance bound — routing to an island would silently start the
+                    // route where the aircraft is not.
+                    if (!_graph.Nodes.TryGetValue(holdPoint.NodeId, out var holdNode)
+                        || holdNode.ComponentId != destComponentId)
+                    {
+                        string unreachable =
+                            $"Cannot taxi to {holdPoint.Name} from your position. Check your entry.";
+                        _announcer.AnnounceImmediate(unreachable);
+                        lblStatus.Text = unreachable;
+                        return;
+                    }
                     destNode = holdPoint.NodeId;
                     term = new ProgressiveTerminator(ProgressiveTerminatorType.HoldAtNamedPoint, holdPoint.Name);
                     break;
@@ -2360,6 +2377,7 @@ public class TaxiAssistForm : Form
                     && !string.IsNullOrEmpty(taxiwayTarget) && taxiwayTarget != NO_RUNWAY_HOLDSHORT;
                 string what = terminatorTypeIndex == 1 ? $"taxiway {taxiwayTarget}"
                     : terminatorTypeIndex == 3 ? $"the end of taxiway {lastTaxiway}"
+                    : terminatorTypeIndex == 4 ? $"holding point {term.Target}"
                     : pinnedCross ? $"taxiway {taxiwayTarget} crossing runway {runwayTarget}"
                     : $"runway {runwayTarget}";
                 string msg = $"Could not find {what} from {lastTaxiway}. Check your entry.";
