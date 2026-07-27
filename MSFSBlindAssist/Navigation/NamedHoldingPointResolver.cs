@@ -32,6 +32,16 @@ public sealed class NamedHoldingPoint
     public bool SnappedToDesignatedNode { get; init; }
 
     /// <summary>
+    /// This candidate won the ≤<see cref="NamedHoldingPointResolver.DESIGNATED_SNAP_M"/>
+    /// designated preference. NOT the same as <see cref="SnappedToDesignatedNode"/>, which
+    /// merely describes the chosen node: duplicate-name ranking keys on THIS, so a designated
+    /// node picked through the plain fallback (beyond the preference radius) never outranks a
+    /// nearer plain node. A designated node that far out can be an entirely different hold
+    /// line — measured at EDDF, where M15's nearest HS node beyond 15 m sits 91 m away.
+    /// </summary>
+    internal bool WonDesignatedPreference { get; init; }
+
+    /// <summary>
     /// Combo/list label: the designator plus a spoken-friendly kind suffix so a
     /// screen-reader user hears what sort of hold they're picking. First-letter
     /// type-ahead still works because the designator leads.
@@ -111,8 +121,8 @@ public static class NamedHoldingPointResolver
 
             var chosen = designated ?? plain;
             if (chosen == null) continue;   // nothing within MAX_SNAP_M — drop, never misplace
-            bool viaDesignated = designated != null;
-            double chosenD = viaDesignated ? designatedD : plainD;
+            bool wonPreference = designated != null;
+            double chosenD = wonPreference ? designatedD : plainD;
 
             var candidate = new NamedHoldingPoint
             {
@@ -122,7 +132,9 @@ public static class NamedHoldingPointResolver
                 Latitude = chosen.Latitude,
                 Longitude = chosen.Longitude,
                 SnapDistanceMeters = chosenD,
-                SnappedToDesignatedNode = viaDesignated,
+                SnappedToDesignatedNode = chosen.Type == TaxiNodeType.HoldShort
+                                       || chosen.Type == TaxiNodeType.ILSHoldShort,
+                WonDesignatedPreference = wonPreference,
             };
 
             if (!best.TryGetValue(name, out var existing) || Beats(candidate, existing))
@@ -134,13 +146,14 @@ public static class NamedHoldingPointResolver
             .ToList();
     }
 
-    // Duplicate-name ranking: a designated-node snap always beats a plain-node
-    // snap (the painted line beats a nearby centerline vertex); within the same
-    // class the smaller snap distance wins.
+    // Duplicate-name ranking: winning the ≤DESIGNATED_SNAP_M preference always beats
+    // a fallback snap (the painted line beats a nearby centerline vertex); within the
+    // same class the smaller snap distance wins. Deliberately keyed on
+    // WonDesignatedPreference, NOT SnappedToDesignatedNode — see that property.
     private static bool Beats(NamedHoldingPoint a, NamedHoldingPoint b)
     {
-        if (a.SnappedToDesignatedNode != b.SnappedToDesignatedNode)
-            return a.SnappedToDesignatedNode;
+        if (a.WonDesignatedPreference != b.WonDesignatedPreference)
+            return a.WonDesignatedPreference;
         return a.SnapDistanceMeters < b.SnapDistanceMeters;
     }
 }

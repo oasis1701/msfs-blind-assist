@@ -195,4 +195,43 @@ public class NamedHoldingPointResolverTests
         var hp = new NamedHoldingPoint { Name = name, Kind = kind };
         Assert.Equal(expected, hp.DisplayLabel);
     }
+
+    [Fact]
+    public void Resolve_reports_a_designated_node_chosen_via_the_plain_path_as_designated()
+    {
+        // The only node within MAX_SNAP_M is an HS node at 20 m — outside the 15 m
+        // designated PREFERENCE, so it is selected through the plain fallback. The
+        // flag describes the NODE, so it must still read designated.
+        var graph = BuildGraph(Edge(20, 0, "HSND", 80, 0, ""));
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("N2E", LatN(0), LonE(0), "runway") });
+
+        var hp = Assert.Single(result);
+        Assert.Equal(NodeNear(graph, 20, 0).NodeId, hp.NodeId);
+        Assert.True(hp.SnappedToDesignatedNode);
+    }
+
+    [Fact]
+    public void Resolve_duplicate_ranking_ignores_a_designated_node_beyond_the_preference_radius()
+    {
+        // Regression pin: this must pass BEFORE and AFTER the flag fix. Same name
+        // twice — one occurrence sees only a designated node at 20 m (outside the
+        // 15 m preference), the other a plain node at 18 m. The nearer plain node
+        // must win: a designated node that far out can be a DIFFERENT hold line
+        // (measured — EDDF M15 sits 91 m off its own point).
+        var graph = BuildGraph(
+            Edge(20, 0, "HSND", 80, 0, ""),
+            Edge(18, 200, "", 80, 200, ""));
+
+        var result = NamedHoldingPointResolver.Resolve(graph, new[]
+        {
+            ("A4", LatN(0), LonE(0), "runway"),
+            ("A4", LatN(0), LonE(200), "runway"),
+        });
+
+        var hp = Assert.Single(result);
+        Assert.Equal(NodeNear(graph, 18, 200).NodeId, hp.NodeId);
+        Assert.False(hp.SnappedToDesignatedNode);
+    }
 }
