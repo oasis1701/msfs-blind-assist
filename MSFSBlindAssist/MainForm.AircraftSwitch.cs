@@ -379,7 +379,7 @@ public partial class MainForm
 
     /// <summary>
     /// Public accessor for the PROG-page monitor. PMDG777Definition's distance
-    /// handlers read its <see cref="PMDGProgPageMonitor.LastProgData"/> when
+    /// handlers call its <see cref="PMDGProgPageMonitor.ReadProgPageAsync"/> when
     /// Enhanced distance mode is on. Returns null when the monitor isn't
     /// running (non-PMDG aircraft or Enhanced mode off).
     /// </summary>
