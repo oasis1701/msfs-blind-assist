@@ -271,6 +271,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Taxi-data augmentation: navdata is AUTHORITATIVE — an existing navdata taxiway/gate name is never overwritten, online names only fill UNNAMED segments, and online-only geometry is IGNORED (never steer on an offset online line). → [taxi-guidance.md](docs/taxi-guidance.md)
 - Taxi-data augmentation is anti-grass: online data NEVER sets a gate Name/position and NEVER adds a selectable gate — gate identity is authoritative from GSX/navdata, online contributes searchable aliases only. → [taxi-guidance.md](docs/taxi-guidance.md)
 - Do NOT implement OSM `holding_position` hold-short sharpening without an explicit sim-verified ask — augmentation stays NAME-only and must never touch the tuned, safety-critical hold-short placement. → [taxi-guidance.md](docs/taxi-guidance.md)
+- Never tune `NamedHoldingPointResolver`'s snap radii: don't widen `DESIGNATED_SNAP_M` (15 m) toward `MAX_SNAP_M` (30 m), don't require a designated node for runway/ILS kinds, and don't add a "never snap runway-ward" guard — all three were probed against real navdata + live OSM at six airports and are worse (widening makes EDDF M15 jump ~91 m onto a different hold line; the guard rejects correct designated nodes because navdata's HS node sits up to 14 m runway-ward of OSM's painted line). → [taxi-guidance.md](docs/taxi-guidance.md)
 
 ### GSX gate integration, docking guidance & distance units (→ [gsx.md](docs/gsx.md))
 
