@@ -26,6 +26,7 @@ public class TaxiAssistForm : Form
     // Shared with DockingGuidanceManager/MainForm.AircraftSwitch/SimConnectManager.Dispatch —
     // all writers of docking-aircraft.log now serialize through this one channel.
     private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+    private static readonly LogChannel _taxiRouterLog = Log.Channel("taxi_router");
 
     private readonly IAirportDataProvider _dataProvider;
     private readonly ScreenReaderAnnouncer _announcer;
@@ -2150,6 +2151,26 @@ public class TaxiAssistForm : Form
         if (raw.Count == 0) return;
         _namedHoldingPoints = NamedHoldingPointResolver.Resolve(_graph, raw);
         _namedHoldingPointsResolved = true;
+
+        // Field diagnostics: a "why isn't VIKAS in my list?" report is otherwise
+        // unanswerable without an ad-hoc probe against the user's navdata.
+        var resolvedNames = new HashSet<string>(
+            _namedHoldingPoints.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var rawNames = raw.Select(p => (p.Name ?? "").Trim())
+                          .Where(n => n.Length > 0)
+                          .Distinct(StringComparer.OrdinalIgnoreCase)
+                          .ToList();
+        var dropped = rawNames.Where(n => !resolvedNames.Contains(n))
+                              .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                              .ToList();
+        _taxiRouterLog.Info(
+            $"{_currentIcao}: named holding points raw={raw.Count} distinct={rawNames.Count} " +
+            $"resolved={_namedHoldingPoints.Count}" +
+            (dropped.Count > 0 ? $" dropped={string.Join(", ", dropped)}" : ""));
+        foreach (var hp in _namedHoldingPoints)
+            _taxiRouterLog.Debug(
+                $"  {hp.Name} -> node {hp.NodeId}, {hp.SnapDistanceMeters:F1} m, " +
+                $"designated={hp.SnappedToDesignatedNode}, kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
     }
 
     /// <summary>
