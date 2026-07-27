@@ -107,6 +107,13 @@ public class TaxiAssistForm : Form
     // none, or the online fetch hasn't landed yet (PopulateTerminatorHoldPointList
     // retries the resolve on demand so a late background fetch still surfaces).
     private List<NamedHoldingPoint> _namedHoldingPoints = new();
+    // True once ResolveNamedHoldingPoints has actually SEEN online holding-point data
+    // for the loaded airport — whether or not any of it resolved. Gates the retry in
+    // PopulateTerminatorHoldPointList: while the async fetch hasn't landed the raw list
+    // is empty and retrying costs nothing (the resolve early-returns before scanning),
+    // but once raw data has arrived the O(points × nodes) scan must not repeat on every
+    // dropdown open and every taxiway row add/remove.
+    private bool _namedHoldingPointsResolved;
     // Computed height of the terminator block (1-3 visible lines depending on
     // terminator type), read by UpdateLayout. Always set by RefreshTerminatorRow
     // before UpdateLayout consumes it (and UpdateLayout only reads it while the
@@ -904,6 +911,7 @@ public class TaxiAssistForm : Form
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
         RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
         _namedHoldingPoints = new List<NamedHoldingPoint>();
+        _namedHoldingPointsResolved = false;
         cmbTerminatorHoldPoint.Items.Clear();
 
         cmbDestination.Items.Clear();
@@ -970,6 +978,12 @@ public class TaxiAssistForm : Form
         // point" terminator has its list ready on first open. A fetch that
         // hasn't landed yet is fine — the combo re-resolves on dropdown open.
         ResolveNamedHoldingPoints();
+        // Refill the combo too — LoadAirportData cleared its Items above and nothing else
+        // repopulates it on an airport change (RefreshTerminatorRow only runs on
+        // terminator-type / destination-type / taxiway-row changes). Without this the
+        // combo reads as EMPTY to a screen reader until the dropdown is opened, and
+        // arrowing a DropDownList does not raise DropDown.
+        PopulateTerminatorHoldPointList();
 
         // Populate destinations
         PopulateDestinations();
@@ -2118,8 +2132,10 @@ public class TaxiAssistForm : Form
     /// onto navdata graph nodes. Alias-style per the augmentation safety rules:
     /// the online source contributes the NAME only; the route target is always
     /// the navdata node it resolves to, and unresolvable points are dropped.
-    /// Cheap (one pass over the graph per point), so it simply recomputes on
-    /// demand — the online fetch is async and may land after the airport loads.
+    /// One pass over the graph per point, run at most once per airport load once the
+    /// online source has data (_namedHoldingPointsResolved); until then the async fetch
+    /// may still be in flight, so an empty source leaves the latch clear and the combo
+    /// retries on demand.
     /// </summary>
     private void ResolveNamedHoldingPoints()
     {
@@ -2129,20 +2145,23 @@ public class TaxiAssistForm : Form
             || !aug.Enabled)
             return;
         var raw = aug.GetNamedHoldingPoints(_currentIcao);
+        // Leave the latch clear on an empty source: the online fetch is async, so this
+        // is "not yet", not "none" — and retrying is free, we returned before scanning.
         if (raw.Count == 0) return;
         _namedHoldingPoints = NamedHoldingPointResolver.Resolve(_graph, raw);
+        _namedHoldingPointsResolved = true;
     }
 
     /// <summary>
     /// Fills cmbTerminatorHoldPoint with the airport's named holding points
     /// (display labels like "VIKAS (intermediate hold)"), preserving the user's
-    /// selection by label when possible. Re-resolves when the list is empty so a
-    /// background online fetch that landed after form open still surfaces. Safe
+    /// selection by label when possible. Re-resolves until the online source has been
+    /// seen, so a background fetch that landed after form open still surfaces. Safe
     /// to call repeatedly (RefreshTerminatorRow + the combo's DropDown event).
     /// </summary>
     private void PopulateTerminatorHoldPointList()
     {
-        if (_namedHoldingPoints.Count == 0)
+        if (!_namedHoldingPointsResolved)
             ResolveNamedHoldingPoints();
 
         string? prev = cmbTerminatorHoldPoint.SelectedItem?.ToString();
