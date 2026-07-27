@@ -234,4 +234,32 @@ public class NamedHoldingPointResolverTests
         Assert.Equal(NodeNear(graph, 18, 200).NodeId, hp.NodeId);
         Assert.False(hp.SnappedToDesignatedNode);
     }
+
+    [Fact]
+    public void Resolve_never_snaps_to_a_parking_node()
+    {
+        // Characterization pin for an untested safety rule: a stand connector is not
+        // a holding point. The parking node at 3 m must be skipped in favour of the
+        // plain taxiway node at 12 m.
+        var graph = BuildGraph(
+            Edge(3, 0, "P", 3, 60, "P", name: "STAND"),
+            Edge(12, 0, "", 80, 0, ""));
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("VIKAS", LatN(0), LonE(0), "intermediate") });
+
+        var hp = Assert.Single(result);
+        Assert.Equal(NodeNear(graph, 12, 0).NodeId, hp.NodeId);
+    }
+
+    [Theory]
+    [InlineData("RUNWAY", "N2E (runway hold)")]
+    [InlineData("ils", "A11 (ILS hold)")]
+    [InlineData("  intermediate  ", "A11 (intermediate hold)")]
+    public void DisplayLabel_tolerates_kind_casing_and_whitespace(string kind, string expected)
+    {
+        string name = expected.Split(' ')[0];
+        var hp = new NamedHoldingPoint { Name = name, Kind = kind };
+        Assert.Equal(expected, hp.DisplayLabel);
+    }
 }

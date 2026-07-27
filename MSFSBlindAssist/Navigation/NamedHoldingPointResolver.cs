@@ -46,13 +46,22 @@ public sealed class NamedHoldingPoint
     /// screen-reader user hears what sort of hold they're picking. First-letter
     /// type-ahead still works because the designator leads.
     /// </summary>
-    public string DisplayLabel => Kind switch
+    public string DisplayLabel
     {
-        "runway"       => $"{Name} (runway hold)",
-        "ILS"          => $"{Name} (ILS hold)",
-        "intermediate" => $"{Name} (intermediate hold)",
-        _              => Name,
-    };
+        get
+        {
+            // Normalized at read time as well as on construction: OSM is hand-edited
+            // and the property is also built directly in tests.
+            string suffix = Kind.Trim().ToLowerInvariant() switch
+            {
+                "runway"       => " (runway hold)",
+                "ils"          => " (ILS hold)",
+                "intermediate" => " (intermediate hold)",
+                _              => "",
+            };
+            return Name + suffix;
+        }
+    }
 }
 
 /// <summary>
@@ -127,7 +136,7 @@ public static class NamedHoldingPointResolver
             var candidate = new NamedHoldingPoint
             {
                 Name = name,
-                Kind = kind ?? "",
+                Kind = (kind ?? "").Trim(),
                 NodeId = chosen.NodeId,
                 Latitude = chosen.Latitude,
                 Longitude = chosen.Longitude,
