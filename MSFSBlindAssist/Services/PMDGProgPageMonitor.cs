@@ -187,6 +187,10 @@ public class PMDGProgPageMonitor : IDisposable
     /// This is the only place we re-trigger PMDG navigation outside of
     /// init — keeping it user-driven means we never fight the user when
     /// they're working on a different page.
+    ///
+    /// Never throws. Returns null for every failure — unpowered CDU, page
+    /// that wouldn't render, or an unexpected exception — which is the
+    /// callers' signal to announce the SDK readout instead.
     /// </summary>
     public Task<PMDGProgPageReader.ProgPageData?> ReadProgPageAsync()
     {
@@ -208,52 +212,71 @@ public class PMDGProgPageMonitor : IDisposable
     /// The live probe itself. Always entered through
     /// <see cref="ReadProgPageAsync"/>, which serializes concurrent callers
     /// onto a single run — do not call this directly.
+    ///
+    /// Never throws: every failure, including an unexpected exception out
+    /// of SimConnect, is reported as null so the caller takes its SDK
+    /// fallback. See the catch block for why that matters.
     /// </summary>
     private async Task<PMDGProgPageReader.ProgPageData?> ProbeProgPageAsync()
     {
-        // Step 1 — fresh snapshot of whatever the right CDU is currently showing.
-        _dataManager.RequestCDUScreen(RIGHT_CDU);
-        await Task.Delay(SnapshotDelayMs);
-        var rows = _dataManager.GetCDURows(RIGHT_CDU);
-        if (rows == null)
+        try
         {
-            LastError = "Right CDU not powered";
-            return null;
-        }
-
-        // Step 2 — if not on PROG, switch and re-fetch.
-        if (!PMDGProgPageReader.IsProgPage(rows))
-        {
-            if (!PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
-            {
-                LastError = "EVT_CDU_R_PROG event id missing";
-                return null;
-            }
-            // CDA path (parameter 1 = pressed) — same as PMDG777CDUForm's
-            // PROG button. See init-tick comment.
-            _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
-            await Task.Delay(PageRenderDelayMs);
+            // Step 1 — fresh snapshot of whatever the right CDU is currently showing.
             _dataManager.RequestCDUScreen(RIGHT_CDU);
             await Task.Delay(SnapshotDelayMs);
-            rows = _dataManager.GetCDURows(RIGHT_CDU);
+            var rows = _dataManager.GetCDURows(RIGHT_CDU);
             if (rows == null)
             {
-                LastError = "Right CDU went unpowered mid-probe";
+                LastError = "Right CDU not powered";
                 return null;
             }
+
+            // Step 2 — if not on PROG, switch and re-fetch.
             if (!PMDGProgPageReader.IsProgPage(rows))
             {
-                // PMDG didn't switch in time — could be a ground-event
-                // suppression, could be slow rendering. Caller falls back
-                // to the SDK readout.
-                LastError = "PROG page did not render in time";
-                return null;
+                if (!PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
+                {
+                    LastError = "EVT_CDU_R_PROG event id missing";
+                    return null;
+                }
+                // CDA path (parameter 1 = pressed) — same as PMDG777CDUForm's
+                // PROG button. See init-tick comment.
+                _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
+                await Task.Delay(PageRenderDelayMs);
+                _dataManager.RequestCDUScreen(RIGHT_CDU);
+                await Task.Delay(SnapshotDelayMs);
+                rows = _dataManager.GetCDURows(RIGHT_CDU);
+                if (rows == null)
+                {
+                    LastError = "Right CDU went unpowered mid-probe";
+                    return null;
+                }
+                if (!PMDGProgPageReader.IsProgPage(rows))
+                {
+                    // PMDG didn't switch in time — could be a ground-event
+                    // suppression, could be slow rendering. Caller falls back
+                    // to the SDK readout.
+                    LastError = "PROG page did not render in time";
+                    return null;
+                }
             }
-        }
 
-        var parsed = PMDGProgPageReader.Parse(rows);
-        LastError = "";
-        return parsed;
+            var parsed = PMDGProgPageReader.Parse(rows);
+            LastError = "";
+            return parsed;
+        }
+        catch (Exception ex)
+        {
+            // Degrade to the SDK readout, never to silence. The handlers
+            // announce their fallback when we return null, but a thrown
+            // exception would fault their fire-and-forget task instead and
+            // the pilot would hear nothing at all from the press. Shared
+            // callers all observe this null, so one failure can't fault a
+            // probe that other presses are waiting on either.
+            LastError = $"PROG probe: {ex.GetType().Name}: {ex.Message}";
+            Log.Debug("Services", $"{LastError}");
+            return null;
+        }
     }
 
     public void Dispose()

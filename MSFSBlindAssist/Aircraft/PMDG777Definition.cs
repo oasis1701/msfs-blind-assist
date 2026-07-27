@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -6764,33 +6765,46 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                         // the FMC ticks every mile and the readout must too.
                         _ = Task.Run(async () =>
                         {
-                            var prog = await monitor.ReadProgPageAsync();
-                            if (prog != null && prog.IsValid)
+                            try
                             {
-                                if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                var prog = await monitor.ReadProgPageAsync();
+                                if (prog != null && prog.IsValid)
                                 {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
-                                    return;
+                                    if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
+                                        return;
+                                    }
+                                    if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
+                                        return;
+                                    }
+                                    if (prog.DistanceToTOD > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
+                                        return;
+                                    }
+                                    // PROG showed none of those phases — fall through to SDK.
                                 }
-                                if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
-                                {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
-                                    return;
-                                }
-                                if (prog.DistanceToTOD > 0)
-                                {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
-                                    return;
-                                }
-                                // PROG showed none of those phases — fall through to SDK.
+                                AnnounceTODFromSDK(simConnect, dm, announcer);
                             }
-                            AnnounceTODFromSDK(simConnect, dm, announcer);
+                            catch (Exception ex)
+                            {
+                                // Fire-and-forget: an escaped exception would vanish
+                                // as an unobserved task fault, leaving the press
+                                // silent with nothing in the log to explain it.
+                                // ReadProgPageAsync never throws, so reaching here
+                                // means the SDK readout itself failed — there is no
+                                // further fallback to try, only a record to leave.
+                                Log.Debug("PMDG", $"TOD readout failed: {ex.GetType().Name}: {ex.Message}");
+                            }
                         });
                         return true;
                     }
@@ -6814,20 +6828,28 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     {
                         _ = Task.Run(async () =>
                         {
-                            var prog = await monitor.ReadProgPageAsync();
-                            if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                            try
                             {
-                                string distStr = Math.Round(prog.DistanceToDest)
-                                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
-                                string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
-                                string fuelStr = prog.LandingFuel >= 0
-                                    ? $", landing fuel {prog.LandingFuel:F1}"
-                                    : "";
-                                announcer.AnnounceImmediate(
-                                    $"Distance to destination: {distStr}{etaStr}{fuelStr}");
-                                return;
+                                var prog = await monitor.ReadProgPageAsync();
+                                if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                                {
+                                    string distStr = Math.Round(prog.DistanceToDest)
+                                        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                    string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
+                                    string fuelStr = prog.LandingFuel >= 0
+                                        ? $", landing fuel {prog.LandingFuel:F1}"
+                                        : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to destination: {distStr}{etaStr}{fuelStr}");
+                                    return;
+                                }
+                                AnnounceDestFromSDK(simConnect, dm, announcer);
                             }
-                            AnnounceDestFromSDK(simConnect, dm, announcer);
+                            catch (Exception ex)
+                            {
+                                // See the TOD handler — same fire-and-forget rule.
+                                Log.Debug("PMDG", $"Destination readout failed: {ex.GetType().Name}: {ex.Message}");
+                            }
                         });
                         return true;
                     }
