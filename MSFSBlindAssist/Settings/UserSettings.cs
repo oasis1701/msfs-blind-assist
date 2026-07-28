@@ -160,6 +160,14 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // SayIntentions Settings
+        // API key is OPTIONAL. When blank the integration reads the key from
+        // %LOCALAPPDATA%\SayIntentionsAI\flight.json during an active SI flight.
+        // Auto-start defaults OFF: the taxi route is built from parsed ATC speech,
+        // so the pilot reviews the pre-filled dialog before guidance begins.
+        public string SayIntentionsApiKey { get; set; } = "";
+        public bool SayIntentionsAutoStartTaxiGuidance { get; set; } = false;
+
         // iFly 737 MAX8 Settings — the SP1 EFB HTTP server port (iFly Manager
         // default 8084; user-configurable there since hotfix 1.1.0.1).
         public int IFlyEfbPort { get; set; } = 8084;
@@ -523,6 +531,8 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            SayIntentionsApiKey = SayIntentionsApiKey,
+            SayIntentionsAutoStartTaxiGuidance = SayIntentionsAutoStartTaxiGuidance,
             IFlyEfbPort = IFlyEfbPort,
             AiProvider = AiProvider,
             GeminiApiKey = GeminiApiKey,
