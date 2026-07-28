@@ -34,7 +34,9 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 /// visual confirm). Soft keys fire the REAL DCDU H-events via the calc path
 /// ((>H:A32NX_DCDU_BTN_MPL_*) — each Button listens for both units), each
 /// string sequence-uniquified so MobiFlight's consecutive-identical-string
-/// coalescing can't drop a repeated key (the WILCO→SEND flow).
+/// coalescing can't drop a repeated key (the WILCO→SEND flow). A key the unit
+/// is refusing is recovered rather than dead-ended — see
+/// <see cref="ReassertEndOfMessageAndFireAsync"/>.
 /// </summary>
 public class FlyByWireDcduForm : Form
 {
@@ -56,7 +58,17 @@ public class FlyByWireDcduForm : Form
     private bool _refreshing;
     private string _btnL1 = "", _btnL2 = "", _btnR1 = "", _btnR2 = "";
     private bool _actL1, _actL2, _actR1, _actR2;
+    private int _pageIndex, _pageCount;
     private int _calcSeq;
+
+    /// <summary>
+    /// How long to let the DCDU re-render after the page-forward key before
+    /// re-reading the soft keys in <see cref="ReassertEndOfMessageAndFireAsync"/>.
+    /// The unit's page handler is plain synchronous React state — the 1 s
+    /// press-confirm delay applies only to the answer Buttons — so this just
+    /// has to cover the H-event round trip.
+    /// </summary>
+    private const int ReassertSettleMs = 350;
 
     public FlyByWireDcduForm(ScreenReaderAnnouncer announcer, SimConnect.SimConnectManager simConnect)
     {
@@ -157,6 +169,7 @@ public class FlyByWireDcduForm : Form
                     // confirm an action the unit never saw.
                     _btnL1 = _btnL2 = _btnR1 = _btnR2 = "";
                     _actL1 = _actL2 = _actR1 = _actR2 = false;
+                    _pageIndex = _pageCount = 0;
                     SetText("DCDU unavailable.");
                     return;
                 }
@@ -198,6 +211,14 @@ public class FlyByWireDcduForm : Form
                     // assume label-present = active rather than refusing every key.
                     _actL1 = _btnL1.Length > 0; _actL2 = _btnL2.Length > 0;
                     _actR1 = _btnR1.Length > 0; _actR2 = _btnR2.Length > 0;
+                }
+                // 0/0 when the message fits one page (the unit renders no page
+                // counter then) and for an older scrape js without the field.
+                _pageIndex = _pageCount = 0;
+                if (root.TryGetProperty("page", out var page))
+                {
+                    if (page.TryGetProperty("idx", out var pi)) pi.TryGetInt32(out _pageIndex);
+                    if (page.TryGetProperty("cnt", out var pc)) pc.TryGetInt32(out _pageCount);
                 }
             }
             catch
@@ -320,12 +341,11 @@ public class FlyByWireDcduForm : Form
             return;
         }
         // An inactive Button ignores its H-event entirely (Button.tsx guards on
-        // active) — most commonly because a long uplink hasn't been read to the
-        // end yet, or a response is still transmitting. Saying the label here
-        // would falsely confirm an action the unit refused.
+        // active), so pressing it now would do nothing and saying the label
+        // would falsely confirm it. Try to clear the cause before giving up.
         if (!active)
         {
-            _announcer.AnnounceImmediate($"{label} not available yet. Read to the end of the message first.");
+            _ = ReassertEndOfMessageAndFireAsync(slot, label);
             return;
         }
         if (!_simConnect.IsMobiFlightConnected)
@@ -333,6 +353,11 @@ public class FlyByWireDcduForm : Form
             _announcer.AnnounceImmediate("Sim connection not ready. Key not sent.");
             return;
         }
+        SendSoftKey(slot, label);
+    }
+
+    private void SendSoftKey(string slot, string label)
+    {
         FireDcduEvent($"BTN_MPL_{slot}");
         // The DCDU confirms a press visually for 1 s before acting — speak the
         // label now (action confirmation, not a UI echo) and re-scrape after
@@ -340,6 +365,104 @@ public class FlyByWireDcduForm : Form
         _announcer.AnnounceImmediate(label.Replace("*", "").Trim());
         _postActionTimer.Stop();
         _postActionTimer.Start();
+    }
+
+    /// <summary>
+    /// Handles a soft key the DCDU is currently refusing, recovering it where
+    /// the refusal is the unit's own stale state rather than a real "you have
+    /// not read this yet".
+    ///
+    /// Every answer key is gated on the displayed message's
+    /// <c>reachedEndOfMessage</c> flag (WilcoUnableButtons / AffirmNegative-
+    /// Buttons / OutputButtons / SemanticResponseButtons all fold it into
+    /// <c>buttonsBlocked</c>). That flag is raised in exactly TWO places, both
+    /// in MessageVisualization: the render-time page-count transition
+    /// (<c>if (messageView.pageCount !== pageCount) reachedEndOfMessage(uid,
+    /// messageView.pageCount === 1)</c>) and the POEMINUS/POEPLUS page-key
+    /// handlers. Because <c>pageCount</c> is component STATE that survives a
+    /// message swap, a new message whose page count MATCHES the one the
+    /// visualization last rendered never trips that transition — so its block
+    /// keeps the initial <c>reachedEndOfMessage = false</c> and every answer
+    /// key stays dead, with nothing on screen to say why. Measured live
+    /// (2026-07-28) on a single-page "CONTACT ... ON 123.225" uplink: pageIndex
+    /// 0, pageCount 1, flag false, UNABLE/STBY/WILCO all active=false. This is
+    /// FBW-side and hits sighted pilots identically — the cockpit buttons are
+    /// H-event-only, so a mouse click is refused the same way.
+    ///
+    /// The unit's own way out is a page key. POEPLUS sets the flag from
+    /// <c>pageCount &lt;= pageIndex + 2</c> and does NOT advance the page once
+    /// the last page is displayed, so when the pilot really is at the end it is
+    /// a pure re-assert that can only unblock. We therefore send it and retry
+    /// the key — but ONLY when the scrape shows nothing left to read. With
+    /// pages still unread we refuse as before, now naming the page the pilot is
+    /// on rather than dead-ending on "read to the end first"; paging past
+    /// unread text on their behalf is never right.
+    ///
+    /// Both decisions are taken on a FRESH scrape: the caller's active/page
+    /// snapshot can be up to a poll old, so a pilot who pages to the last page
+    /// and answers straight away would otherwise be refused against the state
+    /// before their own page key.
+    /// </summary>
+    private async Task ReassertEndOfMessageAndFireAsync(string slot, string label)
+    {
+        string spoken = label.Replace("*", "").Trim();
+        if (!_simConnect.IsMobiFlightConnected)
+        {
+            _announcer.AnnounceImmediate("Sim connection not ready. Key not sent.");
+            return;
+        }
+        await ForceRefreshAsync();
+        if (IsDisposed) return;
+        if (TryPressSlot(slot, label)) return;
+        if (_pageCount > 1 && _pageIndex < _pageCount)
+        {
+            _announcer.AnnounceImmediate(
+                $"{spoken} not available yet. Page {_pageIndex} of {_pageCount}. Press control page down to read on.");
+            return;
+        }
+        FireDcduEvent("BTN_MPL_POEPLUS");
+        await Task.Delay(ReassertSettleMs);
+        if (IsDisposed) return;
+        await ForceRefreshAsync();
+        if (IsDisposed) return;
+        if (TryPressSlot(slot, label)) return;
+        // The remaining known blocker is a response still going out
+        // (ComStatus == Sending), which no key press can shorten.
+        _announcer.AnnounceImmediate($"{spoken} not available. The message may still be transmitting.");
+    }
+
+    /// <summary>
+    /// Presses the slot only if it is live AND still carries the key the pilot
+    /// asked for — a message arriving in between re-labels the slot, and
+    /// pressing it then would answer something they never chose.
+    /// </summary>
+    private bool TryPressSlot(string slot, string label)
+    {
+        var (nowLabel, nowActive) = SlotState(slot);
+        if (!nowActive || !string.Equals(nowLabel, label, StringComparison.Ordinal)) return false;
+        SendSoftKey(slot, label);
+        return true;
+    }
+
+    private (string Label, bool Active) SlotState(string slot) => slot switch
+    {
+        "L1" => (_btnL1, _actL1),
+        "L2" => (_btnL2, _actL2),
+        "R1" => (_btnR1, _actR1),
+        _ => (_btnR2, _actR2),
+    };
+
+    /// <summary>
+    /// A fresh scrape, even if the 1 s poll is mid-flight —
+    /// <see cref="RefreshDisplayAsync"/> no-ops while one is, so a bare call can
+    /// return having re-read nothing. The retry decision must never be made on
+    /// the pre-page-key snapshot. (An in-flight poll that started AFTER the page
+    /// key is itself fresh, so falling through the wait is safe.)
+    /// </summary>
+    private async Task ForceRefreshAsync()
+    {
+        for (int i = 0; i < 12 && _refreshing && !IsDisposed; i++) await Task.Delay(80);
+        if (!IsDisposed) await RefreshDisplayAsync();
     }
 
     /// <summary>
