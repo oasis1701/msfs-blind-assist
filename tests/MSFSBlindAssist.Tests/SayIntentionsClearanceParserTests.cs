@@ -94,4 +94,82 @@ public class SayIntentionsClearanceParserTests
     {
         Assert.Equal(expected, SayIntentionsClearanceParser.LooksLikeTaxiClearance(text));
     }
+
+    // ---- Taxiway sequence ----
+    //
+    // knownTaxiways always comes from the live TaxiGraph, so only names the
+    // airport really has can ever be returned. These fixtures mirror CYYZ, the
+    // airport PR #86 was smoke-tested at.
+
+    private static readonly string[] CyyzTaxiways = { "AT", "A", "T", "R", "B", "D", "H", "Q" };
+
+    [Fact]
+    public void PhoneticTaxiwaysResolveToTheirNavdataNames()
+    {
+        var result = SayIntentionsClearanceParser.ParseTaxiways(
+            "Runway one-five-left via Alpha-Tango, Romeo, Bravo, hold short of runway two-three",
+            CyyzTaxiways);
+        Assert.Equal(new[] { "AT", "R", "B" }, result);
+    }
+
+    [Fact]
+    public void RouteContinuesPastARunwayCrossing()
+    {
+        // PR #86 split the route text at "cross" and dropped everything after,
+        // losing the post-crossing taxiway. Clearances legitimately continue
+        // (and reuse taxiways) across a crossing — the KBOS pattern recorded in
+        // docs/taxi-guidance.md.
+        var result = SayIntentionsClearanceParser.ParseTaxiways(
+            "Taxi to gate via Bravo, cross runway 15, then Delta", CyyzTaxiways);
+        Assert.Equal(new[] { "B", "D" }, result);
+    }
+
+    [Fact]
+    public void TheEnglishArticleIsNotTaxiwayAlpha()
+    {
+        // Literal single-letter alternatives match case-SENSITIVELY, so lowercase
+        // "a"/"at" in prose can never be read as taxiway A / AT.
+        var result = SayIntentionsClearanceParser.ParseTaxiways(
+            "Taxi to a stand at the terminal via Romeo", CyyzTaxiways);
+        Assert.Equal(new[] { "R" }, result);
+    }
+
+    [Fact]
+    public void LongerTaxiwayNamesWinOverTheirPrefixes()
+    {
+        var result = SayIntentionsClearanceParser.ParseTaxiways("via Alpha-Tango", CyyzTaxiways);
+        Assert.Equal(new[] { "AT" }, result);
+    }
+
+    [Fact]
+    public void SequenceTerminatesAtAFrequencyHandoff()
+    {
+        var result = SayIntentionsClearanceParser.ParseTaxiways(
+            "via Bravo, Romeo, contact tower on Delta point seven", CyyzTaxiways);
+        Assert.Equal(new[] { "B", "R" }, result);
+    }
+
+    [Fact]
+    public void ConsecutiveDuplicatesCollapse()
+    {
+        // SI speech repeats a taxiway across a hold-short; the dialog models each
+        // taxiway once, so consecutive repeats collapse.
+        var result = SayIntentionsClearanceParser.ParseTaxiways(
+            "via Alpha-Tango, Alpha-Tango, Romeo", CyyzTaxiways);
+        Assert.Equal(new[] { "AT", "R" }, result);
+    }
+
+    [Fact]
+    public void NonConsecutiveReuseIsPreserved()
+    {
+        // A taxiway legitimately reappears later in a clearance — never dedupe globally.
+        var result = SayIntentionsClearanceParser.ParseTaxiways("via Bravo, Romeo, Bravo", CyyzTaxiways);
+        Assert.Equal(new[] { "B", "R", "B" }, result);
+    }
+
+    [Fact]
+    public void NoViaKeywordYieldsNoTaxiways()
+    {
+        Assert.Empty(SayIntentionsClearanceParser.ParseTaxiways("Taxi to gate A9", CyyzTaxiways));
+    }
 }

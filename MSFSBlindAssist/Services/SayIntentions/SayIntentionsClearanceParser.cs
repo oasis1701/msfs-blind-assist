@@ -101,6 +101,108 @@ public static class SayIntentionsClearanceParser
         return Regex.Replace(normalized, @"[^0-9LCR]", "");
     }
 
+    private static readonly Regex ViaKeyword = new(
+        @"\bVIA\b(?<route>.+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>Ends the route: everything after one of these is no longer a
+    /// taxiway list. Deliberately EXCLUDES "cross" and "then" — a clearance
+    /// continues across a runway crossing (KBOS pattern, docs/taxi-guidance.md);
+    /// crossings are masked out instead of truncating the route.</summary>
+    private static readonly Regex RouteTerminator = new(
+        @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Dictionary<char, string> Nato = new()
+    {
+        ['A'] = "ALPHA",   ['B'] = "BRAVO",   ['C'] = "CHARLIE",      ['D'] = "DELTA",
+        ['E'] = "ECHO",    ['F'] = "FOXTROT", ['G'] = "GOLF",         ['H'] = "HOTEL",
+        ['I'] = "INDIA",   ['J'] = "JULIET(?:T)?", ['K'] = "KILO",    ['L'] = "LIMA",
+        ['M'] = "MIKE",    ['N'] = "NOVEMBER",['O'] = "OSCAR",        ['P'] = "PAPA",
+        ['Q'] = "QUEBEC",  ['R'] = "ROMEO",   ['S'] = "SIERRA",       ['T'] = "TANGO",
+        ['U'] = "UNIFORM", ['V'] = "VICTOR",  ['W'] = "WHISKEY",      ['X'] = "X-?RAY",
+        ['Y'] = "YANKEE",  ['Z'] = "ZULU"
+    };
+
+    /// <summary>Resolves the spoken taxiway sequence against the airport's real
+    /// taxiway names. Only names the graph actually knows are returned.</summary>
+    public static List<string> ParseTaxiways(string? clearance, IReadOnlyList<string> knownTaxiways)
+    {
+        if (string.IsNullOrWhiteSpace(clearance) || knownTaxiways.Count == 0)
+            return new List<string>();
+
+        var via = ViaKeyword.Match(MaskHoldShortAndCrossings(clearance));
+        if (!via.Success) return new List<string>();
+
+        string route = via.Groups["route"].Value;
+        var terminator = RouteTerminator.Match(route);
+        if (terminator.Success) route = route.Substring(0, terminator.Index);
+
+        // Collect every candidate hit, then resolve overlaps longest-first so
+        // "Alpha-Tango" reads as AT rather than A followed by T.
+        var hits = new List<(string Name, int Index, int End)>();
+        foreach (string taxiway in knownTaxiways)
+        {
+            foreach (Match match in Regex.Matches(route, BuildTaxiwayPattern(taxiway)))
+                hits.Add((taxiway, match.Index, match.Index + match.Length));
+        }
+
+        var selected = new List<(string Name, int Index, int End)>();
+        foreach (var hit in hits.OrderBy(h => h.Index).ThenByDescending(h => h.End - h.Index))
+        {
+            if (selected.Any(s => hit.Index < s.End && hit.End > s.Index)) continue;
+            selected.Add(hit);
+        }
+
+        return CollapseConsecutive(selected.OrderBy(h => h.Index).Select(h => h.Name).ToList());
+    }
+
+    /// <summary>
+    /// Matches a taxiway either as its literal designator or spelled out in NATO
+    /// phonetics. The literal branch is CASE-SENSITIVE (uppercase only) while the
+    /// phonetic branch is not — that asymmetry is what stops the English article
+    /// "a" being read as taxiway A, and the preposition "at" as taxiway AT.
+    /// Callers must therefore NOT pass RegexOptions.IgnoreCase.
+    /// </summary>
+    internal static string BuildTaxiwayPattern(string taxiway)
+    {
+        string trimmed = taxiway.Trim().ToUpperInvariant();
+        var parts = new List<string>();
+
+        if (Regex.IsMatch(trimmed, @"^[A-Z][A-Z0-9]*$"))
+        {
+            foreach (char c in trimmed)
+            {
+                parts.Add(Nato.TryGetValue(c, out string? word)
+                    ? $"(?:{Regex.Escape(c.ToString())}|(?i:{word}))"
+                    : Regex.Escape(c.ToString()));
+            }
+        }
+        else
+        {
+            parts.Add(Regex.Replace(Regex.Escape(trimmed), @"(\\)?\s+", @"[\s-]*"));
+        }
+
+        return $@"(?<![A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?![A-Za-z0-9])";
+    }
+
+    /// <summary>Strips punctuation/spacing for name comparison: "A 1" → "A1".</summary>
+    public static string NormalizeTaxiwayName(string value) =>
+        Regex.Replace(value.ToUpperInvariant(), @"[^A-Z0-9]", "");
+
+    /// <summary>Collapses runs of the same name. Non-consecutive reuse survives —
+    /// a clearance legitimately revisits a taxiway after a runway crossing.</summary>
+    public static List<string> CollapseConsecutive(IReadOnlyList<string> values)
+    {
+        var result = new List<string>();
+        foreach (string value in values)
+        {
+            if (result.Count == 0 || !result[^1].Equals(value, StringComparison.OrdinalIgnoreCase))
+                result.Add(value);
+        }
+        return result;
+    }
+
     /// <summary>Canonicalizes a runway identifier to zero-padded digits plus an
     /// optional side. Returns null when the text carries no runway number.</summary>
     public static string? CleanRunway(string? value)
