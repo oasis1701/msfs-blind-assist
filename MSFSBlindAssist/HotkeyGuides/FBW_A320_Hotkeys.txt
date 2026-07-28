@@ -232,14 +232,15 @@ Windows:
              press arms the answer (e.g. Alt+2 = WILCO) and the keys change
              to CANCEL / SEND — the second Alt+2 actually transmits. After
              sending, right 2 becomes CLOSE to dismiss the message.
-             PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
-             scroll within a long message (Ctrl+PageDown = next page). NOTE:
-             on a long multi-page uplink the answer keys stay inactive until
-             you have paged to the END of the message — the window then says
-             which page you are on, e.g. "WILCO not available yet. Page 1 of
-             2. Press control page down to read on." On a message you HAVE
-             read to the end, a key the unit is still refusing is unblocked
-             automatically and then pressed, so you never get stuck.
+             PageUp/PageDown = scroll within the message you are reading
+             (PageDown = next page), the same as in the MCDU window.
+             Ctrl+PageUp/PageDown = older/newer message. NOTE: on a long
+             multi-page uplink the answer keys stay inactive until you have
+             paged to the END of the message — the window then says which
+             page you are on, e.g. "WILCO not available yet. Page 1 of 2.
+             Press page down to read on." On a message you HAVE read to the
+             end, a key the unit is still refusing is unblocked automatically
+             and then pressed, so you never get stuck.
              F5 = refresh, Escape = close.
              Needs a datalink connection: set the ACARS provider (Hoppie /
              SayIntentions / BeyondATC) in the flyPad Settings, then log on

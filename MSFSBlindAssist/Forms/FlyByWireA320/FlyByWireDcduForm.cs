@@ -22,8 +22,9 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 ///   standard:  Ctrl+1 / Ctrl+2 = left keys, Alt+1 / Alt+2 = right keys
 ///   alternate: F1 / F2 = left keys, F7 / F8 = right keys
 /// Row 1 is the upper soft-key row, row 2 the lower (where RECALL lives).
-/// PageUp / PageDown step between messages; Ctrl+PageUp / Ctrl+PageDown
-/// scroll within a long message; F5 refreshes.
+/// PageUp / PageDown scroll within the displayed message — matching what
+/// unmodified PageUp / PageDown do in every other CDU window; Ctrl+PageUp /
+/// Ctrl+PageDown step between messages. F5 refreshes.
 ///
 /// Transport: ONE-SHOT <see cref="SimConnect.CoherentEvalClient"/> evals of
 /// Resources/coherent-a32nx-dcdu.js against the "DCDU" Coherent view — NO
@@ -302,18 +303,21 @@ public class FlyByWireDcduForm : Form
                 return;
             }
         }
-        // Message navigation: PageUp/Down steps between messages; with Ctrl it
-        // scrolls within a long message (page-of-elements). Direction: DOWN is
-        // FORWARD everywhere — messages sort oldest-first (index.tsx), so
-        // MS0PLUS = newer message; POEPLUS = next page of a long message
-        // (MessageVisualization.tsx: POEMINUS = pageIndex-1). The within-message
-        // direction matters beyond reading order: the answer keys stay INACTIVE
-        // until the pilot has paged to the END of a multi-page uplink.
+        // Navigation. PLAIN PageUp/Down scrolls WITHIN the displayed message
+        // (page-of-elements) — the same thing unmodified PageUp/Down does in
+        // every other CDU window in the app (MCDU A320/A380, PMDG, HS787,
+        // iFly all slew the content being read). It is also the load-bearing
+        // one here: the answer keys stay INACTIVE until the pilot has paged to
+        // the END of a multi-page uplink, so it must not sit behind a modifier.
+        // Ctrl steps between MESSAGES — the rarer "go read a different one".
+        // Direction: DOWN is FORWARD everywhere — POEPLUS = next page of the
+        // message (MessageVisualization.tsx: POEMINUS = pageIndex-1); messages
+        // sort oldest-first (index.tsx), so MS0PLUS = newer message.
         if (e.KeyCode is Keys.PageUp or Keys.PageDown)
         {
             string key = e.Control
-                ? (e.KeyCode == Keys.PageUp ? "POEMINUS" : "POEPLUS")
-                : (e.KeyCode == Keys.PageUp ? "MS0MINUS" : "MS0PLUS");
+                ? (e.KeyCode == Keys.PageUp ? "MS0MINUS" : "MS0PLUS")
+                : (e.KeyCode == Keys.PageUp ? "POEMINUS" : "POEPLUS");
             FireDcduEvent($"BTN_MPL_{key}");
             _postActionTimer.Stop();
             _postActionTimer.Start();
@@ -395,8 +399,8 @@ public class FlyByWireDcduForm : Form
     /// a pure re-assert that can only unblock. We therefore send it and retry
     /// the key — but ONLY when the scrape shows nothing left to read. With
     /// pages still unread we refuse as before, now naming the page the pilot is
-    /// on rather than dead-ending on "read to the end first"; paging past
-    /// unread text on their behalf is never right.
+    /// on and the key that gets them there rather than dead-ending on "read to
+    /// the end first"; paging past unread text on their behalf is never right.
     ///
     /// Both decisions are taken on a FRESH scrape: the caller's active/page
     /// snapshot can be up to a poll old, so a pilot who pages to the last page
@@ -417,7 +421,7 @@ public class FlyByWireDcduForm : Form
         if (_pageCount > 1 && _pageIndex < _pageCount)
         {
             _announcer.AnnounceImmediate(
-                $"{spoken} not available yet. Page {_pageIndex} of {_pageCount}. Press control page down to read on.");
+                $"{spoken} not available yet. Page {_pageIndex} of {_pageCount}. Press page down to read on.");
             return;
         }
         FireDcduEvent("BTN_MPL_POEPLUS");
