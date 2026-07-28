@@ -186,6 +186,39 @@ public static class SayIntentionsClearanceParser
         return $@"(?<![A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?![A-Za-z0-9])";
     }
 
+    /// <summary>A descriptor tail is separated by a SPACED dash ("A9 - Terminal 1").
+    /// A bare hyphen is part of the stand name ("A-9") and must survive.</summary>
+    private static readonly Regex ParkingDescriptorSuffix = new(
+        @"\s+[-–—]\s+.*$", RegexOptions.Compiled);
+
+    private static readonly Regex ParkingNoiseWords = new(
+        @"\b(?:GATE|PARKING|STAND|SPOT|RAMP|POSITION)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex GateInClearance = new(
+        @"\b(?:GATE|STAND|PARKING|RAMP|SPOT)\s+(?<gate>[A-Z]{0,2}\s?[0-9]{1,3}[A-Z]?|[A-Z][0-9]{0,3})\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Canonical form for comparing a SayIntentions gate label against a
+    /// navdata parking spot.</summary>
+    public static string NormalizeParkingName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        string cleaned = ParkingDescriptorSuffix.Replace(value.Trim(), "");
+        cleaned = ParkingNoiseWords.Replace(cleaned.ToUpperInvariant(), "");
+        return Regex.Replace(cleaned, @"[^A-Z0-9]", "");
+    }
+
+    /// <summary>The gate/stand a taxi clearance routes to, or null.</summary>
+    public static string? ParseDestinationGate(string? clearance)
+    {
+        if (string.IsNullOrWhiteSpace(clearance)) return null;
+        var match = GateInClearance.Match(MaskHoldShortAndCrossings(clearance));
+        if (!match.Success) return null;
+        string gate = NormalizeParkingName(match.Groups["gate"].Value);
+        return string.IsNullOrWhiteSpace(gate) ? null : gate;
+    }
+
     /// <summary>Strips punctuation/spacing for name comparison: "A 1" → "A1".</summary>
     public static string NormalizeTaxiwayName(string value) =>
         Regex.Replace(value.ToUpperInvariant(), @"[^A-Z0-9]", "");

@@ -172,4 +172,27 @@ public class SayIntentionsClearanceParserTests
     {
         Assert.Empty(SayIntentionsClearanceParser.ParseTaxiways("Taxi to gate A9", CyyzTaxiways));
     }
+
+    // ---- Parking names ----
+
+    [Theory]
+    [InlineData("Gate A9", "A9")]
+    [InlineData("A-9", "A9")]                       // PR #86 truncated this to "A"
+    [InlineData("Parking 12L", "12L")]
+    [InlineData("A9 - Terminal 1", "A9")]           // a SPACED dash IS a descriptor separator
+    [InlineData("Ramp 4", "4")]
+    [InlineData("", "")]
+    public void ParkingNamesNormalize(string raw, string expected)
+    {
+        Assert.Equal(expected, SayIntentionsClearanceParser.NormalizeParkingName(raw));
+    }
+
+    [Theory]
+    [InlineData("Taxi to gate A9 via Alpha", "A9")]
+    [InlineData("Taxi to stand 41 via Bravo", "41")]
+    [InlineData("Runway 15L via Alpha", null)]
+    public void GateDestinationExtraction(string clearance, string? expected)
+    {
+        Assert.Equal(expected, SayIntentionsClearanceParser.ParseDestinationGate(clearance));
+    }
 }
