@@ -18,6 +18,9 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 public sealed class SayIntentionsService
 {
     private const int ApiTimeoutSeconds = 5;
+    private const string AtcSpeaker = "ATC";
+    private const string PilotSpeaker = "Pilot";
+
     private static readonly TimeSpan CommsCacheDuration = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ParkingCacheDuration = TimeSpan.FromSeconds(10);
 
@@ -27,6 +30,15 @@ public sealed class SayIntentionsService
     {
         Timeout = TimeSpan.FromSeconds(ApiTimeoutSeconds)
     };
+
+    /// <summary>Wording that marks a bare "message" payload (one with no "error"
+    /// member) as a rejection rather than a status line. Kept tight on purpose —
+    /// see TryGetApiError.</summary>
+    private static readonly System.Text.RegularExpressions.Regex ErrorMessageVocabulary = new(
+        @"\b(?:ERROR|INVALID|UNAUTHORI[SZ]ED|FORBIDDEN|DENIED|EXPIRED|REQUIRED|MISSING|" +
+        @"FAILED|FAILURE|API\s+KEY|NOT\s+FOUND|BAD\s+REQUEST|RATE\s+LIMIT)\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private readonly string _flightJsonPath;
 
@@ -197,6 +209,15 @@ public sealed class SayIntentionsService
     /// and nulled the cache, so a second hotkey press during a slow request hit a
     /// populated-but-empty cache and spoke "no transmission available" — exactly
     /// when the pilot pressed again because they had heard nothing.
+    ///
+    /// The latch must only ever hold a request that is genuinely still running.
+    /// A plain "??= Fetch(...)" could not guarantee that: an async method may run to
+    /// completion synchronously (an exception thrown before its first await is
+    /// captured into the returned Task, so the body — including the finally that
+    /// clears the latch — has already run by the time ??= stores it), which latched
+    /// a finished, possibly faulted task forever and replayed it on every later
+    /// press. Hence: ignore a completed latch, and drop one that finished before we
+    /// could store it.
     /// </summary>
     private Task<SayIntentionsTransmissionResult> GetLastCommsHistoryTransmissionAsync(
         SayIntentionsFlightContext context, string apiKey)
@@ -204,7 +225,14 @@ public sealed class SayIntentionsService
         if (DateTime.UtcNow - _lastCommsFetchUtc < CommsCacheDuration)
             return Task.FromResult(new SayIntentionsTransmissionResult(_cachedLastTransmission, _cachedCommsError));
 
-        return _inFlightComms ??= FetchCommsAsync(context, apiKey);
+        if (_inFlightComms is { IsCompleted: false } joinable)
+            return joinable;
+
+        Task<SayIntentionsTransmissionResult> fetch = FetchCommsAsync(context, apiKey);
+        _inFlightComms = fetch;
+        if (fetch.IsCompleted)
+            Interlocked.CompareExchange(ref _inFlightComms, null, fetch);
+        return fetch;
     }
 
     private async Task<SayIntentionsTransmissionResult> FetchCommsAsync(
@@ -230,7 +258,11 @@ public sealed class SayIntentionsService
                 using var doc = JsonDocument.Parse(json);
                 if (TryGetApiError(doc.RootElement, out string? apiError))
                 {
-                    error = $"SayIntentions comms history unavailable. {apiError}";
+                    // The API can flag a failure without naming one; don't speak a
+                    // dangling "unavailable. ." at the pilot.
+                    error = string.IsNullOrWhiteSpace(apiError)
+                        ? "SayIntentions comms history unavailable."
+                        : $"SayIntentions comms history unavailable. {apiError}";
                 }
                 else
                 {
@@ -264,13 +296,22 @@ public sealed class SayIntentionsService
         return new SayIntentionsTransmissionResult(transmission, error);
     }
 
+    /// <summary>Same cache-then-join contract, and the same latch-ordering rule, as
+    /// GetLastCommsHistoryTransmissionAsync — see the note there.</summary>
     private Task<SayIntentionsParkingResult> GetParkingAsync(
         SayIntentionsFlightContext context, string apiKey)
     {
         if (DateTime.UtcNow - _lastParkingFetchUtc < ParkingCacheDuration)
             return Task.FromResult(new SayIntentionsParkingResult(_cachedParking, _cachedParkingError));
 
-        return _inFlightParking ??= FetchParkingAsync(context, apiKey);
+        if (_inFlightParking is { IsCompleted: false } joinable)
+            return joinable;
+
+        Task<SayIntentionsParkingResult> fetch = FetchParkingAsync(context, apiKey);
+        _inFlightParking = fetch;
+        if (fetch.IsCompleted)
+            Interlocked.CompareExchange(ref _inFlightParking, null, fetch);
+        return fetch;
     }
 
     private async Task<SayIntentionsParkingResult> FetchParkingAsync(
@@ -296,7 +337,9 @@ public sealed class SayIntentionsService
                 using var doc = JsonDocument.Parse(json);
                 if (TryGetApiError(doc.RootElement, out string? apiError))
                 {
-                    error = $"SayIntentions parking unavailable. {apiError}";
+                    error = string.IsNullOrWhiteSpace(apiError)
+                        ? "SayIntentions parking unavailable."
+                        : $"SayIntentions parking unavailable. {apiError}";
                 }
                 else
                 {
@@ -355,6 +398,14 @@ public sealed class SayIntentionsService
         return string.IsNullOrWhiteSpace(context.ApiKey) ? null : context.ApiKey.Trim();
     }
 
+    /// <summary>
+    /// Newest transmission wins. Within ONE record the controller's call and the
+    /// pilot's readback share a stamp and an id, so the final key ranks the pilot's
+    /// own words first and the ATC call last: "read the last transmission" must give
+    /// the pilot the controller, not a repeat of what they just said themselves. It
+    /// is the last key, so ordering BETWEEN records is untouched — a genuinely later
+    /// pilot transmission still wins.
+    /// </summary>
     private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root)
     {
         var transmissions = new List<SayIntentionsTransmission>();
@@ -362,6 +413,7 @@ public sealed class SayIntentionsService
         return transmissions
             .OrderBy(t => t.StampZulu ?? DateTime.MinValue)
             .ThenBy(t => t.Id ?? 0)
+            .ThenBy(t => t.Speaker == PilotSpeaker ? 0 : 1)
             .LastOrDefault();
     }
 
@@ -376,14 +428,14 @@ public sealed class SayIntentionsService
                 string? station = GetString(element, "station_name");
                 string? channel = GetString(element, "channel");
                 string? stampText = GetString(element, "stamp_zulu");
-                DateTime? stamp = DateTime.TryParse(stampText, out var parsed) ? parsed.ToUniversalTime() : null;
+                DateTime? stamp = ParseZuluStamp(stampText);
                 int? id = GetInt(element, "id");
 
                 if (!string.IsNullOrWhiteSpace(incoming))
-                    AddIfRadio(transmissions, "ATC", incoming, station, channel, stamp, id);
+                    AddIfRadio(transmissions, AtcSpeaker, incoming, station, channel, stamp, id);
 
                 if (!string.IsNullOrWhiteSpace(outgoing))
-                    AddIfRadio(transmissions, "Pilot", outgoing, station, channel, stamp, id);
+                    AddIfRadio(transmissions, PilotSpeaker, outgoing, station, channel, stamp, id);
 
                 if (string.IsNullOrWhiteSpace(incoming) && string.IsNullOrWhiteSpace(outgoing)
                     && LooksLikeCommunication(message))
@@ -410,6 +462,20 @@ public sealed class SayIntentionsService
         if (SayIntentionsTransmissionClassifier.IsRadioTransmission(speaker, station, channel, cleaned))
             transmissions.Add(new SayIntentionsTransmission(speaker, cleaned, station, channel, stamp, id));
     }
+
+    /// <summary>stamp_zulu is a UTC wire timestamp, not a locale-formatted date. Parsing
+    /// it with the ambient culture reorders the history on a d/M/y machine, so the hotkey
+    /// speaks the wrong "last transmission" — pin it to InvariantCulture, and treat a
+    /// stamp with no offset as the UTC it claims to be rather than local time.</summary>
+    private static DateTime? ParseZuluStamp(string? stampText) =>
+        DateTime.TryParse(
+            stampText,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeUniversal |
+            System.Globalization.DateTimeStyles.AdjustToUniversal,
+            out DateTime parsed)
+            ? parsed
+            : null;
 
     private static bool LooksLikeCommunication(string? text)
     {
@@ -442,14 +508,75 @@ public sealed class SayIntentionsService
         return result;
     }
 
-    /// <summary>An API error is only an error when the payload actually carries an
-    /// "error" member. The presence check is case-insensitive to match the value
-    /// lookup — PR #86 mixed a case-insensitive read with a case-sensitive
-    /// TryGetProperty, so a payload using "Error" silently parsed as success.</summary>
-    private static bool TryGetApiError(JsonElement root, out string? error)
+    /// <summary>
+    /// An API error is decided by the VALUE of the "error" member, never by its mere
+    /// presence: SayIntentions answers a good request with {"error": false, "message":
+    /// "OK"}, and a presence check spoke "SayIntentions comms history unavailable.
+    /// false." over that perfectly valid response. Only a non-empty string, a true
+    /// boolean, or a non-zero number is an error — null, false, 0 and "" are not.
+    /// A truthy flag carries no reason a pilot can act on, so the sibling "message"
+    /// supplies the text; when there is none the caller speaks the bare "unavailable".
+    ///
+    /// With NO "error" member at all we fall back to "message", but only when it reads
+    /// like a rejection (ErrorMessageVocabulary): a bare {"message": "Invalid API key"}
+    /// must reach the pilot instead of being swallowed into the generic "no history
+    /// found", while an informational {"message": "3 records"} must not be mistaken for
+    /// a failure. Losing a real transmission is worse than losing a reason, so that
+    /// fallback stays deliberately narrow.
+    ///
+    /// Lookups are case-insensitive (GetObject) — PR #86 mixed a case-insensitive read
+    /// with a case-sensitive TryGetProperty, so a payload using "Error" parsed as success.
+    /// </summary>
+    internal static bool TryGetApiError(JsonElement root, out string? error)
     {
-        error = FirstNonEmpty(GetString(root, "error"), GetString(root, "message"));
-        return !string.IsNullOrWhiteSpace(error) && GetObject(root, "error") != null;
+        error = null;
+        if (root.ValueKind != JsonValueKind.Object) return false;
+
+        string? messageText = GetString(root, "message")?.Trim();
+
+        if (GetObject(root, "error") is JsonElement errorValue)
+        {
+            if (!IsErrorValue(errorValue)) return false;
+
+            error = errorValue.ValueKind == JsonValueKind.String
+                ? FirstNonEmpty(errorValue.GetString())
+                : FirstNonEmpty(messageText);
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(messageText)
+            && !HasDataPayload(root)
+            && ErrorMessageVocabulary.IsMatch(messageText))
+        {
+            error = messageText;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Truthiness of an "error" member. Anything not listed — null, false, 0,
+    /// an empty/whitespace string, an object or an array — is NOT an error, so a success
+    /// payload can never be reported as a failure.</summary>
+    private static bool IsErrorValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.String => !string.IsNullOrWhiteSpace(value.GetString()),
+        JsonValueKind.True => true,
+        JsonValueKind.Number => value.TryGetDouble(out double number) && number != 0,
+        _ => false
+    };
+
+    /// <summary>True when the response carries a nested object or array — an actual
+    /// payload. Alongside one, a "message" is a status line, not a rejection, so the
+    /// error-wording fallback stands down and the payload is read as normal.</summary>
+    private static bool HasDataPayload(JsonElement root)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                return true;
+        }
+        return false;
     }
 
     private static JsonElement? GetObject(JsonElement element, string propertyName)

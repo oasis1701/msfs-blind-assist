@@ -5,9 +5,14 @@
 // RADIO transmission — a blind pilot pressing it during taxi wants the ground
 // controller, not the purser's welcome-aboard announcement.
 //
-// Channel is authoritative when present (COM1/COM2 and their _IN variants);
-// otherwise the ATC-vocabulary heuristic decides. The cabin filter wins ties,
-// so cabin content carried on a radio channel is still rejected.
+// A RECOGNIZED channel is authoritative: a known radio channel (COM/VHF/HF, with
+// or without a direction suffix, or a bare frequency) accepts, a known cabin
+// channel (PA/INTERCOM/CABIN and friends) rejects. An UNRECOGNIZED channel must
+// fall through to the ATC-vocabulary heuristic, never veto: the SayIntentions
+// comms schema is third-party and undocumented, and the old allowlist-or-reject
+// rule meant one unseen token ("com1_out", "ATC", a frequency string) silenced
+// Ctrl+S for the whole flight. The cabin filter still wins ties, so cabin content
+// carried on a radio channel is rejected.
 
 using MSFSBlindAssist.Services.SayIntentions;
 
@@ -27,6 +32,19 @@ public class SayIntentionsTransmissionClassifierTests
     }
 
     [Theory]
+    [InlineData("COM1_OUT")]
+    [InlineData("com2_out")]
+    [InlineData("COM 1")]
+    [InlineData("COM3")]
+    [InlineData("VHF1")]
+    [InlineData("121.900")]
+    public void OtherRadioChannelShapesAreAlsoRadio(string channel)
+    {
+        Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "Pilot", "Toronto Ground", channel, "Wilco"));
+    }
+
+    [Theory]
     [InlineData("PA")]
     [InlineData("INTERCOM")]
     [InlineData("CABIN")]
@@ -34,6 +52,31 @@ public class SayIntentionsTransmissionClassifierTests
     {
         Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
             "Crew", null, channel, "Taxi to runway 15L via Alpha"));
+    }
+
+    [Theory]
+    [InlineData("cabin_pa")]
+    [InlineData("CREW")]
+    [InlineData("PA_OUT")]
+    public void OtherCabinChannelShapesAreAlsoRejected(string channel)
+    {
+        Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "Crew", null, channel, "Taxi to runway 15L via Alpha"));
+    }
+
+    // An unknown channel token must not veto the message — it just leaves the
+    // decision to the ATC-vocabulary heuristic, exactly as an absent channel does.
+    [Theory]
+    [InlineData("ATC")]
+    [InlineData("AIRBAND")]
+    [InlineData("7")]
+    public void UnrecognizedChannelDefersToTheAtcHeuristic(string channel)
+    {
+        Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "ATC", "Toronto Ground", channel, "Taxi to runway 15L via Alpha"));
+
+        Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "", null, channel, "See you at the hotel later"));
     }
 
     [Fact]
