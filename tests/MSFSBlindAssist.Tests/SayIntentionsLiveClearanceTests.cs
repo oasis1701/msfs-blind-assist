@@ -93,4 +93,141 @@ public class SayIntentionsLiveClearanceTests
             SayIntentionsClearanceParser.NormalizeParkingName("J1"),
             SayIntentionsClearanceParser.NormalizeParkingName("Terminal 3 Gate J1"));
     }
+
+    // Both departure-runway candidates go stale on arrival: the live EDDF capture
+    // held "5" from the LMML departure (EDDF has no 05) and `runway` held 07L, the
+    // runway just LANDED on. Speaking either as "Departure runway" at the
+    // destination is wrong twice over.
+    [Fact]
+    public void NoDepartureRunwayIsSpokenOnceArrived()
+    {
+        var arrived = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "EDDF",
+            Origin = "LMML",
+            Destination = "EDDF",
+            DepartureRunway = "05",
+            Runway = "07L"
+        };
+
+        Assert.Null(MainForm.ResolveDepartureRunwayForStatus(arrived));
+    }
+
+    [Fact]
+    public void TheDepartureRunwayIsStillSpokenBeforeDeparting()
+    {
+        var departing = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "LMML",
+            Origin = "LMML",
+            Destination = "EDDF",
+            DepartureRunway = "05"
+        };
+
+        Assert.Equal("05", MainForm.ResolveDepartureRunwayForStatus(departing));
+    }
+}
+
+// The local flight.json from the SAME live capture, reduced to its shape. Field
+// VALUES are verbatim (the api_key is a placeholder — the real one is never
+// committed); the taxi_path array is cut from ~200 entries to three, which is
+// enough to show what they are.
+//
+// This pins three things the earlier, guessed fixtures got wrong, and one they
+// invented:
+//   - assigned_gate is the full label, not a stand id.
+//   - flight_plan_departing_runway is STALE. The aircraft is on the ground at EDDF
+//     after landing, and the field still holds "5" from the LMML departure — EDDF
+//     has no runway 05. It sits in the destination-resolution chain, so it must
+//     never be reached ahead of a gate that resolves.
+//   - flight.json carries NO clearance text and NO comms, so ClearanceText is null
+//     and the taxi import has to fetch the clearance over the API every time.
+//   - current_flight.taxi_path is GEOMETRY. There is no taxiway name anywhere in
+//     it, so nothing reads it: SayIntentionsFlightContext carries no taxiway
+//     sequence at all, and that guarantee is now structural rather than asserted.
+public class SayIntentionsLiveFlightJsonTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), "si-live-" + Guid.NewGuid().ToString("N"));
+
+    private const string EddfFlightJson = """
+    {
+      "flight_details": {
+        "api_key": "PLACEHOLDER",
+        "hostname": "https://apipri.sayintentions.ai",
+        "current_airport": "EDDF",
+        "runway": "7L",
+        "current_flight": {
+          "flight_origin": "LMML",
+          "flight_destination": "EDDF",
+          "assigned_gate": "Terminal 3 Gate J1",
+          "flight_plan_departing_runway": "5",
+          "flight_plan_arriving_runway": "7L",
+          "taxi_path": [
+            { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } },
+            { "heading": 93.88, "point": { "lon": 8.53, "lat": 50.04 } },
+            { "heading": 94.01, "point": { "lon": 8.54, "lat": 50.04 } }
+          ]
+        }
+      }
+    }
+    """;
+
+    private SayIntentionsFlightContext ReadLiveContext()
+    {
+        Directory.CreateDirectory(_dir);
+        string path = Path.Combine(_dir, "flight.json");
+        File.WriteAllText(path, EddfFlightJson);
+        return new SayIntentionsService(path).ReadFlightContext();
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+    }
+
+    [Fact]
+    public void TheLiveFieldsReadBackAsCaptured()
+    {
+        var context = ReadLiveContext();
+
+        Assert.Null(context.Error);
+        Assert.Equal("EDDF", context.CurrentAirport);
+        Assert.Equal("LMML", context.Origin);
+        Assert.Equal("EDDF", context.Destination);
+        Assert.Equal("Terminal 3 Gate J1", context.AssignedGate);
+        Assert.Equal("07L", context.ArrivalRunway);
+        Assert.Equal("07L", context.Runway);
+    }
+
+    [Fact]
+    public void TheDepartingRunwayIsStaleFromThePreviousLeg()
+    {
+        // Not a parse bug: SayIntentions really does leave the departure airport's
+        // runway in place after arrival. EDDF has no 05 — the aircraft landed on 07L.
+        var context = ReadLiveContext();
+
+        Assert.Equal("05", context.DepartureRunway);
+        Assert.NotEqual(context.DepartureRunway, context.ArrivalRunway);
+    }
+
+    [Fact]
+    public void TheAssignedGateIsTheFullLabelAndStillReachesTheStand()
+    {
+        var context = ReadLiveContext();
+
+        Assert.Equal(
+            SayIntentionsClearanceParser.NormalizeParkingName("J1"),
+            SayIntentionsClearanceParser.NormalizeParkingName(context.AssignedGate));
+    }
+
+    // The reason Alt+Shift+S always needs the network: there is nothing here to
+    // parse a clearance out of, so the import falls through to getCommsHistory.
+    [Fact]
+    public void FlightJsonCarriesNoClearanceAndNoTransmission()
+    {
+        var context = ReadLiveContext();
+
+        Assert.Null(context.ClearanceText);
+        Assert.Null(context.LastFlightJsonTransmission);
+    }
 }

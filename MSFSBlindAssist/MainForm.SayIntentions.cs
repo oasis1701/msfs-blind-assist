@@ -62,8 +62,7 @@ public partial class MainForm
                     parts.Add(nearbyParking);
             }
 
-            string? departureRunway = FirstNonEmptySi(
-                context.ClearedForTakeoff, context.DepartureRunway, context.Runway);
+            string? departureRunway = ResolveDepartureRunwayForStatus(context);
             if (!string.IsNullOrWhiteSpace(departureRunway))
                 parts.Add($"Departure runway {departureRunway}.");
 
@@ -145,15 +144,12 @@ public partial class MainForm
                 return;
             }
 
-            // The taxiways may come from SayIntentions' structured taxi_path, but a
-            // hold-short only ever exists in the spoken clearance — so the plan is
-            // always parsed, and its hold-shorts are then tied to whichever taxiway
-            // sequence is actually applied.
-            var plan = ParseClearanceTaxiPlan(clearance, knownTaxiways);
-            var (taxiways, unknownTaxiways) = context.TaxiwaySequence.Count > 0
-                ? MatchKnownTaxiways(context.TaxiwaySequence, knownTaxiways)
-                : (plan.Taxiways, plan.UnknownTaxiways);
-            var holdShorts = MapHoldShortsToTaxiways(plan.HoldShorts, taxiways);
+            // The spoken clearance is the ONLY source of the route. SayIntentions'
+            // current_flight.taxi_path is geometry (heading + lat/lon points), not
+            // taxiway names, so there is nothing structured to prefer over speech.
+            var (taxiways, planHoldShorts, unknownTaxiways) =
+                ParseClearanceTaxiPlan(clearance, knownTaxiways);
+            var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
 
             // Show BEFORE announcing so the screen reader's own form-focus
@@ -374,11 +370,11 @@ public partial class MainForm
     }
 
     /// <summary>Turns each hold-short's taxiway NAME into its position in the sequence
-    /// being applied — which may be SayIntentions' structured taxi_path rather than
-    /// the one parsed from speech. Repeats are consumed in order, so the second hold
-    /// on a repeated taxiway lands on the second row rather than back on the first.
-    /// A name the sequence does not carry maps to -1: the form reports it instead of
-    /// hanging the hold-short on whatever row happens to be last.</summary>
+    /// being applied. Repeats are consumed in order, so the second hold on a repeated
+    /// taxiway lands on the second row rather than back on the first. A name the
+    /// sequence does not carry maps to -1: the form reports it instead of hanging the
+    /// hold-short on whatever row happens to be last — which is also what happens to a
+    /// hold-short the clearance gave before naming any taxiway at all.</summary>
     internal static List<TaxiAssistForm.ExternalHoldShort> MapHoldShortsToTaxiways(
         IReadOnlyList<ClearanceHoldShort> holdShorts, IReadOnlyList<string> taxiways)
     {
@@ -402,36 +398,6 @@ public partial class MainForm
         }
 
         return mapped;
-    }
-
-    /// <summary>Maps SayIntentions' structured taxi_path onto the airport's real
-    /// taxiway names, reporting any the graph does not have.
-    ///
-    /// taxi_path is a list of discrete names rather than speech, so anything that fails
-    /// to match here is unambiguously a taxiway this airport lacks — no phonetics, no
-    /// judgement call. Dropping it silently left the pilot with a shorter route than
-    /// ATC cleared and nothing said about it.</summary>
-    internal static (List<string> Resolved, List<string> Unresolved) MatchKnownTaxiways(
-        IReadOnlyList<string> wanted, IReadOnlyList<string> knownTaxiways)
-    {
-        var resolved = new List<string>();
-        var unresolved = new List<string>();
-
-        foreach (string value in wanted)
-        {
-            string normalized = SayIntentionsClearanceParser.NormalizeTaxiwayName(value);
-            string? match = knownTaxiways.FirstOrDefault(t =>
-                SayIntentionsClearanceParser.NormalizeTaxiwayName(t)
-                    .Equals(normalized, StringComparison.OrdinalIgnoreCase));
-
-            if (!string.IsNullOrWhiteSpace(match))
-                resolved.Add(match);
-            else if (normalized.Length > 0
-                     && !unresolved.Contains(normalized, StringComparer.OrdinalIgnoreCase))
-                unresolved.Add(normalized);
-        }
-
-        return (SayIntentionsClearanceParser.CollapseConsecutive(resolved), unresolved);
     }
 
     private string? ResolveSayIntentionsAirport(
@@ -544,6 +510,25 @@ public partial class MainForm
         return string.IsNullOrWhiteSpace(gateAirport)
             ? $"{gateRole} {gate}."
             : $"{gateRole} {gate} at {gateAirport}.";
+    }
+
+    /// <summary>
+    /// The departure runway to speak in the assigned-status readout, or null once the
+    /// aircraft has arrived.
+    ///
+    /// Both candidate fields go stale on arrival. A live EDDF capture (flown from
+    /// LMML) still held <c>flight_plan_departing_runway: "5"</c> from the departure —
+    /// EDDF has no runway 05 — while <c>runway</c> held 07L, the runway just LANDED
+    /// on. Announcing either as "Departure runway" at the destination is wrong twice
+    /// over, so the line is suppressed there. A turnaround is unaffected: once a new
+    /// flight is filed out of this airport it is the origin, not the destination.
+    /// </summary>
+    internal static string? ResolveDepartureRunwayForStatus(SayIntentionsFlightContext context)
+    {
+        if (SameIcaoSi(context.CurrentAirport, context.Destination)) return null;
+
+        return FirstNonEmptySi(
+            context.ClearedForTakeoff, context.DepartureRunway, context.Runway);
     }
 
     private static bool SameIcaoSi(string? left, string? right) =>

@@ -107,28 +107,6 @@ public class SayIntentionsExternalRouteTests
         Assert.Empty(UnknownTaxiways("Taxi to gate D9, hold short of runway 22"));
     }
 
-    // --- MatchKnownTaxiways: the structured taxi_path path ----------------------------
-
-    [Fact]
-    public void The_structured_taxi_path_reports_names_the_airport_does_not_have()
-    {
-        // SayIntentions' taxi_path is a discrete list of names, so anything the graph
-        // does not carry is unambiguously missing — no phonetics involved.
-        var matched = MainForm.MatchKnownTaxiways(new[] { "A", "K9", "B" }, KnownTaxiways);
-
-        Assert.Equal(new[] { "A", "B" }, matched.Resolved);
-        Assert.Equal(new[] { "K9" }, matched.Unresolved);
-    }
-
-    [Fact]
-    public void The_structured_taxi_path_still_resolves_through_spelling_differences()
-    {
-        var matched = MainForm.MatchKnownTaxiways(new[] { "a", "B-1" }, new[] { "A", "B1" });
-
-        Assert.Equal(new[] { "A", "B1" }, matched.Resolved);
-        Assert.Empty(matched.Unresolved);
-    }
-
     // --- ParseClearanceTaxiPlan: hold-short association ------------------------------
 
     [Fact]
@@ -214,9 +192,10 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void A_hold_short_whose_taxiway_is_not_in_the_sequence_maps_to_no_row()
     {
-        // SayIntentions' structured taxi_path can carry a different sequence than the
-        // spoken clearance. Hanging the hold-short on whatever row is last would put
-        // the stop at the wrong crossing, so it maps nowhere and gets reported.
+        // A hold-short can name a taxiway the applied sequence does not carry — the
+        // clearance named it before any taxiway, or the taxiway did not resolve at
+        // this airport. Hanging it on whatever row is last would put the stop at the
+        // wrong crossing, so it maps nowhere and gets reported instead.
         var mapped = MainForm.MapHoldShortsToTaxiways(
             new[]
             {

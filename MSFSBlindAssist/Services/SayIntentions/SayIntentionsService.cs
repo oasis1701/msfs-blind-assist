@@ -146,6 +146,13 @@ public sealed class SayIntentionsService
             context.Callsign = FirstNonEmpty(GetString(details, "callsign_icao"), GetString(details, "callsign"));
             context.CurrentAirport = CleanIcao(GetString(details, "current_airport"));
 
+            // current_flight.taxi_path is deliberately NOT read. It is GEOMETRY, not
+            // taxiway names — a live EDDF capture gave ~200 entries shaped
+            // {"heading": 93.92, "point": {"lon": …, "lat": …}} with no name anywhere.
+            // A reader that hunts for name-ish members in it can only mis-fire: the
+            // members a geometry array would plausibly gain (id, label) are exactly
+            // the ones such a reader trusts, and the route it fed REPLACED the
+            // sequence parsed from the clearance. See docs/sayintentions.md.
             if (currentFlight is JsonElement flight)
             {
                 context.Origin = CleanIcao(GetString(flight, "flight_origin"));
@@ -163,7 +170,6 @@ public sealed class SayIntentionsService
                     GetString(flight, "arriving_runway"),
                     GetString(flight, "arrival_runway")));
                 context.FlightPlanRoute = GetString(flight, "flight_plan_route");
-                context.TaxiwaySequence = ReadTaxiPath(flight);
             }
 
             context.ClearedForTakeoff = SayIntentionsClearanceParser.CleanRunway(GetString(details, "cleared_for_takeoff"));
@@ -181,7 +187,7 @@ public sealed class SayIntentionsService
                 context.ClearanceText = context.LastFlightJsonTransmission.Message;
 
             _log.Debug($"flight.json read: airport={context.CurrentAirport ?? "-"} " +
-                       $"gate={context.AssignedGate ?? "-"} taxiPath={context.TaxiwaySequence.Count} " +
+                       $"gate={context.AssignedGate ?? "-"} " +
                        $"clearance={(string.IsNullOrWhiteSpace(context.ClearanceText) ? "none" : "present")}");
         }
         catch (JsonException ex)
@@ -491,29 +497,6 @@ public sealed class SayIntentionsService
         string trimmed = text.Trim();
         if (trimmed.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return false;
         return trimmed.Length > 3;
-    }
-
-    private static List<string> ReadTaxiPath(JsonElement currentFlight)
-    {
-        var result = new List<string>();
-        JsonElement? taxiPath = GetObject(currentFlight, "taxi_path");
-        if (taxiPath is not JsonElement path || path.ValueKind != JsonValueKind.Array)
-            return result;
-
-        foreach (var item in path.EnumerateArray())
-        {
-            string? value = item.ValueKind == JsonValueKind.String
-                ? item.GetString()
-                : FirstNonEmpty(
-                    GetString(item, "taxiway"),
-                    GetString(item, "name"),
-                    GetString(item, "label"),
-                    GetString(item, "id"));
-            if (!string.IsNullOrWhiteSpace(value))
-                result.Add(value.Trim());
-        }
-
-        return result;
     }
 
     /// <summary>

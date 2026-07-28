@@ -95,26 +95,12 @@ public class SayIntentionsFlightContextTests : IDisposable
     }
 
     [Fact]
-    public void TaxiPathArrayIsRead()
-    {
-        var context = ServiceFor("""
-        {
-          "flight_details": {
-            "current_flight": { "taxi_path": ["AT", "R", "B"] }
-          }
-        }
-        """).ReadFlightContext();
-
-        Assert.Equal(new[] { "AT", "R", "B" }, context.TaxiwaySequence);
-    }
-
-    [Fact]
     public void EmptyFlightDetailsYieldNoErrorAndNoData()
     {
         var context = ServiceFor("""{ "flight_details": {} }""").ReadFlightContext();
         Assert.Null(context.Error);
         Assert.Null(context.CurrentAirport);
-        Assert.Empty(context.TaxiwaySequence);
+        Assert.Null(context.ClearanceText);
     }
 
     // One comms record carries BOTH sides of the exchange under one stamp and one id.

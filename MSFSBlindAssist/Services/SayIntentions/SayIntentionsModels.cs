@@ -27,11 +27,11 @@ public sealed class SayIntentionsFlightContext
     public string? ClearedForTakeoff { get; set; }
     public string? ClearedForLanding { get; set; }
     public string? FlightPlanRoute { get; set; }
+    /// <summary>The taxi clearance to parse. flight.json carries no clearance text of
+    /// its own in the observed wire format, so in practice this is filled from the
+    /// last radio transmission — which means the taxi import needs the SAPI comms
+    /// endpoint to be reachable. See docs/sayintentions.md.</summary>
     public string? ClearanceText { get; set; }
-
-    /// <summary>The structured taxi path when SayIntentions publishes one. Preferred
-    /// over parsing the clearance speech — it needs no phonetic interpretation.</summary>
-    public List<string> TaxiwaySequence { get; set; } = new();
 
     public SayIntentionsTransmission? LastFlightJsonTransmission { get; set; }
 }

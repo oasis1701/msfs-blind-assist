@@ -15,7 +15,8 @@ by hand.
 
 The two readouts work without a simulator connection — they only read the local
 flight file and the SayIntentions API. Building a taxi route needs an aircraft
-position, so it requires a connected sim.
+position, so it requires a connected sim, and the clearance is not in the local
+file, so it also requires a reachable SayIntentions API.
 
 ### Last transmission
 
@@ -34,6 +35,11 @@ the assigned gate — useful for catching a mis-set starting position.
 
 Reads the current taxi clearance, resolves the destination and taxiways against the
 airport's real taxi network, and fills in the Taxi Guidance dialog.
+
+**This one needs the SayIntentions API to be reachable.** The local flight file does
+not carry the clearance text, so every press fetches the last transmissions over the
+network. With SayIntentions offline, the key rejected, or the request timing out (five
+seconds), you hear why and no route is built — the two readouts above are unaffected.
 
 By default the dialog opens with everything pre-filled so you can review it, then you
 press **Calculate Route** to start guidance. Enable **Start taxi guidance immediately**
@@ -101,6 +107,69 @@ Pure logic lives in `MSFSBlindAssist/Services/SayIntentions/` and is unit-tested
 UI wiring is `MainForm.SayIntentions.cs`; settings are a `SayIntentionsPanel` tab in
 the unified `SettingsForm`.
 
+### Observed wire format
+
+**Provenance: measured from ONE live session on 2026-07-28 — an LMML → EDDF arrival,
+aircraft on the ground at EDDF taxiing to Terminal 3 Gate J1 — not from SayIntentions
+documentation.** One session, one airport, one aircraft, one flight phase. Treat it as
+what the wire really carried that day, not as a specification: a later capture that
+contradicts anything here should win. It is still worth more than the schema the first
+version of this integration was written against, every wrong assumption in which was
+caught by this one capture.
+
+**Direction is from SayIntentions' point of view, not the pilot's.** `incoming_message`
+is what SI *received* — the PILOT speaking. `outgoing_message` is what SI *sent* — ATC.
+The intuitive reading is exactly backwards. Every turn pair in the capture reads
+incoming "Request taxi" / outgoing "Taxi to Terminal 3 Gate J1 via …", and across 89
+records `outgoing_message` carried 20 ATC-phrase hits and zero pilot-phrase hits. Read
+the intuitive way, Ctrl+S announces the pilot's own readback as the controller — and
+"prefer the ATC call within a record" systematically prefers the pilot.
+
+**`assigned_gate` is the full label, not a stand id.** EDDF gave
+`"Terminal 3 Gate J1"`. Navdata names that spot `J1`, so the two only meet through
+`NormalizeParkingName` — see [Gate names](#gate-names) for why the stand id is
+whatever follows the *last* gate/stand keyword.
+
+**`current_flight.taxi_path` is GEOMETRY, not taxiway names.** ~200 objects shaped
+`{"heading": 93.92, "point": {"lon": 8.52, "lat": 50.04}}` — no `taxiway`, `name`,
+`label` or `id` member anywhere in it. Nothing reads it; see
+[Why taxi_path is not parsed](#why-taxi_path-is-not-parsed).
+
+**flight.json carries no clearance text and no comms.** None of `cleared_for_takeoff`,
+`cleared_for_landing`, `clearance`, `last_clearance` or `taxi_clearance` were present
+in `flight_details`, there was no comms array, and the string `incoming_message` did
+not appear in the file at all. So `ClearanceText` from flight.json is always null in
+practice and the taxi import always depends on a live `getCommsHistory` round-trip, on
+the five-second `ApiTimeoutSeconds` critical path. The API key itself IS in the file
+(`flight_details.api_key`) — that part of the design holds; it is the clearance that
+is missing.
+
+**`flight_plan_departing_runway` goes stale, and it is load-bearing.** At EDDF, after
+landing, it still read `"5"` — left over from the LMML departure. It sits in the
+destination-resolution chain ahead of the second gate attempt, so a gate that fails to
+resolve falls through to it: at an airport that happens to have a runway with the
+previous leg's designator, the pilot is sent to a runway instead of their stand. EDDF
+has no 05, so this capture would have fallen one further, to the arrival runway — 07L,
+the one just landed on. Either way an arriving aircraft gets routed at a runway. The
+cascade is blocked at the gate step now (the full-label fix above), but the stale field
+is still there, and any future change to the candidate order has to assume it is wrong.
+
+The field values as captured:
+
+| Field | Value | Note |
+| --- | --- | --- |
+| `flight_details.hostname` | `https://apipri.sayintentions.ai` | matches the documented default |
+| `flight_details.api_key` | *(present)* | never logged, never committed |
+| `flight_details.current_airport` | `EDDF` | |
+| `flight_details.runway` | `7L` | |
+| `current_flight.assigned_gate` | `Terminal 3 Gate J1` | full label |
+| `current_flight.flight_plan_departing_runway` | `5` | **stale** — the LMML leg |
+| `current_flight.flight_plan_arriving_runway` | `7L` | |
+| `current_flight.taxi_path` | ~200 × `{heading, point}` | geometry |
+
+`SayIntentionsLiveClearanceTests` pins the captured clearance verbatim;
+`SayIntentionsLiveFlightJsonTests` pins the file shape and these field values.
+
 ### Hold-short masking (safety-critical)
 
 A taxi clearance to a **gate** routinely ends "hold short of runway NN", and a
@@ -152,7 +221,7 @@ Three things can go missing between the clearance and the route. All three are s
 
 | Lost | Detected by | Reported as |
 | --- | --- | --- |
-| A taxiway this airport does not have | `ScanTaxiways` (speech) / `MatchKnownTaxiways` (structured `taxi_path`) | `Could not apply …` |
+| A taxiway this airport does not have | `ScanTaxiways` → `Unresolved` | `Could not apply …` |
 | A taxiway the dialog could not seat | `ApplyExternalRoute` → `SkippedTaxiways` | `Could not apply …` |
 | A hold-short that reached no row | `ApplyExternalRoute` → `SkippedHoldShortRunways` | `Could not set hold short of runway …` |
 
@@ -168,9 +237,8 @@ when it is a whole NATO word, optionally with a digit ("Kilo", "Bravo Four"), th
 overlaps none of the names that did resolve. Bare designators are **not** scanned:
 matching uppercase letters in prose false-positives on ordinary abbreviations, and a
 wrong "could not apply K" teaches the pilot to distrust the whole announcement. A miss is
-the better failure here, so a clearance written with bare designators and no
-`taxi_path` can still lose one quietly. The structured `taxi_path` has no such limit —
-it is a list of discrete names, so anything failing to match there is always reported.
+the better failure here, so a clearance written with bare designators can still lose one
+quietly. There is no structured second source to catch it: `taxi_path` is geometry.
 
 Two guards keep the report quiet when it should be, and both are load-bearing:
 
@@ -199,9 +267,31 @@ pattern): the form carries one hold-short per row, so collapsing the repeat thro
 second one away. A repeat across a plain crossing still collapses.
 
 `MapHoldShortsToTaxiways` then turns each hold-short's taxiway NAME into a position in
-the sequence actually being applied — which may be the structured `taxi_path` rather
-than the spoken one. A name that sequence does not carry maps to `-1` and gets reported,
-never hung on whatever row happens to be last.
+the sequence being applied. A name that sequence does not carry maps to `-1` and gets
+reported, never hung on whatever row happens to be last — the case a clearance produces
+by naming a hold-short before it names any taxiway.
+
+### Why `taxi_path` is not parsed
+
+The reader that turned `current_flight.taxi_path` into a taxiway sequence, and the
+`MatchKnownTaxiways` branch that preferred that sequence over the spoken clearance, are
+**deleted**. They were written against a guessed schema, and the live capture shows the
+field is geometry: no name to read, so the branch had never once run against real
+SayIntentions traffic.
+
+Deleting it rather than leaving it dormant is deliberate, and the reason is not tidiness.
+The reader accepted an object's `taxiway`, `name`, `label` **or `id`** member — and `id`
+is precisely what a geometry array is most likely to grow. Had that happened, ~200 point
+ids would have become "taxiway names", the branch would have activated on its own, the
+route would have silently stopped coming from the clearance, and the pilot would have
+heard a shortest-path route plus "Could not apply" followed by two hundred numbers. A
+dormant path that arms itself on someone else's schema change, with no announcement to
+reveal the switch, is worse than no path.
+
+If SayIntentions ever does publish taxiway names, this is perfectly good work to redo —
+from a capture that shows them, not from a guess. `MapHoldShortsToTaxiways` already
+tolerates an applied sequence that differs from the spoken one, so the hold-short side
+of it still holds.
 
 ### Gate names
 
