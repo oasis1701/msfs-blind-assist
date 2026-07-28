@@ -122,9 +122,14 @@ public static class SayIntentionsClearanceParser
     /// <summary>Ends the route: everything after one of these is no longer a
     /// taxiway list. Deliberately EXCLUDES "cross" and "then" — a clearance
     /// continues across a runway crossing (KBOS pattern, docs/taxi-guidance.md);
-    /// crossings are masked out instead of truncating the route.</summary>
+    /// crossings are masked out instead of truncating the route.
+    ///
+    /// INFORMATION is here because the ATIS letter is spoken phonetically ("advise you
+    /// have information Sierra"). Read as route text it silently appends a real taxiway
+    /// S to the clearance, or — once unresolved names are reported — claims the airport
+    /// is missing one.</summary>
     private static readonly Regex RouteTerminator = new(
-        @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW)\b",
+        @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW|INFORMATION)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Spoken forms per character. DIGITS matter as much as letters: without
@@ -145,15 +150,76 @@ public static class SayIntentionsClearanceParser
         ['8'] = "EIGHT",   ['9'] = "NINER|NINE"
     };
 
+    private const string NatoLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    private const string NatoDigits = "0123456789";
+
+    /// <summary>Every spoken form from the ONE table above, each in a group named after
+    /// the character it spells, so the pattern and the designator it maps back to can
+    /// never drift apart. Group names have to be identifiers, hence the L/D prefix.</summary>
+    private static string NatoAlternation(string characters, char prefix) =>
+        string.Join("|", characters.Select(c => $"(?<{prefix}{c}>{Nato[c]})"));
+
+    /// <summary>A taxiway spelled out in phonetics: a letter word plus an optional digit
+    /// ("Kilo", "Bravo Four"). Used ONLY to notice that a clearance named something the
+    /// airport does not have.
+    ///
+    /// IgnoreCase is safe here — and required — precisely because this pattern has NO
+    /// bare-designator branch: it matches whole NATO words, never the single characters
+    /// BuildTaxiwayPattern must keep case-sensitive. Bare designators are left out on
+    /// purpose; they would false-positive on ordinary abbreviations, and a wrong "could
+    /// not apply K" teaches the pilot to distrust the whole announcement, which is far
+    /// worse than missing one.</summary>
+    private static readonly Regex PhoneticTaxiway = new(
+        $@"(?<![A-Za-z0-9])(?:{NatoAlternation(NatoLetters, 'L')})" +
+        $@"(?:[\s-]*(?:{NatoAlternation(NatoDigits, 'D')}|(?<lit>[0-9])))?" +
+        @"(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The designator a phonetic match spells: "Bravo Four" → "B4".</summary>
+    private static string PhoneticDesignator(Match match)
+    {
+        var designator = new StringBuilder();
+
+        foreach (char c in NatoLetters)
+        {
+            if (!match.Groups[$"L{c}"].Success) continue;
+            designator.Append(c);
+            break;
+        }
+
+        foreach (char c in NatoDigits)
+        {
+            if (!match.Groups[$"D{c}"].Success) continue;
+            designator.Append(c);
+            break;
+        }
+
+        if (match.Groups["lit"].Success) designator.Append(match.Groups["lit"].Value);
+        return designator.ToString();
+    }
+
     /// <summary>Resolves the spoken taxiway sequence against the airport's real
     /// taxiway names. Only names the graph actually knows are returned.</summary>
     public static List<string> ParseTaxiways(string? clearance, IReadOnlyList<string> knownTaxiways)
+        => ScanTaxiways(clearance, knownTaxiways).Resolved;
+
+    /// <summary>The taxiway sequence a clearance names, split into the names this
+    /// airport really has and the ones it does not.
+    ///
+    /// The second list is the whole point. A name only the CLEARANCE knows used to
+    /// disappear without a word — at CYYZ "via Alpha, Kilo, Romeo" announced "Via A, R"
+    /// — so the pilot heard a shorter route with no way to tell that a leg, and with it
+    /// the path ATC actually cleared, had gone missing.</summary>
+    public static (List<string> Resolved, List<string> Unresolved) ScanTaxiways(
+        string? clearance, IReadOnlyList<string> knownTaxiways)
     {
+        var resolved = new List<string>();
+        var unresolved = new List<string>();
         if (string.IsNullOrWhiteSpace(clearance) || knownTaxiways.Count == 0)
-            return new List<string>();
+            return (resolved, unresolved);
 
         var via = ViaKeyword.Match(MaskHoldShortAndCrossings(clearance));
-        if (!via.Success) return new List<string>();
+        if (!via.Success) return (resolved, unresolved);
 
         string route = via.Groups["route"].Value;
         var terminator = RouteTerminator.Match(route);
@@ -175,7 +241,30 @@ public static class SayIntentionsClearanceParser
             selected.Add(hit);
         }
 
-        return CollapseConsecutive(selected.OrderBy(h => h.Index).Select(h => h.Name).ToList());
+        foreach (Match match in PhoneticTaxiway.Matches(route))
+        {
+            // Touching ANY resolved name is enough to stay quiet: the two words of
+            // "Alpha-Tango" both sit inside the AT that already matched, and reporting
+            // them would name two missing taxiways against a route that is entirely fine.
+            if (selected.Any(s => match.Index < s.End && match.Index + match.Length > s.Index))
+                continue;
+
+            string designator = PhoneticDesignator(match);
+            if (designator.Length == 0 || unresolved.Contains(designator)) continue;
+
+            // The graph can spell a taxiway in a form BuildTaxiwayPattern has no
+            // phonetic branch for ("B 4"), which is a matching gap here, not a taxiway
+            // the airport is missing.
+            if (knownTaxiways.Any(t =>
+                    NormalizeTaxiwayName(t).Equals(designator, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            unresolved.Add(designator);
+        }
+
+        resolved.AddRange(CollapseConsecutive(
+            selected.OrderBy(h => h.Index).Select(h => h.Name).ToList()));
+        return (resolved, unresolved);
     }
 
     /// <summary>

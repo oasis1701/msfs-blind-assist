@@ -39,9 +39,26 @@ By default the dialog opens with everything pre-filled so you can review it, the
 press **Calculate Route** to start guidance. Enable **Start taxi guidance immediately**
 in Settings → SayIntentions to skip the review step.
 
-Any taxiway from the clearance that does not exist at the airport is named aloud
-("Could not apply Kilo") rather than dropped silently — the route is still built from
-whatever did match.
+An import replaces the **whole** route, including anything you had set up by hand
+first — intersection departure, CAT III hold, hold-shorts. The clearance is the route.
+
+#### What the summary tells you
+
+It names the destination and the taxiways that were applied, then everything that did
+not survive:
+
+- **"Could not apply K."** — a taxiway the clearance named that the route does not use,
+  either because this airport does not have it or because the dialog could not seat it.
+  The route is still built from whatever did match.
+- **"Hold short of runway 15R after N."** — a hold-short from the clearance that was
+  set, on the taxiway it follows. One line per hold-short, in clearance order.
+- **"Could not set hold short of runway 22."** — a hold-short that reached no row.
+  Treat it as still in force: guidance will not stop you there.
+- **"Destination not set. Check the destination field."** — the dialog is open but you
+  have to pick the destination yourself.
+
+Nothing that came out of the clearance is dropped in silence. A route shorter than the
+one you were cleared for is not something you can see, so it is always said out loud.
 
 ## Settings
 
@@ -55,8 +72,12 @@ whatever did match.
 ## Troubleshooting
 
 Diagnostics are written to `%APPDATA%\MSFSBlindAssist\logs\sayintentions.log`. It
-records which fields were found in `flight.json`, the destination and taxiways that
-were resolved, and anything that was skipped. API keys are never written to the log.
+records which fields were found in `flight.json`, and for every route import one line
+holding the destination, the taxiways **applied**, the taxiways **skipped** (the airport
+has them, the dialog could not seat them), the taxiways **not at this airport**, the
+**hold-shorts** that were set and the ones that were **missed**. If the spoken summary
+and the dialog ever disagree, that line is the record of what the import actually did.
+API keys are never written to the log.
 
 "SayIntentions flight.json not found" means no flight is active — SayIntentions writes
 `%LOCALAPPDATA%\SayIntentionsAI\flight.json` only while connected to a flight.
@@ -93,10 +114,21 @@ and crossing span replaced by spaces (`MaskHoldShortAndCrossings`, length-preser
 The two extractions can no longer collide. `ParseHoldShortRunway` reads the original
 text.
 
+**Every phrasing of the hold is masked**, not just the exact "hold short of": *holding
+short*, *hold-short*, *hold short of the*, *remain short of*, and the ICAO *holding
+point*. The mask and the capture share ONE `HoldPrefix` constant deliberately — the
+first version spelled the two separately, handled `CROSS(ING)` but only bare "hold
+short", so a pilot readback ("holding short of runway 15", which is exactly what
+SayIntentions publishes as the newest transmission) still made 15 the taxi destination.
+Two regexes for one concept will drift; keep them as one const.
+
 The same masking is why the taxiway scan does **not** truncate at `cross`/`then`: a
 clearance legitimately continues, and reuses taxiways, across a runway crossing (the
 KBOS pattern in [taxi-guidance.md](taxi-guidance.md)). It stops only at a genuine
-terminator — `contact`, `monitor`, `squawk`, `remain`, `report`, `give way`, `follow`.
+terminator — `contact`, `monitor`, `squawk`, `remain`, `report`, `give way`, `follow`,
+`information`. `information` is there because the ATIS letter is spoken phonetically
+("advise you have information Sierra"): read as route text it silently appends a real
+taxiway S to the clearance, or claims the airport is missing one.
 
 ### Taxiway matching case asymmetry
 
@@ -108,6 +140,87 @@ and the preposition "at" as taxiway AT. Callers must never pass
 
 Overlapping candidates resolve longest-first, so "Alpha-Tango" reads as `AT` rather
 than `A` followed by `T`.
+
+**Digits carry spoken forms too**, exactly like letters. Without them "Bravo Four"
+decayed to taxiway B — a real taxiway at most airports, so the wrong route was delivered
+with full confidence and never reported as missing. Affects every airport with
+alphanumeric taxiways (KJFK, EGLL…).
+
+### Reporting what did not survive
+
+Three things can go missing between the clearance and the route. All three are spoken.
+
+| Lost | Detected by | Reported as |
+| --- | --- | --- |
+| A taxiway this airport does not have | `ScanTaxiways` (speech) / `MatchKnownTaxiways` (structured `taxi_path`) | `Could not apply …` |
+| A taxiway the dialog could not seat | `ApplyExternalRoute` → `SkippedTaxiways` | `Could not apply …` |
+| A hold-short that reached no row | `ApplyExternalRoute` → `SkippedHoldShortRunways` | `Could not set hold short of runway …` |
+
+The first row could not exist before: `ParseTaxiways` returns only names the graph
+knows, so a taxiway the airport lacked evaporated between the clearance and the
+announcement. `ScanTaxiways` returns `(Resolved, Unresolved)` and `ParseTaxiways` is now
+a thin wrapper over its `Resolved` half — the old signature has callers and tests, and
+keeps working. The two "could not apply" sources share one spoken line: the pilot needs
+the same thing from both, the name of the leg the route is not taking.
+
+**Unknown-taxiway detection is PHONETIC-ONLY, deliberately.** A token counts as missing
+when it is a whole NATO word, optionally with a digit ("Kilo", "Bravo Four"), that
+overlaps none of the names that did resolve. Bare designators are **not** scanned:
+matching uppercase letters in prose false-positives on ordinary abbreviations, and a
+wrong "could not apply K" teaches the pilot to distrust the whole announcement. A miss is
+the better failure here, so a clearance written with bare designators and no
+`taxi_path` can still lose one quietly. The structured `taxi_path` has no such limit —
+it is a list of discrete names, so anything failing to match there is always reported.
+
+Two guards keep the report quiet when it should be, and both are load-bearing:
+
+- **A phonetic word overlapping a resolved name is skipped.** Both words of
+  "Alpha-Tango" sit inside the `AT` that already matched, and an airport can have AT
+  without having A or T — without this, a perfectly resolved route reports two missing
+  taxiways.
+- **A token whose designator IS a known taxiway is skipped.** `BuildTaxiwayPattern` has
+  no phonetic branch for a name containing a space, so "Bravo Four" cannot match a graph
+  that spells it `B 4`. That is a matching gap, not a missing taxiway.
+
+### Hold-shorts belong to their own taxiway
+
+A clearance carries several ("via Alpha, hold short of 15, Bravo, hold short of 04,
+Charlie") and each belongs to the taxiway it **follows**. Pinning them all to the last
+taxiway of the clearance put the stop at the wrong crossing, and only the first survived
+at all.
+
+`ParseClearanceTaxiPlan` cuts the clearance at the spans the parser masks — hold-shorts
+AND crossings — and resolves each piece on its own, so where each hold-short falls in
+the sequence survives. Cutting on the parser's own mask is what keeps a second copy of
+the hold-short phrasing out of `MainForm.SayIntentions.cs`; two copies would drift.
+
+A taxiway repeated across a hold-short is **kept** (the KBOS "N, hold short 15R, N"
+pattern): the form carries one hold-short per row, so collapsing the repeat throws the
+second one away. A repeat across a plain crossing still collapses.
+
+`MapHoldShortsToTaxiways` then turns each hold-short's taxiway NAME into a position in
+the sequence actually being applied — which may be the structured `taxi_path` rather
+than the spoken one. A name that sequence does not carry maps to `-1` and gets reported,
+never hung on whatever row happens to be last.
+
+### Gate names
+
+`ParseDestinationGate`'s capture admits a **hyphen** as well as a space, so "gate A-9"
+reaches stand A9. Normalizing `A-9` → `A9` afterwards was not enough while the capture
+itself stopped at the bare letter: that routed the pilot to stand "A" — or, with no such
+stand, fell through to the departure RUNWAY as the destination.
+
+`NormalizeParkingName` strips a descriptor tail only when the dash is **spaced**
+("A9 - Terminal 1"). A bare hyphen is part of the stand name.
+
+### An import owns the whole route
+
+`ApplyExternalRoute` calls `ResetRouteShapingControls` first. `OnDestTypeChanged` only
+clears the runway-only boxes when the destination TYPE changes, so a runway route
+imported over a hand-built runway route otherwise keeps the old intersection departure
+and CAT III hold — a different lineup point, with nothing in the announcement to reveal
+it. `chkFitFilter` is deliberately exempt: it describes the aircraft's wingspan rather
+than the route, and forcing it either way could hide the very gate the clearance names.
 
 ### One graph build per keypress
 

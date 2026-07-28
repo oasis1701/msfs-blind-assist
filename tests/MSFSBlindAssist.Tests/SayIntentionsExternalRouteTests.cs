@@ -33,6 +33,9 @@ public class SayIntentionsExternalRouteTests
     private static List<MainForm.ClearanceHoldShort> HoldShorts(string clearance) =>
         MainForm.ParseClearanceTaxiPlan(clearance, KnownTaxiways).HoldShorts;
 
+    private static List<string> UnknownTaxiways(string clearance) =>
+        MainForm.ParseClearanceTaxiPlan(clearance, KnownTaxiways).UnknownTaxiways;
+
     // --- ParseClearanceTaxiPlan: taxiway sequence ------------------------------------
 
     [Fact]
@@ -77,6 +80,53 @@ public class SayIntentionsExternalRouteTests
         Assert.Equal(
             new[] { "K", "B", "N", "N" },
             Taxiways("Taxi to runway 22R via Kilo, Bravo, November, hold short of runway 15R, November"));
+    }
+
+    // --- ParseClearanceTaxiPlan: taxiways the airport does not have -------------------
+
+    [Fact]
+    public void Missing_taxiways_are_collected_from_every_piece_of_the_clearance()
+    {
+        // The clearance is scanned in pieces cut at each hold-short, so a taxiway the
+        // airport lacks has to survive whichever piece it fell in.
+        Assert.Equal(
+            new[] { "Z", "Q" },
+            UnknownTaxiways("Taxi to runway 22 via Alpha, Zulu, hold short of runway 15, Quebec, Bravo"));
+    }
+
+    [Fact]
+    public void A_clearance_the_airport_can_fully_honour_reports_nothing_missing()
+    {
+        Assert.Empty(UnknownTaxiways(
+            "Taxi to gate A9 via Alpha, Bravo, hold short of runway 22, Charlie, Delta"));
+    }
+
+    [Fact]
+    public void A_gate_named_before_via_is_not_a_missing_taxiway()
+    {
+        Assert.Empty(UnknownTaxiways("Taxi to gate D9, hold short of runway 22"));
+    }
+
+    // --- MatchKnownTaxiways: the structured taxi_path path ----------------------------
+
+    [Fact]
+    public void The_structured_taxi_path_reports_names_the_airport_does_not_have()
+    {
+        // SayIntentions' taxi_path is a discrete list of names, so anything the graph
+        // does not carry is unambiguously missing — no phonetics involved.
+        var matched = MainForm.MatchKnownTaxiways(new[] { "A", "K9", "B" }, KnownTaxiways);
+
+        Assert.Equal(new[] { "A", "B" }, matched.Resolved);
+        Assert.Equal(new[] { "K9" }, matched.Unresolved);
+    }
+
+    [Fact]
+    public void The_structured_taxi_path_still_resolves_through_spelling_differences()
+    {
+        var matched = MainForm.MatchKnownTaxiways(new[] { "a", "B-1" }, new[] { "A", "B1" });
+
+        Assert.Equal(new[] { "A", "B1" }, matched.Resolved);
+        Assert.Empty(matched.Unresolved);
     }
 
     // --- ParseClearanceTaxiPlan: hold-short association ------------------------------
@@ -250,11 +300,16 @@ public class SayIntentionsExternalRouteTests
                appliedHoldShorts ?? Array.Empty<TaxiAssistForm.AppliedHoldShort>(),
                skippedHoldShorts ?? Array.Empty<string>());
 
+    private static string Announce(
+        TaxiAssistForm.ExternalRouteOutcome outcome, string destination, bool autoStart,
+        string[]? unknownTaxiways = null)
+        => MainForm.BuildExternalRouteAnnouncement(
+            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart);
+
     [Fact]
     public void Announcement_names_destination_taxiways_and_the_review_step()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
-            Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
+        string spoken = Announce(Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
 
         Assert.Equal(
             "SayIntentions route to Gate A9. Via A, B. " +
@@ -265,8 +320,7 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void Announcement_says_guidance_started_when_auto_start_is_on()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
-            Outcome(applied: new[] { "A" }), "Runway 22", autoStart: true);
+        string spoken = Announce(Outcome(applied: new[] { "A" }), "Runway 22", autoStart: true);
 
         Assert.EndsWith("Guidance started.", spoken);
         Assert.DoesNotContain("Calculate Route", spoken);
@@ -275,8 +329,7 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void Announcement_reports_a_shortest_path_fallback()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
-            Outcome(), "Gate A9", autoStart: false);
+        string spoken = Announce(Outcome(), "Gate A9", autoStart: false);
 
         Assert.Contains("No taxiways from the clearance matched this airport. Using shortest path.", spoken);
     }
@@ -284,16 +337,50 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void Announcement_names_taxiways_that_could_not_be_applied()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
+        string spoken = Announce(
             Outcome(applied: new[] { "A" }, skipped: new[] { "K", "N" }), "Gate A9", autoStart: false);
 
         Assert.Contains("Could not apply K, N.", spoken);
     }
 
     [Fact]
+    public void Announcement_names_a_taxiway_the_airport_does_not_have()
+    {
+        // The CYYZ report: "via Alpha, Kilo, Romeo" at an airport with no K announced
+        // "Via A, R." and said nothing at all about Kilo.
+        string spoken = Announce(
+            Outcome(applied: new[] { "A", "R" }), "Runway 15L", autoStart: false,
+            unknownTaxiways: new[] { "K" });
+
+        Assert.Contains("Could not apply K.", spoken);
+    }
+
+    [Fact]
+    public void Announcement_merges_unseated_and_missing_taxiways_into_one_line()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: new[] { "N" }), "Gate A9", autoStart: false,
+            unknownTaxiways: new[] { "K" });
+
+        Assert.Equal(
+            "SayIntentions route to Gate A9. Via A. Could not apply N, K. " +
+            "Review the fields, then press Calculate Route to start guidance.",
+            spoken);
+    }
+
+    [Fact]
+    public void Announcement_reports_a_missing_taxiway_even_when_nothing_else_matched()
+    {
+        string spoken = Announce(Outcome(), "Gate A9", autoStart: false, unknownTaxiways: new[] { "K" });
+
+        Assert.Contains("No taxiways from the clearance matched this airport. Using shortest path.", spoken);
+        Assert.Contains("Could not apply K.", spoken);
+    }
+
+    [Fact]
     public void Announcement_reports_every_hold_short_that_was_set()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
+        string spoken = Announce(
             Outcome(
                 applied: new[] { "K", "B", "N", "N" },
                 appliedHoldShorts: new[]
@@ -312,7 +399,7 @@ public class SayIntentionsExternalRouteTests
     {
         // The pilot has to hear this: an unset hold-short looks exactly like a route
         // that was never told to stop.
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
+        string spoken = Announce(
             Outcome(applied: new[] { "A" }, skippedHoldShorts: new[] { "22", "15L" }),
             "Gate A9", autoStart: false);
 
@@ -322,7 +409,7 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void Announcement_reports_a_destination_that_did_not_seat()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
+        string spoken = Announce(
             Outcome(destinationApplied: false, applied: new[] { "A" }), "Gate A9", autoStart: false);
 
         Assert.Contains("Destination not set. Check the destination field.", spoken);
@@ -331,9 +418,16 @@ public class SayIntentionsExternalRouteTests
     [Fact]
     public void Announcement_stays_silent_about_hold_shorts_when_the_clearance_had_none()
     {
-        string spoken = MainForm.BuildExternalRouteAnnouncement(
-            Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
+        string spoken = Announce(Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
 
         Assert.DoesNotContain("hold short", spoken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Announcement_stays_silent_when_the_whole_clearance_was_applied()
+    {
+        string spoken = Announce(Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
+
+        Assert.DoesNotContain("Could not apply", spoken);
     }
 }

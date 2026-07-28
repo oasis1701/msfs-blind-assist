@@ -216,6 +216,141 @@ public class SayIntentionsClearanceParserTests
         Assert.Empty(SayIntentionsClearanceParser.ParseTaxiways("Taxi to gate A9", CyyzTaxiways));
     }
 
+    // ---- Taxiways the airport does not have ----
+    //
+    // ParseTaxiways can only ever return names the graph knows, so a taxiway the
+    // clearance names but the airport does not have vanished without a word: at CYYZ
+    // "via Alpha, Kilo, Romeo" announced "Via A, R" and the pilot had no way to tell a
+    // leg had gone missing — the route then takes a different path than ATC cleared.
+    // ScanTaxiways reports those tokens alongside the ones that resolved.
+    //
+    // Detection is deliberately PHONETIC-ONLY. A bare uppercase designator would
+    // false-positive on ordinary abbreviations, and a false "could not apply K" teaches
+    // the pilot to distrust the whole announcement — much worse than a miss.
+
+    [Fact]
+    public void ATaxiwayTheAirportDoesNotHaveIsReported()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Runway one-five-left via Alpha, Kilo, Romeo", CyyzTaxiways);
+
+        Assert.Equal(new[] { "A", "R" }, scan.Resolved);
+        Assert.Equal(new[] { "K" }, scan.Unresolved);
+    }
+
+    [Fact]
+    public void ParseTaxiwaysStillReturnsOnlyTheResolvedNames()
+    {
+        // The original signature has callers and tests of its own; the scan is additive.
+        Assert.Equal(new[] { "A", "R" },
+            SayIntentionsClearanceParser.ParseTaxiways("via Alpha, Kilo, Romeo", CyyzTaxiways));
+    }
+
+    [Fact]
+    public void ATaxiwayConsumedAsPartOfALongerNameIsNotReportedMissing()
+    {
+        // "Alpha-Tango" resolves whole to AT. Reading its two words on their own would
+        // report A and T missing against a route that resolved perfectly.
+        //
+        // The known set here deliberately has NO bare A or T: an airport can have AT
+        // without either. With CYYZ's full list both words happen to name real
+        // taxiways, which hides whether the overlap guard is doing anything at all.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Runway one-five-left via Alpha-Tango, Romeo, Bravo, hold short of runway two-three",
+            new[] { "AT", "R", "B" });
+
+        Assert.Equal(new[] { "AT", "R", "B" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void ProseAfterTheRouteIsNeverReportedAsAMissingTaxiway()
+    {
+        // Only NATO words count, so ordinary lowercase prose carries nothing to report.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Runway 15L via Romeo, then a short taxi at the terminal", CyyzTaxiways);
+
+        Assert.Equal(new[] { "R" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void TextAfterARouteTerminatorIsNotScannedForMissingTaxiways()
+    {
+        // A frequency is not a route. The unresolved scan reads exactly the text the
+        // resolved scan does, so it stops at the same terminator.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "via Bravo, Romeo, contact ground on Kilo point seven", CyyzTaxiways);
+
+        Assert.Equal(new[] { "B", "R" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void AnAtisInformationLetterIsNotATaxiway()
+    {
+        // "advise you have information Sierra" is the ATIS letter. CYYZ has no S, so
+        // this reported a missing taxiway S; at an airport that HAS an S it silently
+        // appended S to the route instead. INFORMATION ends the route for both scans.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to gate A9 via Bravo, advise you have information Sierra", CyyzTaxiways);
+
+        Assert.Equal(new[] { "B" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void NothingBeforeTheViaKeywordIsScanned()
+    {
+        // The destination is not part of the route: a gate spelled phonetically must
+        // never come back as a taxiway the airport is missing.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to gate Kilo nine via Alpha", CyyzTaxiways);
+
+        Assert.Equal(new[] { "A" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void AMissingAlphanumericTaxiwayIsReportedWhole()
+    {
+        // Reporting "Bravo Four" as B would name a taxiway the clearance never said.
+        var known = new[] { "A", "R" };
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("via Alpha, Bravo Four", known);
+
+        Assert.Equal(new[] { "A" }, scan.Resolved);
+        Assert.Equal(new[] { "B4" }, scan.Unresolved);
+    }
+
+    [Fact]
+    public void ARepeatedMissingTaxiwayIsReportedOnce()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("via Kilo, Romeo, Kilo", CyyzTaxiways);
+
+        Assert.Equal(new[] { "R" }, scan.Resolved);
+        Assert.Equal(new[] { "K" }, scan.Unresolved);
+    }
+
+    [Fact]
+    public void ATaxiwayTheGraphSpellsWithASpaceIsNotReportedMissing()
+    {
+        // BuildTaxiwayPattern has no phonetic branch for a name with a space, so
+        // "Bravo Four" cannot resolve against a graph that spells it "B 4" — but the
+        // airport plainly has it, and saying otherwise would be a false alarm.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("via Bravo Four", new[] { "B 4" });
+
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void AClearanceWithNoRouteReportsNothingMissing()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("Taxi to gate A9", CyyzTaxiways);
+
+        Assert.Empty(scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
     // ---- Parking names ----
 
     [Theory]
