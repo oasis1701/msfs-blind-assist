@@ -431,11 +431,19 @@ public sealed class SayIntentionsService
                 DateTime? stamp = ParseZuluStamp(stampText);
                 int? id = GetInt(element, "id");
 
+                // Direction is from SayIntentions' point of view, NOT the pilot's:
+                // incoming_message is what SI received (the PILOT speaking) and
+                // outgoing_message is what SI sent back (ATC). Verified against a live
+                // EDDF session: every turn pair reads "Request taxi" / "Taxi to
+                // Terminal 3 Gate J1 via …", and across 89 records outgoing_message
+                // carried 20 ATC-phrase hits and zero pilot-phrase hits. Labelling
+                // these the intuitive way round makes Ctrl+S announce the pilot's own
+                // readback as ATC.
                 if (!string.IsNullOrWhiteSpace(incoming))
-                    AddIfRadio(transmissions, AtcSpeaker, incoming, station, channel, stamp, id);
+                    AddIfRadio(transmissions, PilotSpeaker, incoming, station, channel, stamp, id);
 
                 if (!string.IsNullOrWhiteSpace(outgoing))
-                    AddIfRadio(transmissions, PilotSpeaker, outgoing, station, channel, stamp, id);
+                    AddIfRadio(transmissions, AtcSpeaker, outgoing, station, channel, stamp, id);
 
                 if (string.IsNullOrWhiteSpace(incoming) && string.IsNullOrWhiteSpace(outgoing)
                     && LooksLikeCommunication(message))

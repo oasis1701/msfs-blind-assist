@@ -117,10 +117,17 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Empty(context.TaxiwaySequence);
     }
 
-    // One comms record carries BOTH sides of the exchange under one stamp and one
-    // id: the controller's call in incoming_message and the pilot's readback in
-    // outgoing_message. "Read the last transmission" must give the pilot the ATC
-    // call — the readback only repeats what they just said themselves.
+    // One comms record carries BOTH sides of the exchange under one stamp and one id.
+    //
+    // DIRECTION IS FROM SAYINTENTIONS' POINT OF VIEW, NOT THE PILOT'S:
+    // incoming_message is what SI RECEIVED (the pilot speaking) and outgoing_message
+    // is what SI SENT (ATC). Verified against a live EDDF session — every turn pair
+    // reads incoming "Request taxi" / outgoing "Taxi to Terminal 3 Gate J1 via …".
+    // The intuitive reading is backwards and made Ctrl+S announce the pilot's own
+    // readback as ATC.
+    //
+    // "Read the last transmission" must give the pilot the ATC call — their own
+    // readback only repeats what they just said themselves.
     [Fact]
     public void AtcCallWinsOverThePilotReadbackInTheSameRecord()
     {
@@ -132,8 +139,8 @@ public class SayIntentionsFlightContextTests : IDisposable
                 "id": 7,
                 "channel": "COM1",
                 "stamp_zulu": "2026-03-04T12:00:00Z",
-                "incoming_message": "Cleared to land runway 15L",
-                "outgoing_message": "Cleared to land runway 15L, wilco"
+                "incoming_message": "Cleared to land runway 15L, wilco",
+                "outgoing_message": "Cleared to land runway 15L"
               }
             ]
           }
@@ -154,8 +161,8 @@ public class SayIntentionsFlightContextTests : IDisposable
         {
           "flight_details": {
             "comms": [
-              { "id": 1, "channel": "COM1", "incoming_message": "Cleared to land runway 15L" },
-              { "id": 2, "channel": "COM1", "outgoing_message": "Tower, request taxi to the gate" }
+              { "id": 1, "channel": "COM1", "outgoing_message": "Cleared to land runway 15L" },
+              { "id": 2, "channel": "COM1", "incoming_message": "Tower, request taxi to the gate" }
             ]
           }
         }

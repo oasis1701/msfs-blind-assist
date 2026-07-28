@@ -313,13 +313,39 @@ public static class SayIntentionsClearanceParser
         @"\b(?:GATE|STAND|PARKING|RAMP|SPOT)\s+(?<gate>[A-Z]{0,2}[\s-]?[0-9]{1,3}[A-Z]?|[A-Z][0-9]{0,3})\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>Canonical form for comparing a SayIntentions gate label against a
-    /// navdata parking spot.</summary>
+    /// <summary>Matches the keyword that introduces the stand id in a full gate label.</summary>
+    private static readonly Regex ParkingKeyword = new(
+        @"\b(?:GATE|STAND|PARKING|SPOT|RAMP|POSITION)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Canonical form for comparing a SayIntentions gate label against a navdata
+    /// parking spot.
+    ///
+    /// SayIntentions publishes assigned_gate as the FULL label — a live EDDF arrival
+    /// gave "Terminal 3 Gate J1", not "J1". Navdata names the spot "J1", so merely
+    /// stripping noise words left "TERMINAL3J1", which matched nothing: the assigned
+    /// gate could never resolve, and destination resolution fell through to a RUNWAY.
+    /// The stand id is whatever FOLLOWS the last gate/stand keyword; everything before
+    /// it is the terminal or concourse, which navdata does not carry in the spot name.
+    /// A label with no such keyword ("A-9", "J1") is used whole.
+    /// </summary>
     public static string NormalizeParkingName(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return "";
-        string cleaned = ParkingDescriptorSuffix.Replace(value.Trim(), "");
-        cleaned = ParkingNoiseWords.Replace(cleaned.ToUpperInvariant(), "");
+        string cleaned = ParkingDescriptorSuffix.Replace(value.Trim(), "").ToUpperInvariant();
+
+        var keywords = ParkingKeyword.Matches(cleaned);
+        if (keywords.Count > 0)
+        {
+            var last = keywords[^1];
+            string tail = cleaned[(last.Index + last.Length)..];
+            // Only take the tail when it actually carries an id — a bare "Gate"
+            // must not normalize to nothing.
+            if (Regex.IsMatch(tail, @"[A-Z0-9]")) cleaned = tail;
+        }
+
+        cleaned = ParkingNoiseWords.Replace(cleaned, "");
         return Regex.Replace(cleaned, @"[^A-Z0-9]", "");
     }
 
