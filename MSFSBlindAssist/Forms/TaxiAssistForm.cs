@@ -1,8 +1,9 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -269,7 +270,7 @@ public class TaxiAssistForm : Form
         if (!string.IsNullOrEmpty(nearestIcao))
         {
             txtAirport.Text = nearestIcao.ToUpperInvariant();
-            LoadAirportData(nearestIcao);
+            _ = LoadAirportDataSafeAsync(nearestIcao);
         }
     }
 
@@ -350,7 +351,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Airport ICAO",
             AccessibleDescription = "Enter the four-letter ICAO code for the airport"
         };
-        txtAirport.Leave += (s, e) => LoadAirportData(txtAirport.Text.Trim());
+        txtAirport.Leave += (s, e) => _ = LoadAirportDataSafeAsync(txtAirport.Text.Trim());
         y += 30;
 
         // Destination type
@@ -870,7 +871,139 @@ public class TaxiAssistForm : Form
     // the nearest-airport auto-load) — wrapped end-to-end so a DB/graph-build fault
     // can't escape as an unobserved async-void exception; only the augmentation
     // prefetch and the graph build had their own local guards before this.
-    private async void LoadAirportData(string icao)
+    /// <summary>Outcome of applying an externally-sourced (SayIntentions) route.
+    /// Skipped taxiways are reported so the caller can tell the pilot which parts
+    /// of the clearance did not survive — silently degrading to a shortest-path
+    /// route is the failure a blind pilot cannot see.</summary>
+    public sealed record ExternalRouteOutcome(
+        bool DestinationApplied,
+        IReadOnlyList<string> AppliedTaxiways,
+        IReadOnlyList<string> SkippedTaxiways);
+
+    /// <summary>Loads the airport for an external route and returns the taxiway
+    /// names its graph knows. The caller resolves its clearance against THIS list
+    /// so no second TaxiGraph is ever built.</summary>
+    public async Task<IReadOnlyList<string>> LoadAirportForExternalRouteAsync(
+        double lat, double lon, double heading, string icao)
+    {
+        _aircraftLat = lat;
+        _aircraftLon = lon;
+        _aircraftHeading = heading;
+        txtAirport.Text = icao.ToUpperInvariant();
+        await LoadAirportDataAsync(icao);
+        return _graph?.GetAllTaxiwayNames() ?? new List<string>();
+    }
+
+    /// <summary>Finds the destination combo entry for a normalized identifier
+    /// ("15L", "A9"). The form owns its label formats — callers never construct
+    /// "Runway 15L" or a ParkingSpot.ToString() themselves.</summary>
+    public bool TryResolveExternalDestination(bool isRunway, string identifier, out string label)
+    {
+        label = "";
+        if (string.IsNullOrWhiteSpace(identifier)) return false;
+
+        cmbDestType.SelectedIndex = isRunway ? 0 : 1;
+
+        string wanted = isRunway
+            ? SayIntentionsClearanceParser.CleanRunway(identifier) ?? ""
+            : SayIntentionsClearanceParser.NormalizeParkingName(identifier);
+        if (wanted.Length == 0) return false;
+
+        foreach (object? item in cmbDestination.Items)
+        {
+            string text = item?.ToString() ?? "";
+            string candidate = isRunway
+                ? SayIntentionsClearanceParser.CleanRunway(text) ?? ""
+                : SayIntentionsClearanceParser.NormalizeParkingName(text);
+
+            if (candidate.Length > 0 && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+            {
+                label = text;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Fills the route fields from an external clearance. Selection is by
+    /// EXACT combo entry — never a substring match, which for a one-character
+    /// taxiway name would hit almost any entry in the list.</summary>
+    public ExternalRouteOutcome ApplyExternalRoute(
+        bool isRunway, string destinationLabel, IReadOnlyList<string> taxiways,
+        string? holdShortRunway, bool startGuidance)
+    {
+        cmbDestType.SelectedIndex = isRunway ? 0 : 1;
+        int destIndex = cmbDestination.Items.IndexOf(destinationLabel);
+        bool destinationApplied = destIndex >= 0;
+        if (destinationApplied) cmbDestination.SelectedIndex = destIndex;
+
+        ClearAllAdditionalTaxiways();
+        var applied = new List<string>();
+        var skipped = new List<string>();
+
+        for (int i = 0; i < taxiways.Count; i++)
+        {
+            ComboBox combo;
+            if (applied.Count == 0)
+            {
+                combo = cmbFirstTaxiway;
+            }
+            else
+            {
+                OnAddTaxiwayClicked(btnAddTaxiway, EventArgs.Empty);
+                if (_additionalTaxiways.Count < applied.Count) { skipped.Add(taxiways[i]); continue; }
+                combo = _additionalTaxiways[applied.Count - 1].Combo;
+            }
+
+            int index = combo.Items.IndexOf(taxiways[i]);
+            if (index >= 0) { combo.SelectedIndex = index; applied.Add(taxiways[i]); }
+            else skipped.Add(taxiways[i]);
+        }
+
+        if (applied.Count == 0)
+        {
+            int noneIndex = cmbFirstTaxiway.Items.IndexOf("(None - calculate shortest path)");
+            if (noneIndex >= 0) cmbFirstTaxiway.SelectedIndex = noneIndex;
+        }
+        else if (!string.IsNullOrWhiteSpace(holdShortRunway))
+        {
+            // The hold-short belongs on the LAST taxiway that actually made it in.
+            ComboBox holdCombo = applied.Count == 1
+                ? cmbFirstHoldShortRunway
+                : _additionalTaxiways[applied.Count - 2].HoldShortRunway;
+            int hsIndex = holdCombo.Items.IndexOf(holdShortRunway);
+            if (hsIndex >= 0) holdCombo.SelectedIndex = hsIndex;
+        }
+
+        // Always refreshed — PR #86 skipped this on every early-exit path, leaving
+        // the Add button's enabled state stale.
+        UpdateAddTaxiwayButtonState();
+
+        if (startGuidance) OnCalculateClicked(btnCalculate, EventArgs.Empty);
+
+        return new ExternalRouteOutcome(destinationApplied, applied, skipped);
+    }
+
+    /// <summary>Fire-and-forget wrapper. LoadAirportData was `async void`, so a
+    /// throw crashed the app; a bare discard would swallow it silently instead.
+    /// Neither is acceptable — log it and tell the pilot.</summary>
+    private async Task LoadAirportDataSafeAsync(string icao)
+    {
+        try
+        {
+            await LoadAirportDataAsync(icao);
+        }
+        catch (Exception ex)
+        {
+            _taxiFormLog.Error($"Airport load failed for '{icao}': {ex}");
+            _announcer.Announce($"Could not load airport data for {icao}.");
+        }
+    }
+
+    private static readonly LogChannel _taxiFormLog = Log.Channel("taxi_guidance");
+
+    private async Task LoadAirportDataAsync(string icao)
     {
       try
       {

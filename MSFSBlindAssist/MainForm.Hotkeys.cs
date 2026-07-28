@@ -32,7 +32,11 @@ public partial class MainForm
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
             HotkeyAction.ShowPMDGEFBFirstOfficer,
-            HotkeyAction.TaxiStatus
+            HotkeyAction.TaxiStatus,
+            // The two SayIntentions readouts only touch flight.json and the SAPI
+            // endpoints. Building a taxi route is NOT offline — it needs a position.
+            HotkeyAction.SayIntentionsLastTransmission,
+            HotkeyAction.SayIntentionsAssignedStatus
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -403,6 +407,17 @@ public partial class MainForm
                 break;
             case HotkeyAction.ReadGsxTooltip:
                 ReadLatestGsxTooltip();
+                break;
+            // Fire-and-forget by design: each of these owns a top-level try/catch and
+            // reports its own failure, so nothing escapes unobserved.
+            case HotkeyAction.SayIntentionsLastTransmission:
+                _ = AnnounceSayIntentionsLastTransmissionAsync();
+                break;
+            case HotkeyAction.SayIntentionsAssignedStatus:
+                _ = AnnounceSayIntentionsAssignedStatusAsync();
+                break;
+            case HotkeyAction.SayIntentionsBuildTaxiRoute:
+                _ = BuildTaxiRouteFromSayIntentionsAsync();
                 break;
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()

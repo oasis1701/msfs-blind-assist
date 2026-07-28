@@ -665,7 +665,7 @@ public partial class MainForm
         catch { return false; }
     }
 
-    private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
+    internal TaxiAssistForm GetOrCreateTaxiAssistForm()
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
@@ -673,6 +673,13 @@ public partial class MainForm
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
                 simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
         }
+
+        return taxiAssistForm;
+    }
+
+    private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
+    {
+        taxiAssistForm = GetOrCreateTaxiAssistForm();
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
         // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's
