@@ -1,4 +1,4 @@
-FLYBYWIRE A380X HOTKEY REFERENCE
+﻿FLYBYWIRE A380X HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -182,6 +182,11 @@ guidance not active" if pressed when VG is off).
 
 Ground Services:
   Ctrl+G     Read latest GSX tooltip (no need to open the Access GSX window)
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 

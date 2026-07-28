@@ -1,4 +1,4 @@
-iFly BOEING 737 MAX8 HOTKEY REFERENCE
+﻿iFly BOEING 737 MAX8 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -209,3 +209,8 @@ Notes:
   - Annunciator lights announce automatically when they come on or go off;
     announcements are suppressed while the master LIGHTS TEST is held; the A/P
     and A/T disengage lights announce with their color (amber or red).
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance

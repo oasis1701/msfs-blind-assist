@@ -301,6 +301,19 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - SimConnect's `PLANE_HEADING_DEGREES_TRUE`/`_MAGNETIC` are returned in RADIANS despite the name — always multiply by 57.2958 before using as degrees (lat/lon are already in degrees). → [gsx.md](docs/gsx.md)
 - `DistanceFormatter` is a DISPLAY layer only — never use it for guidance thresholds; those must stay unit-native (metric) internally. `GroundTrafficUseMetres` is a separate, independent toggle from `GroundDistanceUnit` — never fold them together. → [gsx.md](docs/gsx.md)
 
+### SayIntentions integration (→ [sayintentions.md](docs/sayintentions.md))
+
+- Destination-runway extraction must run against text with every hold-short/crossing span MASKED — a leftmost `Regex.Match` makes the runway a pilot was told to hold short OF become the taxi destination, routing them at an active runway. → [sayintentions.md](docs/sayintentions.md)
+- The "fall back to the last radio transmission" path must stay gated on `LooksLikeTaxiClearance` — otherwise a landing clearance heard on rollout becomes a taxi route. → [sayintentions.md](docs/sayintentions.md)
+- The taxiway scan must NOT truncate at `cross`/`then` — a clearance legitimately continues and reuses taxiways across a runway crossing (KBOS pattern); crossings are masked, and only a real terminator (contact/monitor/squawk/remain/report/give way/follow) ends the route. → [sayintentions.md](docs/sayintentions.md)
+- Taxiway literal alternatives are matched CASE-SENSITIVELY while their NATO words are not — that asymmetry is the only thing stopping the article "a" reading as taxiway A and "at" as taxiway AT. Never add `RegexOptions.IgnoreCase` to the taxiway scan. → [sayintentions.md](docs/sayintentions.md)
+- Never resolve a destination or taxiway by substring `Contains` — a one-character name matches almost any combo item, including "(None - calculate shortest path)". Exact, normalized comparison only. → [sayintentions.md](docs/sayintentions.md)
+- A taxiway from the clearance that could not be applied must be NAMED in the announcement — silent degradation to a shortest-path route is invisible to a blind pilot. → [sayintentions.md](docs/sayintentions.md)
+- `NormalizeParkingName` must only strip a SPACED-dash descriptor ("A9 - Terminal 1") — a bare hyphen is part of the stand name ("A-9") and splitting on it matches the wrong spot. → [sayintentions.md](docs/sayintentions.md)
+- The SAPI hostname comes from a file this app does not own; validate https + the sayintentions.ai allowlist before attaching the API key, and never log the key (use `SayIntentionsEndpoint.Redact`). → [sayintentions.md](docs/sayintentions.md)
+- MainForm must never build its own `TaxiGraph` for a SayIntentions route — load the airport through `TaxiAssistForm.LoadAirportForExternalRouteAsync` and resolve against the names it returns; the form owns its destination label formats. → [sayintentions.md](docs/sayintentions.md)
+- SI request caching must commit AFTER the request completes and coalesce onto the in-flight task — stamping the cache time before awaiting makes a second hotkey press during a slow request speak "no transmission available". → [sayintentions.md](docs/sayintentions.md)
+
 ### Visual landing guidance (dual-tone) (→ [visual-guidance.md](docs/visual-guidance.md))
 
 - Visual guidance must NOT require HandFly mode — never reintroduce a `!handFlyManager.IsActive` gate; that produced a confusing three-tone overlap. → [visual-guidance.md](docs/visual-guidance.md)
@@ -565,6 +578,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
+- **Working on the SayIntentions integration (clearance parsing, transmission readouts, taxi route import)** → [SayIntentions](docs/sayintentions.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Working on the iFly 737 MAX8 (official SDK shared memory, WM_COPYDATA writes, synthetic `SYN_*` fields)** → [iFly 737 MAX8](docs/ifly-737.md)
 - **Working on the PMDG 777 (CDA switches, CDU array indexing, System Display synoptic pages)** → [PMDG 777](docs/pmdg-777.md)

@@ -1,4 +1,4 @@
-HORIZONSIM 787-9 HOTKEY REFERENCE
+﻿HORIZONSIM 787-9 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -132,6 +132,11 @@ Hand Fly Mode Hotkeys:
 
 Visual Guidance Mode Hotkeys:
   F          Read Target VS
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 

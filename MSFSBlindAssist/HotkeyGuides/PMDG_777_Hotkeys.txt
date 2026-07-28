@@ -1,4 +1,4 @@
-PMDG 777 HOTKEY REFERENCE
+﻿PMDG 777 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -174,6 +174,11 @@ Ground Services:
              to choose menu options, C to open GSX Settings, and Escape to hide
              the window. If multiple GSX services are active, use the Active
              services combo to choose which service drives tooltip announcements.
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 

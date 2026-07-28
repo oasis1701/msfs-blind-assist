@@ -1,4 +1,4 @@
-HEADWIND A330-900neo HOTKEY REFERENCE
+﻿HEADWIND A330-900neo HOTKEY REFERENCE
 
 (The Headwind A330neo is a FlyByWire A32NX fork; its controls, FCU, MCDU and
 flyPad EFB behave like the FlyByWire A320 reference below.)
@@ -184,6 +184,11 @@ Ground Services:
              to choose menu options, C to open GSX Settings, and Escape to hide
              the window. If multiple GSX services are active, use the Active
              services combo to choose which service drives tooltip announcements.
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Read SayIntentions assigned gate and runway
+  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 
