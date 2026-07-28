@@ -23,12 +23,26 @@ public static class SayIntentionsClearanceParser
         @"(?:[0-9]{1,2}\s*(?:LEFT|RIGHT|CENTER|CENTRE|[LCR])?" +
         @"|(?:ZERO|ONE|TWO|THREE|TREE|FOUR|FIVE|FIFE|SIX|SEVEN|EIGHT|NINER|NINE|LEFT|RIGHT|CENTER|CENTRE|[-\s])+)";
 
+    /// <summary>
+    /// Every phrasing that means "stop before this runway rather than taxi onto it".
+    /// SHARED between the mask and the capture on purpose: the first version of this
+    /// parser spelled the two separately, handled CROSS(ING) but only bare
+    /// "hold short", and so a pilot READBACK — "holding short of runway 15", which is
+    /// exactly what SayIntentions publishes as the newest transmission — still made
+    /// 15 the taxi destination. If the two regexes can drift, they will.
+    /// </summary>
+    private const string HoldPrefix =
+        @"(?:(?:HOLD(?:ING)?|REMAIN(?:ING)?)[\s-]+SHORT(?:\s+OF)?(?:\s+THE)?" +
+        @"|HOLD(?:ING)?[\s-]+POINT(?:\s+(?:OF|AT|FOR))?(?:\s+THE)?)";
+
+    private const string CrossPrefix = @"(?:CROSS(?:ING)?(?:\s+THE)?)";
+
     private static readonly Regex HoldShortOrCrossing = new(
-        @"\b(?:HOLD\s+SHORT(?:\s+OF)?|CROSS(?:ING)?)\s+(?:RUNWAY\s*)?" + RunwayToken,
+        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + @")\s+(?:RUNWAY\s*)?" + RunwayToken,
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex HoldShortRunwayCapture = new(
-        @"\bHOLD\s+SHORT(?:\s+OF)?\s+(?:RUNWAY\s*)?(?<runway>" + RunwayToken + @")",
+        @"\b" + HoldPrefix + @"\s+(?:RUNWAY\s*)?(?<runway>" + RunwayToken + @")",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex AnyRunwayCapture = new(
@@ -113,6 +127,9 @@ public static class SayIntentionsClearanceParser
         @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>Spoken forms per character. DIGITS matter as much as letters: without
+    /// them "Bravo Four" decayed to taxiway B — a real taxiway, so the wrong route was
+    /// delivered with full confidence and never reported as skipped.</summary>
     private static readonly Dictionary<char, string> Nato = new()
     {
         ['A'] = "ALPHA",   ['B'] = "BRAVO",   ['C'] = "CHARLIE",      ['D'] = "DELTA",
@@ -121,7 +138,11 @@ public static class SayIntentionsClearanceParser
         ['M'] = "MIKE",    ['N'] = "NOVEMBER",['O'] = "OSCAR",        ['P'] = "PAPA",
         ['Q'] = "QUEBEC",  ['R'] = "ROMEO",   ['S'] = "SIERRA",       ['T'] = "TANGO",
         ['U'] = "UNIFORM", ['V'] = "VICTOR",  ['W'] = "WHISKEY",      ['X'] = "X-?RAY",
-        ['Y'] = "YANKEE",  ['Z'] = "ZULU"
+        ['Y'] = "YANKEE",  ['Z'] = "ZULU",
+        // Longer variants first so the alternation cannot settle on a prefix.
+        ['0'] = "ZERO",    ['1'] = "ONE",     ['2'] = "TWO",          ['3'] = "THREE|TREE",
+        ['4'] = "FOUR",    ['5'] = "FIVE|FIFE", ['6'] = "SIX",        ['7'] = "SEVEN",
+        ['8'] = "EIGHT",   ['9'] = "NINER|NINE"
     };
 
     /// <summary>Resolves the spoken taxiway sequence against the airport's real
@@ -195,8 +216,12 @@ public static class SayIntentionsClearanceParser
         @"\b(?:GATE|PARKING|STAND|SPOT|RAMP|POSITION)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>The separator class admits a HYPHEN as well as a space: normalizing
+    /// "A-9" to "A9" was not enough while the capture itself stopped at the bare
+    /// letter, which routed the pilot to stand "A" — or, with no such stand, fell
+    /// through to the departure RUNWAY as the destination.</summary>
     private static readonly Regex GateInClearance = new(
-        @"\b(?:GATE|STAND|PARKING|RAMP|SPOT)\s+(?<gate>[A-Z]{0,2}\s?[0-9]{1,3}[A-Z]?|[A-Z][0-9]{0,3})\b",
+        @"\b(?:GATE|STAND|PARKING|RAMP|SPOT)\s+(?<gate>[A-Z]{0,2}[\s-]?[0-9]{1,3}[A-Z]?|[A-Z][0-9]{0,3})\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Canonical form for comparing a SayIntentions gate label against a

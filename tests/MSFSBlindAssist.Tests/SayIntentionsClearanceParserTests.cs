@@ -48,6 +48,32 @@ public class SayIntentionsClearanceParserTests
         Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
     }
 
+    // Every spoken variant of a hold instruction must mask, not just the exact
+    // "hold short of". The first fix handled CROSS(ING) but only bare "hold short",
+    // so a pilot READBACK — "holding short of runway 15", which is what SayIntentions
+    // publishes as the most recent transmission — still made 15 the destination.
+    [Theory]
+    [InlineData("Taxi to gate A9 via Alpha Bravo, holding short of runway 15")]
+    [InlineData("Taxi to gate A9 via Alpha Bravo, hold-short of runway 15")]
+    [InlineData("Taxi to gate A9 via Alpha Bravo, hold short of the runway 15")]
+    [InlineData("Taxi to gate A9 via Alpha Bravo, remain short of runway 15")]
+    [InlineData("Taxi to gate A9 via Alpha Bravo, holding short runway 15")]
+    public void EveryHoldPhrasingMasksTheDestination(string clearance)
+    {
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+        Assert.Equal("15", SayIntentionsClearanceParser.ParseHoldShortRunway(clearance));
+    }
+
+    [Fact]
+    public void IcaoHoldingPointIsAHoldNotADestination()
+    {
+        // ICAO phraseology. Routing a blind pilot ONTO 27 here would be the same
+        // failure in different words.
+        const string clearance = "Taxi to the holding point runway 27 via Alpha";
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+        Assert.Equal("27", SayIntentionsClearanceParser.ParseHoldShortRunway(clearance));
+    }
+
     // ---- Spoken-form normalization ----
 
     [Theory]
@@ -129,9 +155,26 @@ public class SayIntentionsClearanceParserTests
     {
         // Literal single-letter alternatives match case-SENSITIVELY, so lowercase
         // "a"/"at" in prose can never be read as taxiway A / AT.
+        //
+        // The prose MUST sit after "via" — ParseTaxiways only scans the route text,
+        // so an article before the keyword exercises nothing (the first version of
+        // this test put it before "via" and passed without touching the mechanism).
+        // "a", "at" and the lowercase "t" of "taxi"/"terminal" must all be inert:
+        // only Romeo survives.
         var result = SayIntentionsClearanceParser.ParseTaxiways(
-            "Taxi to a stand at the terminal via Romeo", CyyzTaxiways);
+            "Runway 15L via Romeo, then a short taxi at the terminal", CyyzTaxiways);
         Assert.Equal(new[] { "R" }, result);
+    }
+
+    [Fact]
+    public void SpokenAlphanumericTaxiwaysResolveWholly()
+    {
+        // "Bravo Four" must reach B4, not decay to B. B is a real taxiway, so the
+        // wrong route would be delivered with full confidence and never reported
+        // as skipped. Affects any airport with alphanumeric taxiways (KJFK, EGLL…).
+        var known = new[] { "AT", "A", "T", "R", "B", "B4", "K", "N" };
+        Assert.Equal(new[] { "B4", "K" },
+            SayIntentionsClearanceParser.ParseTaxiways("Taxi to gate A9 via Bravo Four, Kilo", known));
     }
 
     [Fact]
@@ -191,6 +234,11 @@ public class SayIntentionsClearanceParserTests
     [InlineData("Taxi to gate A9 via Alpha", "A9")]
     [InlineData("Taxi to stand 41 via Bravo", "41")]
     [InlineData("Runway 15L via Alpha", null)]
+    // The normalizer handled "A-9" but the CAPTURE did not admit a hyphen, so the
+    // match stopped at the bare letter and the pilot was routed to stand "A" — or,
+    // with no such stand, fell through to the departure RUNWAY as the destination.
+    [InlineData("Taxi to gate A-9 via Alpha", "A9")]
+    [InlineData("Taxi to stand B-12 via Alpha", "B12")]
     public void GateDestinationExtraction(string clearance, string? expected)
     {
         Assert.Equal(expected, SayIntentionsClearanceParser.ParseDestinationGate(clearance));
