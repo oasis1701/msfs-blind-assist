@@ -872,13 +872,30 @@ public class TaxiAssistForm : Form
     // can't escape as an unobserved async-void exception; only the augmentation
     // prefetch and the graph build had their own local guards before this.
     /// <summary>Outcome of applying an externally-sourced (SayIntentions) route.
-    /// Skipped taxiways are reported so the caller can tell the pilot which parts
-    /// of the clearance did not survive — silently degrading to a shortest-path
-    /// route is the failure a blind pilot cannot see.</summary>
+    /// Skipped taxiways AND hold-shorts are reported so the caller can tell the pilot
+    /// which parts of the clearance did not survive — silently degrading to a
+    /// shortest-path route, or dropping a hold-short ATC gave, is the failure a blind
+    /// pilot cannot see.</summary>
     public sealed record ExternalRouteOutcome(
         bool DestinationApplied,
         IReadOnlyList<string> AppliedTaxiways,
-        IReadOnlyList<string> SkippedTaxiways);
+        IReadOnlyList<string> SkippedTaxiways,
+        IReadOnlyList<AppliedHoldShort> AppliedHoldShorts,
+        IReadOnlyList<string> SkippedHoldShortRunways);
+
+    /// <summary>A hold-short that actually landed on a row: the runway designator
+    /// spelled the way the combo (and therefore the router) spells it, and the
+    /// taxiway whose row carries it.</summary>
+    public sealed record AppliedHoldShort(string Runway, string AfterTaxiway);
+
+    /// <summary>A hold-short from the clearance, tied to the taxiway it FOLLOWS.
+    /// TaxiwayIndex indexes the taxiway list passed to ApplyExternalRoute; -1 means
+    /// the clearance named no taxiway ahead of it, so no row can carry it.</summary>
+    public readonly record struct ExternalHoldShort(int TaxiwayIndex, string Runway);
+
+    /// <summary>One destination an external clearance would accept. Callers pass the
+    /// whole list in priority order so the form lists each destination type once.</summary>
+    public readonly record struct ExternalDestination(bool IsRunway, string? Identifier);
 
     /// <summary>Loads the airport for an external route and returns the taxiway
     /// names its graph knows. The caller resolves its clearance against THIS list
@@ -894,53 +911,178 @@ public class TaxiAssistForm : Form
         return _graph?.GetAllTaxiwayNames() ?? new List<string>();
     }
 
-    /// <summary>Finds the destination combo entry for a normalized identifier
-    /// ("15L", "A9"). The form owns its label formats — callers never construct
-    /// "Runway 15L" or a ParkingSpot.ToString() themselves.</summary>
-    public bool TryResolveExternalDestination(bool isRunway, string identifier, out string label)
+    /// <summary>Selects the first candidate that names a real entry in the form's
+    /// destination list. The form owns its label formats — callers pass a normalized
+    /// identifier ("15L", "A9"), never a constructed "Runway 15L".
+    ///
+    /// PROBING LEAVES NO MARK. Listing a destination type re-reads the database and
+    /// re-walks the taxi graph, so each type is listed at most ONCE however many
+    /// candidates ask for it; and when nothing resolves, the form is put back the way
+    /// it was found — a failed import must not throw away the destination the pilot
+    /// had already selected.</summary>
+    public bool TryResolveExternalDestination(
+        IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label)
     {
+        isRunway = false;
         label = "";
-        if (string.IsNullOrWhiteSpace(identifier)) return false;
 
-        cmbDestType.SelectedIndex = isRunway ? 0 : 1;
+        int priorType = cmbDestType.SelectedIndex;
+        string priorSearch = txtGateSearch.Text;
+        string? priorDestination = cmbDestination.SelectedItem?.ToString();
+
+        // A gate search left over from a manual lookup filters the gate list, and a
+        // filtered-out gate reads exactly like "this airport has no such gate".
+        if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
+
+        List<string>? runwayLabels = null;
+        List<string>? gateLabels = null;
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Identifier)) continue;
+
+            var offered = candidate.IsRunway
+                ? (runwayLabels ??= ListDestinations(true))
+                : (gateLabels ??= ListDestinations(false));
+
+            string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
+            if (match == null) continue;
+
+            // The list for this type may have been snapshotted several candidates
+            // ago, so switch back to it before selecting.
+            SelectDestinationType(candidate.IsRunway);
+            int index = cmbDestination.Items.IndexOf(match);
+            if (index < 0) continue;
+
+            cmbDestination.SelectedIndex = index;
+            isRunway = candidate.IsRunway;
+            label = match;
+            return true;
+        }
+
+        RestoreDestinationState(priorType, priorSearch, priorDestination);
+        return false;
+    }
+
+    /// <summary>The destination label matching a normalized identifier, or null.
+    /// BOTH sides are normalized: the clearance zero-pads a runway ("05L") where the
+    /// combo carries whatever navdata spells ("5L"), and a gate label carries a
+    /// terminal descriptor the clearance never says.</summary>
+    internal static string? MatchDestinationLabel(
+        IReadOnlyList<string> offered, bool isRunway, string? identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier)) return null;
 
         string wanted = isRunway
             ? SayIntentionsClearanceParser.CleanRunway(identifier) ?? ""
             : SayIntentionsClearanceParser.NormalizeParkingName(identifier);
-        if (wanted.Length == 0) return false;
+        if (wanted.Length == 0) return null;
 
-        foreach (object? item in cmbDestination.Items)
+        foreach (string text in offered)
         {
-            string text = item?.ToString() ?? "";
             string candidate = isRunway
                 ? SayIntentionsClearanceParser.CleanRunway(text) ?? ""
                 : SayIntentionsClearanceParser.NormalizeParkingName(text);
 
             if (candidate.Length > 0 && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
-            {
-                label = text;
-                return true;
-            }
+                return text;
         }
 
-        return false;
+        return null;
+    }
+
+    /// <summary>Every label the destination combo offers for one destination type.
+    /// Switching type repopulates the list, so callers cache the result per type.</summary>
+    private List<string> ListDestinations(bool isRunway)
+    {
+        SelectDestinationType(isRunway);
+        return ComboItemTexts(cmbDestination);
+    }
+
+    private void SelectDestinationType(bool isRunway)
+    {
+        int wanted = isRunway ? 0 : 1;
+        if (cmbDestType.SelectedIndex != wanted) cmbDestType.SelectedIndex = wanted;
+    }
+
+    private void RestoreDestinationState(int priorType, string priorSearch, string? priorDestination)
+    {
+        // Type first: leaving gate mode blanks the gate search, which would undo the
+        // search restore if it ran the other way round.
+        if (priorType >= 0 && cmbDestType.SelectedIndex != priorType)
+            cmbDestType.SelectedIndex = priorType;
+        if (txtGateSearch.Text != priorSearch)
+            txtGateSearch.Text = priorSearch;
+
+        if (string.IsNullOrEmpty(priorDestination)) return;
+        int index = cmbDestination.Items.IndexOf(priorDestination);
+        if (index >= 0) cmbDestination.SelectedIndex = index;
+    }
+
+    private static List<string> ComboItemTexts(ComboBox combo)
+    {
+        var texts = new List<string>(combo.Items.Count);
+        foreach (object? item in combo.Items)
+            texts.Add(item?.ToString() ?? "");
+        return texts;
+    }
+
+    /// <summary>Index of the "Hold short of runway" entry naming this runway, or -1.
+    /// BOTH sides go through CleanRunway: a clearance always zero-pads ("05L") while
+    /// the combo carries the raw navdata designator, which need not ("5L"). A literal
+    /// match silently drops the hold-short ATC just gave.</summary>
+    internal static int FindRunwayItemIndex(IReadOnlyList<string> items, string? runway)
+    {
+        string? wanted = SayIntentionsClearanceParser.CleanRunway(runway);
+        if (string.IsNullOrEmpty(wanted)) return -1;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            // The "(none)" sentinel carries no runway number and can never match.
+            string? candidate = SayIntentionsClearanceParser.CleanRunway(items[i]);
+            if (!string.IsNullOrEmpty(candidate)
+                && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
+        return -1;
     }
 
     /// <summary>Fills the route fields from an external clearance. Selection is by
     /// EXACT combo entry — never a substring match, which for a one-character
-    /// taxiway name would hit almost any entry in the list.</summary>
+    /// taxiway name would hit almost any entry in the list.
+    ///
+    /// An imported route starts from a CLEAN SLATE (ResetRouteShapingControls): a
+    /// leftover intersection departure, CAT III hold or hold-short from a route the
+    /// pilot built by hand would otherwise reshape the imported one with nothing said
+    /// about it.
+    ///
+    /// Each hold-short is seated on the row of the taxiway it FOLLOWS in the
+    /// clearance, and anything that could not be seated comes back in the outcome so
+    /// the caller can say so out loud.</summary>
     public ExternalRouteOutcome ApplyExternalRoute(
         bool isRunway, string destinationLabel, IReadOnlyList<string> taxiways,
-        string? holdShortRunway, bool startGuidance)
+        IReadOnlyList<ExternalHoldShort> holdShorts, bool startGuidance)
     {
+        ResetRouteShapingControls();
+
         cmbDestType.SelectedIndex = isRunway ? 0 : 1;
         int destIndex = cmbDestination.Items.IndexOf(destinationLabel);
         bool destinationApplied = destIndex >= 0;
         if (destinationApplied) cmbDestination.SelectedIndex = destIndex;
 
-        ClearAllAdditionalTaxiways();
         var applied = new List<string>();
         var skipped = new List<string>();
+        var appliedHoldShorts = new List<AppliedHoldShort>();
+        var skippedHoldShorts = new List<string>();
+
+        // A hold-short the clearance hung on no taxiway at all has no row to sit on.
+        // Reported first because it precedes every taxiway in the clearance.
+        foreach (var holdShort in holdShorts)
+        {
+            if (holdShort.TaxiwayIndex < 0 || holdShort.TaxiwayIndex >= taxiways.Count)
+                skippedHoldShorts.Add(holdShort.Runway);
+        }
 
         for (int i = 0; i < taxiways.Count; i++)
         {
@@ -952,28 +1094,45 @@ public class TaxiAssistForm : Form
             else
             {
                 OnAddTaxiwayClicked(btnAddTaxiway, EventArgs.Empty);
-                if (_additionalTaxiways.Count < applied.Count) { skipped.Add(taxiways[i]); continue; }
+                if (_additionalTaxiways.Count < applied.Count) { SkipTaxiway(i); continue; }
                 combo = _additionalTaxiways[applied.Count - 1].Combo;
             }
 
             int index = combo.Items.IndexOf(taxiways[i]);
-            if (index >= 0) { combo.SelectedIndex = index; applied.Add(taxiways[i]); }
-            else skipped.Add(taxiways[i]);
+            if (index < 0) { SkipTaxiway(i); continue; }
+
+            combo.SelectedIndex = index;
+            applied.Add(taxiways[i]);
+
+            // Seat this taxiway's hold-short BEFORE the next row is added: the Add
+            // handler only offers the same taxiway a second time when the previous
+            // row already carries a hold-short (the KBOS "N, hold short 15R, N"
+            // clearance), so seating afterwards would lose the repeat.
+            ComboBox holdCombo = applied.Count == 1
+                ? cmbFirstHoldShortRunway
+                : _additionalTaxiways[applied.Count - 2].HoldShortRunway;
+            var holdComboItems = ComboItemTexts(holdCombo);
+            bool rowTaken = false;
+
+            foreach (var holdShort in holdShorts)
+            {
+                if (holdShort.TaxiwayIndex != i) continue;
+
+                // One hold-short per row is all the form — and the router's
+                // sequence-index map — can carry.
+                int hsIndex = rowTaken ? -1 : FindRunwayItemIndex(holdComboItems, holdShort.Runway);
+                if (hsIndex < 0) { skippedHoldShorts.Add(holdShort.Runway); continue; }
+
+                holdCombo.SelectedIndex = hsIndex;
+                rowTaken = true;
+                appliedHoldShorts.Add(new AppliedHoldShort(holdComboItems[hsIndex], taxiways[i]));
+            }
         }
 
         if (applied.Count == 0)
         {
             int noneIndex = cmbFirstTaxiway.Items.IndexOf("(None - calculate shortest path)");
             if (noneIndex >= 0) cmbFirstTaxiway.SelectedIndex = noneIndex;
-        }
-        else if (!string.IsNullOrWhiteSpace(holdShortRunway))
-        {
-            // The hold-short belongs on the LAST taxiway that actually made it in.
-            ComboBox holdCombo = applied.Count == 1
-                ? cmbFirstHoldShortRunway
-                : _additionalTaxiways[applied.Count - 2].HoldShortRunway;
-            int hsIndex = holdCombo.Items.IndexOf(holdShortRunway);
-            if (hsIndex >= 0) holdCombo.SelectedIndex = hsIndex;
         }
 
         // Always refreshed — PR #86 skipped this on every early-exit path, leaving
@@ -982,7 +1141,47 @@ public class TaxiAssistForm : Form
 
         if (startGuidance) OnCalculateClicked(btnCalculate, EventArgs.Empty);
 
-        return new ExternalRouteOutcome(destinationApplied, applied, skipped);
+        return new ExternalRouteOutcome(
+            destinationApplied, applied, skipped, appliedHoldShorts, skippedHoldShorts);
+
+        void SkipTaxiway(int taxiwayIndex)
+        {
+            skipped.Add(taxiways[taxiwayIndex]);
+            foreach (var holdShort in holdShorts)
+            {
+                if (holdShort.TaxiwayIndex == taxiwayIndex)
+                    skippedHoldShorts.Add(holdShort.Runway);
+            }
+        }
+    }
+
+    /// <summary>Puts every route-shaping control an import does not itself set back to
+    /// its default, so the imported clearance is the WHOLE route.
+    ///
+    /// OnDestTypeChanged only clears the runway-only boxes when the type CHANGES, so a
+    /// runway route imported over a hand-built runway route keeps the old intersection
+    /// departure and CAT III hold — a different lineup point with nothing in the
+    /// announcement to reveal it.</summary>
+    private void ResetRouteShapingControls()
+    {
+        // Unticking fires OnIntersectionToggled, which also empties the intersection
+        // list and its map.
+        if (chkIntersection.Checked) chkIntersection.Checked = false;
+        if (chkCatIiiHold.Checked) chkCatIiiHold.Checked = false;
+        if (chkFirstHoldShort.Checked) chkFirstHoldShort.Checked = false;
+        if (cmbFirstHoldShortRunway.SelectedIndex > 0) cmbFirstHoldShortRunway.SelectedIndex = 0;
+
+        // Repopulates the gate list on its way out, so it has to run BEFORE the
+        // destination is selected.
+        if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
+
+        // Every dynamic row's taxiway, hold-short checkbox and hold-short runway go
+        // with the row itself.
+        ClearAllAdditionalTaxiways();
+
+        // chkFitFilter is deliberately NOT reset: it describes the aircraft's
+        // wingspan rather than the route, and forcing it either way could hide the
+        // very gate the clearance names.
     }
 
     /// <summary>Fire-and-forget wrapper. LoadAirportData was `async void`, so a

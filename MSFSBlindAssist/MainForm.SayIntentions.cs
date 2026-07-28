@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Navigation;
@@ -144,23 +145,29 @@ public partial class MainForm
                 return;
             }
 
+            // The taxiways may come from SayIntentions' structured taxi_path, but a
+            // hold-short only ever exists in the spoken clearance — so the plan is
+            // always parsed, and its hold-shorts are then tied to whichever taxiway
+            // sequence is actually applied.
+            var plan = ParseClearanceTaxiPlan(clearance, knownTaxiways);
             var taxiways = context.TaxiwaySequence.Count > 0
                 ? MatchKnownTaxiways(context.TaxiwaySequence, knownTaxiways)
-                : SayIntentionsClearanceParser.ParseTaxiways(clearance, knownTaxiways);
-
-            string? holdShort = SayIntentionsClearanceParser.ParseHoldShortRunway(clearance);
+                : plan.Taxiways;
+            var holdShorts = MapHoldShortsToTaxiways(plan.HoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
 
             // Show BEFORE announcing so the screen reader's own form-focus
             // announcement does not collide with the route summary.
             form.Show();
             form.BringToFront();
-            var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShort, autoStart);
+            var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts, autoStart);
 
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
                         $"skipped=[{string.Join(",", outcome.SkippedTaxiways)}] " +
-                        $"holdShort={holdShort ?? "none"} autoStart={autoStart}");
+                        $"holdShorts=[{string.Join(",", outcome.AppliedHoldShorts.Select(h => $"{h.Runway} after {h.AfterTaxiway}"))}] " +
+                        $"holdShortsMissed=[{string.Join(",", outcome.SkippedHoldShortRunways)}] " +
+                        $"autoStart={autoStart}");
 
             announcer.Announce(BuildExternalRouteAnnouncement(outcome, label, autoStart));
         }
@@ -171,12 +178,17 @@ public partial class MainForm
         }
     }
 
-    /// <summary>Names every taxiway that could not be applied. Silent degradation to
-    /// a shortest-path route is invisible to a blind pilot.</summary>
-    private static string BuildExternalRouteAnnouncement(
+    /// <summary>Names every taxiway AND every hold-short that could not be applied.
+    /// Silent degradation to a shortest-path route is invisible to a blind pilot, and
+    /// a hold-short ATC gave that never reached the form is a runway-incursion
+    /// risk — both have to be said out loud, applied or not.</summary>
+    internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, string destination, bool autoStart)
     {
         var parts = new List<string> { $"SayIntentions route to {destination}." };
+
+        if (!outcome.DestinationApplied)
+            parts.Add("Destination not set. Check the destination field.");
 
         parts.Add(outcome.AppliedTaxiways.Count > 0
             ? $"Via {string.Join(", ", outcome.AppliedTaxiways)}."
@@ -184,6 +196,12 @@ public partial class MainForm
 
         if (outcome.SkippedTaxiways.Count > 0)
             parts.Add($"Could not apply {string.Join(", ", outcome.SkippedTaxiways)}.");
+
+        foreach (var holdShort in outcome.AppliedHoldShorts)
+            parts.Add($"Hold short of runway {holdShort.Runway} after {holdShort.AfterTaxiway}.");
+
+        if (outcome.SkippedHoldShortRunways.Count > 0)
+            parts.Add($"Could not set hold short of runway {string.Join(", ", outcome.SkippedHoldShortRunways)}.");
 
         parts.Add(autoStart
             ? "Guidance started."
@@ -195,45 +213,174 @@ public partial class MainForm
     /// <summary>Destination priority: the clearance's own runway, then its gate, then
     /// the assigned gate when already at the destination airport, then the departure
     /// runway, then the assigned gate, then the arrival runway. Each candidate must
-    /// resolve to a real entry in the form's destination list to win.</summary>
+    /// resolve to a real entry in the form's destination list to win.
+    ///
+    /// The whole list goes to the form in one call — asking candidate by candidate
+    /// re-listed (and re-selected) the form's destinations on every probe, and left
+    /// the pilot's own destination discarded when none of them resolved.</summary>
     private static bool TryResolveSayIntentionsDestination(
         TaxiAssistForm form, SayIntentionsStatusResult status, string clearance,
         out bool isRunway, out string label)
     {
         var context = status.Context;
 
-        string? clearanceRunway = SayIntentionsClearanceParser.ParseDestinationRunway(clearance);
-        if (TryDestination(form, true, clearanceRunway, out label)) { isRunway = true; return true; }
-
-        string? clearanceGate = SayIntentionsClearanceParser.ParseDestinationGate(clearance);
-        if (TryDestination(form, false, clearanceGate, out label)) { isRunway = false; return true; }
-
         string? gate = FirstNonEmptySi(context.AssignedGate, status.Parking?.Name);
         bool atDestination = !string.IsNullOrWhiteSpace(context.CurrentAirport)
             && !string.IsNullOrWhiteSpace(context.Destination)
             && context.CurrentAirport.Equals(context.Destination, StringComparison.OrdinalIgnoreCase);
 
-        if (atDestination && TryDestination(form, false, gate, out label)) { isRunway = false; return true; }
+        var candidates = new List<TaxiAssistForm.ExternalDestination>
+        {
+            new(true, SayIntentionsClearanceParser.ParseDestinationRunway(clearance)),
+            new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance))
+        };
 
-        string? departureRunway = FirstNonEmptySi(
-            context.ClearedForTakeoff, context.DepartureRunway, context.Runway);
-        if (TryDestination(form, true, departureRunway, out label)) { isRunway = true; return true; }
+        if (atDestination)
+            candidates.Add(new(false, gate));
 
-        if (TryDestination(form, false, gate, out label)) { isRunway = false; return true; }
+        candidates.Add(new(true, FirstNonEmptySi(
+            context.ClearedForTakeoff, context.DepartureRunway, context.Runway)));
+        candidates.Add(new(false, gate));
+        candidates.Add(new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway)));
 
-        string? arrivalRunway = FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway);
-        if (TryDestination(form, true, arrivalRunway, out label)) { isRunway = true; return true; }
-
-        isRunway = false;
-        label = "";
-        return false;
+        return form.TryResolveExternalDestination(candidates, out isRunway, out label);
     }
 
-    private static bool TryDestination(TaxiAssistForm form, bool isRunway, string? identifier, out string label)
+    /// <summary>A "hold short of runway X" from the clearance, tied to the taxiway it
+    /// FOLLOWS. AfterTaxiway is empty when the clearance named no taxiway ahead of
+    /// it — nothing in the form can carry that, and the pilot is told so.</summary>
+    internal readonly record struct ClearanceHoldShort(string AfterTaxiway, string Runway);
+
+    private static readonly Regex ViaWord = new(
+        @"\bVIA\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The taxiway sequence a clearance names, plus every hold-short tied to
+    /// the taxiway it follows.
+    ///
+    /// The clearance is cut at the spans the parser masks out — hold-shorts AND
+    /// crossings — and each piece is resolved on its own, so WHERE each hold-short
+    /// falls in the sequence survives. Cutting on the parser's own mask is what keeps
+    /// a second copy of the hold-short phrasing out of this file; the two would drift.
+    ///
+    /// A taxiway repeated across a hold-short is KEPT ("N, hold short 15R, N" — the
+    /// KBOS pattern): the form carries one hold-short per row, so collapsing the
+    /// repeat would throw the second one away. A repeat across a plain crossing still
+    /// collapses, exactly as a single ParseTaxiways call would.</summary>
+    internal static (List<string> Taxiways, List<ClearanceHoldShort> HoldShorts)
+        ParseClearanceTaxiPlan(string? clearance, IReadOnlyList<string> knownTaxiways)
     {
-        label = "";
-        return !string.IsNullOrWhiteSpace(identifier)
-            && form.TryResolveExternalDestination(isRunway, identifier, out label);
+        var taxiways = new List<string>();
+        var holdShorts = new List<ClearanceHoldShort>();
+        if (string.IsNullOrWhiteSpace(clearance) || knownTaxiways.Count == 0)
+            return (taxiways, holdShorts);
+
+        bool routeStarted = false;
+        bool repeatAllowed = false;
+
+        foreach (var (text, maskedSpan) in SplitClearanceAtMaskedSpans(clearance))
+        {
+            // Only a piece that follows a "via" is a taxiway list. The parser needs
+            // the keyword to find one, so a continuation piece is given one — but a
+            // piece BEFORE the first "via" is left alone, or a gate name in
+            // "taxi to gate A9" would be read as taxiway A9.
+            bool hasVia = ViaWord.IsMatch(text);
+            if (hasVia || routeStarted)
+            {
+                var found = SayIntentionsClearanceParser.ParseTaxiways(
+                    hasVia ? text : "via " + text, knownTaxiways);
+
+                for (int i = 0; i < found.Count; i++)
+                {
+                    bool repeatsPrevious = taxiways.Count > 0
+                        && taxiways[^1].Equals(found[i], StringComparison.OrdinalIgnoreCase);
+                    if (repeatsPrevious && !(i == 0 && repeatAllowed)) continue;
+                    taxiways.Add(found[i]);
+                }
+
+                routeStarted = true;
+            }
+
+            string? runway = SayIntentionsClearanceParser.ParseHoldShortRunway(maskedSpan);
+            repeatAllowed = !string.IsNullOrWhiteSpace(runway);
+            if (repeatAllowed)
+                holdShorts.Add(new ClearanceHoldShort(
+                    taxiways.Count > 0 ? taxiways[^1] : "", runway!));
+        }
+
+        return (taxiways, holdShorts);
+    }
+
+    /// <summary>Cuts the clearance into the pieces BETWEEN the spans the parser masks,
+    /// pairing each piece with the span that follows it (empty for the last piece).
+    /// The mask blanks whole hold-short/crossing phrases and preserves length, so a
+    /// span is simply where the two strings differ — walked across the spaces inside
+    /// it, which the mask leaves identical.</summary>
+    private static List<(string Text, string MaskedSpan)> SplitClearanceAtMaskedSpans(string clearance)
+    {
+        string masked = SayIntentionsClearanceParser.MaskHoldShortAndCrossings(clearance);
+        var pieces = new List<(string Text, string MaskedSpan)>();
+
+        // Defensive: the mask is documented length-preserving, but this file does not
+        // own it. A length change means one piece — the whole clearance, no cuts.
+        if (masked.Length != clearance.Length)
+        {
+            pieces.Add((clearance, ""));
+            return pieces;
+        }
+
+        int pieceStart = 0;
+        int i = 0;
+        while (i < clearance.Length)
+        {
+            if (masked[i] == clearance[i]) { i++; continue; }
+
+            int spanStart = i;
+            int spanEnd = ++i;
+            while (i < clearance.Length)
+            {
+                if (masked[i] != clearance[i]) spanEnd = ++i;
+                else if (char.IsWhiteSpace(clearance[i])) i++;
+                else break;
+            }
+
+            pieces.Add((clearance.Substring(pieceStart, spanStart - pieceStart),
+                        clearance.Substring(spanStart, spanEnd - spanStart)));
+            pieceStart = spanEnd;
+        }
+
+        pieces.Add((clearance.Substring(pieceStart), ""));
+        return pieces;
+    }
+
+    /// <summary>Turns each hold-short's taxiway NAME into its position in the sequence
+    /// being applied — which may be SayIntentions' structured taxi_path rather than
+    /// the one parsed from speech. Repeats are consumed in order, so the second hold
+    /// on a repeated taxiway lands on the second row rather than back on the first.
+    /// A name the sequence does not carry maps to -1: the form reports it instead of
+    /// hanging the hold-short on whatever row happens to be last.</summary>
+    internal static List<TaxiAssistForm.ExternalHoldShort> MapHoldShortsToTaxiways(
+        IReadOnlyList<ClearanceHoldShort> holdShorts, IReadOnlyList<string> taxiways)
+    {
+        var mapped = new List<TaxiAssistForm.ExternalHoldShort>();
+        int searchFrom = 0;
+
+        foreach (var holdShort in holdShorts)
+        {
+            int index = -1;
+            for (int i = searchFrom; i < taxiways.Count; i++)
+            {
+                if (taxiways[i].Equals(holdShort.AfterTaxiway, StringComparison.OrdinalIgnoreCase))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index >= 0) searchFrom = index + 1;
+            mapped.Add(new TaxiAssistForm.ExternalHoldShort(index, holdShort.Runway));
+        }
+
+        return mapped;
     }
 
     /// <summary>Maps SayIntentions' structured taxi_path onto the airport's real
