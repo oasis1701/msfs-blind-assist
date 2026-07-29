@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Navigation;
@@ -509,22 +509,6 @@ public partial class MainForm
             return null;
         }
     }
-
-    /// <summary>
-    /// The assigned gate always names an ARRIVAL stand at <c>flight_destination</c>.
-    ///
-    /// SayIntentions does not assign a departure gate at all (confirmed by an SI
-    /// developer). The previous version inferred the role from where the aircraft was
-    /// standing, so before departure it said "Departure gate J1 at LMML" — wrong
-    /// twice over: the wrong role, and a stand placed at the airport the pilot was
-    /// sitting at when it belongs to one they had not flown to yet. The live EDDF
-    /// capture could not distinguish the two readings, because it was taken AT the
-    /// destination, where current_airport and flight_destination are the same.
-    /// </summary>
-    internal static string FormatSayIntentionsGateStatus(SayIntentionsFlightContext context, string gate) =>
-        string.IsNullOrWhiteSpace(context.Destination)
-            ? $"Arrival gate {gate}."
-            : $"Arrival gate {gate} at {context.Destination}.";
 
     /// <summary>
     /// The departure runway to speak in the assigned-status readout, or null once it
