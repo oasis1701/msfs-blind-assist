@@ -62,7 +62,7 @@ public partial class MainForm
                     parts.Add(nearbyParking);
             }
 
-            string? departureRunway = ResolveDepartureRunwayForStatus(context);
+            string? departureRunway = ResolveDepartureRunwayForStatus(context, _lastOnGround);
             if (!string.IsNullOrWhiteSpace(departureRunway))
                 parts.Add($"Departure runway {departureRunway}.");
 
@@ -512,18 +512,31 @@ public partial class MainForm
             : $"Arrival gate {gate} at {context.Destination}.";
 
     /// <summary>
-    /// The departure runway to speak in the assigned-status readout, or null once the
-    /// aircraft has arrived.
+    /// The departure runway to speak in the assigned-status readout, or null once it
+    /// has stopped being about anything the pilot can still act on.
     ///
-    /// Both candidate fields go stale on arrival. A live EDDF capture (flown from
-    /// LMML) still held <c>flight_plan_departing_runway: "5"</c> from the departure —
-    /// EDDF has no runway 05 — while <c>runway</c> held 07L, the runway just LANDED
-    /// on. Announcing either as "Departure runway" at the destination is wrong twice
-    /// over, so the line is suppressed there. A turnaround is unaffected: once a new
-    /// flight is filed out of this airport it is the origin, not the destination.
+    /// Suppressed AIRBORNE. The runway you departed from is ground information: it
+    /// answers "where am I taxiing to", and the moment the wheels leave it answers
+    /// nothing. Left in, it was the last thing the status readout said for the whole
+    /// cruise — a stale ground fact crowding out the arrival gate and arrival runway,
+    /// which are what the readout is actually for once you are up.
+    ///
+    /// Suppressed at the DESTINATION too, because both candidate fields also go stale
+    /// on arrival. A live EDDF capture (flown from LMML) still held
+    /// <c>flight_plan_departing_runway: "5"</c> from the departure — EDDF has no
+    /// runway 05 — while <c>runway</c> held 07L, the runway just LANDED on.
+    /// Announcing either as "Departure runway" there is wrong twice over. That check
+    /// is kept as well as the air/ground one: it is what covers the aircraft sitting
+    /// on the ground at the destination after rollout, when onGround is true again.
+    ///
+    /// A turnaround is unaffected either way: once a new flight is filed out of this
+    /// airport it is the origin, not the destination, and the aircraft is on the
+    /// ground.
     /// </summary>
-    internal static string? ResolveDepartureRunwayForStatus(SayIntentionsFlightContext context)
+    internal static string? ResolveDepartureRunwayForStatus(
+        SayIntentionsFlightContext context, bool onGround)
     {
+        if (!onGround) return null;
         if (SameIcaoSi(context.CurrentAirport, context.Destination)) return null;
 
         return FirstNonEmptySi(

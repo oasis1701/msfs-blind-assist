@@ -29,6 +29,13 @@ during taxi gives you the ground controller, not the purser.
 Speaks the current airport, the assigned gate, the departure runway, and any landing
 clearance.
 
+The departure runway is **ground information** and is dropped once airborne. It
+answers "which runway am I taxiing to", and the moment the wheels leave it answers
+nothing — left in, it was the last thing the readout said for the entire cruise, a
+stale ground fact sitting in front of the arrival gate and arrival runway. It is also
+dropped at the destination, where both fields it comes from have gone stale (see
+[flight_plan_departing_runway goes stale](#observed-wire-format)).
+
 The assigned gate is always an **arrival** gate at your filed destination — see
 [The assigned gate is an arrival gate](#the-assigned-gate-is-an-arrival-gate) — so it
 is announced that way from the moment you push back, not just once you get there.
@@ -209,6 +216,40 @@ The field values as captured:
 
 `SayIntentionsLiveClearanceTests` pins the captured clearance verbatim;
 `SayIntentionsLiveFlightJsonTests` pins the file shape and these field values.
+
+### What flight.json holds AIRBORNE is unknown
+
+Every field above was read from an aircraft **stopped on the ground at the
+destination**. There is no airborne capture, so nothing here says what SI writes at
+1,000 ft or in the cruise. Do not design an airborne readout against this table.
+
+The specific open questions, any of which a single mid-cruise copy of the file would
+settle:
+
+- **`current_airport` in flight** — the last airport, the nearest one, or empty? The
+  status readout opens with it, so if it holds a departure airport for four hours it
+  is telling the pilot something false about where they are.
+- **`assigned_gate` before arrival** — is it published from the start of the flight, or
+  only once approach assigns it? It is the most useful airborne field there is if the
+  former.
+- **`runway` in flight** — departure, expected arrival, or last-used?
+- **`flight_plan_route` and `callsign_icao`** — both are already parsed into
+  `SayIntentionsFlightContext` and **never spoken**. Neither appears in the captured
+  table, so whether SI populates them at all is unverified. They are the obvious
+  candidates for an en-route readout *if* a capture shows them present.
+- **The five clearance fields the reader accepts** — `cleared_for_takeoff`,
+  `cleared_for_landing`, `clearance`, `last_clearance`, `taxi_clearance` — were all
+  **absent** from the capture. They came from the first version of this integration and
+  have never been observed to exist. Two of them (`cleared_for_takeoff`,
+  `cleared_for_landing`) sit in the destination-resolution chain and the status
+  readout; treat any behaviour that depends on them as untested against real SI.
+
+`getCommsHistory` is unaffected by all of this and works the same airborne as on the
+ground — en route it returns centre and approach rather than ground, and the last-
+transmission hotkey needs no changes to be useful in the air.
+
+To take a capture: SayIntentions rewrites `%LOCALAPPDATA%\SayIntentionsAI\flight.json`
+continuously, so copying it mid-cruise is enough. No tooling is needed.
 
 ### Hold-short masking (safety-critical)
 

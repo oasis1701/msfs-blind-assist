@@ -110,7 +110,7 @@ public class SayIntentionsLiveClearanceTests
             Runway = "07L"
         };
 
-        Assert.Null(MainForm.ResolveDepartureRunwayForStatus(arrived));
+        Assert.Null(MainForm.ResolveDepartureRunwayForStatus(arrived, onGround: true));
     }
 
     [Fact]
@@ -124,7 +124,26 @@ public class SayIntentionsLiveClearanceTests
             DepartureRunway = "05"
         };
 
-        Assert.Equal("05", MainForm.ResolveDepartureRunwayForStatus(departing));
+        Assert.Equal("05", MainForm.ResolveDepartureRunwayForStatus(departing, onGround: true));
+    }
+
+    // The runway you departed from is ground information. Airborne it is the last
+    // thing the status readout had left to say, so it repeated a stale ground fact
+    // for the whole cruise while the arrival gate and arrival runway — the parts that
+    // are still about something the pilot can act on — sat behind it.
+    [Fact]
+    public void NoDepartureRunwayIsSpokenOnceAirborne()
+    {
+        var enRoute = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "LMML",
+            Origin = "LMML",
+            Destination = "EDDF",
+            DepartureRunway = "05",
+            Runway = "05"
+        };
+
+        Assert.Null(MainForm.ResolveDepartureRunwayForStatus(enRoute, onGround: false));
     }
 
     // SayIntentions never assigns a DEPARTURE gate (confirmed by an SI developer), so
