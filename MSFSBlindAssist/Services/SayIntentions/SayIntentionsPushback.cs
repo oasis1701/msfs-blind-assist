@@ -100,22 +100,19 @@ public static class SayIntentionsPushback
     /// </summary>
     private const double StraightBandDegrees = 25;
 
-    /// <summary>How close to a half-turn counts as neither side. At exactly 180 the two
-    /// are equally valid and the answer would be decided by noise, so it is not
-    /// claimed.</summary>
-    private const double AmbiguousTurnBandDegrees = 25;
-
     /// <summary>
-    /// Which pushback to ask for: <c>"straight"</c>, <c>"tail left, nose right"</c>,
-    /// <c>"tail right, nose left"</c>, <c>"about turn"</c>, or null when the
-    /// transmission is not a pushback approval, carries no direction, or there is no
-    /// heading to compare against.
+    /// Which way the push turns you: <c>"straight"</c>, <c>"left"</c> or
+    /// <c>"right"</c> — or null when the transmission is not a pushback approval,
+    /// carries no direction, or there is no heading to compare against.
     ///
-    /// The wording matches how the pushback is actually CHOSEN. GSX offers the options
-    /// as "nose right, tail left" and so on, and naming both ends means the answer maps
-    /// onto that menu whichever end it happens to lead with. "Straight" is one of those
-    /// options and therefore one of these answers — it is a real instruction, not the
-    /// absence of one.
+    /// Left and right are the change to the AIRCRAFT'S HEADING, which is the sense a
+    /// pilot means by "which way do I turn": at heading 303 a south-west tail finishes
+    /// you on 045, and that is a right turn.
+    ///
+    /// Three answers, no magnitude, no special cases. Earlier versions gave the
+    /// finishing heading, the size of the turn, and both ends of the aircraft
+    /// ("tail left, nose right"); none of it was asked for and all of it sat between
+    /// hearing a clearance and acting on it.
     ///
     /// <paramref name="aircraftHeading"/> MUST be in the same reference as SI's compass
     /// points, which is why the caller prefers SayIntentions' own
@@ -131,19 +128,17 @@ public static class SayIntentionsPushback
         var tail = ParseTailDirection(message);
         if (tail == null || aircraftHeading == null) return null;
 
-        // A straight push sends the tail dead astern. Everything is measured as the
-        // tail's departure from that.
+        // A straight push sends the tail dead astern; everything is measured as the
+        // tail's departure from that. Taken the SHORT way round — measured naively the
+        // wrap turns a 102-degree right into a 258-degree left.
         double straightBack = Normalize(aircraftHeading.Value + 180);
         double swing = SignedDifference(straightBack, tail.Value.Bearing);
-        double magnitude = Math.Abs(swing);
 
-        if (magnitude <= StraightBandDegrees) return "straight";
-        if (magnitude >= 180 - AmbiguousTurnBandDegrees) return "about turn";
+        if (Math.Abs(swing) <= StraightBandDegrees) return "straight";
 
-        // Clockwise — the tail swinging toward the pilot's left — puts the nose right.
-        // The aircraft is rigid: both ends rotate the same way, and it is the SIDE each
-        // ends up on that the pushback menu names.
-        return swing > 0 ? "tail left, nose right" : "tail right, nose left";
+        // The aircraft is rigid, so the tail swinging clockwise turns the nose — and
+        // the heading — clockwise with it.
+        return swing > 0 ? "right" : "left";
     }
 
     /// <summary>Shortest signed turn from <paramref name="from"/> to

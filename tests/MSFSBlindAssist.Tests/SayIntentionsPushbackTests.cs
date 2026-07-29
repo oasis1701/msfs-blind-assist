@@ -29,33 +29,27 @@ public class SayIntentionsPushbackTests
         Assert.Equal(225, tail.Value.Bearing);
     }
 
-    // Live case. Heading 303, tail south-west: a straight push would send the tail to
-    // 123, so 225 is 102 degrees clockwise of dead astern — the tail swings to the
-    // pilot's LEFT and the nose comes right. Measured the naive way the wrap makes it
-    // 258 the other way, which is the one error that would actively mislead.
+    // Live case. Heading 303, tail south-west: the push finishes you on 045, so it is
+    // a RIGHT turn. Measured the naive way the wrap makes it 258 the other way, which
+    // is the one error that would actively mislead.
     [Fact]
-    public void TheLiveApprovalIsATailLeftPush()
+    public void TheLiveApprovalIsARightTurn()
     {
-        Assert.Equal("tail left, nose right",
-            SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading));
+        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading));
     }
 
     [Fact]
-    public void TheTailCanSwingRight()
+    public void TheTurnCanGoLeft()
     {
-        // Facing 090: dead astern is 270, so a south-west tail is 45 degrees
-        // anticlockwise — tail to the pilot's right, nose left.
-        Assert.Equal("tail right, nose left",
-            SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 90));
+        // Facing 090, tail south-west: the push finishes you on 045.
+        Assert.Equal("left", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 90));
     }
 
-    // "Straight" is an ANSWER, not the absence of one — it is one of the options the
-    // pushback menu offers, and a pilot who hears nothing cannot tell it from a
-    // readout that failed.
+    // "Straight" is an ANSWER, not the absence of one — a pilot who hears nothing
+    // cannot tell it from a readout that failed.
     [Fact]
     public void ADeadAsternTailIsAStraightPush()
     {
-        // Facing 045, tail south-west: dead astern exactly.
         Assert.Equal("straight", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 45));
     }
 
@@ -71,13 +65,15 @@ public class SayIntentionsPushbackTests
         Assert.Equal("straight", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, heading));
     }
 
-    // Near a half-turn the two sides are equally valid and the answer would be decided
-    // by noise. Claiming one would be inventing precision that isn't there.
-    [Fact]
-    public void ANearHalfTurnIsNotClaimedAsASide()
+    // Three answers, and only three.
+    [Theory]
+    [InlineData(0)] [InlineData(45)] [InlineData(90)] [InlineData(135)]
+    [InlineData(180)] [InlineData(225)] [InlineData(270)] [InlineData(315)]
+    public void EveryHeadingGivesOneOfThreeAnswers(double heading)
     {
-        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 225));
-        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 215));
+        Assert.Contains(
+            SayIntentionsPushback.DescribeTurnDirection(LiveApproval, heading),
+            new[] { "straight", "left", "right" });
     }
 
     // The last-transmission hotkey works with SimConnect disconnected and before SI has

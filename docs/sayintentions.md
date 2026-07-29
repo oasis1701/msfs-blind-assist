@@ -42,30 +42,34 @@ and knows what that looks like. A blind pilot has a heading indicator and nothin
 so a compass point on its own does not answer the only question that matters: which
 pushback to ask for. `Ctrl+S` reads the controller's words verbatim and adds it:
 
-> ATC, Boston Ground: Push and start approved. Tail South-West. **(tail left, nose right)**
+> ATC, Boston Ground: Push and start approved. Tail South-West. **(right)**
 
-The phrasing matches how the pushback is actually **chosen** — GSX offers the options as
-"nose right, tail left" and so on, so naming both ends means the answer maps onto that
-menu whichever end it leads with. There are four:
+Three answers, no magnitude, no special cases:
 
 | | |
 | --- | --- |
 | `straight` | tail within 25° of dead astern |
-| `tail left, nose right` | tail swings clockwise |
-| `tail right, nose left` | tail swings anticlockwise |
-| `about turn` | within 25° of a half-turn — neither side is claimed |
+| `left` / `right` | which way the push turns you |
 
-**`straight` is an answer, not silence.** It is one of the options the menu offers, and
-a pilot who hears nothing cannot tell it from a readout that failed.
+Left and right are the change to the **aircraft's heading** — the sense a pilot means by
+"which way do I turn". At heading 303 a south-west tail finishes you on 045, so: right.
+
+**`straight` is an answer, not silence.** A pilot who hears nothing cannot tell it from
+a readout that failed.
+
+Earlier versions gave the finishing compass point, the finishing heading, the size of
+the turn, and both ends of the aircraft ("tail left, nose right"). None of it was asked
+for, and all of it sat between hearing a clearance and acting on it.
 
 The parentheses are there because screen readers do not speak brackets by default, so it
-arrives as a bare "tail left, nose right" tacked onto the controller's words — which is
-how a human would say it.
+arrives as a bare "right" tacked onto the controller's words — which is how a human
+would say it.
 
 Everything is measured as the tail's departure from dead astern, taken the short way
 round: at heading 303 a straight push sends the tail to 123, so a south-west tail is 102°
-clockwise. Measured naively the wrap makes that 258° the other way, which is the one
-error that would actively mislead. Compass points are matched longest name first —
+clockwise. Measured naively the wrap makes that 258° the other way — a right turn read as
+a left, the one error that would actively mislead. Compass points are matched longest
+name first —
 shortest-first, "Tail South-South-West" reads as plain "south" and puts the pilot 22° out
 with nothing to reveal it. Separators are stripped from both sides, so "South-West",
 "South West" and "Southwest" are one direction.
