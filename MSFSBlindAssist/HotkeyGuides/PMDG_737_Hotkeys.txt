@@ -1,4 +1,4 @@
-﻿PMDG 737-800 HOTKEY REFERENCE
+PMDG 737-800 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -157,7 +157,6 @@ Visual Guidance Mode Hotkeys:
 SayIntentions:
   Ctrl+S        Read last SayIntentions transmission
   Ctrl+Shift+S  Read SayIntentions assigned gate and runway
-  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 
@@ -194,6 +193,13 @@ Taxi Guidance:
              touchdown; guidance auto-starts when you land — reuses the ILS
              destination runway if one is set; announces headwind/tailwind on
              runway selection so you can pick an exit that matches the rollout)
+
+SayIntentions:
+  Alt+Shift+S  Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in Settings > SayIntentions.
 
 General:
   Escape     Exit active hotkey mode

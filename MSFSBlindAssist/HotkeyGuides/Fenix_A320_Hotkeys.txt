@@ -1,4 +1,4 @@
-﻿Fenix A320 HOTKEY REFERENCE
+Fenix A320 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -158,7 +158,6 @@ Ground Services:
 SayIntentions:
   Ctrl+S        Read last SayIntentions transmission
   Ctrl+Shift+S  Read SayIntentions assigned gate and runway
-  Input mode Alt+Shift+S  Build taxi route from SayIntentions clearance
 
 INPUT MODE - Press [ to activate
 
@@ -206,6 +205,13 @@ Taxi Guidance:
 Ground Services:
   Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
 
+
+SayIntentions:
+  Alt+Shift+S  Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in Settings > SayIntentions.
 
 General:
   Escape     Exit active hotkey mode

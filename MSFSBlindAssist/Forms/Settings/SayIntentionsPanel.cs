@@ -40,11 +40,15 @@ public class SayIntentionsPanel : UserControl, ISettingsPanel
             AccessibleName = "API key label"
         };
 
+        // Deliberately NOT UseSystemPasswordChar — do not add it. NVDA and JAWS
+        // refuse to speak a password field's contents, so a blind user could never
+        // read back a pasted key to check it landed intact. The SimBrief username
+        // and the Gemini/Claude API keys are plain text for the same reason; a key
+        // the user cannot verify is worse than one a sighted onlooker could read.
         apiKeyTextBox = new TextBox
         {
             Location = new System.Drawing.Point(20, 125),
             Size = new System.Drawing.Size(440, 25),
-            UseSystemPasswordChar = true,
             AccessibleName = "SayIntentions API key",
             AccessibleDescription = "Optional. Leave blank to read the key from flight.json."
         };
