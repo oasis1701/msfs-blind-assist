@@ -30,6 +30,8 @@ public sealed class SayIntentionsService
     private static readonly TimeSpan CommsCacheDuration = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ParkingCacheDuration = TimeSpan.FromSeconds(10);
 
+    private static readonly DateTime UnixEpoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     private static readonly LogChannel _log = Log.Channel("sayintentions");
 
     private static readonly HttpClient HttpClient = new()
@@ -157,13 +159,13 @@ public sealed class SayIntentionsService
             context.Callsign = FirstNonEmpty(GetString(details, "callsign_icao"), GetString(details, "callsign"));
             context.CurrentAirport = CleanIcao(GetString(details, "current_airport"));
 
-            // current_flight.taxi_path is deliberately NOT read. It is GEOMETRY, not
-            // taxiway names — a live EDDF capture gave ~200 entries shaped
+            // current_flight.taxi_path is SayIntentions' own taxi-route geometry, a
+            // live EDDF capture gave ~200 entries shaped
             // {"heading": 93.92, "point": {"lon": …, "lat": …}} with no name anywhere.
-            // A reader that hunts for name-ish members in it can only mis-fire: the
-            // members a geometry array would plausibly gain (id, label) are exactly
-            // the ones such a reader trusts, and the route it fed REPLACED the
-            // sequence parsed from the clearance. See docs/sayintentions.md.
+            // ReadTaxiPathPoints below reads ONLY point.lat/point.lon — see its doc
+            // comment for why nothing else in an entry is ever touched. See the
+            // rewritten CLAUDE.md invariant ("SayIntentions integration") and
+            // docs/sayintentions.md for the hazard this boundary exists to prevent.
             if (currentFlight is JsonElement flight)
             {
                 context.Origin = CleanIcao(GetString(flight, "flight_origin"));
@@ -181,6 +183,7 @@ public sealed class SayIntentionsService
                     GetString(flight, "arriving_runway"),
                     GetString(flight, "arrival_runway")));
                 context.FlightPlanRoute = GetString(flight, "flight_plan_route");
+                context.TaxiPathPoints = ReadTaxiPathPoints(flight);
             }
 
             context.ClearedForTakeoff = SayIntentionsClearanceParser.CleanRunway(GetString(details, "cleared_for_takeoff"));
@@ -190,6 +193,7 @@ public sealed class SayIntentionsService
             context.OnGround = GetBool(details, "on_ground");
             context.DepartureWeather = ReadAirportWeather(GetObject(details, "departure_wx"));
             context.ArrivalWeather = ReadAirportWeather(GetObject(details, "arrival_wx"));
+            context.TaxiPathStampUtc = ReadTaxiPathStampUtc(details, _flightJsonPath);
 
             context.ClearanceText = FirstNonEmpty(
                 GetString(details, "clearance"),
@@ -209,7 +213,8 @@ public sealed class SayIntentionsService
 
             _log.Debug($"flight.json read: airport={context.CurrentAirport ?? "-"} " +
                        $"gate={context.AssignedGate ?? "-"} " +
-                       $"clearance={(string.IsNullOrWhiteSpace(context.ClearanceText) ? "none" : "present")}");
+                       $"clearance={(string.IsNullOrWhiteSpace(context.ClearanceText) ? "none" : "present")} " +
+                       $"taxiPathPoints={context.TaxiPathPoints.Count}");
         }
         catch (JsonException ex)
         {
@@ -228,6 +233,88 @@ public sealed class SayIntentionsService
         }
 
         return context;
+    }
+
+    /// <summary>
+    /// Reads <c>current_flight.taxi_path</c> — SayIntentions' own taxi-route
+    /// geometry, published per entry as <c>{"heading":…, "point":{"lon":…,"lat":…}}</c>.
+    ///
+    /// COORDINATES ONLY. This deliberately reads <c>point.lat</c> / <c>point.lon</c>
+    /// and NOTHING else. Do not add a read of <c>id</c>, <c>label</c>, or <c>name</c>
+    /// here, even if a future capture appears to carry one: the reader deleted in
+    /// 2026-07 accepted exactly those members, which is exactly what a geometry
+    /// array would plausibly gain on a schema change, and ~200 point ids would have
+    /// become "taxiway names" that silently replaced the clearance-derived route.
+    /// Names come from the airport's own TaxiGraph, never from SI — see the
+    /// rewritten CLAUDE.md invariant under "SayIntentions integration".
+    ///
+    /// An entry missing either coordinate is skipped, not defaulted to (0,0) — a
+    /// zeroed point would snap to nothing useful at best and to some other
+    /// airport's pavement at worst.
+    /// </summary>
+    private static IReadOnlyList<GeoPoint> ReadTaxiPathPoints(JsonElement flight)
+    {
+        JsonElement? taxiPath = GetObject(flight, "taxi_path");
+        if (taxiPath is not JsonElement path || path.ValueKind != JsonValueKind.Array)
+            return Array.Empty<GeoPoint>();
+
+        var points = new List<GeoPoint>();
+        foreach (JsonElement entry in path.EnumerateArray())
+        {
+            if (GetObject(entry, "point") is not JsonElement point)
+                continue;
+
+            double? latitude = GetDouble(point, "lat");
+            double? longitude = GetDouble(point, "lon");
+            if (latitude is null || longitude is null)
+                continue;
+
+            points.Add(new GeoPoint(latitude.Value, longitude.Value));
+        }
+
+        return points;
+    }
+
+    /// <summary>
+    /// When this flight.json snapshot (and therefore its taxi_path, when present)
+    /// was generated, in UTC.
+    ///
+    /// <c>flight_details.timestamp</c> is a raw Unix epoch in SECONDS, fractional —
+    /// e.g. <c>1785357161.40969</c> — NOT an ISO/"Zulu" string like <c>stamp_zulu</c>
+    /// elsewhere in this file (see ParseZuluStamp). Confirmed against ten real wire
+    /// captures (LSZH and EGLL, 2026-07-29/30,
+    /// docs/superpowers/plans/2026-07-29-geometry-captures/): every one carried this
+    /// shape, each within a few seconds of the file's own last-write time. Feeding
+    /// that raw numeric string through a date-string parser (the shape used for
+    /// stamp_zulu) never matches any recognized format and always fails, which would
+    /// make this fall back to the file time on every real flight — silently
+    /// defeating the point of preferring SI's own stamp. Kept as a plain double
+    /// (GetDouble already handles both a JSON number and a numeric JSON string) and
+    /// converted via epoch arithmetic instead.
+    ///
+    /// Falls back to the file's own last-write time when the field is absent or the
+    /// file can no longer be reached for its timestamp — a later answer from this
+    /// app's read, rather than SI's generation time, but still an honest one instead
+    /// of leaving a genuinely present path with no stamp at all.
+    /// </summary>
+    private static DateTime? ReadTaxiPathStampUtc(JsonElement details, string flightJsonPath)
+    {
+        double? unixSeconds = GetDouble(details, "timestamp");
+        if (unixSeconds.HasValue)
+            return UnixEpoch.AddSeconds(unixSeconds.Value);
+
+        try
+        {
+            return File.GetLastWriteTimeUtc(flightJsonPath);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

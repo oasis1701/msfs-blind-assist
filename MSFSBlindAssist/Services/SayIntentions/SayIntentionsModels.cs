@@ -56,6 +56,23 @@ public sealed class SayIntentionsFlightContext
     /// in any capture yet — read defensively so it appears if SI starts publishing it
     /// once a flight plan is filed.</summary>
     public SayIntentionsAirportWeather? ArrivalWeather { get; set; }
+
+    /// <summary>Coordinates from <c>current_flight.taxi_path</c> — SayIntentions' own
+    /// taxi-route geometry, published per entry as
+    /// <c>{"heading":…, "point":{"lon":…,"lat":…}}</c>. COORDINATES ONLY: no name of
+    /// any kind lives in this array, and none is read from it — see the reader in
+    /// SayIntentionsService for why. Empty (never null) when the field is absent or
+    /// unreadable; nothing consumes this yet, a later task snaps it to the airport's
+    /// own taxiway graph via SayIntentionsTaxiPathSnapper.</summary>
+    public IReadOnlyList<GeoPoint> TaxiPathPoints { get; set; } = Array.Empty<GeoPoint>();
+
+    /// <summary>When this taxi-path snapshot was generated, in UTC. Prefers SI's own
+    /// <c>flight_details.timestamp</c> (a Unix epoch in seconds — confirmed against
+    /// real captures, see SayIntentionsService); falls back to the flight.json file's
+    /// own last-write time when that field is absent, which is a weaker proxy (this
+    /// app's read time, not SI's generation time) but still an honest answer rather
+    /// than silence when a path is genuinely present.</summary>
+    public DateTime? TaxiPathStampUtc { get; set; }
 }
 
 /// <summary>

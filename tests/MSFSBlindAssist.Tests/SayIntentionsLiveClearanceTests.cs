@@ -201,9 +201,11 @@ public class SayIntentionsLiveClearanceTests
 //     never be reached ahead of a gate that resolves.
 //   - flight.json carries NO clearance text and NO comms, so ClearanceText is null
 //     and the taxi import has to fetch the clearance over the API every time.
-//   - current_flight.taxi_path is GEOMETRY. There is no taxiway name anywhere in
-//     it, so nothing reads it: SayIntentionsFlightContext carries no taxiway
-//     sequence at all, and that guarantee is now structural rather than asserted.
+//   - current_flight.taxi_path is GEOMETRY, not taxiway names — SI puts no name
+//     anywhere in it. It IS read now (TheTaxiPathIsReadAsCoordinatesOnly, below):
+//     point.lat/point.lon only, into TaxiPathPoints. See SayIntentionsService's
+//     reader for why no other member of an entry is ever touched, and the
+//     rewritten CLAUDE.md invariant for the hazard that guards against widening it.
 public class SayIntentionsLiveFlightJsonTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "si-live-" + Guid.NewGuid().ToString("N"));
@@ -288,5 +290,76 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
 
         Assert.Null(context.ClearanceText);
         Assert.Null(context.LastFlightJsonTransmission);
+    }
+
+    // The reason this reader exists at all: taxi_path is coordinates SI publishes
+    // for its own route rendering, and Task 1's snapper (SayIntentionsTaxiPathSnapper)
+    // turns coordinates into a taxiway sequence by snapping to the airport's own
+    // graph. This only pins that the coordinates arrive intact — nothing here reads
+    // a name, because taxi_path carries none (see the class comment above).
+    [Fact]
+    public void TheTaxiPathIsReadAsCoordinatesOnly()
+    {
+        var context = ReadLiveContext();      // fixture already carries 3 geometry entries
+        Assert.Equal(3, context.TaxiPathPoints.Count);
+        Assert.Equal(50.04, context.TaxiPathPoints[0].Latitude, 2);
+        Assert.Equal(8.52,  context.TaxiPathPoints[0].Longitude, 2);
+    }
+
+    // flight_details.timestamp turned out NOT to be the ISO-ish "stamp_zulu" shape
+    // used elsewhere in this same file (see ParseZuluStamp) — it is a raw Unix
+    // epoch in SECONDS, fractional. Confirmed against ten real wire captures (LSZH
+    // and EGLL, 2026-07-29/30, docs/superpowers/plans/2026-07-29-geometry-captures/),
+    // every one of which carried it in exactly this shape, a few seconds ahead of
+    // the file's own last-write time. 1785357161 is drawn from one of those
+    // captures (fractional part dropped for an exact assertion); independently
+    // verified against it as 2026-07-29T20:32:41Z via `python -c
+    // "import datetime; print(datetime.datetime.fromtimestamp(1785357161,
+    // tz=datetime.timezone.utc))"`, not by re-deriving the same formula this test
+    // is meant to check.
+    [Fact]
+    public void TheTaxiPathStampReadsARealUnixEpoch()
+    {
+        Directory.CreateDirectory(_dir);
+        string path = Path.Combine(_dir, "flight.json");
+        File.WriteAllText(path, """
+        {
+          "flight_details": {
+            "api_key": "PLACEHOLDER",
+            "current_airport": "EDDF",
+            "timestamp": 1785357161,
+            "current_flight": {
+              "taxi_path": [
+                { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } }
+              ]
+            }
+          }
+        }
+        """);
+
+        var context = new SayIntentionsService(path).ReadFlightContext();
+
+        Assert.NotNull(context.TaxiPathStampUtc);
+        Assert.Equal(
+            new DateTime(2026, 7, 29, 20, 32, 41, DateTimeKind.Utc),
+            context.TaxiPathStampUtc!.Value,
+            TimeSpan.FromSeconds(1));
+    }
+
+    // This capture has no flight_details.timestamp at all (flight.json's "every
+    // field is optional" rule applies here too) — TaxiPathStampUtc must still
+    // carry an answer rather than going null out from under a path that IS
+    // present, so it falls back to the file's own last-write time.
+    [Fact]
+    public void TheTaxiPathStampFallsBackToFileTimeWhenAbsent()
+    {
+        var context = ReadLiveContext();
+        string path = Path.Combine(_dir, "flight.json");
+
+        Assert.NotNull(context.TaxiPathStampUtc);
+        Assert.Equal(
+            File.GetLastWriteTimeUtc(path),
+            context.TaxiPathStampUtc!.Value,
+            TimeSpan.FromSeconds(2));
     }
 }
