@@ -4,14 +4,30 @@ using System.Text.RegularExpressions;
 namespace MSFSBlindAssist.Services.SayIntentions;
 
 /// <summary>
-/// Builds the SayIntentions information readout as a list of LINES.
+/// One headed block of the readout: a heading, and the lines that sit under it.
 ///
-/// Lines, not one string, is the whole point. This readout used to be spoken as a
+/// A section never carries an empty <see cref="Items"/> list — a block whose every
+/// field was missing is dropped whole rather than emitted as a bare heading, so the
+/// caller can hand each section straight to a control without checking for one that
+/// has nothing in it.
+/// </summary>
+public sealed record InfoSection(string Heading, IReadOnlyList<string> Items);
+
+/// <summary>
+/// Builds the SayIntentions information readout as headed SECTIONS.
+///
+/// Sections, not one string, is the whole point. This readout used to be spoken as a
 /// single run-on sentence, which was tolerable while it held three facts. With the
-/// ATIS, the active runway configuration, the METAR and the TAF in it, a blind pilot
+/// gate, the runway configuration and two airports' altimeters in it, a blind pilot
 /// needs to move through it at their own pace and re-read one part without hearing all
-/// of it again — so the caller puts these lines in a read-only text box and the screen
-/// reader walks them with the arrow keys.
+/// of it again — so the caller puts each section in its own list box and the screen
+/// reader walks the items with the arrow keys, Tab moving between sections.
+///
+/// The structure is what makes that possible: a list ITEM is a discrete object, so it
+/// brailles as one unit and the reader announces its position ("3 of 7"), neither of
+/// which a run of text in a box can give. <see cref="Flatten"/> renders the same
+/// report as the flat line list it reads as on the page — headings, items, one blank
+/// line between blocks.
 ///
 /// It is kept SHORT on purpose. Anything a pilot can get by listening to the ATIS or
 /// opening the METAR window does not belong here — see AddAirport.
@@ -22,17 +38,38 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 /// </summary>
 public static class SayIntentionsInfoReport
 {
-    public static IReadOnlyList<string> Build(
+    public static IReadOnlyList<InfoSection> Build(
         SayIntentionsFlightContext context,
         string? assignedGate,
         string? departureRunway,
         string? nearbyParkingStatus)
     {
+        var sections = new List<InfoSection>();
+
+        AddFlight(sections, context);
+        AddGateAndRunway(sections, context, assignedGate, departureRunway, nearbyParkingStatus);
+        AddAirports(sections, context);
+
+        return sections;
+    }
+
+    /// <summary>
+    /// The same report as one flat run of lines: each heading, its items under it, one
+    /// blank line between blocks.
+    ///
+    /// This is the shape the report reads as on the page, and the shape its ordering is
+    /// pinned in — which airport block leads, which line comes before which.
+    /// </summary>
+    public static IReadOnlyList<string> Flatten(IReadOnlyList<InfoSection> sections)
+    {
         var lines = new List<string>();
 
-        AddFlight(lines, context);
-        AddGateAndRunway(lines, context, assignedGate, departureRunway, nearbyParkingStatus);
-        AddAirports(lines, context);
+        foreach (var section in sections)
+        {
+            if (lines.Count > 0) lines.Add("");
+            lines.Add(section.Heading);
+            lines.AddRange(section.Items);
+        }
 
         return lines;
     }
@@ -44,60 +81,60 @@ public static class SayIntentionsInfoReport
     /// information to a pilot who knows SI assigns one on arrival — which means the
     /// report is never literally empty, and a naive Count check would open a window on
     /// a session where SayIntentions is not running at all. So the test is whether any
-    /// line carries something beyond that placeholder and the section headings.
+    /// section carries an item beyond that placeholder. Headings never count: a heading
+    /// only exists because its section had something to put under it.
     /// </summary>
-    public static bool HasContent(IReadOnlyList<string> lines) =>
-        lines.Any(line =>
-            !string.IsNullOrWhiteSpace(line)
-            && line != "Gate and runway"
-            && !line.StartsWith("Assigned arrival gate: none", StringComparison.Ordinal));
+    public static bool HasContent(IReadOnlyList<InfoSection> sections) =>
+        sections.Any(section => section.Items.Any(item =>
+            !string.IsNullOrWhiteSpace(item)
+            && !item.StartsWith("Assigned arrival gate: none", StringComparison.Ordinal)));
 
-    private static void AddFlight(List<string> lines, SayIntentionsFlightContext context)
+    private static void AddFlight(List<InfoSection> sections, SayIntentionsFlightContext context)
     {
-        var section = new List<string>();
+        var items = new List<string>();
 
-        Add(section, "Current airport", context.CurrentAirport);
-        Add(section, "Origin", context.Origin);
-        Add(section, "Destination", context.Destination);
-        Add(section, "Aircraft", context.AircraftIcao);
+        Add(items, "Current airport", context.CurrentAirport);
+        Add(items, "Origin", context.Origin);
+        Add(items, "Destination", context.Destination);
+        Add(items, "Aircraft", context.AircraftIcao);
 
         // callsign_icao is NOT an ICAO callsign — a live capture had it identical to
         // `callsign` and already spelt out ("Skyhawk-One-Two-Three-Alpha-Zulu"). The
         // hyphens are SayIntentions' text-to-speech markup, not part of the callsign,
         // and a screen reader reads them aloud.
-        Add(section, "Callsign", CleanCallsign(context.Callsign));
+        Add(items, "Callsign", CleanCallsign(context.Callsign));
 
         if (!string.IsNullOrWhiteSpace(context.FlightPlanRoute))
-            Add(section, "Route", context.FlightPlanRoute);
+            Add(items, "Route", context.FlightPlanRoute);
 
-        AddSection(lines, "Flight", section);
+        AddSection(sections, "Flight", items);
     }
 
     private static void AddGateAndRunway(
-        List<string> lines, SayIntentionsFlightContext context,
+        List<InfoSection> sections, SayIntentionsFlightContext context,
         string? assignedGate, string? departureRunway, string? nearbyParkingStatus)
     {
-        var section = new List<string>();
+        var items = new List<string>();
 
         // SayIntentions does not assign a departure gate at all, so this is always the
         // arrival stand — and it stays blank until the arrival is under way. Saying so
         // is better than dropping the line: a pilot who has heard about assigned gates
         // and sees nothing cannot tell "none yet" from "we failed to read it".
-        section.Add(string.IsNullOrWhiteSpace(assignedGate)
+        items.Add(string.IsNullOrWhiteSpace(assignedGate)
             ? "Assigned arrival gate: none assigned yet"
             : $"Assigned arrival gate: {assignedGate}");
 
         if (!string.IsNullOrWhiteSpace(nearbyParkingStatus))
-            section.Add(nearbyParkingStatus);
+            items.Add(nearbyParkingStatus);
 
-        Add(section, "Departure runway", departureRunway);
+        Add(items, "Departure runway", departureRunway);
 
         if (!string.IsNullOrWhiteSpace(context.ClearedForLanding))
-            section.Add($"Cleared to land runway: {context.ClearedForLanding}");
+            items.Add($"Cleared to land runway: {context.ClearedForLanding}");
         else
-            Add(section, "Arrival runway", context.ArrivalRunway);
+            Add(items, "Arrival runway", context.ArrivalRunway);
 
-        AddSection(lines, "Gate and runway", section);
+        AddSection(sections, "Gate and runway", items);
     }
 
     /// <summary>
@@ -124,7 +161,7 @@ public static class SayIntentionsInfoReport
     /// never on the name alone — SI publishes airport names with nothing under them, and
     /// a stub in front must not cost the other block its runway picture.
     /// </summary>
-    private static void AddAirports(List<string> lines, SayIntentionsFlightContext context)
+    private static void AddAirports(List<InfoSection> sections, SayIntentionsFlightContext context)
     {
         bool departureLeads =
             IsAt(context.DepartureWeather, context.CurrentAirport)
@@ -134,13 +171,13 @@ public static class SayIntentionsInfoReport
 
         if (departureLeads)
         {
-            AddAirport(lines, context.DepartureWeather, "Departure", printed);
-            AddAirport(lines, context.ArrivalWeather, "Arrival", printed);
+            AddAirport(sections, context.DepartureWeather, "Departure", printed);
+            AddAirport(sections, context.ArrivalWeather, "Arrival", printed);
         }
         else
         {
-            AddAirport(lines, context.ArrivalWeather, "Arrival", printed);
-            AddAirport(lines, context.DepartureWeather, "Departure", printed);
+            AddAirport(sections, context.ArrivalWeather, "Arrival", printed);
+            AddAirport(sections, context.DepartureWeather, "Departure", printed);
         }
     }
 
@@ -171,7 +208,7 @@ public static class SayIntentionsInfoReport
     /// runway information, and this section is the runway information.
     /// </summary>
     private static void AddAirport(
-        List<string> lines, SayIntentionsAirportWeather? weather, string role,
+        List<InfoSection> sections, SayIntentionsAirportWeather? weather, string role,
         HashSet<string> printed)
     {
         if (weather == null) return;
@@ -180,21 +217,21 @@ public static class SayIntentionsInfoReport
         string heading = $"{airport} airport";
         if (printed.Contains(heading)) return;
 
-        var section = new List<string>();
+        var items = new List<string>();
 
-        Add(section, "Landing runways", SpaceAfterCommas(weather.ActiveRunwaysArriving));
-        Add(section, "Departing runways", SpaceAfterCommas(weather.ActiveRunwaysDeparting));
-        Add(section, "Preferred runway", SpaceAfterCommas(weather.PreferredRunway));
-        Add(section, "Runway flow", weather.CurrentlyOperating);
+        Add(items, "Landing runways", SpaceAfterCommas(weather.ActiveRunwaysArriving));
+        Add(items, "Departing runways", SpaceAfterCommas(weather.ActiveRunwaysDeparting));
+        Add(items, "Preferred runway", SpaceAfterCommas(weather.PreferredRunway));
+        Add(items, "Runway flow", weather.CurrentlyOperating);
 
         if (weather.Altimeter.HasValue)
-            section.Add(Altimeter(weather.Altimeter.Value));
+            items.Add(Altimeter(weather.Altimeter.Value));
 
         // A block with nothing under it never claims the heading, so the other block
         // still gets to print it.
-        if (section.Count == 0) return;
+        if (items.Count == 0) return;
 
-        AddSection(lines, heading, section);
+        AddSection(sections, heading, items);
         printed.Add(heading);
     }
 
@@ -237,19 +274,17 @@ public static class SayIntentionsInfoReport
     internal static string? SpaceAfterCommas(string? value) =>
         string.IsNullOrWhiteSpace(value) ? value : Regex.Replace(value, @",\s*", ", ");
 
-    private static void Add(List<string> section, string label, string? value)
+    private static void Add(List<string> items, string label, string? value)
     {
-        if (!string.IsNullOrWhiteSpace(value)) section.Add($"{label}: {value.Trim()}");
+        if (!string.IsNullOrWhiteSpace(value)) items.Add($"{label}: {value.Trim()}");
     }
 
-    /// <summary>Appends a headed section, separated from the previous one by a blank
-    /// line. A section whose every field was missing contributes nothing — no empty
-    /// heading to arrow past.</summary>
-    private static void AddSection(List<string> lines, string heading, List<string> section)
+    /// <summary>Appends a headed section. A section whose every field was missing
+    /// contributes nothing — no empty heading to arrow past, and no empty list box to
+    /// tab through.</summary>
+    private static void AddSection(List<InfoSection> sections, string heading, List<string> items)
     {
-        if (section.Count == 0) return;
-        if (lines.Count > 0) lines.Add("");
-        lines.Add(heading);
-        lines.AddRange(section);
+        if (items.Count == 0) return;
+        sections.Add(new InfoSection(heading, items));
     }
 }

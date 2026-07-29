@@ -1,4 +1,4 @@
-# SayIntentions Integration
+﻿# SayIntentions Integration
 
 MSFS Blind Assist reads the active [SayIntentions.ai](https://sayintentions.ai) flight
 so a blind pilot can hear the last radio call, check their assigned gate and runway,
@@ -20,15 +20,51 @@ file, so it also requires a reachable SayIntentions API.
 
 ### Last transmission
 
-Speaks the most recent **radio** transmission. SayIntentions mixes cabin PA and crew
-intercom lines into the same message stream; those are filtered out, so pressing this
-during taxi gives you the ground controller, not the purser.
+Speaks the most recent **ATC** transmission. Two things are filtered out, for different
+reasons. SayIntentions mixes cabin PA and crew intercom lines into the same message
+stream, so pressing this during taxi gives you the ground controller, not the purser.
+
+And **your own transmissions are never returned**. A readback is normally the newest
+thing on the frequency at exactly the moment you press the key, so ordering by timestamp
+announced the pilot their own words back, prefixed "Pilot:". Preferring the ATC call only
+*within* one record — as far as the first fix went — did not help, because the readback
+arrives in a later record than the clearance it repeats. A `Pilot`-speaker transmission
+is now dropped outright.
+
+A transmission with **no direction at all** still counts. It comes from the bare
+`message` fallback, which carries nothing identifying it as the pilot, so excluding it
+would be a guess. The failure modes are not symmetric: dropping it leaves a payload shape
+we cannot classify silent, and for a readout whose whole job is to say what was heard,
+silence is the worse failure — while including it risks at worst an unlabelled line,
+which with no speaker is prefixed with nothing and so can never be mistaken for you.
+
+When the history holds nothing but your own calls you hear *"No ATC transmission yet.
+Only your own calls so far."* That is a different answer from nothing found: you did hear
+traffic, none of it from the controller, and saying so stops you pressing again for a call
+that has not come.
+
+The taxi import inherits the filter for free. A clearance can now only ever come from the
+controller, never from your readback of one — which is exactly the transmission the
+hold-short masking exists to survive.
 
 ### Flight information
 
-Opens a **read-only window** rather than speaking. Arrow keys move a line at a time,
-Control+Home and Control+End jump to the ends, Escape closes and hands the foreground
-back to the simulator.
+Opens a **read-only window** rather than speaking. Each section of the report is its own
+list: Tab moves between sections, the arrow keys move within one, typing a letter jumps to
+the next item starting with it, and Escape closes and hands the foreground back to the
+simulator. Focus lands on the first section with its first item selected, so tabbing in
+announces the section, its leading value and how many items it holds in one utterance.
+
+Lists rather than a box of text, for two reasons. The window is a **lookup surface** — you
+open it to find one value, so the structure has to be something you can jump around rather
+than a run you arrow through from the top. And a list item is a discrete object, so it
+**brailles as one unit** and the reader announces its position ("3 of 7"); a multi-line
+text box can only braille the caret line, and its line boundaries are a rendering
+artefact. It is the same reasoning that put the A32NX DCDU in a ListBox, and the same
+`DisplayListBox` the Weather Radar window uses, so the reading behaviour carries over.
+
+A section with no data is **omitted entirely** — no heading with nothing under it, and no
+empty list to tab into and find nothing in.
 
 What it shows, sections omitted entirely when the data is absent:
 
@@ -153,12 +189,20 @@ one you were cleared for is not something you can see, so it is always said out 
 
 ## Settings
 
-**Settings → SayIntentions** holds two options:
+There is no SayIntentions settings tab. The one option lives on **Settings → Taxi
+Guidance**, under a SayIntentions heading at the foot of that tab:
 
-- **API key** — optional. Leave it blank and the integration uses the key
-  SayIntentions publishes in `flight.json` during an active flight. Set it explicitly
-  if you want comms history and parking lookups to work in other situations.
 - **Start taxi guidance immediately** — off by default (see above).
+
+It sits there because it decides what happens to a *taxi route*, which is that tab's
+subject, and because it was the only option left once the API key was retired.
+
+There is no API key field. SayIntentions publishes the key in `flight.json`
+(`flight_details.api_key`) whenever a flight is active, confirmed in both live captures,
+so a hand-entered copy could only duplicate it — or go stale and quietly override it with
+something wrong. Removing the setting also retired the last error string that sent a pilot
+looking for it: when there is no key and nothing in the file, the honest reason is that
+SayIntentions is not running, and that is what is now spoken.
 
 ## Troubleshooting
 
@@ -433,6 +477,58 @@ decayed to taxiway B — a real taxiway at most airports, so the wrong route was
 with full confidence and never reported as missing. Affects every airport with
 alphanumeric taxiways (KJFK, EGLL…).
 
+**A single letter can arrive as its compass word.** Palma Ground, live: *"Taxi to holding
+point runway 24R via LE, E, North, H2."* LEPA's navdata calls that taxiway `N` — and
+SayIntentions rendered the bare letter as the plain English word, not the NATO
+"November". It cost the route a leg twice over: the pattern stopped at the trailing
+"orth", and the phonetic-only unresolved scan had no branch for it either, so the pilot
+heard a three-taxiway route with nothing to say a leg had gone missing. The taxi router
+caught it downstream — *"No intersection between 'E' and 'H2'"* — which is not the
+import's job.
+
+`NORTH`/`SOUTH`/`EAST`/`WEST`/`CENTER`/`CENTRE` are therefore spoken forms of N/S/E/W/C,
+merged into the same table `ALPHA` comes from by `SpokenForms`, so the match and the
+report pick them up from one place and cannot diverge. They compose with everything else
+unchanged: longest-match-first still prefers a hypothetical `NE` over `N`, and the digit
+words still bind — "North One" → `N1`, and at an airport with `N` but no `N2`, "North Two"
+is reported as `N2` rather than quietly resolved to `N`.
+
+#### The one thing a compass word costs
+
+Nobody writes "alpha" in prose. People write "north" constantly, and it can sit after
+`via`: *"taxi north on Bravo"*, *"to the north side"*, *"to runway 24 Center"*. Both
+failure modes are real and they are mirror images — where the airport HAS the letter,
+prose silently adds a leg ATC never cleared; where it does not, prose is announced as
+"could not apply North", and a false report teaches the pilot to distrust the whole
+announcement. `IsDirectionProse` is the price, and it is applied to BOTH scans from one
+helper, or the announcement contradicts itself from one airport to the next.
+
+A compass word is a direction rather than a taxiway when:
+
+- **a direction phrase leads into it** — `the` ("to the north end"; a taxiway is never
+  given an article, ATC says "via Alpha" and never "via the Alpha"), or a runway number
+  ("to runway 24 Center" — hold-short and crossing runways are already blanked by the
+  mask, a destination runway named after `via` is not); or
+- **the very next word is English** rather than the next designator in the list. A comma,
+  a full stop, the end of the route, `and`/`then`, or another taxiway all leave it a
+  taxiway. "Immediately" means within three separators, so a blanked-out hold-short span
+  reads as "nothing follows" — which is what it is — instead of reaching across it for the
+  first word on the far side and dropping the last taxiway of the clearance.
+
+That the lowercase prose after a direction can be tested against the designator list at
+all is the case asymmetry paying off again: "north apron" cannot see taxiway `A` in
+"apron", because the literal branch is uppercase-only.
+
+**Capitalization is deliberately not the signal.** SayIntentions' text is generated, and
+"North" being capitalized in one live clearance is not a contract.
+
+**Known residual:** *"proceed north then LE"* still reads `north` as taxiway `N`, because
+`then` is exactly what joins two taxiways in a list ("LE, North and H2") and the guard
+cannot tell the two apart. It is ambiguous to a human reader too, no live capture contains
+prose after `via` at all, and the router's own sanity check catches the resulting route.
+Closing it needs a whitelist of what may PRECEDE a compass word, whose failure mode is the
+silent dropped leg this change exists to remove.
+
 ### Reporting what did not survive
 
 Three things can go missing between the clearance and the route. All three are spoken.
@@ -456,7 +552,12 @@ overlaps none of the names that did resolve. Bare designators are **not** scanne
 matching uppercase letters in prose false-positives on ordinary abbreviations, and a
 wrong "could not apply K" teaches the pilot to distrust the whole announcement. A miss is
 the better failure here, so a clearance written with bare designators can still lose one
-quietly. There is no structured second source to catch it: `taxi_path` is geometry.
+quietly. There is no structured second source to catch it: `taxi_path` is geometry.
+
+The word list has since gained the five compass words, which ARE ordinary English — the
+one widening this rule ever took, and bounded the same way: a closed list of whole words,
+no bare designators. What English costs is paid by `IsDirectionProse`, not by loosening
+the pattern.
 
 Two guards keep the report quiet when it should be, and both are load-bearing:
 
@@ -541,7 +642,8 @@ identifier (`"15L"`, `"A9"`), never a constructed `"Runway 15L"` string.
 
 ### API key handling
 
-The SAPI hostname comes from `flight.json`, a file this app does not own.
+The key comes from `flight.json` and from nowhere else. The SAPI hostname comes from the
+same file, which this app does not own.
 `SayIntentionsEndpoint.Build` requires **https on `sayintentions.ai`** before attaching
 the key and silently falls back to the documented default host otherwise, so a
 tampered or corrupt `flight.json` cannot redirect the credential. Request URLs go

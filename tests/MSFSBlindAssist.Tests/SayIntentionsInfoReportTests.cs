@@ -1,5 +1,7 @@
 // The SayIntentions information readout (Output Shift+... -> Ctrl+Shift+S), which is a
-// list of LINES rather than one spoken string.
+// set of headed SECTIONS — one list box each in the window — rather than one spoken
+// string. What each section says, and the order they come in, is asserted through
+// Flatten: the same report rendered as the headed run of lines it reads as on the page.
 //
 // The field data below is a SECOND live capture, taken 2026-07-28 with the aircraft
 // parked at KBOS with no flight plan filed — deliberately the case the earlier EDDF
@@ -59,9 +61,31 @@ public class SayIntentionsInfoReportTests
         DepartureWeather = KbosWeather()
     };
 
-    private static IReadOnlyList<string> KbosReport() =>
-        SayIntentionsInfoReport.Build(KbosContext(), assignedGate: null,
+    // The report is built as SECTIONS — a heading and the lines under it — because the
+    // window puts each one in its own list box. Flatten renders the same report as the
+    // headed run of lines it reads as on the page, which is the shape the ordering rules
+    // below are pinned in: which airport block leads, which line comes before which.
+    private static IReadOnlyList<InfoSection> Sections(
+        SayIntentionsFlightContext context,
+        string? assignedGate = null,
+        string? departureRunway = null,
+        string? nearbyParkingStatus = null) =>
+        SayIntentionsInfoReport.Build(context, assignedGate, departureRunway, nearbyParkingStatus);
+
+    private static IReadOnlyList<string> Report(
+        SayIntentionsFlightContext context,
+        string? assignedGate = null,
+        string? departureRunway = null,
+        string? nearbyParkingStatus = null) =>
+        SayIntentionsInfoReport.Flatten(
+            Sections(context, assignedGate, departureRunway, nearbyParkingStatus));
+
+    private static IReadOnlyList<InfoSection> KbosSections() =>
+        Sections(KbosContext(), assignedGate: null,
             departureRunway: "22L", nearbyParkingStatus: null);
+
+    private static IReadOnlyList<string> KbosReport() =>
+        SayIntentionsInfoReport.Flatten(KbosSections());
 
     // --- the live LMML -> EDDF arrival ------------------------------------------------
     //
@@ -96,9 +120,12 @@ public class SayIntentionsInfoReportTests
         ArrivalWeather = EddfWeather()
     };
 
-    private static IReadOnlyList<string> EddfArrivalReport() =>
-        SayIntentionsInfoReport.Build(EddfArrivalContext(),
+    private static IReadOnlyList<InfoSection> EddfArrivalSections() =>
+        Sections(EddfArrivalContext(),
             assignedGate: "Terminal 3 Gate J1", departureRunway: null, nearbyParkingStatus: null);
+
+    private static IReadOnlyList<string> EddfArrivalReport() =>
+        SayIntentionsInfoReport.Flatten(EddfArrivalSections());
 
     private static int LineIndex(IReadOnlyList<string> report, string line)
     {
@@ -247,7 +274,7 @@ public class SayIntentionsInfoReportTests
         var beforePushback = EddfArrivalContext();
         beforePushback.CurrentAirport = "LMML";
 
-        var report = SayIntentionsInfoReport.Build(beforePushback, null, "31", null);
+        var report = Report(beforePushback, null, "31", null);
 
         Assert.True(LineIndex(report, "LMML airport") < LineIndex(report, "EDDF airport"),
             "the airport under the wheels must lead");
@@ -267,7 +294,7 @@ public class SayIntentionsInfoReportTests
         var enRoute = EddfArrivalContext();
         enRoute.CurrentAirport = currentAirport;
 
-        var report = SayIntentionsInfoReport.Build(enRoute, null, null, null);
+        var report = Report(enRoute, null, null, null);
 
         Assert.True(LineIndex(report, "EDDF airport") < LineIndex(report, "LMML airport"),
             "with nothing under the wheels the destination leads");
@@ -286,7 +313,7 @@ public class SayIntentionsInfoReportTests
             ArrivalWeather = new SayIntentionsAirportWeather { Altimeter = 30.12 }
         };
 
-        var report = SayIntentionsInfoReport.Build(nameless, null, null, null);
+        var report = Report(nameless, null, null, null);
 
         Assert.True(LineIndex(report, "Arrival airport") < LineIndex(report, "Departure airport"),
             "blank does not match blank, so the tie-break stands");
@@ -300,7 +327,7 @@ public class SayIntentionsInfoReportTests
             ArrivalWeather = EddfWeather()
         };
 
-        var mixed = SayIntentionsInfoReport.Build(halfNamed, null, null, null);
+        var mixed = Report(halfNamed, null, null, null);
 
         Assert.True(LineIndex(mixed, "EDDF airport") < LineIndex(mixed, "Departure airport"),
             "a nameless block never leads on a blank current airport");
@@ -328,7 +355,7 @@ public class SayIntentionsInfoReportTests
             }
         };
 
-        var report = SayIntentionsInfoReport.Build(circuit, null, null, null);
+        var report = Report(circuit, null, null, null);
 
         Assert.Single(report, line => line == "KBOS airport");
         Assert.Equal("Altimeter: 29.68 inches (1005 hPa)", Assert.Single(Altimeters(report)));
@@ -349,7 +376,7 @@ public class SayIntentionsInfoReportTests
             ArrivalWeather = new SayIntentionsAirportWeather { Airport = "KBOS" }
         };
 
-        var report = SayIntentionsInfoReport.Build(arrivalIsAStub, null, null, null);
+        var report = Report(arrivalIsAStub, null, null, null);
 
         Assert.Single(report, line => line == "KBOS airport");
         Assert.Contains("Altimeter: 29.73 inches (1007 hPa)", report);
@@ -368,7 +395,7 @@ public class SayIntentionsInfoReportTests
             ArrivalWeather = EddfWeather()
         };
 
-        var report = SayIntentionsInfoReport.Build(stubDeparture, null, null, null);
+        var report = Report(stubDeparture, null, null, null);
 
         Assert.DoesNotContain("LMML airport", report);
         Assert.Contains("EDDF airport", report);
@@ -389,8 +416,8 @@ public class SayIntentionsInfoReportTests
             CurrentAirport = "EDDF", DepartureWeather = LmmlWeather()
         };
 
-        Assert.Contains("EDDF airport", SayIntentionsInfoReport.Build(arrivalOnly, null, null, null));
-        Assert.Contains("LMML airport", SayIntentionsInfoReport.Build(departureOnly, null, null, null));
+        Assert.Contains("EDDF airport", Report(arrivalOnly, null, null, null));
+        Assert.Contains("LMML airport", Report(departureOnly, null, null, null));
     }
 
     // --- the gate line ----------------------------------------------------------------
@@ -407,8 +434,7 @@ public class SayIntentionsInfoReportTests
     [Fact]
     public void AnAssignedGateIsAlwaysLabelledAnArrivalGate()
     {
-        var report = SayIntentionsInfoReport.Build(
-            KbosContext(), "Terminal 3 Gate J1", "22L", null);
+        var report = Report(KbosContext(), "Terminal 3 Gate J1", "22L", null);
 
         Assert.Contains("Assigned arrival gate: Terminal 3 Gate J1", report);
         Assert.DoesNotContain(report, line => line.Contains("Departure gate"));
@@ -417,14 +443,17 @@ public class SayIntentionsInfoReportTests
     // --- structure --------------------------------------------------------------------
 
     // A section whose every field is missing must not leave a bare heading for the
-    // pilot to arrow past.
+    // pilot to arrow past — nor, now that each section is its own list box, an empty
+    // list to tab into and find nothing in.
     [Fact]
     public void AnEmptyAirportSectionIsOmittedEntirely()
     {
-        var report = SayIntentionsInfoReport.Build(
-            new SayIntentionsFlightContext { CurrentAirport = "KBOS" }, null, null, null);
+        var context = new SayIntentionsFlightContext { CurrentAirport = "KBOS" };
 
-        Assert.DoesNotContain(report, line => line.EndsWith(" airport", StringComparison.Ordinal));
+        Assert.DoesNotContain(Report(context, null, null, null),
+            line => line.EndsWith(" airport", StringComparison.Ordinal));
+        Assert.DoesNotContain(Sections(context, null, null, null),
+            section => section.Heading.EndsWith(" airport", StringComparison.Ordinal));
     }
 
     // The gate line is unconditional, so the report is never literally empty. Opening a
@@ -433,11 +462,58 @@ public class SayIntentionsInfoReportTests
     [Fact]
     public void AReportWithNothingButThePlaceholderGateDoesNotCountAsContent()
     {
-        var empty = SayIntentionsInfoReport.Build(
-            new SayIntentionsFlightContext(), null, null, null);
+        var empty = Sections(new SayIntentionsFlightContext(), null, null, null);
 
         Assert.False(SayIntentionsInfoReport.HasContent(empty));
-        Assert.True(SayIntentionsInfoReport.HasContent(KbosReport()));
+        Assert.True(SayIntentionsInfoReport.HasContent(KbosSections()));
+    }
+
+    // Each section becomes one list box, headed and tabbed to in this order, so the
+    // section list IS the window's structure rather than a rendering of it.
+    [Fact]
+    public void TheReportIsBuiltAsHeadedSectionsInReadingOrder()
+    {
+        Assert.Equal(
+            new[] { "Flight", "Gate and runway", "EDDF airport", "LMML airport" },
+            EddfArrivalSections().Select(section => section.Heading));
+
+        Assert.Equal(
+            new[] { "Flight", "Gate and runway", "KBOS airport" },
+            KbosSections().Select(section => section.Heading));
+    }
+
+    // Never an empty list box: a section exists only because it had something to put in
+    // it, so the pilot never tabs into one that says nothing.
+    [Fact]
+    public void NoSectionIsEmpty()
+    {
+        Assert.All(EddfArrivalSections(), section => Assert.NotEmpty(section.Items));
+        Assert.All(KbosSections(), section => Assert.NotEmpty(section.Items));
+        Assert.All(Sections(new SayIntentionsFlightContext(), null, null, null),
+            section => Assert.NotEmpty(section.Items));
+    }
+
+    // Flatten is what every ordering rule above is asserted through, so the shape it
+    // produces is load-bearing: heading, its items under it, exactly one blank line
+    // between blocks, and none at either end.
+    [Fact]
+    public void FlatteningRendersEachSectionAsAHeadingThenItsItems()
+    {
+        var sections = EddfArrivalSections();
+        var report = SayIntentionsInfoReport.Flatten(sections);
+
+        var expected = new List<string>();
+        foreach (var section in sections)
+        {
+            if (expected.Count > 0) expected.Add("");
+            expected.Add(section.Heading);
+            expected.AddRange(section.Items);
+        }
+
+        Assert.Equal(expected, report);
+        Assert.NotEmpty(report);
+        Assert.False(string.IsNullOrWhiteSpace(report[0]));
+        Assert.False(string.IsNullOrWhiteSpace(report[^1]));
     }
 
     [Fact]
@@ -446,7 +522,7 @@ public class SayIntentionsInfoReportTests
         var landing = KbosContext();
         landing.ClearedForLanding = "22L";
 
-        var report = SayIntentionsInfoReport.Build(landing, null, null, null);
+        var report = Report(landing, null, null, null);
 
         Assert.Contains("Cleared to land runway: 22L", report);
         Assert.DoesNotContain(report, line => line.StartsWith("Departure runway", StringComparison.Ordinal));

@@ -181,6 +181,31 @@ public static class SayIntentionsClearanceParser
         ['8'] = "EIGHT",   ['9'] = "NINER|NINE"
     };
 
+    /// <summary>
+    /// The other way SayIntentions speaks a single letter: the compass word it stands
+    /// for. Palma Ground, live — "Taxi to holding point runway 24R via LE, E, North,
+    /// H2." — where LEPA's navdata calls that taxiway N. Not "November": the plain
+    /// English word. It cost the route a leg twice over, because the pattern stopped at
+    /// the trailing "orth" AND the phonetic-only unresolved scan had no branch for it
+    /// either, so the pilot heard a three-taxiway route with nothing to say a leg was
+    /// missing.
+    ///
+    /// These live in a table of their own only because the guard below has to know
+    /// which words are compass words; they are MERGED into the NATO forms by
+    /// <see cref="SpokenForms"/>, so a taxiway pattern and the unresolved scan pick
+    /// them up from the same place ALPHA comes from and cannot diverge.
+    /// </summary>
+    private static readonly Dictionary<char, string> Compass = new()
+    {
+        ['C'] = "CENTER|CENTRE", ['E'] = "EAST", ['N'] = "NORTH",
+        ['S'] = "SOUTH",         ['W'] = "WEST"
+    };
+
+    /// <summary>Every way a character can be spoken: its NATO word, plus the compass
+    /// word for the five letters that have one.</summary>
+    private static string SpokenForms(char c) =>
+        Compass.TryGetValue(c, out string? compass) ? $"{Nato[c]}|{compass}" : Nato[c];
+
     private const string NatoLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     private const string NatoDigits = "0123456789";
 
@@ -188,18 +213,92 @@ public static class SayIntentionsClearanceParser
     /// the character it spells, so the pattern and the designator it maps back to can
     /// never drift apart. Group names have to be identifiers, hence the L/D prefix.</summary>
     private static string NatoAlternation(string characters, char prefix) =>
-        string.Join("|", characters.Select(c => $"(?<{prefix}{c}>{Nato[c]})"));
+        string.Join("|", characters.Select(c => $"(?<{prefix}{c}>{SpokenForms(c)})"));
+
+    /// <summary>Built from the ONE table above so it can never name a word the patterns
+    /// do not match, or miss one they do.</summary>
+    private static readonly Regex CompassWord = new(
+        @"(?<![A-Za-z0-9])(?:" + string.Join("|", Compass.Values) + @")(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// What comes BEFORE a compass word and settles that it is a direction.
+    ///
+    /// "the" covers every place phrase whose noun this parser could not guess — "to the
+    /// north end", "on the north pier". A taxiway is never given an article: ATC says
+    /// "via Alpha", never "via the Alpha".
+    ///
+    /// A runway number covers the other half: CENTER is the SIDE of a runway
+    /// designator. Hold-short and crossing runways are already blanked out by the mask,
+    /// but a runway named after the via keyword ("taxi via Alpha to runway 24 Center")
+    /// is not, and it ends with a comma or the end of the transmission — nothing else
+    /// in the text says it is not a taxiway.
+    /// </summary>
+    private static readonly Regex DirectionPhrasePrefix = new(
+        @"(?:\bTHE|\bRUNWAY[\s-]*" + RunwayToken + @")[\s-]*$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>The very next word — within three separators, so a blanked-out
+    /// hold-short span (twenty-odd spaces) reads as "nothing follows", which is what it
+    /// is, rather than dragging in the first word on the far side of it.</summary>
+    private static readonly Regex ImmediateNextWord = new(
+        @"^[\s-]{0,3}(?<word>[A-Za-z]+)", RegexOptions.Compiled);
+
+    /// <summary>The only English words that may sit between two taxiways.</summary>
+    private static readonly Regex RouteConnector = new(
+        @"^(?:AND|THEN)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when a compass word is being used as a DIRECTION rather than as the name of
+    /// a taxiway. This is the price a compass word carries that a NATO word does not:
+    /// nobody writes "alpha" in prose, but "taxi north on Bravo" and "the north side"
+    /// are ordinary things for a controller to say, and they can sit after "via".
+    ///
+    /// Both failures are real and they are mirror images, so ONE test has to cover both
+    /// scans or the announcement contradicts itself between airports: where the airport
+    /// HAS the letter, prose silently adds a leg ATC never cleared; where it does not,
+    /// prose is announced as "could not apply North" — and a false report teaches the
+    /// pilot to distrust the whole announcement.
+    ///
+    /// A compass word is prose when a direction phrase leads into it, or when the very
+    /// next word is English rather than the next designator in the list. Everything
+    /// else — a comma, a full stop, the end of the route, "and"/"then", or another
+    /// taxiway — leaves it a taxiway. The lowercase prose that follows a direction is
+    /// safe to test against the designator list precisely because the literal branch is
+    /// case-sensitive: "north apron" cannot see taxiway A in "apron".
+    ///
+    /// Capitalization is deliberately NOT the signal. SayIntentions' text is generated,
+    /// and "North" being capitalized in one live clearance is not a contract.
+    /// </summary>
+    private static bool IsDirectionProse(
+        string route, int index, int end, HashSet<int> designatorStarts)
+    {
+        if (!CompassWord.IsMatch(route[index..end])) return false;
+        if (DirectionPhrasePrefix.IsMatch(route[..index])) return true;
+
+        var next = ImmediateNextWord.Match(route[end..]);
+        if (!next.Success) return false;
+
+        var word = next.Groups["word"];
+        if (RouteConnector.IsMatch(word.Value)) return false;
+        return !designatorStarts.Contains(end + word.Index);
+    }
 
     /// <summary>A taxiway spelled out in phonetics: a letter word plus an optional digit
     /// ("Kilo", "Bravo Four"). Used ONLY to notice that a clearance named something the
     /// airport does not have.
     ///
     /// IgnoreCase is safe here — and required — precisely because this pattern has NO
-    /// bare-designator branch: it matches whole NATO words, never the single characters
+    /// bare-designator branch: it matches whole spoken words, never the single characters
     /// BuildTaxiwayPattern must keep case-sensitive. Bare designators are left out on
     /// purpose; they would false-positive on ordinary abbreviations, and a wrong "could
     /// not apply K" teaches the pilot to distrust the whole announcement, which is far
-    /// worse than missing one.</summary>
+    /// worse than missing one.
+    ///
+    /// The word list has since gained the five compass words, which ARE ordinary English
+    /// — that is the one widening this rule ever took, and it is bounded the same way:
+    /// a closed list of whole words, no bare designators. What English costs is paid by
+    /// <see cref="IsDirectionProse"/>, not by loosening the pattern.</summary>
     private static readonly Regex PhoneticTaxiway = new(
         $@"(?<![A-Za-z0-9])(?:{NatoAlternation(NatoLetters, 'L')})" +
         $@"(?:[\s-]*(?:{NatoAlternation(NatoDigits, 'D')}|(?<lit>[0-9])))?" +
@@ -265,6 +364,12 @@ public static class SayIntentionsClearanceParser
                 hits.Add((taxiway, match.Index, match.Index + match.Length));
         }
 
+        // Where a designator could start, taken BEFORE the prose filter so a compass
+        // word followed by the next taxiway in an un-punctuated list ("via LE E North
+        // H2") still reads as a route rather than as English.
+        var designatorStarts = hits.Select(h => h.Index).ToHashSet();
+        hits.RemoveAll(h => IsDirectionProse(route, h.Index, h.End, designatorStarts));
+
         var selected = new List<(string Name, int Index, int End)>();
         foreach (var hit in hits.OrderBy(h => h.Index).ThenByDescending(h => h.End - h.Index))
         {
@@ -278,6 +383,12 @@ public static class SayIntentionsClearanceParser
             // "Alpha-Tango" both sit inside the AT that already matched, and reporting
             // them would name two missing taxiways against a route that is entirely fine.
             if (selected.Any(s => match.Index < s.End && match.Index + match.Length > s.Index))
+                continue;
+
+            // The same guard the resolved half uses, from the same helper: a direction
+            // must not be reported as a taxiway the airport is missing any more than it
+            // may be routed as one.
+            if (IsDirectionProse(route, match.Index, match.Index + match.Length, designatorStarts))
                 continue;
 
             string designator = PhoneticDesignator(match);
@@ -314,8 +425,8 @@ public static class SayIntentionsClearanceParser
         {
             foreach (char c in trimmed)
             {
-                parts.Add(Nato.TryGetValue(c, out string? word)
-                    ? $"(?:{Regex.Escape(c.ToString())}|(?i:{word}))"
+                parts.Add(Nato.ContainsKey(c)
+                    ? $"(?:{Regex.Escape(c.ToString())}|(?i:{SpokenForms(c)}))"
                     : Regex.Escape(c.ToString()));
             }
         }

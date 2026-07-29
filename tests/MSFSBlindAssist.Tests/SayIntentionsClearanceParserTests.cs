@@ -377,6 +377,238 @@ public class SayIntentionsClearanceParserTests
         Assert.Empty(scan.Unresolved);
     }
 
+    // ---- Compass words spoken for a single letter (LEPA, 2026-07-29) ----
+    //
+    // Palma Ground, live: "Taxi to holding point runway 24R via LE, E, North, H2."
+    // LEPA's navdata calls that taxiway N. SayIntentions rendered the bare letter as
+    // the plain-English word "North", not the NATO "November", and both halves of the
+    // machinery missed it: the pattern could not match "North" (it stopped at the
+    // trailing "orth"), and the phonetic-only unresolved scan could not report it
+    // either. The pilot heard a three-taxiway route with nothing to say a leg had gone.
+    //
+    // NORTH/SOUTH/EAST/WEST/CENTER/CENTRE are therefore spoken forms of N/S/E/W/C in
+    // the SAME table as ALPHA/BRAVO, which wires the match and the report at once.
+
+    // Every taxiway LEPA really has (navdata, 2026-07). It is the right fixture
+    // because N and its numbered siblings both exist — a compass word has to reach the
+    // bare letter without eating N1..N6 — and because W5 exists while a bare W does
+    // not, which is what makes "West" reportable here.
+    private static readonly string[] LepaTaxiways =
+    {
+        "A", "B", "C", "D", "E", "F", "G", "J", "K", "L", "M", "N", "P", "Q", "S", "Z",
+        "H1", "H2", "H4", "H5", "H6", "H7", "H8", "H9", "H10",
+        "LA", "LB", "LC", "LD", "LE", "LF", "LG", "LJ", "LK", "LM", "LP", "LQ",
+        "N1", "N3", "N4", "N5", "N6",
+        "S1", "S2", "S3", "T1", "T2", "W5"
+    };
+
+    private const string PalmaClearance =
+        "Taxi to holding point runway 24R via LE, E, North, H2.";
+
+    [Fact]
+    public void TheLivePalmaClearanceKeepsItsCompassTaxiway()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(PalmaClearance, LepaTaxiways);
+
+        Assert.Equal(new[] { "LE", "E", "N", "H2" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void TheLivePalmaClearanceStillHoldsShortRatherThanRoutingOntoTheRunway()
+    {
+        // The ICAO holding point is unchanged by any of this — pinned so the compass
+        // work can never quietly turn 24R into the destination.
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(PalmaClearance));
+        Assert.Equal("24R", SayIntentionsClearanceParser.ParseHoldShortRunway(PalmaClearance));
+        Assert.True(SayIntentionsClearanceParser.LooksLikeTaxiClearance(PalmaClearance));
+    }
+
+    [Theory]
+    [InlineData("North", "N")]
+    [InlineData("South", "S")]
+    [InlineData("East", "E")]
+    [InlineData("West", "W")]
+    [InlineData("Center", "C")]
+    [InlineData("Centre", "C")]
+    // SayIntentions' capitalization is LLM output, not a contract, so the word matches
+    // in any case exactly as ALPHA does. Prose is ruled out by context, not by case —
+    // the case asymmetry protects the single-letter LITERAL branch and nothing else.
+    [InlineData("north", "N")]
+    [InlineData("NORTH", "N")]
+    public void ACompassWordIsTheLetterItSpells(string spoken, string expected)
+    {
+        var known = new[] { "A", "C", "E", "N", "S", "W" };
+
+        Assert.Equal(new[] { "A", expected },
+            SayIntentionsClearanceParser.ParseTaxiways($"Taxi to gate 12 via Alpha, {spoken}", known));
+    }
+
+    [Fact]
+    public void ACompassWordForATaxiwayTheAirportDoesNotHaveIsReported()
+    {
+        // LEPA has W5 but no bare W. Before compass words were scanned this vanished
+        // in silence — the exact second half of the Palma failure.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to holding point runway 24R via LE, West, H2.", LepaTaxiways);
+
+        Assert.Equal(new[] { "LE", "H2" }, scan.Resolved);
+        Assert.Equal(new[] { "W" }, scan.Unresolved);
+    }
+
+    // ---- ...and the prose that must NOT read as a taxiway ----
+    //
+    // This is what a compass word costs that a NATO word does not: "north" is an
+    // ordinary English word and it does appear after "via". A false "could not apply
+    // North" teaches the pilot to distrust the whole announcement, and a false MATCH
+    // silently adds a leg ATC never cleared. A compass word is therefore only a
+    // taxiway when nothing around it makes it a direction.
+
+    [Fact]
+    public void ADirectionOfTravelIsNotATaxiway()
+    {
+        // LEPA HAS N, so without the guard this quietly inserts it into the route.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to gate 12 via H2, then taxi north on Alpha", LepaTaxiways);
+
+        Assert.Equal(new[] { "H2", "A" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void ADirectionalPlaceNameIsNotATaxiway()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi via H2 to the north side of the terminal", LepaTaxiways);
+
+        Assert.Equal(new[] { "H2" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void ADirectionIsNotReportedAsAMissingTaxiwayEither()
+    {
+        // The mirror image: CYYZ has no N, so the same prose that would falsely MATCH
+        // at LEPA would falsely REPORT here. One guard has to cover both scans, or the
+        // announcement contradicts itself from one airport to the next.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Runway 15L via Romeo, then taxi north on Bravo", CyyzTaxiways);
+
+        Assert.Equal(new[] { "R", "B" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void ARunwaySideIsNotTaxiwayCharlie()
+    {
+        // "Center" is the side of a runway designator. A hold-short or crossing runway
+        // is already masked out; a runway named after the via keyword is not, so the
+        // word sits in the route text with a comma after it and nothing else to say it
+        // is not a taxiway.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi via H2 to runway 24 Center", LepaTaxiways);
+
+        Assert.Equal(new[] { "H2" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void AMaskedCrossingRunwaySideIsNotTaxiwayCharlieEither()
+    {
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to gate 12 via H2, cross runway 24 center, then B", LepaTaxiways);
+
+        Assert.Equal(new[] { "H2", "B" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Theory]
+    [InlineData("and")]
+    [InlineData("then")]
+    public void ACompassWordJoinedToTheNextTaxiwayIsStillATaxiway(string connector)
+    {
+        // "LE, North and H2" is how English writes the last two items of a list, and
+        // SayIntentions writes English. Without this the leg is dropped in silence —
+        // the Palma failure again, one word further along.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            $"via LE, North {connector} H2", LepaTaxiways);
+
+        Assert.Equal(new[] { "LE", "N", "H2" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void AHoldShortDoesNotMakeTheTaxiwayBeforeItReadAsProse()
+    {
+        // A hold-short attaches straight onto the last taxiway with no comma — the
+        // ordinary phrasing — and it is blanked to spaces before the scan. "North" is
+        // therefore followed by twenty-odd blanks and then whatever came after the
+        // hold, which is prose ("for landing traffic"). The guard looks at the word
+        // IMMEDIATELY after, so a blanked span reads as "nothing follows", which is
+        // what it is. Reaching across it drops the last taxiway of the clearance.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways(
+            "Taxi to gate 12 via LE, North hold short of runway 06L for landing traffic.",
+            LepaTaxiways);
+
+        Assert.Equal(new[] { "LE", "N" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    [Fact]
+    public void ThePhoneticNamesAreUntouchedByTheDirectionGuard()
+    {
+        // The guard is scoped to compass words and must stay there. A NATO word is not
+        // English: "Bravo" needs no context to be a taxiway, and holding it to the same
+        // test would drop it from every clearance that says where the route ends.
+        Assert.Equal(new[] { "B" },
+            SayIntentionsClearanceParser.ParseTaxiways("Taxi via Bravo to the gate", CyyzTaxiways));
+    }
+
+    [Fact]
+    public void ACompassWordFollowedByTheNextDesignatorIsStillATaxiway()
+    {
+        // A route list without commas still reads as a route: what follows "North" is
+        // another taxiway, not English.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("via LE E North H2", LepaTaxiways);
+
+        Assert.Equal(new[] { "LE", "E", "N", "H2" }, scan.Resolved);
+        Assert.Empty(scan.Unresolved);
+    }
+
+    // ---- Compass words compose with the digits and the longest-match rule ----
+
+    [Theory]
+    [InlineData("North One", "N1")]
+    [InlineData("North 1", "N1")]
+    [InlineData("N1", "N1")]
+    [InlineData("North Five", "N5")]
+    public void ACompassWordCarriesItsDigit(string spoken, string expected)
+    {
+        // LEPA has N AND N1..N6. The bare letter must not eat the numbered name.
+        Assert.Equal(new[] { expected },
+            SayIntentionsClearanceParser.ParseTaxiways($"via {spoken}", LepaTaxiways));
+    }
+
+    [Fact]
+    public void ANumberedCompassTaxiwayTheAirportLacksIsReportedWhole()
+    {
+        // LEPA has N and N1, but no N2. Reporting "N" here would name a taxiway the
+        // clearance never said, and resolving to N would route the wrong leg.
+        var scan = SayIntentionsClearanceParser.ScanTaxiways("via H2, North Two", LepaTaxiways);
+
+        Assert.Equal(new[] { "H2" }, scan.Resolved);
+        Assert.Equal(new[] { "N2" }, scan.Unresolved);
+    }
+
+    [Fact]
+    public void ALongerCompassNameStillBeatsItsPrefix()
+    {
+        var known = new[] { "N", "E", "NE" };
+
+        Assert.Equal(new[] { "NE" },
+            SayIntentionsClearanceParser.ParseTaxiways("via North East", known));
+    }
+
     // ---- Parking names ----
 
     [Theory]

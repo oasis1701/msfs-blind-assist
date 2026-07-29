@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Services;
+﻿using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.Settings;
@@ -43,6 +43,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     private Button refreshTaxiwayNamesButton = null!;
     private CheckBox taxiAugmentEnabledCheckBox = null!;
+    private Label sayIntentionsHeadingLabel = null!;
+    private CheckBox sayIntentionsAutoStartCheckBox = null!;
     private Label taxiAugmentAttributionLabel = null!;
 
     // Optional callback for the manual taxiway-names refresh. Null when the caller doesn't
@@ -398,6 +400,27 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleName = "Online taxiway name data attribution"
         };
 
+        // SayIntentions route import. It lives here rather than on a tab of its own:
+        // the setting decides what happens to a TAXI ROUTE, which is this tab's
+        // subject, and it was the only option left once the API key was retired.
+        sayIntentionsHeadingLabel = new Label
+        {
+            Text = "SayIntentions",
+            Location = new Point(20, 795),
+            Size = new Size(450, 20),
+            AccessibleName = "SayIntentions section"
+        };
+
+        sayIntentionsAutoStartCheckBox = new CheckBox
+        {
+            Text = "Start taxi &guidance immediately after building a SayIntentions route",
+            Location = new Point(20, 820),
+            Size = new Size(450, 40),
+            AccessibleName = "Start taxi guidance immediately",
+            AccessibleDescription = "When cleared, the taxi guidance dialog opens with the route "
+                                    + "fields filled in so you can review them before starting."
+        };
+
         Controls.AddRange(new Control[]
         {
             titleLabel, toneTypeLabel, toneTypeCombo,
@@ -413,6 +436,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             gsxAutoSelectGateCheckBox,
             dockingGroup,
             refreshTaxiwayNamesButton,
+            sayIntentionsHeadingLabel,
+            sayIntentionsAutoStartCheckBox,
             taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel
         });
     }
@@ -646,6 +671,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepVolumeValueLabel.Text = $"{dockingBeepVolumeTrackBar.Value}%";
 
         taxiAugmentEnabledCheckBox.Checked = settings.TaxiAugmentEnabled;
+        sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -686,6 +712,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.DockingBeepVolume = dockingBeepVolumeTrackBar.Value / 100.0;
 
         settings.TaxiAugmentEnabled = taxiAugmentEnabledCheckBox.Checked;
+        settings.SayIntentionsAutoStartTaxiGuidance = sayIntentionsAutoStartCheckBox.Checked;
     }
 
     /// <summary>Stops both the steering test tone and the docking-beep test whenever this tab

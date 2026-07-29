@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -28,12 +28,11 @@ public class SettingsForm : Form
         { if (_tabs.SelectedIndex >= 0 && _tabs.SelectedIndex < _panels.Count) _currentPanel = _panels[_tabs.SelectedIndex]; };
 
         // Panels are added here in FINAL TAB ORDER:
-        // Announcements, Weather, GeoNames, SimBrief, SayIntentions, Gemini, HandFly, TaxiGuidance.
+        // Announcements, Weather, GeoNames, SimBrief, Gemini, HandFly, TaxiGuidance.
         AddPanel(new AnnouncementsPanel());
         AddPanel(new WeatherPanel());
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
-        AddPanel(new SayIntentionsPanel());
         AddPanel(new AiSettingsPanel());
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));

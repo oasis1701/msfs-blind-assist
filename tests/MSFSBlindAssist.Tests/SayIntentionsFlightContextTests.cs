@@ -76,6 +76,8 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Equal("05", context.DepartureRunway);   // zero-padded by CleanRunway
     }
 
+    // outgoing_message throughout: that is the ATC side (see the direction note below),
+    // and only ATC transmissions are eligible for this readout at all.
     [Fact]
     public void LatestRadioTransmissionWinsOverCabinChatter()
     {
@@ -83,7 +85,7 @@ public class SayIntentionsFlightContextTests : IDisposable
         {
           "flight_details": {
             "comms": [
-              { "id": 1, "channel": "COM1", "incoming_message": "Taxi to runway 15L via Alpha" },
+              { "id": 1, "channel": "COM1", "outgoing_message": "Taxi to runway 15L via Alpha" },
               { "id": 2, "channel": "PA", "outgoing_message": "Cabin crew, prepare for departure" }
             ]
           }
@@ -138,10 +140,13 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Equal("Cleared to land runway 15L", context.LastFlightJsonTransmission.Message);
     }
 
-    // ...but only WITHIN one record. A pilot transmission in a later record is
-    // genuinely the last thing said and must still win.
+    // ...and ACROSS records too. Preferring ATC only within one record still let a
+    // pilot transmission in a LATER record win — and a readback is normally the
+    // newest thing on the frequency at exactly the moment someone presses the key,
+    // so the readout announced the pilot their own words back, prefixed "Pilot:".
+    // A Pilot-speaker transmission is now dropped outright, never merely outranked.
     [Fact]
-    public void ALaterPilotTransmissionStillWinsAcrossRecords()
+    public void ALaterPilotTransmissionNeverWins()
     {
         var context = ServiceFor("""
         {
@@ -155,7 +160,106 @@ public class SayIntentionsFlightContextTests : IDisposable
         """).ReadFlightContext();
 
         Assert.NotNull(context.LastFlightJsonTransmission);
-        Assert.Equal("Pilot", context.LastFlightJsonTransmission!.Speaker);
+        Assert.Equal("ATC", context.LastFlightJsonTransmission!.Speaker);
+        Assert.Equal("Cleared to land runway 15L", context.LastFlightJsonTransmission.Message);
+    }
+
+    // The live shape: the controller clears the taxi, the pilot reads it back, and the
+    // readback carries the newer stamp. What the pilot needs to hear is the clearance,
+    // not their own recital of it — so the ATC call BEFORE the readback is returned.
+    [Fact]
+    public void TheAtcCallBeforeAPilotReadbackIsWhatIsReturned()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 11, "channel": "COM1", "stamp_zulu": "2026-03-04T12:00:00Z",
+                "outgoing_message": "Taxi to Terminal 3 Gate J1 via November, hold short of runway 18" },
+              { "id": 12, "channel": "COM1", "stamp_zulu": "2026-03-04T12:00:12Z",
+                "incoming_message": "November, holding short of runway 18, Speedbird 12" }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.NotNull(context.LastFlightJsonTransmission);
+        Assert.Equal("ATC", context.LastFlightJsonTransmission!.Speaker);
+        Assert.StartsWith("Taxi to Terminal 3 Gate J1", context.LastFlightJsonTransmission.Message);
+    }
+
+    // A message with no direction at all comes from the bare-"message" fallback, so
+    // it is NOT identified as the pilot and stays eligible. Dropping it would leave a
+    // payload shape we cannot classify silent, and for a readout whose whole job is
+    // to say what was heard, silence is the worse failure. It also cannot be mistaken
+    // for the pilot when spoken — with no speaker, ToAnnouncement prefixes nothing.
+    [Fact]
+    public void ATransmissionWithNoSpeakerIsStillEligible()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 1, "channel": "COM1", "outgoing_message": "Cleared to land runway 15L" },
+              { "id": 2, "channel": "COM1", "message": "Contact ground on one two one point niner" }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.NotNull(context.LastFlightJsonTransmission);
+        Assert.Equal("", context.LastFlightJsonTransmission!.Speaker);
+        Assert.Contains("Contact ground", context.LastFlightJsonTransmission.Message);
+    }
+
+    // Nothing but the pilot's own calls: there is no ATC transmission to speak, and
+    // the pilot must be told that rather than left with silence or a misleading
+    // "nothing found" — they DID hear something, it just was not the controller.
+    [Fact]
+    public async Task AHistoryOfOnlyPilotTransmissionsIsSaidOutLoud()
+    {
+        var service = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 1, "channel": "COM1", "incoming_message": "Ground, Speedbird 12, request taxi" },
+              { "id": 2, "channel": "COM1", "incoming_message": "Holding short of runway 18, Speedbird 12" }
+            ]
+          }
+        }
+        """);
+
+        var result = await service.GetLastTransmissionAsync();
+
+        Assert.Null(result.Transmission);
+        Assert.Equal("No ATC transmission yet. Only your own calls so far.", result.Error);
+    }
+
+    // No transmissions of any kind is a different failure and must not borrow the
+    // pilot-only wording: nothing was heard at all.
+    [Fact]
+    public async Task AnEmptyFlightJsonDoesNotClaimTheHistoryWasAllPilot()
+    {
+        var service = ServiceFor("""{ "flight_details": {} }""");
+
+        var result = await service.GetLastTransmissionAsync();
+
+        Assert.Null(result.Transmission);
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("your own calls", result.Error!);
+    }
+
+    // The API key setting is gone — the key always comes from flight.json — so no
+    // error may send the pilot looking for a settings field that no longer exists.
+    [Theory]
+    [InlineData("""{ "flight_details": {} }""")]
+    [InlineData("""{ "flight_details": { "comms": [ { "id": 1, "channel": "COM1", "incoming_message": "Request taxi" } ] } }""")]
+    public async Task NoErrorPointsThePilotAtASettingThatNoLongerExists(string json)
+    {
+        var result = await ServiceFor(json).GetLastTransmissionAsync();
+
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("settings", result.Error!, StringComparison.OrdinalIgnoreCase);
     }
 
     // stamp_zulu is a UTC wire format, not a locale-formatted date. Parsing it with
@@ -170,9 +274,9 @@ public class SayIntentionsFlightContextTests : IDisposable
           "flight_details": {
             "comms": [
               { "id": 2, "channel": "COM1", "stamp_zulu": "01/02/2026 10:00:00",
-                "incoming_message": "Contact ground on one two one point niner" },
+                "outgoing_message": "Contact ground on one two one point niner" },
               { "id": 1, "channel": "COM1", "stamp_zulu": "02/01/2026 09:00:00",
-                "incoming_message": "Taxi to runway 15L via Alpha" }
+                "outgoing_message": "Taxi to runway 15L via Alpha" }
             ]
           }
         }

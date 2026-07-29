@@ -35,6 +35,12 @@ public sealed class SayIntentionsFlightContext
 
     public SayIntentionsTransmission? LastFlightJsonTransmission { get; set; }
 
+    /// <summary>True when flight.json carried radio transmissions but every one of them
+    /// was the PILOT's own, so <see cref="LastFlightJsonTransmission"/> is null for a
+    /// reason worth speaking. "Nothing found" would be a lie: the pilot heard traffic,
+    /// just none of it from the controller.</summary>
+    public bool OnlyPilotTransmissions { get; set; }
+
     /// <summary>ICAO type code, e.g. "B738". From <c>aircraft_icao</c>.</summary>
     public string? AircraftIcao { get; set; }
 

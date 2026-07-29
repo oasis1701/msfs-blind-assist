@@ -1,6 +1,5 @@
 using System.Net.Http;
 using System.Text.Json;
-using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.SayIntentions;
@@ -20,6 +19,13 @@ public sealed class SayIntentionsService
     private const int ApiTimeoutSeconds = 5;
     private const string AtcSpeaker = "ATC";
     private const string PilotSpeaker = "Pilot";
+
+    /// <summary>Spoken when transmissions were found but every one of them was the
+    /// pilot's own. It is a different answer from "nothing found": the pilot DID hear
+    /// something on the frequency, it just was not the controller, and telling them so
+    /// stops them pressing the key again waiting for a call that has not come.</summary>
+    private const string NoAtcTransmissionMessage =
+        "No ATC transmission yet. Only your own calls so far.";
 
     private static readonly TimeSpan CommsCacheDuration = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ParkingCacheDuration = TimeSpan.FromSeconds(10);
@@ -86,11 +92,16 @@ public sealed class SayIntentionsService
         if (flightJsonTransmission != null)
             return new SayIntentionsTransmissionResult(flightJsonTransmission, null);
 
+        // No key to reach comms history with, and nothing in the file. The honest
+        // reason is that SayIntentions is not running, or is running without
+        // publishing a key — there is no setting left for the pilot to go and fill in.
         return new SayIntentionsTransmissionResult(
             null,
-            context.FlightJsonExists
-                ? "No SayIntentions communication found in flight.json. Add a SayIntentions API key in settings for comms history."
-                : "SayIntentions flight.json not found. Start an active SayIntentions flight or add an API key in settings.");
+            context.OnlyPilotTransmissions
+                ? NoAtcTransmissionMessage
+                : context.FlightJsonExists
+                    ? "No SayIntentions transmission found. Check SayIntentions is connected to this flight."
+                    : "SayIntentions flight.json not found. Start an active SayIntentions flight.");
     }
 
     public async Task<SayIntentionsStatusResult> GetAssignedStatusAsync()
@@ -186,8 +197,13 @@ public sealed class SayIntentionsService
                 GetString(details, "taxi_clearance"),
                 FindString(root, "clearance_text"),
                 FindString(root, "taxi_clearance"));
-            context.LastFlightJsonTransmission = FindLatestTransmission(root);
+            context.LastFlightJsonTransmission = FindLatestTransmission(root, out bool pilotOnly);
+            context.OnlyPilotTransmissions = pilotOnly;
 
+            // The pilot's own transmissions are already filtered out above, so a
+            // clearance can only ever be taken from the controller — never from the
+            // pilot's readback of one, which is the newest thing on the frequency at
+            // exactly the moment the import key gets pressed.
             if (string.IsNullOrWhiteSpace(context.ClearanceText) && context.LastFlightJsonTransmission != null)
                 context.ClearanceText = context.LastFlightJsonTransmission.Message;
 
@@ -277,9 +293,13 @@ public sealed class SayIntentionsService
                 }
                 else
                 {
-                    transmission = FindLatestTransmission(doc.RootElement);
+                    transmission = FindLatestTransmission(doc.RootElement, out bool pilotOnly);
                     if (transmission == null)
-                        error = "No SayIntentions communication history found for the active flight.";
+                    {
+                        error = pilotOnly
+                            ? NoAtcTransmissionMessage
+                            : "No SayIntentions communication history found for the active flight.";
+                    }
                 }
             }
         }
@@ -398,33 +418,47 @@ public sealed class SayIntentionsService
         return new SayIntentionsParkingResult(parking, error);
     }
 
-    /// <summary>Settings key wins; otherwise the key flight.json publishes during
-    /// an active flight. Never logged.</summary>
-    private static string? ResolveApiKey(SayIntentionsFlightContext context)
-    {
-        string configured = SettingsManager.Current.SayIntentionsApiKey?.Trim() ?? "";
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured;
+    /// <summary>The key SayIntentions publishes in flight.json during an active
+    /// flight (<c>flight_details.api_key</c>), which a live capture confirms is
+    /// always there. There is deliberately no setting to override it — a field the
+    /// user must fill in by hand to duplicate something the file already carries is
+    /// one more thing to get wrong. Never logged.</summary>
+    private static string? ResolveApiKey(SayIntentionsFlightContext context) =>
+        string.IsNullOrWhiteSpace(context.ApiKey) ? null : context.ApiKey.Trim();
 
-        return string.IsNullOrWhiteSpace(context.ApiKey) ? null : context.ApiKey.Trim();
-    }
+    private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root) =>
+        FindLatestTransmission(root, out _);
 
     /// <summary>
-    /// Newest transmission wins. Within ONE record the controller's call and the
-    /// pilot's readback share a stamp and an id, so the final key ranks the pilot's
-    /// own words first and the ATC call last: "read the last transmission" must give
-    /// the pilot the controller, not a repeat of what they just said themselves. It
-    /// is the last key, so ordering BETWEEN records is untouched — a genuinely later
-    /// pilot transmission still wins.
+    /// The newest transmission the pilot did not make themselves.
+    ///
+    /// A Pilot-speaker transmission is DROPPED, never merely outranked. Ordering by
+    /// stamp and preferring the ATC call only WITHIN one record still announced a
+    /// pilot transmission that arrived in a later record — and a readback is normally
+    /// the newest thing on the frequency at exactly the moment someone presses the
+    /// hotkey, so "read the last transmission" spoke the pilot their own words back,
+    /// prefixed "Pilot:". The controller is the only thing this readout exists to give.
+    ///
+    /// An EMPTY speaker stays eligible. It comes from the bare-"message" fallback,
+    /// which carries no direction at all, so it is not identified as the pilot;
+    /// dropping it would leave a payload shape we cannot classify silent, and for a
+    /// readout whose whole job is to say what was heard, silence is the worse failure.
+    /// It also cannot be mistaken for the pilot when spoken — with no speaker,
+    /// ToAnnouncement prefixes nothing.
     /// </summary>
-    private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root)
+    /// <param name="pilotOnly">True when transmissions were found but every one was the
+    /// pilot's, so the caller can say why instead of the generic "nothing found".</param>
+    private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root, out bool pilotOnly)
     {
         var transmissions = new List<SayIntentionsTransmission>();
         CollectTransmissions(root, transmissions);
-        return transmissions
+
+        var fromOthers = transmissions.Where(t => t.Speaker != PilotSpeaker).ToList();
+        pilotOnly = fromOthers.Count == 0 && transmissions.Count > 0;
+
+        return fromOthers
             .OrderBy(t => t.StampZulu ?? DateTime.MinValue)
             .ThenBy(t => t.Id ?? 0)
-            .ThenBy(t => t.Speaker == PilotSpeaker ? 0 : 1)
             .LastOrDefault();
     }
 
