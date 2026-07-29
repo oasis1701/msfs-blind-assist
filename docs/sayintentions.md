@@ -24,6 +24,48 @@ Speaks the most recent **radio** transmission. SayIntentions mixes cabin PA and 
 intercom lines into the same message stream; those are filtered out, so pressing this
 during taxi gives you the ground controller, not the purser.
 
+### Pushback approvals
+
+Riding on the last-transmission hotkey rather than one of its own, because that is the
+key a pilot presses straight after hearing ATC, and the advisory means nothing without
+the transmission it explains.
+
+Captured live at KBOS, 2026-07-29:
+
+```
+IN : Request pushback.
+OUT: Push and start approved. Tail South-West.
+```
+
+SayIntentions names the **tail**, as a compass point. A sighted pilot glances outside
+and knows what that looks like. A blind pilot has a heading indicator and nothing else,
+so a compass point on its own says nothing about which way the aircraft is going to
+rotate or where it will finish pointing. `Ctrl+S` therefore adds:
+
+> Tail to the south-west. You will finish facing north-east, heading 045. That is about
+> 100 degrees right of your current heading.
+
+The nose finishes opposite the tail; the turn is taken the short way round, so 303 to
+045 is 102 degrees right rather than 258 left. Compass points are matched longest name
+first — matched shortest-first, "Tail South-South-West" reads as plain "south" and puts
+the pilot 22 degrees out with nothing to reveal it. Separators are stripped from both
+sides, so "South-West", "South West" and "Southwest" are one direction.
+
+Only "tail" is parsed. A "nose" branch against no capture is how a parser ends up
+confidently wrong, and the approval itself must match too — a stray mention of a tail
+in some other transmission is not clearance to push.
+
+The aircraft position comes from the **cache, never a fresh request**: this hotkey is on
+the offline allowlist and has to keep working with SimConnect disconnected, so a missing
+position drops the heading and the turn rather than failing the readout.
+
+**Unverified assumption: SI's compass points are TRUE bearings**, as compass points
+conventionally are, so the spoken heading is converted to magnetic — magnetic being what
+the heading indicator shows. If a live pushback finishes about one variation away from
+the heading announced, that is the thing to revisit; KBOS is roughly 14 degrees west, so
+the error would be plain. The turn is rounded to the nearest 5 and hedged as "about",
+which stays honest either way.
+
 ### Flight information
 
 Opens a **read-only window** rather than speaking. Arrow keys move a line at a time,

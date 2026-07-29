@@ -28,15 +28,43 @@ public partial class MainForm
         try
         {
             var result = await sayIntentionsService.GetLastTransmissionAsync();
-            announcer.AnnounceImmediate(result.Transmission != null
-                ? $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}"
-                : result.Error ?? "No SayIntentions transmission available.");
+            if (result.Transmission == null)
+            {
+                announcer.AnnounceImmediate(result.Error ?? "No SayIntentions transmission available.");
+                return;
+            }
+
+            announcer.AnnounceImmediate(
+                $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}"
+                + BuildPushbackAdvisory(result.Transmission.Message));
         }
         catch (Exception ex)
         {
             _siLog.Error("Last-transmission readout failed", ex);
             announcer.AnnounceImmediate($"SayIntentions transmission lookup failed. {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The extra sentence a pushback approval earns, or "" for any other transmission.
+    ///
+    /// It rides on the last-transmission hotkey rather than getting one of its own,
+    /// because that is the key the pilot presses straight after hearing ATC anyway —
+    /// and the advisory is meaningless without the transmission it explains.
+    ///
+    /// The aircraft position is read from the CACHE, never requested. This hotkey is on
+    /// the offline allowlist and must keep working with SimConnect disconnected, so a
+    /// missing position degrades the advisory rather than failing the readout.
+    /// </summary>
+    private string BuildPushbackAdvisory(string message)
+    {
+        var position = simConnectManager.LastKnownPosition;
+        string? advisory = SayIntentionsPushback.DescribeApproval(
+            message,
+            position?.HeadingMagnetic,
+            position?.MagneticVariation ?? 0);
+
+        return string.IsNullOrEmpty(advisory) ? "" : " " + advisory;
     }
 
     private async Task AnnounceSayIntentionsAssignedStatusAsync()
