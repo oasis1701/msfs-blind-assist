@@ -75,16 +75,16 @@ public sealed class SayIntentionsService
         {
             var apiResult = await GetLastCommsHistoryTransmissionAsync(context, apiKey);
             if (apiResult.Transmission != null)
-                return new SayIntentionsTransmissionResult(apiResult.Transmission, null);
+                return new SayIntentionsTransmissionResult(apiResult.Transmission, null, context);
 
             if (flightJsonTransmission != null)
-                return new SayIntentionsTransmissionResult(flightJsonTransmission, apiResult.Error);
+                return new SayIntentionsTransmissionResult(flightJsonTransmission, apiResult.Error, context);
 
-            return new SayIntentionsTransmissionResult(null, apiResult.Error);
+            return new SayIntentionsTransmissionResult(null, apiResult.Error, context);
         }
 
         if (flightJsonTransmission != null)
-            return new SayIntentionsTransmissionResult(flightJsonTransmission, null);
+            return new SayIntentionsTransmissionResult(flightJsonTransmission, null, context);
 
         return new SayIntentionsTransmissionResult(
             null,
@@ -176,6 +176,7 @@ public sealed class SayIntentionsService
             context.ClearedForLanding = SayIntentionsClearanceParser.CleanRunway(GetString(details, "cleared_for_landing"));
             context.Runway = SayIntentionsClearanceParser.CleanRunway(GetString(details, "runway"));
             context.AircraftIcao = GetString(details, "aircraft_icao");
+            context.Heading = GetDouble(details, "heading");
             context.OnGround = GetBool(details, "on_ground");
             context.DepartureWeather = ReadAirportWeather(GetObject(details, "departure_wx"));
             context.ArrivalWeather = ReadAirportWeather(GetObject(details, "arrival_wx"));

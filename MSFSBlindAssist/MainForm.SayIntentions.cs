@@ -36,7 +36,7 @@ public partial class MainForm
 
             announcer.AnnounceImmediate(
                 $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}"
-                + BuildPushbackAdvisory(result.Transmission.Message));
+                + BuildPushbackAdvisory(result.Transmission.Message, result.Context));
         }
         catch (Exception ex)
         {
@@ -46,31 +46,41 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// The one word a pushback approval earns — "(right)", "(left)", "(about turn)" —
-    /// or "" for any other transmission.
+    /// The pushback a controller's approval actually calls for — "(straight)",
+    /// "(tail left, nose right)", "(tail right, nose left)" — or "" for any other
+    /// transmission.
     ///
     /// The controller has already said the useful part; the transmission is repeated
-    /// verbatim and this only adds the bit a blind pilot cannot derive from it. It
-    /// rides on the last-transmission hotkey rather than getting one of its own,
-    /// because that is the key pressed straight after hearing ATC and the word is
-    /// meaningless apart from the clearance it qualifies.
+    /// verbatim and this only adds the bit a blind pilot cannot derive from it, worded
+    /// the way the pushback is chosen. It rides on the last-transmission hotkey rather
+    /// than getting one of its own, because that is the key pressed straight after
+    /// hearing ATC and the phrase is meaningless apart from the clearance it qualifies.
     ///
     /// Parenthesised because screen readers do not speak the brackets by default, so it
-    /// arrives as a bare "right" after the controller's words — which is exactly how a
-    /// human would tack it on.
+    /// arrives as a bare "tail left, nose right" after the controller's words — which is
+    /// exactly how a human would tack it on.
     ///
-    /// The aircraft position is read from the CACHE, never requested. This hotkey is on
-    /// the offline allowlist and must keep working with SimConnect disconnected, so a
-    /// missing position drops the word rather than failing the readout.
+    /// SAYINTENTIONS' OWN HEADING IS PREFERRED over SimConnect's. It is the reference
+    /// SI's compass points are in, so the comparison is exact without knowing whether
+    /// SI means true or magnetic. SimConnect is the fallback, converted to true on the
+    /// assumption that compass points are true, and carries a magnetic-variation error
+    /// — 14 degrees at KBOS — that is over half the straight/turn band.
+    ///
+    /// Either way the heading comes from a CACHE, never a fresh request: this hotkey is
+    /// on the offline allowlist and must keep working with SimConnect disconnected, so
+    /// a missing heading drops the phrase rather than failing the readout.
     /// </summary>
-    private string BuildPushbackAdvisory(string message)
+    private string BuildPushbackAdvisory(string message, SayIntentionsFlightContext? context)
     {
-        var position = simConnectManager.LastKnownPosition;
-        string? direction = SayIntentionsPushback.DescribeTurnDirection(
-            message,
-            position?.HeadingMagnetic,
-            position?.MagneticVariation ?? 0);
+        double? heading = context?.Heading;
+        if (heading == null)
+        {
+            var position = simConnectManager.LastKnownPosition;
+            if (position.HasValue)
+                heading = position.Value.HeadingMagnetic + position.Value.MagneticVariation;
+        }
 
+        string? direction = SayIntentionsPushback.DescribeTurnDirection(message, heading);
         return string.IsNullOrEmpty(direction) ? "" : $" ({direction})";
     }
 

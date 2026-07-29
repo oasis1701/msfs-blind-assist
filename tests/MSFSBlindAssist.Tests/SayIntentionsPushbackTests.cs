@@ -29,59 +29,64 @@ public class SayIntentionsPushbackTests
         Assert.Equal(225, tail.Value.Bearing);
     }
 
-    // Tail south-west puts the nose north-east, i.e. 045. From 303 that is 102 degrees
-    // the short way round — to the RIGHT. Computed naively the wrap makes it a
-    // 258-degree LEFT turn, which is the one error that would actively mislead.
+    // Live case. Heading 303, tail south-west: a straight push would send the tail to
+    // 123, so 225 is 102 degrees clockwise of dead astern — the tail swings to the
+    // pilot's LEFT and the nose comes right. Measured the naive way the wrap makes it
+    // 258 the other way, which is the one error that would actively mislead.
     [Fact]
-    public void TheTurnTakesTheShortWayRound()
+    public void TheLiveApprovalIsATailLeftPush()
     {
-        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 0));
+        Assert.Equal("tail left, nose right",
+            SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading));
     }
 
     [Fact]
-    public void TheTurnCanGoLeft()
+    public void TheTailCanSwingRight()
     {
-        // Facing 090, tail south-west, so the nose finishes 045 — 45 degrees left.
-        Assert.Equal("left", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 90, 0));
+        // Facing 090: dead astern is 270, so a south-west tail is 45 degrees
+        // anticlockwise — tail to the pilot's right, nose left.
+        Assert.Equal("tail right, nose left",
+            SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 90));
     }
 
-    // The whole reason the advisory is one word: a magnetic variation's worth of error
-    // cannot change it. KBOS is about 14 degrees west, and the live turn is 102 —
-    // nowhere near either guard band.
+    // "Straight" is an ANSWER, not the absence of one — it is one of the options the
+    // pushback menu offers, and a pilot who hears nothing cannot tell it from a
+    // readout that failed.
     [Fact]
-    public void VariationCannotFlipTheDirection()
+    public void ADeadAsternTailIsAStraightPush()
     {
-        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 0));
-        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, -14));
-        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 14));
+        // Facing 045, tail south-west: dead astern exactly.
+        Assert.Equal("straight", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 45));
     }
 
-    // Already pointing where it will end up: "right" would be describing nothing.
+    // SayIntentions was seen choosing from an EIGHT-point compass, so its answer can sit
+    // up to 22.5 degrees from the truth. A genuinely straight push has to survive that
+    // much slop without being called a turn; nothing finer is recoverable at this
+    // resolution.
+    [Theory]
+    [InlineData(25)]   // 20 degrees off dead astern
+    [InlineData(65)]   // 20 the other way
+    public void SayIntentionsCompassRoundingStillReadsAsStraight(double heading)
+    {
+        Assert.Equal("straight", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, heading));
+    }
+
+    // Near a half-turn the two sides are equally valid and the answer would be decided
+    // by noise. Claiming one would be inventing precision that isn't there.
     [Fact]
-    public void ANegligibleTurnIsNotClaimed()
+    public void ANearHalfTurnIsNotClaimedAsASide()
     {
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 45, 0));
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 50, 0));
+        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 225));
+        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 215));
     }
 
-    // Near a half-turn the two directions are equally valid, and which one comes out is
-    // decided by heading noise and by the true-versus-magnetic assumption. Claiming one
-    // would be inventing precision that isn't there.
-    [Fact]
-    public void ANearHalfTurnIsNotClaimedAsADirection()
-    {
-        // Facing 225 with the nose finishing 045 is exactly 180.
-        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 225, 0));
-        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 215, 0));
-        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 235, 0));
-    }
-
-    // The last-transmission hotkey works with SimConnect disconnected. Without a
-    // heading there is no direction to give, and the transmission is still read.
+    // The last-transmission hotkey works with SimConnect disconnected and before SI has
+    // written a heading. Without one there is nothing to compare against, and the
+    // transmission is still read out.
     [Fact]
     public void WithoutAHeadingNoDirectionIsGiven()
     {
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, null, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, null));
     }
 
     // --- what must NOT be read as a pushback approval ---------------------------------
@@ -90,16 +95,16 @@ public class SayIntentionsPushbackTests
     public void ATransmissionThatIsNotAnApprovalIsIgnored()
     {
         Assert.Null(SayIntentionsPushback.DescribeTurnDirection(
-            "Delta 123, taxi to runway 22R via Alpha, Tango.", 303, 0));
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Request pushback.", 303, 0));
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(null, 303, 0));
+            "Delta 123, taxi to runway 22R via Alpha, Tango.", 303));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Request pushback.", 303));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(null, 303));
     }
 
     // An approval with no direction in it still must not invent one.
     [Fact]
     public void AnApprovalWithoutADirectionProducesNothing()
     {
-        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Push and start approved.", 303, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Push and start approved.", 303));
     }
 
     // --- direction parsing ------------------------------------------------------------

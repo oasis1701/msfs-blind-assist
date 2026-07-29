@@ -88,56 +88,62 @@ public static class SayIntentionsPushback
         return null;
     }
 
-    /// <summary>A turn too small to be worth naming — the aircraft is already pointing
-    /// where it will end up, so "right" would be describing nothing.</summary>
-    private const double NegligibleTurnDegrees = 10;
+    /// <summary>
+    /// How far off dead-astern still counts as a straight push.
+    ///
+    /// Sized by SayIntentions' own resolution, not by taste. The one capture used an
+    /// eight-point compass ("South-West"), so SI is choosing the nearest of eight
+    /// directions and its answer can be up to 22.5 degrees from the truth. A genuinely
+    /// straight push can therefore arrive reading as much as 22.5 degrees off, and any
+    /// tighter band would call it a turn. Nothing finer is recoverable: at this
+    /// resolution a small turn and a straight push are the same message.
+    /// </summary>
+    private const double StraightBandDegrees = 25;
 
-    /// <summary>How close to a half-turn counts as neither direction. At 180 the two
-    /// are equally valid, and near it the answer is decided by a few degrees of
-    /// heading noise and by the unverified true-versus-magnetic assumption below —
-    /// so it is not claimed at all.</summary>
+    /// <summary>How close to a half-turn counts as neither side. At exactly 180 the two
+    /// are equally valid and the answer would be decided by noise, so it is not
+    /// claimed.</summary>
     private const double AmbiguousTurnBandDegrees = 25;
 
     /// <summary>
-    /// Which way the aircraft swings during the pushback: <c>"right"</c>, <c>"left"</c>,
-    /// <c>"about turn"</c>, or null when the transmission is not a pushback approval,
-    /// carries no direction, or there is no aircraft heading to compare against.
+    /// Which pushback to ask for: <c>"straight"</c>, <c>"tail left, nose right"</c>,
+    /// <c>"tail right, nose left"</c>, <c>"about turn"</c>, or null when the
+    /// transmission is not a pushback approval, carries no direction, or there is no
+    /// heading to compare against.
     ///
-    /// One word is the whole advisory ON PURPOSE. It first spoke the finishing compass
-    /// point, the finishing heading and the size of the turn — accurate, and too much.
-    /// The controller has just said the useful part out loud; all the pilot is missing
-    /// is which way that puts them, and a sentence of arithmetic between hearing the
-    /// clearance and acting on it is a cost, not a service.
+    /// The wording matches how the pushback is actually CHOSEN. GSX offers the options
+    /// as "nose right, tail left" and so on, and naming both ends means the answer maps
+    /// onto that menu whichever end it happens to lead with. "Straight" is one of those
+    /// options and therefore one of these answers — it is a real instruction, not the
+    /// absence of one.
     ///
-    /// It also makes the readout robust. The one unverified assumption here is that
-    /// SI's compass points are TRUE bearings, as compass points conventionally are, so
-    /// the comparison is done in true. If that is wrong the error is one magnetic
-    /// variation — about 14 degrees at KBOS — which cannot flip left into right except
-    /// within the two guard bands above, where nothing is claimed anyway.
-    ///
-    /// <paramref name="headingMagnetic"/> is null when no position is available: the
-    /// last-transmission hotkey is on the offline allowlist and has to keep working
-    /// with SimConnect disconnected, so the direction is simply omitted.
+    /// <paramref name="aircraftHeading"/> MUST be in the same reference as SI's compass
+    /// points, which is why the caller prefers SayIntentions' own
+    /// <c>flight_details.heading</c> over the SimConnect heading. Whether SI means true
+    /// or magnetic is still unknown and, read this way, does not need to be: its
+    /// heading and its cardinals come from the same place, so the difference between
+    /// them is exact. Comparing against a SimConnect heading instead would be wrong by
+    /// one magnetic variation — 14 degrees at KBOS, more elsewhere — which is over half
+    /// the straight band.
     /// </summary>
-    public static string? DescribeTurnDirection(
-        string? message, double? headingMagnetic, double magneticVariation)
+    public static string? DescribeTurnDirection(string? message, double? aircraftHeading)
     {
         var tail = ParseTailDirection(message);
-        if (tail == null || headingMagnetic == null) return null;
+        if (tail == null || aircraftHeading == null) return null;
 
-        // The nose finishes opposite the tail. Compare in TRUE: the compass point is
-        // true, the heading indicator is magnetic, and true = magnetic + variation
-        // (variation east positive).
-        double noseTrue = Normalize(tail.Value.Bearing + 180);
-        double headingTrue = Normalize(headingMagnetic.Value + magneticVariation);
+        // A straight push sends the tail dead astern. Everything is measured as the
+        // tail's departure from that.
+        double straightBack = Normalize(aircraftHeading.Value + 180);
+        double swing = SignedDifference(straightBack, tail.Value.Bearing);
+        double magnitude = Math.Abs(swing);
 
-        double turn = SignedDifference(headingTrue, noseTrue);
-        double magnitude = Math.Abs(turn);
+        if (magnitude <= StraightBandDegrees) return "straight";
+        if (magnitude >= 180 - AmbiguousTurnBandDegrees) return "about turn";
 
-        if (magnitude < NegligibleTurnDegrees) return null;
-        if (magnitude > 180 - AmbiguousTurnBandDegrees) return "about turn";
-
-        return turn >= 0 ? "right" : "left";
+        // Clockwise — the tail swinging toward the pilot's left — puts the nose right.
+        // The aircraft is rigid: both ends rotate the same way, and it is the SIDE each
+        // ends up on that the pushback menu names.
+        return swing > 0 ? "tail left, nose right" : "tail right, nose left";
     }
 
     /// <summary>Shortest signed turn from <paramref name="from"/> to
