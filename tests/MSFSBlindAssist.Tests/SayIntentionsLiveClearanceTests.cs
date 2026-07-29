@@ -126,6 +126,56 @@ public class SayIntentionsLiveClearanceTests
 
         Assert.Equal("05", MainForm.ResolveDepartureRunwayForStatus(departing));
     }
+
+    // SayIntentions never assigns a DEPARTURE gate (confirmed by an SI developer), so
+    // assigned_gate always names a stand at flight_destination. The readout used to
+    // infer the role from where the aircraft was standing, which made it announce the
+    // arrival stand as "Departure gate ... at <origin>" for the whole outbound leg —
+    // a stand at an airport the pilot had not flown to yet, named as if it were under
+    // their wheels. The live capture could not catch this: it was taken at EDDF, the
+    // destination, where the two readings coincide.
+    [Fact]
+    public void TheAssignedGateIsAnnouncedAsAnArrivalGateBeforeDeparting()
+    {
+        var departing = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "LMML",
+            Origin = "LMML",
+            Destination = "EDDF"
+        };
+
+        string spoken = MainForm.FormatSayIntentionsGateStatus(departing, "Terminal 3 Gate J1");
+
+        Assert.Equal("Arrival gate Terminal 3 Gate J1 at EDDF.", spoken);
+        Assert.DoesNotContain("Departure", spoken, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("LMML", spoken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheAssignedGateIsStillAnArrivalGateOnceArrived()
+    {
+        var arrived = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "EDDF",
+            Origin = "LMML",
+            Destination = "EDDF"
+        };
+
+        Assert.Equal(
+            "Arrival gate Terminal 3 Gate J1 at EDDF.",
+            MainForm.FormatSayIntentionsGateStatus(arrived, "Terminal 3 Gate J1"));
+    }
+
+    // With no filed destination there is no airport to attach the stand to, but the
+    // ROLE is still known — it is the one kind of gate SayIntentions assigns. The old
+    // "Gate role unknown" wording was only ever a symptom of guessing the role.
+    [Fact]
+    public void TheGateRoleIsNeverUnknown()
+    {
+        var noFlightPlan = new SayIntentionsFlightContext { CurrentAirport = "LMML" };
+
+        Assert.Equal("Arrival gate J1.", MainForm.FormatSayIntentionsGateStatus(noFlightPlan, "J1"));
+    }
 }
 
 // The local flight.json from the SAME live capture, reduced to its shape. Field

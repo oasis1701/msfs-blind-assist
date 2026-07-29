@@ -137,7 +137,7 @@ public partial class MainForm
             }
 
             string clearance = context.ClearanceText ?? "";
-            if (!TryResolveSayIntentionsDestination(form, status, clearance, out bool isRunway, out string label))
+            if (!TryResolveSayIntentionsDestination(form, status, clearance, icao, out bool isRunway, out string label))
             {
                 announcer.AnnounceImmediate(
                     "SayIntentions route unavailable. No usable assigned runway or gate found.");
@@ -217,23 +217,33 @@ public partial class MainForm
     }
 
     /// <summary>Destination priority: the clearance's own runway, then its gate, then
-    /// the assigned gate when already at the destination airport, then the departure
-    /// runway, then the assigned gate, then the arrival runway. Each candidate must
-    /// resolve to a real entry in the form's destination list to win.
+    /// the assigned gate when this airport IS the destination, then the departure
+    /// runway, then the arrival runway. Each candidate must resolve to a real entry
+    /// in the form's destination list to win.
+    ///
+    /// The assigned gate appears ONCE, behind that airport check. It used to appear a
+    /// second time as an unconditional fallback behind the departure runway, which
+    /// was only safe while the gate was assumed to belong to wherever the aircraft
+    /// was standing. It does not: it is an arrival stand at flight_destination. At the
+    /// departure airport that fallback would route the pilot to whatever local stand
+    /// happened to share the name — and stand names like A9 are common enough that it
+    /// would usually find one and say nothing about it. Nothing is lost by dropping
+    /// it, because a gate at another airport can never be a legitimate taxi target
+    /// here.
+    ///
+    /// The airport check is against the ICAO the route is actually being built for,
+    /// not context.CurrentAirport — flight.json can omit current_airport, in which
+    /// case the caller resolves the airport from position, and keying off the empty
+    /// field would refuse the gate at the very airport it names.
     ///
     /// The whole list goes to the form in one call — asking candidate by candidate
     /// re-listed (and re-selected) the form's destinations on every probe, and left
     /// the pilot's own destination discarded when none of them resolved.</summary>
     private static bool TryResolveSayIntentionsDestination(
         TaxiAssistForm form, SayIntentionsStatusResult status, string clearance,
-        out bool isRunway, out string label)
+        string airportIcao, out bool isRunway, out string label)
     {
         var context = status.Context;
-
-        string? gate = FirstNonEmptySi(context.AssignedGate, status.Parking?.Name);
-        bool atDestination = !string.IsNullOrWhiteSpace(context.CurrentAirport)
-            && !string.IsNullOrWhiteSpace(context.Destination)
-            && context.CurrentAirport.Equals(context.Destination, StringComparison.OrdinalIgnoreCase);
 
         var candidates = new List<TaxiAssistForm.ExternalDestination>
         {
@@ -241,12 +251,11 @@ public partial class MainForm
             new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance))
         };
 
-        if (atDestination)
-            candidates.Add(new(false, gate));
+        if (SameIcaoSi(airportIcao, context.Destination))
+            candidates.Add(new(false, FirstNonEmptySi(context.AssignedGate, status.Parking?.Name)));
 
         candidates.Add(new(true, FirstNonEmptySi(
             context.ClearedForTakeoff, context.DepartureRunway, context.Runway)));
-        candidates.Add(new(false, gate));
         candidates.Add(new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway)));
 
         return form.TryResolveExternalDestination(candidates, out isRunway, out label);
@@ -432,13 +441,21 @@ public partial class MainForm
     }
 
     /// <summary>Reports whether the aircraft is actually sitting at the gate SI
-    /// assigned. Purely informational — it never changes the route.</summary>
+    /// assigned. Purely informational — it never changes the route.
+    ///
+    /// Only meaningful AT the destination. The assigned gate is an arrival stand at
+    /// flight_destination, so comparing it against the stands of any other airport
+    /// compares two unrelated things: at the departure airport it announced "not
+    /// assigned gate J1" about a gate that was never supposed to be there, and — if
+    /// the departure airport happened to have a stand of the same name — it could
+    /// just as easily have announced a match that meant nothing.</summary>
     private async Task<string?> GetSayIntentionsNearbyParkingStatusAsync(
         SayIntentionsFlightContext context, string assignedGate)
     {
         if (airportDataProvider == null) return null;
+        if (!SameIcaoSi(context.CurrentAirport, context.Destination)) return null;
 
-        string? icao = FirstNonEmptySi(context.CurrentAirport, context.Origin, context.Destination);
+        string? icao = context.CurrentAirport;
         if (string.IsNullOrWhiteSpace(icao)) return null;
 
         try
@@ -478,39 +495,21 @@ public partial class MainForm
         }
     }
 
-    private static string FormatSayIntentionsGateStatus(SayIntentionsFlightContext context, string gate)
-    {
-        string? gateRole = null;
-        string? gateAirport = null;
-
-        if (SameIcaoSi(context.CurrentAirport, context.Origin))
-        {
-            gateRole = "Departure gate";
-            gateAirport = context.Origin;
-        }
-        else if (SameIcaoSi(context.CurrentAirport, context.Destination))
-        {
-            gateRole = "Arrival gate";
-            gateAirport = context.Destination;
-        }
-        else if (!string.IsNullOrWhiteSpace(context.Origin) && string.IsNullOrWhiteSpace(context.Destination))
-        {
-            gateRole = "Departure gate";
-            gateAirport = context.Origin;
-        }
-        else if (!string.IsNullOrWhiteSpace(context.Destination) && string.IsNullOrWhiteSpace(context.Origin))
-        {
-            gateRole = "Arrival gate";
-            gateAirport = context.Destination;
-        }
-
-        if (gateRole == null)
-            return $"Assigned gate {gate}. Gate role unknown.";
-
-        return string.IsNullOrWhiteSpace(gateAirport)
-            ? $"{gateRole} {gate}."
-            : $"{gateRole} {gate} at {gateAirport}.";
-    }
+    /// <summary>
+    /// The assigned gate always names an ARRIVAL stand at <c>flight_destination</c>.
+    ///
+    /// SayIntentions does not assign a departure gate at all (confirmed by an SI
+    /// developer). The previous version inferred the role from where the aircraft was
+    /// standing, so before departure it said "Departure gate J1 at LMML" — wrong
+    /// twice over: the wrong role, and a stand placed at the airport the pilot was
+    /// sitting at when it belongs to one they had not flown to yet. The live EDDF
+    /// capture could not distinguish the two readings, because it was taken AT the
+    /// destination, where current_airport and flight_destination are the same.
+    /// </summary>
+    internal static string FormatSayIntentionsGateStatus(SayIntentionsFlightContext context, string gate) =>
+        string.IsNullOrWhiteSpace(context.Destination)
+            ? $"Arrival gate {gate}."
+            : $"Arrival gate {gate} at {context.Destination}.";
 
     /// <summary>
     /// The departure runway to speak in the assigned-status readout, or null once the

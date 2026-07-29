@@ -26,10 +26,17 @@ during taxi gives you the ground controller, not the purser.
 
 ### Assigned gate and runway
 
-Speaks the current airport, the assigned gate (labelled departure or arrival based on
-where you are in the flight), the departure runway, and any landing clearance. When
-the aircraft is within 100 m of a parking spot it also reports whether that spot *is*
-the assigned gate — useful for catching a mis-set starting position.
+Speaks the current airport, the assigned gate, the departure runway, and any landing
+clearance.
+
+The assigned gate is always an **arrival** gate at your filed destination — see
+[The assigned gate is an arrival gate](#the-assigned-gate-is-an-arrival-gate) — so it
+is announced that way from the moment you push back, not just once you get there.
+
+Only once you are actually at the destination does the readout also compare the gate
+against where you are parked: within 100 m of a stand it reports whether that stand
+*is* the assigned gate, which catches a mis-set arrival position. At any other airport
+that comparison is meaningless and is not made.
 
 ### Build taxi route
 
@@ -146,13 +153,46 @@ is missing.
 
 **`flight_plan_departing_runway` goes stale, and it is load-bearing.** At EDDF, after
 landing, it still read `"5"` — left over from the LMML departure. It sits in the
-destination-resolution chain ahead of the second gate attempt, so a gate that fails to
-resolve falls through to it: at an airport that happens to have a runway with the
-previous leg's designator, the pilot is sent to a runway instead of their stand. EDDF
-has no 05, so this capture would have fallen one further, to the arrival runway — 07L,
-the one just landed on. Either way an arriving aircraft gets routed at a runway. The
-cascade is blocked at the gate step now (the full-label fix above), but the stale field
-is still there, and any future change to the candidate order has to assume it is wrong.
+destination-resolution chain, so a gate that fails to resolve falls through to it: at
+an airport that happens to have a runway with the previous leg's designator, the pilot
+is sent to a runway instead of their stand. EDDF has no 05, so this capture would have
+fallen one further, to the arrival runway — 07L, the one just landed on. Either way an
+arriving aircraft gets routed at a runway. The cascade is blocked at the gate step now
+(the full-label fix above), but the stale field is still there, and any future change
+to the candidate order has to assume it is wrong.
+
+### The assigned gate is an arrival gate
+
+**Provenance: an SayIntentions developer, relayed 2026-07-28 — not measured.**
+SayIntentions does not assign a departure gate at all. `assigned_gate` therefore always
+names a stand at `flight_destination`, whatever airport the aircraft happens to be
+sitting at when you read it.
+
+The live capture could not have told us this. It was taken at EDDF, the destination,
+where `current_airport` and `flight_destination` are the same string — every reading of
+the field agrees there. Two things had been built on the other reading:
+
+- **The status readout inferred the gate's role from position.** Standing at the
+  origin, it announced the arrival stand as "Departure gate J1 at LMML" — the wrong
+  role, and a stand attached to an airport it does not belong to, spoken as if it were
+  under the aircraft's wheels. It is now always "Arrival gate ... at `<destination>`".
+- **The gate appeared twice in the destination-resolution chain**, the second time as
+  an unconditional fallback behind the departure runway. That is only safe if the gate
+  belongs to wherever the aircraft is standing. At the departure airport it would have
+  matched whatever local stand happened to share the name — and short stand names like
+  `A9` recur across airports often enough that it would usually find one, select it,
+  and report nothing unusual. The gate now appears once, behind a check that the
+  airport being routed at *is* the destination.
+
+The proximity comparison in the readout is gated the same way. Comparing an arrival
+stand against the stands of the airport you are departing from compares two unrelated
+things: it announced "not assigned gate J1" about a gate that was never meant to be
+there, and could equally have announced a meaningless match.
+
+The airport check uses the ICAO the route is actually being built for, not
+`current_airport` — flight.json can omit that field, in which case the airport is
+resolved from position, and keying off the empty field would refuse the gate at the
+very airport it names.
 
 The field values as captured:
 
