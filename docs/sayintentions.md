@@ -408,6 +408,30 @@ transmission hotkey needs no changes to be useful in the air.
 To take a capture: SayIntentions rewrites `%LOCALAPPDATA%\SayIntentionsAI\flight.json`
 continuously, so copying it mid-cruise is enough. No tooling is needed.
 
+### Clearance delivery is not a taxi clearance
+
+`LooksLikeTaxiClearance` gates the "fall back to the last radio transmission" path. It
+accepts **taxi** or a bare **via**, because an abbreviated clearance can omit the verb
+("Runway 15L via Bravo, Charlie") — so the exclusion list is what carries the weight.
+
+A live KBOS capture, 2026-07-29, is why there is one beyond the original landing
+clearance:
+
+```
+Cleared to Miami via the SSOXS7 departure. Then as filed. Climb and maintain 5,000.
+Expect FL360 one-zero minutes after departure. Departure on 133.0. Squawk 6422.
+```
+
+That passed on the strength of its "via". Imported, it matched no taxiways, fell back to
+shortest path to the departure runway, and announced itself as a SayIntentions route —
+with nothing to tell the pilot it had not come from a taxi clearance at all. The pilot's
+**readback** is published as a transmission too, and is the newest thing on the frequency
+at exactly the moment someone might press the import key.
+
+Excluded on `cleared to land`, `climb and maintain`, `squawk NNNN` and `as filed`. Each
+belongs to clearance delivery and to nothing a ground controller says while taxiing you,
+so excluding on them costs no real taxi clearance.
+
 ### Hold-short masking (safety-critical)
 
 A taxi clearance to a **gate** routinely ends "hold short of runway NN", and a

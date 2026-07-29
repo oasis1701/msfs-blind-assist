@@ -146,6 +146,45 @@ public class SayIntentionsLiveClearanceTests
         Assert.Null(MainForm.ResolveDepartureRunwayForStatus(enRoute, onGround: false));
     }
 
+    // A live KBOS clearance-delivery transmission, 2026-07-29. It contains "via", which
+    // is why the shape guard used to accept it: the import then found no taxiways, fell
+    // back to shortest path to the departure runway, and announced itself as a
+    // SayIntentions route with nothing to say it had not come from a taxi clearance.
+    // A taxi clearance says TAXI.
+    [Fact]
+    public void ClearanceDeliveryIsNotATaxiClearance()
+    {
+        const string ifr =
+            "Cleared to Miami via the SSOXS7 departure. Then as filed. Climb and maintain "
+            + "5,000. Expect FL360 one-zero minutes after departure. Departure on 133.0. "
+            + "Squawk 6422. And your departure runway was changed to 22L";
+
+        Assert.False(SayIntentionsClearanceParser.LooksLikeTaxiClearance(ifr));
+    }
+
+    // The pilot's readback of the same clearance must fail the guard too — SayIntentions
+    // publishes readbacks as transmissions, and a readback is the newest thing on the
+    // frequency at exactly the moment a pilot might press the import key.
+    [Fact]
+    public void AClearanceReadbackIsNotATaxiClearanceEither()
+    {
+        const string readback =
+            "Cleared to Miami via SSOXS7 departure, then as filed. Climb and maintain five "
+            + "thousand. Expect FL360 one-zero minutes after departure. Departure on 133.0. "
+            + "Squawk 6422. Departure runway 22L.";
+
+        Assert.False(SayIntentionsClearanceParser.LooksLikeTaxiClearance(readback));
+    }
+
+    // The real taxi clearance from the same session still passes.
+    [Fact]
+    public void TheLiveTaxiClearanceStillPassesTheGuard()
+    {
+        Assert.True(SayIntentionsClearanceParser.LooksLikeTaxiClearance(
+            "Runway 22L taxi via Alpha, November, hold short of runway 15R. "
+            + "Advise you have information Victor."));
+    }
+
     // SayIntentions never assigns a DEPARTURE gate (confirmed by an SI developer), so
     // assigned_gate always names a stand at flight_destination. The readout used to
     // infer the role from where the aircraft was standing, which made it announce the

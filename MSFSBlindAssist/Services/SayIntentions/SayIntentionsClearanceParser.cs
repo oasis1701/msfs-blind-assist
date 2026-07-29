@@ -49,11 +49,33 @@ public static class SayIntentionsClearanceParser
         @"\bRUNWAY\s*(?<runway>" + RunwayToken + @")",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>"Taxi" or a bare "via" — an abbreviated clearance can omit the verb
+    /// ("Runway 15L via Bravo, Charlie"), so the word is not required. What that
+    /// admits is ruled back out by <see cref="NotATaxiClearance"/>.</summary>
     private static readonly Regex TaxiClearanceShape = new(
         @"\b(?:TAXI|VIA)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    /// <summary>
+    /// Phrasings that rule a transmission out however taxi-shaped it looks.
+    ///
+    /// A landing clearance heard on rollout was the original reason. A live KBOS
+    /// capture added the other: clearance delivery says *"Cleared to Miami VIA the
+    /// SSOXS7 departure…"*, which passed on the strength of that "via" alone. Importing
+    /// it found no taxiways, fell back to shortest path to the departure runway, and
+    /// announced itself as a SayIntentions route — with nothing to tell the pilot it had
+    /// not come from a taxi clearance at all. The pilot's READBACK of the same clearance
+    /// is published as a transmission too, and is the newest thing on the frequency at
+    /// exactly the moment someone might press the import key.
+    ///
+    /// Each phrase here belongs to clearance delivery and to nothing a ground controller
+    /// says while taxiing you, so excluding on them costs no real taxi clearance.
+    /// </summary>
     private static readonly Regex NotATaxiClearance = new(
-        @"\bCLEARED\s+TO\s+LAND\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\bCLEARED\s+TO\s+LAND\b" +
+        @"|\bCLIMB\s+AND\s+MAINTAIN\b" +
+        @"|\bSQUAWK\s+\d{3,4}\b" +
+        @"|\bAS\s+FILED\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>Ordered longest-first so NINER is consumed before NINE and TREE
     /// before the bare digit words that share a prefix.</summary>
