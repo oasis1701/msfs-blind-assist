@@ -34,6 +34,59 @@ public sealed class SayIntentionsFlightContext
     public string? ClearanceText { get; set; }
 
     public SayIntentionsTransmission? LastFlightJsonTransmission { get; set; }
+
+    /// <summary>ICAO type code, e.g. "B738". From <c>aircraft_icao</c>.</summary>
+    public string? AircraftIcao { get; set; }
+
+    /// <summary>SayIntentions' own air/ground flag (<c>on_ground</c>), or null when
+    /// absent. Read for the report only — guidance keeps using the SimConnect
+    /// air/ground state, which is a frame old rather than a file-write old.</summary>
+    public bool? OnGround { get; set; }
+
+    /// <summary>Weather and ATIS for the departure airport (<c>departure_wx</c>).</summary>
+    public SayIntentionsAirportWeather? DepartureWeather { get; set; }
+
+    /// <summary>Weather and ATIS for the arrival airport (<c>arrival_wx</c>). Not seen
+    /// in any capture yet — read defensively so it appears if SI starts publishing it
+    /// once a flight plan is filed.</summary>
+    public SayIntentionsAirportWeather? ArrivalWeather { get; set; }
+}
+
+/// <summary>
+/// One airport's weather/ATIS block as SayIntentions publishes it in flight.json.
+///
+/// This is the richest thing in the file and nothing read it before: the ATIS letter
+/// and the ACTIVE RUNWAY CONFIGURATION are not available anywhere else in this app —
+/// not from VATSIM, not from ActiveSky, not from navdata — and they are exactly what
+/// a blind pilot otherwise has to sit through an ATIS loop to learn. Every field is
+/// optional; SI leaves plenty of them empty.
+/// </summary>
+public sealed class SayIntentionsAirportWeather
+{
+    public string? Airport { get; init; }
+
+    /// <summary>The ATIS letter, e.g. "U" for information Uniform.</summary>
+    public string? InformationLetter { get; init; }
+
+    /// <summary>Decoded ATIS as prose. SI also publishes a phonetic variant, which we
+    /// do NOT use: the screen reader is the one deciding how to pronounce things, and
+    /// feeding it "two-two-left" produces a worse reading than "22L".</summary>
+    public string? Atis { get; init; }
+
+    public string? ActiveRunwaysArriving { get; init; }
+    public string? ActiveRunwaysDeparting { get; init; }
+    public string? PreferredRunway { get; init; }
+    public string? CurrentlyOperating { get; init; }
+
+    public double? WindDirection { get; init; }
+    public double? WindSpeed { get; init; }
+    public double? WindGusting { get; init; }
+    public double? Visibility { get; init; }
+    public double? Altimeter { get; init; }
+    public double? DensityAltitude { get; init; }
+
+    public string? Metar { get; init; }
+    public string? Taf { get; init; }
 }
 
 /// <summary>One radio transmission. <paramref name="Speaker"/> is "ATC", "Pilot",

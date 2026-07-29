@@ -21,6 +21,8 @@ public partial class MainForm
 {
     private static readonly LogChannel _siLog = Log.Channel("sayintentions");
 
+    private SayIntentionsInfoForm? sayIntentionsInfoForm;
+
     private async Task AnnounceSayIntentionsLastTransmissionAsync()
     {
         try
@@ -49,31 +51,39 @@ public partial class MainForm
                 return;
             }
 
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(context.CurrentAirport))
-                parts.Add($"Current airport {context.CurrentAirport}.");
-
             string? gate = FirstNonEmptySi(context.AssignedGate, result.Parking?.Name);
-            if (!string.IsNullOrWhiteSpace(gate))
+            string? nearbyParking = string.IsNullOrWhiteSpace(gate)
+                ? null
+                : await GetSayIntentionsNearbyParkingStatusAsync(context, gate);
+
+            var lines = SayIntentionsInfoReport.Build(
+                context,
+                gate,
+                ResolveDepartureRunwayForStatus(context, _lastOnGround),
+                nearbyParking);
+
+            // Nothing to show means SayIntentions isn't publishing a flight. SPEAK that
+            // rather than opening a window onto it: an empty window costs the pilot a
+            // focus change, a read, and an Escape to learn what one sentence says.
+            if (!SayIntentionsInfoReport.HasContent(lines))
             {
-                parts.Add(FormatSayIntentionsGateStatus(context, gate));
-                string? nearbyParking = await GetSayIntentionsNearbyParkingStatusAsync(context, gate);
-                if (!string.IsNullOrWhiteSpace(nearbyParking))
-                    parts.Add(nearbyParking);
+                announcer.AnnounceImmediate(
+                    result.ParkingError
+                    ?? "No SayIntentions flight information found for the active flight.");
+                return;
             }
 
-            string? departureRunway = ResolveDepartureRunwayForStatus(context, _lastOnGround);
-            if (!string.IsNullOrWhiteSpace(departureRunway))
-                parts.Add($"Departure runway {departureRunway}.");
+            // One window at a time. Pressing the key again means "give me this again,
+            // now" — leaving the old window open would stack stale copies and, worse,
+            // hand focus to whichever one Windows felt like.
+            if (sayIntentionsInfoForm is { IsDisposed: false }) sayIntentionsInfoForm.Close();
 
-            if (!string.IsNullOrWhiteSpace(context.ClearedForLanding))
-                parts.Add($"Cleared to land runway {context.ClearedForLanding}.");
-            else if (!string.IsNullOrWhiteSpace(context.ArrivalRunway))
-                parts.Add($"Arrival runway {context.ArrivalRunway}.");
-
-            announcer.AnnounceImmediate(parts.Count > 0
-                ? "SayIntentions status. " + string.Join(" ", parts)
-                : result.ParkingError ?? "No SayIntentions assigned gate or runway found for the active flight.");
+            // No announcement here on purpose. The screen reader speaks the window and
+            // then the first line as focus lands; announcing a summary on top of that
+            // would talk over it (CLAUDE.md: never announce a UI interaction the
+            // screen reader already covers).
+            sayIntentionsInfoForm = new SayIntentionsInfoForm(lines);
+            sayIntentionsInfoForm.Show();
         }
         catch (Exception ex)
         {

@@ -175,6 +175,11 @@ public sealed class SayIntentionsService
             context.ClearedForTakeoff = SayIntentionsClearanceParser.CleanRunway(GetString(details, "cleared_for_takeoff"));
             context.ClearedForLanding = SayIntentionsClearanceParser.CleanRunway(GetString(details, "cleared_for_landing"));
             context.Runway = SayIntentionsClearanceParser.CleanRunway(GetString(details, "runway"));
+            context.AircraftIcao = GetString(details, "aircraft_icao");
+            context.OnGround = GetBool(details, "on_ground");
+            context.DepartureWeather = ReadAirportWeather(GetObject(details, "departure_wx"));
+            context.ArrivalWeather = ReadAirportWeather(GetObject(details, "arrival_wx"));
+
             context.ClearanceText = FirstNonEmpty(
                 GetString(details, "clearance"),
                 GetString(details, "last_clearance"),
@@ -568,6 +573,67 @@ public sealed class SayIntentionsService
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// One <c>*_wx</c> block. Returns null when the member is absent or carries nothing
+    /// worth showing — SI writes the block with most fields empty at times, and an
+    /// all-blank weather section in the report is worse than no section.
+    ///
+    /// <c>phonetic</c> is deliberately not read. It spells values out ("two-two-left",
+    /// "one-six-zero at eight") for SI's own text-to-speech; the screen reader does its
+    /// own pronunciation, and pre-spelt text reads worse, not better.
+    /// </summary>
+    private static SayIntentionsAirportWeather? ReadAirportWeather(JsonElement? element)
+    {
+        if (element is not JsonElement wx || wx.ValueKind != JsonValueKind.Object) return null;
+
+        var weather = new SayIntentionsAirportWeather
+        {
+            Airport = GetString(wx, "airport"),
+            InformationLetter = GetString(wx, "current"),
+            Atis = GetString(wx, "atis"),
+            ActiveRunwaysArriving = GetString(wx, "active_runways_arriving"),
+            ActiveRunwaysDeparting = GetString(wx, "active_runways_departing"),
+            PreferredRunway = GetString(wx, "preferred_runway"),
+            CurrentlyOperating = GetString(wx, "currently_operating"),
+            WindDirection = GetDouble(wx, "wind_direction"),
+            WindSpeed = GetDouble(wx, "wind_speed"),
+            WindGusting = GetDouble(wx, "wind_gusting"),
+            Visibility = GetDouble(wx, "visibility"),
+            Altimeter = GetDouble(wx, "altimeter"),
+            DensityAltitude = GetDouble(wx, "density_altitude"),
+            Metar = GetString(wx, "metar"),
+            Taf = GetString(wx, "taf")
+        };
+
+        bool hasAnything =
+            !string.IsNullOrWhiteSpace(weather.Atis)
+            || !string.IsNullOrWhiteSpace(weather.Metar)
+            || !string.IsNullOrWhiteSpace(weather.Taf)
+            || !string.IsNullOrWhiteSpace(weather.ActiveRunwaysArriving)
+            || !string.IsNullOrWhiteSpace(weather.ActiveRunwaysDeparting)
+            || weather.WindSpeed.HasValue;
+
+        return hasAnything ? weather : null;
+    }
+
+    private static bool? GetBool(JsonElement element, string propertyName)
+    {
+        JsonElement? value = GetObject(element, propertyName);
+        if (value == null) return null;
+
+        return value.Value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            // SI writes on_ground as the number 1/0, not a JSON boolean.
+            JsonValueKind.Number => value.Value.TryGetDouble(out double n) ? n != 0 : null,
+            JsonValueKind.String => bool.TryParse(value.Value.GetString(), out bool parsed)
+                ? parsed
+                : int.TryParse(value.Value.GetString(), out int number) ? number != 0 : null,
+            _ => null
+        };
     }
 
     private static JsonElement? GetObject(JsonElement element, string propertyName)

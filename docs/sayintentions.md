@@ -10,7 +10,7 @@ by hand.
 | Mode | Key | Action |
 | --- | --- | --- |
 | Output | `Ctrl+S` | Read the last SayIntentions transmission |
-| Output | `Ctrl+Shift+S` | Read the assigned gate and runway |
+| Output | `Ctrl+Shift+S` | Open the flight information window (gate, runways, ATIS, METAR, TAF) |
 | Input | `Alt+Shift+S` | Build a taxi route from the current clearance |
 
 The two readouts work without a simulator connection — they only read the local
@@ -24,10 +24,45 @@ Speaks the most recent **radio** transmission. SayIntentions mixes cabin PA and 
 intercom lines into the same message stream; those are filtered out, so pressing this
 during taxi gives you the ground controller, not the purser.
 
-### Assigned gate and runway
+### Flight information
 
-Speaks the current airport, the assigned gate, the departure runway, and any landing
-clearance.
+Opens a **read-only window** rather than speaking. Arrow keys move a line at a time,
+Control+Home and Control+End jump to the ends, Escape closes and hands the foreground
+back to the simulator.
+
+It became a window when it stopped being three facts. Spoken as one run-on string, a
+readout that now carries the ATIS, the active runway configuration, the METAR and the
+TAF gives a blind pilot no way to re-hear one part without hearing all of it, and no
+way to stop it. Line-by-line is the point of the control.
+
+What it shows, sections omitted entirely when the data is absent:
+
+| Section | Contents |
+| --- | --- |
+| Flight | current airport, origin, destination, aircraft type, callsign, filed route |
+| Gate and runway | assigned arrival gate, whether you are parked at it, departure runway, cleared-to-land or arrival runway |
+| *Airport* weather | **ATIS letter**, **landing and departing runways**, preferred runway, runway flow, wind, visibility, altimeter, density altitude, the decoded ATIS one sentence per line, METAR, TAF |
+
+The ATIS letter and the active runway configuration are the reason this section exists.
+Neither is available anywhere else in the app — not from VATSIM, not from ActiveSky,
+not from navdata — and they are what a blind pilot would otherwise sit through an ATIS
+loop to learn. They come free with a file read: no API call, no timeout.
+
+Three formatting rules exist for the screen reader rather than the eye. The decoded
+ATIS is split into one sentence per line, so "what was the wind" is one arrow key
+instead of a 400-character replay. Runway lists are respaced from `22L,22R` to
+`22L, 22R`, because without the space the reader runs the two designators into one
+word. Aviation numbers are formatted invariant, so the altimeter reads `29.73` next to
+a METAR saying `A2973` on a machine whose locale would otherwise write `29,73`.
+
+SI also publishes a `phonetic` variant of the ATIS ("two-two-left", "one-six-zero at
+eight") for its own speech synthesis. It is deliberately **not** used: the screen
+reader does its own pronunciation, and pre-spelt text reads worse through it, not
+better.
+
+When SayIntentions is not running there is nothing to show, and that is **spoken**
+rather than shown — a window the pilot has to focus, read and dismiss to learn what one
+sentence says is a worse answer than the sentence.
 
 The departure runway is **ground information** and is dropped once airborne. It
 answers "which runway am I taxiing to", and the moment the wheels leave it answers
@@ -216,6 +251,48 @@ The field values as captured:
 
 `SayIntentionsLiveClearanceTests` pins the captured clearance verbatim;
 `SayIntentionsLiveFlightJsonTests` pins the file shape and these field values.
+
+### Second capture: KBOS, on the ground, no flight plan
+
+**Measured 2026-07-28 — aircraft parked at KBOS, SayIntentions running, no flight plan
+filed.** Deliberately the case the EDDF capture could not cover, and it settles four
+things.
+
+**`assigned_gate` is EMPTY at the departure airport** — along with `assigned_gate_lat`
+and `assigned_gate_lon`, which we do not read. This is the stronger form of "SI does
+not assign a departure gate": the field is not populated outbound at all, rather than
+holding the arrival stand early. The arrival-gate handling is correct either way, but
+the line only appears once an arrival is under way.
+
+**`flight_plan_departing_runway` was empty while `flight_details.runway` held `22L`.**
+The top-level field is the live one here, so the third fallback in the departure-runway
+chain is not a rarity — on this session it was the only source.
+
+**`departure_wx` exists and is the richest block in the file**: `atis` (decoded prose),
+`current` (the ATIS letter), `active_runways_arriving`, `active_runways_departing`,
+`preferred_runway`, `currently_operating`, `wind_direction`, `wind_speed`,
+`wind_gusting`, `visibility`, `altimeter`, `density_altitude`, `runway_heading`,
+`metar`, `taf`, `phonetic`. Nothing read any of it before. There is also an
+`atis_airports` list (`KBOS,KOWD,KBED,KBVY,KLWM,KGHG,K1B9`). No `arrival_wx` appeared —
+plausibly because no flight plan was filed — so it is read defensively.
+
+**`callsign_icao` is not an ICAO callsign.** It was `Skyhawk-One-Two-Three-Alpha-Zulu`,
+identical to `callsign` and already spelt out with hyphens for SI's own speech
+synthesis. Anything that speaks it must strip the hyphens, which a screen reader
+otherwise reads aloud.
+
+Also present and unread: `on_ground` (as `1`/`0`, not a JSON boolean),
+`aircraft_icao`, `flight_id`, the traffic-injection settings (`traffic_enabled`,
+`traffic_density`, `ga_traffic`, `traffic_radius`, `max_aircraft`), and
+`flight_plan_origin_hold_point_{lat,lon,heading}` /
+`flight_plan_origin_runway_entry_{lat,lon,heading}` — SI's own hold-short and
+runway-entry geometry. `taxi_path` was 83 × `{point, heading}`, corroborating the EDDF
+geometry finding at a second airport.
+
+**The file contains personal data.** `Email`, `displayname` and `userid` are in
+`flight_details` in plain text. Nothing reads them, the debug log writes only
+airport/gate/clearance-present, and no raw dump of this file may go into a log or a
+committed fixture.
 
 ### What flight.json holds AIRBORNE is unknown
 
