@@ -1,0 +1,188 @@
+namespace MSFSBlindAssist.Services.SayIntentions;
+
+/// <summary>One position from SayIntentions' <c>current_flight.taxi_path</c>, which is
+/// published as <c>{"heading":…, "point":{"lon":…,"lat":…}}</c> per entry.</summary>
+public readonly record struct GeoPoint(double Latitude, double Longitude);
+
+/// <summary>
+/// One straight SEGMENT of a named taxiway — not a whole taxiway and not a whole OSM
+/// way. Taxiways curve, so a way has to arrive here already split into consecutive
+/// point pairs: measuring to the chord across a bend puts the aircraft tens of metres
+/// from a taxiway it is standing on.
+/// </summary>
+public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLon, double ToLat, double ToLon);
+
+/// <summary>
+/// The taxiway sequence a taxi path lies along, plus enough counting to tell "the
+/// route is short" from "we could not read part of it". <paramref name="UnsnappedCount"/>
+/// is points that were beyond every taxiway: normally the lead-in to the stand, which
+/// is apron rather than taxiway pavement.
+/// </summary>
+public sealed record SnapResult(IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount);
+
+/// <summary>
+/// Turns SayIntentions' taxi_path GEOMETRY into a taxiway sequence, by snapping each
+/// published point to the nearest named taxiway segment.
+///
+/// This exists because deriving the route from the PHRASING of the spoken clearance
+/// keeps failing on naming variance — compass words for single-letter taxiways, digits
+/// spoken as words, prefixes of other taxiway names. The geometry has none of that:
+/// measured against a live LSZH arrival on 2026-07-29, where Zurich Ground cleared
+/// "Taxi to Gate E52 via E4, E, C", the path published 9 s later snaps to exactly
+/// E4, E, C.
+///
+/// Pure — no I/O, no UI, no SimConnect. Covered by SayIntentionsTaxiPathSnapperTests.
+/// </summary>
+public static class SayIntentionsTaxiPathSnapper
+{
+    /// <summary>
+    /// How far a published point may sit from a taxiway segment and still count as
+    /// being on it. 25 m is a taxiway half-width plus the slack in OSM centrelines;
+    /// on the LSZH capture it accepts every point actually on pavement and rejects
+    /// exactly the four that are the turn into the stand. Raising it does not improve
+    /// the answer, it only stops those four being REPORTED as unread — the point of
+    /// counting them is that a point off pavement must never be hung on whichever
+    /// taxiway happens to be nearest.
+    /// </summary>
+    internal const double SnapToleranceMetres = 25.0;
+
+    /// <summary>
+    /// How many consecutive points a taxiway must hold before it counts as a leg of
+    /// the route. SayIntentions' path clips the corners of unnamed connector stubs
+    /// ("Link 5", "Link 6", "Inner" at LSZH) that no controller ever says, and each
+    /// shows up as a single point. Not a tuned number: 2 and 3 give the same answer
+    /// on the real capture.
+    /// </summary>
+    internal const int MinRunPoints = 2;
+
+    /// <summary>
+    /// The taxiways <paramref name="path"/> runs along, in order. Empty in, empty out —
+    /// a missing or unreadable path degrades to "nothing to say", never an exception,
+    /// because the caller is a hotkey a blind pilot presses mid-taxi.
+    /// </summary>
+    public static SnapResult Snap(IReadOnlyList<GeoPoint> path, IReadOnlyList<NamedEdge> edges)
+    {
+        if (path is null || path.Count == 0)
+        {
+            return new SnapResult(Array.Empty<string>(), 0, 0);
+        }
+
+        var candidates = edges ?? Array.Empty<NamedEdge>();
+
+        // 1. Snap every point to its nearest named edge. Beyond the tolerance it snaps
+        //    to nothing and is counted instead of guessed.
+        var perPoint = new string?[path.Count];
+        int unsnappedCount = 0;
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            string? nearestName = null;
+            double nearestMetres = double.MaxValue;
+
+            // Linear over every segment: an airport is a few thousand of them and a
+            // path a few dozen points, so this runs once per clearance in well under a
+            // frame. A spatial index would be more code for no measurable gain.
+            foreach (var edge in candidates)
+            {
+                double metres = PointToSegmentMetres(
+                    path[i].Latitude, path[i].Longitude,
+                    edge.FromLat, edge.FromLon, edge.ToLat, edge.ToLon);
+
+                if (metres < nearestMetres)
+                {
+                    nearestMetres = metres;
+                    nearestName = edge.TaxiwayName;
+                }
+            }
+
+            if (nearestName is null || nearestMetres > SnapToleranceMetres)
+            {
+                perPoint[i] = null;
+                unsnappedCount++;
+            }
+            else
+            {
+                perPoint[i] = nearestName;
+            }
+        }
+
+        // 2. Run-lengths over the RAW per-point sequence, nulls included. A null has to
+        //    break a run rather than be skipped over, or two lone points either side of
+        //    a gap in the data merge into a run long enough to be reported as a leg.
+        var runs = new List<(string? Name, int Length)>();
+        foreach (string? name in perPoint)
+        {
+            if (runs.Count > 0 && runs[^1].Name == name)
+            {
+                runs[^1] = (name, runs[^1].Length + 1);
+            }
+            else
+            {
+                runs.Add((name, 1));
+            }
+        }
+
+        var taxiways = new List<string>();
+        foreach ((string? name, int length) in runs)
+        {
+            // 3. Drop the connector stubs. This MUST happen before the collapse below:
+            //    collapsing first turns every run into length 1 and there is nothing
+            //    left to filter on, so every stub survives.
+            if (name is null || length < MinRunPoints)
+            {
+                continue;
+            }
+
+            // 4. Collapse consecutive duplicates — and only consecutive ones. A route
+            //    that leaves a taxiway and comes back to it later names it twice.
+            if (taxiways.Count > 0 && taxiways[^1] == name)
+            {
+                continue;
+            }
+
+            taxiways.Add(name);
+        }
+
+        return new SnapResult(taxiways, path.Count, unsnappedCount);
+    }
+
+    /// <summary>
+    /// Distance from a point to a segment, in metres, via equirectangular projection
+    /// about the segment's midpoint. Correct to well under a metre at airport scale
+    /// (≤5 km) and much cheaper than haversine per point-edge pair, of which there are
+    /// tens of thousands per path.
+    /// </summary>
+    internal static double PointToSegmentMetres(
+        double lat, double lon, double aLat, double aLon, double bLat, double bLon)
+    {
+        const double MetresPerDegreeLatitude = 111320.0;
+
+        double midLatitude = (aLat + bLat) / 2.0;
+        double metresPerDegreeLongitude = MetresPerDegreeLatitude * Math.Cos(midLatitude * Math.PI / 180.0);
+
+        // Local metric frame with the segment's first node at the origin.
+        double pointX = (lon - aLon) * metresPerDegreeLongitude;
+        double pointY = (lat - aLat) * MetresPerDegreeLatitude;
+        double segmentX = (bLon - aLon) * metresPerDegreeLongitude;
+        double segmentY = (bLat - aLat) * MetresPerDegreeLatitude;
+
+        double lengthSquared = (segmentX * segmentX) + (segmentY * segmentY);
+        if (lengthSquared <= 0.0)
+        {
+            // Duplicate consecutive nodes are real in OSM ways: measure to the point.
+            return Math.Sqrt((pointX * pointX) + (pointY * pointY));
+        }
+
+        double t = ((pointX * segmentX) + (pointY * segmentY)) / lengthSquared;
+
+        // Clamping to the segment is load-bearing, not tidiness: unclamped this
+        // measures to the segment's INFINITE line, so a point far past the end of a
+        // short stub reads as sitting on it and that stub wins over the taxiway the
+        // aircraft is really on.
+        t = Math.Clamp(t, 0.0, 1.0);
+
+        double deltaX = pointX - (segmentX * t);
+        double deltaY = pointY - (segmentY * t);
+        return Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY));
+    }
+}
