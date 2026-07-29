@@ -13,20 +13,15 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 /// of it again — so the caller puts these lines in a read-only text box and the screen
 /// reader walks them with the arrow keys.
 ///
+/// It is kept SHORT on purpose. Anything a pilot can get by listening to the ATIS or
+/// opening the METAR window does not belong here — see AddAirport.
+///
 /// Pure and covered by SayIntentionsInfoReportTests: no I/O, no UI, no SimConnect.
 /// Every field is optional and a missing one drops its line rather than printing
-/// "unknown" — an empty label is noise to arrow past, and there are enough lines here
-/// already.
+/// "unknown" — an empty label is noise to arrow past.
 /// </summary>
 public static class SayIntentionsInfoReport
 {
-    /// <summary>Splits decoded ATIS prose into sentences. SI publishes it as one
-    /// ~400-character blob; as a single line it is a wall the pilot has to hear whole
-    /// to reach the last item. Sentence-per-line makes "what's the wind again" one
-    /// arrow key. The lookahead requires whitespace after the period, so decimals
-    /// ("29.73") and the like survive intact.</summary>
-    private static readonly Regex SentenceBreak = new(@"(?<=\.)\s+", RegexOptions.Compiled);
-
     public static IReadOnlyList<string> Build(
         SayIntentionsFlightContext context,
         string? assignedGate,
@@ -38,8 +33,8 @@ public static class SayIntentionsInfoReport
         AddFlight(lines, context);
         AddGateAndRunway(lines, context, assignedGate, departureRunway, nearbyParkingStatus);
 
-        AddWeather(lines, context.DepartureWeather, "Departure");
-        AddWeather(lines, context.ArrivalWeather, "Arrival");
+        AddAirport(lines, context.DepartureWeather, "Departure");
+        AddAirport(lines, context.ArrivalWeather, "Arrival");
 
         return lines;
     }
@@ -107,7 +102,27 @@ public static class SayIntentionsInfoReport
         AddSection(lines, "Gate and runway", section);
     }
 
-    private static void AddWeather(
+    /// <summary>
+    /// The airport section carries ONLY what a pilot cannot get by listening to the
+    /// ATIS or reading the METAR.
+    ///
+    /// It briefly carried both in full — decoded ATIS sentence by sentence, METAR, TAF,
+    /// wind, visibility, density altitude — and that was the wrong call. Every one of
+    /// those is already available: the ATIS from SayIntentions itself, the METAR from
+    /// the METAR window. Repeating them here made the pilot arrow through twenty lines
+    /// they had heard already to reach the handful they had not, which is precisely the
+    /// wall this window was built to remove.
+    ///
+    /// What stays is the RUNWAY picture and the altimeter — the parts worth having
+    /// cached precisely so the pilot does not have to sit through the ATIS again to
+    /// recover them. Structured, so "which runway will SI give me" is one line rather
+    /// than a sentence to pick out of ATIS prose.
+    ///
+    /// The ATIS letter is deliberately not here either. It is the one thing in the
+    /// block you genuinely cannot restate without having listened — but it is also not
+    /// runway information, and this section is the runway information.
+    /// </summary>
+    private static void AddAirport(
         List<string> lines, SayIntentionsAirportWeather? weather, string role)
     {
         if (weather == null) return;
@@ -115,59 +130,15 @@ public static class SayIntentionsInfoReport
         string airport = string.IsNullOrWhiteSpace(weather.Airport) ? role : weather.Airport!;
         var section = new List<string>();
 
-        // The ATIS letter and the active runway configuration are the two things here
-        // that exist nowhere else in this app — not VATSIM, not ActiveSky, not navdata
-        // — and they are what a blind pilot would otherwise sit through an ATIS loop
-        // for. They lead the section on purpose.
-        if (!string.IsNullOrWhiteSpace(weather.InformationLetter))
-            section.Add($"Information: {weather.InformationLetter}");
-
         Add(section, "Landing runways", SpaceAfterCommas(weather.ActiveRunwaysArriving));
         Add(section, "Departing runways", SpaceAfterCommas(weather.ActiveRunwaysDeparting));
         Add(section, "Preferred runway", SpaceAfterCommas(weather.PreferredRunway));
         Add(section, "Runway flow", weather.CurrentlyOperating);
 
-        string? wind = FormatWind(weather);
-        if (wind != null) section.Add($"Wind: {wind}");
-
-        if (weather.Visibility.HasValue)
-            section.Add($"Visibility: {Number(weather.Visibility.Value)} statute miles");
         if (weather.Altimeter.HasValue)
             section.Add($"Altimeter: {Number(weather.Altimeter.Value)} inches");
-        if (weather.DensityAltitude.HasValue)
-            section.Add($"Density altitude: {weather.DensityAltitude.Value.ToString("N0", CultureInfo.InvariantCulture)} feet");
 
-        if (!string.IsNullOrWhiteSpace(weather.Atis))
-        {
-            section.Add("ATIS:");
-            foreach (string sentence in SentenceBreak.Split(weather.Atis!.Trim()))
-            {
-                if (!string.IsNullOrWhiteSpace(sentence)) section.Add(sentence.Trim());
-            }
-        }
-
-        Add(section, "METAR", weather.Metar);
-        Add(section, "TAF", weather.Taf);
-
-        AddSection(lines, $"{airport} weather", section);
-    }
-
-    /// <summary>"160 at 8 knots", plus a gust when there is one.</summary>
-    internal static string? FormatWind(SayIntentionsAirportWeather weather)
-    {
-        if (!weather.WindSpeed.HasValue) return null;
-
-        string speed = Number(weather.WindSpeed.Value);
-        string direction = weather.WindDirection.HasValue
-            ? Number(weather.WindDirection.Value)
-            : "variable";
-
-        string wind = $"{direction} at {speed} knots";
-        // A zero gust is SI saying "not gusting", not "gusting to zero".
-        if (weather.WindGusting is > 0)
-            wind += $", gusting {Number(weather.WindGusting.Value)}";
-
-        return wind;
+        AddSection(lines, $"{airport} airport", section);
     }
 
     /// <summary>SayIntentions hyphenates the callsign for its own speech synthesis

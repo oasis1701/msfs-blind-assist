@@ -10,7 +10,7 @@ by hand.
 | Mode | Key | Action |
 | --- | --- | --- |
 | Output | `Ctrl+S` | Read the last SayIntentions transmission |
-| Output | `Ctrl+Shift+S` | Open the flight information window (gate, runways, ATIS, METAR, TAF) |
+| Output | `Ctrl+Shift+S` | Open the flight information window (gate, runway configuration, altimeter) |
 | Input | `Alt+Shift+S` | Build a taxi route from the current clearance |
 
 The two readouts work without a simulator connection — they only read the local
@@ -30,35 +30,46 @@ Opens a **read-only window** rather than speaking. Arrow keys move a line at a t
 Control+Home and Control+End jump to the ends, Escape closes and hands the foreground
 back to the simulator.
 
-It became a window when it stopped being three facts. Spoken as one run-on string, a
-readout that now carries the ATIS, the active runway configuration, the METAR and the
-TAF gives a blind pilot no way to re-hear one part without hearing all of it, and no
-way to stop it. Line-by-line is the point of the control.
-
 What it shows, sections omitted entirely when the data is absent:
 
 | Section | Contents |
 | --- | --- |
 | Flight | current airport, origin, destination, aircraft type, callsign, filed route |
 | Gate and runway | assigned arrival gate, whether you are parked at it, departure runway, cleared-to-land or arrival runway |
-| *Airport* weather | **ATIS letter**, **landing and departing runways**, preferred runway, runway flow, wind, visibility, altimeter, density altitude, the decoded ATIS one sentence per line, METAR, TAF |
+| *Airport* airport | landing runways, departing runways, preferred runway, runway flow, altimeter |
 
-The ATIS letter and the active runway configuration are the reason this section exists.
-Neither is available anywhere else in the app — not from VATSIM, not from ActiveSky,
-not from navdata — and they are what a blind pilot would otherwise sit through an ATIS
-loop to learn. They come free with a file read: no API call, no timeout.
+**It is deliberately short, and the rule for keeping it short is: nothing a pilot can
+get by listening to the ATIS or opening the METAR window.** `departure_wx` also carries
+the decoded ATIS, the METAR, the TAF, wind, visibility and density altitude, and this
+window briefly showed all of it. That was wrong. Every one of those is already
+available — the ATIS from SayIntentions itself, the METAR from `Shift+M` — so repeating
+them here made the pilot arrow through twenty lines they had already heard to reach the
+handful they had not, which is exactly the wall the window exists to remove.
 
-Three formatting rules exist for the screen reader rather than the eye. The decoded
-ATIS is split into one sentence per line, so "what was the wind" is one arrow key
-instead of a 400-character replay. Runway lists are respaced from `22L,22R` to
-`22L, 22R`, because without the space the reader runs the two designators into one
-word. Aviation numbers are formatted invariant, so the altimeter reads `29.73` next to
-a METAR saying `A2973` on a machine whose locale would otherwise write `29,73`.
+What earns its place is the **runway picture**: which runways are landing, which are
+departing, the preferred one, and the field's flow. That is the part worth having
+cached so you do not have to sit through the ATIS a second time to recover it, and
+structured it is one line instead of a sentence to pick out of prose. The altimeter
+stays with it as the one number worth a keypress.
+
+The **ATIS letter** (`current`) is parsed but not shown. It is the one field in the
+block you genuinely cannot restate without having listened — but it is not runway
+information, and this section is the runway information. It is a one-line change if it
+should come back.
+
+Two formatting rules exist for the screen reader rather than the eye. Runway lists are
+respaced from `22L,22R` to `22L, 22R`, because without the space the reader runs the two
+designators into one word. Aviation numbers are formatted invariant, so the altimeter
+reads `29.73` on a machine whose locale would otherwise write `29,73`.
 
 SI also publishes a `phonetic` variant of the ATIS ("two-two-left", "one-six-zero at
 eight") for its own speech synthesis. It is deliberately **not** used: the screen
 reader does its own pronunciation, and pre-spelt text reads worse through it, not
 better.
+
+`SayIntentionsAirportWeather` still parses the fields the report does not show — they
+are plain scalar reads off a documented block, and they are what any future weather
+work would start from.
 
 When SayIntentions is not running there is nothing to show, and that is **spoken**
 rather than shown — a window the pilot has to focus, read and dismiss to learn what one

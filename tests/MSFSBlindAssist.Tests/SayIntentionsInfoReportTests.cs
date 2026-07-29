@@ -63,52 +63,42 @@ public class SayIntentionsInfoReportTests
         SayIntentionsInfoReport.Build(KbosContext(), assignedGate: null,
             departureRunway: "22L", nearbyParkingStatus: null);
 
-    // --- the two things that exist nowhere else in the app --------------------------
+    // --- what the section keeps, and what it must not repeat -------------------------
 
+    // The runway picture is the reason this section exists: it is what a pilot wants
+    // back without listening to the ATIS a second time, and structured it is one line
+    // rather than a sentence to pick out of prose.
     [Fact]
-    public void TheAtisLetterAndActiveRunwaysAreReported()
+    public void TheRunwayConfigurationAndAltimeterAreReported()
     {
         var report = KbosReport();
 
-        Assert.Contains("Information: U", report);
         Assert.Contains("Landing runways: 22L", report);
         Assert.Contains("Departing runways: 22L, 22R", report);
+        Assert.Contains("Preferred runway: 22L", report);
+        Assert.Contains("Runway flow: south", report);
+        Assert.Contains("Altimeter: 29.73 inches", report);
     }
 
-    // The ATIS arrives as one ~400-character blob. Spoken whole, a pilot who wants the
-    // wind has to hear the airport name, the Zulu time and the runways first, every
-    // time. One sentence per line makes it one arrow key.
+    // Everything a pilot can get by listening to the ATIS or opening the METAR window
+    // stays OUT. It was briefly all in here, and twenty lines of already-heard weather
+    // is exactly the wall this window was built to remove — the pilot had to arrow past
+    // it to reach the few lines that were new.
     [Fact]
-    public void TheAtisIsSplitIntoOneSentencePerLine()
+    public void TheAtisMetarAndTafAreNotRepeated()
     {
         var report = KbosReport();
+        string all = string.Join("\n", report);
 
-        Assert.Contains("Arriving runway 22L.", report);
-        Assert.Contains("Wind 160 at 8.", report);
-        Assert.Contains("Temperature 22, dewpoint 18.", report);
-        Assert.DoesNotContain(report, line => line == KbosAtis);
-    }
-
-    // A decimal is not a sentence end. Splitting on every period would have cut the
-    // altimeter in half.
-    [Fact]
-    public void SentenceSplittingDoesNotCutDecimals()
-    {
-        var weather = new SayIntentionsAirportWeather
-        {
-            Airport = "KBOS",
-            Atis = "Altimeter 29.73. Density altitude 1000 feet."
-        };
-        var report = SayIntentionsInfoReport.Build(
-            new SayIntentionsFlightContext { DepartureWeather = weather }, null, null, null);
-
-        Assert.Contains("Altimeter 29.73.", report);
-    }
-
-    [Fact]
-    public void TheMetarStaysOnASingleLine()
-    {
-        Assert.Contains($"METAR: {KbosMetar}", KbosReport());
+        Assert.DoesNotContain(KbosMetar, all, StringComparison.Ordinal);
+        Assert.DoesNotContain("TAF", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("Boston Logan International", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("Visibility", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("Wind", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("Density altitude", all, StringComparison.Ordinal);
+        // Not runway information, so not in the runway section — even though it is the
+        // one field here you cannot restate without having listened.
+        Assert.DoesNotContain("Information:", all, StringComparison.Ordinal);
     }
 
     // --- values that must not be mangled ---------------------------------------------
@@ -125,10 +115,7 @@ public class SayIntentionsInfoReportTests
             System.Globalization.CultureInfo.CurrentCulture =
                 new System.Globalization.CultureInfo("de-DE");
 
-            var report = KbosReport();
-            Assert.Contains("Altimeter: 29.73 inches", report);
-            Assert.Contains("Wind: 160 at 8 knots", report);
-            Assert.Contains("Density altitude: 1,000 feet", report);
+            Assert.Contains("Altimeter: 29.73 inches", KbosReport());
         }
         finally
         {
@@ -142,16 +129,6 @@ public class SayIntentionsInfoReportTests
     public void TheCallsignHyphensAreRemoved()
     {
         Assert.Contains("Callsign: Skyhawk One Two Three Alpha Zulu", KbosReport());
-    }
-
-    [Fact]
-    public void AZeroGustIsNotReportedAsGusting()
-    {
-        var weather = new SayIntentionsAirportWeather { WindSpeed = 8, WindDirection = 160, WindGusting = 0 };
-        Assert.Equal("160 at 8 knots", SayIntentionsInfoReport.FormatWind(weather));
-
-        weather = new SayIntentionsAirportWeather { WindSpeed = 8, WindDirection = 160, WindGusting = 22 };
-        Assert.Equal("160 at 8 knots, gusting 22", SayIntentionsInfoReport.FormatWind(weather));
     }
 
     // --- the gate line ----------------------------------------------------------------
@@ -180,12 +157,12 @@ public class SayIntentionsInfoReportTests
     // A section whose every field is missing must not leave a bare heading for the
     // pilot to arrow past.
     [Fact]
-    public void AnEmptyWeatherSectionIsOmittedEntirely()
+    public void AnEmptyAirportSectionIsOmittedEntirely()
     {
         var report = SayIntentionsInfoReport.Build(
             new SayIntentionsFlightContext { CurrentAirport = "KBOS" }, null, null, null);
 
-        Assert.DoesNotContain(report, line => line.EndsWith(" weather", StringComparison.Ordinal));
+        Assert.DoesNotContain(report, line => line.EndsWith(" airport", StringComparison.Ordinal));
     }
 
     // The gate line is unconditional, so the report is never literally empty. Opening a

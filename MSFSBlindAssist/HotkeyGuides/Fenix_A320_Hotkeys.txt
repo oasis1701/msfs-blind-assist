@@ -157,10 +157,10 @@ Ground Services:
 
 SayIntentions:
   Ctrl+S        Read last SayIntentions transmission
-  Ctrl+Shift+S  Open SayIntentions flight information. Gate, runways, the ATIS
-                letter, which runways are landing and departing, wind, altimeter,
-                METAR and TAF. Read-only: arrow keys move line by line, Escape
-                closes.
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
 
 INPUT MODE - Press [ to activate
 
