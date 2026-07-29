@@ -10,15 +10,21 @@ public readonly record struct GeoPoint(double Latitude, double Longitude);
 /// point pairs: measuring to the chord across a bend puts the aircraft tens of metres
 /// from a taxiway it is standing on.
 /// </summary>
+/// <param name="TaxiwayName">Must never be blank — nothing here filters an unnamed segment out, so a blank flows straight through into <see cref="SnapResult.Taxiways"/> as an empty-string leg; the producer is responsible for excluding unnamed segments before they reach here.</param>
 public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLon, double ToLat, double ToLon);
 
 /// <summary>
 /// The taxiway sequence a taxi path lies along, plus enough counting to tell "the
 /// route is short" from "we could not read part of it". <paramref name="UnsnappedCount"/>
 /// is points that were beyond every taxiway: normally the lead-in to the stand, which
-/// is apron rather than taxiway pavement.
+/// is apron rather than taxiway pavement. <paramref name="DroppedRunCount"/> is
+/// different: it is taxiways that WERE on the path — every point on them snapped fine
+/// — but too briefly to pass <see cref="SayIntentionsTaxiPathSnapper.MinRunPoints"/>,
+/// so they are missing from <paramref name="Taxiways"/> without ever showing up in
+/// <paramref name="UnsnappedCount"/>. Without this field a genuinely short leg and a
+/// perfectly clean read are indistinguishable to the caller.
 /// </summary>
-public sealed record SnapResult(IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount);
+public sealed record SnapResult(IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount, int DroppedRunCount);
 
 /// <summary>
 /// Turns SayIntentions' taxi_path GEOMETRY into a taxiway sequence, by snapping each
@@ -43,6 +49,15 @@ public static class SayIntentionsTaxiPathSnapper
     /// the answer, it only stops those four being REPORTED as unread — the point of
     /// counting them is that a point off pavement must never be hung on whichever
     /// taxiway happens to be nearest.
+    ///
+    /// That measurement is against OSM centrelines only — the lszh-taxiways.json
+    /// fixture this snapper is tested against. The real caller is planned to feed
+    /// edges from TaxiGraph.GetNamedEdges() instead, which per CLAUDE.md's taxi-data-
+    /// augmentation invariant is navdata geometry with OSM names, never OSM geometry —
+    /// so a systematic navdata-vs-OSM centreline offset is invisible to this
+    /// measurement. Re-measure this constant against navdata-sourced edges once that
+    /// graph-backed edge source lands; do not assume the OSM-measured value still
+    /// holds.
     /// </summary>
     internal const double SnapToleranceMetres = 25.0;
 
@@ -52,6 +67,16 @@ public static class SayIntentionsTaxiPathSnapper
     /// ("Link 5", "Link 6", "Inner" at LSZH) that no controller ever says, and each
     /// shows up as a single point. Not a tuned number: 2 and 3 give the same answer
     /// on the real capture.
+    ///
+    /// The published points are spaced ~28 m apart (measured on the LSZH capture: min
+    /// 17.3 m, median 28.0 m, max 28.0 m — SI resamples the path at a fixed step), so
+    /// this constant is also, unavoidably, "a taxiway must hold ~28 m of path to be
+    /// reported": a genuinely cleared taxiway crossed in under one sample interval
+    /// produces a single point and is dropped along with the connector stubs. That
+    /// drop is not silent — see <see cref="SnapResult.DroppedRunCount"/> — but it is
+    /// still a real leg missing from <see cref="SnapResult.Taxiways"/>. Lowering this
+    /// to 1 would recover it, but 1 lets the connector stubs this constant exists to
+    /// remove back through, which is worse.
     /// </summary>
     internal const int MinRunPoints = 2;
 
@@ -64,7 +89,7 @@ public static class SayIntentionsTaxiPathSnapper
     {
         if (path is null || path.Count == 0)
         {
-            return new SnapResult(Array.Empty<string>(), 0, 0);
+            return new SnapResult(Array.Empty<string>(), 0, 0, 0);
         }
 
         var candidates = edges ?? Array.Empty<NamedEdge>();
@@ -123,13 +148,27 @@ public static class SayIntentionsTaxiPathSnapper
         }
 
         var taxiways = new List<string>();
+        int droppedRunCount = 0;
         foreach ((string? name, int length) in runs)
         {
             // 3. Drop the connector stubs. This MUST happen before the collapse below:
             //    collapsing first turns every run into length 1 and there is nothing
             //    left to filter on, so every stub survives.
-            if (name is null || length < MinRunPoints)
+            if (name is null)
             {
+                // Already reflected in unsnappedCount above — this is a miss, not a
+                // taxiway that was seen and then dropped, so it must not also inflate
+                // droppedRunCount.
+                continue;
+            }
+
+            if (length < MinRunPoints)
+            {
+                // Unlike a null run, every point here genuinely snapped to `name` — it
+                // just did not hold for long enough to be reported. That is a
+                // different failure than "could not read part of it", so it gets its
+                // own count instead of silently vanishing (see SnapResult.DroppedRunCount).
+                droppedRunCount++;
                 continue;
             }
 
@@ -143,7 +182,7 @@ public static class SayIntentionsTaxiPathSnapper
             taxiways.Add(name);
         }
 
-        return new SnapResult(taxiways, path.Count, unsnappedCount);
+        return new SnapResult(taxiways, path.Count, unsnappedCount, droppedRunCount);
     }
 
     /// <summary>

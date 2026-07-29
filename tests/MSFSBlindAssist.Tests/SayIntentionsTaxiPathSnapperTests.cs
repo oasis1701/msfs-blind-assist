@@ -51,6 +51,11 @@ public class SayIntentionsTaxiPathSnapperTests
     private static GeoPoint OnA(double fraction) => new(50.0000 + 0.0010 * fraction, 8.0000);
     private static GeoPoint OnB(double fraction) => new(50.0010, 8.0000 + 0.0010 * fraction);
 
+    // General version of OnA/OnB for tests that need edges other than the corner pair.
+    private static GeoPoint PointOnEdge(NamedEdge edge, double fraction) => new(
+        edge.FromLat + ((edge.ToLat - edge.FromLat) * fraction),
+        edge.FromLon + ((edge.ToLon - edge.FromLon) * fraction));
+
     [Fact]
     public void TheLiveLszhArrivalReproducesTheClearedRoute()
     {
@@ -69,6 +74,10 @@ public class SayIntentionsTaxiPathSnapperTests
             LoadFixturePath("lszh-taxipath-arrival.json"),
             LoadFixtureEdges("lszh-taxiways.json"));
 
+        // DoesNotContain alone is vacuously true for an empty result, so this test
+        // would still pass if Snap returned nothing at all. NotEmpty makes it stand on
+        // its own: the stubs must be absent from a route that is otherwise present.
+        Assert.NotEmpty(result.Taxiways);
         Assert.DoesNotContain("Link 5", result.Taxiways);
         Assert.DoesNotContain("Link 6", result.Taxiways);
     }
@@ -80,12 +89,22 @@ public class SayIntentionsTaxiPathSnapperTests
         // Counting those four points is the whole point of UnsnappedCount: raising
         // the tolerance until they attach to something would silently hang the
         // stand lead-in on whichever taxiway happens to be nearest.
+        //
+        // This is the only live test that would catch a tolerance change, but its
+        // real guarantee is band-limited, not exact: sorted nearest-edge distances for
+        // this fixture jump from 13.48 m to 41.51 m (measured directly via
+        // PointToSegmentMetres over every point/edge pair), so ANY SnapToleranceMetres
+        // in that gap — not just the shipped 25 m — reproduces UnsnappedCount == 4.
+        // A tolerance change inside the gap will not fail here.
         var result = SayIntentionsTaxiPathSnapper.Snap(
             LoadFixturePath("lszh-taxipath-arrival.json"),
             LoadFixtureEdges("lszh-taxiways.json"));
 
         Assert.Equal(40, result.PointCount);
         Assert.Equal(4, result.UnsnappedCount);
+        // "Link 6" x1, E x1, "Link 5" x1 — three non-null runs too short to report
+        // (see the file header for the full run breakdown).
+        Assert.Equal(3, result.DroppedRunCount);
     }
 
     [Fact]
@@ -125,6 +144,38 @@ public class SayIntentionsTaxiPathSnapperTests
         var result = SayIntentionsTaxiPathSnapper.Snap(path, CornerEdges);
 
         Assert.Equal(new[] { "A" }, result.Taxiways);
+    }
+
+    [Fact]
+    public void AGenuineShortLegUnderOneSampleIntervalIsReportedAsADroppedRun()
+    {
+        // SI resamples taxi_path at a near-fixed ~28 m step, so MinRunPoints = 2 means
+        // a taxiway needs to hold roughly one full sample interval to be reported. A
+        // real leg crossed in under that distance produces exactly one point on it —
+        // same shape as a connector stub — and the run-length filter drops it. Unlike
+        // a stub, though, this run's point genuinely snapped (it is not beyond
+        // tolerance), so it never touches UnsnappedCount either: without
+        // DroppedRunCount the caller is told every point was read and the route is
+        // "A" then "C", with no signal that a real taxiway (B) was crossed and lost.
+        var edgeA = new NamedEdge("A", 50.0000, 8.0000, 50.0010, 8.0000);
+        var edgeB = new NamedEdge("B", 50.0010, 8.0000, 50.0010, 8.00041925); // ~30 m E-W connector
+        var edgeC = new NamedEdge("C", 50.0010, 8.00041925, 50.0020, 8.00041925);
+        var edges = new[] { edgeA, edgeB, edgeC };
+
+        var path = new[]
+        {
+            PointOnEdge(edgeA, 0.1), PointOnEdge(edgeA, 0.3), PointOnEdge(edgeA, 0.5),
+            PointOnEdge(edgeA, 0.7), PointOnEdge(edgeA, 0.9),
+            PointOnEdge(edgeB, 0.5),
+            PointOnEdge(edgeC, 0.1), PointOnEdge(edgeC, 0.3), PointOnEdge(edgeC, 0.5),
+            PointOnEdge(edgeC, 0.7), PointOnEdge(edgeC, 0.9),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, edges);
+
+        Assert.Equal(new[] { "A", "C" }, result.Taxiways);
+        Assert.Equal(0, result.UnsnappedCount);
+        Assert.Equal(1, result.DroppedRunCount);
     }
 
     [Fact]
