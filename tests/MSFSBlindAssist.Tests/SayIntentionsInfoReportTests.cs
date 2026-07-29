@@ -63,6 +63,55 @@ public class SayIntentionsInfoReportTests
         SayIntentionsInfoReport.Build(KbosContext(), assignedGate: null,
             departureRunway: "22L", nearbyParkingStatus: null);
 
+    // --- the live LMML -> EDDF arrival ------------------------------------------------
+    //
+    // The session SayIntentionsLiveClearanceTests pins: on the ground at EDDF after
+    // landing 07L, taxiing to Terminal 3 Gate J1. It carries BOTH weather blocks, which
+    // is the case the KBOS capture (parked, no flight plan, departure_wx only) could not
+    // reach — and the case where the ordering of those blocks matters.
+    //
+    // Only what the capture actually settles is filled in. The two altimeters are the
+    // captured numbers, and each is corroborated by the QNH its own airport was passing
+    // on the frequency at the time: Malta Q1016, and Frankfurt Tower's "information
+    // Juliet is now current. QNH 1020." from the same comms feed.
+    private static SayIntentionsAirportWeather LmmlWeather() => new()
+    {
+        Airport = "LMML",
+        Altimeter = 30       // Q1016
+    };
+
+    private static SayIntentionsAirportWeather EddfWeather() => new()
+    {
+        Airport = "EDDF",
+        Altimeter = 30.12    // QNH 1020
+    };
+
+    private static SayIntentionsFlightContext EddfArrivalContext() => new()
+    {
+        CurrentAirport = "EDDF",
+        Origin = "LMML",
+        Destination = "EDDF",
+        OnGround = true,
+        DepartureWeather = LmmlWeather(),
+        ArrivalWeather = EddfWeather()
+    };
+
+    private static IReadOnlyList<string> EddfArrivalReport() =>
+        SayIntentionsInfoReport.Build(EddfArrivalContext(),
+            assignedGate: "Terminal 3 Gate J1", departureRunway: null, nearbyParkingStatus: null);
+
+    private static int LineIndex(IReadOnlyList<string> report, string line)
+    {
+        for (int i = 0; i < report.Count; i++)
+            if (report[i] == line) return i;
+
+        Assert.Fail($"Expected line not in report: \"{line}\"\n{string.Join("\n", report)}");
+        return -1;
+    }
+
+    private static IEnumerable<string> Altimeters(IReadOnlyList<string> report) =>
+        report.Where(line => line.StartsWith("Altimeter:", StringComparison.Ordinal));
+
     // --- what the section keeps, and what it must not repeat -------------------------
 
     // The runway picture is the reason this section exists: it is what a pilot wants
@@ -77,7 +126,7 @@ public class SayIntentionsInfoReportTests
         Assert.Contains("Departing runways: 22L, 22R", report);
         Assert.Contains("Preferred runway: 22L", report);
         Assert.Contains("Runway flow: south", report);
-        Assert.Contains("Altimeter: 29.73 inches", report);
+        Assert.Contains("Altimeter: 29.73 inches (1007 hPa)", report);
     }
 
     // Everything a pilot can get by listening to the ATIS or opening the METAR window
@@ -105,7 +154,7 @@ public class SayIntentionsInfoReportTests
 
     // Altimeter 29.73 must not become "29,73" on a machine with a comma decimal
     // separator: the METAR sitting two lines below it says A2973, and the two have to
-    // agree.
+    // agree. A screen reader reads "29,73" as a different number, not a typo.
     [Fact]
     public void AviationNumbersAreCultureInvariant()
     {
@@ -115,7 +164,8 @@ public class SayIntentionsInfoReportTests
             System.Globalization.CultureInfo.CurrentCulture =
                 new System.Globalization.CultureInfo("de-DE");
 
-            Assert.Contains("Altimeter: 29.73 inches", KbosReport());
+            Assert.Contains("Altimeter: 29.73 inches (1007 hPa)", KbosReport());
+            Assert.Contains("Altimeter: 30.12 inches (1020 hPa)", EddfArrivalReport());
         }
         finally
         {
@@ -129,6 +179,218 @@ public class SayIntentionsInfoReportTests
     public void TheCallsignHyphensAreRemoved()
     {
         Assert.Contains("Callsign: Skyhawk One Two Three Alpha Zulu", KbosReport());
+    }
+
+    // --- the altimeter ----------------------------------------------------------------
+
+    // SayIntentions publishes the altimeter numerically in inHg, and half the world
+    // flies the hPa number instead. The conversion is checked against the airports
+    // themselves rather than against a constant: the capture read 30 at LMML and 30.12
+    // at EDDF, Malta was passing Q1016 and Frankfurt QNH 1020, and 30 x 33.86389 = 1016,
+    // 30.12 x 33.86389 = 1020. Both units are printed, so neither pilot converts in
+    // their head off a spoken line.
+    [Fact]
+    public void TheAltimeterIsGivenInBothUnits()
+    {
+        var report = EddfArrivalReport();
+
+        Assert.Contains("Altimeter: 30.12 inches (1020 hPa)", report);
+        Assert.Contains("Altimeter: 30.00 inches (1016 hPa)", report);
+    }
+
+    // A whole number of inches used to drop its decimals, so one window read
+    // "Altimeter: 30 inches" a few lines above "Altimeter: 30.12 inches" — the same
+    // quantity written two different ways, which is a stumble for a pilot comparing them
+    // and a different-sounding number through a screen reader.
+    [Fact]
+    public void AWholeNumberOfInchesStillReadsToTwoDecimals()
+    {
+        var report = EddfArrivalReport();
+
+        Assert.Contains("Altimeter: 30.00 inches (1016 hPa)", report);
+        Assert.DoesNotContain(report,
+            line => line.StartsWith("Altimeter: 30 ", StringComparison.Ordinal));
+        Assert.All(Altimeters(report),
+            line => Assert.Matches(@"^Altimeter: \d+\.\d\d inches \(\d+ hPa\)$", line));
+    }
+
+    // "inches", not "inHg": this line is SPOKEN, and a screen reader reads "inHg" as
+    // letters.
+    [Fact]
+    public void TheAltimeterUnitIsSpelledForSpeech()
+    {
+        Assert.DoesNotContain("inHg", string.Join("\n", EddfArrivalReport()),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // --- which airport block comes first ----------------------------------------------
+
+    // The blocks used to be emitted departure-then-arrival unconditionally, so an
+    // arrival opened this window on the field 1300 nm BEHIND the aircraft: the first
+    // altimeter the pilot arrowed onto was LMML's, 0.12 inHg from the one they were
+    // about to set — about 120 ft — while EDDF's runway picture sat below it.
+    [Fact]
+    public void TheAirportTheAircraftIsAtIsReportedFirst()
+    {
+        var report = EddfArrivalReport();
+
+        Assert.True(LineIndex(report, "EDDF airport") < LineIndex(report, "LMML airport"),
+            "the airport under the wheels must lead");
+        Assert.Equal("Altimeter: 30.12 inches (1020 hPa)", Altimeters(report).First());
+    }
+
+    // The same rule the other way round: it is not "arrival always wins", it is "the
+    // field you are on wins". Before pushback that field is the departure airport.
+    [Fact]
+    public void TheDepartureFieldLeadsWhileTheAircraftIsStillOnIt()
+    {
+        var beforePushback = EddfArrivalContext();
+        beforePushback.CurrentAirport = "LMML";
+
+        var report = SayIntentionsInfoReport.Build(beforePushback, null, "31", null);
+
+        Assert.True(LineIndex(report, "LMML airport") < LineIndex(report, "EDDF airport"),
+            "the airport under the wheels must lead");
+        Assert.Equal("Altimeter: 30.00 inches (1016 hPa)", Altimeters(report).First());
+    }
+
+    // Airborne, or with current_airport empty (flight.json omits it often enough), or
+    // sitting at neither field. A destination is what you plan for; the field you left
+    // is not, so the arrival leads.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("EDDL")]
+    public void WithNoAirportUnderfootTheDestinationLeads(string? currentAirport)
+    {
+        var enRoute = EddfArrivalContext();
+        enRoute.CurrentAirport = currentAirport;
+
+        var report = SayIntentionsInfoReport.Build(enRoute, null, null, null);
+
+        Assert.True(LineIndex(report, "EDDF airport") < LineIndex(report, "LMML airport"),
+            "with nothing under the wheels the destination leads");
+    }
+
+    // SI can publish a weather block with no airport name on it. The heading falls back
+    // to the block's role, and a nameless block must never be read as "matching" a
+    // current airport that is itself blank — blank is not a place.
+    [Fact]
+    public void ANamelessBlockKeepsItsRoleHeadingAndMatchesNothing()
+    {
+        var nameless = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "  ",
+            DepartureWeather = new SayIntentionsAirportWeather { Altimeter = 29.92 },
+            ArrivalWeather = new SayIntentionsAirportWeather { Altimeter = 30.12 }
+        };
+
+        var report = SayIntentionsInfoReport.Build(nameless, null, null, null);
+
+        Assert.True(LineIndex(report, "Arrival airport") < LineIndex(report, "Departure airport"),
+            "blank does not match blank, so the tie-break stands");
+
+        // And a nameless block does not become "the airport you are at" merely because
+        // current_airport happens to be blank as well.
+        var halfNamed = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "",
+            DepartureWeather = new SayIntentionsAirportWeather { Altimeter = 29.92 },
+            ArrivalWeather = EddfWeather()
+        };
+
+        var mixed = SayIntentionsInfoReport.Build(halfNamed, null, null, null);
+
+        Assert.True(LineIndex(mixed, "EDDF airport") < LineIndex(mixed, "Departure airport"),
+            "a nameless block never leads on a blank current airport");
+    }
+
+    // A circuit or a return-to-field names the same airport in both blocks. Printing it
+    // twice is two identical headings to arrow past and two copies of a number that can
+    // only have one value, so it is printed once — and since both blocks then "match"
+    // where the aircraft is, the tie-break decides which: the arrival, the copy SI keeps
+    // for where the aircraft is going, rather than the one written when it left.
+    [Fact]
+    public void AReturnToFieldPrintsItsAirportOnceFromTheArrivalBlock()
+    {
+        var circuit = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "KBOS",
+            Origin = "KBOS",
+            Destination = "KBOS",
+            DepartureWeather = KbosWeather(),
+            ArrivalWeather = new SayIntentionsAirportWeather
+            {
+                Airport = "KBOS",
+                ActiveRunwaysArriving = "27",
+                Altimeter = 29.68
+            }
+        };
+
+        var report = SayIntentionsInfoReport.Build(circuit, null, null, null);
+
+        Assert.Single(report, line => line == "KBOS airport");
+        Assert.Equal("Altimeter: 29.68 inches (1005 hPa)", Assert.Single(Altimeters(report)));
+        Assert.Contains("Landing runways: 27", report);
+    }
+
+    // ...but the block that leads can be a stub — SI publishes an airport name with
+    // nothing under it. Dropping the second block on its NAME alone would then lose the
+    // runway picture and the altimeter entirely, so the drop keys on what the leading
+    // block actually printed.
+    [Fact]
+    public void AnEmptyLeadingBlockDoesNotSwallowTheOneCarryingTheData()
+    {
+        var arrivalIsAStub = new SayIntentionsFlightContext
+        {
+            Destination = "KBOS",
+            DepartureWeather = KbosWeather(),
+            ArrivalWeather = new SayIntentionsAirportWeather { Airport = "KBOS" }
+        };
+
+        var report = SayIntentionsInfoReport.Build(arrivalIsAStub, null, null, null);
+
+        Assert.Single(report, line => line == "KBOS airport");
+        Assert.Contains("Altimeter: 29.73 inches (1007 hPa)", report);
+        Assert.Contains("Landing runways: 22L", report);
+    }
+
+    // A stub on the leading side of two DIFFERENT airports costs the other nothing
+    // either, and leaves no heading with nothing under it to arrow past.
+    [Fact]
+    public void AStubLeadingBlockLeavesNoEmptyHeading()
+    {
+        var stubDeparture = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "LMML",
+            DepartureWeather = new SayIntentionsAirportWeather { Airport = "LMML" },
+            ArrivalWeather = EddfWeather()
+        };
+
+        var report = SayIntentionsInfoReport.Build(stubDeparture, null, null, null);
+
+        Assert.DoesNotContain("LMML airport", report);
+        Assert.Contains("EDDF airport", report);
+        Assert.Contains("Altimeter: 30.12 inches (1020 hPa)", report);
+    }
+
+    // One block present, the other absent, in both directions — the ordering rule must
+    // not drop the only one there is.
+    [Fact]
+    public void EitherBlockAloneStillPrints()
+    {
+        var arrivalOnly = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "LMML", ArrivalWeather = EddfWeather()
+        };
+        var departureOnly = new SayIntentionsFlightContext
+        {
+            CurrentAirport = "EDDF", DepartureWeather = LmmlWeather()
+        };
+
+        Assert.Contains("EDDF airport", SayIntentionsInfoReport.Build(arrivalOnly, null, null, null));
+        Assert.Contains("LMML airport", SayIntentionsInfoReport.Build(departureOnly, null, null, null));
     }
 
     // --- the gate line ----------------------------------------------------------------

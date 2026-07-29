@@ -52,6 +52,20 @@ cached so you do not have to sit through the ATIS a second time to recover it, a
 structured it is one line instead of a sentence to pick out of prose. The altimeter
 stays with it as the one number worth a keypress.
 
+**The airport you are AT is reported first.** The two blocks used to go out
+departure-then-arrival unconditionally, so an arrival opened this window on the field
+the aircraft had left: the live LMML → EDDF capture, on the ground at EDDF, led with
+LMML's runway picture and LMML's altimeter — 1300 nm behind the aircraft, and 0.12 inHg
+from the setting about to be used, which is roughly 120 ft. The departure block now
+leads only when it names `current_airport` **and** the arrival block does not.
+Everything else — airborne, `current_airport` empty, parked at neither field — leads
+with the **arrival**: a destination is what you plan for, and the field you left is not.
+A block carrying no airport name matches nothing (not even a blank `current_airport`)
+and keeps its role, `Departure`/`Arrival`, as its heading. When both blocks name the
+same field — a circuit, a return-to-field — it is printed **once**, from the arrival
+block, and a block with nothing under it never claims the heading away from the one
+that has the data.
+
 The **ATIS letter** (`current`) is parsed but not shown. It is the one field in the
 block you genuinely cannot restate without having listened — but it is not runway
 information, and this section is the runway information. It is a one-line change if it
@@ -60,7 +74,18 @@ should come back.
 Two formatting rules exist for the screen reader rather than the eye. Runway lists are
 respaced from `22L,22R` to `22L, 22R`, because without the space the reader runs the two
 designators into one word. Aviation numbers are formatted invariant, so the altimeter
-reads `29.73` on a machine whose locale would otherwise write `29,73`.
+reads `29.73` on a machine whose locale would otherwise write `29,73` — a comma there
+makes a screen reader say a different number, not an obvious typo.
+
+**The altimeter is given in both units**, `Altimeter: 30.12 inches (1020 hPa)`.
+SayIntentions publishes it numerically in inHg only and half the world flies the hPa
+number, so both are printed and neither pilot converts in their head off a spoken line.
+The conversion is checked against the airports themselves rather than taken on trust:
+the live capture read 30 at LMML and 30.12 at EDDF, and 30 × 33.86389 = 1016,
+30.12 × 33.86389 = 1020 — exactly the Q1016 and QNH 1020 those two fields were passing
+at the time. inHg is fixed at two decimals: whole values used to drop theirs, so one
+window read `Altimeter: 30 inches` a few lines above `Altimeter: 30.12 inches`. It says
+"inches", not "inHg", because the line is read aloud.
 
 SI also publishes a `phonetic` variant of the ATIS ("two-two-left", "one-six-zero at
 eight") for its own speech synthesis. It is deliberately **not** used: the screen

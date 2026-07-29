@@ -32,9 +32,7 @@ public static class SayIntentionsInfoReport
 
         AddFlight(lines, context);
         AddGateAndRunway(lines, context, assignedGate, departureRunway, nearbyParkingStatus);
-
-        AddAirport(lines, context.DepartureWeather, "Departure");
-        AddAirport(lines, context.ArrivalWeather, "Arrival");
+        AddAirports(lines, context);
 
         return lines;
     }
@@ -103,6 +101,56 @@ public static class SayIntentionsInfoReport
     }
 
     /// <summary>
+    /// Emits the two airport blocks, the one the pilot needs first.
+    ///
+    /// They used to go out departure-then-arrival unconditionally, which on an arrival
+    /// opened the window on the field the aircraft had LEFT: a live LMML -> EDDF capture,
+    /// on the ground at EDDF, led with LMML's runway picture and LMML's altimeter — 1300
+    /// nm behind the aircraft, and 0.12 inHg from the setting they were about to use,
+    /// which is about 120 ft.
+    ///
+    /// The departure block leads only when it names the airport the aircraft is AT and
+    /// the arrival block does not. Everything else — airborne, current_airport empty
+    /// (flight.json omits it often enough), sitting at neither field, or both blocks
+    /// naming the same one — leads with the ARRIVAL: a destination is what you plan for,
+    /// and the field you left is not.
+    ///
+    /// A blank airport name matches nothing, not even a blank current_airport: the
+    /// heading falls back to the block's role and the tie-break decides the order.
+    ///
+    /// One airport is printed ONCE. A circuit or a return-to-field names the same field
+    /// in both blocks, and two identical headings carrying one number is nothing but
+    /// lines to arrow past. The drop keys on a heading that has actually been PRINTED,
+    /// never on the name alone — SI publishes airport names with nothing under them, and
+    /// a stub in front must not cost the other block its runway picture.
+    /// </summary>
+    private static void AddAirports(List<string> lines, SayIntentionsFlightContext context)
+    {
+        bool departureLeads =
+            IsAt(context.DepartureWeather, context.CurrentAirport)
+            && !IsAt(context.ArrivalWeather, context.CurrentAirport);
+
+        var printed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (departureLeads)
+        {
+            AddAirport(lines, context.DepartureWeather, "Departure", printed);
+            AddAirport(lines, context.ArrivalWeather, "Arrival", printed);
+        }
+        else
+        {
+            AddAirport(lines, context.ArrivalWeather, "Arrival", printed);
+            AddAirport(lines, context.DepartureWeather, "Departure", printed);
+        }
+    }
+
+    private static bool IsAt(SayIntentionsAirportWeather? weather, string? currentAirport) =>
+        !string.IsNullOrWhiteSpace(weather?.Airport)
+        && !string.IsNullOrWhiteSpace(currentAirport)
+        && string.Equals(weather.Airport!.Trim(), currentAirport.Trim(),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// The airport section carries ONLY what a pilot cannot get by listening to the
     /// ATIS or reading the METAR.
     ///
@@ -123,11 +171,15 @@ public static class SayIntentionsInfoReport
     /// runway information, and this section is the runway information.
     /// </summary>
     private static void AddAirport(
-        List<string> lines, SayIntentionsAirportWeather? weather, string role)
+        List<string> lines, SayIntentionsAirportWeather? weather, string role,
+        HashSet<string> printed)
     {
         if (weather == null) return;
 
-        string airport = string.IsNullOrWhiteSpace(weather.Airport) ? role : weather.Airport!;
+        string airport = string.IsNullOrWhiteSpace(weather.Airport) ? role : weather.Airport!.Trim();
+        string heading = $"{airport} airport";
+        if (printed.Contains(heading)) return;
+
         var section = new List<string>();
 
         Add(section, "Landing runways", SpaceAfterCommas(weather.ActiveRunwaysArriving));
@@ -136,9 +188,40 @@ public static class SayIntentionsInfoReport
         Add(section, "Runway flow", weather.CurrentlyOperating);
 
         if (weather.Altimeter.HasValue)
-            section.Add($"Altimeter: {Number(weather.Altimeter.Value)} inches");
+            section.Add(Altimeter(weather.Altimeter.Value));
 
-        AddSection(lines, $"{airport} airport", section);
+        // A block with nothing under it never claims the heading, so the other block
+        // still gets to print it.
+        if (section.Count == 0) return;
+
+        AddSection(lines, heading, section);
+        printed.Add(heading);
+    }
+
+    /// <summary>
+    /// The altimeter in BOTH units, because half the world flies the other one.
+    ///
+    /// SayIntentions publishes it numerically in inHg. The conversion is checked against
+    /// the airports themselves rather than taken on trust: the live LMML -> EDDF capture
+    /// read 30 and 30.12, and 30 x 33.86389 = 1016, 30.12 x 33.86389 = 1020 — exactly the
+    /// Q1016 and QNH 1020 those two fields were passing on the frequency at the time.
+    ///
+    /// inHg is fixed at two decimals. Whole values used to drop theirs, so one window
+    /// read "Altimeter: 30 inches" a few lines above "Altimeter: 30.12 inches" — one
+    /// quantity written two ways, which is a stumble for a pilot comparing them and a
+    /// different-sounding number through a screen reader. hPa is whole, as it is spoken.
+    ///
+    /// "inches" rather than "inHg": this line is READ ALOUD, and a screen reader spells
+    /// "inHg" out letter by letter. Both numbers are invariant — a comma decimal
+    /// separator makes the reader say a different number, not a typo.
+    /// </summary>
+    internal static string Altimeter(double inchesOfMercury)
+    {
+        // 1 inHg = 3386.389 Pa = 33.86389 hPa.
+        double hectopascals = Math.Round(inchesOfMercury * 33.86389, MidpointRounding.AwayFromZero);
+
+        return string.Format(CultureInfo.InvariantCulture,
+            "Altimeter: {0:F2} inches ({1:F0} hPa)", inchesOfMercury, hectopascals);
     }
 
     /// <summary>SayIntentions hyphenates the callsign for its own speech synthesis
@@ -153,11 +236,6 @@ public static class SayIntentionsInfoReport
     /// screen reader runs the two designators together into one word.</summary>
     internal static string? SpaceAfterCommas(string? value) =>
         string.IsNullOrWhiteSpace(value) ? value : Regex.Replace(value, @",\s*", ", ");
-
-    private static string Number(double value) =>
-        value == Math.Floor(value) && Math.Abs(value) < 1e9
-            ? ((long)value).ToString(CultureInfo.InvariantCulture)
-            : value.ToString(CultureInfo.InvariantCulture);
 
     private static void Add(List<string> section, string label, string? value)
     {
