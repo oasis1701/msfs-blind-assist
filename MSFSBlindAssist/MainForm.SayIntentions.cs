@@ -46,25 +46,32 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// The extra sentence a pushback approval earns, or "" for any other transmission.
+    /// The one word a pushback approval earns — "(right)", "(left)", "(about turn)" —
+    /// or "" for any other transmission.
     ///
-    /// It rides on the last-transmission hotkey rather than getting one of its own,
-    /// because that is the key the pilot presses straight after hearing ATC anyway —
-    /// and the advisory is meaningless without the transmission it explains.
+    /// The controller has already said the useful part; the transmission is repeated
+    /// verbatim and this only adds the bit a blind pilot cannot derive from it. It
+    /// rides on the last-transmission hotkey rather than getting one of its own,
+    /// because that is the key pressed straight after hearing ATC and the word is
+    /// meaningless apart from the clearance it qualifies.
+    ///
+    /// Parenthesised because screen readers do not speak the brackets by default, so it
+    /// arrives as a bare "right" after the controller's words — which is exactly how a
+    /// human would tack it on.
     ///
     /// The aircraft position is read from the CACHE, never requested. This hotkey is on
     /// the offline allowlist and must keep working with SimConnect disconnected, so a
-    /// missing position degrades the advisory rather than failing the readout.
+    /// missing position drops the word rather than failing the readout.
     /// </summary>
     private string BuildPushbackAdvisory(string message)
     {
         var position = simConnectManager.LastKnownPosition;
-        string? advisory = SayIntentionsPushback.DescribeApproval(
+        string? direction = SayIntentionsPushback.DescribeTurnDirection(
             message,
             position?.HeadingMagnetic,
             position?.MagneticVariation ?? 0);
 
-        return string.IsNullOrEmpty(advisory) ? "" : " " + advisory;
+        return string.IsNullOrEmpty(direction) ? "" : $" ({direction})";
     }
 
     private async Task AnnounceSayIntentionsAssignedStatusAsync()

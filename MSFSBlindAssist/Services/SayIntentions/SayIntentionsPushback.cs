@@ -88,70 +88,56 @@ public static class SayIntentionsPushback
         return null;
     }
 
+    /// <summary>A turn too small to be worth naming — the aircraft is already pointing
+    /// where it will end up, so "right" would be describing nothing.</summary>
+    private const double NegligibleTurnDegrees = 10;
+
+    /// <summary>How close to a half-turn counts as neither direction. At 180 the two
+    /// are equally valid, and near it the answer is decided by a few degrees of
+    /// heading noise and by the unverified true-versus-magnetic assumption below —
+    /// so it is not claimed at all.</summary>
+    private const double AmbiguousTurnBandDegrees = 25;
+
     /// <summary>
-    /// The advisory to append to a pushback approval, or null when the transmission is
-    /// not one.
+    /// Which way the aircraft swings during the pushback: <c>"right"</c>, <c>"left"</c>,
+    /// <c>"about turn"</c>, or null when the transmission is not a pushback approval,
+    /// carries no direction, or there is no aircraft heading to compare against.
     ///
-    /// <paramref name="headingMagnetic"/> and <paramref name="magneticVariation"/> come
-    /// from the aircraft; pass null for the heading when no position is available and
-    /// the advisory degrades to the part that needs no aircraft state. That matters
-    /// because the last-transmission hotkey is allowed to work with SimConnect
-    /// disconnected.
+    /// One word is the whole advisory ON PURPOSE. It first spoke the finishing compass
+    /// point, the finishing heading and the size of the turn — accurate, and too much.
+    /// The controller has just said the useful part out loud; all the pilot is missing
+    /// is which way that puts them, and a sentence of arithmetic between hearing the
+    /// clearance and acting on it is a cost, not a service.
     ///
-    /// ASSUMPTION, not yet verified in the sim: SI's compass points are TRUE bearings,
-    /// as compass points conventionally are. The final heading is therefore converted
-    /// to MAGNETIC before it is spoken, because magnetic is what the pilot's heading
-    /// indicator shows. If a live pushback finishes on a heading about one variation
-    /// away from the one announced, that assumption is the thing to revisit — at KBOS
-    /// the variation is roughly 14 degrees west, so the error would be obvious. The
-    /// turn is deliberately rounded to the nearest 5 and described as "about", which
-    /// keeps it honest either way.
+    /// It also makes the readout robust. The one unverified assumption here is that
+    /// SI's compass points are TRUE bearings, as compass points conventionally are, so
+    /// the comparison is done in true. If that is wrong the error is one magnetic
+    /// variation — about 14 degrees at KBOS — which cannot flip left into right except
+    /// within the two guard bands above, where nothing is claimed anyway.
+    ///
+    /// <paramref name="headingMagnetic"/> is null when no position is available: the
+    /// last-transmission hotkey is on the offline allowlist and has to keep working
+    /// with SimConnect disconnected, so the direction is simply omitted.
     /// </summary>
-    public static string? DescribeApproval(
+    public static string? DescribeTurnDirection(
         string? message, double? headingMagnetic, double magneticVariation)
     {
         var tail = ParseTailDirection(message);
-        if (tail == null) return null;
+        if (tail == null || headingMagnetic == null) return null;
 
-        // The nose finishes opposite the tail.
+        // The nose finishes opposite the tail. Compare in TRUE: the compass point is
+        // true, the heading indicator is magnetic, and true = magnetic + variation
+        // (variation east positive).
         double noseTrue = Normalize(tail.Value.Bearing + 180);
-        // true = magnetic + variation (east positive), so magnetic = true - variation.
-        double noseMagnetic = Normalize(noseTrue - magneticVariation);
-        string noseSpoken = SpokenPoint(noseTrue);
+        double headingTrue = Normalize(headingMagnetic.Value + magneticVariation);
 
-        if (headingMagnetic == null)
-            return $"Tail to the {tail.Value.Spoken}. You will finish facing {noseSpoken}.";
+        double turn = SignedDifference(headingTrue, noseTrue);
+        double magnitude = Math.Abs(turn);
 
-        double turn = SignedDifference(Normalize(headingMagnetic.Value), noseMagnetic);
-        string direction = turn >= 0 ? "right" : "left";
-        int degrees = (int)(Math.Round(Math.Abs(turn) / 5.0) * 5);
+        if (magnitude < NegligibleTurnDegrees) return null;
+        if (magnitude > 180 - AmbiguousTurnBandDegrees) return "about turn";
 
-        string result =
-            $"Tail to the {tail.Value.Spoken}. You will finish facing {noseSpoken}, " +
-            $"heading {(int)Math.Round(noseMagnetic) % 360:000}.";
-
-        // Under about 5 degrees there is no turn worth describing, and "about 0 degrees
-        // right" is worse than saying nothing.
-        if (degrees >= 5)
-            result += $" That is about {degrees} degrees {direction} of your current heading.";
-
-        return result;
-    }
-
-    /// <summary>Nearest of the 16 points to a bearing.</summary>
-    internal static string SpokenPoint(double bearing)
-    {
-        double normalized = Normalize(bearing);
-        var nearest = Points[0];
-        double best = double.MaxValue;
-
-        foreach (var point in Points)
-        {
-            double delta = Math.Abs(SignedDifference(normalized, point.Bearing));
-            if (delta < best) { best = delta; nearest = point; }
-        }
-
-        return nearest.Spoken;
+        return turn >= 0 ? "right" : "left";
     }
 
     /// <summary>Shortest signed turn from <paramref name="from"/> to

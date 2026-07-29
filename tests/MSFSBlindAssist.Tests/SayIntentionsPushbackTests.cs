@@ -29,67 +29,59 @@ public class SayIntentionsPushbackTests
         Assert.Equal(225, tail.Value.Bearing);
     }
 
-    // Tail south-west means the NOSE finishes north-east. Getting this backwards would
-    // send a blind pilot's mental picture 180 degrees out.
-    [Fact]
-    public void TheNoseFinishesOppositeTheTail()
-    {
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, LiveHeading, 0);
-
-        Assert.NotNull(advisory);
-        Assert.Contains("Tail to the south-west", advisory);
-        Assert.Contains("finish facing north-east", advisory);
-        Assert.Contains("heading 045", advisory);
-    }
-
-    // From 303 to 045 is 102 degrees the short way round — to the RIGHT. Computed
-    // naively the wrap makes it a 258-degree left turn.
+    // Tail south-west puts the nose north-east, i.e. 045. From 303 that is 102 degrees
+    // the short way round — to the RIGHT. Computed naively the wrap makes it a
+    // 258-degree LEFT turn, which is the one error that would actively mislead.
     [Fact]
     public void TheTurnTakesTheShortWayRound()
     {
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, LiveHeading, 0);
-
-        Assert.Contains("about 100 degrees right", advisory);
-        Assert.DoesNotContain("left", advisory);
+        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 0));
     }
 
     [Fact]
     public void TheTurnCanGoLeft()
     {
         // Facing 090, tail south-west, so the nose finishes 045 — 45 degrees left.
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, 90, 0);
-
-        Assert.Contains("about 45 degrees left", advisory);
+        Assert.Equal("left", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 90, 0));
     }
 
-    // Magnetic variation is applied so the heading spoken is the one on the pilot's
-    // instrument. KBOS is about 14 degrees west, i.e. magneticVariation = -14.
+    // The whole reason the advisory is one word: a magnetic variation's worth of error
+    // cannot change it. KBOS is about 14 degrees west, and the live turn is 102 —
+    // nowhere near either guard band.
     [Fact]
-    public void TheFinalHeadingIsMagnetic()
+    public void VariationCannotFlipTheDirection()
     {
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, LiveHeading, -14);
-
-        Assert.Contains("heading 059", advisory);
+        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 0));
+        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, -14));
+        Assert.Equal("right", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, LiveHeading, 14));
     }
 
-    // "about 0 degrees right" is worse than saying nothing.
+    // Already pointing where it will end up: "right" would be describing nothing.
     [Fact]
-    public void ANegligibleTurnIsNotDescribed()
+    public void ANegligibleTurnIsNotClaimed()
     {
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, 45, 0);
-
-        Assert.Contains("finish facing north-east", advisory);
-        Assert.DoesNotContain("degrees", advisory);
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 45, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 50, 0));
     }
 
-    // The last-transmission hotkey works with SimConnect disconnected, so the advisory
-    // has to survive having no aircraft state — minus the parts that need one.
+    // Near a half-turn the two directions are equally valid, and which one comes out is
+    // decided by heading noise and by the true-versus-magnetic assumption. Claiming one
+    // would be inventing precision that isn't there.
     [Fact]
-    public void WithoutAHeadingTheAdvisoryStillNamesTheOutcome()
+    public void ANearHalfTurnIsNotClaimedAsADirection()
     {
-        string? advisory = SayIntentionsPushback.DescribeApproval(LiveApproval, null, 0);
+        // Facing 225 with the nose finishing 045 is exactly 180.
+        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 225, 0));
+        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 215, 0));
+        Assert.Equal("about turn", SayIntentionsPushback.DescribeTurnDirection(LiveApproval, 235, 0));
+    }
 
-        Assert.Equal("Tail to the south-west. You will finish facing north-east.", advisory);
+    // The last-transmission hotkey works with SimConnect disconnected. Without a
+    // heading there is no direction to give, and the transmission is still read.
+    [Fact]
+    public void WithoutAHeadingNoDirectionIsGiven()
+    {
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(LiveApproval, null, 0));
     }
 
     // --- what must NOT be read as a pushback approval ---------------------------------
@@ -97,17 +89,17 @@ public class SayIntentionsPushbackTests
     [Fact]
     public void ATransmissionThatIsNotAnApprovalIsIgnored()
     {
-        Assert.Null(SayIntentionsPushback.DescribeApproval(
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(
             "Delta 123, taxi to runway 22R via Alpha, Tango.", 303, 0));
-        Assert.Null(SayIntentionsPushback.DescribeApproval("Request pushback.", 303, 0));
-        Assert.Null(SayIntentionsPushback.DescribeApproval(null, 303, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Request pushback.", 303, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection(null, 303, 0));
     }
 
     // An approval with no direction in it still must not invent one.
     [Fact]
     public void AnApprovalWithoutADirectionProducesNothing()
     {
-        Assert.Null(SayIntentionsPushback.DescribeApproval("Push and start approved.", 303, 0));
+        Assert.Null(SayIntentionsPushback.DescribeTurnDirection("Push and start approved.", 303, 0));
     }
 
     // --- direction parsing ------------------------------------------------------------

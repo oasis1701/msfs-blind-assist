@@ -40,31 +40,43 @@ OUT: Push and start approved. Tail South-West.
 SayIntentions names the **tail**, as a compass point. A sighted pilot glances outside
 and knows what that looks like. A blind pilot has a heading indicator and nothing else,
 so a compass point on its own says nothing about which way the aircraft is going to
-rotate or where it will finish pointing. `Ctrl+S` therefore adds:
+swing. `Ctrl+S` reads the controller's words verbatim and adds one:
 
-> Tail to the south-west. You will finish facing north-east, heading 045. That is about
-> 100 degrees right of your current heading.
+> ATC, Boston Ground: Push and start approved. Tail South-West. **(right)**
 
-The nose finishes opposite the tail; the turn is taken the short way round, so 303 to
-045 is 102 degrees right rather than 258 left. Compass points are matched longest name
-first — matched shortest-first, "Tail South-South-West" reads as plain "south" and puts
-the pilot 22 degrees out with nothing to reveal it. Separators are stripped from both
-sides, so "South-West", "South West" and "Southwest" are one direction.
+**One word, deliberately.** It first spoke the finishing compass point, the finishing
+heading and the size of the turn. That was accurate and it was too much: the controller
+has already said the useful part, and a sentence of arithmetic between hearing the
+clearance and acting on it is a cost rather than a service. All the pilot is missing is
+which way it puts them.
+
+The parentheses are there because screen readers do not speak brackets by default, so it
+arrives as a bare "right" tacked onto the controller's words — which is how a human
+would say it.
+
+The nose finishes opposite the tail, and the turn is taken the short way round: 303 to
+045 is 102 degrees right, not 258 left. Compass points are matched longest name first —
+matched shortest-first, "Tail South-South-West" reads as plain "south" and puts the
+pilot 22 degrees out with nothing to reveal it. Separators are stripped from both sides,
+so "South-West", "South West" and "Southwest" are one direction.
 
 Only "tail" is parsed. A "nose" branch against no capture is how a parser ends up
 confidently wrong, and the approval itself must match too — a stray mention of a tail
 in some other transmission is not clearance to push.
 
+Nothing is claimed in two bands. Under 10 degrees there is no turn to describe. Within
+25 degrees of a half-turn the two directions are equally valid and the answer would be
+decided by noise, so it says **"about turn"** instead of picking one.
+
 The aircraft position comes from the **cache, never a fresh request**: this hotkey is on
 the offline allowlist and has to keep working with SimConnect disconnected, so a missing
-position drops the heading and the turn rather than failing the readout.
+position drops the word rather than failing the readout.
 
 **Unverified assumption: SI's compass points are TRUE bearings**, as compass points
-conventionally are, so the spoken heading is converted to magnetic — magnetic being what
-the heading indicator shows. If a live pushback finishes about one variation away from
-the heading announced, that is the thing to revisit; KBOS is roughly 14 degrees west, so
-the error would be plain. The turn is rounded to the nearest 5 and hedged as "about",
-which stays honest either way.
+conventionally are, so the comparison is done in true. Reducing the advisory to one word
+is what makes this safe to leave unverified — if the assumption is wrong the error is
+one magnetic variation, about 14 degrees at KBOS, and that cannot turn a left into a
+right except inside the two guard bands, where nothing is claimed anyway.
 
 ### Flight information
 
