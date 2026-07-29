@@ -69,11 +69,20 @@ public static class SayIntentionsClearanceParser
     ///
     /// Each phrase here belongs to clearance delivery and to nothing a ground controller
     /// says while taxiing you, so excluding on them costs no real taxi clearance.
+    ///
+    /// A SQUAWK is deliberately NOT one of them, though clearance delivery issues one:
+    /// a squawk legitimately ENDS a taxi clearance too, which is why
+    /// <see cref="RouteTerminator"/> lists it. Excluding on it rejected
+    /// "Runway 22R, taxi via Alpha, Bravo. Squawk 4571." outright — ClearanceText then
+    /// stayed null, the destination fell through to the departure runway, and the pilot
+    /// heard "no taxiways matched, using shortest path": the same silent failure this
+    /// regex exists to prevent, reached from the other side. The two live clearance-
+    /// delivery captures are still excluded on "as filed" and "climb and maintain", so
+    /// the clause bought nothing.
     /// </summary>
     private static readonly Regex NotATaxiClearance = new(
         @"\bCLEARED\s+TO\s+LAND\b" +
         @"|\bCLIMB\s+AND\s+MAINTAIN\b" +
-        @"|\bSQUAWK\s+\d{3,4}\b" +
         @"|\bAS\s+FILED\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 

@@ -121,6 +121,32 @@ public class SayIntentionsClearanceParserTests
         Assert.Equal(expected, SayIntentionsClearanceParser.LooksLikeTaxiClearance(text));
     }
 
+    // A squawk legitimately ENDS a taxi clearance — RouteTerminator lists SQUAWK for
+    // exactly that reason. Excluding on it rejected real clearances, leaving
+    // ClearanceText null so the destination fell through to the departure runway and
+    // the pilot heard "no taxiways matched, using shortest path" — the same silent
+    // failure the exclusion existed to prevent, reached from the other side.
+    [Theory]
+    [InlineData("Runway 22R, taxi via Alpha, Bravo. Squawk 4571.")]
+    [InlineData("Taxi to runway 15L via Alpha, hold short of runway 22. Squawk 1200.")]
+    [InlineData("Runway 22R, taxi via Bravo, squawk 0231, departure frequency 124.1.")]
+    public void ATaxiClearanceEndingInASquawkIsStillATaxiClearance(string text)
+    {
+        Assert.True(SayIntentionsClearanceParser.LooksLikeTaxiClearance(text));
+    }
+
+    // ...and clearance delivery is still excluded without leaning on the squawk. Both
+    // are verbatim from a live KBOS capture — the readback matters because SI
+    // publishes it too, and it is the newest transmission at the moment a pilot might
+    // press the import key.
+    [Theory]
+    [InlineData("Cleared to Miami via the SSOXS7 departure, then as filed. Climb and maintain 5000. Squawk 4571.")]
+    [InlineData("Cleared to Miami via the SSOXS7 departure, then as filed, climb and maintain five thousand, squawk 4571.")]
+    public void ClearanceDeliveryIsStillNotATaxiClearance(string text)
+    {
+        Assert.False(SayIntentionsClearanceParser.LooksLikeTaxiClearance(text));
+    }
+
     // ---- Taxiway sequence ----
     //
     // knownTaxiways always comes from the live TaxiGraph, so only names the
