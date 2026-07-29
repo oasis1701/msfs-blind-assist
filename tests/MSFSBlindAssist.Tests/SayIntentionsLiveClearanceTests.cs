@@ -241,6 +241,16 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
         return new SayIntentionsService(path).ReadFlightContext();
     }
 
+    /// <summary>Writes a custom flight.json fixture and returns its path, for tests
+    /// that need a shape ReadLiveContext's fixed EDDF payload doesn't carry.</summary>
+    private string WriteFlightJson(string json)
+    {
+        Directory.CreateDirectory(_dir);
+        string path = Path.Combine(_dir, "flight.json");
+        File.WriteAllText(path, json);
+        return path;
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
@@ -311,12 +321,14 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
     // epoch in SECONDS, fractional. Confirmed against ten real wire captures (LSZH
     // and EGLL, 2026-07-29/30, docs/superpowers/plans/2026-07-29-geometry-captures/),
     // every one of which carried it in exactly this shape, a few seconds ahead of
-    // the file's own last-write time. 1785357161 is drawn from one of those
-    // captures (fractional part dropped for an exact assertion); independently
-    // verified against it as 2026-07-29T20:32:41Z via `python -c
-    // "import datetime; print(datetime.datetime.fromtimestamp(1785357161,
-    // tz=datetime.timezone.utc))"`, not by re-deriving the same formula this test
-    // is meant to check.
+    // the file's own last-write time. 1785357161.40969 is drawn verbatim from one of
+    // those captures; independently verified against it as 2026-07-29T20:32:41.409Z
+    // via `python -c "import datetime; print(datetime.datetime.fromtimestamp(
+    // 1785357161.40969, tz=datetime.timezone.utc))"`, not by re-deriving the same
+    // formula this test is meant to check. The fractional part is kept (not dropped
+    // to a whole-seconds literal) because the later safety gate this stamp feeds
+    // needs offset-safe, sub-second-accurate comparisons against a clearance's own
+    // timestamp — precision this test has to actually exercise, not assume.
     [Fact]
     public void TheTaxiPathStampReadsARealUnixEpoch()
     {
@@ -327,7 +339,7 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
           "flight_details": {
             "api_key": "PLACEHOLDER",
             "current_airport": "EDDF",
-            "timestamp": 1785357161,
+            "timestamp": 1785357161.40969,
             "current_flight": {
               "taxi_path": [
                 { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } }
@@ -340,10 +352,14 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
         var context = new SayIntentionsService(path).ReadFlightContext();
 
         Assert.NotNull(context.TaxiPathStampUtc);
+        // Assert.Equal(DateTime, DateTime, TimeSpan) compares by subtraction and
+        // ignores Kind — Kind is asserted explicitly since it is exactly the
+        // offset-safety property the later safety gate depends on.
+        Assert.Equal(DateTimeKind.Utc, context.TaxiPathStampUtc!.Value.Kind);
         Assert.Equal(
-            new DateTime(2026, 7, 29, 20, 32, 41, DateTimeKind.Utc),
+            new DateTime(2026, 7, 29, 20, 32, 41, 409, DateTimeKind.Utc),
             context.TaxiPathStampUtc!.Value,
-            TimeSpan.FromSeconds(1));
+            TimeSpan.FromMilliseconds(1));
     }
 
     // This capture has no flight_details.timestamp at all (flight.json's "every
@@ -353,13 +369,139 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
     [Fact]
     public void TheTaxiPathStampFallsBackToFileTimeWhenAbsent()
     {
-        var context = ReadLiveContext();
+        Directory.CreateDirectory(_dir);
         string path = Path.Combine(_dir, "flight.json");
+        File.WriteAllText(path, EddfFlightJson);
+
+        // Stamp a distinct PAST mtime after writing, so the fallback's source is
+        // unambiguous: the fixture write and a naive assertion both happen within
+        // moments of "now" anyway, so a fallback wrongly implemented as
+        // DateTime.UtcNow would satisfy a same-instant comparison identically to the
+        // real file-mtime read. A multi-year-old mtime cannot be confused with
+        // "now" by any tolerance worth using.
+        var distinctPastUtc = new DateTime(2020, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, distinctPastUtc);
+
+        var context = new SayIntentionsService(path).ReadFlightContext();
 
         Assert.NotNull(context.TaxiPathStampUtc);
-        Assert.Equal(
-            File.GetLastWriteTimeUtc(path),
-            context.TaxiPathStampUtc!.Value,
-            TimeSpan.FromSeconds(2));
+        Assert.Equal(DateTimeKind.Utc, context.TaxiPathStampUtc!.Value.Kind);
+        Assert.Equal(distinctPastUtc, context.TaxiPathStampUtc!.Value, TimeSpan.FromSeconds(1));
+    }
+
+    // Code review finding (Important 1): UnixEpoch.AddSeconds(unixSeconds.Value) is
+    // unguarded, and ArgumentOutOfRangeException is not in ReadFlightContext's catch
+    // list (JsonException/IOException/UnauthorizedAccessException) — so it used to
+    // escape the whole method. SayIntentions migrating `timestamp` to MILLISECONDS is
+    // the commonest way an epoch field drifts, and publishes exactly this shape
+    // (1785357161409). The pilot would hear "SayIntentions transmission lookup
+    // failed. Value to add was out of range. (Parameter 'value')" on Ctrl+S, the same
+    // on Ctrl+Shift+S, and no route at all from Alt+Shift+S — clearance text, last
+    // transmission, gate, runways and weather all lost at once, for a value that only
+    // ever should have cost the taxi-path stamp.
+    [Fact]
+    public void TheTaxiPathStampFallsBackWhenTimestampIsMilliseconds()
+    {
+        string path = WriteFlightJson("""
+        {
+          "flight_details": {
+            "current_airport": "EDDF",
+            "timestamp": 1785357161409,
+            "current_flight": {
+              "taxi_path": [
+                { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } }
+              ]
+            }
+          }
+        }
+        """);
+        var distinctPastUtc = new DateTime(2020, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, distinctPastUtc);
+
+        var context = new SayIntentionsService(path).ReadFlightContext();
+
+        Assert.Null(context.Error);
+        Assert.Single(context.TaxiPathPoints); // the path itself still reads fine
+        Assert.NotNull(context.TaxiPathStampUtc);
+        Assert.Equal(DateTimeKind.Utc, context.TaxiPathStampUtc!.Value.Kind);
+        Assert.Equal(distinctPastUtc, context.TaxiPathStampUtc!.Value, TimeSpan.FromSeconds(1));
+    }
+
+    // The rest of the reviewer's verified-throwing shapes (a grossly-out-of-range
+    // float, a numeric string that parses to +Infinity, and a 16-digit
+    // microsecond-scale epoch), plus Minor finding 1: `timestamp: 0` or negative are
+    // both "successful" conversions today (0 -> 1970, negative -> 1913), so the mtime
+    // fallback never runs for them either even though neither is a real generation
+    // time. Direction is safe either way (never newer than a live clearance, so
+    // geometry is never wrongly preferred over it), but a 0 written for "unset" would
+    // otherwise permanently and silently disable the geometry route. All five must
+    // land on the file-mtime fallback without throwing.
+    [Theory]
+    [InlineData("1e30")]                 // grossly out of range
+    [InlineData("17853571614096900")]    // a 16-digit microsecond-scale epoch
+    [InlineData("\"Infinity\"")]         // numeric-looking string that parses to +Inf
+    [InlineData("0")]                    // an explicit "unset" sentinel
+    [InlineData("-1785357161")]          // negative -> a valid but nonsensical 1913 date
+    public void TheTaxiPathStampFallsBackForImplausibleTimestamps(string rawTimestampToken)
+    {
+        string path = WriteFlightJson("""
+        {
+          "flight_details": {
+            "current_airport": "EDDF",
+            "timestamp": __TOKEN__,
+            "current_flight": {
+              "taxi_path": [
+                { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } }
+              ]
+            }
+          }
+        }
+        """.Replace("__TOKEN__", rawTimestampToken));
+        var distinctPastUtc = new DateTime(2020, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, distinctPastUtc);
+
+        var context = new SayIntentionsService(path).ReadFlightContext();
+
+        Assert.Null(context.Error);
+        Assert.NotNull(context.TaxiPathStampUtc);
+        Assert.Equal(DateTimeKind.Utc, context.TaxiPathStampUtc!.Value.Kind);
+        Assert.Equal(distinctPastUtc, context.TaxiPathStampUtc!.Value, TimeSpan.FromSeconds(1));
+    }
+
+    // Code review finding (Important 2): ReadTaxiPathPoints must SKIP an entry missing
+    // a coordinate, never default it to (0, 0) — a zeroed point sails past the
+    // snapper's 25 m tolerance to nowhere useful, silently reporting a clean read as a
+    // partly-unreadable route. The behaviour is already correct; nothing pinned it
+    // before this test, so a future "simplification" to `GetDouble(point, "lat") ?? 0`
+    // would leave every other test green while injecting exactly that bug.
+    [Fact]
+    public void MalformedTaxiPathEntriesAreSkippedNotZeroed()
+    {
+        string path = WriteFlightJson("""
+        {
+          "flight_details": {
+            "current_airport": "EDDF",
+            "current_flight": {
+              "taxi_path": [
+                { "heading": 93.92, "point": { "lon": 8.52, "lat": 50.04 } },
+                { "heading": 90.0, "point": { "lon": 8.53 } },
+                { "heading": 91.0, "point": { "lat": 50.05 } },
+                { "heading": 92.0 },
+                { "heading": 94.01, "point": { "lon": 8.54, "lat": 50.06 } }
+              ]
+            }
+          }
+        }
+        """);
+
+        var context = new SayIntentionsService(path).ReadFlightContext();
+
+        Assert.Null(context.Error);
+        Assert.Equal(2, context.TaxiPathPoints.Count);
+        Assert.Equal(50.04, context.TaxiPathPoints[0].Latitude, 2);
+        Assert.Equal(8.52, context.TaxiPathPoints[0].Longitude, 2);
+        Assert.Equal(50.06, context.TaxiPathPoints[1].Latitude, 2);
+        Assert.Equal(8.54, context.TaxiPathPoints[1].Longitude, 2);
+        Assert.DoesNotContain(context.TaxiPathPoints, p => p.Latitude == 0 && p.Longitude == 0);
     }
 }

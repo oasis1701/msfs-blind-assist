@@ -261,8 +261,12 @@ whatever follows the *last* gate/stand keyword.
 
 **`current_flight.taxi_path` is GEOMETRY, not taxiway names.** ~200 objects shaped
 `{"heading": 93.92, "point": {"lon": 8.52, "lat": 50.04}}` — no `taxiway`, `name`,
-`label` or `id` member anywhere in it. Nothing reads it; see
-[Why taxi_path is not parsed](#why-taxi_path-is-not-parsed).
+`label` or `id` member anywhere in it. `point.lat`/`point.lon` ARE read, into
+`TaxiPathPoints`; no name-ish member ever is — see
+[Reading `taxi_path`: coordinates only, never names](#reading-taxi_path-coordinates-only-never-names).
+Each snapshot's own generation time comes from the sibling `flight_details.timestamp` —
+a raw Unix epoch in **seconds**, fractional (e.g. `1785357161.40969`), not a date
+string — covered in the same section.
 
 **flight.json carries no clearance text and no comms.** None of `cleared_for_takeoff`,
 `cleared_for_landing`, `clearance`, `last_clearance` or `taxi_clearance` were present
@@ -552,8 +556,8 @@ overlaps none of the names that did resolve. Bare designators are **not** scanne
 matching uppercase letters in prose false-positives on ordinary abbreviations, and a
 wrong "could not apply K" teaches the pilot to distrust the whole announcement. A miss is
 the better failure here, so a clearance written with bare designators can still lose one
-quietly. There is no structured second source to catch it: `taxi_path` is geometry.
-
+quietly. There is no structured second source to catch it: `taxi_path` is geometry.
+
 The word list has since gained the five compass words, which ARE ordinary English — the
 one widening this rule ever took, and bounded the same way: a closed list of whole words,
 no bare designators. What English costs is paid by `IsDirectionProse`, not by loosening
@@ -590,27 +594,62 @@ the sequence being applied. A name that sequence does not carry maps to `-1` and
 reported, never hung on whatever row happens to be last — the case a clearance produces
 by naming a hold-short before it names any taxiway.
 
-### Why `taxi_path` is not parsed
+### Reading `taxi_path`: coordinates only, never names
 
-The reader that turned `current_flight.taxi_path` into a taxiway sequence, and the
-`MatchKnownTaxiways` branch that preferred that sequence over the spoken clearance, are
-**deleted**. They were written against a guessed schema, and the live capture shows the
-field is geometry: no name to read, so the branch had never once run against real
-SayIntentions traffic.
+`SayIntentionsService.ReadTaxiPathPoints` reads `current_flight.taxi_path` into
+`SayIntentionsFlightContext.TaxiPathPoints` — but ONLY `point.lat`/`point.lon` from
+each entry. No `taxiway`, `name`, `label` or `id` member is ever read. An entry missing
+either coordinate is skipped outright rather than defaulted to `(0, 0)`, which would
+snap to nothing useful at best and to some other airport's pavement at worst
+(`MalformedTaxiPathEntriesAreSkippedNotZeroed` pins the skip;
+`TheTaxiPathIsReadAsCoordinatesOnly` pins the coordinates themselves).
 
-Deleting it rather than leaving it dormant is deliberate, and the reason is not tidiness.
-The reader accepted an object's `taxiway`, `name`, `label` **or `id`** member — and `id`
-is precisely what a geometry array is most likely to grow. Had that happened, ~200 point
-ids would have become "taxiway names", the branch would have activated on its own, the
-route would have silently stopped coming from the clearance, and the pilot would have
-heard a shortest-path route plus "Could not apply" followed by two hundred numbers. A
-dormant path that arms itself on someone else's schema change, with no announcement to
-reveal the switch, is worse than no path.
+That boundary is narrower than it looks, and it is deliberate. An earlier version of
+this integration had a reader that turned `taxi_path` into a taxiway sequence by
+reading an object's `taxiway`, `name`, `label` **or `id`** member, plus a
+`MatchKnownTaxiways` branch that preferred that sequence over the spoken clearance.
+Both were deleted in 2026-07 rather than left dormant: they had been written against a
+guessed schema, the live capture showed the field is geometry with no name anywhere in
+it, and `id` — one of the four members the old reader accepted — is precisely what a
+geometry array is most likely to grow next. Had SayIntentions added one, ~200 point ids
+would have become "taxiway names" on their own, the dormant branch would have armed
+itself, the route would have silently stopped coming from the clearance, and the pilot
+would have heard a shortest-path route plus "Could not apply" followed by two hundred
+numbers — with nothing in the announcement to reveal that the switch had even happened.
+So the boundary is enforced at the reader itself, coordinates in and nothing else, no
+matter what a future capture appears to add: see the doc comment on
+`ReadTaxiPathPoints` and the CLAUDE.md invariant under "SayIntentions integration" for
+the same rule stated at the code site.
 
-If SayIntentions ever does publish taxiway names, this is perfectly good work to redo —
-from a capture that shows them, not from a guess. `MapHoldShortsToTaxiways` already
-tolerates an applied sequence that differs from the spoken one, so the hold-short side
-of it still holds.
+Turning coordinates into a route is a separate, already-built concern:
+`SayIntentionsTaxiPathSnapper.Snap` snaps each point to the nearest edge of the
+airport's own named taxiway graph — never to anything SI publishes as a name. A live
+LSZH arrival snapped `taxi_path` to exactly the taxiways ("E4, E, C") Zurich Ground had
+just cleared. Nothing wires that sequence into route building yet, and when something
+does it must only ever OVERRIDE the clearance-derived route, never author one SI never
+cleared: the geometry is SayIntentions' own rendering of *a* plan, which need not be
+the plan the controller most recently spoke.
+
+That is what `flight_details.timestamp` is for.
+`SayIntentionsService.ReadTaxiPathStampUtc` reads it into `TaxiPathStampUtc` as this
+snapshot's generation time, in UTC. It is a raw Unix epoch in **seconds**, fractional —
+e.g. `1785357161.40969` → `2026-07-29T20:32:41.409Z` — NOT the ISO-ish `stamp_zulu`
+date-string shape used for transmissions elsewhere in this same file (see
+`ParseZuluStamp`); confirmed against ten real wire captures (LSZH and EGLL,
+2026-07-29/30). A value that is not a plausible epoch-seconds instant — zero, negative,
+or large enough to overflow `DateTime` outright, which is exactly what a future
+migration to millisecond or microsecond epochs would publish — is treated the same as
+an absent field: `TaxiPathStampUtc` falls back to the flight.json file's own
+last-write time, a later answer than SI's generation time but still an honest one,
+rather than an unhandled exception on the pilot's Ctrl+S/Ctrl+Shift+S/Alt+Shift+S
+hotkeys (an unguarded conversion of a live millisecond-shape value took down all three
+at once before this range check existed).
+
+A future task is expected to gate any clearance override on this stamp being provably
+NEWER than the clearance it would replace — a capture taken before the clearance is
+SayIntentions' own plan, not a correction to what the pilot was actually told.
+`MapHoldShortsToTaxiways` already tolerates an applied sequence that differs from the
+spoken one, so the hold-short side of a future override still holds.
 
 ### Gate names
 

@@ -32,6 +32,16 @@ public sealed class SayIntentionsService
 
     private static readonly DateTime UnixEpoch = new(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>
+    /// The largest a raw Unix-epoch-seconds value can be while <see cref="UnixEpoch"/>
+    /// plus that many seconds still lands inside DateTime's representable range (year
+    /// 1-9999). Computed from UnixEpoch/DateTime.MaxValue rather than hardcoded so it
+    /// can never drift out of sync with the type it guards. See ReadTaxiPathStampUtc —
+    /// this is the range check that keeps a bogus/rescaled timestamp away from
+    /// DateTime.AddSeconds, which throws ArgumentOutOfRangeException outside it.
+    /// </summary>
+    private static readonly double MaxPlausibleUnixSeconds = (DateTime.MaxValue - UnixEpoch).TotalSeconds;
+
     private static readonly LogChannel _log = Log.Channel("sayintentions");
 
     private static readonly HttpClient HttpClient = new()
@@ -292,16 +302,41 @@ public sealed class SayIntentionsService
     /// (GetDouble already handles both a JSON number and a numeric JSON string) and
     /// converted via epoch arithmetic instead.
     ///
-    /// Falls back to the file's own last-write time when the field is absent or the
-    /// file can no longer be reached for its timestamp — a later answer from this
-    /// app's read, rather than SI's generation time, but still an honest one instead
-    /// of leaving a genuinely present path with no stamp at all.
+    /// Falls back to the file's own last-write time when the field is absent, not a
+    /// plausible epoch-seconds instant (see below), or the file can no longer be
+    /// reached for its timestamp — a later answer from this app's read, rather than
+    /// SI's generation time, but still an honest one instead of leaving a genuinely
+    /// present path with no stamp at all.
+    ///
+    /// The value is range-checked BEFORE conversion: it must be positive and land
+    /// within DateTime's representable range once added to UnixEpoch
+    /// (<see cref="MaxPlausibleUnixSeconds"/>), or it falls straight through to the
+    /// file-time fallback instead of reaching <see cref="DateTime.AddSeconds"/>, which
+    /// throws <see cref="ArgumentOutOfRangeException"/> for an out-of-range value —
+    /// and that exception sits outside ReadFlightContext's catch list
+    /// (JsonException/IOException/UnauthorizedAccessException), so unguarded it took
+    /// down Ctrl+S, Ctrl+Shift+S and Alt+Shift+S all at once. The commonest way this
+    /// fires for real is SayIntentions migrating the field to milliseconds — a live
+    /// value like 1785357161409 overflows DateTime's year-9999 ceiling by tens of
+    /// thousands of years when misread as seconds, which is exactly what makes the
+    /// range check catch it (also catches 1e30, an "Infinity" string, and a
+    /// microsecond-scale epoch). The same check rejects 0 and negative values too —
+    /// both "successfully" convert to a real DateTime (1970 / a 1913-ish date) without
+    /// throwing, so without folding them into this same range they would silently
+    /// stop the mtime fallback from ever running for an explicit "unset" sentinel.
     /// </summary>
     private static DateTime? ReadTaxiPathStampUtc(JsonElement details, string flightJsonPath)
     {
         double? unixSeconds = GetDouble(details, "timestamp");
-        if (unixSeconds.HasValue)
-            return UnixEpoch.AddSeconds(unixSeconds.Value);
+        if (unixSeconds is double seconds)
+        {
+            if (seconds > 0 && seconds <= MaxPlausibleUnixSeconds)
+                return UnixEpoch.AddSeconds(seconds);
+
+            _log.Debug("flight_details.timestamp " +
+                       seconds.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                       " is not a plausible Unix-epoch-seconds instant; using flight.json's file time instead.");
+        }
 
         try
         {
