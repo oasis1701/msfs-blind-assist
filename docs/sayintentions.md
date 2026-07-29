@@ -1,4 +1,4 @@
-﻿# SayIntentions Integration
+# SayIntentions Integration
 
 MSFS Blind Assist reads the active [SayIntentions.ai](https://sayintentions.ai) flight
 so a blind pilot can hear the last radio call, check their assigned gate and runway,
