@@ -35,53 +35,13 @@ public partial class MainForm
             }
 
             announcer.AnnounceImmediate(
-                $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}"
-                + BuildPushbackAdvisory(result.Transmission.Message, result.Context));
+                $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}");
         }
         catch (Exception ex)
         {
             _siLog.Error("Last-transmission readout failed", ex);
             announcer.AnnounceImmediate($"SayIntentions transmission lookup failed. {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// The pushback a controller's approval actually calls for — "(straight)",
-    /// "(tail left, nose right)", "(tail right, nose left)" — or "" for any other
-    /// transmission.
-    ///
-    /// The controller has already said the useful part; the transmission is repeated
-    /// verbatim and this only adds the bit a blind pilot cannot derive from it, worded
-    /// the way the pushback is chosen. It rides on the last-transmission hotkey rather
-    /// than getting one of its own, because that is the key pressed straight after
-    /// hearing ATC and the phrase is meaningless apart from the clearance it qualifies.
-    ///
-    /// Parenthesised because screen readers do not speak the brackets by default, so it
-    /// arrives as a bare "tail left, nose right" after the controller's words — which is
-    /// exactly how a human would tack it on.
-    ///
-    /// SAYINTENTIONS' OWN HEADING IS PREFERRED over SimConnect's. It is the reference
-    /// SI's compass points are in, so the comparison is exact without knowing whether
-    /// SI means true or magnetic. SimConnect is the fallback, converted to true on the
-    /// assumption that compass points are true, and carries a magnetic-variation error
-    /// — 14 degrees at KBOS — that is over half the straight/turn band.
-    ///
-    /// Either way the heading comes from a CACHE, never a fresh request: this hotkey is
-    /// on the offline allowlist and must keep working with SimConnect disconnected, so
-    /// a missing heading drops the phrase rather than failing the readout.
-    /// </summary>
-    private string BuildPushbackAdvisory(string message, SayIntentionsFlightContext? context)
-    {
-        double? heading = context?.Heading;
-        if (heading == null)
-        {
-            var position = simConnectManager.LastKnownPosition;
-            if (position.HasValue)
-                heading = position.Value.HeadingMagnetic + position.Value.MagneticVariation;
-        }
-
-        string? direction = SayIntentionsPushback.DescribeTurnDirection(message, heading);
-        return string.IsNullOrEmpty(direction) ? "" : $" ({direction})";
     }
 
     private async Task AnnounceSayIntentionsAssignedStatusAsync()

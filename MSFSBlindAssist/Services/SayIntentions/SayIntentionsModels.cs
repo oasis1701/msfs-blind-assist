@@ -38,17 +38,6 @@ public sealed class SayIntentionsFlightContext
     /// <summary>ICAO type code, e.g. "B738". From <c>aircraft_icao</c>.</summary>
     public string? AircraftIcao { get; set; }
 
-    /// <summary>
-    /// The aircraft heading as SAYINTENTIONS sees it (<c>flight_details.heading</c>).
-    ///
-    /// Used in preference to the SimConnect heading when interpreting a compass
-    /// direction SI gave us. Whether SI means true or magnetic is unknown and does not
-    /// matter, because SI's own heading and SI's own compass points come from the same
-    /// place: comparing the two is exact whatever the reference, while comparing SI's
-    /// cardinal against a SimConnect heading is off by the magnetic variation.
-    /// </summary>
-    public double? Heading { get; set; }
-
     /// <summary>SayIntentions' own air/ground flag (<c>on_ground</c>), or null when
     /// absent. Read for the report only — guidance keeps using the SimConnect
     /// air/ground state, which is a frame old rather than a file-write old.</summary>
@@ -131,13 +120,10 @@ public sealed class SayIntentionsParking
     public double? Heading { get; init; }
 }
 
-/// <summary>The transmission, plus the flight context it was read alongside — callers
-/// that need to interpret the transmission against SI's own view of the aircraft
-/// (a pushback direction against SI's heading) get both from one file read.</summary>
+/// <summary>The most recent transmission, or the reason there isn't one.</summary>
 public sealed record SayIntentionsTransmissionResult(
     SayIntentionsTransmission? Transmission,
-    string? Error,
-    SayIntentionsFlightContext? Context = null);
+    string? Error);
 
 public sealed record SayIntentionsParkingResult(
     SayIntentionsParking? Parking,
