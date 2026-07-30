@@ -423,8 +423,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Location = new Point(20, 820),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
-            AccessibleDescription = "When checked, a SayIntentions import starts guidance straight away "
-                                    + "instead of filling the form for you to review"
+            AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
+                                    + "instead of waiting for you to press Calculate Route"
         };
 
         Controls.AddRange(new Control[]
