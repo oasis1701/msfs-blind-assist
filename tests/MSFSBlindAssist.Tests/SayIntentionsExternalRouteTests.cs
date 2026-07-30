@@ -575,6 +575,178 @@ public class SayIntentionsExternalRouteTests
         Assert.False(choice.Disagreed);
     }
 
+    // --- ChooseTaxiwaySource: a repeat the track structurally cannot carry -------------
+    //
+    // ParseClearanceTaxiPlan deliberately KEEPS a taxiway repeated across a hold-short —
+    // the KBOS pattern — because the form carries one hold-short per row and collapsing
+    // the repeat throws the second one away. The snapper cannot produce that repeat: it
+    // drops unsnapped and too-short runs BEFORE collapsing consecutive duplicates, so
+    // [N … N] separated only by those runs reaches this comparison as a single N.
+    //
+    // Walked raw, such a clearance therefore NEVER agrees with its own track, and the
+    // pilot is told the two differ about two descriptions of the same pavement — which
+    // also switches the geometry path off for every clearance of that shape.
+
+    [Fact]
+    public void ATaxiwayRepeatedAcrossAHoldShortStillAgreesWithTheTrack()
+    {
+        // KBOS: "Taxi to runway 22R via November, hold short of runway 15R, then
+        // November, Kilo." The clearance holds N twice, the track along that same
+        // pavement holds it once. Same route.
+        var choice = Choose(new[] { "N", "N", "K" }, new[] { "N", "K" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.Equal(new[] { "N", "K" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void TheHoldShortOfARepeatingClearanceStillSeatsOnTheTrack()
+    {
+        // The clearance keeps the hold-shorts on both paths, so a collapse that made the
+        // track win must not cost the stop its row.
+        var choice = Choose(new[] { "N", "N", "K" }, new[] { "N", "K" });
+
+        var mapped = MainForm.MapHoldShortsToTaxiways(
+            new[] { new MainForm.ClearanceHoldShort("N", "15R") }, choice.Taxiways);
+
+        Assert.Equal(new TaxiAssistForm.ExternalHoldShort(0, "15R"), Assert.Single(mapped));
+    }
+
+    [Fact]
+    public void AClearanceThatWinsKeepsItsRepeatSoEachHoldShortGetsItsOwnRow()
+    {
+        // The collapse is for the COMPARISON only. What goes to the form — and what the
+        // hold-shorts are seated against — is still the raw clearance, or the second
+        // November loses its row and its hold-short lands at the wrong crossing.
+        var choice = Choose(new[] { "N", "N", "K" }, new[] { "A", "B", "C" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "N", "N", "K" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
+
+        var mapped = MainForm.MapHoldShortsToTaxiways(
+            new[]
+            {
+                new MainForm.ClearanceHoldShort("N", "15R"),
+                new MainForm.ClearanceHoldShort("N", "22R")
+            },
+            choice.Taxiways);
+
+        Assert.Equal(0, mapped[0].TaxiwayIndex);
+        Assert.Equal(1, mapped[1].TaxiwayIndex);
+    }
+
+    [Fact]
+    public void ATaxiwayRevisitedLaterIsStillALegTheTrackHasToCarryTwice()
+    {
+        // Only ADJACENT repeats collapse, on both sides. A clearance that leaves a
+        // taxiway and returns to it later names a leg the track shows twice as well —
+        // the snapper keeps a non-consecutive revisit — so this is a real disagreement,
+        // not the KBOS shape. A Distinct() instead of a consecutive collapse would take
+        // this track.
+        var choice = Choose(new[] { "A", "B", "A" }, new[] { "A", "B" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    // --- ChooseTaxiwaySource: a short clearance cannot licence a long track ------------
+    //
+    // The subsequence walk's discriminating power scales with how many legs the
+    // clearance has. Two or three legs run through almost any track that touches the
+    // same corner of the airfield, so a stale plan passes on the strength of the pilot
+    // being given a SHORT clearance — silently, since a track that agrees is not
+    // announced as a disagreement.
+    //
+    // Below is the real LSZH pre-clearance publication, snapped: SayIntentions' own
+    // 12-leg plan across the airfield, sitting in taxi_path a minute before Zurich
+    // Ground said anything. Real agreements measured against it run 1.0-1.33 track legs
+    // per cleared leg; the stale readings run 2.5-12.
+
+    private static readonly string[] StaleLszhPreClearancePlan =
+        { "R7", "E7", "E6", "E7", "N", "E", "Inner", "E", "B", "E5", "F", "C" };
+
+    [Fact]
+    public void TheRealLszhClearanceRejectsTheStalePreClearancePlan()
+    {
+        // The control: "via E4, E, C" fails the walk outright — the stale plan has no
+        // E4 — so this case was always right and must stay right.
+        var choice = Choose(new[] { "E4", "E", "C" }, StaleLszhPreClearancePlan);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ATwoLegClearanceCannotLicenceTheStaleTwelveLegPlan()
+    {
+        // "Taxi to Gate E52 via E, C" — an abbreviated clearance over the same stand.
+        // Both legs are in the stale plan, in order, so the walk alone accepts it and
+        // the pilot is routed on SI's 12-leg pre-clearance plan without a word.
+        var choice = Choose(new[] { "E", "C" }, StaleLszhPreClearancePlan);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "E", "C" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void AThreeLegClearanceCannotLicenceTheStaleTwelveLegPlan()
+    {
+        var choice = Choose(new[] { "N", "E", "B" }, StaleLszhPreClearancePlan);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ASingleClearedTaxiwayCannotLicenceTheStaleTwelveLegPlan()
+    {
+        var choice = Choose(new[] { "E" }, StaleLszhPreClearancePlan);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ATrackAtTheEdgeOfTheLengthGuardIsStillTaken()
+    {
+        // Two cleared legs allow five. A real track legitimately carries the stand it
+        // starts on, the lead-in it ends on, and a leg the text parse could not name.
+        var choice = Choose(new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ATrackOneLegPastTheGuardIsRejectedAndSaidOutLoud()
+    {
+        // Rejected by LENGTH rather than by the walk, and it still counts as a
+        // disagreement: the two sources really do describe different routes, and
+        // silence is what let the stale plan through.
+        var choice = Choose(new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z", "W" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "A", "B" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ARepeatedLegBuysTheTrackNoExtraLength()
+    {
+        // The guard measures the COLLAPSED clearance, because a taxiway said twice is
+        // one leg of evidence, not two: it constrains the walk exactly as much as one
+        // does. Counted raw, this three-name clearance would allow seven track legs and
+        // take a six-leg track that two real legs cannot vouch for.
+        var choice = Choose(
+            new[] { "N", "N", "K" }, new[] { "N", "V", "W", "X", "Y", "K" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
     // --- Announcement provenance ------------------------------------------------------
 
     private static SnapResult Snap(
@@ -712,29 +884,44 @@ public class SayIntentionsExternalRouteTests
     public void AGeometryRouteDoesNotReciteAWallOfLegsThePilotNeverHeard()
     {
         // Graph names, not the controller's words. Ten of them spoken in a row is a
-        // wall of unfamiliar sounds; what the pilot can act on is that the route is
-        // well short of the track.
+        // wall of unfamiliar sounds — so the line keeps the first few as a hint about
+        // where the route breaks and says how many more there are.
         string[] tenLegs = { "S3", "NB3", "S4E", "N4W", "N5W", "R", "B", "F", "G", "L" };
 
         string spoken = Announce(
             Outcome(applied: new[] { "A" }, skipped: tenLegs), "Gate 325", autoStart: false,
             source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "A" }, 60));
 
-        Assert.Contains("Could not apply 10 legs of the ground track.", spoken);
-        Assert.DoesNotContain("S4E", spoken);
+        Assert.Contains("Could not apply S3, NB3, S4E and 7 more.", spoken);
+        Assert.DoesNotContain("N4W", spoken);
+    }
+
+    [Fact]
+    public void OneLegOverTheCapKeepsTheNamesAndAddsTheCount()
+    {
+        // The cliff this replaced: at exactly four skipped legs all four names vanished
+        // into a bare count, so one extra leg cost the pilot every hint about WHERE the
+        // route breaks — and told them less than the three-leg case did.
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: new[] { "F", "G", "R", "L" }),
+            "Gate 325", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "A" }, 60));
+
+        Assert.Contains("Could not apply F, G, R and 1 more.", spoken);
     }
 
     [Fact]
     public void AGeometryRouteStillNamesAHandfulOfLegs()
     {
-        // Under the cap the names stay: three is a hint about where the route breaks,
-        // not a recital.
+        // At the cap the names stand alone: three is a hint, not a recital, and there
+        // is no remainder to count.
         string spoken = Announce(
             Outcome(applied: new[] { "A" }, skipped: new[] { "F", "G", "R" }), "Gate 325",
             autoStart: false,
             source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "A" }, 60));
 
         Assert.Contains("Could not apply F, G, R.", spoken);
+        Assert.DoesNotContain("more", spoken);
     }
 
     [Fact]

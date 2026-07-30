@@ -244,13 +244,26 @@ public partial class MainForm
     /// already on the frequency. A stamp comparison therefore passes on every stale path
     /// there is, which is worse than no test at all — it reads like a safety gate.
     ///
-    /// What can tell them apart is AGREEMENT. The track wins when the clearance runs
-    /// through it in order (see <see cref="ClearanceRunsThroughGeometry"/>), because that
-    /// is precisely the failure this path exists to fix: the text parse DROPS legs it
-    /// cannot name, and a live LEPA clearance saying "North" for taxiway N parsed to
-    /// LE, E, H2 where the track gave LE, E, N, H2. The same test is what rejects a stale
-    /// path — the pre-clearance EGLL capture carries N5W where the clearance says N5E, so
-    /// the walk fails on the first leg.
+    /// What can tell them apart is AGREEMENT, on two counts. The clearance must run
+    /// through the track in order (see <see cref="ClearanceRunsThroughGeometry"/>),
+    /// because that is precisely the failure this path exists to fix: the text parse
+    /// DROPS legs it cannot name, and a live LEPA clearance saying "North" for taxiway N
+    /// parsed to LE, E, H2 where the track gave LE, E, N, H2. That test is also what
+    /// rejects a stale path — the pre-clearance EGLL capture carries N5W where the
+    /// clearance says N5E, so the walk fails on the first leg. And the track must be
+    /// short enough to be a description OF that route rather than a route of its own
+    /// (see <see cref="TrackIsShortEnoughToDescribe"/>), because the walk alone loses its
+    /// grip on a short clearance.
+    ///
+    /// The comparison runs against the COLLAPSED clearance, and only the comparison: what
+    /// is handed back when the clearance wins is the RAW list. ParseClearanceTaxiPlan
+    /// deliberately keeps a taxiway repeated across a hold-short (the KBOS pattern) so
+    /// each hold-short gets a row of its own, and the snapper structurally cannot produce
+    /// that repeat — it drops unsnapped and too-short runs BEFORE collapsing consecutive
+    /// duplicates, so [N … N] arrives here as a single N. Walked raw, such a clearance
+    /// could never agree with its own track, and the pilot heard a disagreement about two
+    /// descriptions of the same pavement. Collapsing only ADJACENT repeats keeps a
+    /// genuine later revisit a leg the track still has to carry twice.
     ///
     /// Anything else is a genuine disagreement, and the CLEARANCE wins it: that is what
     /// the pilot actually heard. The caller says so out loud — a route that is not the one
@@ -270,14 +283,18 @@ public partial class MainForm
         if (clearanceTaxiways.Count == 0)
             return (TaxiwaySource.Geometry, geometryTaxiways, false);
 
-        return ClearanceRunsThroughGeometry(clearanceTaxiways, geometryTaxiways)
+        var cleared = SayIntentionsClearanceParser.CollapseConsecutive(clearanceTaxiways);
+
+        return ClearanceRunsThroughGeometry(cleared, geometryTaxiways)
+               && TrackIsShortEnoughToDescribe(cleared.Count, geometryTaxiways.Count)
             ? (TaxiwaySource.Geometry, geometryTaxiways, false)
             : (TaxiwaySource.Clearance, clearanceTaxiways, true);
     }
 
     /// <summary>Whether every cleared taxiway appears in the published track IN ORDER,
     /// gaps allowed — a subsequence walk, of which two identical sequences are the
-    /// trivial case.
+    /// trivial case. Takes the COLLAPSED clearance; see
+    /// <see cref="ChooseTaxiwaySource"/>.
     ///
     /// Gaps are the point: a real track legitimately names legs the controller did not —
     /// the stand it starts on, the lead-in it ends on, and the leg the text parse could
@@ -296,6 +313,33 @@ public partial class MainForm
 
         return cleared == clearanceTaxiways.Count;
     }
+
+    /// <summary>Whether the published track is short enough to be a description OF the
+    /// cleared route rather than a route of its own — at most two track legs per cleared
+    /// leg, plus one.
+    ///
+    /// The subsequence walk loses its grip as the clearance gets shorter: two or three
+    /// legs run through almost any track that touches the same corner of the airfield.
+    /// Measured against the real LSZH pre-clearance publication — SayIntentions' own
+    /// 12-leg plan across the airfield, sitting in taxi_path before Ground said anything
+    /// — "via E, C", "via N, E, B" and even a bare "via E" all walk straight through it,
+    /// and a track that agrees is taken SILENTLY. Every real agreement measured runs 1.0
+    /// to 1.33 track legs per cleared leg (LSZH 3:3, EGLL 4:4, the LEPA dropped leg 3:4);
+    /// every stale reading runs 2.5 to 12.
+    ///
+    /// The trade-off is real and deliberate rather than an oversight: where a parse
+    /// recovers only one leg of five, the track legitimately IS much longer, and this
+    /// rejects geometry that was right. That direction is the safe one. Falling back to a
+    /// clearance we know is incomplete still names the legs it could not apply, so the
+    /// pilot is warned; accepting a stale track is silent and wrong. Bias toward the
+    /// clearance — and when this is what rejects the track, the caller reports it as a
+    /// disagreement, not as a silent fallback.
+    ///
+    /// Counted on the COLLAPSED clearance: a taxiway named twice is one leg of evidence,
+    /// constraining the walk exactly as much as one does, so it must not buy the track
+    /// extra length.</summary>
+    private static bool TrackIsShortEnoughToDescribe(int clearedLegs, int trackLegs) =>
+        trackLegs <= (clearedLegs * 2) + 1;
 
     /// <summary>Taxiway names compared the way the rest of this import compares them:
     /// spacing and punctuation stripped, case-insensitive — "N 5 E" is N5E.</summary>
@@ -333,14 +377,17 @@ public partial class MainForm
     internal const double UnsnappedShareWorthSaying = 0.25;
 
     /// <summary>
-    /// How many unapplied legs of a GROUND-TRACK route are still worth naming one by one.
+    /// How many unapplied legs of a GROUND-TRACK route are named one by one.
     ///
     /// On the clearance path every such name is a word the controller said, and all of
     /// them are spoken however many there are. On the geometry path they are names off
     /// the airport's graph that the pilot has never heard — a route short of ten of them
     /// announced ten unfamiliar syllables in a row, which is a recital rather than
-    /// information. Past this many the count is said instead: what the pilot can act on
-    /// is that the route is well short of the track, not which anonymous legs are gone.
+    /// information. Past this many the rest become a count on the end of the same line
+    /// ("F, G, R and 7 more"), which keeps both things the pilot can act on: roughly
+    /// WHERE the route starts falling short, and HOW far short it falls. Replacing the
+    /// whole list with a bare count put a cliff at four, where one extra leg cost every
+    /// name and said less than the three-leg case did.
     /// </summary>
     internal const int GeometryLegsWorthNaming = 3;
 
@@ -397,12 +444,7 @@ public partial class MainForm
         var couldNotApply = new List<string>(outcome.SkippedTaxiways);
         if (source == TaxiwaySource.Clearance) couldNotApply.AddRange(unknownTaxiways);
         if (couldNotApply.Count > 0)
-        {
-            parts.Add(
-                source == TaxiwaySource.Geometry && couldNotApply.Count > GeometryLegsWorthNaming
-                    ? $"Could not apply {couldNotApply.Count} legs of the ground track."
-                    : $"Could not apply {string.Join(", ", couldNotApply)}.");
-        }
+            parts.Add($"Could not apply {NameUnappliedLegs(couldNotApply, source)}.");
 
         if (snap != null && snap.UnsnappedCount > snap.PointCount * UnsnappedShareWorthSaying)
             parts.Add($"{snap.UnsnappedCount} of {snap.PointCount} ground track points " +
@@ -419,6 +461,18 @@ public partial class MainForm
             : "Review the fields, then press Calculate Route to start guidance.");
 
         return string.Join(" ", parts);
+    }
+
+    /// <summary>The unapplied legs as they are spoken. A clearance route names every one
+    /// of them; a ground-track route names the first few and counts the rest (see
+    /// <see cref="GeometryLegsWorthNaming"/>).</summary>
+    private static string NameUnappliedLegs(IReadOnlyList<string> legs, TaxiwaySource source)
+    {
+        if (source == TaxiwaySource.Clearance || legs.Count <= GeometryLegsWorthNaming)
+            return string.Join(", ", legs);
+
+        return string.Join(", ", legs.Take(GeometryLegsWorthNaming))
+               + $" and {legs.Count - GeometryLegsWorthNaming} more";
     }
 
     /// <summary>Destination priority: the clearance's own runway, then its gate, then
