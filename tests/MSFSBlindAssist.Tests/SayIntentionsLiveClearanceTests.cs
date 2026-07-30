@@ -1,4 +1,4 @@
-﻿// Characterization against REAL SayIntentions traffic, captured 2026-07-28 from a
+// Characterization against REAL SayIntentions traffic, captured 2026-07-28 from a
 // live arrival at EDDF (LMML -> EDDF, landed 07L, taxiing to Terminal 3 Gate J1).
 //
 // Everything in here is verbatim from the SAPI getCommsHistory feed and the

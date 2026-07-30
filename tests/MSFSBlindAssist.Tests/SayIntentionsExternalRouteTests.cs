@@ -191,6 +191,22 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
+    public void A_hold_short_anchor_matches_its_taxiway_however_the_graph_spaces_it()
+    {
+        // On the GEOMETRY path this lookup is the one place a clearance-derived anchor
+        // meets snapper output, and the two spellings need not agree. The agreement walk
+        // that let the track win compares them NORMALIZED ("N 5 E" is N5E), so a raw
+        // compare here would pass the walk and then fail this lookup — silently
+        // downgrading a hold-short ATC gave to "could not set" over a route that has the
+        // taxiway it names.
+        var mapped = MainForm.MapHoldShortsToTaxiways(
+            new[] { new MainForm.ClearanceHoldShort("N5E", "27L") },
+            new[] { "A", "N 5 E", "F" });
+
+        Assert.Equal(new TaxiAssistForm.ExternalHoldShort(1, "27L"), Assert.Single(mapped));
+    }
+
+    [Fact]
     public void A_hold_short_whose_taxiway_is_not_in_the_sequence_maps_to_no_row()
     {
         // A hold-short can name a taxiway the applied sequence does not carry — the
@@ -349,7 +365,7 @@ public class SayIntentionsExternalRouteTests
             unknownTaxiways: new[] { "K" });
 
         Assert.Equal(
-            "SayIntentions route to Gate A9. Via A. Could not apply N, K. " +
+            "SayIntentions route to Gate A9. Could not apply N, K. Via A. " +
             "Review the fields, then press Calculate Route to start guidance.",
             spoken);
     }
@@ -398,7 +414,20 @@ public class SayIntentionsExternalRouteTests
         string spoken = Announce(
             Outcome(destinationApplied: false, applied: new[] { "A" }), "Gate A9", autoStart: false);
 
-        Assert.Contains("Destination not set. Check the destination field.", spoken);
+        Assert.Contains("Destination Gate A9 not set. Check the destination field.", spoken);
+    }
+
+    [Fact]
+    public void An_unseated_destination_is_never_also_claimed_as_the_route_s_destination()
+    {
+        // The first two sentences used to contradict each other: "SayIntentions route to
+        // Gate A9." immediately followed by "Destination not set." A blind pilot has only
+        // the words, so the lead has to be true on its own.
+        string spoken = Announce(
+            Outcome(destinationApplied: false, applied: new[] { "A" }), "Gate A9", autoStart: false);
+
+        Assert.DoesNotContain("route to Gate A9", spoken);
+        Assert.StartsWith("SayIntentions route. Destination Gate A9 not set.", spoken);
     }
 
     [Fact]
@@ -1019,5 +1048,125 @@ public class SayIntentionsExternalRouteTests
             Outcome(applied: new[] { "A" }, skipped: tenLegs), "Gate A9", autoStart: false);
 
         Assert.Contains($"Could not apply {string.Join(", ", tenLegs)}.", spoken);
+    }
+
+    // --- Announcement: warnings before the route body ---------------------------------
+    //
+    // This announcement is now folded into the SINGLE post-StartGuidance AnnounceImmediate
+    // the form already makes at standstill, so it can no longer be discarded by the first
+    // tactical callout. It is also long, and the first callout after the pilot starts
+    // rolling still cuts whatever is left — so the same rule the router's own summary
+    // learned twice (TaxiGuidanceManager.Routing.cs: "a warning at the tail of a long
+    // summary never gets heard") applies here: every warning goes ahead of "Via …".
+
+    [Fact]
+    public void EveryWarningIsSpokenBeforeTheRouteItself()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: new[] { "N" },
+                    skippedHoldShorts: new[] { "22" }),
+            "Gate A9", autoStart: true, unknownTaxiways: new[] { "K" });
+
+        Assert.True(spoken.IndexOf("Could not apply", StringComparison.Ordinal)
+                    < spoken.IndexOf("Via A.", StringComparison.Ordinal));
+        Assert.True(spoken.IndexOf("Could not set hold short", StringComparison.Ordinal)
+                    < spoken.IndexOf("Via A.", StringComparison.Ordinal));
+        Assert.EndsWith("Guidance started.", spoken);
+    }
+
+    [Fact]
+    public void ATrackMostlyOffTheTaxiwaysIsWarnedAboutBeforeTheRoute()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "E4" }), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4" }, 40, unsnapped: 20));
+
+        Assert.True(spoken.IndexOf("off the taxiways", StringComparison.Ordinal)
+                    < spoken.IndexOf("Via E4.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheHoldShortsThatWereSetStillFollowTheRouteTheyBelongTo()
+    {
+        // These are not warnings — they describe the route that WAS built, so they stay
+        // with it, after "Via …".
+        string spoken = Announce(
+            Outcome(applied: new[] { "N" },
+                    appliedHoldShorts: new[] { new TaxiAssistForm.AppliedHoldShort("15R", "N") }),
+            "Runway 22R", autoStart: false);
+
+        Assert.True(spoken.IndexOf("Via N.", StringComparison.Ordinal)
+                    < spoken.IndexOf("Hold short of runway 15R after N.", StringComparison.Ordinal));
+    }
+
+    // --- Announcement: the Via list is capped on the geometry path too -----------------
+
+    [Fact]
+    public void AGeometryRouteDoesNotReciteAWallOfLegsItIsTaking_either()
+    {
+        // Same reasoning as the skipped-leg cap, and the same cap: these are names off
+        // the airport's graph that the pilot never heard a controller say, so a twelve-leg
+        // ground track recited twelve unfamiliar syllables in a row. The first few say
+        // where the route starts, the count says how far it runs; the form's route-summary
+        // box and sayintentions.log keep the whole sequence.
+        string[] twelveLegs =
+            { "R7", "E7", "E6", "E7", "N", "E", "Inner", "E", "B", "E5", "F", "C" };
+
+        string spoken = Announce(
+            Outcome(applied: twelveLegs), "Runway 16", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(twelveLegs, 120));
+
+        Assert.Contains("Via R7, E7, E6 and 9 more.", spoken);
+        Assert.DoesNotContain("Inner", spoken);
+    }
+
+    [Fact]
+    public void TheClearancePathStillNamesEveryLegItIsTaking()
+    {
+        // Every one of these is a word the controller said, so the pilot hears all of
+        // them however many there are — exactly as for the skipped legs.
+        string[] sixLegs = { "A", "B", "C", "D", "K", "N" };
+
+        string spoken = Announce(Outcome(applied: sixLegs), "Gate A9", autoStart: false);
+
+        Assert.Contains($"Via {string.Join(", ", sixLegs)}.", spoken);
+        Assert.DoesNotContain("more", spoken);
+    }
+
+    // --- The route-shaping state a FAILED import must put back -------------------------
+    //
+    // TryResolveExternalDestination promises "probing leaves no mark", but probing a gate
+    // candidate switches the destination type, and OnDestTypeChanged unticks the
+    // intersection-departure and CAT III boxes on the way out. A pilot who hand-built an
+    // intersection departure, pressed Alt+Shift+S and heard "SayIntentions route
+    // unavailable" — i.e. "nothing happened" — silently lost it, and the next Calculate
+    // lined them up at the full-length threshold holding at the CAT I line.
+
+    [Fact]
+    public void A_restored_intersection_departure_goes_back_to_the_taxiway_it_named()
+    {
+        Assert.Equal(1, TaxiAssistForm.RestoredIntersectionIndex(
+            new[] { "T3 — 2100 m remaining", "T4 — 1800 m remaining" }, "T4 — 1800 m remaining"));
+    }
+
+    [Fact]
+    public void A_restored_intersection_falls_back_to_the_first_when_its_taxiway_is_gone()
+    {
+        // The probe can leave a different runway selected than the one the pilot's
+        // intersection belonged to. A checked box over a blank list is the worse outcome:
+        // Calculate silently reverts to a full-length departure while the box still reads
+        // as ticked.
+        Assert.Equal(0, TaxiAssistForm.RestoredIntersectionIndex(
+            new[] { "T3 — 2100 m remaining" }, "T4 — 1800 m remaining"));
+
+        Assert.Equal(0, TaxiAssistForm.RestoredIntersectionIndex(
+            new[] { "T3 — 2100 m remaining" }, null));
+    }
+
+    [Fact]
+    public void A_runway_with_no_intersections_restores_nothing()
+    {
+        Assert.Equal(-1, TaxiAssistForm.RestoredIntersectionIndex(
+            Array.Empty<string>(), "T4 — 1800 m remaining"));
     }
 }

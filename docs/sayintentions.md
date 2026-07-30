@@ -205,8 +205,11 @@ ground track carries neither.
 
 #### What the summary tells you
 
-It names the destination, says where the sequence came from, lists the taxiways that
-were applied, then everything that did not survive:
+It names the destination, says where the sequence came from, then **everything that did
+not survive**, and only then the route it actually built. Warnings lead deliberately: with
+"start guidance immediately" on, the summary is spoken standing still and the first
+turn-by-turn callout cuts off whatever is left of it once you start rolling, so the parts
+you can act on go first.
 
 - **"Route from SayIntentions ground track."** — the sequence came from the published
   track, which agreed with the clearance.
@@ -233,15 +236,31 @@ were applied, then everything that did not survive:
   incomplete."** — most of the published track failed to match this airport's pavement.
   The last few points of a normal arrival are the turn into the stand, which is apron,
   so this only appears when a quarter or more of the track went unread.
-- **"Hold short of runway 15R after N."** — a hold-short from the clearance that was
-  set, on the taxiway it follows. One line per hold-short, in clearance order.
 - **"Could not set hold short of runway 22."** — a hold-short that reached no row.
   Treat it as still in force: guidance will not stop you there.
-- **"Destination not set. Check the destination field."** — the dialog is open but you
-  have to pick the destination yourself.
+- **"Via A, B, C."** — the route that was built. On a ground-track route this is capped
+  the same way the line above is (*"Via R7, E7, E6 and 9 more."*): those names come from
+  the airport's graph rather than from the controller, and the real Zurich track runs
+  twelve legs. The whole sequence is always in the dialog's route-summary box and in
+  `sayintentions.log`.
+- **"Hold short of runway 15R after N."** — a hold-short from the clearance that was
+  set, on the taxiway it follows. One line per hold-short, in clearance order, after the
+  route they belong to.
+- **"SayIntentions route. Destination Gate A9 not set. Check the destination field."** —
+  the dialog is open but you have to pick the destination yourself. When this happens the
+  summary does *not* also claim to be routing you there.
 
-Nothing that came out of the clearance is dropped in silence. A route shorter than the
-one you were cleared for is not something you can see, so it is always said out loud.
+Nothing that came out of the clearance is dropped in silence — with one deliberate
+exception, above: on a **ground-track** route a taxiway the clearance named that this
+airport does not have is not spoken at all (it is in `sayintentions.log` as
+`notAtAirport`). Announcing it would mean saying "could not apply North" over a route that
+does use taxiway N. A route shorter than the one you were cleared for is otherwise not
+something you can see, so it is always said out loud.
+
+If you press **Alt+Shift+S** again while an import is still running, you hear
+*"SayIntentions taxi route already being built."* The import can take several seconds —
+reading the frequency, your position, and the airport's taxiway names — and two of them at
+once would fight over the same dialog.
 
 ## Settings
 
@@ -652,6 +671,15 @@ announcing "Could not apply North" over a route that does include `N` teaches ex
 distrust the phonetic-only rule exists to prevent. The other half of the line — a taxiway
 the dialog could not seat — is spoken on both paths.
 
+**That exception has a cost, and it is accepted rather than overlooked.** On a ground-track
+route a taxiway the clearance genuinely named that this airport genuinely does not have is
+now never spoken — the only record is `notAtAirport=[…]` in `sayintentions.log`. It is the
+better of the two failures (a false "could not apply" over a leg the route IS taking
+poisons every later announcement, while this one loses a line about a taxiway that could
+never have been applied anyway), but it means the general rule "nothing from the clearance
+is dropped in silence" has exactly one hole in it. Do not close it by restoring the line,
+and do not remove that log field — it is what makes the hole diagnosable.
+
 The word list has since gained the five compass words, which ARE ordinary English — the
 one widening this rule ever took, and bounded the same way: a closed list of whole words,
 no bare designators. What English costs is paid by `IsDirectionProse`, not by loosening
@@ -887,7 +915,9 @@ twelve legs across the airfield, published a minute before Zurich Ground said an
 Taken silently, that announced *"SayIntentions route to Runway 16. Route from
 SayIntentions ground track. Via R7, E7, E6, E7, N, E, E, B, E5, F, C…"* — a complete,
 confident route no controller had given, with nothing to say the clearance had never been
-read. Worse, `GetLastTransmissionAsync`'s `Error` was **discarded** at the call site
+read. (That quotation is the behaviour as it was. Such a route now also reads *"Via R7,
+E7, E6 and 9 more."* — twelve graph names in a row was a recital in its own right; see the
+cap above.) Worse, `GetLastTransmissionAsync`'s `Error` was **discarded** at the call site
 (`last.Transmission` only), so the timeout, the HTTP failure and the "that was not a taxi
 clearance" case all produced the same silence.
 
@@ -963,10 +993,14 @@ These are decisions with their evidence attached, not open bugs.
   [Hold-shorts belong to their own taxiway](#hold-shorts-belong-to-their-own-taxiway)).
   A mid-taxi import whose shortened track begins after an already-crossed hold-short will
   report it that way — which is correct, and audible.
-- **The unapplied-leg recital is capped at three names plus a count, on the geometry path
-  only.** Those names come from the graph rather than from the controller, and ten
-  unfamiliar syllables in a row is a recital rather than information. A clearance route's
-  list is never capped: every name there is a word the pilot heard.
+- **Both leg lists are capped at three names plus a count, on the geometry path only.**
+  That is the unapplied legs *and* the "Via …" line naming the route being taken: those
+  names come from the graph rather than from the controller, ten unfamiliar syllables in a
+  row is a recital rather than information, and the real LSZH pre-clearance track is twelve
+  legs long — so the "Via" line had exactly the same problem the skipped list did. A
+  clearance route's lists are never capped: every name there is a word the pilot heard.
+  Nothing is lost outright either way — the dialog's route-summary box and
+  `sayintentions.log` carry the full sequence.
 
 ### Gate names
 
@@ -986,6 +1020,81 @@ imported over a hand-built runway route otherwise keeps the old intersection dep
 and CAT III hold — a different lineup point, with nothing in the announcement to reveal
 it. `chkFitFilter` is deliberately exempt: it describes the aircraft's wingspan rather
 than the route, and forcing it either way could hide the very gate the clearance names.
+
+**A FAILED import owns nothing, and that needs its own restore.**
+`TryResolveExternalDestination` documents "probing leaves no mark", but probing a *gate*
+candidate sets `cmbDestType`, and `OnDestTypeChanged` unticks `chkIntersection` (which via
+`OnIntersectionToggled` also empties `cmbIntersection` and `_intersectionMap`) and
+`chkCatIiiHold` on the way out of runway mode. Putting the *type* back re-shows both boxes,
+unticked. So the mirror image of the bug above: a pilot hand-builds "Runway 27L,
+intersection departure at T4, CAT III hold", presses Alt+Shift+S, the clearance names a
+gate this airport does not have, everything fails, and they hear *"SayIntentions route
+unavailable. No usable assigned runway or gate found."* — "nothing happened" — while their
+intersection departure and LVP hold are gone, and the next Calculate lines them up at the
+full-length threshold holding at the CAT I line. `RestoreDestinationState` therefore
+restores those three as well as the type, search and destination, in that order (the
+intersection list is rebuilt against whichever runway is selected, so the destination has
+to be back first).
+
+The intersection restore does **not** go through the checkbox: `OnIntersectionToggled` →
+`ShowIntersectionListOrFallback` moves focus to the combo and can announce "No runway
+intersections available. Full length departure." Neither belongs to a silent restore — the
+pilot performed no action. The handler is detached, `PopulateIntersections` is called
+directly, and `RestoredIntersectionIndex` picks the entry that was selected, the first if
+that intersection is no longer offered, or `-1` (untick) if the runway has none.
+
+**Apply atomically.** Everything that can throw — reading the graph's named edges,
+snapping the ground track, showing the form — now runs *before* the destination probe, so
+`TryResolveExternalDestination` and `ApplyExternalRoute` are adjacent statements. The probe
+mutates the form on success and only restores on failure, so a throw between the two left
+the form holding SayIntentions' destination on top of the pilot's leftover taxiway rows,
+announced as nothing more than *"SayIntentions taxi route failed."*
+
+### One import at a time, one airport load at a time
+
+The import awaits repeatedly on the UI thread — up to 5 s of comms history, 1.5 s for a
+fresh position, up to 8 s of taxiway-name prefetch, then a graph build — which is long
+enough for a pilot who has heard nothing to press Alt+Shift+S again. Two runs interleave at
+every await. `BuildTaxiRouteFromSayIntentionsAsync` takes an `Interlocked` latch and
+refuses the second press **out loud** (*"SayIntentions taxi route already being built."*);
+silence is what made the pilot press twice in the first place.
+
+`LoadAirportDataAsync` needs its own guard for a different reason: it *clears*
+`cmbFirstTaxiway`, `cmbDestination` and the dynamic taxiway rows before its awaits and
+repopulates them after. A second load interleaving in that window leaves one caller
+resolving its clearance against emptied combos — every `combo.Items.IndexOf` returns `-1`,
+and the pilot hears *"No taxiways from the clearance matched this airport. Using shortest
+path."* for a clearance that was perfectly good, with guidance starting on it. Loads are
+**chained** rather than dropped, because a second load is usually a *different* airport (a
+typed ICAO, the aircraft having moved) and dropping it would strand the form on the wrong
+one. All three entry points — `SetAircraftPosition`, the `txtAirport.Leave` handler and
+`LoadAirportForExternalRouteAsync` — go through the same chain.
+
+### The summary has to survive guidance starting
+
+With auto-start on, the order is `ApplyExternalRoute` → `OnCalculateClicked` → `LoadRoute`
+(queues the router's own summary) → `StartGuidance` (first-taxiway `AnnounceImmediate`,
+which **discards** anything queued) → the form's standstill `AnnounceImmediate`. The
+import's summary used to be plain queued speech announced *after* all of that, so it was
+the first thing a tactical callout killed — taking *"could not apply D, E"*, *"could not
+set hold short of runway 22L"* and *"SayIntentions ground track differs from the
+clearance"* with it. This codebase has paid for that lesson twice already, in
+`TaxiGuidanceManager.Routing.cs` (the constrained-length advisory) and in
+`OnCalculateClicked` (the runway-reach warning).
+
+So `ApplyExternalRoute` no longer starts guidance. `TaxiAssistForm.StartImportedRoute`
+does, taking a `Func<bool, string>` the form invokes at the moment it speaks — the `bool`
+being whether guidance **actually** started, so a route that failed to calculate is never
+announced as "Guidance started." and gets the "review the fields" tail instead, which is
+also the right advice after a failed Calculate. Every Calculate abort an import can reach
+goes through `AnnounceCalculateAbort`, which joins the reason and the summary into one
+utterance rather than letting one stomp the other.
+
+Within the summary, **warnings lead**: the utterance is spoken at a standstill but the
+first callout after the aircraft rolls still cuts the tail. And the lead sentence names the
+destination only when the destination actually seated — it used to open *"SayIntentions
+route to Gate A9."* and then say *"Destination not set."* two sentences later, the first
+thing the pilot hears contradicting the second.
 
 ### One graph build per keypress
 

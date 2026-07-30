@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Navigation;
@@ -27,6 +27,10 @@ public partial class MainForm
     private static readonly LogChannel _siLog = Log.Channel("sayintentions");
 
     private SayIntentionsInfoForm? sayIntentionsInfoForm;
+
+    /// <summary>Non-zero while a taxi-route import is running. See the guard in
+    /// <see cref="BuildTaxiRouteFromSayIntentionsAsync"/>.</summary>
+    private int _sayIntentionsImportBusy;
 
     private async Task AnnounceSayIntentionsLastTransmissionAsync()
     {
@@ -106,9 +110,23 @@ public partial class MainForm
     /// used to sit ahead of it: this runs as a discarded Task, so anything thrown before
     /// the try is captured into it and the pilot hears nothing at all while
     /// sayintentions.log records nothing either. ValidateDatabaseSimulatorMatch in
-    /// particular reads SimConnect/provider state and can open a modal dialog.</summary>
+    /// particular reads SimConnect/provider state and can open a modal dialog.
+    ///
+    /// ONE AT A TIME. This runs 5 s of comms history, up to 1.5 s of position, up to 8 s
+    /// of taxiway-name prefetch and a graph build — long enough for a pilot who heard
+    /// nothing to press the key again. Two runs interleave at every await, on the UI
+    /// thread, and the second tears down and rebuilds the very combos the first is about
+    /// to resolve its clearance against. (The airport load is separately serialized;
+    /// this stops two imports fighting over the form's ROWS as well.) A dropped press
+    /// must still be answered — silence is what made the pilot press twice.</summary>
     private async Task BuildTaxiRouteFromSayIntentionsAsync()
     {
+        if (Interlocked.CompareExchange(ref _sayIntentionsImportBusy, 1, 0) != 0)
+        {
+            announcer.AnnounceImmediate("SayIntentions taxi route already being built.");
+            return;
+        }
+
         try
         {
             if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
@@ -177,15 +195,18 @@ public partial class MainForm
             }
 
             string clearance = context.ClearanceText ?? "";
-            if (!TryResolveSayIntentionsDestination(form, status, clearance, icao, out bool isRunway, out string label))
-            {
-                announcer.AnnounceImmediate(
-                    "SayIntentions route unavailable. No usable assigned runway or gate found.");
-                return;
-            }
 
-            // The clearance always supplies the destination (above) and the hold-shorts
-            // (below) — SayIntentions' geometry carries neither.
+            // EVERYTHING THAT CAN THROW RUNS BEFORE THE DESTINATION IS RESOLVED, and the
+            // form is shown before it too, so that resolving and applying are adjacent
+            // statements with nothing fallible between them. TryResolveExternalDestination
+            // MUTATES the form on success — it selects SayIntentions' destination — and it
+            // only restores the pilot's own state when it FAILS. A throw in between
+            // (reading the graph's edges, snapping, showing the form) therefore left the
+            // form holding SI's destination on top of the pilot's leftover taxiway rows,
+            // announced as nothing more than "SayIntentions taxi route failed."
+            //
+            // The clearance always supplies the destination (below) and the hold-shorts —
+            // SayIntentions' geometry carries neither.
             var (clearanceTaxiways, planHoldShorts, unknownTaxiways) =
                 ParseClearanceTaxiPlan(clearance, knownTaxiways);
 
@@ -207,10 +228,20 @@ public partial class MainForm
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
 
             // Show BEFORE announcing so the screen reader's own form-focus
-            // announcement does not collide with the route summary.
+            // announcement does not collide with the route summary — and before the
+            // destination probe, which is the first thing here that mutates the form.
             form.Show();
             form.BringToFront();
-            var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts, autoStart);
+
+            if (!TryResolveSayIntentionsDestination(
+                    form, status, clearance, icao, out bool isRunway, out string label))
+            {
+                announcer.AnnounceImmediate(
+                    "SayIntentions route unavailable. No usable assigned runway or gate found.");
+                return;
+            }
+
+            var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts);
 
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
@@ -229,15 +260,28 @@ public partial class MainForm
                         $"holdShortsMissed=[{string.Join(",", outcome.SkippedHoldShortRunways)}] " +
                         $"autoStart={autoStart}");
 
-            announcer.Announce(BuildExternalRouteAnnouncement(
-                outcome, unknownTaxiways, label, autoStart, source, disagreed,
+            string Describe(bool guidanceStarted) => BuildExternalRouteAnnouncement(
+                outcome, unknownTaxiways, label, guidanceStarted, source, disagreed,
                 source == TaxiwaySource.Geometry ? snap : null,
-                clearanceTaxiways.Count > 0, clearanceLookupProblem));
+                clearanceTaxiways.Count > 0, clearanceLookupProblem);
+
+            // With auto-start on, the form speaks this as part of its ONE post-guidance
+            // standstill utterance (StartImportedRoute) — queued speech here would be
+            // discarded by the first-taxiway callout StartGuidance fires, taking
+            // "could not apply …", "could not set hold short …" and the ground-track
+            // disagreement with it. Without auto-start nothing tactical follows, so the
+            // ordinary queue is right and the screen reader keeps the floor.
+            if (autoStart) form.StartImportedRoute(Describe);
+            else announcer.Announce(Describe(false));
         }
         catch (Exception ex)
         {
             _siLog.Error("Taxi route build failed", ex);
             announcer.AnnounceImmediate($"SayIntentions taxi route failed. {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sayIntentionsImportBusy, 0);
         }
     }
 
@@ -403,17 +447,21 @@ public partial class MainForm
     internal const double UnsnappedShareWorthSaying = 0.25;
 
     /// <summary>
-    /// How many unapplied legs of a GROUND-TRACK route are named one by one.
+    /// How many legs of a GROUND-TRACK route are named one by one — both the legs it is
+    /// taking and the legs it could not apply.
     ///
     /// On the clearance path every such name is a word the controller said, and all of
     /// them are spoken however many there are. On the geometry path they are names off
     /// the airport's graph that the pilot has never heard — a route short of ten of them
     /// announced ten unfamiliar syllables in a row, which is a recital rather than
-    /// information. Past this many the rest become a count on the end of the same line
-    /// ("F, G, R and 7 more"), which keeps both things the pilot can act on: roughly
-    /// WHERE the route starts falling short, and HOW far short it falls. Replacing the
-    /// whole list with a bare count put a cliff at four, where one extra leg cost every
-    /// name and said less than the three-leg case did.
+    /// information, and the real LSZH pre-clearance track is TWELVE legs long, so the
+    /// "Via …" line had exactly the same problem as the unapplied list. Past this many
+    /// the rest become a count on the end of the same line ("F, G, R and 7 more"), which
+    /// keeps both things the pilot can act on: roughly WHERE the route goes or starts
+    /// falling short, and HOW far it runs. Replacing the whole list with a bare count put
+    /// a cliff at four, where one extra leg cost every name and said less than the
+    /// three-leg case did. Nothing is lost outright — the form's route-summary box and
+    /// sayintentions.log both carry the whole sequence.
     /// </summary>
     internal const int GeometryLegsWorthNaming = 3;
 
@@ -459,16 +507,33 @@ public partial class MainForm
     /// is missing (a timeout, an HTTP failure, or a last transmission that was not a taxi
     /// clearance); it was discarded entirely before, which made all three silent. Both are
     /// only spoken when the clearance came up empty — a route built from a clearance that
-    /// WAS read gains no extra words.</summary>
+    /// WAS read gains no extra words.
+    ///
+    /// ORDER: every warning goes AHEAD of the route body ("Via …"). This string used to be
+    /// queued speech that the first tactical callout discarded outright; it is now folded
+    /// into the single post-StartGuidance AnnounceImmediate the form makes at standstill
+    /// (TaxiAssistForm.StartImportedRoute), so it always reaches the pilot — but it is
+    /// long, and once the aircraft rolls the next callout still cuts whatever is left.
+    /// That is the same lesson TaxiGuidanceManager.Routing.cs records twice for the
+    /// router's own summary ("a warning at the tail of a long summary never gets heard"),
+    /// so the warnings lead and the descriptive part follows.
+    ///
+    /// The lead names the destination only when the destination actually SEATED. It used
+    /// to open "SayIntentions route to Gate A9." and then say "Destination not set." two
+    /// sentences later — the first thing the pilot hears contradicting the second, with
+    /// nothing on screen to arbitrate.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
         string destination, bool autoStart, TaxiwaySource source, bool disagreed,
         SnapResult? snap, bool clearanceNamedTaxiways, string? clearanceLookupProblem)
     {
-        var parts = new List<string> { $"SayIntentions route to {destination}." };
-
-        if (!outcome.DestinationApplied)
-            parts.Add("Destination not set. Check the destination field.");
+        var parts = new List<string>
+        {
+            outcome.DestinationApplied
+                ? $"SayIntentions route to {destination}."
+                : $"SayIntentions route. Destination {destination} not set. " +
+                  "Check the destination field."
+        };
 
         if (source == TaxiwaySource.Geometry)
         {
@@ -484,26 +549,28 @@ public partial class MainForm
         if (!clearanceNamedTaxiways && !string.IsNullOrWhiteSpace(clearanceLookupProblem))
             parts.Add(clearanceLookupProblem);
 
-        parts.Add(outcome.AppliedTaxiways.Count > 0
-            ? $"Via {string.Join(", ", outcome.AppliedTaxiways)}."
-            : source == TaxiwaySource.Geometry
-                ? "No taxiways from the ground track matched this airport. Using shortest path."
-                : "No taxiways from the clearance matched this airport. Using shortest path.");
-
         var couldNotApply = new List<string>(outcome.SkippedTaxiways);
         if (source == TaxiwaySource.Clearance) couldNotApply.AddRange(unknownTaxiways);
         if (couldNotApply.Count > 0)
-            parts.Add($"Could not apply {NameUnappliedLegs(couldNotApply, source)}.");
+            parts.Add($"Could not apply {NameLegs(couldNotApply, source)}.");
 
         if (snap != null && snap.UnsnappedCount > snap.PointCount * UnsnappedShareWorthSaying)
             parts.Add($"{snap.UnsnappedCount} of {snap.PointCount} ground track points " +
                       "were off the taxiways, so the route may be incomplete.");
 
-        foreach (var holdShort in outcome.AppliedHoldShorts)
-            parts.Add($"Hold short of runway {holdShort.Runway} after {holdShort.AfterTaxiway}.");
-
         if (outcome.SkippedHoldShortRunways.Count > 0)
             parts.Add($"Could not set hold short of runway {string.Join(", ", outcome.SkippedHoldShortRunways)}.");
+
+        parts.Add(outcome.AppliedTaxiways.Count > 0
+            ? $"Via {NameLegs(outcome.AppliedTaxiways, source)}."
+            : source == TaxiwaySource.Geometry
+                ? "No taxiways from the ground track matched this airport. Using shortest path."
+                : "No taxiways from the clearance matched this airport. Using shortest path.");
+
+        // A hold-short that WAS set describes the route being flown, not a failure, so it
+        // stays with the route it belongs to.
+        foreach (var holdShort in outcome.AppliedHoldShorts)
+            parts.Add($"Hold short of runway {holdShort.Runway} after {holdShort.AfterTaxiway}.");
 
         parts.Add(autoStart
             ? "Guidance started."
@@ -512,10 +579,12 @@ public partial class MainForm
         return string.Join(" ", parts);
     }
 
-    /// <summary>The unapplied legs as they are spoken. A clearance route names every one
-    /// of them; a ground-track route names the first few and counts the rest (see
-    /// <see cref="GeometryLegsWorthNaming"/>).</summary>
-    private static string NameUnappliedLegs(IReadOnlyList<string> legs, TaxiwaySource source)
+    /// <summary>A leg list as it is spoken. A clearance route names every one of them —
+    /// each is a word the controller said; a ground-track route names the first few and
+    /// counts the rest (see <see cref="GeometryLegsWorthNaming"/>). Used for BOTH the
+    /// route being taken and the legs that could not be applied: a twelve-leg ground
+    /// track is a recital either way round.</summary>
+    private static string NameLegs(IReadOnlyList<string> legs, TaxiwaySource source)
     {
         if (source == TaxiwaySource.Clearance || legs.Count <= GeometryLegsWorthNaming)
             return string.Join(", ", legs);
@@ -691,7 +760,15 @@ public partial class MainForm
     /// taxiway lands on the second row rather than back on the first. A name the
     /// sequence does not carry maps to -1: the form reports it instead of hanging the
     /// hold-short on whatever row happens to be last — which is also what happens to a
-    /// hold-short the clearance gave before naming any taxiway at all.</summary>
+    /// hold-short the clearance gave before naming any taxiway at all.
+    ///
+    /// Names are compared the way the REST of this import compares them
+    /// (<see cref="SameTaxiwayNameSi"/>), not literally. On the geometry path this is
+    /// the one place a clearance-derived anchor meets snapper output, and the two need
+    /// not spell a name identically: the agreement walk that let the track win already
+    /// treats "N 5 E" and "N5E" as one taxiway, so a literal compare here would pass the
+    /// walk and then fail this lookup — quietly demoting a hold-short ATC gave to
+    /// "could not set" over a route that does contain the taxiway it names.</summary>
     internal static List<TaxiAssistForm.ExternalHoldShort> MapHoldShortsToTaxiways(
         IReadOnlyList<ClearanceHoldShort> holdShorts, IReadOnlyList<string> taxiways)
     {
@@ -701,12 +778,18 @@ public partial class MainForm
         foreach (var holdShort in holdShorts)
         {
             int index = -1;
-            for (int i = searchFrom; i < taxiways.Count; i++)
+            // A hold-short with no anchor at all stays at -1 without searching: comparing
+            // NORMALIZED names, an empty anchor would otherwise match any name that
+            // normalizes to empty, where the old literal compare could not.
+            if (!string.IsNullOrWhiteSpace(holdShort.AfterTaxiway))
             {
-                if (taxiways[i].Equals(holdShort.AfterTaxiway, StringComparison.OrdinalIgnoreCase))
+                for (int i = searchFrom; i < taxiways.Count; i++)
                 {
-                    index = i;
-                    break;
+                    if (SameTaxiwayNameSi(taxiways[i], holdShort.AfterTaxiway))
+                    {
+                        index = i;
+                        break;
+                    }
                 }
             }
 

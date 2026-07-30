@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.Settings;

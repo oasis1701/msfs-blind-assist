@@ -50,14 +50,21 @@ public static class SayIntentionsTaxiPathSnapper
     /// counting them is that a point off pavement must never be hung on whichever
     /// taxiway happens to be nearest.
     ///
-    /// That measurement is against OSM centrelines only — the lszh-taxiways.json
-    /// fixture this snapper is tested against. The real caller is planned to feed
-    /// edges from TaxiGraph.GetNamedEdges() instead, which per CLAUDE.md's taxi-data-
-    /// augmentation invariant is navdata geometry with OSM names, never OSM geometry —
-    /// so a systematic navdata-vs-OSM centreline offset is invisible to this
-    /// measurement. Re-measure this constant against navdata-sourced edges once that
-    /// graph-backed edge source lands; do not assume the OSM-measured value still
-    /// holds.
+    /// That measurement was against OSM centrelines only — the lszh-taxiways.json
+    /// fixture this snapper is tested against — while the real caller feeds edges from
+    /// TaxiGraph.GetNamedEdges(), which per CLAUDE.md's taxi-data-augmentation invariant
+    /// is navdata geometry with OSM names, never OSM geometry. A systematic
+    /// navdata-vs-OSM centreline offset would have been invisible to the OSM measurement,
+    /// so this constant was re-measured against navdata-sourced edges. THAT IS DONE — it
+    /// does not need doing again:
+    ///
+    /// EGLL, live capture, edges from the built graph. Median nearest-edge distance
+    /// 1.53 m, p90 2.31 m, 4 of 68 points unsnapped — those four being the lead-in to the
+    /// stand, which is apron, exactly the shape the LSZH/OSM read showed — and the import
+    /// reproduced the cleared route exactly. So navdata centrelines sit an order of
+    /// magnitude inside this tolerance and 25 m stands unchanged. Raising it would only
+    /// stop the stand lead-in being REPORTED as unread, which is the one thing counting
+    /// it is for.
     /// </summary>
     internal const double SnapToleranceMetres = 25.0;
 
@@ -104,9 +111,15 @@ public static class SayIntentionsTaxiPathSnapper
             string? nearestName = null;
             double nearestMetres = double.MaxValue;
 
-            // Linear over every segment: an airport is a few thousand of them and a
-            // path a few dozen points, so this runs once per clearance in well under a
-            // frame. A spatial index would be more code for no measurable gain.
+            // Linear over every segment, and NOT free: measured 20-90 ms per call —
+            // a 111-point capture against EGLL's 5,189 named edges is ~576k point-segment
+            // evaluations, about 40 ms. That is several frames, and it runs SYNCHRONOUSLY
+            // ON THE UI THREAD from the Alt+Shift+S handler. It is acceptable only
+            // because it happens ONCE per import, while the aircraft is standing still,
+            // inside an operation that has already spent seconds on HTTP. Do not move
+            // this onto a per-frame path, and do not assume it is cheap: if it ever needs
+            // to run repeatedly, a spatial index (or a bounding-box reject before the
+            // segment math) comes first.
             foreach (var edge in candidates)
             {
                 double metres = PointToSegmentMetres(
