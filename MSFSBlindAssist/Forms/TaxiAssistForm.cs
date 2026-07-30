@@ -722,11 +722,9 @@ public class TaxiAssistForm : Form
             Height = 30,
             Enabled = _importFromSayIntentions != null,
             AccessibleName = "Fill from SayIntentions",
-            // Kept to one clause: this is spoken after the name every time focus lands
-            // here, so it may only carry what the name does not already say.
             AccessibleDescription = _importFromSayIntentions != null
-                ? "Same as the Ctrl+Shift+Y hotkey."
-                : "Unavailable in this window."
+                ? "Fill this form from the latest SayIntentions taxi clearance. Same as Ctrl+Shift+Y."
+                : "Fill this form from the latest SayIntentions taxi clearance. Unavailable in this window."
         };
         btnSayIntentions.Click += OnSayIntentionsClicked;
         y += 35;

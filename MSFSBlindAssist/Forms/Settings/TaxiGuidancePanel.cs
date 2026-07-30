@@ -423,9 +423,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Location = new Point(20, 820),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
-            // One clause. The name already says what checking it does; this only has to
-            // say what clearing it does, and it is spoken on every focus change.
-            AccessibleDescription = "Off: the route is filled in for you to review first."
+            AccessibleDescription = "When checked, a SayIntentions import starts guidance straight away "
+                                    + "instead of filling the form for you to review"
         };
 
         Controls.AddRange(new Control[]
