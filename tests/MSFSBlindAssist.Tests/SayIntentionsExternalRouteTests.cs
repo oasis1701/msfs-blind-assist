@@ -18,7 +18,6 @@
 // taxi-graph dependencies); seating behavior that needs live combos is verified in
 // the sim per the PR's test plan.
 
-using System.Globalization;
 using MSFSBlindAssist;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Services.SayIntentions;
@@ -285,9 +284,11 @@ public class SayIntentionsExternalRouteTests
         TaxiAssistForm.ExternalRouteOutcome outcome, string destination, bool autoStart,
         string[]? unknownTaxiways = null,
         MainForm.TaxiwaySource source = MainForm.TaxiwaySource.Clearance,
-        SnapResult? snap = null)
+        SnapResult? snap = null,
+        bool disagreed = false)
         => MainForm.BuildExternalRouteAnnouncement(
-            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart, source, snap);
+            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart,
+            source, disagreed, snap);
 
     [Fact]
     public void Announcement_names_destination_taxiways_and_the_review_step()
@@ -414,72 +415,164 @@ public class SayIntentionsExternalRouteTests
         Assert.DoesNotContain("Could not apply", spoken);
     }
 
-    // --- GeometryIsFresherThanClearance: the freshness gate ---------------------------
+    // --- ChooseTaxiwaySource: the geometry has to AGREE with the clearance -------------
     //
-    // SayIntentions publishes its own taxi-route geometry, and BEFORE a clearance that
-    // geometry is SI's own plan rather than the route the controller gave. Two live LSZH
-    // captures either side of one clearance measured the difference, so this gate is a
-    // correctness requirement: without it the import is confidently wrong.
+    // SayIntentions publishes its own taxi-route geometry, and before a clearance that
+    // geometry is SI's own plan rather than the route the controller gave — a live LSZH
+    // capture a minute before Ground spoke gave a completely different route. So the
+    // track has to earn the route.
+    //
+    // It cannot earn it on TIME. flight_details.timestamp is when SI wrote the FILE, not
+    // when it computed the path: three committed capture pairs carry a byte-identical
+    // taxi_path under stamps 68 s, 116 s and 252 s apart, and a file write is always
+    // later than a transmission already on the frequency — so a stamp comparison passes
+    // on every stale path there is. What CAN tell them apart is whether the clearance
+    // runs through the track. Each of the four cases below is a real capture.
 
-    private static DateTime? Utc(string? iso) =>
-        iso == null
-            ? null
-            : DateTime.Parse(iso, CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
-
-    [Theory]
-    // geometry newer than the clearance -> geometry
-    [InlineData("2026-07-29T20:33:51Z", "2026-07-29T20:33:42Z", true)]
-    // same instant counts: "at or after" the clearance, not strictly after
-    [InlineData("2026-07-29T20:33:42Z", "2026-07-29T20:33:42Z", true)]
-    // geometry OLDER -> clearance text. The live 20:32:41Z capture, a minute before
-    // Ground spoke, gave R7,E7,E6,E7,N,E,Inner,E,B,E5,F,C — SI's own plan, not the
-    // cleared route. Using it would be confidently wrong.
-    [InlineData("2026-07-29T20:32:41Z", "2026-07-29T20:33:42Z", false)]
-    [InlineData(null, "2026-07-29T20:33:42Z", false)]   // unknown -> trust what was heard
-    [InlineData("2026-07-29T20:33:51Z", null, false)]
-    [InlineData(null, null, false)]
-    public void GeometryIsOnlyPreferredWhenItIsFresherThanTheClearance(
-        string? geo, string? clearance, bool expected)
-    {
-        Assert.Equal(expected, MainForm.GeometryIsFresherThanClearance(Utc(geo), Utc(clearance)));
-    }
-
-    // --- ResolveClearanceStampUtc: what the geometry has to beat ----------------------
-
-    private static SayIntentionsTransmission Transmission(string message, DateTime? stamp) =>
-        new("ATC", message, "Zurich Ground", "GND", stamp, 42);
+    private static (MainForm.TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
+        Choose(string[] clearance, string[] geometry) =>
+        MainForm.ChooseTaxiwaySource(clearance, geometry);
 
     [Fact]
-    public void TheClearanceStampIsTheStampOfTheTransmissionItCameFrom()
+    public void LiveLszhArrivalTrackReproducesTheClearanceExactly()
     {
-        var heard = Utc("2026-07-29T20:33:42Z");
+        // "Taxi to Gate E52 via E4, E, C", captured 9 s after Zurich Ground said it.
+        // Equality needs no branch of its own — it is the trivial subsequence.
+        var choice = Choose(new[] { "E4", "E", "C" }, new[] { "E4", "E", "C" });
 
-        Assert.Equal(
-            heard,
-            MainForm.ResolveClearanceStampUtc(
-                "Taxi to Gate E52 via E4, E, C",
-                Transmission("Taxi to Gate E52 via E4, E, C", heard)));
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.Equal(new[] { "E4", "E", "C" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
     }
 
     [Fact]
-    public void AClearanceFromSomewhereElseInFlightJsonHasNoStamp()
+    public void LiveEgllArrivalTrackReproducesTheClearanceExactly()
     {
-        // flight.json's own clearance fields carry no time. Guessing the latest
-        // transmission's stamp for one of them would hand the geometry a reference it
-        // has not actually been measured against, which is exactly how the gate would
-        // start passing on unverifiable evidence.
-        Assert.Null(MainForm.ResolveClearanceStampUtc(
-            "Taxi to Gate E52 via E4, E, C",
-            Transmission("Contact Tower on 118.1", Utc("2026-07-29T20:33:42Z"))));
+        // "Taxi to Gate 325 via N5E, A, F, G", captured after the clearance.
+        var choice = Choose(
+            new[] { "N5E", "A", "F", "G" }, new[] { "N5E", "A", "F", "G" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.Equal(new[] { "N5E", "A", "F", "G" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
     }
 
     [Fact]
-    public void NoClearanceAndNoTransmissionLeaveNoStamp()
+    public void LiveLepaClearanceWhoseTextDroppedALegTakesTheTrack()
     {
-        Assert.Null(MainForm.ResolveClearanceStampUtc(null, Transmission("x", Utc("2026-07-29T20:33:42Z"))));
-        Assert.Null(MainForm.ResolveClearanceStampUtc("Taxi via E4", null));
-        Assert.Null(MainForm.ResolveClearanceStampUtc("Taxi via E4", Transmission("Taxi via E4", null)));
+        // The reason this feature exists. SayIntentions said "North" for a taxiway
+        // navdata calls N, so the text parsed to LE, E, H2 — one leg short of the
+        // cleared route. The track holds all four, and the parsed three run straight
+        // through it, so the track is this clearance with the missing leg restored.
+        var choice = Choose(new[] { "LE", "E", "H2" }, new[] { "LE", "E", "N", "H2" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.Equal(new[] { "LE", "E", "N", "H2" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ThePreClearanceEgllTrackIsRejectedAndSaidOutLoud()
+    {
+        // Captured BEFORE Ground spoke: SI's own plan across the airfield, not the
+        // cleared route. Every stamp test passes it. The words win, and the pilot is
+        // told the two disagreed.
+        var choice = Choose(
+            new[] { "N5E", "A", "F", "G" },
+            new[] { "NB2W", "S3", "NB3", "S4E", "N4W", "N5W", "R", "B", "F", "G" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "N5E", "A", "F", "G" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ALookalikeNameIsNotTheClearedTaxiway()
+    {
+        // The mechanism that catches the stale EGLL track, isolated: it carries N5W and
+        // no N5E, so the walk fails on the very first cleared leg. One character apart
+        // is a different taxiway — on the other side of the stand group.
+        var choice = Choose(new[] { "N5E" }, new[] { "N5W", "A", "F", "G" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void OneClearedTaxiwayMissingFromTheTrackRejectsIt()
+    {
+        // Everything else agrees and is in order; the single absent leg decides it.
+        // An "any overlap" or "mostly agrees" rule would take this track — and would
+        // take the stale EGLL one, which shares F and G with the clearance.
+        var choice = Choose(new[] { "A", "X", "F", "G" }, new[] { "A", "F", "G" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void TheSameLegsInADifferentOrderAreADifferentRoute()
+    {
+        var choice = Choose(new[] { "F", "A" }, new[] { "A", "F" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void TheTrackMayRunOnEitherSideOfWhatWasCleared()
+    {
+        // A real track starts where the aircraft is standing and ends on the stand
+        // lead-in, so it routinely carries legs before and after the cleared ones.
+        var choice = Choose(new[] { "E", "C" }, new[] { "E4", "E", "C", "Link 5" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void NamesAreComparedTheWayTheRestOfTheImportComparesThem()
+    {
+        // SayIntentionsClearanceParser.NormalizeTaxiwayName: spacing and punctuation
+        // stripped, case-insensitive.
+        var choice = Choose(new[] { "n 5 e", "a" }, new[] { "N5E", "A", "F" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void NoTrackAtAllLeavesTheClearanceInCharge()
+    {
+        // Covers both "SI published no path" and "the path snapped to nothing" — a
+        // track that matched no taxiway is no better than no track.
+        var choice = Choose(new[] { "A", "B" }, Array.Empty<string>());
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "A", "B" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void AClearanceThatParsedToNothingFallsBackToTheTrack()
+    {
+        // There was no clearance text, or the parse found nothing in it. Either way
+        // the track is all there is, and there is nothing for it to contradict.
+        var choice = Choose(Array.Empty<string>(), new[] { "E4", "E", "C" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.Equal(new[] { "E4", "E", "C" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void WithNeitherSourceThereIsNothingToDisagreeAbout()
+    {
+        var choice = Choose(Array.Empty<string>(), Array.Empty<string>());
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Empty(choice.Taxiways);
+        Assert.False(choice.Disagreed);
     }
 
     // --- Announcement provenance ------------------------------------------------------
@@ -580,5 +673,80 @@ public class SayIntentionsExternalRouteTests
             unknownTaxiways: new[] { "K" });
 
         Assert.DoesNotContain("points", spoken);
+    }
+
+    // --- Announcement: the two sources disagreed --------------------------------------
+
+    [Fact]
+    public void ADisagreementBetweenTheTrackAndTheWordsIsSaidOutLoud()
+    {
+        // SayIntentions' own idea of the route differs from what the controller said.
+        // The clearance is used, and the pilot hears which — a route that is not the
+        // one ATC gave is not something to discover on the taxiway.
+        string spoken = Announce(
+            Outcome(applied: new[] { "N5E", "A", "F", "G" }), "Gate 325", autoStart: false,
+            disagreed: true);
+
+        Assert.Contains(
+            "SayIntentions ground track differs from the clearance. Using the clearance.",
+            spoken);
+    }
+
+    [Fact]
+    public void AnImportTheTwoSourcesAgreeOnSaysNothingAboutADisagreement()
+    {
+        Assert.DoesNotContain(
+            "differs",
+            Announce(Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false));
+
+        Assert.DoesNotContain(
+            "differs",
+            Announce(
+                Outcome(applied: new[] { "E4", "E", "C" }), "Gate E52", autoStart: false,
+                source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4", "E", "C" }, 40)));
+    }
+
+    // --- Announcement: the unapplied-leg list must not become a recital ---------------
+
+    [Fact]
+    public void AGeometryRouteDoesNotReciteAWallOfLegsThePilotNeverHeard()
+    {
+        // Graph names, not the controller's words. Ten of them spoken in a row is a
+        // wall of unfamiliar sounds; what the pilot can act on is that the route is
+        // well short of the track.
+        string[] tenLegs = { "S3", "NB3", "S4E", "N4W", "N5W", "R", "B", "F", "G", "L" };
+
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: tenLegs), "Gate 325", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "A" }, 60));
+
+        Assert.Contains("Could not apply 10 legs of the ground track.", spoken);
+        Assert.DoesNotContain("S4E", spoken);
+    }
+
+    [Fact]
+    public void AGeometryRouteStillNamesAHandfulOfLegs()
+    {
+        // Under the cap the names stay: three is a hint about where the route breaks,
+        // not a recital.
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: new[] { "F", "G", "R" }), "Gate 325",
+            autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "A" }, 60));
+
+        Assert.Contains("Could not apply F, G, R.", spoken);
+    }
+
+    [Fact]
+    public void TheClearancePathStillNamesEveryTaxiwayHoweverManyThereAre()
+    {
+        // Unchanged, deliberately: every one of these is a name the controller said,
+        // and a leg of the cleared route that the pilot is not being routed along.
+        string[] tenLegs = { "S3", "NB3", "S4E", "N4W", "N5W", "R", "B", "F", "G", "L" };
+
+        string spoken = Announce(
+            Outcome(applied: new[] { "A" }, skipped: tenLegs), "Gate A9", autoStart: false);
+
+        Assert.Contains($"Could not apply {string.Join(", ", tenLegs)}.", spoken);
     }
 }

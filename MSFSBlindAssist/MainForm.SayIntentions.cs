@@ -13,11 +13,10 @@ namespace MSFSBlindAssist;
 /// SayIntentions hotkey handlers. Reads the active SI flight context and turns a taxi
 /// clearance into a pre-filled Taxi Guidance route.
 ///
-/// The route's taxiway sequence prefers SayIntentions' own published GEOMETRY, snapped
-/// to the airport's taxiway graph, and falls back to the spoken clearance text — but
-/// only when the geometry is at least as new as the clearance, see
-/// GeometryIsFresherThanClearance. The clearance always supplies the destination and the
-/// hold-shorts; geometry carries neither.
+/// The route's taxiway sequence comes from SayIntentions' own published GEOMETRY,
+/// snapped to the airport's taxiway graph, whenever that track AGREES with the spoken
+/// clearance — otherwise from the clearance text, see ChooseTaxiwaySource. The clearance
+/// always supplies the destination and the hold-shorts; geometry carries neither.
 ///
 /// All parsing lives in MSFSBlindAssist.Services.SayIntentions — this partial only
 /// orchestrates. In particular it never builds its own TaxiGraph: the form loads
@@ -125,12 +124,6 @@ public partial class MainForm
                 return;
             }
 
-            // When the clearance was heard on the radio, WHEN it was heard is what the
-            // published geometry has to beat to be trusted (see the freshness gate
-            // below), so the stamp is captured wherever the text comes from.
-            DateTime? clearanceStampUtc = ResolveClearanceStampUtc(
-                context.ClearanceText, context.LastFlightJsonTransmission);
-
             // Only fall back to the last radio transmission when it is actually
             // shaped like a taxi clearance — a landing clearance heard on rollout
             // must never become a taxi route.
@@ -141,7 +134,6 @@ public partial class MainForm
                     && SayIntentionsClearanceParser.LooksLikeTaxiClearance(last.Transmission.Message))
                 {
                     context.ClearanceText = last.Transmission.Message;
-                    clearanceStampUtc = last.Transmission.StampZulu;
                 }
             }
 
@@ -177,32 +169,19 @@ public partial class MainForm
             var (clearanceTaxiways, planHoldShorts, unknownTaxiways) =
                 ParseClearanceTaxiPlan(clearance, knownTaxiways);
 
-            // The route ITSELF prefers the geometry, because deriving it from the
+            // The route ITSELF can come from the geometry, because deriving it from the
             // PHRASING keeps failing on naming variance (a live LEPA clearance said
             // "North" for taxiway N and the leg was silently dropped). Snapped against
             // the airport's own graph, every name is one the router already knows.
             //
-            // But only when the geometry is at least as new as the words — see
-            // GeometryIsFresherThanClearance. Snapping is skipped entirely when the gate
-            // fails: the answer would not be used, and it is the one part of this path
-            // that costs real work (every published point against every named segment).
-            SnapResult? snap = null;
-            if (context.TaxiPathPoints.Count > 0
-                && GeometryIsFresherThanClearance(context.TaxiPathStampUtc, clearanceStampUtc))
-            {
-                snap = SayIntentionsTaxiPathSnapper.Snap(
-                    context.TaxiPathPoints, ReadNamedEdges(form));
-            }
+            // Which of the two is used is decided by ChooseTaxiwaySource, on whether the
+            // published track AGREES with the clearance.
+            SnapResult? snap = context.TaxiPathPoints.Count > 0
+                ? SayIntentionsTaxiPathSnapper.Snap(context.TaxiPathPoints, ReadNamedEdges(form))
+                : null;
 
-            // A path that snapped to nothing is no better than no path at all: the words
-            // stay in charge, and the log keeps the counts that say why.
-            var source = TaxiwaySource.Clearance;
-            IReadOnlyList<string> taxiways = clearanceTaxiways;
-            if (snap is { Taxiways.Count: > 0 })
-            {
-                source = TaxiwaySource.Geometry;
-                taxiways = snap.Taxiways;
-            }
+            var (source, taxiways, disagreed) = ChooseTaxiwaySource(
+                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>());
 
             var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
@@ -215,8 +194,8 @@ public partial class MainForm
 
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
+                        $"disagreed={disagreed} " +
                         $"geoStamp={FormatStampSi(context.TaxiPathStampUtc)} " +
-                        $"clearanceStamp={FormatStampSi(clearanceStampUtc)} " +
                         $"geoPoints={snap?.PointCount ?? context.TaxiPathPoints.Count} " +
                         $"geoUnsnapped={(snap == null ? "-" : snap.UnsnappedCount.ToString())} " +
                         $"geoDroppedRuns={(snap == null ? "-" : snap.DroppedRunCount.ToString())} " +
@@ -230,8 +209,8 @@ public partial class MainForm
                         $"autoStart={autoStart}");
 
             announcer.Announce(BuildExternalRouteAnnouncement(
-                outcome, unknownTaxiways, label, autoStart,
-                source, source == TaxiwaySource.Geometry ? snap : null));
+                outcome, unknownTaxiways, label, autoStart, source, disagreed,
+                source == TaxiwaySource.Geometry ? snap : null));
         }
         catch (Exception ex)
         {
@@ -251,47 +230,79 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Whether SayIntentions' published taxi geometry can be trusted as THIS clearance's
-    /// route: true only when the geometry snapshot is at least as new as the transmission
-    /// the clearance was heard in.
+    /// Which of the two sequences the imported route uses, and whether they disagreed.
     ///
-    /// Not polish — the geometry is a live plan that exists before any clearance does,
-    /// and before one it is SayIntentions' OWN intended route rather than the route the
-    /// controller gave. Measured across two live LSZH captures either side of one
-    /// clearance ("Taxi to Gate E52 via E4, E, C"): the capture 9 s AFTER it snapped to
-    /// exactly E4, E, C, while the capture ~1 min BEFORE it, during the landing rollout,
-    /// gave R7, E7, E6, E7, N, E, Inner, E, B, E5, F, C — a genuinely different route
-    /// that would have been delivered with full confidence.
+    /// SayIntentions publishes its own taxi geometry, and before a clearance that geometry
+    /// is SI's OWN plan rather than the route the controller gave: a live LSZH capture
+    /// taken a minute before Ground spoke gave a completely different route across the
+    /// airfield. So the track has to earn the route.
     ///
-    /// An unknown stamp on EITHER side falls back to the clearance text. The text is
-    /// what the pilot actually heard; preferring unverifiable geometry over it is exactly
-    /// the confidently-wrong failure this whole feature exists to remove, so "no
-    /// evidence" must never read as "fresh enough".
+    /// It cannot earn it on TIME. <c>flight_details.timestamp</c> — the only stamp the
+    /// wire carries — is when SayIntentions wrote the FILE, not when it computed the
+    /// path: three captured pairs hold a byte-identical <c>taxi_path</c> under stamps
+    /// 68 s, 116 s and 252 s apart, and a file write is always later than a transmission
+    /// already on the frequency. A stamp comparison therefore passes on every stale path
+    /// there is, which is worse than no test at all — it reads like a safety gate.
+    ///
+    /// What can tell them apart is AGREEMENT. The track wins when the clearance runs
+    /// through it in order (see <see cref="ClearanceRunsThroughGeometry"/>), because that
+    /// is precisely the failure this path exists to fix: the text parse DROPS legs it
+    /// cannot name, and a live LEPA clearance saying "North" for taxiway N parsed to
+    /// LE, E, H2 where the track gave LE, E, N, H2. The same test is what rejects a stale
+    /// path — the pre-clearance EGLL capture carries N5W where the clearance says N5E, so
+    /// the walk fails on the first leg.
+    ///
+    /// Anything else is a genuine disagreement, and the CLEARANCE wins it: that is what
+    /// the pilot actually heard. The caller says so out loud — a route that is not the one
+    /// ATC gave must not be discovered on the taxiway.
     /// </summary>
-    internal static bool GeometryIsFresherThanClearance(DateTime? geometryUtc, DateTime? clearanceUtc) =>
-        geometryUtc is DateTime geometry
-        && clearanceUtc is DateTime spoken
-        && geometry >= spoken;
-
-    /// <summary>
-    /// When the clearance text was heard, or null when nothing dates it.
-    ///
-    /// Only a clearance that IS the transmission gets that transmission's stamp. The
-    /// text can equally come from a flight.json clearance field, which carries no time
-    /// of its own — lending it the latest transmission's stamp would hand the geometry a
-    /// reference it was never measured against, and the gate would start passing on
-    /// evidence that does not exist.
-    /// </summary>
-    internal static DateTime? ResolveClearanceStampUtc(
-        string? clearanceText, SayIntentionsTransmission? transmission)
+    internal static (TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
+        ChooseTaxiwaySource(
+            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
     {
-        if (string.IsNullOrWhiteSpace(clearanceText) || transmission == null) return null;
+        // No path published, or one that snapped to nothing — no better than no path at
+        // all. The words stay in charge, and the log keeps the counts that say why.
+        if (geometryTaxiways.Count == 0)
+            return (TaxiwaySource.Clearance, clearanceTaxiways, false);
 
-        return string.Equals(
-            transmission.Message?.Trim(), clearanceText.Trim(), StringComparison.Ordinal)
-            ? transmission.StampZulu
-            : null;
+        // Nothing parsed: either there was no clearance text or the parse found nothing
+        // in it. The track is all there is, and there is nothing for it to contradict.
+        if (clearanceTaxiways.Count == 0)
+            return (TaxiwaySource.Geometry, geometryTaxiways, false);
+
+        return ClearanceRunsThroughGeometry(clearanceTaxiways, geometryTaxiways)
+            ? (TaxiwaySource.Geometry, geometryTaxiways, false)
+            : (TaxiwaySource.Clearance, clearanceTaxiways, true);
     }
+
+    /// <summary>Whether every cleared taxiway appears in the published track IN ORDER,
+    /// gaps allowed — a subsequence walk, of which two identical sequences are the
+    /// trivial case.
+    ///
+    /// Gaps are the point: a real track legitimately names legs the controller did not —
+    /// the stand it starts on, the lead-in it ends on, and the leg the text parse could
+    /// not name. Order is what makes it evidence rather than coincidence: a set-overlap
+    /// test would accept the stale EGLL track, which shares F and G with the clearance
+    /// but reaches them across the far side of the airfield.</summary>
+    private static bool ClearanceRunsThroughGeometry(
+        IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
+    {
+        int cleared = 0;
+        foreach (string leg in geometryTaxiways)
+        {
+            if (cleared == clearanceTaxiways.Count) break;
+            if (SameTaxiwayNameSi(leg, clearanceTaxiways[cleared])) cleared++;
+        }
+
+        return cleared == clearanceTaxiways.Count;
+    }
+
+    /// <summary>Taxiway names compared the way the rest of this import compares them:
+    /// spacing and punctuation stripped, case-insensitive — "N 5 E" is N5E.</summary>
+    private static bool SameTaxiwayNameSi(string left, string right) =>
+        SayIntentionsClearanceParser.NormalizeTaxiwayName(left)
+            .Equals(SayIntentionsClearanceParser.NormalizeTaxiwayName(right),
+                StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The loaded airport's named taxiway segments, in the shape the snapper
     /// takes. The form owns the graph — this partial must never build a second one.</summary>
@@ -321,6 +332,18 @@ public partial class MainForm
     /// </summary>
     internal const double UnsnappedShareWorthSaying = 0.25;
 
+    /// <summary>
+    /// How many unapplied legs of a GROUND-TRACK route are still worth naming one by one.
+    ///
+    /// On the clearance path every such name is a word the controller said, and all of
+    /// them are spoken however many there are. On the geometry path they are names off
+    /// the airport's graph that the pilot has never heard — a route short of ten of them
+    /// announced ten unfamiliar syllables in a row, which is a recital rather than
+    /// information. Past this many the count is said instead: what the pilot can act on
+    /// is that the route is well short of the track, not which anonymous legs are gone.
+    /// </summary>
+    internal const int GeometryLegsWorthNaming = 3;
+
     /// <summary>Names every taxiway AND every hold-short that could not be applied.
     /// Silent degradation to a shortest-path route is invisible to a blind pilot, and
     /// a hold-short ATC gave that never reached the form is a runway-incursion
@@ -336,10 +359,14 @@ public partial class MainForm
     /// nothing in the route being applied. A live LEPA clearance said "North" for taxiway
     /// N; announcing "Could not apply North" over a route that DOES include N teaches the
     /// pilot to distrust the whole readout. The list is still passed in (and logged) — the
-    /// decision belongs here, next to the words, not at the call site.
+    /// decision belongs here, next to the words, not at the call site. A geometry route's
+    /// list is also CAPPED (see GeometryLegsWorthNaming); a clearance route's never is.
     ///
     /// The route's SOURCE is spoken too, because the pilot cannot otherwise tell a
-    /// geometry-derived route from a spoken-clearance one and they fail differently.
+    /// geometry-derived route from a spoken-clearance one and they fail differently, and
+    /// <paramref name="disagreed"/> says the two sources contradicted each other — the
+    /// clearance won, and the pilot hears that SayIntentions' own idea of the route is
+    /// not the one being flown.
     /// <paramref name="snap"/> is the geometry read behind a Geometry route and null on
     /// the clearance path; it is only ever used to report a track that mostly failed to
     /// match the airport (see UnsnappedShareWorthSaying). Its dropped runs stay silent:
@@ -347,7 +374,8 @@ public partial class MainForm
     /// several, and announcing them would be noise on every import.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
-        string destination, bool autoStart, TaxiwaySource source, SnapResult? snap)
+        string destination, bool autoStart, TaxiwaySource source, bool disagreed,
+        SnapResult? snap)
     {
         var parts = new List<string> { $"SayIntentions route to {destination}." };
 
@@ -356,6 +384,9 @@ public partial class MainForm
 
         if (source == TaxiwaySource.Geometry)
             parts.Add("Route from SayIntentions ground track.");
+        // Never both: a disagreement always resolves to the clearance.
+        else if (disagreed)
+            parts.Add("SayIntentions ground track differs from the clearance. Using the clearance.");
 
         parts.Add(outcome.AppliedTaxiways.Count > 0
             ? $"Via {string.Join(", ", outcome.AppliedTaxiways)}."
@@ -366,7 +397,12 @@ public partial class MainForm
         var couldNotApply = new List<string>(outcome.SkippedTaxiways);
         if (source == TaxiwaySource.Clearance) couldNotApply.AddRange(unknownTaxiways);
         if (couldNotApply.Count > 0)
-            parts.Add($"Could not apply {string.Join(", ", couldNotApply)}.");
+        {
+            parts.Add(
+                source == TaxiwaySource.Geometry && couldNotApply.Count > GeometryLegsWorthNaming
+                    ? $"Could not apply {couldNotApply.Count} legs of the ground track."
+                    : $"Could not apply {string.Join(", ", couldNotApply)}.");
+        }
 
         if (snap != null && snap.UnsnappedCount > snap.PointCount * UnsnappedShareWorthSaying)
             parts.Add($"{snap.UnsnappedCount} of {snap.PointCount} ground track points " +
