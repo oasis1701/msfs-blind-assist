@@ -316,6 +316,101 @@ public class SayIntentionsExternalRouteTests
         Assert.Null(TaxiAssistForm.MatchDestinationLabel(new[] { "A9" }, false, identifier));
     }
 
+    // --- MatchDestinationAlias --------------------------------------------------------
+    //
+    // Live KDTW, 2026-07-31: "Taxi to South Terminal Gate A24 via Alpha-5, Alpha, Romeo,
+    // hold short of runway 4R", with assigned_gate "South Terminal Gate A24". The scenery
+    // calls that stand A24A (navdata parking name='GA', number=24, suffix='A'). OSM calls
+    // it A24, GateAliasResolver accepts that as an alias, and the form's own gate search
+    // box finds the stand by typing it.
+    //
+    // The IMPORT could not see it. The combo carries ParkingSpot.ToString() —
+    // "A 24A - Gate Medium, also A24 (online)" — and NormalizeParkingName deletes
+    // everything from the first spaced dash onward, which every Describe() branch puts
+    // ahead of the alias (" - {type}"). So the assigned gate resolved by neither name nor
+    // alias, and destination resolution ran its whole chain to the ARRIVAL RUNWAY: a
+    // landed aircraft routed at 04L while the taxiway half of the import (A5, A, R, hold
+    // short of 4R) was perfect, which is the shape that sounds right all the way down.
+
+    private const string KdtwA24ALabel = "A 24A - Gate Medium, also A24 (online)";
+
+    private static TaxiAssistForm.AliasedDestination Aliased(string label, params string[] aliases)
+        => new(label, aliases);
+
+    [Fact]
+    public void The_live_KDTW_stand_resolves_through_the_alias_its_label_buries()
+    {
+        Assert.Equal(KdtwA24ALabel, TaxiAssistForm.MatchDestinationAlias(
+            new[] { Aliased(KdtwA24ALabel, "A24") }, "South Terminal Gate A24"));
+    }
+
+    [Fact]
+    public void The_KDTW_label_is_unreachable_by_name_which_is_why_the_alias_step_exists()
+    {
+        // The defect itself. Normalized, the label is A24A and the assigned gate is A24 —
+        // the online A24 sitting in the same string never reaches the comparison.
+        Assert.Null(TaxiAssistForm.MatchDestinationLabel(
+            new[] { KdtwA24ALabel }, false, "South Terminal Gate A24"));
+    }
+
+    [Fact]
+    public void A_stand_carrying_no_alias_stays_unreachable()
+    {
+        // The alias is what resolves this, not the step: the same scenery without the
+        // online name is still a stand nothing can seat by name, and the caller falls
+        // through to the published coordinate.
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(
+            new[] { Aliased("A 24A - Gate Medium") }, "South Terminal Gate A24"));
+    }
+
+    [Fact]
+    public void An_alias_is_matched_whole_never_as_a_substring_or_a_shorter_number()
+    {
+        // A stand id is one or two characters, so a Contains test would match almost
+        // anything the combo offers — including "(None - calculate shortest path)". And
+        // A2 is its own stand at most airports: seating A24 for it is the wrong-stand
+        // failure the zero-padding rules already exist to prevent, pointed sideways.
+        var offered = new[] { Aliased(KdtwA24ALabel, "A24") };
+
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(offered, "Gate A2"));
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(offered, "Gate A"));
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(offered, "Gate A240"));
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(offered, "Gate A24A"));
+    }
+
+    [Fact]
+    public void An_alias_tolerates_the_zero_padding_the_name_match_tolerates()
+    {
+        // Both sides go through NormalizeParkingName, so the padding SayIntentions
+        // published at EDDB ("Gate B06") is a spelling here too, not an identity.
+        Assert.Equal(KdtwA24ALabel, TaxiAssistForm.MatchDestinationAlias(
+            new[] { Aliased(KdtwA24ALabel, "A24") }, "South Terminal Gate A024"));
+    }
+
+    [Fact]
+    public void An_alias_seats_the_spot_that_carries_it_and_not_a_neighbour()
+    {
+        var offered = new[]
+        {
+            Aliased("A 23A - Gate Medium, also A23 (online)", "A23"),
+            Aliased(KdtwA24ALabel, "A24"),
+            Aliased("A 25A - Gate Medium, also A25 (online)", "A25"),
+        };
+
+        Assert.Equal(KdtwA24ALabel,
+            TaxiAssistForm.MatchDestinationAlias(offered, "South Terminal Gate A24"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void An_empty_candidate_matches_no_alias_either(string? identifier)
+    {
+        Assert.Null(TaxiAssistForm.MatchDestinationAlias(
+            new[] { Aliased(KdtwA24ALabel, "A24") }, identifier));
+    }
+
     // --- BuildExternalRouteAnnouncement ----------------------------------------------
 
     private static TaxiAssistForm.ExternalRouteOutcome Outcome(
@@ -338,11 +433,17 @@ public class SayIntentionsExternalRouteTests
         bool disagreed = false,
         bool clearanceNamedTaxiways = true,
         string? clearanceLookupProblem = null,
-        string? positionMatchedGate = null)
+        TaxiAssistForm.GateSubstitution? gateSubstitution = null)
         => MainForm.BuildExternalRouteAnnouncement(
             outcome, unknownTaxiways ?? Array.Empty<string>(), destination,
-            positionMatchedGate, autoStart,
+            gateSubstitution, autoStart,
             source, disagreed, snap, clearanceNamedTaxiways, clearanceLookupProblem);
+
+    private static TaxiAssistForm.GateSubstitution ByAlias(string assignedName)
+        => new(assignedName, TaxiAssistForm.GateSubstitutionKind.Alias);
+
+    private static TaxiAssistForm.GateSubstitution ByPosition(string assignedName)
+        => new(assignedName, TaxiAssistForm.GateSubstitutionKind.Position);
 
     [Fact]
     public void Announcement_names_destination_taxiways_and_the_review_step()
@@ -364,7 +465,7 @@ public class SayIntentionsExternalRouteTests
         // the summary is about — a correction to it cannot queue behind the route.
         string spoken = Announce(
             Outcome(applied: new[] { "M3", "B" }), "B 6", autoStart: false,
-            positionMatchedGate: "Gate B06");
+            gateSubstitution: ByPosition("Gate B06"));
 
         Assert.Equal(
             "SayIntentions route to B 6. " +
@@ -376,6 +477,31 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
+    public void A_stand_seated_by_alias_says_the_scenery_spells_it_differently()
+    {
+        // The KDTW arrival. The pilot was told A24 and is being taxied to a row the form
+        // calls A 24A, so the substitution is exactly as invisible as the position one and
+        // is announced in the same slot — but it must NOT claim the airport does not have
+        // the stand. It does have it; this scenery just writes the name another way, and
+        // saying otherwise about a stand the controller assigned reads as a controller
+        // error rather than a labelling one.
+        string spoken = Announce(
+            Outcome(applied: new[] { "A5", "A", "R" }), "A 24A", autoStart: false,
+            gateSubstitution: ByAlias("South Terminal Gate A24"));
+
+        Assert.Equal(
+            "SayIntentions route to A 24A. " +
+            "SayIntentions assigned South Terminal Gate A24, " +
+            "which this scenery lists under another name. " +
+            "Via A5, A, R. " +
+            "Review the fields, then press Calculate Route to start guidance.",
+            spoken);
+
+        Assert.DoesNotContain("does not have", spoken);
+        Assert.DoesNotContain("nearest stand", spoken);
+    }
+
+    [Fact]
     public void The_substitution_leads_the_other_warnings_too()
     {
         // Warnings lead the route body, and this one leads the warnings: everything else
@@ -384,7 +510,7 @@ public class SayIntentionsExternalRouteTests
         string spoken = Announce(
             Outcome(applied: new[] { "M3" }, skipped: new[] { "V2" }), "B 6", autoStart: true,
             source: MainForm.TaxiwaySource.Clearance, disagreed: true,
-            positionMatchedGate: "Gate B06");
+            gateSubstitution: ByPosition("Gate B06"));
 
         Assert.True(
             spoken.IndexOf("which this airport does not have", StringComparison.Ordinal)
@@ -398,12 +524,35 @@ public class SayIntentionsExternalRouteTests
     public void A_destination_matched_by_name_says_nothing_about_a_substitution()
     {
         // The overwhelmingly common case, and it must gain no words at all: the stand SI
-        // named is the stand the form seated.
+        // named is the stand the form seated, by either spelling.
         string spoken = Announce(
             Outcome(applied: new[] { "M3" }), "B 6", autoStart: false);
 
+        Assert.Equal(
+            "SayIntentions route to B 6. Via M3. " +
+            "Review the fields, then press Calculate Route to start guidance.",
+            spoken);
         Assert.DoesNotContain("does not have", spoken);
         Assert.DoesNotContain("nearest stand", spoken);
+        Assert.DoesNotContain("another name", spoken);
+    }
+
+    [Fact]
+    public void The_alias_substitution_leads_the_warnings_the_same_way()
+    {
+        // Same slot as the position one — ahead of everything else, because everything
+        // else describes the route being flown and this says the route is to a stand
+        // under a label the controller did not use.
+        string spoken = Announce(
+            Outcome(applied: new[] { "A5" }, skipped: new[] { "R" }), "A 24A", autoStart: true,
+            disagreed: true, gateSubstitution: ByAlias("South Terminal Gate A24"));
+
+        Assert.True(
+            spoken.IndexOf("under another name", StringComparison.Ordinal)
+            < spoken.IndexOf("ground track differs", StringComparison.Ordinal));
+        Assert.True(
+            spoken.IndexOf("under another name", StringComparison.Ordinal)
+            < spoken.IndexOf("Could not apply R.", StringComparison.Ordinal));
     }
 
     [Fact]

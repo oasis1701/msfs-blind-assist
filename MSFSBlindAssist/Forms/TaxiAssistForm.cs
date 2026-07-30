@@ -942,6 +942,28 @@ public class TaxiAssistForm : Form
     public readonly record struct ExternalDestination(
         bool IsRunway, string? Identifier, GeoPoint? Position = null);
 
+    /// <summary>Which step seated a stand the source named something else. The pilot
+    /// hears a different sentence for each, because they are different claims about the
+    /// airport: an ALIAS says this scenery holds the stand under another label, a
+    /// POSITION says no label matched at all and the published coordinate decided.</summary>
+    public enum GateSubstitutionKind
+    {
+        Alias,
+        Position
+    }
+
+    /// <summary>A destination seated under a label the source did not use.
+    /// <paramref name="AssignedName"/> is the name SayIntentions ASKED for. The import's
+    /// lead sentence names only the label that WON, so this is the one thing that can
+    /// tell the pilot they are being taxied to a stand the controller did not name.</summary>
+    public readonly record struct GateSubstitution(
+        string AssignedName, GateSubstitutionKind Kind);
+
+    /// <summary>One gate entry as the alias step sees it: the label the combo carries,
+    /// and the online names the spot behind it also answers to.</summary>
+    internal readonly record struct AliasedDestination(
+        string Label, IReadOnlyList<string> Aliases);
+
     /// <summary>Loads the airport for an external route and returns the taxiway
     /// names its graph knows. The caller resolves its clearance against THIS list
     /// so no second TaxiGraph is ever built.</summary>
@@ -988,17 +1010,23 @@ public class TaxiAssistForm : Form
     /// image of what ResetRouteShapingControls exists to prevent on a SUCCESSFUL
     /// import.
     ///
-    /// <paramref name="positionMatchedGate"/> names the gate a candidate ASKED for when
-    /// its name matched nothing and its published coordinate is what seated the
-    /// destination instead — non-null only then, so the caller can tell the pilot they
-    /// are being routed somewhere the controller did not name.</summary>
+    /// A GATE CANDIDATE IS RESOLVED IN THREE STEPS: its name, then this scenery's online
+    /// ALIASES for that name, then the coordinate SayIntentions published beside it. Each
+    /// is weaker evidence than the one before — an alias is still the same stand under
+    /// another label, a coordinate is a guess at which pavement an unrecognized name must
+    /// have meant — so each only runs when the one above it found nothing.
+    ///
+    /// <paramref name="gateSubstitution"/> names the gate a candidate ASKED for when one
+    /// of those two fallbacks seated it, and says which — non-null only then, so the
+    /// caller can tell the pilot they are being routed to a stand under a label the
+    /// controller did not use.</summary>
     public bool TryResolveExternalDestination(
         IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label,
-        out string? positionMatchedGate)
+        out GateSubstitution? gateSubstitution)
     {
         isRunway = false;
         label = "";
-        positionMatchedGate = null;
+        gateSubstitution = null;
 
         int priorType = cmbDestType.SelectedIndex;
         string priorSearch = txtGateSearch.Text;
@@ -1024,22 +1052,37 @@ public class TaxiAssistForm : Form
 
             string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
 
-            // THE POSITION FALLBACK RUNS HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
+            // BOTH GATE FALLBACKS RUN HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
             // BELOW THE LOOP. The chain ends with the ARRIVAL RUNWAY — that is the whole
-            // reason this feature exists: a gate name the scenery does not carry fell
-            // through every remaining candidate and routed a just-landed aircraft at the
-            // runway it had landed on. A fallback placed after the loop would let the
-            // runway win first and reproduce exactly that.
-            bool substituted = false;
-            if (match == null && !candidate.IsRunway && candidate.Position is GeoPoint published)
+            // reason they exist: a gate name the scenery does not carry fell through every
+            // remaining candidate and routed a just-landed aircraft at the runway it had
+            // landed on. A fallback placed after the loop would let the runway win first
+            // and reproduce exactly that.
+            GateSubstitution? substitution = null;
+            if (match == null && !candidate.IsRunway)
             {
                 // _destinationThresholdMap / _destinationSpotMap only hold GATE entries
                 // while gate mode is the selected type, and a runway candidate probed
                 // between here and the gate listing has repopulated both with runway
                 // entries. The list itself was snapshotted; the maps behind it were not.
+                // Selected ONCE for both steps below — they read the same two maps.
                 SelectDestinationType(false);
-                match = MatchGateByPosition(offered, published);
-                substituted = match != null;
+
+                match = MatchGateByAlias(offered, candidate.Identifier);
+                if (match != null)
+                {
+                    substitution = new GateSubstitution(
+                        candidate.Identifier!, GateSubstitutionKind.Alias);
+                }
+                else if (candidate.Position is GeoPoint published)
+                {
+                    match = MatchGateByPosition(offered, published);
+                    if (match != null)
+                    {
+                        substitution = new GateSubstitution(
+                            candidate.Identifier!, GateSubstitutionKind.Position);
+                    }
+                }
             }
 
             if (match == null) continue;
@@ -1053,7 +1096,7 @@ public class TaxiAssistForm : Form
             cmbDestination.SelectedIndex = index;
             isRunway = candidate.IsRunway;
             label = match;
-            if (substituted) positionMatchedGate = candidate.Identifier;
+            gateSubstitution = substitution;
             return true;
         }
 
@@ -1092,8 +1135,69 @@ public class TaxiAssistForm : Form
         return null;
     }
 
-    /// <summary>The gate label whose own circle contains a published gate coordinate, or
-    /// null. Called only after the NAME failed on the same candidate.
+    /// <summary>The gate label whose ONLINE ALIASES answer to a published gate name, or
+    /// null. Runs after the name failed on this candidate and before its coordinate is
+    /// consulted.
+    ///
+    /// It exists because the alias is INVISIBLE to MatchDestinationLabel, not because the
+    /// alias was missing. The combo carries ParkingSpot.ToString() — at KDTW,
+    /// "A 24A - Gate Medium, also A24 (online)" — and NormalizeParkingName deletes
+    /// everything from the first spaced dash onward, which every Describe() branch puts
+    /// ahead of the alias (" - {type}"). So on the live 2026-07-31 KDTW arrival, where
+    /// the controller, SayIntentions and OSM all said A24 and only the scenery said A24A,
+    /// the assigned gate could not resolve by name at all and destination resolution ran
+    /// its whole chain to the ARRIVAL RUNWAY — with the taxiway half of the import
+    /// (A5, A, R, hold short of 4R) perfectly correct, so nothing else sounded wrong. The
+    /// form's own gate search finds that stand: GateSearchFilter reads ParkingSpot.Aliases
+    /// directly. The data was there all along; only this resolver could not see it.</summary>
+    private string? MatchGateByAlias(IReadOnlyList<string> gateLabels, string? identifier)
+    {
+        var offered = new List<AliasedDestination>(gateLabels.Count);
+        foreach (string gateLabel in gateLabels)
+        {
+            if (!_destinationSpotMap.TryGetValue(gateLabel, out var spot)) continue;
+            if (spot.Aliases.Count == 0) continue;
+            offered.Add(new AliasedDestination(gateLabel, spot.Aliases));
+        }
+
+        return MatchDestinationAlias(offered, identifier);
+    }
+
+    /// <summary>The offered label one of whose aliases IS the identifier, or null. Both
+    /// sides go through NormalizeParkingName, exactly as the name match does, so a full
+    /// label ("South Terminal Gate A24") meets a bare alias ("A24") and zero-padding is
+    /// still a spelling rather than an identity.
+    ///
+    /// EXACT normalized comparison, never a substring test. A stand id is one or two
+    /// characters, so Contains would match almost any entry the combo offers, and "A2"
+    /// must never seat the stand aliased A24 — the wrong-stand failure the padding rules
+    /// already exist to prevent, pointed a different way.</summary>
+    internal static string? MatchDestinationAlias(
+        IReadOnlyList<AliasedDestination> offered, string? identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier)) return null;
+
+        string wanted = SayIntentionsClearanceParser.NormalizeParkingName(identifier);
+        if (wanted.Length == 0) return null;
+
+        foreach (var entry in offered)
+        {
+            foreach (string alias in entry.Aliases)
+            {
+                string candidate = SayIntentionsClearanceParser.NormalizeParkingName(alias);
+                if (candidate.Length > 0
+                    && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Label;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The gate label whose own radius reaches a published gate coordinate, or
+    /// null. Called only after the NAME and its aliases failed on the same candidate.
     ///
     /// The unit conversion is the point of this method existing at all: ParkingSpot.Radius
     /// is FEET on a navdata spot and METRES on a GSX-sourced one, and the matcher takes

@@ -217,12 +217,18 @@ not survive**, and only then the route it actually built. Warnings lead delibera
 turn-by-turn callout cuts off whatever is left of it once you start rolling, so the parts
 you can act on go first.
 
+- **"SayIntentions assigned South Terminal Gate A24, which this scenery lists under
+  another name."** — the stand is here, under a different label: this scenery calls it
+  A24A, the online data knows it as A24, and it was found through that alias. Spoken
+  first, right after the lead.
 - **"SayIntentions assigned Gate B06, which this airport does not have. This is the
   nearest stand to the assigned position."** — the stand name SayIntentions gave matches
-  nothing in this scenery, and the destination came from the coordinate it published
-  beside the name instead. Spoken first, right after the lead: the lead names only the
-  stand that won, so this is the only thing saying you are being taxied somewhere the
-  controller did not name.
+  nothing in this scenery, by name or by any alias, and the destination came from the
+  coordinate it published beside the name instead. Same slot as the line above, and you
+  never hear both. The lead names only the stand that won, so these two are the only
+  thing saying you are being taxied to a stand the controller did not name — and they say
+  different things: an alias means the label is spelled otherwise, a position means
+  nothing here answers to that name at all.
 - **"Route from SayIntentions ground track."** — the sequence came from the published
   track, which agreed with the clearance.
 - **"SayIntentions ground track differs from the clearance. Using the clearance."** —
@@ -1059,43 +1065,95 @@ normalization; `Gate_destination_matches_across_a_zero_padded_stand_number` pins
 against EDDB's own B-pier labels, including that asking for `B1` finds nothing rather than
 `B 10`.
 
-#### When the scenery has no stand by that name
+#### When the scenery does not name the stand the way SayIntentions does
 
-Zero padding was one spelling difference. Sceneries have others, and every one of them
-lands in the same place: the name matches nothing, destination resolution runs its whole
-chain, and the last candidate it has is the **arrival runway**. The taxiway half of the
-import is meanwhile perfect, which is what makes it dangerous — everything else sounds
-right.
+Zero padding was one spelling difference. Sceneries have others — a MARS suffix the
+navdata carries and nobody says, a stand the online data letters differently, a name this
+scenery simply does not have — and every one of them lands in the same place: the name
+matches nothing, destination resolution runs its whole chain, and the last candidate it
+has is the **arrival runway**. The taxiway half of the import is meanwhile perfect, which
+is what makes it dangerous — everything else sounds right.
 
-`current_flight` publishes `assigned_gate_lat` / `assigned_gate_lon` beside the name, as
-JSON **strings**. So there is a second way to ask the same question, without language in
-it. It is a fallback and only a fallback: the name is what the pilot heard, so it is tried
-first and the coordinate is consulted only where that name has already failed, on that
-same candidate — and it is attached to the **assigned gate** alone, behind the same
-`flight_destination` check the name sits behind. An arrival stand's coordinate is as wrong
-at the departure airport as its name is, and unlike the name it would always find
-*something* there.
+A gate candidate is resolved in **three steps** — its name, then this scenery's own other
+names for it, then the coordinate SayIntentions published beside the name. Each is weaker
+evidence than the one above, so each runs only where the one above found nothing, on that
+same candidate.
 
-**The test is whether the point falls inside the stand's own circle**, not whether it is
-within some number of metres. That is what makes it discriminating with nothing to tune: a
-Gate Extra states ~50 m of tolerance, a medium gate ~21 m, a packed GA spot a few metres,
-and any single constant is either too tight for the first or too loose for the last. At
-EDDB, live 2026-07-30: of 139 spots exactly **one** contained SayIntentions' point, and it
-was the correct one. The 150 m ceiling beside it is a sanity backstop against a whole
-apron recorded as one stand — the same role `GateAliasResolver`'s 150 m plays — not the
-discriminator.
+**Step two is the scenery's own alias.** Online data (OSM / apt.dat) routinely labels a
+stand differently from the navdata, `GateAliasResolver` already collects those as
+`ParkingSpot.Aliases` — number-matched, letter-agreeing — and the dialog's gate search box
+already finds a stand by typing the name ATC used. KDTW taxi-in, live, 2026-07-31: *"Taxi
+to South Terminal Gate A24 via Alpha-5, Alpha, Romeo, hold short of runway 4R"*, with
+`assigned_gate` `"South Terminal Gate A24"`. The scenery calls that stand **A24A**
+(`parking` `name='GA'`, `number=24`, `suffix='A'`). OSM calls it A24, the alias was
+present, the search box found it — and the import could not, because the combo carries
+`ParkingSpot.ToString()`, `A 24A - Gate Medium, also A24 (online)`, and
+`NormalizeParkingName` deletes everything from the first **spaced dash** onward, which
+every `Describe()` branch puts ahead of the alias (`" - {type}"`). The alias was invisible
+to the one matcher that needed it, the assigned gate never resolved, and destination
+resolution ran to the arrival runway: 04L, along exactly the A5, A and R the controller
+had given for the gate, with the taxiway half of the import perfect.
+
+`MatchDestinationAlias` compares the identifier against `NormalizeParkingName` of each
+alias — exact and normalized, so a full label meets a bare alias and zero-padding is still
+a spelling, and **never a substring**: a one- or two-character stand id `Contains`-matches
+almost any entry the combo offers, "A2" included, and the "(None - calculate shortest
+path)" sentinel with it.
+
+**Step three is the published coordinate.** `current_flight` publishes `assigned_gate_lat`
+/ `assigned_gate_lon` beside the name, as JSON **strings**, so there is a way to ask the
+same question with no language in it. It sits last because it is a guess at which pavement
+an unrecognized name must have meant, where an alias is still the same stand under another
+label. It is attached to the **assigned gate** alone, behind the same `flight_destination`
+check the name sits behind: an arrival stand's coordinate is as wrong at the departure
+airport as its name is, and unlike the name it would always find *something* there.
+
+Both fallbacks read `_destinationSpotMap`, which holds gate entries only while gate mode
+is the selected destination type — a runway candidate probed in between repopulates it
+with runway entries — so `SelectDestinationType(false)` is made once for the pair, ahead
+of either.
+
+**The coordinate test is the stand's own radius, doubled.** Not a number of metres, and no
+longer plain containment. A radius multiple is what keeps it self-scaling with nothing to
+tune: a Gate Extra states ~50 m of scale, a medium gate ~21 m, a packed GA spot a few
+metres, and any single constant is either too tight for the first or too loose for the
+last. The factor exists because the published point is the **nose-stop**, whose offset
+scales with the parked aircraft rather than with whatever radius the navdata recorded, so
+how much of the radius it eats is not a property of the stand at all.
+
+| capture | stand | point sits | its radius | runner-up | contained? |
+| --- | --- | --- | --- | --- | --- |
+| EDDB 2026-07-30 | GB 6 | 18.9 m out | 21.6 m (71 ft) | 47.5 m | yes |
+| KDTW 2026-07-31 | GA 24A | 30.1 m out | 22.9 m (75 ft) | 75.0 m | **no** |
+
+Containment was calibrated on the first of those, the only capture there was, and the
+second disproved it — on a gate whose name had also failed, so it fell through to the
+arrival runway exactly as before. What both captures agree on is the **margin**: the right
+stand is nearest by roughly 2.5×. So the radius decides who is admissible and centre
+distance picks the winner among them, and `NoseStopRadiusFactor = 2.0` admits both correct
+stands and neither runner-up (21.6 × 2 = 43.2 < 47.5; 22.9 × 2 = 45.8 < 75.0).
+
+**"Exactly one of 139 spots" is no longer the property being relied on** —
+nearest-among-admissible is. Doubled, EDDB's wide GB 7A (65.1 m out, 50 m radius) is
+admissible too and loses on centre distance instead; overlapping tolerances are ordinary
+on a pier of wide stands. **Two** real arrivals is all the factor is calibrated on, and it
+is the number to re-check the first time a third disagrees — a stand that should seat and
+does not, or a neighbour that wins. The 150 m ceiling beside it is still a sanity backstop
+against a whole apron recorded as one stand, the same role `GateAliasResolver`'s 150 m
+plays, and not the discriminator.
 
 **The published point is the nose-stop, not the stand datum.** At EDDB it sat 18.9 m from
 the navdata spot centre on bearing 68.6° against a stand heading of 68.8° — straight out
 along the stand's own axis, the same distinction [gsx.md](gsx.md) records for GSX stop
-positions. It is *expected* to sit off-centre by most of the radius, so a "near the
-centre" test would reject the stand the aircraft is parked on.
+positions. It is *expected* to sit off-centre, at KDTW by more than the whole radius, so a
+"near the centre" test would reject the stand the aircraft is parked on.
 
 **Radius units are per source and must be converted before the comparison.** A navdata
 spot's radius is FEET, a GSX-sourced one's is METRES — the mix-up `ParkingSpot.FitsAircraft`
-already records, where it "filtered almost everything out". Read raw, EDDB's 71 becomes a
-71 m circle and all three neighbouring stands contain the point; the one-of-139 margin is
-gone and the answer becomes whichever stand happens to be nearest.
+already records, where it "filtered almost everything out". Read raw, EDDB's 71 becomes
+71 m and the 47.5 m runner-up the doubled radius is there to exclude is admitted along
+with everything else; on a pier where the inflated neighbour is the nearer of the two, it
+wins outright.
 
 `SayIntentionsGatePositionMatcher` is the pure half and takes metres only, so the unit can
 never be in doubt where the comparison happens; `TaxiAssistForm.MatchGateByPosition`

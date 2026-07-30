@@ -234,7 +234,8 @@ public partial class MainForm
 
             if (!TryResolveSayIntentionsDestination(
                     form, status, clearance, icao,
-                    out bool isRunway, out string label, out string? positionMatchedGate))
+                    out bool isRunway, out string label,
+                    out TaxiAssistForm.GateSubstitution? gateSubstitution))
             {
                 announcer.AnnounceImmediate(
                     "SayIntentions route unavailable. No usable assigned runway or gate found.");
@@ -243,8 +244,11 @@ public partial class MainForm
 
             var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts);
 
+            // Which STEP seated the destination, not just that one did: name, online
+            // alias, or published coordinate. A future capture that ends up at the wrong
+            // stand is diagnosed by knowing which of the three answered for it.
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
-                        $"positionGate='{positionMatchedGate ?? "-"}' " +
+                        $"gateSubstitution='{DescribeGateSubstitution(gateSubstitution)}' " +
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
                         $"disagreed={disagreed} " +
                         $"geoStamp={FormatStampSi(context.TaxiPathStampUtc)} " +
@@ -262,7 +266,7 @@ public partial class MainForm
                         $"autoStart={autoStart}");
 
             string Describe(bool guidanceStarted) => BuildExternalRouteAnnouncement(
-                outcome, unknownTaxiways, label, positionMatchedGate, guidanceStarted,
+                outcome, unknownTaxiways, label, gateSubstitution, guidanceStarted,
                 source, disagreed,
                 source == TaxiwaySource.Geometry ? snap : null,
                 clearanceTaxiways.Count > 0, clearanceLookupProblem);
@@ -525,16 +529,19 @@ public partial class MainForm
     /// sentences later — the first thing the pilot hears contradicting the second, with
     /// nothing on screen to arbitrate.
     ///
-    /// <paramref name="positionMatchedGate"/> is the gate SayIntentions ASKED for when
-    /// this airport has no stand by that name and the destination was seated from
-    /// SayIntentions' published gate coordinate instead. That is a WARNING, not a
-    /// footnote: the pilot is being taxied to a stand the controller never named, and the
-    /// lead sentence names only the stand that won, so without this the substitution is
-    /// invisible. It goes immediately after the lead — the destination is what the rest of
-    /// the summary is about, so the correction to it cannot wait behind the route.</summary>
+    /// <paramref name="gateSubstitution"/> is the gate SayIntentions ASKED for when the
+    /// stand that seated carries a different label — because this scenery lists it under
+    /// an online ALIAS, or because no label matched at all and the published COORDINATE
+    /// decided. That is a WARNING, not a footnote: the pilot is being taxied to a stand
+    /// the controller never named, and the lead sentence names only the stand that won, so
+    /// without this the substitution is invisible. It goes immediately after the lead —
+    /// the destination is what the rest of the summary is about, so the correction to it
+    /// cannot wait behind the route. The two kinds get different words because they are
+    /// different claims about the airport: an alias says the stand IS here, spelled
+    /// otherwise; a position says nothing here answers to that name.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
-        string destination, string? positionMatchedGate, bool autoStart,
+        string destination, TaxiAssistForm.GateSubstitution? gateSubstitution, bool autoStart,
         TaxiwaySource source, bool disagreed,
         SnapResult? snap, bool clearanceNamedTaxiways, string? clearanceLookupProblem)
     {
@@ -546,9 +553,14 @@ public partial class MainForm
                   "Check the destination field."
         };
 
-        if (!string.IsNullOrWhiteSpace(positionMatchedGate))
-            parts.Add($"SayIntentions assigned {positionMatchedGate}, which this airport " +
-                      "does not have. This is the nearest stand to the assigned position.");
+        if (gateSubstitution is TaxiAssistForm.GateSubstitution substitution)
+        {
+            parts.Add(substitution.Kind == TaxiAssistForm.GateSubstitutionKind.Alias
+                ? $"SayIntentions assigned {substitution.AssignedName}, " +
+                  "which this scenery lists under another name."
+                : $"SayIntentions assigned {substitution.AssignedName}, which this airport " +
+                  "does not have. This is the nearest stand to the assigned position.");
+        }
 
         if (source == TaxiwaySource.Geometry)
         {
@@ -642,7 +654,8 @@ public partial class MainForm
     /// controller spoke rather than a place SayIntentions published.</summary>
     private static bool TryResolveSayIntentionsDestination(
         TaxiAssistForm form, SayIntentionsStatusResult status, string clearance,
-        string airportIcao, out bool isRunway, out string label, out string? positionMatchedGate)
+        string airportIcao, out bool isRunway, out string label,
+        out TaxiAssistForm.GateSubstitution? gateSubstitution)
     {
         var context = status.Context;
 
@@ -662,7 +675,20 @@ public partial class MainForm
         candidates.Add(new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway)));
 
         return form.TryResolveExternalDestination(
-            candidates, out isRunway, out label, out positionMatchedGate);
+            candidates, out isRunway, out label, out gateSubstitution);
+    }
+
+    /// <summary>The gate substitution as sayintentions.log records it: the name that was
+    /// asked for and the step that answered, or "-" when the label the form seated is the
+    /// one SayIntentions published.</summary>
+    private static string DescribeGateSubstitution(TaxiAssistForm.GateSubstitution? substitution)
+    {
+        if (substitution is not TaxiAssistForm.GateSubstitution value) return "-";
+
+        string step = value.Kind == TaxiAssistForm.GateSubstitutionKind.Alias
+            ? "alias"
+            : "position";
+        return $"{value.AssignedName} by {step}";
     }
 
     /// <summary>A "hold short of runway X" from the clearance, tied to the taxiway it

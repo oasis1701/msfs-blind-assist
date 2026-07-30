@@ -8,11 +8,17 @@
 // landed on with the taxiway half of the route perfectly correct. Nothing in the
 // announcement sounds wrong.
 //
-// The acceptance test is CONTAINMENT in the stand's own circle rather than a distance
-// constant, and these tests pin that choice rather than a tuned number: a stand states
-// its own scale, so a Gate Extra gets ~50 m of tolerance and a packed GA spot a few
-// metres, where any single metre constant is either too tight for the first or too loose
-// for the second.
+// A stand is ADMISSIBLE when the point falls within a multiple of its own radius, and the
+// NEAREST admissible stand wins. These tests pin that shape rather than a tuned number:
+// a stand states its own scale, so a Gate Extra gets ~50 m of radius and a packed GA spot
+// a few metres, where any single metre constant is either too tight for the first or too
+// loose for the second.
+//
+// The multiple is 2.0 and it is calibrated on TWO real arrivals — the EDDB and KDTW blocks
+// at the foot of this file, which are also what would have to be re-checked if a third
+// ever disagrees. It started at plain containment, which the KDTW capture disproved: the
+// published point is the NOSE-STOP, its offset scales with the parked aircraft rather than
+// with the navdata radius, and at KDTW it sat 30.1 m out from a stand with a 22.9 m radius.
 
 using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Services.TaxiAugment;
@@ -36,13 +42,13 @@ public class SayIntentionsGatePositionMatcherTests
         => SayIntentionsGatePositionMatcher.Match(candidates, PointLat, PointLon);
 
     [Fact]
-    public void The_nearest_stand_loses_to_one_whose_own_circle_holds_the_point()
+    public void The_nearest_stand_loses_to_one_whose_own_scale_reaches_the_point()
     {
         // This is the whole design in one case. Nearest-centre alone picks the GA spot,
-        // which the point is nowhere near the inside of; containment picks the wide stand
-        // it is actually parked on. Every stand carries its own scale, so no metre
-        // constant can express this — the one that admits the 40 m stand also admits the
-        // 5 m one twice over.
+        // four times outside anything it could hold; the radius test picks the wide stand
+        // the aircraft is actually parked on. Every stand carries its own scale, so no
+        // metre constant can express this — the one that admits the 40 m stand at 30 m
+        // admits the 5 m one six times over.
         Assert.Equal(
             "Gate Extra",
             Match(Stand("GA spot", metresAway: 20, radiusMetres: 5),
@@ -50,14 +56,28 @@ public class SayIntentionsGatePositionMatcherTests
     }
 
     [Fact]
-    public void A_point_inside_no_stand_matches_nothing()
+    public void A_point_no_stands_tolerance_reaches_matches_nothing()
     {
         // Silence is the required answer. The caller keeps failing and the pilot hears
         // that the destination is not set, which is recoverable; routing them to a
         // plausible-sounding stand they were never assigned is not.
+        //
+        // 47 m against a 21.6 m radius is EDDB's real runner-up (47.5 m, 71 ft), the
+        // stand the doubled radius still has to exclude — 21.6 x 2 = 43.2. Loosening the
+        // factor past ~2.2 puts it back in contention with the correct stand.
         Assert.Null(
             Match(Stand("B 5", metresAway: 47, radiusMetres: 21.6),
                   Stand("B 6", metresAway: 60, radiusMetres: 21.6)));
+    }
+
+    [Fact]
+    public void A_stand_just_inside_twice_its_radius_answers_and_just_outside_does_not()
+    {
+        // The factor itself, isolated from any airport. Either side of 2 x 10 m, 10 cm
+        // out — the fixture places a stand to within a millimetre, so the gap is real
+        // without asserting the boundary to the metre.
+        Assert.Equal("edge", Match(Stand("edge", metresAway: 19.9, radiusMetres: 10)));
+        Assert.Null(Match(Stand("edge", metresAway: 20.1, radiusMetres: 10)));
     }
 
     [Theory]
@@ -98,10 +118,11 @@ public class SayIntentionsGatePositionMatcherTests
     }
 
     [Fact]
-    public void The_nearest_of_several_containing_stands_wins()
+    public void The_nearest_of_several_admissible_stands_wins()
     {
-        // Overlapping circles are ordinary on a pier of wide stands, so containment alone
-        // does not settle it; the nearest centre does.
+        // Overlapping tolerances are ordinary on a pier of wide stands — and more so now
+        // that each reaches twice its radius — so admissibility alone does not settle it;
+        // the nearest centre does.
         Assert.Equal(
             "B 6",
             Match(Stand("B 4", metresAway: 40, radiusMetres: 50),
@@ -136,11 +157,13 @@ public class SayIntentionsGatePositionMatcherTests
     // positions. So it is EXPECTED to sit off-centre by most of the radius, and a "near
     // the centre" test would reject the stand the aircraft is standing on.
     //
-    // Of the airport's 139 spots exactly one contained the point, and it was the right
-    // one. Only the assigned stand's coordinates are reproduced here; the two nearest
-    // others were measured as centre DISTANCES from the published point (47.5 m and
-    // 65.1 m), so they are placed due north of it — a radius test does not care about
-    // bearing.
+    // Of the airport's 139 spots exactly one CONTAINED the point, and it was the right
+    // one. That is no longer the property being relied on — doubled, the wide B 7A is
+    // admissible too and loses on centre distance instead — but the margin it measures
+    // is: the correct stand is nearest by more than 2.5x. Only the assigned stand's
+    // coordinates are reproduced here; the two nearest others were measured as centre
+    // DISTANCES from the published point (47.5 m and 65.1 m), so they are placed due
+    // north of it — a radius test does not care about bearing.
 
     private const double EddbPointLat = 52.3647127959562;   // assigned_gate_lat, published as a string
     private const double EddbPointLon = 13.5055538061652;   // assigned_gate_lon
@@ -171,17 +194,25 @@ public class SayIntentionsGatePositionMatcherTests
     }
 
     [Fact]
-    public void The_assigned_stand_is_the_only_EDDB_spot_that_contains_the_point()
+    public void At_EDDB_the_runner_up_is_inadmissible_and_the_wider_neighbour_loses_on_distance()
     {
-        // The margin is what makes containment trustworthy here rather than lucky: the
-        // runner-up sits at more than twice its own radius. Tested one at a time so the
-        // nearest-centre rule cannot mask a neighbour that also qualified.
+        // Each stand alone, so the nearest-centre rule cannot mask which of them qualified
+        // at all — the two halves of the answer fail differently and both matter.
+        //
+        // B 5 is the one the tolerance has to keep out: 47.5 m against 21.6 x 2 = 43.2.
+        // B 7A now gets IN (65.1 m against 50 x 2 = 100) where containment kept it out,
+        // and that is fine — it loses to B 6 by 46 m of centre distance. "Exactly one of
+        // 139 spots" has become "nearest among the admissible", which is why the combined
+        // case below is the one that matters.
         Assert.Equal("B 6", SayIntentionsGatePositionMatcher.Match(
             new[] { EddbB6 }, EddbPointLat, EddbPointLon));
         Assert.Null(SayIntentionsGatePositionMatcher.Match(
             new[] { EddbB5 }, EddbPointLat, EddbPointLon));
-        Assert.Null(SayIntentionsGatePositionMatcher.Match(
+        Assert.Equal("B 7A", SayIntentionsGatePositionMatcher.Match(
             new[] { EddbB7A }, EddbPointLat, EddbPointLon));
+
+        Assert.Equal("B 6", SayIntentionsGatePositionMatcher.Match(
+            new[] { EddbB7A, EddbB5, EddbB6 }, EddbPointLat, EddbPointLon));
     }
 
     [Fact]
@@ -201,15 +232,88 @@ public class SayIntentionsGatePositionMatcherTests
     {
         // Why the caller converts by SOURCE before building a candidate: a navdata radius
         // is FEET and a GSX one metres, the mix-up ParkingSpot.FitsAircraft already
-        // records. Left raw, every circle is 3.28 times too wide — all three of these
-        // stands then contain the point, so "exactly one of 139 spots" becomes "whichever
-        // happens to be nearest", and on a pier where the inflated neighbour is the nearer
-        // one it wins outright. The right answer here would be luck, not discrimination.
+        // records. Left raw, every tolerance is 3.28 times too wide — and the stand this
+        // is supposed to exclude, the 47.5 m runner-up, is admitted along with everything
+        // else. On a pier where the inflated neighbour is the NEARER of the two it then
+        // wins outright, so the right answer would be luck rather than discrimination.
+        Assert.Null(SayIntentionsGatePositionMatcher.Match(
+            new[] { EddbB5 }, EddbPointLat, EddbPointLon));
+        Assert.NotNull(SayIntentionsGatePositionMatcher.Match(
+            new[] { EddbB5 with { RadiusMetres = 71 } }, EddbPointLat, EddbPointLon));
+
         Assert.NotNull(SayIntentionsGatePositionMatcher.Match(
             new[] { EddbB6 with { RadiusMetres = 71 } }, EddbPointLat, EddbPointLon));
         Assert.NotNull(SayIntentionsGatePositionMatcher.Match(
-            new[] { EddbB5 with { RadiusMetres = 71 } }, EddbPointLat, EddbPointLon));
-        Assert.NotNull(SayIntentionsGatePositionMatcher.Match(
             new[] { EddbB7A with { RadiusMetres = 164 } }, EddbPointLat, EddbPointLon));
+    }
+
+    // --- The live KDTW arrival --------------------------------------------------------
+    //
+    // Measured 2026-07-31. SayIntentions assigned "South Terminal Gate A24" with
+    // assigned_gate_lat/lon below; KDTW's scenery calls that stand A24A (navdata parking
+    // name='GA', number=24, suffix='A'), so the NAME failed and the coordinate was asked
+    // instead — and CONTAINMENT dropped it too, because the point sits 30.1 m out from a
+    // stand of 75 ft = 22.9 m radius. Destination resolution then ran its whole chain and
+    // took the ARRIVAL RUNWAY: a landed aircraft routed at 04L, along exactly the
+    // A5/A/R the controller had given for the gate.
+    //
+    // This is the capture that turned containment into a radius MULTIPLE. The offset is
+    // the nose-stop, which scales with the parked aircraft rather than with the navdata
+    // radius, so how much of the radius it eats is not a property of the stand at all.
+    // The neighbours were measured as centre distances (75.0 m and 75.9 m) and are placed
+    // due north of the point, as in the EDDB block — a radius test ignores bearing. Radii
+    // are in metres here because that is what the caller converts navdata's feet to.
+
+    private const double KdtwPointLat = 42.2052647490552;    // assigned_gate_lat
+    private const double KdtwPointLon = -83.3606651929504;   // assigned_gate_lon
+    private const double KdtwA24ARadiusMetres = 22.9;        // 75 ft
+
+    private static GatePositionCandidate KdtwStandNorthOfPoint(
+        string label, double metresAway, double radiusMetres)
+        => new(label,
+               KdtwPointLat + metresAway / MetresPerDegreeLatitude,
+               KdtwPointLon,
+               radiusMetres);
+
+    private static readonly GatePositionCandidate KdtwA24A =
+        KdtwStandNorthOfPoint("A 24A", metresAway: 30.1, radiusMetres: KdtwA24ARadiusMetres);
+    private static readonly GatePositionCandidate KdtwA21A =
+        KdtwStandNorthOfPoint("A 21A", metresAway: 75.0, radiusMetres: 14.0);
+    private static readonly GatePositionCandidate KdtwA28A =
+        KdtwStandNorthOfPoint("A 28A", metresAway: 75.9, radiusMetres: 22.9);
+
+    [Fact]
+    public void The_live_KDTW_point_seats_the_stand_containment_dropped()
+    {
+        Assert.Equal(
+            "A 24A",
+            SayIntentionsGatePositionMatcher.Match(
+                new[] { KdtwA21A, KdtwA24A, KdtwA28A }, KdtwPointLat, KdtwPointLon));
+    }
+
+    [Fact]
+    public void The_KDTW_point_lies_outside_the_stands_own_radius_and_inside_twice_it()
+    {
+        // The measurement the factor is calibrated on, stated as the arithmetic rather
+        // than as an outcome: this is what a third capture would have to contradict.
+        const double outMetres = 30.1;
+
+        Assert.True(outMetres > KdtwA24ARadiusMetres);
+        Assert.True(outMetres <= KdtwA24ARadiusMetres
+                                 * SayIntentionsGatePositionMatcher.NoseStopRadiusFactor);
+    }
+
+    [Fact]
+    public void Neither_KDTW_neighbour_is_admissible_at_all()
+    {
+        // The other half of the margin: at 75 m both are more than twice their own
+        // radius away, so the doubled tolerance buys them nothing. Tested one at a time
+        // so nearest-centre cannot hide a neighbour that qualified.
+        Assert.Equal("A 24A", SayIntentionsGatePositionMatcher.Match(
+            new[] { KdtwA24A }, KdtwPointLat, KdtwPointLon));
+        Assert.Null(SayIntentionsGatePositionMatcher.Match(
+            new[] { KdtwA21A }, KdtwPointLat, KdtwPointLon));
+        Assert.Null(SayIntentionsGatePositionMatcher.Match(
+            new[] { KdtwA28A }, KdtwPointLat, KdtwPointLon));
     }
 }
