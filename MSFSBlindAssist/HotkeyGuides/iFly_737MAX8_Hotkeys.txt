@@ -210,7 +210,7 @@ Radios:
   Marker and Speaker.
 
 SayIntentions:
-  Alt+Shift+S  Build a taxi route from the last SayIntentions taxi clearance.
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
                Fills the Taxi Assist form with the destination, taxiways and
                hold-short runways ATC gave, and names anything it could not
                apply. Review the fields and press Calculate Route to start

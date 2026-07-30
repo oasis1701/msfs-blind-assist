@@ -114,7 +114,7 @@ public static class SayIntentionsTaxiPathSnapper
             // Linear over every segment, and NOT free: measured 20-90 ms per call —
             // a 111-point capture against EGLL's 5,189 named edges is ~576k point-segment
             // evaluations, about 40 ms. That is several frames, and it runs SYNCHRONOUSLY
-            // ON THE UI THREAD from the Alt+Shift+S handler. It is acceptable only
+            // ON THE UI THREAD from the Ctrl+Shift+Y handler. It is acceptable only
             // because it happens ONCE per import, while the aircraft is standing still,
             // inside an operation that has already spent seconds on HTTP. Do not move
             // this onto a per-frame path, and do not assume it is cheap: if it ever needs

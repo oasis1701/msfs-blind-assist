@@ -11,7 +11,7 @@ by hand.
 | --- | --- | --- |
 | Output | `Ctrl+S` | Read the last SayIntentions transmission |
 | Output | `Ctrl+Shift+S` | Open the flight information window (gate, runway configuration, altimeter) |
-| Input | `Alt+Shift+S` | Build a taxi route from the current clearance |
+| Input | `Ctrl+Shift+Y` | Build a taxi route from the current clearance |
 
 The two readouts work without a simulator connection — they only read the local
 flight file and the SayIntentions API. Building a taxi route needs an aircraft
@@ -167,8 +167,14 @@ else it has, which may be SayIntentions' own published ground track. Read the su
 it says so. The two readouts above are unaffected.
 
 By default the dialog opens with everything pre-filled so you can review it, then you
-press **Calculate Route** to start guidance. Enable **Start taxi guidance immediately**
-on Settings → Taxi Guidance to skip the review step.
+press **Calculate Route** to start guidance. Enable **SayIntentions import starts taxi
+guidance immediately** on Settings → Taxi Guidance to skip the review step.
+
+The Taxi Guidance dialog also carries a **Fill from SayIntentions** button (Alt+Y), one
+tab stop above Calculate Route, which does exactly what the hotkey does — so the feature
+is reachable with the dialog already open and without recalling the chord. It fills the
+fields; it does not start guidance, unless the setting above says otherwise. Pressing it
+while an import is already running is answered the same way as a second hotkey press.
 
 An import replaces the **whole** route, including anything you had set up by hand
 first — intersection departure, CAT III hold, hold-shorts. The clearance is the route.
@@ -257,7 +263,7 @@ airport does not have is not spoken at all (it is in `sayintentions.log` as
 does use taxiway N. A route shorter than the one you were cleared for is otherwise not
 something you can see, so it is always said out loud.
 
-If you press **Alt+Shift+S** again while an import is still running, you hear
+If you press **Ctrl+Shift+Y** again while an import is still running, you hear
 *"SayIntentions taxi route already being built."* The import can take several seconds —
 reading the frequency, your position, and the airport's taxiway names — and two of them at
 once would fight over the same dialog.
@@ -267,10 +273,14 @@ once would fight over the same dialog.
 There is no SayIntentions settings tab. The one option lives on **Settings → Taxi
 Guidance**, under a SayIntentions heading at the foot of that tab:
 
-- **Start taxi guidance immediately** — off by default (see above).
+- **SayIntentions import starts taxi guidance immediately** — off by default (see above).
 
 It sits there because it decides what happens to a *taxi route*, which is that tab's
-subject, and because it was the only option left once the API key was retired.
+subject, and because it was the only option left once the API key was retired. The label
+names SayIntentions first because the heading above it is a `Label` — not a tab stop — so
+a screen-reader user arrowing between controls hears the checkbox entirely on its own,
+with nothing to say the setting is scoped to the import rather than to taxi guidance at
+large.
 
 There is no API key field. SayIntentions publishes the key in `flight.json`
 (`flight_details.api_key`) whenever a flight is active, confirmed in both live captures,
@@ -762,7 +772,7 @@ epoch-seconds instant — zero, negative, or large enough to overflow `DateTime`
 which is exactly what a future migration to millisecond or microsecond epochs would
 publish — is treated the same as an absent field: `TaxiPathStampUtc` falls back to the
 flight.json file's own last-write time, a later answer than SI's own but still an honest
-one, rather than an unhandled exception on the pilot's Ctrl+S/Ctrl+Shift+S/Alt+Shift+S
+one, rather than an unhandled exception on the pilot's Ctrl+S/Ctrl+Shift+S/Ctrl+Shift+Y
 hotkeys (an unguarded conversion of a live millisecond-shape value took down all three
 at once before this range check existed).
 
@@ -1027,7 +1037,7 @@ candidate sets `cmbDestType`, and `OnDestTypeChanged` unticks `chkIntersection` 
 `OnIntersectionToggled` also empties `cmbIntersection` and `_intersectionMap`) and
 `chkCatIiiHold` on the way out of runway mode. Putting the *type* back re-shows both boxes,
 unticked. So the mirror image of the bug above: a pilot hand-builds "Runway 27L,
-intersection departure at T4, CAT III hold", presses Alt+Shift+S, the clearance names a
+intersection departure at T4, CAT III hold", presses Ctrl+Shift+Y, the clearance names a
 gate this airport does not have, everything fails, and they hear *"SayIntentions route
 unavailable. No usable assigned runway or gate found."* — "nothing happened" — while their
 intersection departure and LVP hold are gone, and the next Calculate lines them up at the
@@ -1054,10 +1064,20 @@ announced as nothing more than *"SayIntentions taxi route failed."*
 
 The import awaits repeatedly on the UI thread — up to 5 s of comms history, 1.5 s for a
 fresh position, up to 8 s of taxiway-name prefetch, then a graph build — which is long
-enough for a pilot who has heard nothing to press Alt+Shift+S again. Two runs interleave at
+enough for a pilot who has heard nothing to press Ctrl+Shift+Y again. Two runs interleave at
 every await. `BuildTaxiRouteFromSayIntentionsAsync` takes an `Interlocked` latch and
 refuses the second press **out loud** (*"SayIntentions taxi route already being built."*);
 silence is what made the pilot press twice in the first place.
+
+The dialog's **Fill from SayIntentions** button calls that same method, through a
+`Func<Task>` the form is constructed with — never a `MainForm` reference — so the button
+and the hotkey share the one latch and cannot interleave. The call **re-enters the form it
+was pressed on**: the import fetches `GetOrCreateTaxiAssistForm()`, which returns that same
+already-constructed instance (the form is hide-on-close and never disposed), then loads the
+airport and applies the route to the very controls the pilot is standing in. That is safe
+in both directions — the latch is taken by the caller rather than anywhere on the button's
+path, so a click never contends with itself, and the airport load *chains* rather than
+rejects, so a nested call waits for pending work instead of deadlocking on it.
 
 `LoadAirportDataAsync` needs its own guard for a different reason: it *clears*
 `cmbFirstTaxiway`, `cmbDestination` and the dynamic taxiway rows before its awaits and
@@ -1112,7 +1132,7 @@ no taxi paths, an exception. A failed load therefore left the form holding the *
 airport's graph under the *new* airport's name, and the method's own early return
 (`icao == _currentIcao && _graph != null`) then matched forever, so it could never
 rebuild. Manually that was cosmetic. For the import it was a wrong route: taxi at LMML,
-fly to an EDDF with no taxi paths, press Alt+Shift+S, and `knownTaxiways` came back as
+fly to an EDDF with no taxi paths, press Ctrl+Shift+Y, and `knownTaxiways` came back as
 **LMML's** names, so the `Count == 0` guard never fired — the EDDF clearance resolved
 against LMML taxiways, `GetLoadedTaxiwayEdges()` handed the snapper LMML pavement to snap
 EDDF coordinates onto, and with auto-start on, guidance began. `_graph` is now dropped

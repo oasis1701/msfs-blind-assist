@@ -131,6 +131,7 @@ public class TaxiAssistForm : Form
         "End of last taxiway",
         "Hold at named holding point"
     };
+    private Button btnSayIntentions = null!;
     private Button btnCalculate = null!;
     private Button btnStop = null!;
     private Label lblStatus = null!;
@@ -234,6 +235,14 @@ public class TaxiAssistForm : Form
     // docking stop moves to where GSX's VDGS would stop THIS airframe. Lazy + cached.
     private readonly Services.Gsx.GsxStopOffsetResolver _stopOffsetResolver = new();
 
+    /// <summary>Runs the SayIntentions taxi-route import — the same operation the
+    /// Ctrl+Shift+Y hotkey performs. Supplied by the caller rather than reached through a
+    /// MainForm reference, so this form keeps knowing nothing about MainForm (the pattern
+    /// TaxiGuidancePanel already uses for its taxiway-name refresh). Null when the caller
+    /// has no import to offer, and the button then stays present but disabled — a control
+    /// that appears and disappears is worse to navigate than one consistently there.</summary>
+    private readonly Func<Task>? _importFromSayIntentions;
+
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
@@ -243,7 +252,8 @@ public class TaxiAssistForm : Form
         double aircraftWingspan = 0,
         Services.GateDataSource? gateSource = null,
         Services.Gsx.GsxGateSelector? gsxGateSelector = null,
-        Services.DockingGuidanceManager? dockingManager = null)
+        Services.DockingGuidanceManager? dockingManager = null,
+        Func<Task>? importFromSayIntentions = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
@@ -254,6 +264,7 @@ public class TaxiAssistForm : Form
         _gateSource = gateSource;
         _gsxGateSelector = gsxGateSelector;
         _dockingManager = dockingManager;
+        _importFromSayIntentions = importFromSayIntentions;
         InitializeFormControls();
     }
 
@@ -322,6 +333,7 @@ public class TaxiAssistForm : Form
         //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
         //   Alt+P  Progressive-taxi terminator named holding-&point combo (last row
         //          only, type "Hold at named holding point")
+        //   Alt+Y  Fill from Sa&yIntentions (matches the Ctrl+Shift+Y hotkey)
         //   Alt+C  Calculate Route
         //   Alt+S  Stop Guidance
         //   Alt+R  Remove (dynamic) — shared across all Remove buttons (cycle)
@@ -695,6 +707,28 @@ public class TaxiAssistForm : Form
         };
         // y will be adjusted dynamically
 
+        // SayIntentions import. Sits immediately above Calculate because it is the step
+        // BEFORE it: it fills the fields, it does not start guidance. The label says
+        // "Fill from" for exactly that reason — a pilot who reads it as "go" would press
+        // it expecting to be moving.
+        //
+        // Disabled rather than hidden when no import callback was supplied (see
+        // _importFromSayIntentions).
+        btnSayIntentions = new Button
+        {
+            Text = "Fill from Sa&yIntentions",
+            Location = new System.Drawing.Point(controlX, y),
+            Width = 180,
+            Height = 30,
+            Enabled = _importFromSayIntentions != null,
+            AccessibleName = "Fill from SayIntentions",
+            AccessibleDescription = _importFromSayIntentions != null
+                ? "Read the latest SayIntentions taxi clearance and fill this form with the destination, taxiways and hold-short runways ATC gave. Same as the Ctrl+Shift+Y hotkey. Does not start guidance unless auto-start is on in Settings."
+                : "Unavailable: this window was opened without SayIntentions support."
+        };
+        btnSayIntentions.Click += OnSayIntentionsClicked;
+        y += 35;
+
         // Calculate button
         btnCalculate = new Button
         {
@@ -815,6 +849,7 @@ public class TaxiAssistForm : Form
         lblTerminatorHoldPoint.TabIndex = 9004;
         cmbTerminatorHoldPoint.TabIndex = 9005;
         this.Controls.Add(pnlTaxiways);
+        this.Controls.Add(btnSayIntentions);
         this.Controls.Add(btnCalculate);
         this.Controls.Add(btnStop);
         this.Controls.Add(lblStatus);
@@ -823,7 +858,10 @@ public class TaxiAssistForm : Form
 
         // Tab order: Airport → Type → Destination → First taxiway → First
         // hold-short → First hold-short-of-runway → Add Taxiway → DYNAMIC
-        // TAXIWAYS → Calculate → Stop. The dynamic-taxiway panel needs an
+        // TAXIWAYS → Fill from SayIntentions → Calculate → Stop. The import sits
+        // with the other actions rather than at the top: it is one of three things
+        // the pilot can DO once the fields are in view, and it is the one that
+        // feeds Calculate. The dynamic-taxiway panel needs an
         // explicit TabIndex BETWEEN Add and Calculate; without that, its inner
         // controls land at the END of the tab order (after Stop), which is
         // what made adding taxiways feel "illogical" — Tab from Add jumped
@@ -847,6 +885,7 @@ public class TaxiAssistForm : Form
         btnAddTaxiway.TabIndex = tabIdx++;
         pnlTaxiways.TabStop = true;
         pnlTaxiways.TabIndex = tabIdx++;
+        btnSayIntentions.TabIndex = tabIdx++;
         btnCalculate.TabIndex = tabIdx++;
         btnStop.TabIndex = tabIdx++;
         txtRouteSummary.TabIndex = tabIdx++;
@@ -937,7 +976,7 @@ public class TaxiAssistForm : Form
     /// the intersection-departure and CAT III / LVP boxes on the way out of runway mode
     /// (the first also empties the intersection list and its map). Restoring the type
     /// re-SHOWS them, unticked. So a pilot who hand-built "Runway 27L, intersection T4,
-    /// CAT III hold", pressed Alt+Shift+S and heard "SayIntentions route unavailable" —
+    /// CAT III hold", pressed Ctrl+Shift+Y and heard "SayIntentions route unavailable" —
     /// i.e. "nothing happened" — silently lost both, and their next Calculate lined them
     /// up at the full-length threshold holding at the CAT I line. This is the mirror
     /// image of what ResetRouteShapingControls exists to prevent on a SUCCESSFUL
@@ -1421,7 +1460,7 @@ public class TaxiAssistForm : Form
         // The SayIntentions import turned that from cosmetic into a wrong route:
         // LoadAirportForExternalRouteAsync reports success as "the graph knows some
         // taxiway names", so after taxiing at LMML and flying to an EDDF with no taxi
-        // paths, Alt+Shift+S got LMML's taxiway names, snapped EDDF coordinates onto
+        // paths, Ctrl+Shift+Y got LMML's taxiway names, snapped EDDF coordinates onto
         // LMML pavement, and — with auto-start on — began guidance on it. A null graph
         // makes the caller's "no taxi path data available" guard do its job, and every
         // _graph == null path in this form already early-returns.
@@ -2762,6 +2801,9 @@ public class TaxiAssistForm : Form
         int y = pnlTaxiways.Location.Y + panelHeight;
         if (panelHeight > 0) y += 5;
 
+        btnSayIntentions.Location = new System.Drawing.Point(15, y);
+        y += 35;
+
         btnCalculate.Location = new System.Drawing.Point(15, y);
         btnStop.Location = new System.Drawing.Point(15 + 190, y);
         y += 40;
@@ -2783,6 +2825,39 @@ public class TaxiAssistForm : Form
         int formHeight = y + 15;
         if (formHeight < 480) formHeight = 480;
         this.ClientSize = new System.Drawing.Size(this.ClientSize.Width, formHeight);
+    }
+
+    /// <summary>Runs the SayIntentions import — the same call the Ctrl+Shift+Y hotkey
+    /// makes, which re-enters this very form (it loads the airport here and applies the
+    /// route to these controls). That is safe: the import's own one-at-a-time latch is
+    /// taken by the CALLER, not by anything on this path, so a click never contends with
+    /// itself; and the airport load it triggers CHAINS on any load already running rather
+    /// than rejecting it, so a nested call waits for pending work instead of deadlocking
+    /// on it.
+    ///
+    /// NOTHING IS ANNOUNCED HERE. The screen reader already speaks the button activation,
+    /// and the import speaks its own progress and its summary — a third utterance would
+    /// only talk over them. A second press while one is running is answered by the
+    /// caller's latch, out loud, which is also why the button is not disabled for the
+    /// duration: disabling the control that currently has focus moves focus off it.
+    ///
+    /// try/catch because this is `async void`: the import handles its own failures, but an
+    /// escaped throw here would take the app down rather than the operation. QUEUED, not
+    /// immediate — the import's own handler reports the specific failure immediately, and
+    /// an immediate announcement here would discard that queue to say something vaguer.</summary>
+    private async void OnSayIntentionsClicked(object? sender, EventArgs e)
+    {
+        if (_importFromSayIntentions == null) return;
+
+        try
+        {
+            await _importFromSayIntentions();
+        }
+        catch (Exception ex)
+        {
+            _taxiFormLog.Error($"SayIntentions import from the taxi form failed: {ex}");
+            _announcer.Announce("SayIntentions taxi route failed.");
+        }
     }
 
     private void OnCalculateClicked(object? sender, EventArgs e)

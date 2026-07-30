@@ -106,7 +106,7 @@ public partial class MainForm
         }
     }
 
-    /// <summary>Alt+Shift+S. EVERYTHING is inside the try, including the two guards that
+    /// <summary>Ctrl+Shift+Y. EVERYTHING is inside the try, including the two guards that
     /// used to sit ahead of it: this runs as a discarded Task, so anything thrown before
     /// the try is captured into it and the pilot hears nothing at all while
     /// sayintentions.log records nothing either. ValidateDatabaseSimulatorMatch in

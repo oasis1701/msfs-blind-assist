@@ -291,7 +291,7 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
             SayIntentionsClearanceParser.NormalizeParkingName(context.AssignedGate));
     }
 
-    // The reason Alt+Shift+S always needs the network: there is nothing here to
+    // The reason Ctrl+Shift+Y always needs the network: there is nothing here to
     // parse a clearance out of, so the import falls through to getCommsHistory.
     [Fact]
     public void FlightJsonCarriesNoClearanceAndNoTransmission()
@@ -396,7 +396,7 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
     // the commonest way an epoch field drifts, and publishes exactly this shape
     // (1785357161409). The pilot would hear "SayIntentions transmission lookup
     // failed. Value to add was out of range. (Parameter 'value')" on Ctrl+S, the same
-    // on Ctrl+Shift+S, and no route at all from Alt+Shift+S — clearance text, last
+    // on Ctrl+Shift+S, and no route at all from Ctrl+Shift+Y — clearance text, last
     // transmission, gate, runways and weather all lost at once, for a value that only
     // ever should have cost the taxi-path stamp.
     [Fact]

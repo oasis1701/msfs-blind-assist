@@ -930,7 +930,11 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TAXI_CONTINUE, MOD_NONE, 0x59);         // Y (Continue past hold-short)
             RegisterHotKey(windowHandle, HOTKEY_TAXI_STOP, MOD_CONTROL, 0x59);          // Ctrl+Y (Stop guidance)
             RegisterHotKey(windowHandle, HOTKEY_LANDING_EXIT, MOD_SHIFT, 0x58);         // Shift+X (Landing Exit Planner)
-            RegisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE, MOD_ALT | MOD_SHIFT, 0x53); // Alt+Shift+S (Build taxi route from SI)
+            // Fourth of the Y family, because what it builds is a TAXI ROUTE: Y continues
+            // past a hold-short, Shift+Y opens the taxi form, Ctrl+Y stops guidance. Named
+            // for what it produces rather than for SayIntentions, so a pilot reaching for
+            // it thinks of the route, not the source.
+            RegisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE, MOD_CONTROL | MOD_SHIFT, 0x59); // Ctrl+Shift+Y (Build taxi route from SI)
 
             // Access GSX hotkey (Input mode). Alt+G is free here — output mode
             // Alt+G is taken by Nearest Ground Traffic, but each mode has its

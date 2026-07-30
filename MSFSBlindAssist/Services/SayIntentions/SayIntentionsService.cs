@@ -329,7 +329,7 @@ public sealed class SayIntentionsService
     /// throws <see cref="ArgumentOutOfRangeException"/> for an out-of-range value —
     /// and that exception sits outside ReadFlightContext's catch list
     /// (JsonException/IOException/UnauthorizedAccessException), so unguarded it took
-    /// down Ctrl+S, Ctrl+Shift+S and Alt+Shift+S all at once. The commonest way this
+    /// down Ctrl+S, Ctrl+Shift+S and Ctrl+Shift+Y all at once. The commonest way this
     /// fires for real is SayIntentions migrating the field to milliseconds — a live
     /// value like 1785357161409 overflows DateTime's year-9999 ceiling by tens of
     /// thousands of years when misread as seconds, which is exactly what makes the

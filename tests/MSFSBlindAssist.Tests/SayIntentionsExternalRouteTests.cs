@@ -1138,7 +1138,7 @@ public class SayIntentionsExternalRouteTests
     // TryResolveExternalDestination promises "probing leaves no mark", but probing a gate
     // candidate switches the destination type, and OnDestTypeChanged unticks the
     // intersection-departure and CAT III boxes on the way out. A pilot who hand-built an
-    // intersection departure, pressed Alt+Shift+S and heard "SayIntentions route
+    // intersection departure, pressed Ctrl+Shift+Y and heard "SayIntentions route
     // unavailable" — i.e. "nothing happened" — silently lost it, and the next Calculate
     // lined them up at the full-length threshold holding at the CAT I line.
 

@@ -669,9 +669,16 @@ public partial class MainForm
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
+            // The form gets the import as a CALLBACK, not a MainForm reference, so it
+            // stays independent of MainForm (same shape as the Settings panel's
+            // taxiway-name refresh). Reaching back into this same method from inside
+            // BuildTaxiRouteFromSayIntentionsAsync returns the instance below, already
+            // constructed — the import re-enters the form it is filling, which is what it
+            // does on the hotkey path too.
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager,
+                importFromSayIntentions: BuildTaxiRouteFromSayIntentionsAsync);
         }
 
         return taxiAssistForm;

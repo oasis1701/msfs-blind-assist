@@ -411,14 +411,22 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleName = "SayIntentions section"
         };
 
+        // The scope has to lead. A screen-reader user arrows between FOCUSABLE controls,
+        // and the "SayIntentions" heading above is a Label — not a tab stop — so this
+        // checkbox is read entirely on its own. Wording that opened with "Start taxi
+        // guidance immediately…" and qualified itself at the end was heard as a general
+        // taxi-guidance option, which it is not: it changes nothing about a route the
+        // pilot builds by hand.
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
-            Text = "Start taxi &guidance immediately after building a SayIntentions route",
+            Text = "SayIntentions import starts taxi &guidance immediately",
             Location = new Point(20, 820),
             Size = new Size(450, 40),
-            AccessibleName = "Start taxi guidance immediately",
-            AccessibleDescription = "When cleared, the taxi guidance dialog opens with the route "
-                                    + "fields filled in so you can review them before starting."
+            AccessibleName = "SayIntentions import starts taxi guidance immediately",
+            AccessibleDescription = "Applies only to routes imported from SayIntentions. "
+                                    + "Checked: guidance starts as soon as the route is built. "
+                                    + "Cleared: the Taxi Guidance window opens with the route "
+                                    + "filled in and you press Calculate Route to start."
         };
 
         Controls.AddRange(new Control[]

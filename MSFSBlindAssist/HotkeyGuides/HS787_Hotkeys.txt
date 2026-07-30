@@ -166,7 +166,7 @@ FMC / CDU Windows:
   Shift+M    Open 787 FMC Window (no mod required; reads the FMC live)
 
 SayIntentions:
-  Alt+Shift+S  Build a taxi route from the last SayIntentions taxi clearance.
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
                Fills the Taxi Assist form with the destination, taxiways and
                hold-short runways ATC gave, and names anything it could not
                apply. Review the fields and press Calculate Route to start
