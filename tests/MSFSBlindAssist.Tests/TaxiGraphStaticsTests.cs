@@ -331,4 +331,59 @@ public class TaxiGraphStaticsTests
 
         Assert.Empty(edges);
     }
+
+    // GetNamedEdges' order must be intrinsic to the edges themselves, never to the order
+    // Build() happened to process its `paths` list in. Node ids are assigned by a monotonic
+    // counter in path-processing order, so a node-id-keyed sort (the original
+    // implementation) reorders the SAME physical airport whenever the input path list
+    // arrives in a different order -- e.g. a navdata re-import that changes taxi_path_id
+    // assignment. That matters because the consumer (SayIntentionsTaxiPathSnapper) resolves
+    // nearest-edge ties with a strict "<", so whichever edge is first decides which taxiway
+    // a blind pilot is told about at an exact tie (two taxiways meeting at a junction can
+    // legitimately be equidistant from a point).
+    //
+    // Fixture: two hub junctions, far enough apart that nothing merges across them, each
+    // with three named spokes -- six distinct names total, so the expected order
+    // (alphabetical by name) is unambiguous. Every spoke's Start is its hub, so under the
+    // OLD node-id key the hub is always node 1 (created first by whichever path is
+    // processed first) and the sort tie-breaks on ToNodeId -- i.e. on creation order, which
+    // depends entirely on which order the paths were supplied in. Feeding the reversed path
+    // list creates the SECOND hub first instead, giving completely different node ids and
+    // therefore (under the old key) a completely different -- in fact exactly reversed --
+    // output order (A,B,C,D,E,F vs F,E,D,C,B,A). Under the new name+coordinate key every
+    // edge's FROM side is its hub, so the sort is decided by TaxiwayName alone, and both
+    // orderings must produce the identical alphabetical sequence.
+    [Fact]
+    public void GetNamedEdges_order_is_independent_of_the_order_paths_were_supplied_to_Build()
+    {
+        TaxiPath Spoke(double hubLat, double hubLon, double endLat, double endLon, string name) =>
+            new TaxiPath { StartLat = hubLat, StartLon = hubLon, EndLat = endLat, EndLon = endLon, Name = name };
+
+        var a = Spoke(37.000, -122.000, 37.001, -122.000, "A");
+        var b = Spoke(37.000, -122.000, 37.000, -121.999, "B");
+        var c = Spoke(37.000, -122.000, 36.999, -122.000, "C");
+        var d = Spoke(38.000, -123.000, 38.001, -123.000, "D");
+        var e = Spoke(38.000, -123.000, 38.000, -122.999, "E");
+        var f = Spoke(38.000, -123.000, 37.999, -123.000, "F");
+
+        var graphForward = TaxiGraph.Build(
+            new List<TaxiPath> { a, b, c, d, e, f },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        // Same six physical edges, fully reversed input order -- builds the second hub
+        // first, assigning every node a different id than the forward build.
+        var graphReversed = TaxiGraph.Build(
+            new List<TaxiPath> { f, e, d, c, b, a },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        var edgesForward = graphForward.GetNamedEdges().ToList();
+        var edgesReversed = graphReversed.GetNamedEdges().ToList();
+
+        Assert.Equal(edgesForward, edgesReversed);
+
+        // Pin the actual order too (not just that the two builds agree with each other):
+        // alphabetical by taxiway name, independent of hub or processing order.
+        var expectedNames = new[] { "A", "B", "C", "D", "E", "F" };
+        Assert.Equal(expectedNames, edgesForward.Select(edge => edge.Name).ToArray());
+    }
 }

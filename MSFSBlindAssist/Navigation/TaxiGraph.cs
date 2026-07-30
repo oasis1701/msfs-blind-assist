@@ -614,17 +614,29 @@ public class TaxiGraph
     /// real airport and could still win a nearest-edge distance comparison for an outlier
     /// point, so this stays defensive rather than assuming the invariant always holds.
     ///
-    /// Output order is explicit and deterministic — sorted by ascending FromNodeId, then
-    /// ToNodeId, then TaxiwayName — and must never be replaced by a bare
-    /// Adjacency/Dictionary walk: Dictionary&lt;TKey,TValue&gt; enumeration order is an
-    /// implementation detail, not a contract. The snapper resolves nearest-edge ties with a
-    /// strict "&lt;" (first candidate in the sequence wins on an exact tie), so a reordering
-    /// here can silently change which taxiway a pilot is told — on a live LSZH capture one
-    /// point was decided by a 3.24 cm margin, and two taxiways meeting at a junction can
-    /// legitimately sit at an exactly equal distance from a point. Node ids are themselves
-    /// stable and deterministic for a given input (assigned in <see cref="Build"/>, in the
-    /// order the caller's path list was processed), so sorting by them yields a result that
-    /// depends only on that input, never on incidental dictionary bucket layout.
+    /// Output order is explicit and deterministic — sorted by ascending TaxiwayName, then by
+    /// the FROM endpoint's latitude/longitude, then the TO endpoint's — and must never be
+    /// replaced by a bare Adjacency/Dictionary walk: Dictionary&lt;TKey,TValue&gt; enumeration
+    /// order is an implementation detail, not a contract. The snapper resolves nearest-edge
+    /// ties with a strict "&lt;" (first candidate in the sequence wins on an exact tie), so a
+    /// reordering here can silently change which taxiway a pilot is told — on a live LSZH
+    /// capture one point was decided by a 3.24 cm margin, and two taxiways meeting at a
+    /// junction can legitimately sit at an exactly equal distance from a point.
+    ///
+    /// The key is intrinsic to each edge's own data, deliberately NOT the node-id pair: node
+    /// ids are stable only WITHIN one <see cref="Build"/> call — they are assigned by a
+    /// monotonic counter in the order the caller's <c>paths</c> list was processed, not by
+    /// anything about the edge's geography or name. So the very same physical edges fed to
+    /// <see cref="Build"/> in a different order (a navdata re-import that changes
+    /// <c>taxi_path_id</c> assignment, or any future caller that doesn't share today's
+    /// <c>ORDER BY taxi_path_id</c> query) would silently reorder a node-id-keyed result even
+    /// though the airport itself never changed. Sorting on name plus coordinates instead makes
+    /// the order hold across rebuilds, independent of processing order — it depends only on
+    /// the edges themselves. This introduces no new ties: <see cref="ResolveNode"/>'s merge
+    /// check (endpoints within <see cref="MERGE_THRESHOLD_METERS"/> of each other are merged
+    /// into one node) guarantees two DISTINCT nodes can never share bit-identical coordinates
+    /// — they would have been merged into one — so a coordinate+name key is exactly as
+    /// tie-free as the node-id key it replaces.
     /// </summary>
     public IEnumerable<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)> GetNamedEdges()
     {
@@ -644,14 +656,28 @@ public class TaxiGraph
         }
 
         // Explicit, total-order sort — never rely on Dictionary/Adjacency enumeration
-        // order. See method doc comment for why this matters.
+        // order, and never on FromNodeId/ToNodeId. See method doc comment for why: node ids
+        // are stable only within one Build() call (assigned by processing order), not across
+        // rebuilds, so a node-id key can silently reorder the same physical airport. Keyed on
+        // TaxiwayName, then the FROM endpoint's coordinates, then the TO endpoint's —
+        // intrinsic to the edge's own data, so the order holds regardless of the order paths
+        // were supplied to Build(). All candidates already passed the Nodes-containment check
+        // above, so these lookups cannot throw.
         candidates.Sort((a, b) =>
         {
-            int cmp = a.FromNodeId.CompareTo(b.FromNodeId);
+            int cmp = string.CompareOrdinal(a.TaxiwayName, b.TaxiwayName);
             if (cmp != 0) return cmp;
-            cmp = a.ToNodeId.CompareTo(b.ToNodeId);
+            var fromA = Nodes[a.FromNodeId];
+            var fromB = Nodes[b.FromNodeId];
+            cmp = fromA.Latitude.CompareTo(fromB.Latitude);
             if (cmp != 0) return cmp;
-            return string.CompareOrdinal(a.TaxiwayName, b.TaxiwayName);
+            cmp = fromA.Longitude.CompareTo(fromB.Longitude);
+            if (cmp != 0) return cmp;
+            var toA = Nodes[a.ToNodeId];
+            var toB = Nodes[b.ToNodeId];
+            cmp = toA.Latitude.CompareTo(toB.Latitude);
+            if (cmp != 0) return cmp;
+            return toA.Longitude.CompareTo(toB.Longitude);
         });
 
         var result = new List<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>(candidates.Count);
