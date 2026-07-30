@@ -1022,6 +1022,37 @@ stand, fell through to the departure RUNWAY as the destination.
 `NormalizeParkingName` strips a descriptor tail only when the dash is **spaced**
 ("A9 - Terminal 1"). A bare hyphen is part of the stand name.
 
+**A leading zero is padding, not identity.** EDDB taxi-in, live, 2026-07-30:
+SayIntentions assigned `"Gate B06"`, while the navdata this app routes on stores that
+stand as `parking` `name='GB'`, `number=6` — `LittleNavMapProvider` maps the MSFS gate
+code `GB` to `B`, and `TaxiGraph.FormatParkingDisplayName` renders the pair as "B 6".
+Normalized, the two sides read `B06` and `B6`; `MatchDestinationLabel` compares them for
+exact equality, so the assigned gate could never match. Destination resolution then ran
+its whole chain — clearance runway, clearance gate, assigned gate, departure runway —
+and took the last candidate it has, the ARRIVAL RUNWAY: a just-landed aircraft was
+routed at 24L, along exactly the M3, B and V2 the controller had given for the gate. The
+taxiway half of that import was perfect, geometry and clearance agreeing exactly. Only
+the destination was wrong, which is the dangerous shape — everything else sounded right.
+
+The near-miss is why this is a rule and not just a fix. The RUNWAY half of the same
+comparison already tolerated exactly this: `CleanRunway` pads to two digits, so a
+clearance's "05L" meets navdata's "5L" without anyone having to think about it. Only the
+gate half did not.
+
+`NormalizeParkingName` therefore ends by stripping leading zeros within a digit run,
+`(?<![0-9])0+(?=[0-9])`, applied last — after the non-alphanumeric strip, so it sees the
+digits the comparison will actually use. **Both guards are load-bearing.** The lookbehind
+confines the run to the START of a digit group; without it "100" loses its middle zero and
+reads as stand 10. The lookahead requires a digit to survive, so a lone "0" and any
+trailing zero stay. And `B10` must never collapse to `B1` — that is this same wrong-stand
+failure pointed the other way, and the more insidious one, because the route it produces
+leads to a real stand the pilot has no reason to doubt.
+
+`ParkingNamesNormalize` and `OnlyLeadingZerosAreStrippedFromAStandNumber` pin the
+normalization; `Gate_destination_matches_across_a_zero_padded_stand_number` pins the match
+against EDDB's own B-pier labels, including that asking for `B1` finds nothing rather than
+`B 10`.
+
 ### An import owns the whole route
 
 `ApplyExternalRoute` calls `ResetRouteShapingControls` first. `OnDestTypeChanged` only

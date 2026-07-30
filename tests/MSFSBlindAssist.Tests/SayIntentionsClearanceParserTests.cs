@@ -618,7 +618,31 @@ public class SayIntentionsClearanceParserTests
     [InlineData("A9 - Terminal 1", "A9")]           // a SPACED dash IS a descriptor separator
     [InlineData("Ramp 4", "4")]
     [InlineData("", "")]
+    // A leading zero is padding, not identity. Live EDDB: SayIntentions published
+    // "Gate B06" while the scenery calls that stand B6 (navdata GB + 6, and
+    // LittleNavMapProvider maps the "GB" gate code to "B"). The two never compared
+    // equal, the assigned gate could not resolve, and destination resolution fell
+    // through to the ARRIVAL RUNWAY — taxi guidance drove a landed aircraft at 24L
+    // along the taxiways ATC had given for the gate.
+    [InlineData("Gate B06", "B6")]
+    [InlineData("B6", "B6")]
+    [InlineData("Gate A09", "A9")]
+    [InlineData("Parking 041", "41")]
     public void ParkingNamesNormalize(string raw, string expected)
+    {
+        Assert.Equal(expected, SayIntentionsClearanceParser.NormalizeParkingName(raw));
+    }
+
+    // Only LEADING zeros go. B10 must never collapse to B1 — those are two stands,
+    // and matching the wrong one is the failure this whole normalization exists to
+    // avoid, just pointed the other way.
+    [Theory]
+    [InlineData("Gate B10", "B10")]
+    [InlineData("Gate B1", "B1")]
+    [InlineData("Stand 100", "100")]
+    [InlineData("Gate 0", "0")]
+    [InlineData("Gate B06L", "B6L")]
+    public void OnlyLeadingZerosAreStrippedFromAStandNumber(string raw, string expected)
     {
         Assert.Equal(expected, SayIntentionsClearanceParser.NormalizeParkingName(raw));
     }

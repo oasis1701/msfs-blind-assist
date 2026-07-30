@@ -488,8 +488,27 @@ public static class SayIntentionsClearanceParser
         }
 
         cleaned = ParkingNoiseWords.Replace(cleaned, "");
-        return Regex.Replace(cleaned, @"[^A-Z0-9]", "");
+        cleaned = Regex.Replace(cleaned, @"[^A-Z0-9]", "");
+        return PaddingZeros.Replace(cleaned, "");
     }
+
+    /// <summary>
+    /// A zero that only pads a stand number, so "B06" and "B6" compare equal.
+    ///
+    /// Live EDDB: SayIntentions assigned "Gate B06" while the scenery — and the navdata
+    /// this app routes on — call that stand B6. The two never compared equal, so the
+    /// assigned gate could not resolve and destination resolution ran to the end of its
+    /// chain and took the ARRIVAL RUNWAY: a just-landed aircraft was routed at 24L,
+    /// along exactly the taxiways ATC had given for the gate. Zero-padding is a
+    /// rendering choice on either side of that comparison, never identity.
+    ///
+    /// Leading only, and BOTH guards are load-bearing. The lookbehind confines the run
+    /// to the start of a digit group, or "100" loses its middle zero and reads as stand
+    /// 10; the lookahead requires a digit to survive, so a lone "0" and any trailing
+    /// zero stay. B10 must never collapse to B1 — that is the same wrong-stand failure
+    /// this normalization exists to prevent, pointed the other way.
+    /// </summary>
+    private static readonly Regex PaddingZeros = new(@"(?<![0-9])0+(?=[0-9])", RegexOptions.Compiled);
 
     /// <summary>The gate/stand a taxi clearance routes to, or null.</summary>
     public static string? ParseDestinationGate(string? clearance)

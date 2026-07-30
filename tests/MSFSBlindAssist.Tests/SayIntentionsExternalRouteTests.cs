@@ -272,6 +272,40 @@ public class SayIntentionsExternalRouteTests
         Assert.Null(TaxiAssistForm.MatchDestinationLabel(gates, false, "C3"));
     }
 
+    // Live EDDB taxi-in, 2026-07-30. SayIntentions assigned "Gate B06"; EDDB navdata
+    // stores that stand as parking GB + 6, which renders "B 6". The zero-padded label
+    // matched nothing, so the assigned gate could not resolve and destination
+    // resolution ran to the end of its chain and took the ARRIVAL RUNWAY: guidance
+    // drove a just-landed aircraft at 24L, along exactly the M3/B/V2 the controller
+    // had given for the gate. The runway half of this comparison already tolerated
+    // the padding via CleanRunway ("05L" vs "5L"); the gate half did not.
+    [Fact]
+    public void Gate_destination_matches_across_a_zero_padded_stand_number()
+    {
+        // The labels are what the combo really offers — ParkingSpot.Describe()'s
+        // "{Name} {Number}{Suffix} - {type}", not a tidied-up stand id.
+        var gates = new[]
+        {
+            "B 5 - Gate Heavy (Jetway)",
+            "B 6 - Gate Heavy (Jetway)",
+            "B 7A - Gate Medium",
+            "B 10 - Gate Heavy (Jetway)",
+        };
+
+        Assert.Equal("B 6 - Gate Heavy (Jetway)",
+            TaxiAssistForm.MatchDestinationLabel(gates, false, "Gate B06"));
+        Assert.Equal("B 6 - Gate Heavy (Jetway)",
+            TaxiAssistForm.MatchDestinationLabel(gates, false, "B6"));
+        Assert.Equal("B 7A - Gate Medium",
+            TaxiAssistForm.MatchDestinationLabel(gates, false, "Gate B07A"));
+
+        // The padding is not identity, but the digits are: B10 is its own stand and
+        // must never be reachable by asking for B1.
+        Assert.Equal("B 10 - Gate Heavy (Jetway)",
+            TaxiAssistForm.MatchDestinationLabel(gates, false, "Gate B10"));
+        Assert.Null(TaxiAssistForm.MatchDestinationLabel(gates, false, "Gate B1"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

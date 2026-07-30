@@ -1031,9 +1031,11 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>The destination label matching a normalized identifier, or null.
-    /// BOTH sides are normalized: the clearance zero-pads a runway ("05L") where the
-    /// combo carries whatever navdata spells ("5L"), and a gate label carries a
-    /// terminal descriptor the clearance never says.</summary>
+    /// BOTH sides are normalized, and zero-padding is a difference in spelling on
+    /// either of them: the clearance zero-pads a runway ("05L") where the combo
+    /// carries whatever navdata spells ("5L"), and it zero-pads a stand the same way
+    /// ("B06" against EDDB's "B 6"). A gate label also carries a terminal descriptor
+    /// the clearance never says.</summary>
     internal static string? MatchDestinationLabel(
         IReadOnlyList<string> offered, bool isRunway, string? identifier)
     {
