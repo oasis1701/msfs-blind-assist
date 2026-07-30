@@ -1,4 +1,4 @@
-﻿// Characterization tests for reading %LOCALAPPDATA%\SayIntentionsAI\flight.json.
+// Characterization tests for reading %LOCALAPPDATA%\SayIntentionsAI\flight.json.
 //
 // The file is written by another process while we read it, so the reader opens
 // with FileShare.ReadWrite | FileShare.Delete and treats every malformed or
