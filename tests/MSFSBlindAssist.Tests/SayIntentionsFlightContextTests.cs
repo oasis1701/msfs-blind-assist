@@ -105,6 +105,99 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Null(context.ClearanceText);
     }
 
+    // --- The last transmission may only become the clearance when it IS one -----------
+    //
+    // ClearanceText falls back to the newest ATC transmission when flight.json carries no
+    // clearance field. That fallback has to pass the same shape test the live-lookup
+    // fallback in MainForm passes, and for the same reason: on rollout the newest thing
+    // on the frequency is the LANDING clearance, and taking it as a taxi clearance made
+    // ParseDestinationRunway route a just-landed aircraft AT the runway it had landed on.
+    //
+    // The gate must live here, not only at the MainForm call site: that site runs only
+    // when ClearanceText is ALREADY empty, so an ungated assignment here takes precedence
+    // and the shape test never sees it.
+
+    [Fact]
+    public void ALandingClearanceOnRolloutNeverBecomesTheClearance()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 1, "channel": "COM1", "stamp_zulu": "2026-03-04T12:00:00Z",
+                "outgoing_message": "Continue approach runway 23L" },
+              { "id": 2, "channel": "COM1", "stamp_zulu": "2026-03-04T12:02:00Z",
+                "outgoing_message": "Cleared to land runway 23L, wind 240 at 8." }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        // It is still the last transmission the pilot can ask to hear — it is just not a
+        // route.
+        Assert.NotNull(context.LastFlightJsonTransmission);
+        Assert.Contains("Cleared to land", context.LastFlightJsonTransmission!.Message);
+        Assert.Null(context.ClearanceText);
+    }
+
+    [Fact]
+    public void AClearanceDeliveryRouteNeverBecomesTheTaxiClearance()
+    {
+        // The live KBOS capture: it passes on the strength of its "via" alone, and
+        // imported it built a shortest path to the departure runway.
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 1, "channel": "COM1",
+                "outgoing_message": "Cleared to Miami via the SSOXS7 departure. Then as filed. Climb and maintain 5,000." }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.NotNull(context.LastFlightJsonTransmission);
+        Assert.Null(context.ClearanceText);
+    }
+
+    [Fact]
+    public void ATaxiClearanceOnTheFrequencyStillBecomesTheClearance()
+    {
+        // The fallback itself is not removed — only shape-gated. A real taxi clearance
+        // published in flight.json must still reach the import.
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "comms": [
+              { "id": 1, "channel": "COM1",
+                "outgoing_message": "Taxi to runway 15L via Alpha, Bravo, hold short of runway 05." }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.Equal(
+            "Taxi to runway 15L via Alpha, Bravo, hold short of runway 05.",
+            context.ClearanceText);
+    }
+
+    [Fact]
+    public void AnExplicitClearanceFieldStillWinsOverTheFrequency()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "taxi_clearance": "Taxi to Gate A9 via Charlie",
+            "comms": [
+              { "id": 1, "channel": "COM1", "outgoing_message": "Taxi to runway 15L via Alpha" }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.Equal("Taxi to Gate A9 via Charlie", context.ClearanceText);
+    }
+
     // One comms record carries BOTH sides of the exchange under one stamp and one id.
     //
     // DIRECTION IS FROM SAYINTENTIONS' POINT OF VIEW, NOT THE PILOT'S:

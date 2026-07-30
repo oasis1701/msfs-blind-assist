@@ -218,8 +218,22 @@ public sealed class SayIntentionsService
             // clearance can only ever be taken from the controller — never from the
             // pilot's readback of one, which is the newest thing on the frequency at
             // exactly the moment the import key gets pressed.
-            if (string.IsNullOrWhiteSpace(context.ClearanceText) && context.LastFlightJsonTransmission != null)
+            //
+            // SHAPE-GATED, and the gate has to be HERE. The import's other fallback —
+            // the live getCommsHistory read in MainForm — runs only when ClearanceText is
+            // ALREADY empty, so an ungated assignment here takes precedence and that
+            // gate never sees it. On rollout the newest ATC call is the LANDING
+            // clearance: ungated it became the ClearanceText, ParseDestinationRunway
+            // found "runway 23L" with no hold-short span to mask, and the just-landed
+            // aircraft was routed AT the runway it had landed on. Both fallbacks now go
+            // through the one LooksLikeTaxiClearance, so they cannot drift apart.
+            if (string.IsNullOrWhiteSpace(context.ClearanceText)
+                && context.LastFlightJsonTransmission != null
+                && SayIntentionsClearanceParser.LooksLikeTaxiClearance(
+                    context.LastFlightJsonTransmission.Message))
+            {
                 context.ClearanceText = context.LastFlightJsonTransmission.Message;
+            }
 
             _log.Debug($"flight.json read: airport={context.CurrentAirport ?? "-"} " +
                        $"gate={context.AssignedGate ?? "-"} " +

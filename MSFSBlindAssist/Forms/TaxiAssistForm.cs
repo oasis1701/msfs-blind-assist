@@ -1235,7 +1235,23 @@ public class TaxiAssistForm : Form
 
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
-        _currentIcao = icao.ToUpperInvariant();
+        // DROP THE OLD AIRPORT'S GRAPH BEFORE ANYTHING ELSE, and do not claim the new
+        // ICAO until one is actually built (below, right after BuildAsync).
+        //
+        // Every exit between here and there is a failure — airport not in the database,
+        // no taxi paths, an exception — and none of them used to touch _graph, while
+        // _currentIcao was claimed up front. So a failed load left the form holding the
+        // PREVIOUS airport's graph under the NEW airport's name, and the early return
+        // above then matched forever, so it could never rebuild.
+        //
+        // The SayIntentions import turned that from cosmetic into a wrong route:
+        // LoadAirportForExternalRouteAsync reports success as "the graph knows some
+        // taxiway names", so after taxiing at LMML and flying to an EDDF with no taxi
+        // paths, Alt+Shift+S got LMML's taxiway names, snapped EDDF coordinates onto
+        // LMML pavement, and — with auto-start on — began guidance on it. A null graph
+        // makes the caller's "no taxi path data available" guard do its job, and every
+        // _graph == null path in this form already early-returns.
+        _graph = null;
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
         // ICAO inside the GATE branch of PopulateDestinations (defence in depth),
@@ -1314,6 +1330,11 @@ public class TaxiAssistForm : Form
         {
             btnCalculate.Enabled = true;
         }
+
+        // Claimed only now, on a graph that exists. Everything below reads _currentIcao
+        // (PopulateDestinations, ResolveNamedHoldingPoints, the gate-spot cache), so it
+        // has to be set before them and cannot simply move to the end of the method.
+        _currentIcao = icao.ToUpperInvariant();
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 

@@ -102,18 +102,23 @@ public partial class MainForm
         }
     }
 
+    /// <summary>Alt+Shift+S. EVERYTHING is inside the try, including the two guards that
+    /// used to sit ahead of it: this runs as a discarded Task, so anything thrown before
+    /// the try is captured into it and the pilot hears nothing at all while
+    /// sayintentions.log records nothing either. ValidateDatabaseSimulatorMatch in
+    /// particular reads SimConnect/provider state and can open a modal dialog.</summary>
     private async Task BuildTaxiRouteFromSayIntentionsAsync()
     {
-        if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
-        {
-            announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
-            return;
-        }
-
-        if (!ValidateDatabaseSimulatorMatch()) return;
-
         try
         {
+            if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
+            {
+                announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
+                return;
+            }
+
+            if (!ValidateDatabaseSimulatorMatch()) return;
+
             announcer.AnnounceImmediate("Reading SayIntentions taxi clearance.");
 
             var status = await sayIntentionsService.GetAssignedStatusAsync();
@@ -126,7 +131,15 @@ public partial class MainForm
 
             // Only fall back to the last radio transmission when it is actually
             // shaped like a taxi clearance — a landing clearance heard on rollout
-            // must never become a taxi route.
+            // must never become a taxi route. (flight.json's own fallback passes the
+            // same gate, inside SayIntentionsService — see the note there.)
+            //
+            // Why it failed is KEPT. flight.json carries no clearance text, so this
+            // round-trip is what every import depends on, and its Error was thrown away:
+            // a 5 s timeout, an HTTP failure and a transmission that was not a taxi
+            // clearance all ended in the same silence, with the route quietly built from
+            // whatever else was to hand.
+            string? clearanceLookupProblem = null;
             if (string.IsNullOrWhiteSpace(context.ClearanceText))
             {
                 var last = await sayIntentionsService.GetLastTransmissionAsync();
@@ -134,6 +147,13 @@ public partial class MainForm
                     && SayIntentionsClearanceParser.LooksLikeTaxiClearance(last.Transmission.Message))
                 {
                     context.ClearanceText = last.Transmission.Message;
+                }
+                else
+                {
+                    clearanceLookupProblem = last.Error
+                        ?? (last.Transmission != null
+                            ? "The last SayIntentions transmission was not a taxi clearance."
+                            : null);
                 }
             }
 
@@ -204,13 +224,15 @@ public partial class MainForm
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
                         $"skipped=[{string.Join(",", outcome.SkippedTaxiways)}] " +
                         $"notAtAirport=[{string.Join(",", unknownTaxiways)}] " +
+                        $"clearanceProblem='{clearanceLookupProblem ?? "-"}' " +
                         $"holdShorts=[{string.Join(",", outcome.AppliedHoldShorts.Select(h => $"{h.Runway} after {h.AfterTaxiway}"))}] " +
                         $"holdShortsMissed=[{string.Join(",", outcome.SkippedHoldShortRunways)}] " +
                         $"autoStart={autoStart}");
 
             announcer.Announce(BuildExternalRouteAnnouncement(
                 outcome, unknownTaxiways, label, autoStart, source, disagreed,
-                source == TaxiwaySource.Geometry ? snap : null));
+                source == TaxiwaySource.Geometry ? snap : null,
+                clearanceTaxiways.Count > 0, clearanceLookupProblem));
         }
         catch (Exception ex)
         {
@@ -279,7 +301,11 @@ public partial class MainForm
             return (TaxiwaySource.Clearance, clearanceTaxiways, false);
 
         // Nothing parsed: either there was no clearance text or the parse found nothing
-        // in it. The track is all there is, and there is nothing for it to contradict.
+        // in it. The track is all there is, and there is nothing for it to contradict —
+        // so this is not a Disagreement. Nor is it an agreement: NOTHING checked this
+        // track, and before a clearance the track is SayIntentions' own plan. The caller
+        // says exactly that out loud rather than accepting it in silence — see
+        // BuildExternalRouteAnnouncement's clearanceNamedTaxiways.
         if (clearanceTaxiways.Count == 0)
             return (TaxiwaySource.Geometry, geometryTaxiways, false);
 
@@ -418,11 +444,26 @@ public partial class MainForm
     /// the clearance path; it is only ever used to report a track that mostly failed to
     /// match the airport (see UnsnappedShareWorthSaying). Its dropped runs stay silent:
     /// SayIntentions clips the corners of unnamed connector stubs, so a clean read has
-    /// several, and announcing them would be noise on every import.</summary>
+    /// several, and announcing them would be noise on every import.
+    ///
+    /// <paramref name="clearanceNamedTaxiways"/> is false when the clearance yielded no
+    /// taxiway at all, which is the ONE case a ground-track route is taken with nothing to
+    /// check it against (ChooseTaxiwaySource rule 2) — and it is not a rare one, because
+    /// flight.json carries no clearance text and every import therefore depends on a live
+    /// getCommsHistory round-trip that can time out, fail, or simply find nothing said yet.
+    /// What sits in taxi_path before a clearance is SayIntentions' OWN plan: a live LSZH
+    /// capture held a 12-leg route across the airfield a minute before Ground spoke. The
+    /// route is still built — a published track is often the only thing that survives a
+    /// slow SAPI — but the pilot has to be told it is not the controller's, or they find
+    /// out on the taxiway. <paramref name="clearanceLookupProblem"/> is why the clearance
+    /// is missing (a timeout, an HTTP failure, or a last transmission that was not a taxi
+    /// clearance); it was discarded entirely before, which made all three silent. Both are
+    /// only spoken when the clearance came up empty — a route built from a clearance that
+    /// WAS read gains no extra words.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
         string destination, bool autoStart, TaxiwaySource source, bool disagreed,
-        SnapResult? snap)
+        SnapResult? snap, bool clearanceNamedTaxiways, string? clearanceLookupProblem)
     {
         var parts = new List<string> { $"SayIntentions route to {destination}." };
 
@@ -430,10 +471,18 @@ public partial class MainForm
             parts.Add("Destination not set. Check the destination field.");
 
         if (source == TaxiwaySource.Geometry)
+        {
             parts.Add("Route from SayIntentions ground track.");
+            if (!clearanceNamedTaxiways)
+                parts.Add("No cleared taxiways to check it against, " +
+                          "so this is SayIntentions' own plan, not ATC's.");
+        }
         // Never both: a disagreement always resolves to the clearance.
         else if (disagreed)
             parts.Add("SayIntentions ground track differs from the clearance. Using the clearance.");
+
+        if (!clearanceNamedTaxiways && !string.IsNullOrWhiteSpace(clearanceLookupProblem))
+            parts.Add(clearanceLookupProblem);
 
         parts.Add(outcome.AppliedTaxiways.Count > 0
             ? $"Via {string.Join(", ", outcome.AppliedTaxiways)}."

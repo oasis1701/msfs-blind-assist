@@ -160,8 +160,11 @@ clearance, from the words otherwise — and fills in the Taxi Guidance dialog.
 
 **This one needs the SayIntentions API to be reachable.** The local flight file does
 not carry the clearance text, so every press fetches the last transmissions over the
-network. With SayIntentions offline, the key rejected, or the request timing out (five
-seconds), you hear why and no route is built — the two readouts above are unaffected.
+network. With SayIntentions itself not running there is nothing to read and you hear
+why. If the file is there but the request fails — the key rejected, or a five-second
+timeout — you are **told the reason out loud** and the import carries on with whatever
+else it has, which may be SayIntentions' own published ground track. Read the summary:
+it says so. The two readouts above are unaffected.
 
 By default the dialog opens with everything pre-filled so you can review it, then you
 press **Calculate Route** to start guidance. Enable **Start taxi guidance immediately**
@@ -190,6 +193,13 @@ cleared it is SayIntentions' own intended routing rather than a correction to wh
 were actually told. What you heard on the frequency is what gets built, and a route that
 is not the one ATC gave must never be discovered out on the taxiway.
 
+When there is **no clearance at all** — you pressed before requesting taxi, or the
+transmission fetch timed out — the track is still used, because it is the only thing
+there is. But nothing has checked it, so the summary says exactly that: *"No cleared
+taxiways to check it against, so this is SayIntentions' own plan, not ATC's."* Followed
+by the reason the clearance is missing, when there is one. Treat that route as a
+suggestion, not a clearance.
+
 Either way, the **destination and the hold-shorts always come from the clearance**. The
 ground track carries neither.
 
@@ -203,6 +213,13 @@ were applied, then everything that did not survive:
 - **"SayIntentions ground track differs from the clearance. Using the clearance."** —
   the two contradicted each other and the words won. You never hear both lines: a
   disagreement always resolves to the clearance.
+- **"No cleared taxiways to check it against, so this is SayIntentions' own plan, not
+  ATC's."** — a ground-track route with no clearance behind it. Only ever heard after
+  the "Route from SayIntentions ground track." line.
+- **"SayIntentions comms history timed out."** — or whatever else went wrong reading the
+  frequency, including *"The last SayIntentions transmission was not a taxi clearance."*
+  Only spoken when the clearance came up empty; a clearance that was read normally adds
+  nothing.
 - **"Could not apply K."** — a leg the route does not use, either because this airport
   does not have the taxiway or because the dialog could not seat it. The route is still
   built from whatever did match. On a clearance route both kinds are named, however many
@@ -486,6 +503,16 @@ at exactly the moment someone might press the import key.
 Excluded on `cleared to land`, `climb and maintain`, `squawk NNNN` and `as filed`. Each
 belongs to clearance delivery and to nothing a ground controller says while taxiing you,
 so excluding on them costs no real taxi clearance.
+
+**There are TWO fallbacks and the gate has to cover both.** `MainForm` reads the live
+`getCommsHistory` transmission, and `SayIntentionsService.ReadFlightContext` sets
+`ClearanceText` from `flight.json`'s own newest ATC transmission when the file carries no
+clearance field. Only the first was gated, and the second **takes precedence** — the
+MainForm site runs only when `ClearanceText` is *already* empty, so the shape test never
+saw the file's transmission at all. On rollout that transmission is the landing
+clearance: it became the clearance text, `ParseDestinationRunway` found `runway 23L` with
+no hold-short span to mask, and the just-landed aircraft was routed **at the runway it had
+landed on**. Both sites now call the one `LooksLikeTaxiClearance`, so they cannot drift.
 
 ### Hold-short masking (safety-critical)
 
@@ -800,7 +827,10 @@ to leave the entire suite green. In order:
 1. **Geometry empty** (no path published, or one that snapped to nothing) → clearance.
    No better than no path at all; the log keeps the counts that say why.
 2. **Clearance empty** (no text, or a parse that found nothing) → geometry. The track is
-   all there is, and there is nothing for it to contradict.
+   all there is, and there is nothing for it to contradict — but nothing has *checked* it
+   either, so this is the one accepted-geometry case the caller announces:
+   *"No cleared taxiways to check it against, so this is SayIntentions' own plan, not
+   ATC's."* See [A track nothing checked](#a-track-nothing-checked).
 3. **The clearance runs through the geometry in order, gaps allowed** — a subsequence
    walk — **and** the track is at most `2n + 1` legs long for `n` cleared legs →
    **geometry**.
@@ -845,6 +875,30 @@ reading runs 2.5–12. The guard
 counts the **collapsed** clearance, because a taxiway named twice is one leg of evidence
 and constrains the walk exactly as much as one does — it must not buy the track extra
 length.
+
+#### A track nothing checked
+
+Rule 2 is not a corner case. `flight.json` carries **no clearance text**, so every import
+depends on a live `getCommsHistory` round-trip on a five-second timeout — and before the
+pilot has requested taxi there is nothing on the frequency to read at all. What sits in
+`taxi_path` then is SayIntentions' **own** pre-clearance plan: the live LSZH capture is
+twelve legs across the airfield, published a minute before Zurich Ground said anything.
+
+Taken silently, that announced *"SayIntentions route to Runway 16. Route from
+SayIntentions ground track. Via R7, E7, E6, E7, N, E, E, B, E5, F, C…"* — a complete,
+confident route no controller had given, with nothing to say the clearance had never been
+read. Worse, `GetLastTransmissionAsync`'s `Error` was **discarded** at the call site
+(`last.Transmission` only), so the timeout, the HTTP failure and the "that was not a taxi
+clearance" case all produced the same silence.
+
+The route is still built, because a published track is often the only thing that survives
+a slow SAPI and refusing it would substitute a shortest path that is no more ATC's route
+and reads *"No taxiways from the clearance matched this airport"* — a line that claims a
+clearance was consulted. What changed is that it **says what it is**:
+`BuildExternalRouteAnnouncement` takes `clearanceNamedTaxiways` and
+`clearanceLookupProblem`, and when the clearance came up empty it speaks the "own plan"
+clause (ground-track path only — a shortest path is this app's, not SayIntentions') and
+then the reason. A clearance that WAS read adds no words at all.
 
 #### `taxi_path` is transient, and it shrinks
 
@@ -941,6 +995,28 @@ resolved against that list, and destinations resolve through
 `TaxiAssistForm.TryResolveExternalDestination`, which searches the already-populated
 destination combo. The form owns its own label formats — callers pass a normalized
 identifier (`"15L"`, `"A9"`), never a constructed `"Runway 15L"` string.
+
+**Which makes `_graph` the import's success signal, so a failed load must null it.**
+`LoadAirportDataAsync` used to claim `_currentIcao` up front and assign `_graph` only
+after its awaits, with no failure exit touching `_graph` — airport not in the database,
+no taxi paths, an exception. A failed load therefore left the form holding the *previous*
+airport's graph under the *new* airport's name, and the method's own early return
+(`icao == _currentIcao && _graph != null`) then matched forever, so it could never
+rebuild. Manually that was cosmetic. For the import it was a wrong route: taxi at LMML,
+fly to an EDDF with no taxi paths, press Alt+Shift+S, and `knownTaxiways` came back as
+**LMML's** names, so the `Count == 0` guard never fired — the EDDF clearance resolved
+against LMML taxiways, `GetLoadedTaxiwayEdges()` handed the snapper LMML pavement to snap
+EDDF coordinates onto, and with auto-start on, guidance began. `_graph` is now dropped
+before the first await and `_currentIcao` claimed only once a graph exists.
+
+### The import handler must not fail silently
+
+`BuildTaxiRouteFromSayIntentionsAsync` is dispatched as a discarded Task (`_ = …`), which
+is safe **only** while nothing can throw outside its top-level try. Two guards used to sit
+ahead of it, one of them `ValidateDatabaseSimulatorMatch()`, which reads SimConnect and
+provider state and can open a modal dialog. Anything they threw was captured into the
+discarded Task: the pilot heard nothing and `sayintentions.log` recorded nothing. The
+whole body is inside the try.
 
 ### API key handling
 

@@ -285,10 +285,12 @@ public class SayIntentionsExternalRouteTests
         string[]? unknownTaxiways = null,
         MainForm.TaxiwaySource source = MainForm.TaxiwaySource.Clearance,
         SnapResult? snap = null,
-        bool disagreed = false)
+        bool disagreed = false,
+        bool clearanceNamedTaxiways = true,
+        string? clearanceLookupProblem = null)
         => MainForm.BuildExternalRouteAnnouncement(
             outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart,
-            source, disagreed, snap);
+            source, disagreed, snap, clearanceNamedTaxiways, clearanceLookupProblem);
 
     [Fact]
     public void Announcement_names_destination_taxiways_and_the_review_step()
@@ -922,6 +924,88 @@ public class SayIntentionsExternalRouteTests
 
         Assert.Contains("Could not apply F, G, R.", spoken);
         Assert.DoesNotContain("more", spoken);
+    }
+
+    // --- Announcement: a track nothing checked it against -----------------------------
+    //
+    // ChooseTaxiwaySource rule 2 takes the published track whenever the clearance parsed
+    // to no taxiways, with no disagreement to report. That case is NOT rare: flight.json
+    // carries no clearance text, so every import depends on a live getCommsHistory
+    // round-trip on a 5 s timeout — and before the pilot has even requested taxi there is
+    // nothing on the frequency to read. What sits in taxi_path then is SayIntentions' OWN
+    // pre-clearance plan, and the pilot was routed along twelve legs across the airfield
+    // that no controller had given, with nothing spoken to say the clearance was never
+    // read. The route is still built — a live track is often the only thing that survives
+    // a slow SAPI — but it has to say what it is.
+
+    [Fact]
+    public void ATrackWithNoClearedTaxiwaysToCheckItAgainstSaysSo()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "R7", "E7", "E6" }), "Runway 16", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "R7", "E7", "E6" }, 60),
+            clearanceNamedTaxiways: false);
+
+        Assert.Contains("Route from SayIntentions ground track.", spoken);
+        Assert.Contains(
+            "No cleared taxiways to check it against, so this is SayIntentions' own plan, not ATC's.",
+            spoken);
+    }
+
+    [Fact]
+    public void ATrackTheClearanceAgreedWithSaysNothingAboutBeingUnchecked()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "E4", "E", "C" }), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4", "E", "C" }, 40));
+
+        Assert.DoesNotContain("own plan", spoken);
+        Assert.DoesNotContain("check it against", spoken);
+    }
+
+    [Fact]
+    public void WhyTheClearanceCouldNotBeReadIsSpoken()
+    {
+        // GetLastTransmissionAsync's Error was discarded, so a SAPI timeout, an HTTP
+        // failure and a transmission that simply was not a taxi clearance all produced
+        // the same silence.
+        string spoken = Announce(
+            Outcome(applied: new[] { "R7", "E7" }), "Runway 16", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "R7", "E7" }, 60),
+            clearanceNamedTaxiways: false,
+            clearanceLookupProblem: "SayIntentions comms history timed out.");
+
+        Assert.Contains("SayIntentions comms history timed out.", spoken);
+    }
+
+    [Fact]
+    public void TheReasonIsSpokenOnTheClearancePathToo()
+    {
+        // No track either: the route degrades to a shortest path, and "no taxiways from
+        // the clearance matched this airport" on its own claims a clearance was read.
+        string spoken = Announce(
+            Outcome(), "Runway 16", autoStart: false,
+            clearanceNamedTaxiways: false,
+            clearanceLookupProblem: "SayIntentions comms history timed out.");
+
+        Assert.Contains("SayIntentions comms history timed out.", spoken);
+        Assert.Contains("Using shortest path.", spoken);
+        // The "SI's own plan" clause belongs to the ground-track path only — a shortest
+        // path is this app's, not SayIntentions'.
+        Assert.DoesNotContain("own plan", spoken);
+    }
+
+    [Fact]
+    public void AClearanceThatWasReadNormallyGainsNoExtraClause()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false,
+            clearanceLookupProblem: "SayIntentions comms history timed out.");
+
+        Assert.Equal(
+            "SayIntentions route to Gate A9. Via A, B. " +
+            "Review the fields, then press Calculate Route to start guidance.",
+            spoken);
     }
 
     [Fact]
