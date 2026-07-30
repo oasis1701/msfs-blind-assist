@@ -154,8 +154,9 @@ that comparison is meaningless and is not made.
 
 ### Build taxi route
 
-Reads the current taxi clearance, resolves the destination and taxiways against the
-airport's real taxi network, and fills in the Taxi Guidance dialog.
+Reads the current taxi clearance, works out the route against the airport's real taxi
+network — from SayIntentions' own published ground track when that agrees with the
+clearance, from the words otherwise — and fills in the Taxi Guidance dialog.
 
 **This one needs the SayIntentions API to be reachable.** The local flight file does
 not carry the clearance text, so every press fetches the last transmissions over the
@@ -164,19 +165,57 @@ seconds), you hear why and no route is built — the two readouts above are unaf
 
 By default the dialog opens with everything pre-filled so you can review it, then you
 press **Calculate Route** to start guidance. Enable **Start taxi guidance immediately**
-in Settings → SayIntentions to skip the review step.
+on Settings → Taxi Guidance to skip the review step.
 
 An import replaces the **whole** route, including anything you had set up by hand
 first — intersection departure, CAT III hold, hold-shorts. The clearance is the route.
 
+#### Where the taxiway sequence comes from
+
+There are two sources, and the import chooses between them on every press.
+
+SayIntentions publishes its own **ground track** for the taxi — the pavement it expects
+you to roll over, as plain coordinates. Matched against the airport's own taxiway graph,
+that track names the legs of the route without anyone having to parse the controller's
+phrasing, which is exactly where the text path keeps losing legs: Palma Ground said
+"North" for a taxiway the navdata calls `N`, and that leg silently vanished from the
+route. So when the track **agrees with** what was spoken — every cleared taxiway
+present, in the order it was given — the sequence is taken from the track, and the
+summary says *"Route from SayIntentions ground track."*
+
+When the two disagree, the **clearance wins** and you are told so:
+*"SayIntentions ground track differs from the clearance. Using the clearance."* The
+track is a live plan that exists before any clearance does, so before you have been
+cleared it is SayIntentions' own intended routing rather than a correction to what you
+were actually told. What you heard on the frequency is what gets built, and a route that
+is not the one ATC gave must never be discovered out on the taxiway.
+
+Either way, the **destination and the hold-shorts always come from the clearance**. The
+ground track carries neither.
+
 #### What the summary tells you
 
-It names the destination and the taxiways that were applied, then everything that did
-not survive:
+It names the destination, says where the sequence came from, lists the taxiways that
+were applied, then everything that did not survive:
 
-- **"Could not apply K."** — a taxiway the clearance named that the route does not use,
-  either because this airport does not have it or because the dialog could not seat it.
-  The route is still built from whatever did match.
+- **"Route from SayIntentions ground track."** — the sequence came from the published
+  track, which agreed with the clearance.
+- **"SayIntentions ground track differs from the clearance. Using the clearance."** —
+  the two contradicted each other and the words won. You never hear both lines: a
+  disagreement always resolves to the clearance.
+- **"Could not apply K."** — a leg the route does not use, either because this airport
+  does not have the taxiway or because the dialog could not seat it. The route is still
+  built from whatever did match. On a clearance route both kinds are named, however many
+  there are — every one of them is a word you heard.
+- **"Could not apply F, G, R and 1 more."** — the same line on a ground-track route,
+  where the names come from the airport's graph rather than from the controller. Only the
+  legs the dialog could not seat appear (a name the airport lacks cannot occur — the
+  sequence came out of the airport's own graph), and past three of them the rest become a
+  count: ten unfamiliar syllables in a row is a recital, not information.
+- **"12 of 40 ground track points were off the taxiways, so the route may be
+  incomplete."** — most of the published track failed to match this airport's pavement.
+  The last few points of a normal arrival are the turn into the stand, which is apron,
+  so this only appears when a quarter or more of the track went unread.
 - **"Hold short of runway 15R after N."** — a hold-short from the clearance that was
   set, on the taxiway it follows. One line per hold-short, in clearance order.
 - **"Could not set hold short of runway 22."** — a hold-short that reached no row.
@@ -208,11 +247,15 @@ SayIntentions is not running, and that is what is now spoken.
 
 Diagnostics are written to `%APPDATA%\MSFSBlindAssist\logs\sayintentions.log`. It
 records which fields were found in `flight.json`, and for every route import one line
-holding the destination, the taxiways **applied**, the taxiways **skipped** (the airport
-has them, the dialog could not seat them), the taxiways **not at this airport**, the
-**hold-shorts** that were set and the ones that were **missed**. If the spoken summary
-and the dialog ever disagree, that line is the record of what the import actually did.
-API keys are never written to the log.
+holding the destination, which **source** the sequence came from and whether the two
+**disagreed**, both candidate sequences (`geoTaxiways` and `clearanceTaxiways`), the
+ground track's point / unsnapped / dropped-run counts and its stamp, the taxiways
+**applied**, the taxiways **skipped** (the airport has them, the dialog could not seat
+them), the taxiways **not at this airport**, the **hold-shorts** that were set and the
+ones that were **missed**. If the spoken summary and the dialog ever disagree, that line
+is the record of what the import actually did — and it holds both sequences side by
+side, so a disputed route can be read back without re-flying it. API keys are never
+written to the log.
 
 "SayIntentions flight.json not found" means no flight is active — SayIntentions writes
 `%LOCALAPPDATA%\SayIntentionsAI\flight.json` only while connected to a flight.
@@ -228,13 +271,18 @@ Pure logic lives in `MSFSBlindAssist/Services/SayIntentions/` and is unit-tested
 | File | Responsibility |
 | --- | --- |
 | `SayIntentionsClearanceParser.cs` | All regex. Runway/gate/taxiway extraction from ATC speech. |
+| `SayIntentionsTaxiPathSnapper.cs` | `taxi_path` geometry → an ordered taxiway sequence, against the airport's own named edges. |
 | `SayIntentionsTransmissionClassifier.cs` | Radio vs cabin/PA classification. |
+| `SayIntentionsInfoReport.cs` | The flight-information window's sections and line formatting. |
 | `SayIntentionsEndpoint.cs` | SAPI URL construction, host allowlist, log redaction. |
 | `SayIntentionsService.cs` | I/O only — `flight.json` reads and SAPI requests. |
 | `SayIntentionsModels.cs` | Context/transmission/parking/result types. |
 
-UI wiring is `MainForm.SayIntentions.cs`; settings are a `SayIntentionsPanel` tab in
-the unified `SettingsForm`.
+UI wiring is `MainForm.SayIntentions.cs`, which orchestrates and parses nothing itself —
+`ChooseTaxiwaySource`, `ParseClearanceTaxiPlan` and `MapHoldShortsToTaxiways` live there
+as pure statics so the wiring is testable at all. Deleting the geometry branch used to
+leave the whole suite green. There is no SayIntentions settings panel: the one option is
+a checkbox at the foot of `TaxiGuidancePanel`.
 
 ### Observed wire format
 
@@ -262,11 +310,14 @@ whatever follows the *last* gate/stand keyword.
 **`current_flight.taxi_path` is GEOMETRY, not taxiway names.** ~200 objects shaped
 `{"heading": 93.92, "point": {"lon": 8.52, "lat": 50.04}}` — no `taxiway`, `name`,
 `label` or `id` member anywhere in it. `point.lat`/`point.lon` ARE read, into
-`TaxiPathPoints`; no name-ish member ever is — see
-[Reading `taxi_path`: coordinates only, never names](#reading-taxi_path-coordinates-only-never-names).
-Each snapshot's own generation time comes from the sibling `flight_details.timestamp` —
-a raw Unix epoch in **seconds**, fractional (e.g. `1785357161.40969`), not a date
-string — covered in the same section.
+`TaxiPathPoints`, and are the source of the imported route whenever it agrees with the
+clearance; no name-ish member ever is — see
+[Reading `taxi_path`: coordinates only, never names](#reading-taxi_path-coordinates-only-never-names)
+and [The route comes from the ground track, when it agrees with the clearance](#the-route-comes-from-the-ground-track-when-it-agrees-with-the-clearance).
+The sibling `flight_details.timestamp` is a raw Unix epoch in **seconds**, fractional
+(e.g. `1785357161.40969`), not a date string. It is read and logged, and it is **not**
+when the path was computed — it is when SayIntentions last wrote the file, which is why
+nothing trusts the geometry on the strength of it.
 
 **flight.json carries no clearance text and no comms.** None of `cleared_for_takeoff`,
 `cleared_for_landing`, `clearance`, `last_clearance` or `taxi_clearance` were present
@@ -539,7 +590,7 @@ Three things can go missing between the clearance and the route. All three are s
 
 | Lost | Detected by | Reported as |
 | --- | --- | --- |
-| A taxiway this airport does not have | `ScanTaxiways` → `Unresolved` | `Could not apply …` |
+| A taxiway this airport does not have | `ScanTaxiways` → `Unresolved` | `Could not apply …` *(clearance-sourced routes only — see below)* |
 | A taxiway the dialog could not seat | `ApplyExternalRoute` → `SkippedTaxiways` | `Could not apply …` |
 | A hold-short that reached no row | `ApplyExternalRoute` → `SkippedHoldShortRunways` | `Could not set hold short of runway …` |
 
@@ -556,7 +607,23 @@ overlaps none of the names that did resolve. Bare designators are **not** scanne
 matching uppercase letters in prose false-positives on ordinary abbreviations, and a
 wrong "could not apply K" teaches the pilot to distrust the whole announcement. A miss is
 the better failure here, so a clearance written with bare designators can still lose one
-quietly. There is no structured second source to catch it: `taxi_path` is geometry.
+quietly at this layer.
+
+There IS now a structured second source that can catch such a loss, but it catches it by
+**restoring the leg rather than reporting it**: the published ground track carries the
+pavement the parse could not name, and when the parse's surviving legs still run through
+that track in order the route is taken from the track instead — see
+[The route comes from the ground track, when it agrees with the clearance](#the-route-comes-from-the-ground-track-when-it-agrees-with-the-clearance).
+That is the live LEPA "North" case, recovered. It is a recovery and not a safety net:
+where the track is absent, disagrees, or is rejected as too long to be a description of
+the cleared route, this scan is once again all there is, and a bare-designator loss is
+still quiet.
+
+The report itself is **dropped entirely on a ground-track route**, because there it
+describes nothing: every name in that sequence came from the airport's own graph, so
+announcing "Could not apply North" over a route that does include `N` teaches exactly the
+distrust the phonetic-only rule exists to prevent. The other half of the line — a taxiway
+the dialog could not seat — is spoken on both paths.
 
 The word list has since gained the five compass words, which ARE ordinary English — the
 one widening this rule ever took, and bounded the same way: a closed list of whole words,
@@ -621,35 +688,231 @@ matter what a future capture appears to add: see the doc comment on
 `ReadTaxiPathPoints` and the CLAUDE.md invariant under "SayIntentions integration" for
 the same rule stated at the code site.
 
-Turning coordinates into a route is a separate, already-built concern:
+Turning those coordinates into a route is a separate concern:
 `SayIntentionsTaxiPathSnapper.Snap` snaps each point to the nearest edge of the
-airport's own named taxiway graph — never to anything SI publishes as a name. A live
-LSZH arrival snapped `taxi_path` to exactly the taxiways ("E4, E, C") Zurich Ground had
-just cleared. Nothing wires that sequence into route building yet, and when something
-does it must only ever OVERRIDE the clearance-derived route, never author one SI never
-cleared: the geometry is SayIntentions' own rendering of *a* plan, which need not be
-the plan the controller most recently spoke.
+airport's own named taxiway graph — never to anything SI publishes as a name — and the
+import uses that sequence whenever it agrees with the clearance. How it is snapped, and
+what "agrees" means, is
+[the next section](#the-route-comes-from-the-ground-track-when-it-agrees-with-the-clearance).
 
-That is what `flight_details.timestamp` is for.
-`SayIntentionsService.ReadTaxiPathStampUtc` reads it into `TaxiPathStampUtc` as this
-snapshot's generation time, in UTC. It is a raw Unix epoch in **seconds**, fractional —
-e.g. `1785357161.40969` → `2026-07-29T20:32:41.409Z` — NOT the ISO-ish `stamp_zulu`
-date-string shape used for transmissions elsewhere in this same file (see
-`ParseZuluStamp`); confirmed against ten real wire captures (LSZH and EGLL,
-2026-07-29/30). A value that is not a plausible epoch-seconds instant — zero, negative,
-or large enough to overflow `DateTime` outright, which is exactly what a future
-migration to millisecond or microsecond epochs would publish — is treated the same as
-an absent field: `TaxiPathStampUtc` falls back to the flight.json file's own
-last-write time, a later answer than SI's generation time but still an honest one,
-rather than an unhandled exception on the pilot's Ctrl+S/Ctrl+Shift+S/Alt+Shift+S
+`flight_details.timestamp` is read alongside it, into `TaxiPathStampUtc`, purely as
+diagnostic data — it goes in the log line and nothing branches on it. See
+[Why a timestamp cannot be the trust signal](#why-a-timestamp-cannot-be-the-trust-signal)
+for why. The parse is still worth describing because it is a shape trap: the value is a
+raw Unix epoch in **seconds**, fractional — e.g. `1785357161.40969` →
+`2026-07-29T20:32:41.409Z` — NOT the ISO-ish `stamp_zulu` date-string shape used for
+transmissions elsewhere in this same file (see `ParseZuluStamp`); confirmed against ten
+real wire captures (LSZH and EGLL, 2026-07-29/30). A value that is not a plausible
+epoch-seconds instant — zero, negative, or large enough to overflow `DateTime` outright,
+which is exactly what a future migration to millisecond or microsecond epochs would
+publish — is treated the same as an absent field: `TaxiPathStampUtc` falls back to the
+flight.json file's own last-write time, a later answer than SI's own but still an honest
+one, rather than an unhandled exception on the pilot's Ctrl+S/Ctrl+Shift+S/Alt+Shift+S
 hotkeys (an unguarded conversion of a live millisecond-shape value took down all three
 at once before this range check existed).
 
-A future task is expected to gate any clearance override on this stamp being provably
-NEWER than the clearance it would replace — a capture taken before the clearance is
-SayIntentions' own plan, not a correction to what the pilot was actually told.
-`MapHoldShortsToTaxiways` already tolerates an applied sequence that differs from the
-spoken one, so the hold-short side of a future override still holds.
+### The route comes from the ground track, when it agrees with the clearance
+
+The imported taxiway sequence is derived from SayIntentions' published `taxi_path`
+geometry, snapped to the airport's own taxiway graph, **whenever that track agrees with
+the spoken clearance**. Otherwise the clearance wins and the disagreement is announced.
+The clearance always owns the destination and the hold-shorts; geometry carries neither.
+
+This exists because deriving the route from the **phrasing** keeps failing on naming
+variance, and failing silently. Palma Ground, live: *"Taxi to holding point runway 24R
+via LE, E, North, H2."* LEPA's navdata calls that taxiway `N`; SayIntentions rendered the
+bare letter as the plain English word; the leg was dropped and the pilot was handed a
+three-taxiway route with nothing to say a fourth had gone missing (see
+[Taxiway matching case asymmetry](#taxiway-matching-case-asymmetry) for the pattern-side
+half of that fix). Geometry has none of that problem: every name it can produce is a name
+the router already knows, because it comes out of the router's own graph.
+
+#### The measurement
+
+Four live captures, and the whole design falls out of them.
+
+**LSZH, 2026-07-29.** Zurich Ground, 20:33:42Z: *"Taxi to Gate E52 via E4, E, C."* The
+`taxi_path` published 9 s later snaps to exactly `E4, E, C`:
+
+```
+run-lengths:  E4x5  Ex7  "Link 6"x1  Ex1  "Link 5"x1  Ex10  Cx11  (unsnapped)x4
+keep runs >= 2 points  ->  E4 , E , C        (identical at >= 3)
+```
+
+The four unsnapped points are the turn into stand E52, which is apron rather than taxiway
+pavement. `Link 5`, `Link 6` and `Inner` are OSM names for connector stubs no controller
+ever says; they appear as single points because SI's path clips their corners.
+
+**EGLL, 2026-07-30.** *"Taxi to Gate 325 via N5E, A, F, G"*, captured 10 s later, snaps to
+exactly `N5E, A, F, G` — this time against **navdata**-named edges (EGLL has 5214 of 5706
+segments named), so unlike LSZH the result does not rest on the OSM augmentation:
+
+```
+run-lengths:  N5Ex6  LINK34x1  Ax15  Fx3  Bx1  Fx21  Gx17   4 of 68 unsnapped
+nearest-edge distance:  median 1.53 m,  p90 2.31 m
+```
+
+Those two distances close an open question the snapper recorded: the 25 m tolerance had
+only ever been measured against OSM centrelines, and a systematic navdata-vs-OSM offset
+would have been invisible to that measurement. It is not there. SI's published points sit
+essentially **on** the navdata centreline too, so the tolerance is not calibrating a fit —
+it is drawing a line between "on pavement" and "on the apron", with two orders of
+magnitude of daylight either side.
+
+**LEPA** is the failure the feature exists for, and geometry recovers it: the text parse
+gave `LE, E, H2`, the track gives `LE, E, N, H2`, and the parse's three legs run straight
+through the track's four. The route delivered is the clearance with its missing leg
+restored.
+
+**The stale case.** An LSZH capture taken 1 min BEFORE the clearance, during the landing
+rollout, gives `R7, E7, E6, E7, N, E, Inner, E, B, E5, F, C` — twelve legs across the
+airfield. That is SayIntentions' *own* plan, a genuinely different route, and it was
+sitting in `taxi_path` the whole time. Delivering it would have been confidently wrong,
+and with **Start taxi guidance immediately** enabled the aircraft would have started
+following it.
+
+So the track has to earn the route.
+
+#### Why a timestamp cannot be the trust signal
+
+The first version of this gated on freshness: use the geometry only when its stamp is at
+or after the clearance transmission's. It was built, and it could not do the job.
+
+`flight_details.timestamp` is when SayIntentions **wrote the file**, not when it computed
+the path. Three captured pairs carry a **byte-identical** `taxi_path` under stamps
+**68 s, 116 s and 252 s apart** — the same geometry, aging, restamped on every write. And
+a file write is always later than a transmission already on the frequency. So whenever
+both stamps existed the gate passed. It admitted every stale path there is while reading,
+in code and in the log, like a safety gate — which is worse than having no test at all.
+
+`taxi_path` also carries no stamp of its own, and nothing else in the file does either.
+There is no field on the wire that says when the path was computed. **Do not rebuild
+this gate**, on `flight_details.timestamp` or on the file's mtime, and do not reason from
+"the stamp is newer, so the path must be" — the counter-example is three byte-identical
+arrays.
+
+#### What earns it instead: agreement
+
+`MainForm.ChooseTaxiwaySource(clearance, geometry)` is a pure static — extracted as one
+precisely so the decision is testable, since deleting the geometry branch outright used
+to leave the entire suite green. In order:
+
+1. **Geometry empty** (no path published, or one that snapped to nothing) → clearance.
+   No better than no path at all; the log keeps the counts that say why.
+2. **Clearance empty** (no text, or a parse that found nothing) → geometry. The track is
+   all there is, and there is nothing for it to contradict.
+3. **The clearance runs through the geometry in order, gaps allowed** — a subsequence
+   walk — **and** the track is at most `2n + 1` legs long for `n` cleared legs →
+   **geometry**.
+4. Anything else → **clearance**, and *"SayIntentions ground track differs from the
+   clearance. Using the clearance."* is spoken.
+
+**The walk, and why gaps are the point.** A real track legitimately names legs the
+controller did not: the stand it starts on, the lead-in it ends on, and — the case this
+is for — the leg the text parse could not name. What makes it evidence rather than
+coincidence is **order**. A set-overlap or "mostly agrees" rule would accept the stale
+EGLL track, which shares `F` and `G` with the clearance but reaches them across the far
+side of the airfield. The same ordered walk is what rejects that track outright: it
+carries `N5W` where the clearance says `N5E`, so it fails on the very first cleared leg.
+One character apart is a different taxiway, on the other side of the stand group. Names
+are compared through `NormalizeTaxiwayName`, the same way everything else in this import
+compares them — spacing and punctuation stripped, case-insensitive, so `"n 5 e"` is
+`N5E`.
+
+**The comparison collapses consecutive duplicates; the delivered sequence does not.**
+`ParseClearanceTaxiPlan` deliberately keeps a taxiway repeated across a hold-short — the
+KBOS pattern, *"via November, hold short of 15R, then November, Kilo"* — because the form
+carries one hold-short per row and collapsing the repeat throws the second stop away. The
+snapper structurally cannot produce that repeat: it drops unsnapped and too-short runs
+**before** collapsing consecutive duplicates, so `[N … N]` arrives as a single `N`.
+Walked raw, `[N, N, K]` could never agree with its own track `[N, K]`, and the pilot heard
+"the ground track differs from the clearance" about two descriptions of the same pavement
+— which also switched the geometry path, and the dropped-leg recovery it exists for, off
+for **every clearance of that shape**. So the walk runs against `CollapseConsecutive` and
+only the walk does; the raw list still reaches the form, and each November keeps its row.
+Only *adjacent* repeats collapse, so a genuine later revisit stays a leg the track has to
+carry twice.
+
+**The `2n + 1` ratio guard.** The walk's discriminating power scales with how many legs
+the clearance has, and a short one runs straight through almost any track touching the
+same corner of the airfield. Against the real LSZH pre-clearance publication — twelve
+legs — *"via E, C"*, *"via N, E, B"* and even a bare *"via E"* all walk clean through,
+and a track that agrees is taken **silently**. So the track additionally has to be short
+enough to be a description *of* the cleared route rather than a route of its own: at most
+two track legs per cleared leg, plus one. Every real agreement measured runs 1.0–1.33
+track legs per cleared leg (LSZH 3:3, EGLL 4:4, the LEPA dropped leg 3:4); every stale
+reading runs 2.5–12. The guard
+counts the **collapsed** clearance, because a taxiway named twice is one leg of evidence
+and constrains the walk exactly as much as one does — it must not buy the track extra
+length.
+
+#### `taxi_path` is transient, and it shrinks
+
+It is populated during the taxi and empty in the cruise, and it is the **remaining**
+route rather than the route as issued — one live taxi went 77 → 40 points as the aircraft
+moved. Nothing here treats it as a record of what was cleared.
+
+The practical consequence is that a **late** press has a shorter track, so the legs
+already behind the aircraft are gone from it and the clearance no longer runs through it.
+That fails the walk, so the clearance wins and the pilot is told the two disagreed. That
+is the intended outcome, not a defect: the sequence that reaches the form is still the
+full cleared route.
+
+#### The naming source is a real limit
+
+The snapper searches **named** edges only, and named-edge coverage varies hard between
+airports (fs2024 navdata): EGLL 91 %, EDDF 87 %, KJFK 77 %, LEPA 63 % — and **LSZH 0 of
+1840**. At LSZH every name came from the OSM taxi-data augmentation; without it there is
+nothing to snap to and the import degrades to the clearance text.
+
+At a low-coverage field the failure is subtler than a miss. Unnamed pavement is invisible
+to the search, so a point genuinely on an unnamed taxiway can be attributed to a *named*
+one up to 25 m away. Geometry removes the dependency on SayIntentions' **phrasing**; it
+does not remove the dependency on names existing at all.
+
+The snapper never fetches names itself. It takes edges off the already-built `TaxiGraph`
+(`TaxiGraph.GetNamedEdges()`, via `TaxiAssistForm.GetLoadedTaxiwayEdges`), which the
+augmenting provider has already filled from OSM where navdata left segments unnamed.
+Re-fetching would duplicate the augmentation layer and put a network call on a hotkey.
+`GetNamedEdges` sorts by a key intrinsic to the edge (`TaxiwayName`, then endpoint
+coordinates) rather than by node id, because node ids come from `Build()` processing
+order: the snapper breaks a nearest-edge tie with a strict `<`, so an ordering that
+depends on how navdata happened to be imported could silently flip which taxiway a blind
+pilot is told.
+
+#### Cost
+
+The snap is linear over every named edge for every published point — 20–90 ms on the UI
+thread, e.g. a 111-point capture against EGLL's 5,189 named edges is ~576 k distance
+evaluations at about 40 ms. That is acceptable because it happens **once**, behind a
+hotkey that is already awaiting an HTTP round-trip and an airport load. A spatial index
+would be more code for no perceptible gain.
+
+#### Accepted limits
+
+These are decisions with their evidence attached, not open bugs.
+
+- **The `2n + 1` guard is calibrated on ONE stale capture.** Real matches sit at
+  1.0–1.33 and stale ones at 2.5–12, so the gap is wide — but a second stale capture
+  could move the boundary, and the constant should be revisited against one rather than
+  defended on principle.
+- **A badly-degraded parse now loses a correct track.** Where the text recovers one leg
+  of five, the track legitimately *is* much longer and the guard rejects geometry that
+  was right. This is the deliberate direction: falling back to a clearance we know is
+  incomplete still names the legs it could not apply, so the pilot is warned, whereas
+  accepting a stale track is silent and wrong. Bias toward the clearance. A track
+  rejected on length is reported as a disagreement, never dropped quietly.
+- **Hold-short anchors cross sources on the geometry path.** They are parsed from the
+  clearance and then mapped onto whichever sequence is being applied, so a clearance
+  anchor naming a taxiway the track lacks maps to `-1` and is announced as unsettable
+  rather than hung on the wrong row (see
+  [Hold-shorts belong to their own taxiway](#hold-shorts-belong-to-their-own-taxiway)).
+  A mid-taxi import whose shortened track begins after an already-crossed hold-short will
+  report it that way — which is correct, and audible.
+- **The unapplied-leg recital is capped at three names plus a count, on the geometry path
+  only.** Those names come from the graph rather than from the controller, and ten
+  unfamiliar syllables in a row is a recital rather than information. A clearance route's
+  list is never capped: every name there is a word the pilot heard.
 
 ### Gate names
 
