@@ -18,8 +18,10 @@
 // taxi-graph dependencies); seating behavior that needs live combos is verified in
 // the sim per the PR's test plan.
 
+using System.Globalization;
 using MSFSBlindAssist;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Services.SayIntentions;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -281,9 +283,11 @@ public class SayIntentionsExternalRouteTests
 
     private static string Announce(
         TaxiAssistForm.ExternalRouteOutcome outcome, string destination, bool autoStart,
-        string[]? unknownTaxiways = null)
+        string[]? unknownTaxiways = null,
+        MainForm.TaxiwaySource source = MainForm.TaxiwaySource.Clearance,
+        SnapResult? snap = null)
         => MainForm.BuildExternalRouteAnnouncement(
-            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart);
+            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart, source, snap);
 
     [Fact]
     public void Announcement_names_destination_taxiways_and_the_review_step()
@@ -408,5 +412,173 @@ public class SayIntentionsExternalRouteTests
         string spoken = Announce(Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false);
 
         Assert.DoesNotContain("Could not apply", spoken);
+    }
+
+    // --- GeometryIsFresherThanClearance: the freshness gate ---------------------------
+    //
+    // SayIntentions publishes its own taxi-route geometry, and BEFORE a clearance that
+    // geometry is SI's own plan rather than the route the controller gave. Two live LSZH
+    // captures either side of one clearance measured the difference, so this gate is a
+    // correctness requirement: without it the import is confidently wrong.
+
+    private static DateTime? Utc(string? iso) =>
+        iso == null
+            ? null
+            : DateTime.Parse(iso, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+
+    [Theory]
+    // geometry newer than the clearance -> geometry
+    [InlineData("2026-07-29T20:33:51Z", "2026-07-29T20:33:42Z", true)]
+    // same instant counts: "at or after" the clearance, not strictly after
+    [InlineData("2026-07-29T20:33:42Z", "2026-07-29T20:33:42Z", true)]
+    // geometry OLDER -> clearance text. The live 20:32:41Z capture, a minute before
+    // Ground spoke, gave R7,E7,E6,E7,N,E,Inner,E,B,E5,F,C — SI's own plan, not the
+    // cleared route. Using it would be confidently wrong.
+    [InlineData("2026-07-29T20:32:41Z", "2026-07-29T20:33:42Z", false)]
+    [InlineData(null, "2026-07-29T20:33:42Z", false)]   // unknown -> trust what was heard
+    [InlineData("2026-07-29T20:33:51Z", null, false)]
+    [InlineData(null, null, false)]
+    public void GeometryIsOnlyPreferredWhenItIsFresherThanTheClearance(
+        string? geo, string? clearance, bool expected)
+    {
+        Assert.Equal(expected, MainForm.GeometryIsFresherThanClearance(Utc(geo), Utc(clearance)));
+    }
+
+    // --- ResolveClearanceStampUtc: what the geometry has to beat ----------------------
+
+    private static SayIntentionsTransmission Transmission(string message, DateTime? stamp) =>
+        new("ATC", message, "Zurich Ground", "GND", stamp, 42);
+
+    [Fact]
+    public void TheClearanceStampIsTheStampOfTheTransmissionItCameFrom()
+    {
+        var heard = Utc("2026-07-29T20:33:42Z");
+
+        Assert.Equal(
+            heard,
+            MainForm.ResolveClearanceStampUtc(
+                "Taxi to Gate E52 via E4, E, C",
+                Transmission("Taxi to Gate E52 via E4, E, C", heard)));
+    }
+
+    [Fact]
+    public void AClearanceFromSomewhereElseInFlightJsonHasNoStamp()
+    {
+        // flight.json's own clearance fields carry no time. Guessing the latest
+        // transmission's stamp for one of them would hand the geometry a reference it
+        // has not actually been measured against, which is exactly how the gate would
+        // start passing on unverifiable evidence.
+        Assert.Null(MainForm.ResolveClearanceStampUtc(
+            "Taxi to Gate E52 via E4, E, C",
+            Transmission("Contact Tower on 118.1", Utc("2026-07-29T20:33:42Z"))));
+    }
+
+    [Fact]
+    public void NoClearanceAndNoTransmissionLeaveNoStamp()
+    {
+        Assert.Null(MainForm.ResolveClearanceStampUtc(null, Transmission("x", Utc("2026-07-29T20:33:42Z"))));
+        Assert.Null(MainForm.ResolveClearanceStampUtc("Taxi via E4", null));
+        Assert.Null(MainForm.ResolveClearanceStampUtc("Taxi via E4", Transmission("Taxi via E4", null)));
+    }
+
+    // --- Announcement provenance ------------------------------------------------------
+
+    private static SnapResult Snap(
+        string[] taxiways, int pointCount, int unsnapped = 0, int droppedRuns = 0) =>
+        new(taxiways, pointCount, unsnapped, droppedRuns);
+
+    [Fact]
+    public void TheAnnouncementSaysWhereTheRouteCameFrom()
+    {
+        // The two sources fail differently — a clearance route drops a leg it could not
+        // name, a ground-track route follows SI's pavement rather than the controller's
+        // words — so the pilot has to be able to tell them apart.
+        string fromGeometry = Announce(
+            Outcome(applied: new[] { "E4", "E", "C" }), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4", "E", "C" }, 40, 4, 3));
+
+        Assert.Contains("Route from SayIntentions ground track.", fromGeometry);
+
+        string fromClearance = Announce(
+            Outcome(applied: new[] { "E4", "E", "C" }), "Gate E52", autoStart: false);
+
+        Assert.DoesNotContain("ground track", fromClearance);
+    }
+
+    [Fact]
+    public void AGeometryRouteNeverNamesATaxiwayOnlyTheClearanceKnew()
+    {
+        // Every name on the geometry path came from the airport's own graph, so there is
+        // no "taxiway this airport does not have". A live LEPA clearance said "North"
+        // for taxiway N; announcing "Could not apply North" over a route that DOES
+        // include N teaches the pilot to distrust the whole readout.
+        string spoken = Announce(
+            Outcome(applied: new[] { "LE", "E", "N", "H2" }), "Gate 10", autoStart: false,
+            unknownTaxiways: new[] { "North" },
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "LE", "E", "N", "H2" }, 60));
+
+        Assert.DoesNotContain("Could not apply", spoken);
+        Assert.DoesNotContain("North", spoken);
+    }
+
+    [Fact]
+    public void AGeometryRouteStillReportsALegTheFormCouldNotSeat()
+    {
+        // Different from the case above: this name DID come from the graph and is a leg
+        // of the route being applied, so the route really is missing it.
+        string spoken = Announce(
+            Outcome(applied: new[] { "E4", "E" }, skipped: new[] { "C" }), "Gate E52",
+            autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4", "E", "C" }, 40));
+
+        Assert.Contains("Could not apply C.", spoken);
+    }
+
+    [Fact]
+    public void AGeometryFallbackToShortestPathDoesNotBlameTheClearance()
+    {
+        string spoken = Announce(
+            Outcome(), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4" }, 40));
+
+        Assert.Contains("No taxiways from the ground track matched this airport.", spoken);
+        Assert.DoesNotContain("from the clearance", spoken);
+    }
+
+    [Fact]
+    public void ATrackMostlyOffTheTaxiwaysIsReported()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "E4" }), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4" }, 40, unsnapped: 20));
+
+        Assert.Contains("20 of 40 ground track points were off the taxiways", spoken);
+    }
+
+    [Fact]
+    public void TheLiveStandLeadInIsNotWorthSaying()
+    {
+        // The real LSZH arrival read 4 unsnapped of 40 points — the turn into stand E52,
+        // which is apron rather than taxiway pavement — on a perfectly clean import that
+        // reproduced the cleared route exactly. Reporting that would fire on every
+        // normal arrival. Its 3 dropped runs (the unnamed connector stubs SI clips the
+        // corners of) are equally routine and equally silent.
+        string spoken = Announce(
+            Outcome(applied: new[] { "E4", "E", "C" }), "Gate E52", autoStart: false,
+            source: MainForm.TaxiwaySource.Geometry, snap: Snap(new[] { "E4", "E", "C" }, 40, 4, 3));
+
+        Assert.DoesNotContain("off the taxiways", spoken);
+        Assert.DoesNotContain("dropped", spoken, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AClearanceRouteSaysNothingAboutTrackPoints()
+    {
+        string spoken = Announce(
+            Outcome(applied: new[] { "A", "B" }), "Gate A9", autoStart: false,
+            unknownTaxiways: new[] { "K" });
+
+        Assert.DoesNotContain("points", spoken);
     }
 }

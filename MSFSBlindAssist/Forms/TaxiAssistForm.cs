@@ -911,6 +911,17 @@ public class TaxiAssistForm : Form
         return _graph?.GetAllTaxiwayNames() ?? new List<string>();
     }
 
+    /// <summary>Every named taxiway SEGMENT of the airport this form currently has
+    /// loaded, for a caller matching published geometry against the pavement. Exposed
+    /// for the same reason the taxiway names are: the SayIntentions import must never
+    /// build a second TaxiGraph, and this graph is the one the route will be calculated
+    /// on. Empty before an airport is loaded.</summary>
+    public IReadOnlyList<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>
+        GetLoadedTaxiwayEdges() =>
+        _graph == null
+            ? Array.Empty<(string, double, double, double, double)>()
+            : _graph.GetNamedEdges().ToList();
+
     /// <summary>Selects the first candidate that names a real entry in the form's
     /// destination list. The form owns its label formats — callers pass a normalized
     /// identifier ("15L", "A9"), never a constructed "Runway 15L".

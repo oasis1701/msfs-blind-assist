@@ -10,12 +10,18 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist;
 
 /// <summary>
-/// SayIntentions hotkey handlers. Reads the active SI flight context and turns a
-/// spoken taxi clearance into a pre-filled Taxi Guidance route.
+/// SayIntentions hotkey handlers. Reads the active SI flight context and turns a taxi
+/// clearance into a pre-filled Taxi Guidance route.
+///
+/// The route's taxiway sequence prefers SayIntentions' own published GEOMETRY, snapped
+/// to the airport's taxiway graph, and falls back to the spoken clearance text — but
+/// only when the geometry is at least as new as the clearance, see
+/// GeometryIsFresherThanClearance. The clearance always supplies the destination and the
+/// hold-shorts; geometry carries neither.
 ///
 /// All parsing lives in MSFSBlindAssist.Services.SayIntentions — this partial only
 /// orchestrates. In particular it never builds its own TaxiGraph: the form loads
-/// the airport once and hands back the taxiway names it already knows.
+/// the airport once and hands back the taxiway names and segments it already knows.
 /// </summary>
 public partial class MainForm
 {
@@ -119,6 +125,12 @@ public partial class MainForm
                 return;
             }
 
+            // When the clearance was heard on the radio, WHEN it was heard is what the
+            // published geometry has to beat to be trusted (see the freshness gate
+            // below), so the stamp is captured wherever the text comes from.
+            DateTime? clearanceStampUtc = ResolveClearanceStampUtc(
+                context.ClearanceText, context.LastFlightJsonTransmission);
+
             // Only fall back to the last radio transmission when it is actually
             // shaped like a taxi clearance — a landing clearance heard on rollout
             // must never become a taxi route.
@@ -129,6 +141,7 @@ public partial class MainForm
                     && SayIntentionsClearanceParser.LooksLikeTaxiClearance(last.Transmission.Message))
                 {
                     context.ClearanceText = last.Transmission.Message;
+                    clearanceStampUtc = last.Transmission.StampZulu;
                 }
             }
 
@@ -159,11 +172,38 @@ public partial class MainForm
                 return;
             }
 
-            // The spoken clearance is the ONLY source of the route. SayIntentions'
-            // current_flight.taxi_path is geometry (heading + lat/lon points), not
-            // taxiway names, so there is nothing structured to prefer over speech.
-            var (taxiways, planHoldShorts, unknownTaxiways) =
+            // The clearance always supplies the destination (above) and the hold-shorts
+            // (below) — SayIntentions' geometry carries neither.
+            var (clearanceTaxiways, planHoldShorts, unknownTaxiways) =
                 ParseClearanceTaxiPlan(clearance, knownTaxiways);
+
+            // The route ITSELF prefers the geometry, because deriving it from the
+            // PHRASING keeps failing on naming variance (a live LEPA clearance said
+            // "North" for taxiway N and the leg was silently dropped). Snapped against
+            // the airport's own graph, every name is one the router already knows.
+            //
+            // But only when the geometry is at least as new as the words — see
+            // GeometryIsFresherThanClearance. Snapping is skipped entirely when the gate
+            // fails: the answer would not be used, and it is the one part of this path
+            // that costs real work (every published point against every named segment).
+            SnapResult? snap = null;
+            if (context.TaxiPathPoints.Count > 0
+                && GeometryIsFresherThanClearance(context.TaxiPathStampUtc, clearanceStampUtc))
+            {
+                snap = SayIntentionsTaxiPathSnapper.Snap(
+                    context.TaxiPathPoints, ReadNamedEdges(form));
+            }
+
+            // A path that snapped to nothing is no better than no path at all: the words
+            // stay in charge, and the log keeps the counts that say why.
+            var source = TaxiwaySource.Clearance;
+            IReadOnlyList<string> taxiways = clearanceTaxiways;
+            if (snap is { Taxiways.Count: > 0 })
+            {
+                source = TaxiwaySource.Geometry;
+                taxiways = snap.Taxiways;
+            }
+
             var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
 
@@ -174,6 +214,14 @@ public partial class MainForm
             var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts, autoStart);
 
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
+                        $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
+                        $"geoStamp={FormatStampSi(context.TaxiPathStampUtc)} " +
+                        $"clearanceStamp={FormatStampSi(clearanceStampUtc)} " +
+                        $"geoPoints={snap?.PointCount ?? context.TaxiPathPoints.Count} " +
+                        $"geoUnsnapped={(snap == null ? "-" : snap.UnsnappedCount.ToString())} " +
+                        $"geoDroppedRuns={(snap == null ? "-" : snap.DroppedRunCount.ToString())} " +
+                        $"geoTaxiways=[{string.Join(",", snap?.Taxiways ?? Array.Empty<string>())}] " +
+                        $"clearanceTaxiways=[{string.Join(",", clearanceTaxiways)}] " +
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
                         $"skipped=[{string.Join(",", outcome.SkippedTaxiways)}] " +
                         $"notAtAirport=[{string.Join(",", unknownTaxiways)}] " +
@@ -181,8 +229,9 @@ public partial class MainForm
                         $"holdShortsMissed=[{string.Join(",", outcome.SkippedHoldShortRunways)}] " +
                         $"autoStart={autoStart}");
 
-            announcer.Announce(
-                BuildExternalRouteAnnouncement(outcome, unknownTaxiways, label, autoStart));
+            announcer.Announce(BuildExternalRouteAnnouncement(
+                outcome, unknownTaxiways, label, autoStart,
+                source, source == TaxiwaySource.Geometry ? snap : null));
         }
         catch (Exception ex)
         {
@@ -190,6 +239,87 @@ public partial class MainForm
             announcer.AnnounceImmediate($"SayIntentions taxi route failed. {ex.Message}");
         }
     }
+
+    /// <summary>Where an imported route's taxiway sequence came from. Spoken and logged,
+    /// because the two fail differently: a clearance route can drop a leg it could not
+    /// name, a geometry route follows SayIntentions' own pavement rather than the
+    /// controller's words.</summary>
+    internal enum TaxiwaySource
+    {
+        Geometry,
+        Clearance
+    }
+
+    /// <summary>
+    /// Whether SayIntentions' published taxi geometry can be trusted as THIS clearance's
+    /// route: true only when the geometry snapshot is at least as new as the transmission
+    /// the clearance was heard in.
+    ///
+    /// Not polish — the geometry is a live plan that exists before any clearance does,
+    /// and before one it is SayIntentions' OWN intended route rather than the route the
+    /// controller gave. Measured across two live LSZH captures either side of one
+    /// clearance ("Taxi to Gate E52 via E4, E, C"): the capture 9 s AFTER it snapped to
+    /// exactly E4, E, C, while the capture ~1 min BEFORE it, during the landing rollout,
+    /// gave R7, E7, E6, E7, N, E, Inner, E, B, E5, F, C — a genuinely different route
+    /// that would have been delivered with full confidence.
+    ///
+    /// An unknown stamp on EITHER side falls back to the clearance text. The text is
+    /// what the pilot actually heard; preferring unverifiable geometry over it is exactly
+    /// the confidently-wrong failure this whole feature exists to remove, so "no
+    /// evidence" must never read as "fresh enough".
+    /// </summary>
+    internal static bool GeometryIsFresherThanClearance(DateTime? geometryUtc, DateTime? clearanceUtc) =>
+        geometryUtc is DateTime geometry
+        && clearanceUtc is DateTime spoken
+        && geometry >= spoken;
+
+    /// <summary>
+    /// When the clearance text was heard, or null when nothing dates it.
+    ///
+    /// Only a clearance that IS the transmission gets that transmission's stamp. The
+    /// text can equally come from a flight.json clearance field, which carries no time
+    /// of its own — lending it the latest transmission's stamp would hand the geometry a
+    /// reference it was never measured against, and the gate would start passing on
+    /// evidence that does not exist.
+    /// </summary>
+    internal static DateTime? ResolveClearanceStampUtc(
+        string? clearanceText, SayIntentionsTransmission? transmission)
+    {
+        if (string.IsNullOrWhiteSpace(clearanceText) || transmission == null) return null;
+
+        return string.Equals(
+            transmission.Message?.Trim(), clearanceText.Trim(), StringComparison.Ordinal)
+            ? transmission.StampZulu
+            : null;
+    }
+
+    /// <summary>The loaded airport's named taxiway segments, in the shape the snapper
+    /// takes. The form owns the graph — this partial must never build a second one.</summary>
+    private static List<NamedEdge> ReadNamedEdges(TaxiAssistForm form)
+    {
+        var loaded = form.GetLoadedTaxiwayEdges();
+        var edges = new List<NamedEdge>(loaded.Count);
+        foreach (var (name, fromLat, fromLon, toLat, toLon) in loaded)
+            edges.Add(new NamedEdge(name, fromLat, fromLon, toLat, toLon));
+        return edges;
+    }
+
+    private static string FormatStampSi(DateTime? stampUtc) =>
+        stampUtc?.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture)
+        ?? "-";
+
+    /// <summary>
+    /// How much of a published ground track may sit off taxiway pavement before the
+    /// import says so, as a share of its points.
+    ///
+    /// The tail of a real path is the turn into the stand, which is apron: the live LSZH
+    /// arrival read 4 unsnapped of 40 points on an import that reproduced the cleared
+    /// route exactly. Anything at or below that share would fire on every normal arrival
+    /// and teach the pilot to ignore the line. A quarter is judgement rather than
+    /// measurement — one capture cannot calibrate it — set well clear of the known-clean
+    /// case while still catching a track that mostly failed to match the airport.
+    /// </summary>
+    internal const double UnsnappedShareWorthSaying = 0.25;
 
     /// <summary>Names every taxiway AND every hold-short that could not be applied.
     /// Silent degradation to a shortest-path route is invisible to a blind pilot, and
@@ -199,24 +329,48 @@ public partial class MainForm
     /// "Could not apply" has TWO sources and one line: a taxiway the airport has but the
     /// form could not seat (outcome.SkippedTaxiways), and a taxiway only the clearance
     /// knows (unknownTaxiways). The pilot needs the same thing from both — the name of
-    /// the leg the route is not taking.</summary>
+    /// the leg the route is not taking.
+    ///
+    /// The second source is dropped on a GEOMETRY route: every name in that sequence came
+    /// from the airport's own graph, so "a taxiway this airport does not have" describes
+    /// nothing in the route being applied. A live LEPA clearance said "North" for taxiway
+    /// N; announcing "Could not apply North" over a route that DOES include N teaches the
+    /// pilot to distrust the whole readout. The list is still passed in (and logged) — the
+    /// decision belongs here, next to the words, not at the call site.
+    ///
+    /// The route's SOURCE is spoken too, because the pilot cannot otherwise tell a
+    /// geometry-derived route from a spoken-clearance one and they fail differently.
+    /// <paramref name="snap"/> is the geometry read behind a Geometry route and null on
+    /// the clearance path; it is only ever used to report a track that mostly failed to
+    /// match the airport (see UnsnappedShareWorthSaying). Its dropped runs stay silent:
+    /// SayIntentions clips the corners of unnamed connector stubs, so a clean read has
+    /// several, and announcing them would be noise on every import.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
-        string destination, bool autoStart)
+        string destination, bool autoStart, TaxiwaySource source, SnapResult? snap)
     {
         var parts = new List<string> { $"SayIntentions route to {destination}." };
 
         if (!outcome.DestinationApplied)
             parts.Add("Destination not set. Check the destination field.");
 
+        if (source == TaxiwaySource.Geometry)
+            parts.Add("Route from SayIntentions ground track.");
+
         parts.Add(outcome.AppliedTaxiways.Count > 0
             ? $"Via {string.Join(", ", outcome.AppliedTaxiways)}."
-            : "No taxiways from the clearance matched this airport. Using shortest path.");
+            : source == TaxiwaySource.Geometry
+                ? "No taxiways from the ground track matched this airport. Using shortest path."
+                : "No taxiways from the clearance matched this airport. Using shortest path.");
 
         var couldNotApply = new List<string>(outcome.SkippedTaxiways);
-        couldNotApply.AddRange(unknownTaxiways);
+        if (source == TaxiwaySource.Clearance) couldNotApply.AddRange(unknownTaxiways);
         if (couldNotApply.Count > 0)
             parts.Add($"Could not apply {string.Join(", ", couldNotApply)}.");
+
+        if (snap != null && snap.UnsnappedCount > snap.PointCount * UnsnappedShareWorthSaying)
+            parts.Add($"{snap.UnsnappedCount} of {snap.PointCount} ground track points " +
+                      "were off the taxiways, so the route may be incomplete.");
 
         foreach (var holdShort in outcome.AppliedHoldShorts)
             parts.Add($"Hold short of runway {holdShort.Runway} after {holdShort.AfterTaxiway}.");
