@@ -254,4 +254,81 @@ public class TaxiGraphStaticsTests
         Assert.Equal("K", graph.ResolveTaxiwayName("B (K)"));
         Assert.Equal("M", graph.ResolveTaxiwayName("B (M)"));
     }
+
+    // --- GetNamedEdges -----------------------------------------------------
+    //
+    // Feeds SayIntentionsTaxiPathSnapper.Snap, which needs flat (name,
+    // endpoint-coordinate) tuples for real airport pavement. Node-id
+    // assignment is deterministic and start-before-end per path (see
+    // TaxiGraph.Build / ResolveNode), so for these fixtures -- no two
+    // endpoints within the 1.5 m merge threshold of each other except where
+    // a chain deliberately shares a coordinate -- the expected node ids,
+    // and therefore the expected (From ->To) direction and overall order,
+    // can be derived by reasoning about Build's own registration order.
+
+    [Fact]
+    public void GetNamedEdges_returns_each_named_edge_once_with_endpoint_coordinates_and_excludes_unnamed()
+    {
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 37.000, StartLon = -122.000, EndLat = 37.001, EndLon = -122.000, Name = "A" },
+            new TaxiPath { StartLat = 37.000, StartLon = -121.900, EndLat = 37.001, EndLon = -121.900, Name = "B" },
+            // Unnamed segment -- must never reach the output as an empty leg name.
+            new TaxiPath { StartLat = 37.002, StartLon = -121.800, EndLat = 37.003, EndLon = -121.800, Name = "" },
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        var edges = graph.GetNamedEdges();
+
+        var expected = new List<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>
+        {
+            ("A", 37.000, -122.000, 37.001, -122.000),
+            ("B", 37.000, -121.900, 37.001, -121.900),
+        };
+        Assert.Equal(expected, edges);
+    }
+
+    [Fact]
+    public void GetNamedEdges_returns_each_segment_of_a_multi_segment_taxiway_separately()
+    {
+        // Two consecutive straight segments of the same taxiway "A", sharing the
+        // middle coordinate -- must come back as two separate edges, not merged
+        // into one taxiway-level entry (the snapper matches per straight segment).
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 37.000, StartLon = -122.000, EndLat = 37.001, EndLon = -122.000, Name = "A" },
+            new TaxiPath { StartLat = 37.001, StartLon = -122.000, EndLat = 37.002, EndLon = -122.000, Name = "A" },
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        var edges = graph.GetNamedEdges();
+
+        var expected = new List<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>
+        {
+            ("A", 37.000, -122.000, 37.001, -122.000),
+            ("A", 37.001, -122.000, 37.002, -122.000),
+        };
+        Assert.Equal(expected, edges);
+    }
+
+    [Fact]
+    public void GetNamedEdges_skips_an_edge_whose_node_id_is_missing_from_Nodes()
+    {
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 37.000, StartLon = -122.000, EndLat = 37.001, EndLon = -122.000, Name = "A" },
+        };
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        // Defensive case: Build() never leaves Adjacency pointing at a node id that
+        // is missing from Nodes, but GetNamedEdges must not synthesize a (0,0)
+        // endpoint if that ever happens -- a (0,0) edge would sit ~5000 km from any
+        // real airport and could still win a nearest-edge comparison for an
+        // outlier point.
+        graph.Nodes.Clear();
+
+        var edges = graph.GetNamedEdges();
+
+        Assert.Empty(edges);
+    }
 }
