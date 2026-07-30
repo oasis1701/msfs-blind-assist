@@ -423,10 +423,9 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Location = new Point(20, 820),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
-            AccessibleDescription = "Applies only to routes imported from SayIntentions. "
-                                    + "Checked: guidance starts as soon as the route is built. "
-                                    + "Cleared: the Taxi Guidance window opens with the route "
-                                    + "filled in and you press Calculate Route to start."
+            // One clause. The name already says what checking it does; this only has to
+            // say what clearing it does, and it is spoken on every focus change.
+            AccessibleDescription = "Off: the route is filled in for you to review first."
         };
 
         Controls.AddRange(new Control[]
