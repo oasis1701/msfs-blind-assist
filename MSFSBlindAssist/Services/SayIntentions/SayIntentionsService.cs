@@ -184,6 +184,22 @@ public sealed class SayIntentionsService
                     GetString(flight, "assigned_gate"),
                     GetString(flight, "parking"),
                     GetString(flight, "gate"));
+
+                // The assigned stand's own coordinate, which is the only thing left when
+                // the scenery labels that stand differently from SayIntentions — a name
+                // miss otherwise runs destination resolution to the end of its chain and
+                // takes the ARRIVAL RUNWAY. Published as JSON STRINGS ('52.3647…'), which
+                // GetDouble already handles.
+                //
+                // (0, 0) IS REJECTED. Null island is a real coordinate to a distance test
+                // and would sit 150 m from nothing, but it is what an unset field looks
+                // like once two absent numbers are read as zero — and the one thing worse
+                // than failing to find the stand is confidently finding the wrong one.
+                double? gateLat = GetDouble(flight, "assigned_gate_lat");
+                double? gateLon = GetDouble(flight, "assigned_gate_lon");
+                if (gateLat is double lat && gateLon is double lon && (lat != 0 || lon != 0))
+                    context.AssignedGatePosition = new GeoPoint(lat, lon);
+
                 context.DepartureRunway = SayIntentionsClearanceParser.CleanRunway(FirstNonEmpty(
                     GetString(flight, "flight_plan_departing_runway"),
                     GetString(flight, "departing_runway"),

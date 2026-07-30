@@ -337,9 +337,11 @@ public class SayIntentionsExternalRouteTests
         SnapResult? snap = null,
         bool disagreed = false,
         bool clearanceNamedTaxiways = true,
-        string? clearanceLookupProblem = null)
+        string? clearanceLookupProblem = null,
+        string? positionMatchedGate = null)
         => MainForm.BuildExternalRouteAnnouncement(
-            outcome, unknownTaxiways ?? Array.Empty<string>(), destination, autoStart,
+            outcome, unknownTaxiways ?? Array.Empty<string>(), destination,
+            positionMatchedGate, autoStart,
             source, disagreed, snap, clearanceNamedTaxiways, clearanceLookupProblem);
 
     [Fact]
@@ -351,6 +353,57 @@ public class SayIntentionsExternalRouteTests
             "SayIntentions route to Gate A9. Via A, B. " +
             "Review the fields, then press Calculate Route to start guidance.",
             spoken);
+    }
+
+    [Fact]
+    public void A_stand_seated_by_position_is_named_right_after_the_lead()
+    {
+        // The lead names only the stand that WON, so without this the substitution is
+        // invisible: the pilot is taxied somewhere the controller never named and hears
+        // nothing to say so. It sits second because the destination is what the rest of
+        // the summary is about — a correction to it cannot queue behind the route.
+        string spoken = Announce(
+            Outcome(applied: new[] { "M3", "B" }), "B 6", autoStart: false,
+            positionMatchedGate: "Gate B06");
+
+        Assert.Equal(
+            "SayIntentions route to B 6. " +
+            "SayIntentions assigned Gate B06, which this airport does not have. " +
+            "This is the nearest stand to the assigned position. " +
+            "Via M3, B. " +
+            "Review the fields, then press Calculate Route to start guidance.",
+            spoken);
+    }
+
+    [Fact]
+    public void The_substitution_leads_the_other_warnings_too()
+    {
+        // Warnings lead the route body, and this one leads the warnings: everything else
+        // describes the route being flown, this says the route is to a different place
+        // than the one that was assigned.
+        string spoken = Announce(
+            Outcome(applied: new[] { "M3" }, skipped: new[] { "V2" }), "B 6", autoStart: true,
+            source: MainForm.TaxiwaySource.Clearance, disagreed: true,
+            positionMatchedGate: "Gate B06");
+
+        Assert.True(
+            spoken.IndexOf("which this airport does not have", StringComparison.Ordinal)
+            < spoken.IndexOf("ground track differs", StringComparison.Ordinal));
+        Assert.True(
+            spoken.IndexOf("which this airport does not have", StringComparison.Ordinal)
+            < spoken.IndexOf("Could not apply V2.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_destination_matched_by_name_says_nothing_about_a_substitution()
+    {
+        // The overwhelmingly common case, and it must gain no words at all: the stand SI
+        // named is the stand the form seated.
+        string spoken = Announce(
+            Outcome(applied: new[] { "M3" }), "B 6", autoStart: false);
+
+        Assert.DoesNotContain("does not have", spoken);
+        Assert.DoesNotContain("nearest stand", spoken);
     }
 
     [Fact]

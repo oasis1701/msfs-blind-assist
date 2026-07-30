@@ -233,7 +233,8 @@ public partial class MainForm
             form.BringToFront();
 
             if (!TryResolveSayIntentionsDestination(
-                    form, status, clearance, icao, out bool isRunway, out string label))
+                    form, status, clearance, icao,
+                    out bool isRunway, out string label, out string? positionMatchedGate))
             {
                 announcer.AnnounceImmediate(
                     "SayIntentions route unavailable. No usable assigned runway or gate found.");
@@ -243,6 +244,7 @@ public partial class MainForm
             var outcome = form.ApplyExternalRoute(isRunway, label, taxiways, holdShorts);
 
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
+                        $"positionGate='{positionMatchedGate ?? "-"}' " +
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
                         $"disagreed={disagreed} " +
                         $"geoStamp={FormatStampSi(context.TaxiPathStampUtc)} " +
@@ -260,7 +262,8 @@ public partial class MainForm
                         $"autoStart={autoStart}");
 
             string Describe(bool guidanceStarted) => BuildExternalRouteAnnouncement(
-                outcome, unknownTaxiways, label, guidanceStarted, source, disagreed,
+                outcome, unknownTaxiways, label, positionMatchedGate, guidanceStarted,
+                source, disagreed,
                 source == TaxiwaySource.Geometry ? snap : null,
                 clearanceTaxiways.Count > 0, clearanceLookupProblem);
 
@@ -520,10 +523,19 @@ public partial class MainForm
     /// The lead names the destination only when the destination actually SEATED. It used
     /// to open "SayIntentions route to Gate A9." and then say "Destination not set." two
     /// sentences later — the first thing the pilot hears contradicting the second, with
-    /// nothing on screen to arbitrate.</summary>
+    /// nothing on screen to arbitrate.
+    ///
+    /// <paramref name="positionMatchedGate"/> is the gate SayIntentions ASKED for when
+    /// this airport has no stand by that name and the destination was seated from
+    /// SayIntentions' published gate coordinate instead. That is a WARNING, not a
+    /// footnote: the pilot is being taxied to a stand the controller never named, and the
+    /// lead sentence names only the stand that won, so without this the substitution is
+    /// invisible. It goes immediately after the lead — the destination is what the rest of
+    /// the summary is about, so the correction to it cannot wait behind the route.</summary>
     internal static string BuildExternalRouteAnnouncement(
         TaxiAssistForm.ExternalRouteOutcome outcome, IReadOnlyList<string> unknownTaxiways,
-        string destination, bool autoStart, TaxiwaySource source, bool disagreed,
+        string destination, string? positionMatchedGate, bool autoStart,
+        TaxiwaySource source, bool disagreed,
         SnapResult? snap, bool clearanceNamedTaxiways, string? clearanceLookupProblem)
     {
         var parts = new List<string>
@@ -533,6 +545,10 @@ public partial class MainForm
                 : $"SayIntentions route. Destination {destination} not set. " +
                   "Check the destination field."
         };
+
+        if (!string.IsNullOrWhiteSpace(positionMatchedGate))
+            parts.Add($"SayIntentions assigned {positionMatchedGate}, which this airport " +
+                      "does not have. This is the nearest stand to the assigned position.");
 
         if (source == TaxiwaySource.Geometry)
         {
@@ -614,10 +630,19 @@ public partial class MainForm
     ///
     /// The whole list goes to the form in one call — asking candidate by candidate
     /// re-listed (and re-selected) the form's destinations on every probe, and left
-    /// the pilot's own destination discarded when none of them resolved.</summary>
+    /// the pilot's own destination discarded when none of them resolved.
+    ///
+    /// The assigned gate is the one candidate that also carries a POSITION, because
+    /// SayIntentions publishes assigned_gate_lat/lon beside the name and a scenery that
+    /// labels the stand differently otherwise sends this whole chain down to the arrival
+    /// runway. The destination check covers the coordinate as much as the name: an
+    /// arrival stand's position is exactly as wrong at the departure airport as its name
+    /// is, and unlike the name it would always find SOMETHING there. No other candidate
+    /// gets one — a runway resolves by designator, and the clearance's gate is a word the
+    /// controller spoke rather than a place SayIntentions published.</summary>
     private static bool TryResolveSayIntentionsDestination(
         TaxiAssistForm form, SayIntentionsStatusResult status, string clearance,
-        string airportIcao, out bool isRunway, out string label)
+        string airportIcao, out bool isRunway, out string label, out string? positionMatchedGate)
     {
         var context = status.Context;
 
@@ -628,13 +653,16 @@ public partial class MainForm
         };
 
         if (SameIcaoSi(airportIcao, context.Destination))
-            candidates.Add(new(false, FirstNonEmptySi(context.AssignedGate, status.Parking?.Name)));
+            candidates.Add(new(false,
+                FirstNonEmptySi(context.AssignedGate, status.Parking?.Name),
+                context.AssignedGatePosition));
 
         candidates.Add(new(true, FirstNonEmptySi(
             context.ClearedForTakeoff, context.DepartureRunway, context.Runway)));
         candidates.Add(new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway)));
 
-        return form.TryResolveExternalDestination(candidates, out isRunway, out label);
+        return form.TryResolveExternalDestination(
+            candidates, out isRunway, out label, out positionMatchedGate);
     }
 
     /// <summary>A "hold short of runway X" from the clearance, tied to the taxiway it

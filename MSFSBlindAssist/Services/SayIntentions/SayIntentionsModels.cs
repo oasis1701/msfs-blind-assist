@@ -21,6 +21,20 @@ public sealed class SayIntentionsFlightContext
     public string? Origin { get; set; }
     public string? Destination { get; set; }
     public string? AssignedGate { get; set; }
+
+    /// <summary>Where <see cref="AssignedGate"/> is, from
+    /// <c>assigned_gate_lat</c>/<c>assigned_gate_lon</c>. It belongs to the ARRIVAL
+    /// stand at <see cref="Destination"/> exactly as the name does, so it is just as
+    /// wrong at the departure airport and must never be used without the same
+    /// destination check.
+    ///
+    /// It is the NOSE-STOP position rather than the stand datum — measured at EDDB it
+    /// sat 18.9 m from the navdata spot centre on the stand's own axis — so it locates
+    /// a stand, it does not measure one. It exists here only as the fallback for a name
+    /// this scenery does not have: the name is what the pilot heard, and matching it
+    /// stays the primary route.</summary>
+    public GeoPoint? AssignedGatePosition { get; set; }
+
     public string? DepartureRunway { get; set; }
     public string? ArrivalRunway { get; set; }
     public string? Runway { get; set; }

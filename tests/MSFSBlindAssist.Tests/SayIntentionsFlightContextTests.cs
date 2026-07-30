@@ -105,6 +105,72 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Null(context.ClearanceText);
     }
 
+    // --- The assigned gate's own coordinate -------------------------------------------
+    //
+    // Read because the NAME can miss: sceneries label stands differently, and a name that
+    // matches nothing sends destination resolution down its whole chain to the ARRIVAL
+    // RUNWAY. The coordinate is the same question asked without language.
+
+    [Fact]
+    public void AssignedGatePositionIsReadFromItsStringCoordinates()
+    {
+        // SayIntentions publishes these as JSON STRINGS, not numbers — the live EDDB
+        // arrival, verbatim. Read as numbers only, both would be absent and the fallback
+        // would never once have run.
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "current_flight": {
+              "assigned_gate": "Gate B06",
+              "assigned_gate_lat": "52.3647127959562",
+              "assigned_gate_lon": "13.5055538061652"
+            }
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.NotNull(context.AssignedGatePosition);
+        Assert.Equal(52.3647127959562, context.AssignedGatePosition!.Value.Latitude, 9);
+        Assert.Equal(13.5055538061652, context.AssignedGatePosition!.Value.Longitude, 9);
+    }
+
+    [Fact]
+    public void AnAssignedGateWithNoCoordinatesHasNoPosition()
+    {
+        // The KBOS capture's shape at the departure airport: a gate line with nothing
+        // positional beside it. Absent must stay absent — never (0, 0).
+        var context = ServiceFor("""
+        {
+          "flight_details": { "current_flight": { "assigned_gate": "Gate B06" } }
+        }
+        """).ReadFlightContext();
+
+        Assert.Equal("Gate B06", context.AssignedGate);
+        Assert.Null(context.AssignedGatePosition);
+    }
+
+    [Fact]
+    public void NullIslandIsNotAnAssignedGatePosition()
+    {
+        // (0, 0) is what an unset pair looks like once two absent numbers are read as
+        // zero, and it is a perfectly good coordinate to a distance test. Accepting it
+        // would trade "could not find the stand" — recoverable, and spoken — for a
+        // confident route to the wrong one.
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "current_flight": {
+              "assigned_gate": "Gate B06",
+              "assigned_gate_lat": "0",
+              "assigned_gate_lon": "0"
+            }
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.Null(context.AssignedGatePosition);
+    }
+
     // --- The last transmission may only become the clearance when it IS one -----------
     //
     // ClearanceText falls back to the newest ATC transmission when flight.json carries no

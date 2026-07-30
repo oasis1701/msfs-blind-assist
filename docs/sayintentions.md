@@ -217,6 +217,12 @@ not survive**, and only then the route it actually built. Warnings lead delibera
 turn-by-turn callout cuts off whatever is left of it once you start rolling, so the parts
 you can act on go first.
 
+- **"SayIntentions assigned Gate B06, which this airport does not have. This is the
+  nearest stand to the assigned position."** — the stand name SayIntentions gave matches
+  nothing in this scenery, and the destination came from the coordinate it published
+  beside the name instead. Spoken first, right after the lead: the lead names only the
+  stand that won, so this is the only thing saying you are being taxied somewhere the
+  controller did not name.
 - **"Route from SayIntentions ground track."** — the sequence came from the published
   track, which agreed with the clearance.
 - **"SayIntentions ground track differs from the clearance. Using the clearance."** —
@@ -1052,6 +1058,53 @@ leads to a real stand the pilot has no reason to doubt.
 normalization; `Gate_destination_matches_across_a_zero_padded_stand_number` pins the match
 against EDDB's own B-pier labels, including that asking for `B1` finds nothing rather than
 `B 10`.
+
+#### When the scenery has no stand by that name
+
+Zero padding was one spelling difference. Sceneries have others, and every one of them
+lands in the same place: the name matches nothing, destination resolution runs its whole
+chain, and the last candidate it has is the **arrival runway**. The taxiway half of the
+import is meanwhile perfect, which is what makes it dangerous — everything else sounds
+right.
+
+`current_flight` publishes `assigned_gate_lat` / `assigned_gate_lon` beside the name, as
+JSON **strings**. So there is a second way to ask the same question, without language in
+it. It is a fallback and only a fallback: the name is what the pilot heard, so it is tried
+first and the coordinate is consulted only where that name has already failed, on that
+same candidate — and it is attached to the **assigned gate** alone, behind the same
+`flight_destination` check the name sits behind. An arrival stand's coordinate is as wrong
+at the departure airport as its name is, and unlike the name it would always find
+*something* there.
+
+**The test is whether the point falls inside the stand's own circle**, not whether it is
+within some number of metres. That is what makes it discriminating with nothing to tune: a
+Gate Extra states ~50 m of tolerance, a medium gate ~21 m, a packed GA spot a few metres,
+and any single constant is either too tight for the first or too loose for the last. At
+EDDB, live 2026-07-30: of 139 spots exactly **one** contained SayIntentions' point, and it
+was the correct one. The 150 m ceiling beside it is a sanity backstop against a whole
+apron recorded as one stand — the same role `GateAliasResolver`'s 150 m plays — not the
+discriminator.
+
+**The published point is the nose-stop, not the stand datum.** At EDDB it sat 18.9 m from
+the navdata spot centre on bearing 68.6° against a stand heading of 68.8° — straight out
+along the stand's own axis, the same distinction [gsx.md](gsx.md) records for GSX stop
+positions. It is *expected* to sit off-centre by most of the radius, so a "near the
+centre" test would reject the stand the aircraft is parked on.
+
+**Radius units are per source and must be converted before the comparison.** A navdata
+spot's radius is FEET, a GSX-sourced one's is METRES — the mix-up `ParkingSpot.FitsAircraft`
+already records, where it "filtered almost everything out". Read raw, EDDB's 71 becomes a
+71 m circle and all three neighbouring stands contain the point; the one-of-139 margin is
+gone and the answer becomes whichever stand happens to be nearest.
+
+`SayIntentionsGatePositionMatcher` is the pure half and takes metres only, so the unit can
+never be in doubt where the comparison happens; `TaxiAssistForm.MatchGateByPosition`
+converts by source and is the only caller. A tie resolves to the earlier candidate — two
+spots at one centre are nearly always one piece of pavement listed twice under variant
+names (`C16` beside `C16S`), so either label taxis you to the same place, and what would
+actually hurt is the answer changing between keypresses. `(0, 0)` is rejected at the
+reader: it is a real coordinate to a distance test and exactly what an unset pair looks
+like once two absent numbers are read as zero.
 
 ### An import owns the whole route
 

@@ -933,8 +933,14 @@ public class TaxiAssistForm : Form
     public readonly record struct ExternalHoldShort(int TaxiwayIndex, string Runway);
 
     /// <summary>One destination an external clearance would accept. Callers pass the
-    /// whole list in priority order so the form lists each destination type once.</summary>
-    public readonly record struct ExternalDestination(bool IsRunway, string? Identifier);
+    /// whole list in priority order so the form lists each destination type once.
+    ///
+    /// <paramref name="Position"/> is where the source says that destination IS, for the
+    /// gate candidates that have one. It is a FALLBACK for the name and nothing else: it
+    /// is consulted only after <see cref="MatchDestinationLabel"/> has failed on this
+    /// same candidate, because the name is what the pilot was actually told.</summary>
+    public readonly record struct ExternalDestination(
+        bool IsRunway, string? Identifier, GeoPoint? Position = null);
 
     /// <summary>Loads the airport for an external route and returns the taxiway
     /// names its graph knows. The caller resolves its clearance against THIS list
@@ -980,12 +986,19 @@ public class TaxiAssistForm : Form
     /// i.e. "nothing happened" — silently lost both, and their next Calculate lined them
     /// up at the full-length threshold holding at the CAT I line. This is the mirror
     /// image of what ResetRouteShapingControls exists to prevent on a SUCCESSFUL
-    /// import.</summary>
+    /// import.
+    ///
+    /// <paramref name="positionMatchedGate"/> names the gate a candidate ASKED for when
+    /// its name matched nothing and its published coordinate is what seated the
+    /// destination instead — non-null only then, so the caller can tell the pilot they
+    /// are being routed somewhere the controller did not name.</summary>
     public bool TryResolveExternalDestination(
-        IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label)
+        IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label,
+        out string? positionMatchedGate)
     {
         isRunway = false;
         label = "";
+        positionMatchedGate = null;
 
         int priorType = cmbDestType.SelectedIndex;
         string priorSearch = txtGateSearch.Text;
@@ -1010,6 +1023,25 @@ public class TaxiAssistForm : Form
                 : (gateLabels ??= ListDestinations(false));
 
             string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
+
+            // THE POSITION FALLBACK RUNS HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
+            // BELOW THE LOOP. The chain ends with the ARRIVAL RUNWAY — that is the whole
+            // reason this feature exists: a gate name the scenery does not carry fell
+            // through every remaining candidate and routed a just-landed aircraft at the
+            // runway it had landed on. A fallback placed after the loop would let the
+            // runway win first and reproduce exactly that.
+            bool substituted = false;
+            if (match == null && !candidate.IsRunway && candidate.Position is GeoPoint published)
+            {
+                // _destinationThresholdMap / _destinationSpotMap only hold GATE entries
+                // while gate mode is the selected type, and a runway candidate probed
+                // between here and the gate listing has repopulated both with runway
+                // entries. The list itself was snapshotted; the maps behind it were not.
+                SelectDestinationType(false);
+                match = MatchGateByPosition(offered, published);
+                substituted = match != null;
+            }
+
             if (match == null) continue;
 
             // The list for this type may have been snapshotted several candidates
@@ -1021,6 +1053,7 @@ public class TaxiAssistForm : Form
             cmbDestination.SelectedIndex = index;
             isRunway = candidate.IsRunway;
             label = match;
+            if (substituted) positionMatchedGate = candidate.Identifier;
             return true;
         }
 
@@ -1057,6 +1090,41 @@ public class TaxiAssistForm : Form
         }
 
         return null;
+    }
+
+    /// <summary>The gate label whose own circle contains a published gate coordinate, or
+    /// null. Called only after the NAME failed on the same candidate.
+    ///
+    /// The unit conversion is the point of this method existing at all: ParkingSpot.Radius
+    /// is FEET on a navdata spot and METRES on a GSX-sourced one, and the matcher takes
+    /// metres so nothing downstream has to remember which it was holding. Feeding raw
+    /// feet in is the same mistake ParkingSpot.FitsAircraft records — a navdata stand's
+    /// 71 would read as 71 m, a circle three times too big, and a point on the neighbour
+    /// would match.
+    ///
+    /// A gate the maps do not carry is skipped rather than defaulted to (0, 0): a spot
+    /// with no known centre cannot be shown to contain anything, and null island is
+    /// 150 m from nothing.</summary>
+    private string? MatchGateByPosition(IReadOnlyList<string> gateLabels, GeoPoint published)
+    {
+        const double FeetToMetres = 0.3048;
+
+        var candidates = new List<GatePositionCandidate>(gateLabels.Count);
+        foreach (string gateLabel in gateLabels)
+        {
+            if (!_destinationThresholdMap.TryGetValue(gateLabel, out var centre)) continue;
+            if (!_destinationSpotMap.TryGetValue(gateLabel, out var spot)) continue;
+
+            double radiusMetres = spot.Source == GateSource.Gsx
+                ? spot.Radius
+                : spot.Radius * FeetToMetres;
+
+            candidates.Add(new GatePositionCandidate(
+                gateLabel, centre.lat, centre.lon, radiusMetres));
+        }
+
+        return SayIntentionsGatePositionMatcher.Match(
+            candidates, published.Latitude, published.Longitude);
     }
 
     /// <summary>Every label the destination combo offers for one destination type.
