@@ -122,16 +122,19 @@ public sealed record SayIntentionsTransmission(
     DateTime? StampZulu,
     int? Id)
 {
-    public string ToAnnouncement()
-    {
-        string prefix = "";
-        if (!string.IsNullOrWhiteSpace(Speaker))
-            prefix = Speaker;
-        if (!string.IsNullOrWhiteSpace(StationName))
-            prefix = string.IsNullOrWhiteSpace(prefix) ? StationName! : $"{prefix}, {StationName}";
-
-        return string.IsNullOrWhiteSpace(prefix) ? Message : $"{prefix}: {Message}";
-    }
+    /// <summary>
+    /// The transmission as the pilot hears it: the station that said it, then what was
+    /// said — "Ankara Control: Descend flight level two four zero."
+    ///
+    /// <see cref="Speaker"/> is deliberately NOT spoken. The readout drops Pilot
+    /// transmissions outright, so every transmission that reaches here is either ATC or
+    /// carries no direction at all — saying "ATC" adds a word to every readout and
+    /// distinguishes it from nothing. The caller adds no lead-in either: the pilot just
+    /// pressed the key that means "what was the last transmission", so naming it back to
+    /// them is the same word twice.
+    /// </summary>
+    public string ToAnnouncement() =>
+        string.IsNullOrWhiteSpace(StationName) ? Message : $"{StationName!.Trim()}: {Message}";
 }
 
 /// <summary>A parking assignment from the SAPI getParking endpoint.</summary>

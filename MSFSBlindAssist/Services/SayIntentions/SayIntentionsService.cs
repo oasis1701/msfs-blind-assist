@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text.Json;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -579,8 +579,8 @@ public sealed class SayIntentionsService
     /// which carries no direction at all, so it is not identified as the pilot;
     /// dropping it would leave a payload shape we cannot classify silent, and for a
     /// readout whose whole job is to say what was heard, silence is the worse failure.
-    /// It also cannot be mistaken for the pilot when spoken — with no speaker,
-    /// ToAnnouncement prefixes nothing.
+    /// It also cannot be mistaken for the pilot when spoken: the readout
+    /// names the STATION, never the speaker.
     /// </summary>
     /// <param name="pilotOnly">True when transmissions were found but every one was the
     /// pilot's, so the caller can say why instead of the generic "nothing found".</param>

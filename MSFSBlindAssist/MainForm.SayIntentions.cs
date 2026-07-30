@@ -43,8 +43,7 @@ public partial class MainForm
                 return;
             }
 
-            announcer.AnnounceImmediate(
-                $"SayIntentions last transmission. {result.Transmission.ToAnnouncement()}");
+            announcer.AnnounceImmediate(result.Transmission.ToAnnouncement());
         }
         catch (Exception ex)
         {

@@ -1,4 +1,4 @@
-// Characterization tests for reading %LOCALAPPDATA%\SayIntentionsAI\flight.json.
+﻿// Characterization tests for reading %LOCALAPPDATA%\SayIntentionsAI\flight.json.
 //
 // The file is written by another process while we read it, so the reader opens
 // with FileShare.ReadWrite | FileShare.Delete and treats every malformed or
@@ -285,7 +285,7 @@ public class SayIntentionsFlightContextTests : IDisposable
     // it is NOT identified as the pilot and stays eligible. Dropping it would leave a
     // payload shape we cannot classify silent, and for a readout whose whole job is
     // to say what was heard, silence is the worse failure. It also cannot be mistaken
-    // for the pilot when spoken — with no speaker, ToAnnouncement prefixes nothing.
+    // for the pilot when spoken — the readout names the STATION, never the speaker.
     [Fact]
     public void ATransmissionWithNoSpeakerIsStillEligible()
     {
