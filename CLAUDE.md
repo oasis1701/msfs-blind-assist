@@ -21,7 +21,7 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution.
+The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
 
 ## Testing
 
@@ -273,6 +273,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Taxi-data augmentation: navdata is AUTHORITATIVE — an existing navdata taxiway/gate name is never overwritten, online names only fill UNNAMED segments, and online-only geometry is IGNORED (never steer on an offset online line). → [taxi-guidance.md](docs/taxi-guidance.md)
 - Taxi-data augmentation is anti-grass: online data NEVER sets a gate Name/position and NEVER adds a selectable gate — gate identity is authoritative from GSX/navdata, online contributes searchable aliases only. → [taxi-guidance.md](docs/taxi-guidance.md)
 - Do NOT implement OSM `holding_position` hold-short sharpening without an explicit sim-verified ask — augmentation stays NAME-only and must never touch the tuned, safety-critical hold-short placement. → [taxi-guidance.md](docs/taxi-guidance.md)
+- Never tune `NamedHoldingPointResolver`'s snap radii: don't widen `DESIGNATED_SNAP_M` (15 m) toward `MAX_SNAP_M` (30 m), don't require a designated node for runway/ILS kinds, and don't add a "never snap runway-ward" guard — all three were probed against real navdata + live OSM at six airports and are worse (widening makes EDDF M15 jump ~91 m onto a different hold line; the guard rejects correct designated nodes because navdata's HS node sits up to 14 m runway-ward of OSM's painted line). → [taxi-guidance.md](docs/taxi-guidance.md)
 
 ### GSX gate integration, docking guidance & distance units (→ [gsx.md](docs/gsx.md))
 
@@ -477,7 +478,9 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The A32NX DCDU display must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](docs/a32nx.md)
 - DCDU soft-key slot must be mapped by POSITION (a Y-threshold), never by simple L/R order — an empty-state key can be alone on a side yet still live on the second slot. → [a32nx.md](docs/a32nx.md)
 - DCDU page-scroll direction must be DOWN=forward everywhere — the answer keys stay inactive until the pilot has paged to the end of a multi-page uplink, so an inverted direction silently blocks answering. → [a32nx.md](docs/a32nx.md)
-- Per-DCDU-key ACTIVE flags must be checked before firing — an inactive key must say "not available yet," never falsely confirm a press. → [a32nx.md](docs/a32nx.md)
+- Unmodified PageUp/PageDown must scroll WITHIN the displayed DCDU message (`POEMINUS`/`POEPLUS`), with Ctrl+PageUp/Down stepping between messages — never the reverse: every other CDU window (A320/A380 MCDU, PMDG 737/777, HS787, iFly 737) binds plain PageUp/Down to scrolling the content being read, and within-message paging is the load-bearing one (it unlocks the answer keys), so it must not sit behind a modifier. → [a32nx.md](docs/a32nx.md)
+- Per-DCDU-key ACTIVE flags must be checked before firing — an inactive key must never falsely confirm a press. → [a32nx.md](docs/a32nx.md)
+- An inactive DCDU key must NOT dead-end on "read to the end of the message first" — FBW loses the per-message `reachedEndOfMessage` flag whenever a new message's page count matches the last one rendered (it is only raised on MessageVisualization's page-count TRANSITION or a page key), leaving every answer key permanently dead. Re-assert with `POEPLUS` and retry the key, but ONLY when the scraped page counter shows nothing left to read — never page past unread text on the pilot's behalf. → [a32nx.md](docs/a32nx.md)
 - A32NX FCU baro STD/QNH polarity is PULL=STD/PUSH=QNH — the opposite of the A380's PUSH=STD/PULL=QNH; never harmonize them. → [a32nx.md](docs/a32nx.md)
 - The A32NX autobrake set must use the MobiFlight calculator path, never `SetLVar` (data-def write is unreliable for this FBW L:var). → [a32nx.md](docs/a32nx.md)
 - Never re-fold the A380's metric-ALTITUDE (MTRS) feature into the A32NX — the real A320 has no MTRS button (A330+/A380 only). → [a32nx.md](docs/a32nx.md)
@@ -543,6 +546,10 @@ Details: [docs/pmdg-777.md](docs/pmdg-777.md).
 
 Details: [docs/pmdg-737.md](docs/pmdg-737.md). Key gotchas: two CDUs (no observer), no FPA mode, annunciator names differ from 777 (LVL_CHG / HDG_SEL / VOR_LOC), DU selectors have "reverse sequence for FO", fire handles need an active fire to test, the 737 EFB has full parity with the 777 (Dashboard / Preferences / Navdata / Performance / Ground Ops / W&B / Manuals) via the shared `FbwEfbForm` over the Coherent debugger (`CoherentPmdgEfbClient` + `coherent-pmdg-efb-agent.js`), opened with Shift+T — the EFB app is byte-identical across all four 737 variants and the 777, so one shared in-page agent serves them all (NO Community-folder package; the retired `zzz-pmdg-efb-accessibility` is auto-removed by `LegacyEfbBridgeCleanup`).
 
+### iFly 737 MAX8 (official SDK shared memory + WM_COPYDATA — NO MobiFlight, NO L:var writes) (deliberate exceptions: cockpit-clickspot trigger replays via SetLVar where the SDK command is broken/absent — the autopilot window's engage fallback (`VC_Automatic_Flight_trigger_VAL`), the NAV transfer fallback, and the transponder squawk keypad (both `VC_Navigation_trigger_VAL`; the SDK XPNDR keypad clicks cannot commit an entry))
+
+Details: [docs/ifly-737.md](docs/ifly-737.md).
+
 ### PMDG EFB (Coherent debugger)
 
 Details: [docs/pmdg-efb.md](docs/pmdg-efb.md).
@@ -587,6 +594,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
+- **Working on the iFly 737 MAX8 (official SDK shared memory, WM_COPYDATA writes, synthetic `SYN_*` fields)** → [iFly 737 MAX8](docs/ifly-737.md)
 - **Working on the PMDG 777 (CDA switches, CDU array indexing, System Display synoptic pages)** → [PMDG 777](docs/pmdg-777.md)
 - **Working on the PMDG or HS787 EFB (Coherent debugger scrape agent, shared `FbwEfbForm`)** → [PMDG EFB](docs/pmdg-efb.md)
 - **Working on the FlyByWire A380X (MFD/MCDU, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad specifics)** → [FlyByWire A380X](docs/a380x.md)
@@ -610,6 +618,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
 - **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
+- **[iFly 737 MAX8](docs/ifly-737.md)** - official iFly SDK transport (shared memory + WM_COPYDATA), generated offsets, synthetic `SYN_*` fields, command-encoding traps
 - **[PMDG 777](docs/pmdg-777.md)** - CDA switch patterns, fuel-lever/ground-power exceptions, CDU crew-index convention, System Display
 - **[PMDG EFB](docs/pmdg-efb.md)** - Coherent-debugger EFB scrape agent shared by the PMDG 737/777 (and HS787's CDU transport pattern)
 - **[First Officer](docs/first-officer.md)** - Screen-reader First Officer flows/checklists/auto-managers across the PMDG 777/737, Fenix A320 and FBW A380

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
@@ -23,6 +24,7 @@ public partial class HS787MonitorManagerForm : Form
     private readonly List<string> _labels = new();
     private IntPtr previousWindow;
     private static int lastSelectedItemIndex;
+    private bool _populating;
 
     public HS787MonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
     {
@@ -47,6 +49,12 @@ public partial class HS787MonitorManagerForm : Form
     public void ShowForm()
     {
         previousWindow = GetForegroundWindow();
+        // Rebuild check states from the CURRENT persisted set on every open — the
+        // form is cached by MainForm (constructed once, reused), so a populate that
+        // ran only in the constructor would show stale checkboxes whenever the
+        // disabled set changed after first open (e.g. a settings reload). Guarded
+        // by _populating so it fires no Save writes.
+        PopulateVariables();
         Show();
         BringToFront();
         Activate();
@@ -93,29 +101,21 @@ public partial class HS787MonitorManagerForm : Form
 
     private void SetupAccessibility()
     {
-        FormClosing += (_, e) =>
+        MonitorManagerShared.HideOnClose(this, () =>
         {
-            e.Cancel = true;
-            Hide();
             if (previousWindow != IntPtr.Zero) SetForegroundWindow(previousWindow);
-        };
+        });
     }
 
     private void PopulateVariables()
     {
-        var disabledVars = SettingsManager.Current.HS787DisabledMonitorVariables;
-        variableListBox.BeginUpdate();
-        variableListBox.Items.Clear();
-        for (int i = 0; i < _labels.Count; i++)
-        {
-            variableListBox.Items.Add(_labels[i]);
-            variableListBox.SetItemChecked(i, !disabledVars.Contains(_keys[i])); // checked = announcing
-        }
-        variableListBox.EndUpdate();
+        MonitorManagerShared.Populate(variableListBox, _labels, _keys,
+            SettingsManager.Current.HS787DisabledMonitorVariables, ref _populating);
     }
 
     private void VariableListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
     {
+        if (_populating) return;
         if (e.Index < 0 || e.Index >= _keys.Count) return;
         string key = _keys[e.Index];
         var settings = SettingsManager.Current;

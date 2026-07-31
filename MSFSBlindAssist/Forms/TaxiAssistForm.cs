@@ -26,6 +26,7 @@ public class TaxiAssistForm : Form
     // Shared with DockingGuidanceManager/MainForm.AircraftSwitch/SimConnectManager.Dispatch —
     // all writers of docking-aircraft.log now serialize through this one channel.
     private static readonly LogChannel _dockingAircraftLog = Log.Channel("docking-aircraft");
+    private static readonly LogChannel _taxiRouterLog = Log.Channel("taxi_router");
 
     private readonly IAirportDataProvider _dataProvider;
     private readonly ScreenReaderAnnouncer _announcer;
@@ -99,6 +100,21 @@ public class TaxiAssistForm : Form
     private ComboBox cmbTerminatorRunway = null!;
     private Label lblTerminatorTaxiway = null!;
     private ComboBox cmbTerminatorTaxiway = null!;
+    private Label lblTerminatorHoldPoint = null!;
+    private ComboBox cmbTerminatorHoldPoint = null!;
+    // Published NAMED holding points (VIKAS, N2E…) for the loaded airport:
+    // online-sourced designators resolved onto navdata graph nodes by
+    // NamedHoldingPointResolver. Empty when augmentation is off, the airport has
+    // none, or the online fetch hasn't landed yet (PopulateTerminatorHoldPointList
+    // retries the resolve on demand so a late background fetch still surfaces).
+    private List<NamedHoldingPoint> _namedHoldingPoints = new();
+    // True once ResolveNamedHoldingPoints has actually SEEN online holding-point data
+    // for the loaded airport — whether or not any of it resolved. Gates the retry in
+    // PopulateTerminatorHoldPointList: while the async fetch hasn't landed the raw list
+    // is empty and retrying costs nothing (the resolve early-returns before scanning),
+    // but once raw data has arrived the O(points × nodes) scan must not repeat on every
+    // dropdown open and every taxiway row add/remove.
+    private bool _namedHoldingPointsResolved;
     // Computed height of the terminator block (1-3 visible lines depending on
     // terminator type), read by UpdateLayout. Always set by RefreshTerminatorRow
     // before UpdateLayout consumes it (and UpdateLayout only reads it while the
@@ -111,7 +127,8 @@ public class TaxiAssistForm : Form
         "Hold short of runway",
         "Hold short of taxiway",
         "After crossing runway",
-        "End of last taxiway"
+        "End of last taxiway",
+        "Hold at named holding point"
     };
     private Button btnCalculate = null!;
     private Button btnStop = null!;
@@ -302,6 +319,8 @@ public class TaxiAssistForm : Form
         //   Alt+W  Progressive-taxi terminator taxi&way target combo (last row only,
         //          type "Hold short of taxiway"); the SAME combo becomes the optional
         //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
+        //   Alt+P  Progressive-taxi terminator named holding-&point combo (last row
+        //          only, type "Hold at named holding point")
         //   Alt+C  Calculate Route
         //   Alt+S  Stop Guidance
         //   Alt+R  Remove (dynamic) — shared across all Remove buttons (cycle)
@@ -583,7 +602,7 @@ public class TaxiAssistForm : Form
             DropDownStyle = ComboBoxStyle.DropDownList,
             Visible = false,
             AccessibleName = "Progressive taxi terminator",
-            AccessibleDescription = "Choose how this progressive taxi leg ends: hold short of a runway, hold short of a taxiway, after crossing a runway, or at the end of the last taxiway. Pick the target runway or taxiway in the combo that appears just below."
+            AccessibleDescription = "Choose how this progressive taxi leg ends: hold short of a runway, hold short of a taxiway, after crossing a runway, at the end of the last taxiway, or at a published named holding point such as VIKAS. Pick the target in the combo that appears just below."
         };
         cmbTerminatorType.Items.AddRange(TerminatorTypeItems);
         cmbTerminatorType.SelectedIndex = 0;
@@ -639,6 +658,31 @@ public class TaxiAssistForm : Form
         // so the cross-at options reflect the current runway pick regardless of the
         // order the user filled the controls in.
         cmbTerminatorTaxiway.DropDown += (s, ev) => PopulateTerminatorTaxiwayList();
+
+        // Named-holding-point TARGET for the "Hold at named holding point"
+        // terminator. Lists the airport's published holding-point designators
+        // (VIKAS, N2E, A11…) sourced from online data and resolved onto navdata
+        // graph nodes — only shown when the terminator type selects it, and the
+        // type itself only appears useful at airports where online data carries
+        // named holds (the combo says so when empty).
+        lblTerminatorHoldPoint = new Label
+        {
+            Text = "Named holding &point:",
+            AutoSize = true,
+            Visible = false,
+            AccessibleName = "Progressive taxi terminator holding point label"
+        };
+        cmbTerminatorHoldPoint = new ComboBox
+        {
+            Width = 190,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Visible = false,
+            AccessibleName = "Progressive taxi terminator holding point",
+            AccessibleDescription = "Pick the published holding point this progressive leg taxis to and holds at, for example VIKAS or N2E. The list comes from online airport data; it is empty when this airport has no named holding points."
+        };
+        // Refresh just before the dropdown opens: the online fetch is async, so
+        // a background fetch that landed after the airport loaded still surfaces.
+        cmbTerminatorHoldPoint.DropDown += (s, ev) => PopulateTerminatorHoldPointList();
 
         // Dynamic taxiway panel (for additional taxiway combos)
         pnlTaxiways = new Panel
@@ -750,6 +794,8 @@ public class TaxiAssistForm : Form
         pnlTaxiways.Controls.Add(cmbTerminatorRunway);
         pnlTaxiways.Controls.Add(lblTerminatorTaxiway);
         pnlTaxiways.Controls.Add(cmbTerminatorTaxiway);
+        pnlTaxiways.Controls.Add(lblTerminatorHoldPoint);
+        pnlTaxiways.Controls.Add(cmbTerminatorHoldPoint);
         // The terminator block belongs to the LAST taxiway row, so it should tab
         // AFTER every dynamic row inside the panel. Dynamic rows get sequential
         // TabIndexes starting low (= panel control count at add time); a high base
@@ -765,6 +811,8 @@ public class TaxiAssistForm : Form
         cmbTerminatorRunway.TabIndex = 9001;
         lblTerminatorTaxiway.TabIndex = 9002;
         cmbTerminatorTaxiway.TabIndex = 9003;
+        lblTerminatorHoldPoint.TabIndex = 9004;
+        cmbTerminatorHoldPoint.TabIndex = 9005;
         this.Controls.Add(pnlTaxiways);
         this.Controls.Add(btnCalculate);
         this.Controls.Add(btnStop);
@@ -863,6 +911,9 @@ public class TaxiAssistForm : Form
         _airportRunwayIds = new List<string>();
         RebuildHoldShortRunwayCombo(cmbFirstHoldShortRunway);
         RebuildHoldShortRunwayCombo(cmbTerminatorRunway);
+        _namedHoldingPoints = new List<NamedHoldingPoint>();
+        _namedHoldingPointsResolved = false;
+        cmbTerminatorHoldPoint.Items.Clear();
 
         cmbDestination.Items.Clear();
 
@@ -922,6 +973,18 @@ public class TaxiAssistForm : Form
         }
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
+
+        // Resolve the airport's published named holding points (VIKAS, N2E…)
+        // onto the fresh graph, so the Progressive Taxi "Hold at named holding
+        // point" terminator has its list ready on first open. A fetch that
+        // hasn't landed yet is fine — the combo re-resolves on dropdown open.
+        ResolveNamedHoldingPoints();
+        // Refill the combo too — LoadAirportData cleared its Items above and nothing else
+        // repopulates it on an airport change (RefreshTerminatorRow only runs on
+        // terminator-type / destination-type / taxiway-row changes). Without this the
+        // combo reads as EMPTY to a screen reader until the dropdown is opened, and
+        // arrowing a DropDownList does not raise DropDown.
+        PopulateTerminatorHoldPointList();
 
         // Populate destinations
         PopulateDestinations();
@@ -1928,6 +1991,8 @@ public class TaxiAssistForm : Form
             cmbTerminatorRunway.Visible = false;
             lblTerminatorTaxiway.Visible = false;
             cmbTerminatorTaxiway.Visible = false;
+            lblTerminatorHoldPoint.Visible = false;
+            cmbTerminatorHoldPoint.Visible = false;
             _terminatorBlockHeightPx = 0;
             UpdateLayout();
             return;
@@ -1950,6 +2015,7 @@ public class TaxiAssistForm : Form
         int tType = cmbTerminatorType.SelectedIndex;
         bool needRunwayTarget = tType == 0 || tType == 2;          // hold short / cross
         bool needTaxiwayTarget = tType == 1 || tType == 2;          // hold short taxiway / cross-at
+        bool needHoldPointTarget = tType == 4;                      // hold at named holding point
 
         // Pack visible target combos on consecutive lines beneath the type combo.
         int nextLine = 1;
@@ -1995,6 +2061,18 @@ public class TaxiAssistForm : Form
         cmbTerminatorTaxiway.Visible = needTaxiwayTarget;
         if (needTaxiwayTarget)
             PopulateTerminatorTaxiwayList();
+
+        // Named-holding-point target (its own line, only for type 4).
+        if (needHoldPointTarget)
+        {
+            lblTerminatorHoldPoint.Location = new System.Drawing.Point(0, Line(nextLine) + 2);
+            cmbTerminatorHoldPoint.Location = new System.Drawing.Point(180, Line(nextLine));
+            nextLine++;
+        }
+        lblTerminatorHoldPoint.Visible = needHoldPointTarget;
+        cmbTerminatorHoldPoint.Visible = needHoldPointTarget;
+        if (needHoldPointTarget)
+            PopulateTerminatorHoldPointList();
 
         // Block height = number of visible lines (type + however many targets).
         _terminatorBlockHeightPx = nextLine * LINE_PX;
@@ -2043,6 +2121,90 @@ public class TaxiAssistForm : Form
         }
         if (cmbTerminatorTaxiway.Items.Count > 0)
             cmbTerminatorTaxiway.SelectedIndex = idx;
+    }
+
+    // Shown in cmbTerminatorHoldPoint when the airport has no resolvable named
+    // holding points (no online data, augmentation off, or none published).
+    // Matched exactly at Calculate time to distinguish it from a real pick.
+    private const string NO_NAMED_HOLD_POINTS = "(none available at this airport)";
+
+    /// <summary>
+    /// Resolves the loaded airport's online NAMED holding points (VIKAS, N2E…)
+    /// onto navdata graph nodes. Alias-style per the augmentation safety rules:
+    /// the online source contributes the NAME only; the route target is always
+    /// the navdata node it resolves to, and unresolvable points are dropped.
+    /// One pass over the graph per point, run at most once per airport load once the
+    /// online source has data (_namedHoldingPointsResolved); until then the async fetch
+    /// may still be in flight, so an empty source leaves the latch clear and the combo
+    /// retries on demand.
+    /// </summary>
+    private void ResolveNamedHoldingPoints()
+    {
+        _namedHoldingPoints = new List<NamedHoldingPoint>();
+        if (_graph == null || string.IsNullOrEmpty(_currentIcao)) return;
+        if (_dataProvider is not MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider aug
+            || !aug.Enabled)
+            return;
+        var raw = aug.GetNamedHoldingPoints(_currentIcao);
+        // Leave the latch clear on an empty source: the online fetch is async, so this
+        // is "not yet", not "none" — and retrying is free, we returned before scanning.
+        if (raw.Count == 0) return;
+        _namedHoldingPoints = NamedHoldingPointResolver.Resolve(_graph, raw);
+        _namedHoldingPointsResolved = true;
+
+        // Field diagnostics: a "why isn't VIKAS in my list?" report is otherwise
+        // unanswerable without an ad-hoc probe against the user's navdata.
+        var resolvedNames = new HashSet<string>(
+            _namedHoldingPoints.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var rawNames = raw.Select(p => (p.Name ?? "").Trim())
+                          .Where(n => n.Length > 0)
+                          .Distinct(StringComparer.OrdinalIgnoreCase)
+                          .ToList();
+        var dropped = rawNames.Where(n => !resolvedNames.Contains(n))
+                              .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                              .ToList();
+        _taxiRouterLog.Info(
+            $"{_currentIcao}: named holding points raw={raw.Count} distinct={rawNames.Count} " +
+            $"resolved={_namedHoldingPoints.Count}" +
+            (dropped.Count > 0 ? $" dropped={string.Join(", ", dropped)}" : ""));
+        foreach (var hp in _namedHoldingPoints)
+            _taxiRouterLog.Debug(
+                $"  {hp.Name} -> node {hp.NodeId}, {hp.SnapDistanceMeters:F1} m, " +
+                $"designated={hp.SnappedToDesignatedNode}, kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
+    }
+
+    /// <summary>
+    /// Fills cmbTerminatorHoldPoint with the airport's named holding points
+    /// (display labels like "VIKAS (intermediate hold)"), preserving the user's
+    /// selection by label when possible. Re-resolves until the online source has been
+    /// seen, so a background fetch that landed after form open still surfaces. Safe
+    /// to call repeatedly (RefreshTerminatorRow + the combo's DropDown event).
+    /// </summary>
+    private void PopulateTerminatorHoldPointList()
+    {
+        if (!_namedHoldingPointsResolved)
+            ResolveNamedHoldingPoints();
+
+        string? prev = cmbTerminatorHoldPoint.SelectedItem?.ToString();
+        cmbTerminatorHoldPoint.Items.Clear();
+
+        if (_namedHoldingPoints.Count == 0)
+        {
+            cmbTerminatorHoldPoint.Items.Add(NO_NAMED_HOLD_POINTS);
+            cmbTerminatorHoldPoint.SelectedIndex = 0;
+            return;
+        }
+
+        foreach (var hp in _namedHoldingPoints)
+            cmbTerminatorHoldPoint.Items.Add(hp.DisplayLabel);
+
+        int idx = 0;
+        if (!string.IsNullOrEmpty(prev))
+        {
+            int found = cmbTerminatorHoldPoint.Items.IndexOf(prev);
+            if (found >= 0) idx = found;
+        }
+        cmbTerminatorHoldPoint.SelectedIndex = idx;
     }
 
     private void UpdateLayout()
@@ -2208,6 +2370,39 @@ public class TaxiAssistForm : Form
                     term = new ProgressiveTerminator(ProgressiveTerminatorType.AfterCrossingRunway, runwayTarget);
                     break;
                 }
+                case 4: // Hold at named holding point
+                {
+                    string? label = cmbTerminatorHoldPoint.SelectedItem?.ToString();
+                    var holdPoint = _namedHoldingPoints.FirstOrDefault(hp => hp.DisplayLabel == label);
+                    if (label == null || label == NO_NAMED_HOLD_POINTS || holdPoint == null)
+                    {
+                        _announcer.AnnounceImmediate(
+                            _namedHoldingPoints.Count == 0
+                                ? "No named holding points are available at this airport."
+                                : "Pick the holding point to taxi to.");
+                        return;
+                    }
+                    // This is the only terminator whose target is resolved purely by
+                    // NAME against the whole graph — every other one derives it from the
+                    // aircraft node or the cleared taxiway, so it cannot land off the
+                    // aircraft's component. Disconnected taxiway islands are routine
+                    // (LOWW/KJFK 6 components, EHAM 4, GCLP's 13-node S5 island), and
+                    // LoadRoute picks its start node in the DESTINATION's component with
+                    // no distance bound — routing to an island would silently start the
+                    // route where the aircraft is not.
+                    if (!_graph.Nodes.TryGetValue(holdPoint.NodeId, out var holdNode)
+                        || holdNode.ComponentId != destComponentId)
+                    {
+                        string unreachable =
+                            $"Cannot taxi to {holdPoint.Name} from your position. Check your entry.";
+                        _announcer.AnnounceImmediate(unreachable);
+                        lblStatus.Text = unreachable;
+                        return;
+                    }
+                    destNode = holdPoint.NodeId;
+                    term = new ProgressiveTerminator(ProgressiveTerminatorType.HoldAtNamedPoint, holdPoint.Name);
+                    break;
+                }
                 default: // 3: End of last taxiway
                 {
                     destNode = _graph.FindTaxiwayEndNode(startNode.NodeId, lastTaxiway);
@@ -2222,6 +2417,7 @@ public class TaxiAssistForm : Form
                     && !string.IsNullOrEmpty(taxiwayTarget) && taxiwayTarget != NO_RUNWAY_HOLDSHORT;
                 string what = terminatorTypeIndex == 1 ? $"taxiway {taxiwayTarget}"
                     : terminatorTypeIndex == 3 ? $"the end of taxiway {lastTaxiway}"
+                    : terminatorTypeIndex == 4 ? $"holding point {term.Target}"
                     : pinnedCross ? $"taxiway {taxiwayTarget} crossing runway {runwayTarget}"
                     : $"runway {runwayTarget}";
                 string msg = $"Could not find {what} from {lastTaxiway}. Check your entry.";
@@ -2237,6 +2433,7 @@ public class TaxiAssistForm : Form
                 ProgressiveTerminatorType.HoldShortRunway => $"hold short of runway {runwayTarget}",
                 ProgressiveTerminatorType.HoldShortTaxiway => $"hold short of taxiway {taxiwayTarget}",
                 ProgressiveTerminatorType.AfterCrossingRunway => $"across runway {runwayTarget}",
+                ProgressiveTerminatorType.HoldAtNamedPoint => $"holding point {term.Target}",
                 _ => $"end of taxiway {lastTaxiway}",
             };
 

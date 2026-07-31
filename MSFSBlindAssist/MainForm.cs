@@ -156,6 +156,14 @@ public partial class MainForm : Form
     // On-demand EICAS alert window (Alt+E), fed by hs787CasClient.GetAlertsText().
     private Forms.HS787.HS787EicasForm? hs787EicasForm;
 
+    // iFly 737 MAX8: CDU window (renders the SDK shared-memory screen) + the SP1
+    // HTTP EFB tablet hosted in WebView2. The SDK client itself lives on the def.
+    private Forms.IFly737.IFly737CDUForm? iflyCduForm;
+
+    private Forms.IFly737.IFlyEfbForm? iflyEfbForm;
+
+    private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+
     private TakeoffAssistManager takeoffAssistManager = null!;
 
     private HandFlyManager handFlyManager = null!;
@@ -488,6 +496,11 @@ public partial class MainForm : Form
         // countdown, so start it here.
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
+
+        // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
+        // it works whenever the sim + iFly plugin are running). Generic announcements
+        // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
+        StartIFlySdkBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
@@ -885,6 +898,15 @@ public partial class MainForm : Form
         hs787IrsClient = null;
         hs787CasClient?.Dispose();
         hs787CasClient = null;
+
+        // Clean up the iFly SDK client (otherwise only shut down on aircraft swap — a
+        // quit with the iFly active would leave the 250 ms poll + off-sweep timers
+        // firing into the teardown, the same leak class as the PMDG EFB clients above).
+        if (currentAircraft is IFly737MAXDefinition iflyExitDef)
+        {
+            iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            iflyExitDef.Shutdown();
+        }
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

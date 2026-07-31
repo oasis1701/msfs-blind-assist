@@ -463,8 +463,12 @@ public partial class MainForm
             // One generic flyPad form serves both FBW aircraft; only the window
             // title differs. The form is disposed on aircraft swap (see the swap
             // handler), so it is always recreated with the correct title.
-            string title = currentAircraft?.AircraftCode == "A320"
-                ? "A320 flyPad EFB" : "A380X flyPad EFB";
+            string title = currentAircraft?.AircraftCode switch
+            {
+                "A320" => "A320 flyPad EFB",
+                "HW_A330" => "A330 flyPad EFB",
+                _ => "A380X flyPad EFB"
+            };
             fbwEfbForm = new Forms.FBWA380.FbwEfbForm(bridge, announcer, title, "flyPad");
             // Idle-gate the 600 ms flyPad scrape to the window's visibility (same pattern
             // as the MCDU window above); the connection + powerOn handshake stay warm.
