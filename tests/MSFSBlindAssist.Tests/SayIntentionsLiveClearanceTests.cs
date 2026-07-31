@@ -185,6 +185,57 @@ public class SayIntentionsLiveClearanceTests
             + "Advise you have information Victor."));
     }
 
+    // --- KDTW, live, 2026-07-31: a crossing clearance written with a HYPHEN ------------
+    //
+    // Detroit Ground, 23:41:34Z, after the aircraft had been holding short of 4R. The
+    // hyphen is the whole point: the mask matched CROSS followed by whitespace, so it
+    // never saw this crossing at all, and the crossing runway is exactly what the mask
+    // exists to hide from ParseDestinationRunway. Left unmasked, the leftmost "runway 4R"
+    // became the DESTINATION — the import would have routed a taxiing aircraft AT the
+    // active runway it had just been cleared to cross, which is the failure the whole
+    // hold-short-masking rule was written for, reached through a spelling.
+    //
+    // KDTW's taxiways as navdata spells them, for the legs this clearance names.
+    private static readonly string[] KdtwTaxiways = { "A", "A5", "K", "Q", "R", "U9", "V" };
+
+    private const string KdtwCrossingClearance = "cross-runway 4R, then continue taxi via K, Q";
+
+    [Fact]
+    public void AHyphenatedCrossingRunwayIsNotTheDestination()
+    {
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(KdtwCrossingClearance));
+    }
+
+    [Fact]
+    public void AHyphenatedCrossingIsNotAHoldShortEither()
+    {
+        // Masked, but not captured: the pilot was cleared THROUGH this runway, so nothing
+        // may set a hold-short at it.
+        Assert.Null(SayIntentionsClearanceParser.ParseHoldShortRunway(KdtwCrossingClearance));
+    }
+
+    [Fact]
+    public void TheTaxiwaysAfterAHyphenatedCrossingSurvive()
+    {
+        Assert.Equal(
+            new[] { "K", "Q" },
+            SayIntentionsClearanceParser.ParseTaxiways(KdtwCrossingClearance, KdtwTaxiways));
+    }
+
+    [Fact]
+    public void AContinuationClearanceIsStillATaxiClearance()
+    {
+        Assert.True(SayIntentionsClearanceParser.LooksLikeTaxiClearance(KdtwCrossingClearance));
+    }
+
+    // The advisory issued four seconds later, verbatim. It is what the import used to
+    // test — and reject — as "the last transmission", finding no clearance behind it.
+    [Fact]
+    public void AHoldShortAdvisoryIsNotATaxiClearance()
+    {
+        Assert.False(SayIntentionsClearanceParser.LooksLikeTaxiClearance(
+            "hold short of runway 4R, 737 on the runway"));
+    }
 }
 
 // The local flight.json from the SAME live capture, reduced to its shape. Field

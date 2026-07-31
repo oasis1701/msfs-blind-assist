@@ -171,17 +171,20 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Null(context.AssignedGatePosition);
     }
 
-    // --- The last transmission may only become the clearance when it IS one -----------
+    // --- The clearance is the newest transmission that IS one -------------------------
     //
-    // ClearanceText falls back to the newest ATC transmission when flight.json carries no
-    // clearance field. That fallback has to pass the same shape test the live-lookup
-    // fallback in MainForm passes, and for the same reason: on rollout the newest thing
-    // on the frequency is the LANDING clearance, and taking it as a taxi clearance made
+    // ClearanceText falls back to the frequency when flight.json carries no clearance
+    // field. That fallback has to pass the same shape test the live-lookup fallback in
+    // MainForm passes, and for the same reason: on rollout the newest thing on the
+    // frequency is the LANDING clearance, and taking it as a taxi clearance made
     // ParseDestinationRunway route a just-landed aircraft AT the runway it had landed on.
     //
     // The gate must live here, not only at the MainForm call site: that site runs only
     // when ClearanceText is ALREADY empty, so an ungated assignment here takes precedence
-    // and the shape test never sees it.
+    // and the shape test never sees it. Both sites now go through
+    // SayIntentionsClearanceSelector, which also means both SCAN BACK rather than test
+    // only the newest transmission — the KDTW capture, where a hold-short advisory
+    // arrived four seconds after the crossing clearance it buried.
 
     [Fact]
     public void ALandingClearanceOnRolloutNeverBecomesTheClearance()
@@ -245,6 +248,60 @@ public class SayIntentionsFlightContextTests : IDisposable
         Assert.Equal(
             "Taxi to runway 15L via Alpha, Bravo, hold short of runway 05.",
             context.ClearanceText);
+    }
+
+    // The KDTW shape, at this site: a controller issues the clearance and then goes on
+    // talking. Testing only the newest transmission threw the clearance away four seconds
+    // after it was given.
+    [Fact]
+    public void TheClearanceIsFoundBehindANewerTransmissionThatIsNotOne()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "current_airport": "KDTW",
+            "comms": [
+              { "id": 1, "channel": "COM1", "stamp_zulu": "2026-07-30T23:41:34Z",
+                "outgoing_message": "cross-runway 4R, then continue taxi via K, Q" },
+              { "id": 2, "channel": "COM1", "stamp_zulu": "2026-07-30T23:41:38Z",
+                "outgoing_message": "hold short of runway 4R, 737 on the runway" }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.Equal("cross-runway 4R, then continue taxi via K, Q", context.ClearanceText);
+
+        // ...and Ctrl+S is UNCHANGED by that. It answers a different question of the same
+        // history — what was just said — and must still give the newest ATC call, not the
+        // newest clearance.
+        Assert.Equal(
+            "hold short of runway 4R, 737 on the runway",
+            context.LastFlightJsonTransmission!.Message);
+    }
+
+    // The scan must not reach across the flight. flight.json publishes no `ident`, so the
+    // airport bound is vacuous here and the look-back window is the only thing standing
+    // between a rollout and the DEPARTURE field's taxi clearance — which, taken as the
+    // clearance, taxis a just-landed aircraft on a route it flew hours ago.
+    [Fact]
+    public void ADepartureTaxiClearanceIsNotResurrectedOnArrival()
+    {
+        var context = ServiceFor("""
+        {
+          "flight_details": {
+            "current_airport": "KDTW",
+            "comms": [
+              { "id": 1, "channel": "COM1", "stamp_zulu": "2026-07-30T21:13:19Z",
+                "outgoing_message": "Runway 36L taxi via P2, T, M, M1." },
+              { "id": 2, "channel": "COM1", "stamp_zulu": "2026-07-30T23:22:55Z",
+                "outgoing_message": "Metro Tower, Runway 4L, Winds 360 at 10. Cleared to land" }
+            ]
+          }
+        }
+        """).ReadFlightContext();
+
+        Assert.Null(context.ClearanceText);
     }
 
     [Fact]

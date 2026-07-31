@@ -74,6 +74,23 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
+    public void A_continuation_clearance_after_a_hyphenated_crossing_keeps_its_taxiways()
+    {
+        // KDTW Ground, live, 2026-07-31 — verbatim, and the clearance the old
+        // "test only the newest transmission" lookup threw away four seconds after it was
+        // given. The crossing is masked hyphen and all, so it contributes no hold-short
+        // (the pilot was cleared THROUGH 4R, not up to it) and the two legs after it are
+        // the whole route.
+        var plan = MainForm.ParseClearanceTaxiPlan(
+            "cross-runway 4R, then continue taxi via K, Q",
+            new[] { "A", "A5", "K", "Q", "R", "U9", "V" });
+
+        Assert.Equal(new[] { "K", "Q" }, plan.Taxiways);
+        Assert.Empty(plan.HoldShorts);
+        Assert.Empty(plan.UnknownTaxiways);
+    }
+
+    [Fact]
     public void Repeat_across_a_hold_short_is_kept()
     {
         // KBOS pattern: each November needs its own row so each hold-short gets a

@@ -17,8 +17,8 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 public sealed class SayIntentionsService
 {
     private const int ApiTimeoutSeconds = 5;
-    private const string AtcSpeaker = "ATC";
-    private const string PilotSpeaker = "Pilot";
+    private const string AtcSpeaker = SayIntentionsTransmission.AtcSpeaker;
+    private const string PilotSpeaker = SayIntentionsTransmission.PilotSpeaker;
 
     /// <summary>Spoken when transmissions were found but every one of them was the
     /// pilot's own. It is a different answer from "nothing found": the pilot DID hear
@@ -26,6 +26,15 @@ public sealed class SayIntentionsService
     /// stops them pressing the key again waiting for a call that has not come.</summary>
     private const string NoAtcTransmissionMessage =
         "No ATC transmission yet. Only your own calls so far.";
+
+    /// <summary>Spoken when the frequency was read fine and nothing on it was a taxi
+    /// clearance. It replaces "The last SayIntentions transmission was not a taxi
+    /// clearance.", which stopped being true once the lookup started scanning back: the
+    /// answer is now about the whole history within reach, not about one message. It is
+    /// also the actionable one — the usual reason is that taxi has not been requested
+    /// yet.</summary>
+    private const string NoTaxiClearanceMessage =
+        "No taxi clearance on the SayIntentions frequency yet.";
 
     private static readonly TimeSpan CommsCacheDuration = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ParkingCacheDuration = TimeSpan.FromSeconds(10);
@@ -61,9 +70,21 @@ public sealed class SayIntentionsService
     private readonly string _flightJsonPath;
 
     private DateTime _lastCommsFetchUtc = DateTime.MinValue;
-    private SayIntentionsTransmission? _cachedLastTransmission;
+    private IReadOnlyList<SayIntentionsTransmission> _cachedTransmissions = Array.Empty<SayIntentionsTransmission>();
     private string? _cachedCommsError;
-    private Task<SayIntentionsTransmissionResult>? _inFlightComms;
+    private Task<CommsHistory>? _inFlightComms;
+
+    /// <summary>One getCommsHistory read: every radio transmission it carried, and the
+    /// reason there are none when there are none.
+    ///
+    /// The WHOLE history is cached rather than just its newest entry, because the two
+    /// consumers ask different questions of it. "Read me the last transmission" wants
+    /// the newest ATC call; the taxi import wants the newest TAXI CLEARANCE, which at
+    /// KDTW sat one message further back (see SayIntentionsClearanceSelector). Caching
+    /// only the answer to the first question is what left the second with nothing to
+    /// scan.</summary>
+    private sealed record CommsHistory(
+        IReadOnlyList<SayIntentionsTransmission> Transmissions, string? Error);
 
     private DateTime _lastParkingFetchUtc = DateTime.MinValue;
     private SayIntentionsParking? _cachedParking;
@@ -83,6 +104,10 @@ public sealed class SayIntentionsService
         _flightJsonPath = flightJsonPath;
     }
 
+    /// <summary>Ctrl+S: the newest ATC call on the frequency. DELIBERATELY NOT the newest
+    /// taxi clearance — the two are different questions of the same history, and a pilot
+    /// asking what was just said must hear what was just said. See
+    /// <see cref="GetLastTaxiClearanceAsync"/> for the other one.</summary>
     public async Task<SayIntentionsTransmissionResult> GetLastTransmissionAsync()
     {
         var context = await ReadFlightContextAsync();
@@ -91,14 +116,19 @@ public sealed class SayIntentionsService
         string? apiKey = ResolveApiKey(context);
         if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            var apiResult = await GetLastCommsHistoryTransmissionAsync(context, apiKey);
-            if (apiResult.Transmission != null)
-                return new SayIntentionsTransmissionResult(apiResult.Transmission, null);
+            var comms = await GetCommsHistoryAsync(context, apiKey);
+            var latest = LatestFromOthers(comms.Transmissions, out bool pilotOnly);
+            if (latest != null)
+                return new SayIntentionsTransmissionResult(latest, null);
+
+            string? error = comms.Error ?? (pilotOnly
+                ? NoAtcTransmissionMessage
+                : "No SayIntentions communication history found for the active flight.");
 
             if (flightJsonTransmission != null)
-                return new SayIntentionsTransmissionResult(flightJsonTransmission, apiResult.Error);
+                return new SayIntentionsTransmissionResult(flightJsonTransmission, error);
 
-            return new SayIntentionsTransmissionResult(null, apiResult.Error);
+            return new SayIntentionsTransmissionResult(null, error);
         }
 
         if (flightJsonTransmission != null)
@@ -107,14 +137,43 @@ public sealed class SayIntentionsService
         // No key to reach comms history with, and nothing in the file. The honest
         // reason is that SayIntentions is not running, or is running without
         // publishing a key — there is no setting left for the pilot to go and fill in.
-        return new SayIntentionsTransmissionResult(
-            null,
-            context.OnlyPilotTransmissions
-                ? NoAtcTransmissionMessage
-                : context.FlightJsonExists
-                    ? "No SayIntentions transmission found. Check SayIntentions is connected to this flight."
-                    : "SayIntentions flight.json not found. Start an active SayIntentions flight.");
+        return new SayIntentionsTransmissionResult(null, NoTransmissionReason(context));
     }
+
+    /// <summary>Ctrl+Shift+Y: the newest taxi clearance on the frequency at
+    /// <paramref name="airportIcao"/>, scanning back rather than testing only the newest
+    /// transmission — which at KDTW was a hold-short advisory issued four seconds after
+    /// the clearance it buried (SayIntentionsClearanceSelector carries the capture).
+    ///
+    /// The shape test is the same one, called once, from inside: both
+    /// clearance-text sources have to pass LooksLikeTaxiClearance, and the way to keep
+    /// them from drifting is to leave the caller with no gate of its own to forget.</summary>
+    public async Task<SayIntentionsTransmissionResult> GetLastTaxiClearanceAsync(string? airportIcao)
+    {
+        var context = await ReadFlightContextAsync();
+
+        string? apiKey = ResolveApiKey(context);
+        if (string.IsNullOrWhiteSpace(apiKey))
+            return new SayIntentionsTransmissionResult(null, NoTransmissionReason(context));
+
+        var comms = await GetCommsHistoryAsync(context, apiKey);
+        var clearance = SayIntentionsClearanceSelector.SelectLatestTaxiClearance(
+            comms.Transmissions, airportIcao);
+
+        return clearance != null
+            ? new SayIntentionsTransmissionResult(clearance, null)
+            : new SayIntentionsTransmissionResult(null, comms.Error ?? NoTaxiClearanceMessage);
+    }
+
+    /// <summary>Why there is nothing to read when there is no API key: the history could
+    /// not be reached at all, so the answer is about SayIntentions rather than about the
+    /// frequency.</summary>
+    private static string NoTransmissionReason(SayIntentionsFlightContext context) =>
+        context.OnlyPilotTransmissions
+            ? NoAtcTransmissionMessage
+            : context.FlightJsonExists
+                ? "No SayIntentions transmission found. Check SayIntentions is connected to this flight."
+                : "SayIntentions flight.json not found. Start an active SayIntentions flight.";
 
     public async Task<SayIntentionsStatusResult> GetAssignedStatusAsync()
     {
@@ -227,13 +286,14 @@ public sealed class SayIntentionsService
                 GetString(details, "taxi_clearance"),
                 FindString(root, "clearance_text"),
                 FindString(root, "taxi_clearance"));
-            context.LastFlightJsonTransmission = FindLatestTransmission(root, out bool pilotOnly);
+            var radioTransmissions = CollectRadioTransmissions(root);
+            context.LastFlightJsonTransmission = LatestFromOthers(radioTransmissions, out bool pilotOnly);
             context.OnlyPilotTransmissions = pilotOnly;
 
-            // The pilot's own transmissions are already filtered out above, so a
-            // clearance can only ever be taken from the controller — never from the
-            // pilot's readback of one, which is the newest thing on the frequency at
-            // exactly the moment the import key gets pressed.
+            // The pilot's own transmissions are dropped by the selector, so a clearance
+            // can only ever be taken from the controller — never from the pilot's
+            // readback of one, which is the newest thing on the frequency at exactly the
+            // moment the import key gets pressed.
             //
             // SHAPE-GATED, and the gate has to be HERE. The import's other fallback —
             // the live getCommsHistory read in MainForm — runs only when ClearanceText is
@@ -241,14 +301,20 @@ public sealed class SayIntentionsService
             // gate never sees it. On rollout the newest ATC call is the LANDING
             // clearance: ungated it became the ClearanceText, ParseDestinationRunway
             // found "runway 23L" with no hold-short span to mask, and the just-landed
-            // aircraft was routed AT the runway it had landed on. Both fallbacks now go
-            // through the one LooksLikeTaxiClearance, so they cannot drift apart.
-            if (string.IsNullOrWhiteSpace(context.ClearanceText)
-                && context.LastFlightJsonTransmission != null
-                && SayIntentionsClearanceParser.LooksLikeTaxiClearance(
-                    context.LastFlightJsonTransmission.Message))
+            // aircraft was routed AT the runway it had landed on. Both fallbacks go
+            // through the one SayIntentionsClearanceSelector, so they cannot drift apart
+            // — which is also what makes both of them SCAN BACK rather than test only
+            // the newest transmission (the KDTW capture, see the selector).
+            //
+            // The airport bound is VACUOUS here and knowingly so: flight.json publishes
+            // no `ident` on anything, so only the selector's time window applies. It has
+            // also never been observed to publish comms at all — in every capture this
+            // whole branch is dead and the import depends on the live round-trip — so if
+            // SI ever starts filling it, this is the bound to revisit first.
+            if (string.IsNullOrWhiteSpace(context.ClearanceText))
             {
-                context.ClearanceText = context.LastFlightJsonTransmission.Message;
+                context.ClearanceText = SayIntentionsClearanceSelector
+                    .SelectLatestTaxiClearance(radioTransmissions, context.CurrentAirport)?.Message;
             }
 
             _log.Debug($"flight.json read: airport={context.CurrentAirport ?? "-"} " +
@@ -398,26 +464,26 @@ public sealed class SayIntentionsService
     /// press. Hence: ignore a completed latch, and drop one that finished before we
     /// could store it.
     /// </summary>
-    private Task<SayIntentionsTransmissionResult> GetLastCommsHistoryTransmissionAsync(
+    private Task<CommsHistory> GetCommsHistoryAsync(
         SayIntentionsFlightContext context, string apiKey)
     {
         if (DateTime.UtcNow - _lastCommsFetchUtc < CommsCacheDuration)
-            return Task.FromResult(new SayIntentionsTransmissionResult(_cachedLastTransmission, _cachedCommsError));
+            return Task.FromResult(new CommsHistory(_cachedTransmissions, _cachedCommsError));
 
         if (_inFlightComms is { IsCompleted: false } joinable)
             return joinable;
 
-        Task<SayIntentionsTransmissionResult> fetch = FetchCommsAsync(context, apiKey);
+        Task<CommsHistory> fetch = FetchCommsAsync(context, apiKey);
         _inFlightComms = fetch;
         if (fetch.IsCompleted)
             Interlocked.CompareExchange(ref _inFlightComms, null, fetch);
         return fetch;
     }
 
-    private async Task<SayIntentionsTransmissionResult> FetchCommsAsync(
+    private async Task<CommsHistory> FetchCommsAsync(
         SayIntentionsFlightContext context, string apiKey)
     {
-        SayIntentionsTransmission? transmission = null;
+        IReadOnlyList<SayIntentionsTransmission> transmissions = Array.Empty<SayIntentionsTransmission>();
         string? error = null;
 
         try
@@ -445,13 +511,10 @@ public sealed class SayIntentionsService
                 }
                 else
                 {
-                    transmission = FindLatestTransmission(doc.RootElement, out bool pilotOnly);
-                    if (transmission == null)
-                    {
-                        error = pilotOnly
-                            ? NoAtcTransmissionMessage
-                            : "No SayIntentions communication history found for the active flight.";
-                    }
+                    // The whole history, unfiltered. "Nothing usable in it" is not a
+                    // fetch failure and is no longer decided here: each caller asks its
+                    // own question of these transmissions and words its own miss.
+                    transmissions = CollectRadioTransmissions(doc.RootElement);
                 }
             }
         }
@@ -469,18 +532,18 @@ public sealed class SayIntentionsService
         }
         finally
         {
-            _cachedLastTransmission = transmission;
+            _cachedTransmissions = transmissions;
             _cachedCommsError = error;
             _lastCommsFetchUtc = DateTime.UtcNow;
             _inFlightComms = null;
         }
 
         if (error != null) _log.Warn(error);
-        return new SayIntentionsTransmissionResult(transmission, error);
+        return new CommsHistory(transmissions, error);
     }
 
     /// <summary>Same cache-then-join contract, and the same latch-ordering rule, as
-    /// GetLastCommsHistoryTransmissionAsync — see the note there.</summary>
+    /// GetCommsHistoryAsync — see the note there.</summary>
     private Task<SayIntentionsParkingResult> GetParkingAsync(
         SayIntentionsFlightContext context, string apiKey)
     {
@@ -578,8 +641,16 @@ public sealed class SayIntentionsService
     private static string? ResolveApiKey(SayIntentionsFlightContext context) =>
         string.IsNullOrWhiteSpace(context.ApiKey) ? null : context.ApiKey.Trim();
 
-    private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root) =>
-        FindLatestTransmission(root, out _);
+    /// <summary>Every radio transmission a payload carries, the pilot's own included.
+    /// Filtering belongs to whoever asks a question of it — the last-transmission
+    /// readout wants the newest ATC call, the taxi import wants the newest clearance
+    /// several messages back, and both need the same history to look at.</summary>
+    private static List<SayIntentionsTransmission> CollectRadioTransmissions(JsonElement root)
+    {
+        var transmissions = new List<SayIntentionsTransmission>();
+        CollectTransmissions(root, transmissions);
+        return transmissions;
+    }
 
     /// <summary>
     /// The newest transmission the pilot did not make themselves.
@@ -600,11 +671,9 @@ public sealed class SayIntentionsService
     /// </summary>
     /// <param name="pilotOnly">True when transmissions were found but every one was the
     /// pilot's, so the caller can say why instead of the generic "nothing found".</param>
-    private static SayIntentionsTransmission? FindLatestTransmission(JsonElement root, out bool pilotOnly)
+    private static SayIntentionsTransmission? LatestFromOthers(
+        IReadOnlyList<SayIntentionsTransmission> transmissions, out bool pilotOnly)
     {
-        var transmissions = new List<SayIntentionsTransmission>();
-        CollectTransmissions(root, transmissions);
-
         var fromOthers = transmissions.Where(t => t.Speaker != PilotSpeaker).ToList();
         pilotOnly = fromOthers.Count == 0 && transmissions.Count > 0;
 
@@ -628,6 +697,13 @@ public sealed class SayIntentionsService
                 DateTime? stamp = ParseZuluStamp(stampText);
                 int? id = GetInt(element, "id");
 
+                // Which airport the record belongs to. A getCommsHistory feed spans the
+                // whole flight — the KDTW capture still carried the KMEM departure's own
+                // taxi clearance, 2.5 hours behind — so this is what keeps the taxi
+                // import's look-back at the field the aircraft is standing on. flight.json
+                // publishes no ident, and null must never read as a mismatch.
+                string? ident = CleanIcao(GetString(element, "ident"));
+
                 // Direction is from SayIntentions' point of view, NOT the pilot's:
                 // incoming_message is what SI received (the PILOT speaking) and
                 // outgoing_message is what SI sent back (ATC). Verified against a live
@@ -637,15 +713,15 @@ public sealed class SayIntentionsService
                 // these the intuitive way round makes Ctrl+S announce the pilot's own
                 // readback as ATC.
                 if (!string.IsNullOrWhiteSpace(incoming))
-                    AddIfRadio(transmissions, PilotSpeaker, incoming, station, channel, stamp, id);
+                    AddIfRadio(transmissions, PilotSpeaker, incoming, station, channel, stamp, id, ident);
 
                 if (!string.IsNullOrWhiteSpace(outgoing))
-                    AddIfRadio(transmissions, AtcSpeaker, outgoing, station, channel, stamp, id);
+                    AddIfRadio(transmissions, AtcSpeaker, outgoing, station, channel, stamp, id, ident);
 
                 if (string.IsNullOrWhiteSpace(incoming) && string.IsNullOrWhiteSpace(outgoing)
                     && LooksLikeCommunication(message))
                 {
-                    AddIfRadio(transmissions, "", message!, station, channel, stamp, id);
+                    AddIfRadio(transmissions, "", message!, station, channel, stamp, id, ident);
                 }
 
                 foreach (var property in element.EnumerateObject())
@@ -661,11 +737,12 @@ public sealed class SayIntentionsService
 
     private static void AddIfRadio(
         List<SayIntentionsTransmission> transmissions,
-        string speaker, string message, string? station, string? channel, DateTime? stamp, int? id)
+        string speaker, string message, string? station, string? channel, DateTime? stamp, int? id,
+        string? ident)
     {
         string cleaned = CleanSpeech(message);
         if (SayIntentionsTransmissionClassifier.IsRadioTransmission(speaker, station, channel, cleaned))
-            transmissions.Add(new SayIntentionsTransmission(speaker, cleaned, station, channel, stamp, id));
+            transmissions.Add(new SayIntentionsTransmission(speaker, cleaned, station, channel, stamp, id, ident));
     }
 
     /// <summary>stamp_zulu is a UTC wire timestamp, not a locale-formatted date. Parsing

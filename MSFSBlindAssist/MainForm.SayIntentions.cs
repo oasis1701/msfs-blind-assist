@@ -146,40 +146,47 @@ public partial class MainForm
                 return;
             }
 
-            // Only fall back to the last radio transmission when it is actually
-            // shaped like a taxi clearance — a landing clearance heard on rollout
-            // must never become a taxi route. (flight.json's own fallback passes the
-            // same gate, inside SayIntentionsService — see the note there.)
-            //
-            // Why it failed is KEPT. flight.json carries no clearance text, so this
-            // round-trip is what every import depends on, and its Error was thrown away:
-            // a 5 s timeout, an HTTP failure and a transmission that was not a taxi
-            // clearance all ended in the same silence, with the route quietly built from
-            // whatever else was to hand.
-            string? clearanceLookupProblem = null;
-            if (string.IsNullOrWhiteSpace(context.ClearanceText))
-            {
-                var last = await sayIntentionsService.GetLastTransmissionAsync();
-                if (last.Transmission != null
-                    && SayIntentionsClearanceParser.LooksLikeTaxiClearance(last.Transmission.Message))
-                {
-                    context.ClearanceText = last.Transmission.Message;
-                }
-                else
-                {
-                    clearanceLookupProblem = last.Error
-                        ?? (last.Transmission != null
-                            ? "The last SayIntentions transmission was not a taxi clearance."
-                            : null);
-                }
-            }
-
             var position = await GetFreshAircraftPositionAsync();
             string? icao = ResolveSayIntentionsAirport(context, position);
             if (string.IsNullOrWhiteSpace(icao))
             {
                 announcer.AnnounceImmediate("SayIntentions route unavailable. No current airport found.");
                 return;
+            }
+
+            // Fall back to the frequency for the clearance — the NEWEST transmission on
+            // it that is actually shaped like a taxi clearance, not merely the newest
+            // transmission there is. Both of those tests live inside the service, so this
+            // site has no gate of its own to drift from flight.json's (see
+            // SayIntentionsClearanceSelector for the KDTW capture that made the scan
+            // necessary, and SayIntentionsService for the shared gate).
+            //
+            // AFTER the airport is known, because the scan is bounded by it: a comms
+            // history spans the whole flight and still holds the DEPARTURE field's taxi
+            // clearance. The bound is the ICAO the route is being built for, not
+            // context.CurrentAirport, for the same reason TryResolveSayIntentionsDestination
+            // uses it — flight.json can omit that field, and then the airport comes from
+            // position.
+            //
+            // Why it failed is KEPT. flight.json carries no clearance text, so this
+            // round-trip is what every import depends on, and its Error was thrown away:
+            // a 5 s timeout, an HTTP failure and a frequency with no clearance on it yet
+            // all ended in the same silence, with the route quietly built from whatever
+            // else was to hand.
+            string? clearanceLookupProblem = null;
+            DateTime? clearanceStampUtc = null;
+            if (string.IsNullOrWhiteSpace(context.ClearanceText))
+            {
+                var clearanceCall = await sayIntentionsService.GetLastTaxiClearanceAsync(icao);
+                if (clearanceCall.Transmission != null)
+                {
+                    context.ClearanceText = clearanceCall.Transmission.Message;
+                    clearanceStampUtc = clearanceCall.Transmission.StampZulu;
+                }
+                else
+                {
+                    clearanceLookupProblem = clearanceCall.Error;
+                }
             }
 
             // ONE graph build: the form loads the airport, and everything below
@@ -216,8 +223,17 @@ public partial class MainForm
             //
             // Which of the two is used is decided by ChooseTaxiwaySource, on whether the
             // published track AGREES with the clearance.
-            SnapResult? snap = context.TaxiPathPoints.Count > 0
-                ? SayIntentionsTaxiPathSnapper.Snap(context.TaxiPathPoints, ReadNamedEdges(form))
+            //
+            // Only the part of the track AHEAD of the aircraft is snapped. SayIntentions
+            // does not always publish what is left of the route: at KDTW, 76 of 124 points
+            // lay behind the aircraft, so the snapped sequence opened with taxiways it had
+            // already left — see TrimToPointsAhead.
+            var trackAhead = SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+                context.TaxiPathPoints, position.Latitude, position.Longitude);
+            int trimmedPoints = context.TaxiPathPoints.Count - trackAhead.Count;
+
+            SnapResult? snap = trackAhead.Count > 0
+                ? SayIntentionsTaxiPathSnapper.Snap(trackAhead, ReadNamedEdges(form))
                 : null;
 
             var (source, taxiways, disagreed) = ChooseTaxiwaySource(
@@ -252,7 +268,10 @@ public partial class MainForm
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
                         $"disagreed={disagreed} " +
                         $"geoStamp={FormatStampSi(context.TaxiPathStampUtc)} " +
-                        $"geoPoints={snap?.PointCount ?? context.TaxiPathPoints.Count} " +
+                        // geoPoints counts what was SNAPPED; geoTrimmed is how many the
+                        // aircraft had already passed. The two add up to what SI published.
+                        $"geoPoints={snap?.PointCount ?? trackAhead.Count} " +
+                        $"geoTrimmed={trimmedPoints} " +
                         $"geoUnsnapped={(snap == null ? "-" : snap.UnsnappedCount.ToString())} " +
                         $"geoDroppedRuns={(snap == null ? "-" : snap.DroppedRunCount.ToString())} " +
                         $"geoTaxiways=[{string.Join(",", snap?.Taxiways ?? Array.Empty<string>())}] " +
@@ -260,6 +279,10 @@ public partial class MainForm
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
                         $"skipped=[{string.Join(",", outcome.SkippedTaxiways)}] " +
                         $"notAtAirport=[{string.Join(",", unknownTaxiways)}] " +
+                        // WHICH transmission the scan settled on. The KDTW failure was a
+                        // clearance four seconds older than the advisory that buried it,
+                        // and this is what says whether the right one was found.
+                        $"clearanceStamp={FormatStampSi(clearanceStampUtc)} " +
                         $"clearanceProblem='{clearanceLookupProblem ?? "-"}' " +
                         $"holdShorts=[{string.Join(",", outcome.AppliedHoldShorts.Select(h => $"{h.Runway} after {h.AfterTaxiway}"))}] " +
                         $"holdShortsMissed=[{string.Join(",", outcome.SkippedHoldShortRunways)}] " +

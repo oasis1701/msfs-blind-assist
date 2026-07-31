@@ -127,15 +127,30 @@ public sealed class SayIntentionsAirportWeather
 }
 
 /// <summary>One radio transmission. <paramref name="Speaker"/> is "ATC", "Pilot",
-/// or empty when the source message carried no direction.</summary>
+/// or empty when the source message carried no direction.
+///
+/// <paramref name="Ident"/> is the airport SayIntentions files the record under
+/// (<c>ident</c> on a getCommsHistory record — "KDTW", "KZOB"). It is what bounds the
+/// look-back in <see cref="SayIntentionsClearanceSelector"/> to the field the aircraft
+/// is actually at; null when the payload carried none, which is every transmission read
+/// out of flight.json, so nothing may treat its absence as a mismatch.</summary>
 public sealed record SayIntentionsTransmission(
     string Speaker,
     string Message,
     string? StationName,
     string? Channel,
     DateTime? StampZulu,
-    int? Id)
+    int? Id,
+    string? Ident = null)
 {
+    /// <summary>The pilot's own side of the exchange. It is DROPPED, never outranked —
+    /// see the reader in SayIntentionsService and the selector — so this name exists on
+    /// the type both of them compare against rather than once in each.</summary>
+    public const string PilotSpeaker = "Pilot";
+
+    /// <summary>The controller's side. The only side either readout is for.</summary>
+    public const string AtcSpeaker = "ATC";
+
     /// <summary>
     /// The transmission as the pilot hears it: the station that said it, then what was
     /// said — "Ankara Control: Descend flight level two four zero."

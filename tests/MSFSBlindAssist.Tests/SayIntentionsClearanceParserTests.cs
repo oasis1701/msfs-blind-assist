@@ -48,6 +48,32 @@ public class SayIntentionsClearanceParserTests
         Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
     }
 
+    [Theory]
+    // KDTW Ground, live, 2026-07-31, verbatim: SayIntentions writes the crossing with a
+    // HYPHEN. The separator between the prefix and the runway was spelled `\s+`, so the
+    // mask did not cover this span at all and the leftmost "runway 4R" became the
+    // DESTINATION — a taxiing aircraft routed AT the active runway it had just been
+    // cleared to cross, which is precisely what masking exists to prevent. It stayed
+    // latent only because the transmission was being discarded for an unrelated reason
+    // (the clearance lookup tested just the newest message, and an advisory had landed
+    // on top of it four seconds later). Fixing that lookup alone would have exposed this.
+    [InlineData("cross-runway 4R, then continue taxi via K, Q")]
+    [InlineData("Taxi to gate B12 via Charlie, cross-runway 09, then Delta")]
+    [InlineData("Taxi to gate B12 via Charlie, crossing-runway 09, then Delta")]
+    public void AHyphenatedCrossingIsMaskedToo(string clearance)
+    {
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+    }
+
+    [Fact]
+    public void AHyphenatedSeparatorDoesNotSwallowARealRunwayDestination()
+    {
+        // The other half of the same change: widening the separator must not let the
+        // mask reach past a crossing and eat the runway the clearance actually routes to.
+        Assert.Equal("15L", SayIntentionsClearanceParser.ParseDestinationRunway(
+            "Runway 15L via Bravo, cross-runway 04L, Charlie"));
+    }
+
     // Every spoken variant of a hold instruction must mask, not just the exact
     // "hold short of". The first fix handled CROSS(ING) but only bare "hold short",
     // so a pilot READBACK — "holding short of runway 15", which is what SayIntentions

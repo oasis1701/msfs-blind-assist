@@ -30,6 +30,30 @@
 //     LoadFixtureEdges splits each polyline into consecutive point pairs; feeding a
 //     whole polyline in as a single edge would measure distance to the chord across
 //     a curving taxiway rather than to the taxiway.
+//   kdtw-taxipath-crossing.json — the current_flight.taxi_path array of the KDTW
+//     capture of 2026-07-31, verbatim and whole (124 entries), for the trim below.
+//     Same reduction rule as the LSZH one: nothing but the geometry. This one is
+//     SayIntentions' own published track, not scenery data.
+//   kdtw-taxiways.json — the same thing as lszh-taxiways.json and from the same
+//     source: OSM, name + geometry only, no personal data, POLYLINE shape, split
+//     into segments by LoadFixtureEdges. It is the whole probe output, unpruned —
+//     the app's own query (way["aeroway"="taxiway"](around:5000,…), ref then name,
+//     unnamed ways skipped) gives 116 named ways for KDTW, which is smaller than
+//     the LSZH fixture already.
+//
+// WHICH SOURCE NAMES THE PAVEMENT CHANGES THE UNTRIMMED ANSWER, AND NOT THE TRIMMED
+// ONE. Both were measured against this capture:
+//
+//     OSM (this fixture)   untrimmed  A5, A, R, K, Q, U9      trimmed  R, K, Q, U9
+//     KDTW's own navdata   untrimmed      A, R, K, Q, U9      trimmed  R, K, Q, U9
+//
+// The navdata reading is what the shipped import logged on the day
+// (geoTaxiways=[A,R,K,Q,U9]) — OSM additionally names the stub off the stand A5,
+// where this airport's navdata leaves it unnamed. The property under test is the
+// TRIMMED sequence, and it is identical either way: the trim is decided by where the
+// aircraft is, not by who named the taxiway, so it does not depend on the provenance
+// of the edges at all. That is what makes the OSM fixture a fair substitute, and it
+// is worth more here than reproducing one log line exactly.
 
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -228,6 +252,132 @@ public class SayIntentionsTaxiPathSnapperTests
         Assert.Equal(2, result.PointCount);
         Assert.Equal(2, result.UnsnappedCount);
     }
+
+    // ---- TrimToPointsAhead: the published track is not always what is LEFT of the route ----
+    //
+    // KDTW, live, 2026-07-31. Holding short of runway 4R, cleared to cross and continue
+    // ("cross-runway 4R, then continue taxi via K, Q"), the pilot pressed Ctrl+Shift+Y and
+    // got a route down A5, A and R — pavement already behind the aircraft. taxi_path had
+    // been documented as the REMAINING route on the strength of one capture that shrank
+    // 77 -> 40 points; this one is the route as ISSUED, with 61 % of it already flown.
+
+    // Verbatim from the capture's flight_details.coordinates, heading 121.
+    private const double KdtwAircraftLatitude = 42.2076316561171;
+    private const double KdtwAircraftLongitude = -83.3676542345143;
+
+    [Fact]
+    public void TheLiveKdtwTrackIsMostlyBehindTheAircraft()
+    {
+        var path = LoadFixturePath("kdtw-taxipath-crossing.json");
+
+        var ahead = SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+            path, KdtwAircraftLatitude, KdtwAircraftLongitude);
+
+        // 124 published, the nearest point index 76 at 7.4 m, so 76 points — 61 % — sit
+        // behind the aircraft and 48 remain.
+        Assert.Equal(124, path.Count);
+        Assert.Equal(48, ahead.Count);
+        Assert.Equal(path[76], ahead[0]);
+        Assert.Equal(7.4, MetresFromKdtwAircraft(path[76]), 1);
+
+        // ...and the far end of what was trimmed is not marginal: the FIRST published
+        // point is a kilometre and a half back down the taxiway.
+        Assert.Equal(1509.9, MetresFromKdtwAircraft(path[0]), 1);
+    }
+
+    [Fact]
+    public void TheLiveKdtwTrackSnappedWholeNamesTaxiwaysAlreadyLeft()
+    {
+        // The shipped behaviour: the route opens on A5 and A, the pavement the aircraft
+        // came in on and left. (Against KDTW's own navdata the same track reads
+        // A, R, K, Q, U9 — what sayintentions.log recorded on the day. See the file
+        // header: the leading legs are where the two sources differ, and they are exactly
+        // the legs the trim removes.)
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            LoadFixturePath("kdtw-taxipath-crossing.json"),
+            LoadFixtureEdges("kdtw-taxiways.json"));
+
+        Assert.Equal(new[] { "A5", "A", "R", "K", "Q", "U9" }, result.Taxiways);
+    }
+
+    [Fact]
+    public void TheLiveKdtwTrackTrimmedDropsTheTaxiwaysAlreadyLeft()
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+                LoadFixturePath("kdtw-taxipath-crossing.json"),
+                KdtwAircraftLatitude, KdtwAircraftLongitude),
+            LoadFixtureEdges("kdtw-taxiways.json"));
+
+        // A5 and A are gone — up to 1.5 km behind — and K and Q, the two taxiways the
+        // controller actually named, survive with the stand lead-in after them.
+        //
+        // R STAYS, and that is correct rather than a leftover: the aircraft is standing
+        // ON R, 2.1 m from its centreline and 21 m from runway 4R's, with about 220 m of
+        // R still to run past the crossing before K. What is behind the aircraft is
+        // decided by where the aircraft is, not by which leg it started.
+        Assert.Equal(new[] { "R", "K", "Q", "U9" }, result.Taxiways);
+    }
+
+    [Fact]
+    public void AnAircraftNowhereNearTheTrackLeavesItUntouched()
+    {
+        // If the aircraft is not on the published track — towed, repositioned, or the
+        // track is for somewhere else — nothing here can say which part of it is behind,
+        // and a wrong trim silently deletes legs the pilot was cleared for. The path
+        // comes back as it went in, the same instance.
+        var path = new[] { OnA(0.2), OnA(0.4), OnA(0.6) };
+
+        Assert.Same(path, SayIntentionsTaxiPathSnapper.TrimToPointsAhead(path, 50.0003, 8.0100));
+    }
+
+    [Fact]
+    public void TheGuardIsTheSameLineTheSnapDraws()
+    {
+        // 25 m: the snapper's own "on pavement or not". Abeam the middle point, 0.0004 deg
+        // of longitude at 50N is 28.6 m and is left alone; 0.0003 deg is 21.5 m and trims.
+        var path = new[] { OnA(0.2), OnA(0.4), OnA(0.6) };
+
+        Assert.Same(path, SayIntentionsTaxiPathSnapper.TrimToPointsAhead(path, 50.0004, 8.0004));
+        Assert.Equal(2, SayIntentionsTaxiPathSnapper.TrimToPointsAhead(path, 50.0004, 8.0003).Count);
+    }
+
+    [Fact]
+    public void AnAircraftAtTheStartOfTheTrackTrimsNothing()
+    {
+        // The ordinary case: the pilot presses before moving, so the whole published
+        // track is still ahead.
+        var path = new[] { OnA(0.2), OnA(0.4), OnA(0.6) };
+
+        Assert.Same(path, SayIntentionsTaxiPathSnapper.TrimToPointsAhead(path, 50.0002, 8.0000));
+    }
+
+    [Fact]
+    public void AnExactTieTrimsToTheEarlierPoint()
+    {
+        // A route that doubles back past the aircraft touches the same pavement twice, so
+        // two points sit at an identical distance. Keeping the earlier one keeps the whole
+        // of the second pass; breaking the tie the other way would delete it.
+        var path = new[] { OnA(0.1), OnA(0.5), OnA(0.9), OnA(0.5) };
+
+        var ahead = SayIntentionsTaxiPathSnapper.TrimToPointsAhead(path, 50.0005, 8.0000);
+
+        Assert.Equal(3, ahead.Count);
+        Assert.Equal(OnA(0.5), ahead[0]);
+    }
+
+    [Fact]
+    public void AnEmptyPathTrimsToNothingRatherThanThrowing()
+    {
+        // Same contract as Snap: the caller is a hotkey a blind pilot presses mid-taxi.
+        Assert.Empty(SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+            Array.Empty<GeoPoint>(), KdtwAircraftLatitude, KdtwAircraftLongitude));
+    }
+
+    private static double MetresFromKdtwAircraft(GeoPoint point) =>
+        SayIntentionsTaxiPathSnapper.PointToSegmentMetres(
+            KdtwAircraftLatitude, KdtwAircraftLongitude,
+            point.Latitude, point.Longitude, point.Latitude, point.Longitude);
 
     // ---- PointToSegmentMetres ----
 

@@ -37,12 +37,28 @@ public static class SayIntentionsClearanceParser
 
     private const string CrossPrefix = @"(?:CROSS(?:ING)?(?:\s+THE)?)";
 
+    /// <summary>
+    /// What joins the hold/cross prefix to the runway it names. A HYPHEN counts as the
+    /// separator, exactly as it already does inside <see cref="HoldPrefix"/>'s own
+    /// "hold-short" — and for the same reason: SayIntentions writes one.
+    ///
+    /// KDTW Ground, live, 2026-07-31: *"cross-runway 4R, then continue taxi via K, Q"*.
+    /// Spelled `\s+`, the mask missed that crossing entirely, and the crossing runway is
+    /// precisely what <see cref="MaskHoldShortAndCrossings"/> exists to hide from
+    /// <see cref="ParseDestinationRunway"/> — so the leftmost "runway 4R" became the
+    /// DESTINATION and the import would have routed a taxiing aircraft at the active
+    /// runway it had just been cleared to cross. Shared between the mask and the
+    /// capture for the same reason the prefix itself is: two spellings of one concept
+    /// drift, and this one had already drifted once.
+    /// </summary>
+    private const string PrefixToRunway = @"[\s-]+(?:RUNWAY\s*)?";
+
     private static readonly Regex HoldShortOrCrossing = new(
-        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + @")\s+(?:RUNWAY\s*)?" + RunwayToken,
+        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway + RunwayToken,
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex HoldShortRunwayCapture = new(
-        @"\b" + HoldPrefix + @"\s+(?:RUNWAY\s*)?(?<runway>" + RunwayToken + @")",
+        @"\b" + HoldPrefix + PrefixToRunway + @"(?<runway>" + RunwayToken + @")",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex AnyRunwayCapture = new(

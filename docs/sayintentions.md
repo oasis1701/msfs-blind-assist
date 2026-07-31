@@ -47,6 +47,11 @@ The taxi import inherits the filter for free. A clearance can now only ever come
 controller, never from your readback of one — which is exactly the transmission the
 hold-short masking exists to survive.
 
+What the import does **not** inherit is "the last one". This readout answers *what was
+just said*; the import asks *where was I told to taxi*, and those stop being the same
+question the moment the controller says anything after clearing you. See
+[The clearance is not always the last thing said](#the-clearance-is-not-always-the-last-thing-said).
+
 ### Flight information
 
 Opens a **read-only window** rather than speaking. Each section of the report is its own
@@ -159,9 +164,10 @@ network — from SayIntentions' own published ground track when that agrees with
 clearance, from the words otherwise — and fills in the Taxi Guidance dialog.
 
 **This one needs the SayIntentions API to be reachable.** The local flight file does
-not carry the clearance text, so every press fetches the last transmissions over the
-network. With SayIntentions itself not running there is nothing to read and you hear
-why. If the file is there but the request fails — the key rejected, or a five-second
+not carry the clearance text, so every press fetches the recent transmissions over the
+network and takes **the newest one that is a taxi clearance** — not simply the newest
+one, which is routinely an advisory the controller added afterwards. With SayIntentions
+itself not running there is nothing to read and you hear why. If the file is there but the request fails — the key rejected, or a five-second
 timeout — you are **told the reason out loud** and the import carries on with whatever
 else it has, which may be SayIntentions' own published ground track. Read the summary:
 it says so. The two readouts above are unaffected.
@@ -238,8 +244,8 @@ you can act on go first.
   ATC's."** — a ground-track route with no clearance behind it. Only ever heard after
   the "Route from SayIntentions ground track." line.
 - **"SayIntentions comms history timed out."** — or whatever else went wrong reading the
-  frequency, including *"The last SayIntentions transmission was not a taxi clearance."*
-  Only spoken when the clearance came up empty; a clearance that was read normally adds
+  frequency, including *"No taxi clearance on the SayIntentions frequency yet."* Only
+  spoken when the clearance came up empty; a clearance that was read normally adds
   nothing.
 - **"Could not apply K."** — a leg the route does not use, either because this airport
   does not have the taxiway or because the dialog could not seat it. The route is still
@@ -307,10 +313,11 @@ Diagnostics are written to `%APPDATA%\MSFSBlindAssist\logs\sayintentions.log`. I
 records which fields were found in `flight.json`, and for every route import one line
 holding the destination, which **source** the sequence came from and whether the two
 **disagreed**, both candidate sequences (`geoTaxiways` and `clearanceTaxiways`), the
-ground track's point / unsnapped / dropped-run counts and its stamp, the taxiways
-**applied**, the taxiways **skipped** (the airport has them, the dialog could not seat
-them), the taxiways **not at this airport**, the **hold-shorts** that were set and the
-ones that were **missed**. If the spoken summary and the dialog ever disagree, that line
+ground track's point / **trimmed** / unsnapped / dropped-run counts and its stamp, the
+stamp of the transmission the clearance came from (`clearanceStamp` — which says whether
+the scan found the right one), the taxiways **applied**, the taxiways **skipped** (the
+airport has them, the dialog could not seat them), the taxiways **not at this airport**,
+the **hold-shorts** that were set and the ones that were **missed**. If the spoken summary and the dialog ever disagree, that line
 is the record of what the import actually did — and it holds both sequences side by
 side, so a disputed route can be read back without re-flying it. API keys are never
 written to the log.
@@ -329,7 +336,8 @@ Pure logic lives in `MSFSBlindAssist/Services/SayIntentions/` and is unit-tested
 | File | Responsibility |
 | --- | --- |
 | `SayIntentionsClearanceParser.cs` | All regex. Runway/gate/taxiway extraction from ATC speech. |
-| `SayIntentionsTaxiPathSnapper.cs` | `taxi_path` geometry → an ordered taxiway sequence, against the airport's own named edges. |
+| `SayIntentionsClearanceSelector.cs` | Which transmission in a radio history is the taxi clearance. |
+| `SayIntentionsTaxiPathSnapper.cs` | `taxi_path` geometry → an ordered taxiway sequence, against the airport's own named edges; and the trim to what is still ahead of the aircraft. |
 | `SayIntentionsTransmissionClassifier.cs` | Radio vs cabin/PA classification. |
 | `SayIntentionsInfoReport.cs` | The flight-information window's sections and line formatting. |
 | `SayIntentionsEndpoint.cs` | SAPI URL construction, host allowlist, log redaction. |
@@ -547,13 +555,67 @@ so excluding on them costs no real taxi clearance.
 
 **There are TWO fallbacks and the gate has to cover both.** `MainForm` reads the live
 `getCommsHistory` transmission, and `SayIntentionsService.ReadFlightContext` sets
-`ClearanceText` from `flight.json`'s own newest ATC transmission when the file carries no
+`ClearanceText` from `flight.json`'s own transmissions when the file carries no
 clearance field. Only the first was gated, and the second **takes precedence** — the
 MainForm site runs only when `ClearanceText` is *already* empty, so the shape test never
 saw the file's transmission at all. On rollout that transmission is the landing
 clearance: it became the clearance text, `ParseDestinationRunway` found `runway 23L` with
 no hold-short span to mask, and the just-landed aircraft was routed **at the runway it had
-landed on**. Both sites now call the one `LooksLikeTaxiClearance`, so they cannot drift.
+landed on**. Both sites go through the one `SayIntentionsClearanceSelector`, which calls
+the one `LooksLikeTaxiClearance`, so they cannot drift.
+
+### The clearance is not always the last thing said
+
+The shape test above was applied to **the** last transmission, as a pass/fail gate: if the
+newest thing on the frequency was not a taxi clearance, there was no clearance. KDTW,
+live, 2026-07-31 is why that is not enough. The pilot was holding short of runway 4R, was
+cleared to cross and continue, and pressed Ctrl+Shift+Y seven seconds later:
+
+```
+23:41:34  ATC   cross-runway 4R, then continue taxi via K, Q      <- the clearance
+23:41:38  ATC   hold short of runway 4R, 737 on the runway        <- 4 s later
+23:41:41  press
+```
+
+The advisory was the newest transmission and was correctly rejected — and nothing looked
+one message further back. The import logged
+`clearanceProblem='The last SayIntentions transmission was not a taxi clearance.'`, took
+SayIntentions' unchecked ground track as the whole route, and delivered A5, A, R:
+taxiways behind the aircraft. A controller interleaving advisories with clearances is
+ordinary, so this is not a one-off.
+
+The lookup now **scans newest-first for the newest transmission that IS a taxi clearance**.
+Three things bound what it may return, and each has a failure behind it:
+
+- **Never the pilot.** That rule already existed at the reader, and a scan-back is exactly
+  where it stops being obvious: this same capture carries the pilot's readback of the
+  ORIGINAL clearance — *"Taxi to Alpha 24 via Alpha 5, Alpha, Romeo, hold short of runway
+  4R"* — sitting in the history looking every bit like a clearance.
+- **This airport only.** Each `getCommsHistory` record carries an `ident`, and the feed
+  spans the whole flight: the KDTW capture still held Memphis Ground's *"Runway 36L taxi
+  via P2, T, M, M1"*, 2.5 hours and 500 miles behind. A record with no ident cannot
+  contradict the bound and stays eligible — that is every transmission read out of
+  `flight.json`, which publishes no ident anywhere, so treating absence as a mismatch
+  would retire that path rather than bound it.
+- **Within half an hour** of the newest transmission — the history's own clock, not the
+  wall clock. Judgement rather than measurement, and sized against this one capture from
+  both directions: the clearance the pilot needed sat 4 s back, and the original clearance
+  the aircraft was **still rolling on** sat 13 min 57 s back, so a tighter window starts
+  refusing clearances that are still in force. Half an hour is well past that and well
+  short of a turnaround dwell, which is the resurrection worth stopping — a clearance from
+  the leg before this one is a route already flown.
+
+The airport bound does most of that work; the window is the belt beside it, and the only
+one that bites at the `flight.json` site, where no ident exists. That site has never been
+observed to carry comms at all, so its widening from one transmission to half an hour of
+them is theoretical — but it is the bound to revisit first if SayIntentions ever starts
+filling it.
+
+**Ctrl+S is deliberately untouched.** It still speaks the newest ATC transmission, clearance
+or not. The two are different questions of the same history — *what was just said* versus
+*where was I told to taxi* — and at KDTW they have different answers four seconds apart.
+What changed underneath is that the whole history is now cached rather than only its newest
+entry, because one cached answer cannot serve both.
 
 ### Hold-short masking (safety-critical)
 
@@ -575,6 +637,17 @@ first version spelled the two separately, handled `CROSS(ING)` but only bare "ho
 short", so a pilot readback ("holding short of runway 15", which is exactly what
 SayIntentions publishes as the newest transmission) still made 15 the taxi destination.
 Two regexes for one concept will drift; keep them as one const.
+
+**And the separator before the runway is a hyphen as readily as a space.** KDTW Ground,
+live, 2026-07-31: *"cross-runway 4R, then continue taxi via K, Q"*. Spelled `\s+`, the
+mask matched CROSS followed by whitespace and never saw that crossing at all, so
+`ParseDestinationRunway`'s leftmost "runway 4R" became the **destination**: a taxiing
+aircraft routed at the active runway it had just been cleared to *cross*. It went
+unnoticed only because the clearance was being thrown away for a different reason (above),
+so the parser never ran on it — fixing the lookup exposed it. `PrefixToRunway` is now a
+const of its own, shared between the mask and the capture for the same reason `HoldPrefix`
+is, and `HoldPrefix` already had `[\s-]+` inside its own "hold-short" — the same lesson,
+one clause further along.
 
 The same masking is why the taxiway scan does **not** truncate at `cross`/`then`: a
 clearance legitimately continues, and reuses taxiways, across a runway crossing (the
@@ -952,17 +1025,49 @@ clearance was consulted. What changed is that it **says what it is**:
 clause (ground-track path only — a shortest path is this app's, not SayIntentions') and
 then the reason. A clearance that WAS read adds no words at all.
 
-#### `taxi_path` is transient, and it shrinks
+#### `taxi_path` is transient, and it is trimmed to what is ahead
 
-It is populated during the taxi and empty in the cruise, and it is the **remaining**
-route rather than the route as issued — one live taxi went 77 → 40 points as the aircraft
-moved. Nothing here treats it as a record of what was cleared.
+It is populated during the taxi and empty in the cruise. Nothing here treats it as a
+record of what was cleared.
 
-The practical consequence is that a **late** press has a shorter track, so the legs
-already behind the aircraft are gone from it and the clearance no longer runs through it.
-That fails the walk, so the clearance wins and the pilot is told the two disagreed. That
-is the intended outcome, not a defect: the sequence that reaches the form is still the
-full cleared route.
+**What it does with the legs already flown is not settled.** Two live captures, and they
+disagree:
+
+- **LSZH** went **77 → 40 points** as the aircraft moved — the *remaining* route,
+  shrinking behind it.
+- **KDTW, 2026-07-31** published **124 points of which 76 — 61 % — were behind the
+  aircraft**, the first of them 1,510 m back down the taxiway. That is the route as
+  **issued**, with more than half of it already flown.
+
+One capture of each. This section used to state the first as the rule, and a whole safety
+argument rested on it: a late press has a shorter track, so it no longer runs through the
+clearance, so the walk fails and the clearance wins — "the intended outcome, not a
+defect". That reasoning does not survive the second capture. At KDTW the track was long,
+it *did* run through the (short) clearance, and it won — delivering A and R, taxiways the
+aircraft had left.
+
+So what actually makes a late press safe is a **trim**, not an assumption:
+`SayIntentionsTaxiPathSnapper.TrimToPointsAhead` finds the published point nearest the
+aircraft and snaps from there on. At KDTW that turns `A, R, K, Q, U9` into `R, K, Q, U9` —
+A dropped, and R kept, because the aircraft is standing on R with about 220 m of it still
+to run past the crossing. What is behind is decided by where the aircraft is, not by which
+leg it started on.
+
+It is **guarded by the same 25 m** the snap uses. If the nearest published point is
+farther than that, the aircraft is not on the published track — towed, repositioned, or
+the track belongs to somewhere else — and nothing can say which part of it is behind, so
+the path passes through untouched. A wrong trim silently deletes legs the pilot was
+cleared for; no trim at worst restores the old behaviour. An exact tie breaks toward the
+**earlier** point, so a route that doubles back past the aircraft keeps the whole of its
+second pass.
+
+Nothing about a trim is announced. A route that starts where the aircraft is standing is
+the expected answer, not a warning. `sayintentions.log` records it as `geoTrimmed`, which
+with `geoPoints` adds back up to what SayIntentions published.
+
+The trim also feeds the agreement walk, and helpfully: a track cut to the remaining route
+is shorter, so it is a *description* of the remaining clearance rather than a route of its
+own, which is what the `2n + 1` guard is measuring.
 
 #### The naming source is a real limit
 

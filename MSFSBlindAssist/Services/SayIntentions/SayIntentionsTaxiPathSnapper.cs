@@ -88,6 +88,65 @@ public static class SayIntentionsTaxiPathSnapper
     internal const int MinRunPoints = 2;
 
     /// <summary>
+    /// The part of a published track that is still AHEAD of the aircraft: everything
+    /// from the point nearest the aircraft onward.
+    ///
+    /// The track is not always what is left of the route. It was documented as the
+    /// REMAINING route, shrinking as the aircraft taxis, on the strength of one live
+    /// capture that went 77 → 40 points — and a KDTW capture on 2026-07-31 shows the
+    /// other behaviour just as plainly. Holding short of runway 4R, cleared to cross and
+    /// continue, the aircraft at 42.20763 N 83.36765 W was published a 124-point path
+    /// whose FIRST point sat 1,510 m behind it: 76 of 124 points, 61 %, were pavement
+    /// already flown. Snapped whole, that track named A and R — taxiways the aircraft had
+    /// left — and with no clearance to check it against (the clearance had been missed
+    /// separately, see SayIntentionsClearanceSelector) it became the route.
+    ///
+    /// So a late press is NOT made safe by the track having shrunk. This is what makes it
+    /// safe, and it is why the "late press degrades to the clearance" reasoning in
+    /// docs/sayintentions.md no longer stands on its own.
+    ///
+    /// GUARDED by <see cref="SnapToleranceMetres"/>, the same line this file already
+    /// draws between "on pavement" and "not on it". If the nearest published point is
+    /// farther than that, the aircraft is not on the published track at all — it has been
+    /// towed, repositioned, or the track is for somewhere else — and NOTHING here can say
+    /// which part of it is behind. In that case the path is handed back untouched: a
+    /// wrong trim silently deletes legs the pilot was cleared for, where no trim at worst
+    /// leaves the old behaviour.
+    ///
+    /// An exact tie breaks toward the EARLIER index, so a route that doubles back past
+    /// the aircraft keeps the whole of the second pass rather than starting at it.
+    ///
+    /// Nothing about a trim is announced. A route that starts where the aircraft is
+    /// standing is the expected answer, not a warning.
+    /// </summary>
+    public static IReadOnlyList<GeoPoint> TrimToPointsAhead(
+        IReadOnlyList<GeoPoint> path, double aircraftLatitude, double aircraftLongitude)
+    {
+        if (path is null || path.Count == 0) return path ?? (IReadOnlyList<GeoPoint>)Array.Empty<GeoPoint>();
+
+        int nearest = 0;
+        double nearestMetres = double.MaxValue;
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            // Strict "<" is the tie-break: the first of two equidistant points wins.
+            double metres = PointToPointMetres(
+                aircraftLatitude, aircraftLongitude, path[i].Latitude, path[i].Longitude);
+            if (metres < nearestMetres)
+            {
+                nearestMetres = metres;
+                nearest = i;
+            }
+        }
+
+        if (nearest == 0 || nearestMetres > SnapToleranceMetres) return path;
+
+        var ahead = new List<GeoPoint>(path.Count - nearest);
+        for (int i = nearest; i < path.Count; i++) ahead.Add(path[i]);
+        return ahead;
+    }
+
+    /// <summary>
     /// The taxiways <paramref name="path"/> runs along, in order. Empty in, empty out —
     /// a missing or unreadable path degrades to "nothing to say", never an exception,
     /// because the caller is a hotkey a blind pilot presses mid-taxi.
@@ -197,6 +256,12 @@ public static class SayIntentionsTaxiPathSnapper
 
         return new SnapResult(taxiways, path.Count, unsnappedCount, droppedRunCount);
     }
+
+    /// <summary>Distance between two points, in metres. A degenerate segment through
+    /// <see cref="PointToSegmentMetres"/>, so the trim and the snap measure the airport
+    /// in exactly the same projection and can never disagree about the 25 m line.</summary>
+    private static double PointToPointMetres(double lat, double lon, double toLat, double toLon) =>
+        PointToSegmentMetres(lat, lon, toLat, toLon, toLat, toLon);
 
     /// <summary>
     /// Distance from a point to a segment, in metres, via equirectangular projection
