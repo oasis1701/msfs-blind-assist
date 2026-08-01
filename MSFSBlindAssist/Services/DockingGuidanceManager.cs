@@ -59,6 +59,12 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
     private double _lastAlongM;  // last forward (along-track) distance to the stop (m), for the status query
+    // Last intercept-lineup steering demand (deg, + = steer right) while engaged — feeds the
+    // spoken turn quantification (engage callout + Y status). The pan tone saturates at
+    // DockMaxPanThresholdDeg (15°), so on a slow-yawing airframe (A380: releasing the tiller
+    // does not stop the turn) a hard-panned ear alone can't tell 16° from 35° — the pilot
+    // needs the number to plan how much tiller the turn actually takes.
+    private double _lastLineupErrDeg;
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -130,7 +136,14 @@ public sealed class DockingGuidanceManager : IDisposable
             string what = _gate?.IsDeiceArea == true ? "deicing pad" : "stop";
             if (_state == DockState.Stopped) return "At the stop. Hold position.";
             if (_state == DockState.Docking)
-                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}.";
+            {
+                // Append the live steering demand in degrees — the pan tone saturates at
+                // 15°, so the number is the only way to size the turn before committing
+                // tiller on a slow-yawing airframe. "Centered." when inside the deadband.
+                string steer = SteerPhrase(_lastLineupErrDeg);
+                if (steer.Length == 0) steer = "Centered.";
+                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}. {steer}";
+            }
             return string.Empty;
         }
     }
@@ -296,7 +309,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // is false until the aircraft first comes within detail range.
                         if (wantDetail)
                             _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
-                        if (shouldEngage) EngageLocked(alongM);
+                        if (shouldEngage) EngageLocked(alongM, lineupErr);
                         else _state = DockState.Armed;
                         break;
 
@@ -367,6 +380,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // heading to the gate, so the final park is square, not askew. The
                         // connector turns happen earlier, before docking engages, and are
                         // steered by taxi's route-following tone.
+                        _lastLineupErrDeg = lineupErr;
                         _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(alongM, active: true);
                         if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
@@ -426,10 +440,11 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double alongM)
+    private void EngageLocked(double alongM, double lineupErrDeg)
     {
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
+        _lastLineupErrDeg = lineupErrDeg;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -440,10 +455,17 @@ public sealed class DockingGuidanceManager : IDisposable
         _stoppedShortSaid = false;
         string dist = DistanceFormatter.FromMetres(alongM);
 
+        // The initial steering demand, spoken BEFORE the pilot commits tiller: the pan
+        // tone saturates at 15°, so "far right ear" alone can't distinguish a 16° nudge
+        // from a 35° maximum-tiller swing — on a slow-yawing airframe (A380) that
+        // difference decides how much tiller to use and when to release it.
+        string steerPhrase = SteerPhrase(lineupErrDeg);
+        string steer = steerPhrase.Length == 0 ? "" : $" {steerPhrase}";
+
         if (_gate?.IsDeiceArea == true)
         {
             // Deice areas: datum-aligned pad, no VDGS, no jetway/door-side phrase.
-            _announcer.AnnounceImmediate($"Deicing guidance. {dist} to stop.");
+            _announcer.AnnounceImmediate($"Deicing guidance. {dist} to stop.{steer}");
         }
         else
         {
@@ -454,7 +476,7 @@ public sealed class DockingGuidanceManager : IDisposable
             string baseMsg = string.IsNullOrEmpty(vdgs)
                 ? $"Docking guidance. {dist} to stop."
                 : $"Docking guidance. {vdgs}. {dist} to stop.";
-            _announcer.AnnounceImmediate(baseMsg + orientationPhrase);
+            _announcer.AnnounceImmediate(baseMsg + steer + orientationPhrase);
         }
 
         _tone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
@@ -490,6 +512,28 @@ public sealed class DockingGuidanceManager : IDisposable
     ///   <item>Vgds*, Honeywell*, Dummy, "1", unknown → empty (no callout)</item>
     /// </list>
     /// </summary>
+    /// <summary>
+    /// Spoken quantification of the lateral steering demand (deg, + = steer right):
+    /// "Slight right, 5 degrees." / "Right, 15 degrees." / "Sharp right, 30 degrees."
+    /// Empty inside the ±3° deadband (the tone already reads centered there). Degrees
+    /// round to the nearest 5 — this is tiller planning, not surgery; the tone remains
+    /// the fine instrument. Heading degrees are a permitted verbal quantity (unlike
+    /// feet of cross-track — every pilot has a heading instrument; see the
+    /// taxi-guidance verbal-cue rule). Bands: 3-12 slight, 12-25 plain, ≥25 sharp —
+    /// "sharp" starting at 25° flags demands the 15°-saturated pan cannot convey and
+    /// that on a heavy airframe mean substantial, early tiller.
+    /// </summary>
+    internal static string SteerPhrase(double steerDeg)
+    {
+        double a = Math.Abs(steerDeg);
+        if (a < 3.0) return string.Empty;
+        string dir = steerDeg > 0 ? "right" : "left";
+        int rounded = Math.Max(5, (int)Math.Round(a / 5.0) * 5);
+        string strength = a >= 25.0 ? "Sharp " : a >= 12.0 ? "" : "Slight ";
+        string dirWord = strength.Length == 0 ? char.ToUpperInvariant(dir[0]) + dir[1..] : dir;
+        return $"{strength}{dirWord}, {rounded} degrees.";
+    }
+
     internal static string FriendlyVdgs(string? v)
     {
         if (string.IsNullOrWhiteSpace(v)) return string.Empty;
@@ -613,6 +657,7 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
+        _lastLineupErrDeg = 0.0;
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
