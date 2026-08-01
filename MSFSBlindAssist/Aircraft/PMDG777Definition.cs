@@ -3383,10 +3383,17 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                // SDK PMDG_777X_SDK.h line 272: "0: RTO  1: OFF  2: DISARM  3: \"1\" ...".
+                // The DISARM detent was MISSING here, so every label from index 2 up was one
+                // step ahead of reality: selecting "4" wrote 5, which is autobrake 3 — the
+                // ACARS/EICAS reported one setting lower than MSFSBA claimed, and landing
+                // rollouts ran long against the calculated setting (user-reported, then
+                // confirmed position-by-position against hardware via MobiFlight, including
+                // that index 7 exists and is the top detent). Verified live 2026-08-01.
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "RTO", [1] = "Off", [2] = "1", [3] = "2",
-                    [4] = "3", [5] = "4", [6] = "Auto"
+                    [0] = "RTO", [1] = "Off", [2] = "Disarm", [3] = "1",
+                    [4] = "2", [5] = "3", [6] = "4", [7] = "Max Auto"
                 }
             },
             ["BRAKES_ParkingBrake"] = new SimConnect.SimVarDefinition
@@ -5898,7 +5905,68 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 return false;
             }
-            simConnect.SendEvent("#" + switchEventId, (uint)target);
+
+            // The switch is GUARDED, and the guard must be driven explicitly (user-verified
+            // against the real switch via MobiFlight, 2026-08-01): EVT_OH_EMER_EXIT_LIGHT_GUARD
+            // takes 0 = closed, 1 = open. ARMED is the normal, guard-closed position; OFF and ON
+            // sit outside the guard, so the guard has to be lifted BEFORE the switch will move
+            // there, and it closes again when the switch returns to ARMED.
+            //
+            // An earlier build deliberately never touched the guard, on the belief that opening
+            // it left the switch unusable afterwards. That was wrong — the guard is just another
+            // event, and driving it is what makes OFF/ON reachable at all.
+            //
+            // The SWITCH itself still goes out via TransmitClientEvent with the absolute target
+            // ("#<id>", see the block comment above) — the CDA selector only ever steps one
+            // detent upward, which is why Armed → Off was unreachable through it. The GUARD is a
+            // plain momentary CDA event (SendPMDGEvent), the same path the generic guarded-switch
+            // dispatch uses.
+            //
+            // ⚠️ The guard and the switch travel on DIFFERENT transports — the guard is a CDA
+            // write (SendPMDGEvent), the switch a TransmitClientEvent — so they are NOT
+            // guaranteed to arrive in the order they were issued. Fired back-to-back, the
+            // switch could reach PMDG before the guard had opened, and the write was refused:
+            // the pilot had to pick the position TWICE (press one opened the guard, press two
+            // moved the switch, since by then the guard was already up). A MobiFlight profile
+            // doesn't show this because both of its writes take the same path.
+            //
+            // A short settle gap orders them reliably. 80 ms is the user's own hardware-informed
+            // figure and tested good; it is far below the generic SendGuardedSet's 150 ms, so
+            // the control still feels immediate. Do NOT drop it back to zero.
+            const int EmerLightsArmed = 1;      // 0 = Off, 1 = Armed, 2 = On
+            const int GuardSettleMs = 80;       // guard→switch ordering gap (see above)
+            EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
+            bool haveGuard = guardEventId != 0;
+
+            if (!haveGuard)
+            {
+                // No guard event resolved — move the switch alone rather than doing nothing.
+                simConnect.SendEvent("#" + switchEventId, (uint)target);
+                return true;
+            }
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    if (target != EmerLightsArmed)
+                    {
+                        // Leaving the guarded position (to Off or On): lift the guard, let it
+                        // land, then move the switch.
+                        simConnect.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, 1);
+                        await Task.Delay(GuardSettleMs);
+                        simConnect.SendEvent("#" + switchEventId, (uint)target);
+                    }
+                    else
+                    {
+                        // Back to ARMED: move the switch first, then close the guard over it.
+                        simConnect.SendEvent("#" + switchEventId, (uint)target);
+                        await Task.Delay(GuardSettleMs);
+                        simConnect.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, 0);
+                    }
+                }
+                catch { /* a failed guard/switch write must never break the panel */ }
+            });
             return true;
         }
 
