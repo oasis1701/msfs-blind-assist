@@ -65,6 +65,11 @@ public sealed class DockingGuidanceManager : IDisposable
     // does not stop the turn) a hard-panned ear alone can't tell 16° from 35° — the pilot
     // needs the number to plan how much tiller the turn actually takes.
     private double _lastLineupErrDeg;
+    // Live heading misalignment vs the gate axis (deg, + = aircraft right of the axis) while
+    // engaged, for the Y status. Also gates the "docking complete" callout — see the stop branch.
+    private double _lastHeadingOffDeg;
+    // One-shot for the "at the stop but askew" advisory; re-arms once the aircraft squares up.
+    private bool _askewSaid;
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -142,7 +147,13 @@ public sealed class DockingGuidanceManager : IDisposable
                 // tiller on a slow-yawing airframe. "Centered." when inside the deadband.
                 string steer = SteerPhrase(_lastLineupErrDeg);
                 if (steer.Length == 0) steer = "Centered.";
-                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}. {steer}";
+                // Also report how square the aircraft is with the gate axis — the second
+                // condition the completion callout now requires, so the pilot can check it
+                // on demand rather than discovering it only when GSX refuses the park.
+                string squareness = _gate?.IsDeiceArea == true || DockingGeometry.IsSquare(_lastHeadingOffDeg)
+                    ? " Square with the gate."
+                    : $" {Math.Abs(_lastHeadingOffDeg):F0} degrees off the gate heading.";
+                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}. {steer}{squareness}";
             }
             return string.Empty;
         }
@@ -339,8 +350,45 @@ public sealed class DockingGuidanceManager : IDisposable
                             SilenceLocked(); _overshootStop = true;
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
-                        if (DockingGeometry.IsStop(alongM)
-                            && (_gate?.IsDeiceArea == true || absCrossM <= DockingGeometry.StopMaxCrossMetres))
+                        // Reaching the stop band on the centerline is NOT enough to call the
+                        // park complete — the aircraft must also be SQUARE with the gate axis.
+                        // KJFK gate 20 (A380, 2026-08-01): the stop fired with the aircraft
+                        // 17.4° askew, GSX refused to register it as parked, and (worst for a
+                        // blind pilot) the "complete" callout landed MID-ALIGNMENT-TURN, so the
+                        // one cue meaning "you're done" told the pilot to stop steering exactly
+                        // when they needed to keep going. Deice pads are wide and datum-aligned:
+                        // they keep along-only semantics and skip both the cross and square gates.
+                        bool deice = _gate?.IsDeiceArea == true;
+                        double headingOffDeg = DockingGeometry.NormalizeDeg180(acHdgTrue - centerHdg);
+                        bool atStopBand = DockingGeometry.IsStop(alongM)
+                                          && (deice || absCrossM <= DockingGeometry.StopMaxCrossMetres);
+                        bool square = deice || DockingGeometry.IsSquare(headingOffDeg);
+
+                        if (atStopBand && !square)
+                        {
+                            // At the stop, on the line, but crooked. Do NOT complete and do NOT
+                            // silence: keep the steering tone + beeper live so the pilot can finish
+                            // the turn (a heavy needs to creep to steer at all), and say which way
+                            // and by how much — once per episode, re-armed when they square up.
+                            // Creeping on from here either squares up (→ complete) or trips the
+                            // overshoot "Stop." at −1 m, so this can never be a silent dead end.
+                            if (!_askewSaid)
+                            {
+                                _askewSaid = true;
+                                // Steering demand to square up is the NEGATED heading error:
+                                // aircraft right of the gate axis (+) needs left steer (−).
+                                string turn = SteerPhrase(-headingOffDeg);
+                                if (turn.Length == 0) turn = "Straighten up.";
+                                _announcer.AnnounceImmediate(
+                                    $"At the stop, but {Math.Abs(headingOffDeg):F0} degrees off the gate heading. {turn}");
+                            }
+                        }
+                        else if (atStopBand)
+                        {
+                            _askewSaid = false;
+                        }
+
+                        if (atStopBand && square)
                         {
                             // Cue 3: announce "GSX docking complete." instead of bare "Stop."
                             // when the gate is a GSX .ini stand with a real VDGS stop position
@@ -381,6 +429,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // connector turns happen earlier, before docking engages, and are
                         // steered by taxi's route-following tone.
                         _lastLineupErrDeg = lineupErr;
+                        _lastHeadingOffDeg = headingOffDeg;
                         _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(alongM, active: true);
                         if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
@@ -445,6 +494,7 @@ public sealed class DockingGuidanceManager : IDisposable
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
         _lastLineupErrDeg = lineupErrDeg;
+        _askewSaid = false;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -657,7 +707,7 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
-        _lastLineupErrDeg = 0.0;
+        _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0; _askewSaid = false;
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;

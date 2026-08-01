@@ -50,6 +50,36 @@ public static class DockingGeometry
     public const double StopMaxCrossMetres = 2.0;
 
     /// <summary>
+    /// Max heading misalignment (deg) from the gate axis that still counts as a good park,
+    /// and so gates the "GSX docking complete." callout alongside
+    /// <see cref="StopMaxCrossMetres"/>.
+    /// <para>
+    /// Live evidence (KJFK gate 20, A380, 2026-08-01): the aircraft reached the stop band
+    /// 1.9 m off the line but sitting <b>17.4° askew</b> (aircraft 43.4° true vs gate axis
+    /// 60.8°) — the completion callout fired anyway because the stop gate checked lateral
+    /// offset and along-track only, never orientation. GSX then correctly refused to treat
+    /// the aircraft as parked and offered "reposition". Worse for a blind pilot: the callout
+    /// arrives MID-TURN, so the one cue that says "you are done" fires while the alignment
+    /// turn is still in progress, and the pilot stops steering.
+    /// </para>
+    /// <para>
+    /// 7° is deliberately more generous than the ~2 m lateral gate: a widebody a couple of
+    /// degrees off still reaches its jetway, and nagging a good park would be worse than
+    /// letting a marginal one through. Tunable — widen only with live GSX evidence that a
+    /// larger error still yields arrival services.
+    /// </para>
+    /// </summary>
+    public const double StopMaxHeadingErrorDeg = 7.0;
+
+    /// <summary>
+    /// Is the aircraft square enough with the gate axis to call the park complete?
+    /// <paramref name="headingErrorDeg"/> is (aircraft heading − gate stop heading), any
+    /// sign convention normalized internally.
+    /// </summary>
+    public static bool IsSquare(double headingErrorDeg)
+        => Math.Abs(NormalizeDeg180(headingErrorDeg)) <= StopMaxHeadingErrorDeg;
+
+    /// <summary>
     /// Theoretical max cross-track closure per metre of along-track at the full
     /// 35° intercept: tan(35°) ≈ 0.70 m/m. Used by <see cref="IsLateralMiss"/> as
     /// the "could the pilot still possibly make it" bound.
