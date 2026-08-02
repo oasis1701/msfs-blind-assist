@@ -72,4 +72,20 @@ public class DockingSquareGateTests
         // 350 vs 10 degrees is 20 deg left, not 340 deg right.
         => Assert.Equal("Nose 20 degrees left of the gate heading",
                         DockingGuidanceManager.AskewDescription(350.0 - 10.0));
+
+    [Fact]
+    public void Deice_pad_gets_no_squareness_clause()
+        // A pad is wide and datum-aligned: no square gate is evaluated for it, so
+        // "Square with the gate." names both the wrong noun and an unchecked condition.
+        => Assert.Equal("", DockingGuidanceManager.SquarenessClause(isDeiceArea: true, headingOffDeg: 30.0));
+
+    [Fact]
+    public void Square_gate_reports_square()
+        => Assert.Equal(" Square with the gate.",
+                        DockingGuidanceManager.SquarenessClause(isDeiceArea: false, headingOffDeg: 3.0));
+
+    [Fact]
+    public void Non_square_gate_describes_the_misalignment()
+        => Assert.Equal(" Nose 18 degrees left of the gate heading.",
+                        DockingGuidanceManager.SquarenessClause(isDeiceArea: false, headingOffDeg: -17.4));
 }

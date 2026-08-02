@@ -148,9 +148,7 @@ public sealed class DockingGuidanceManager : IDisposable
                 // Also report how square the aircraft is with the gate axis — the second
                 // condition the completion callout now requires, so the pilot can check it
                 // on demand rather than discovering it only when GSX refuses the park.
-                string squareness = _gate?.IsDeiceArea == true || DockingGeometry.IsSquare(_lastHeadingOffDeg)
-                    ? " Square with the gate."
-                    : $" {Math.Abs(_lastHeadingOffDeg):F0} degrees off the gate heading.";
+                string squareness = SquarenessClause(_gate?.IsDeiceArea == true, _lastHeadingOffDeg);
                 return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}. {steer}{squareness}";
             }
             return string.Empty;
@@ -622,6 +620,18 @@ public sealed class DockingGuidanceManager : IDisposable
         string side = off > 0 ? "right" : "left";
         return $"Nose {deg} degrees {side} of the gate heading";
     }
+
+    /// <summary>
+    /// The squareness clause of the Y status, WITH its leading space so the caller can
+    /// concatenate it directly. Empty for a deice pad: pads are wide and datum-aligned, no
+    /// square gate is evaluated for them, and the engage callout already drops the
+    /// gate/jetway phrasing there — announcing "Square with the gate." on a pad named both
+    /// the wrong noun and a condition that was never checked.
+    /// </summary>
+    internal static string SquarenessClause(bool isDeiceArea, double headingOffDeg)
+        => isDeiceArea ? ""
+         : DockingGeometry.IsSquare(headingOffDeg) ? " Square with the gate."
+         : $" {AskewDescription(headingOffDeg)}.";
 
     /// <summary>
     /// Appends a throttled telemetry line (≤ ~2/s) so a live docking run can be diagnosed
