@@ -35,8 +35,11 @@ public class DockingSquareGateTests
         // acHdgTrue 43.4, gate axis 60.8 -> aircraft is 17.4 deg LEFT of the axis.
         double headingOff = DockingGeometry.NormalizeDeg180(43.4 - 60.8);
         Assert.False(DockingGeometry.IsSquare(headingOff));
-        // ...and the advisory tells the pilot to keep turning RIGHT (negated error).
-        Assert.Equal("Right, 15 degrees.", DockingGuidanceManager.SteerPhrase(-headingOff));
+        // The terminal callout names which way the nose sits and sends the pilot back: the
+        // stop band leaves 1.3 m of travel (along 0.3 -> -1.0), about 2 deg of heading change
+        // on a heavy, so the misalignment cannot be turned out from where it is detected.
+        Assert.Equal("Nose 18 degrees left of the gate heading",
+                     DockingGuidanceManager.AskewDescription(headingOff));
     }
 
     [Fact]
