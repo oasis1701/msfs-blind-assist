@@ -5839,6 +5839,26 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return isCargoKnob ? isFreighter : !isFreighter;
     }
 
+    // ----------------------------------------------------------------------
+    // Serializes the emergency-exit light guard→switch sequence (see the
+    // LTS_EmerLights block in HandleUIVariableSet). The sequence spans an
+    // 80 ms settle gap, and a screen-reader user arrowing through the combo
+    // commits one set PER ARROW KEY — so a second sequence starts while the
+    // first is still mid-gap. Left to interleave, the Armed sequence's
+    // guard-CLOSE can land between the Off sequence's guard-OPEN and its
+    // switch write: PMDG then refuses the switch and the combo displays a
+    // position the aircraft never reached — the exact "pick it twice"
+    // symptom the settle gap exists to prevent. (This is cooperative
+    // interleaving across awaits on ONE thread, not a data race; the gate is
+    // required even though every write stays on the UI thread.)
+    //
+    // A burst additionally collapses to its LAST selection via
+    // _emerLightsRequest — superseded picks are skipped WHOLE, never
+    // half-applied, so the guard can't be left open over a closed position.
+    // ----------------------------------------------------------------------
+    private static readonly SemaphoreSlim _emerLightsGate = new(1, 1);
+    private static int _emerLightsRequest;
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
@@ -5935,8 +5955,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // the control still feels immediate. Do NOT drop it back to zero.
             const int EmerLightsArmed = 1;      // 0 = Off, 1 = Armed, 2 = On
             const int GuardSettleMs = 80;       // guard→switch ordering gap (see above)
-            EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
-            bool haveGuard = guardEventId != 0;
+            bool haveGuard = EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
 
             if (!haveGuard)
             {
@@ -5945,10 +5964,24 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
-            _ = Task.Run(async () =>
+            // Fire-and-forget, but deliberately NOT via Task.Run. HandleUIVariableSet is only
+            // ever called on the UI thread, and with no ConfigureAwait(false) the awaits below
+            // resume there too — so every SimConnect call stays on the UI thread, exactly as the
+            // generic SendPMDGGuardedSet path does. Task.Run would move SendEvent onto a pool
+            // thread, where its lazy "#<id>" registration races the UI thread on SimConnectManager's
+            // UNLOCKED eventIds dictionary.
+            async Task DriveEmerLightsAsync(int seq)
             {
+                // The settle gap makes these sequences overlap: a second combo commit starts
+                // while the first is still mid-gap. See _emerLightsGate for why that must be
+                // serialized rather than left to interleave.
+                await _emerLightsGate.WaitAsync();
                 try
                 {
+                    if (Volatile.Read(ref _emerLightsRequest) != seq)
+                    {
+                        return; // a later selection superseded this one — skip it WHOLE
+                    }
                     if (target != EmerLightsArmed)
                     {
                         // Leaving the guarded position (to Off or On): lift the guard, let it
@@ -5965,8 +5998,21 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                         simConnect.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, 0);
                     }
                 }
-                catch { /* a failed guard/switch write must never break the panel */ }
-            });
+                catch (Exception ex)
+                {
+                    // Fire-and-forget: an escaped exception would otherwise vanish as an
+                    // unobserved task fault, leaving the switch unmoved with nothing in the log
+                    // to explain it. A failed guard/switch write must never break the panel.
+                    Log.Debug("PMDG", $"Emergency exit lights set to {target} failed: " +
+                                      $"{ex.GetType().Name}: {ex.Message}");
+                }
+                finally
+                {
+                    _emerLightsGate.Release();
+                }
+            }
+
+            _ = DriveEmerLightsAsync(Interlocked.Increment(ref _emerLightsRequest));
             return true;
         }
 
