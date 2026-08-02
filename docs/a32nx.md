@@ -91,6 +91,55 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 **TO CONFIG announces its result** (`AnnounceTakeoffConfigResult`, via the `onHeld` callback + `TakeoffConfigTestHoldMs = 1500`): the button is held 1.5 s so the FWC evaluates the config, then the cached `I_MIP_MASTER_WARNING_CAPT` is read and spoken — "Takeoff config normal." / "Takeoff config: check configuration." — the blind-pilot equivalent of the sighted `TO CONFIG NORMAL`, then it releases. Verification is in-sim (no automated tests); the reproduce/validate recipe is the §5.3 MCP recipe: press `1 (>L:S_ECAM_TO)` → master warning fires → `0` → clears. **First Officer flow has the SAME bug on its own writer** (`FirstOfficer/Generic/LVarActionExecutor.cs` `PulseCoreAsync`, on the `feature/first-officer` branch) — apply the identical release there when that branch is worked.
 
 
+### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
+
+**Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
+
+**How the Fenix encodes a selection.** The `aircraft.mcduN.display` dataref carries inline single-letter codes — colours `a c g m w y`, font sizes `s` (small) / `l` (large), all lowercase and case-sensitive so uppercase display text is never mistaken for a code. A selected option is marked **TWO ways at once: cyan (`c`) AND large font**, with its siblings small + white. Live capture, failure type = ALL, then after ONE `LSK1L` press:
+
+```
+before: c£wsNONEl/sMINORl/cALLw  cRANDOM*w    → ALL  is cyan+large
+after:  c£wcNONEw/sMINORl/sALLl  cRANDOM*w    → NONE is cyan+large
+```
+
+Both markers moved together, which is what establishes the convention (it is also the standard Airbus "selected option is large, the others small" idiom). There is **no failure-mode dataref** — all 481 datarefs were enumerated and only `I_CDU1_FAIL`/`I_CDU2_FAIL` match "fail" — so the display markup is the ONLY source of this state.
+
+**Root cause:** `StripFormatCodes` discarded both signals. Size codes were skipped unconditionally, and the one marker it emitted (a leading `*`) was gated on GREEN: `hasMixedColors = distinctColors.Count > 1 && distinctColors.Contains('g')`. This page's selection is cyan, so the gate was false and nothing was marked. The green-only assumption dates to the original Fenix MCDU commit (`07ba886e`) and had never been revisited.
+
+**Fix:** the decoding moved to `Services/FenixMcduFormat.cs` (pure + unit-tested, mirroring `FbwMcduFormat`), which keeps the per-character large/small flag and adds a **second, additive** rule: within a whitespace-delimited field holding a `/`-separated option group, mark the one option in LARGE font while every sibling is small. The original green rule is preserved byte-for-byte (colour segmentation still splits on every colour code, even a repeated one — verified by differential fuzz: 200 000 random size-code-free inputs decode identically to the pre-fix implementation). Result: `←NONE/MINOR/*ALL` and `←*REALISTIC/HIGH`.
+
+**Rule ordering is an invariant, and the shared marker set is NOT what prevents double-marking.** The colour rule must run FIRST, and the size rule then skips any option token the colour rule already claimed. The `HashSet<int>` only collapses an *identical* index, and the two rules deliberately anchor differently — rule 1 on the green segment's first character, rule 2 on the option's first letter/digit. When a green option starts on a non-alphanumeric (`(`, `[`, `←`, `-`), those anchors differ and the set does nothing: `wsAl/g(B)` decoded to `A/*(B)` before the fix went in and would have decoded to `A/*(*B)` — "star paren star B" on a screen reader — without the per-token overlap check in `MarkFieldIfOptionGroup`. Do not "simplify" that loop away.
+
+**The `currentLarge = true` initial value is load-bearing, not a fallback.** A line starts large and only an explicit `s` makes it small. The NONE-selected capture above carries no size code anywhere before `NONE`, so `NONE` reads as large purely from that initial value — flip it to `false` and that whole capture silently stops marking. The cost is that an unsized-but-meant-small first option would be marked (`ABC/sDEF/sGHI` → `*ABC/DEF/GHI`); the Fenix always emits `s` explicitly to go small, so that shape does not occur in practice. Both facts are pinned by tests.
+
+**The `SpecialChars` glyph table uses `\uXXXX` escapes on purpose.** The keys are Latin-1 supplement characters (`¤ ¥ ¢ £`) matched against live dataref text; as literals in a BOM-less UTF-8 file they would mangle if the file were ever re-saved as CP1252, breaking arrow decoding at RUNTIME with no compile error. Do not "modernise" them to literals.
+
+**Do NOT "simplify" this to a colour test.** Broadening the colour rule to "green or cyan" is the obvious-looking fix and it is wrong: cyan is used throughout the MCDU for entry fields, brackets and the leading `←` cycle arrow, so it would emit an asterisk on nearly every line — including `*←` on this very line. The size rule is deliberately conservative and bails out unless there are ≥2 options, each option's letters/digits are uniformly one size, and EXACTLY one is large; that leaves page counters (`1/1`), labels (`FROM/TO`) and same-size values (`250/.78`) untouched. A token's size is read from its **letters/digits only**, so the always-large `←` prefix can't misreport the first option as selected. The group is bounded by whitespace so the adjacent TRIGGER column (`RANDOM*`) is never pulled in as a fourth option.
+
+`MCDUDisplayData.Lines[]` (the 24-column `SplitLine` pairs) is written but never read — the Fenix form renders `RawLines` — so the marker's column shift has no consumer. If a future feature starts reading `Lines[]`, re-check that truncation.
+
+### The FBW A32NX MCDU does NOT have this bug — checked live, no code change (2026-08)
+
+`FbwMcduFormat` drops `{small}`/`{big}` as "styling only" (`DropTags`, line ~27) — structurally the same assumption that caused the Fenix bug above — so the FBW A32NX was probed live to see whether it loses a selection the same way. **It does not. `FbwMcduFormat` was deliberately left unchanged; do not port the Fenix size rule to it.**
+
+**Method:** ~350 cells across 11 pages read straight off SimBridge (`ws://localhost:8380/interfaces/v1/mcdu`), dumping RAW cell markup so the size tags stay visible: MCDU MENU, INIT A, PERF TAKE OFF RWY, RADIO NAV, INIT FUEL PRED, DATA INDEX, F-PLN, AIDS, ATSU DATALINK, AOC MENU, ATC MENU. (`tools/fbw-mcdu-probe` does the same job but needs Node, which this machine lacks — a throwaway `ClientWebSocket` console app was used instead. Note SimBridge streams updates continuously, so the first frame after a key press is usually STALE: drain to the LAST frame, and never cancel a `ReceiveAsync` to do it — that aborts the socket.)
+
+**Result: zero instances of the Fenix idiom** (a `/`-separated group of ≥2 real options with exactly one large among small siblings). FBW *does* use the size tags meaningfully, but for the other Airbus convention — **large = pilot-entered / entry field, small = FMS-computed, default, or optional**:
+
+```
+INIT A          big:"---"   small:"36090"        CRZ FL entry     / TROPO default
+PERF TAKE OFF   big:"___"   small:"    F=---"    V-speed entry    / computed F-speed
+RADIO NAV       big:"[  ]"  small:"/[    ]"      VOR ident entry  / optional course
+```
+
+Those are adjacent FIELDS in one cell, not competing options. Selection/availability on the FBW MCDU is carried by **colour** instead (`{green}<FMGC (REQ)`, `{inop}NAV B/UP>`), which `DecodeCell`'s existing mixed-colour green rule already surfaces.
+
+The RADIO NAV rows are the closest false-positive candidate — they carry both a `/` and mixed sizes — and the Fenix rule would correctly ignore them anyway: `[  ]`/`[    ]` contain no letters or digits, so the `firstAlnum < 0` guard disqualifies the group. The conservatism guards hold against FBW markup too.
+
+**Two things this sweep could NOT reach — re-check them before calling the FBW fully clear:**
+- **PERF APPR.** FBW gates PERF page selection on flight phase; on the ground in preflight `NEXTPAGE`/`PREVPAGE` do not move off TAKE OFF. PERF APPR carries `LDG CONF` (CONF 3 vs FULL), the one genuinely mutually-exclusive pair on an A320 MCDU.
+- **A populated F-PLN.** No flight plan was loaded, so F-PLN was empty. On a populated F-PLN, FBW renders *entered* speed/altitude constraints large and *predicted* values small — the same number carrying different meaning with no other cue. That would be a real gap of a DIFFERENT kind (not "which option is selected" but "is this value mine or the FMS's"), and it needs a loaded flight plan to observe.
+
 ### A32NX dev-feedback sweep (2026-07) — A380-batch bugs mirrored + fixed on the A32NX
 
 The `fix/dev-feedback-batch` A380 fixes were swept against the A32NX with live-sim verification (aircraft at gate, calc-path writes + downstream read-backs). Confirmed + fixed:
