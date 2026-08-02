@@ -605,6 +605,31 @@ public sealed class DockingGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// Descriptive misalignment phrase for the gate axis: "Nose 18 degrees right of the gate
+    /// heading". <paramref name="headingOffDeg"/> is (aircraft heading − gate stop heading),
+    /// normalized internally; positive = the nose sits clockwise of (right of) the axis. No
+    /// leading or trailing punctuation — callers compose it.
+    /// <para>
+    /// Degrees CEIL, never round: with "F0" a not-square 7.4° speaks "7 degrees", and 7 is
+    /// inside <see cref="DockingGeometry.StopMaxHeadingErrorDeg"/> — the phrase would name a
+    /// number that reads as acceptable. Floored at 1 so the phrase is well-defined for any
+    /// input, though callers only reach it when NOT square.
+    /// </para>
+    /// <para>
+    /// The wording follows the <see cref="DockingGeometry.IsLateralMiss"/> callout: it names
+    /// where the aircraft IS, not what to do with the tiller. The terminal callout pairs it
+    /// with "Back up and try again." — which a steering command would contradict.
+    /// </para>
+    /// </summary>
+    internal static string AskewDescription(double headingOffDeg)
+    {
+        double off = DockingGeometry.NormalizeDeg180(headingOffDeg);
+        int deg = Math.Max(1, (int)Math.Ceiling(Math.Abs(off)));
+        string side = off > 0 ? "right" : "left";
+        return $"Nose {deg} degrees {side} of the gate heading";
+    }
+
+    /// <summary>
     /// Appends a throttled telemetry line (≤ ~2/s) so a live docking run can be diagnosed
     /// post-hoc: state, ground speed, raw + along-track distances, the bearing-vs-centerline
     /// angle (hdgErr), the intercept lineup error + signed cross-track, the gate stop heading,

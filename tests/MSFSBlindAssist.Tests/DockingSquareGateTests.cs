@@ -46,4 +46,27 @@ public class DockingSquareGateTests
         Assert.True(DockingGeometry.IsSquare(DockingGeometry.NormalizeDeg180(359.0 - 2.0)));
         Assert.False(DockingGeometry.IsSquare(DockingGeometry.NormalizeDeg180(350.0 - 10.0)));
     }
+
+    [Theory]
+    [InlineData(17.4, "Nose 18 degrees right of the gate heading")]
+    [InlineData(-17.4, "Nose 18 degrees left of the gate heading")]
+    [InlineData(30.0, "Nose 30 degrees right of the gate heading")]
+    public void Askew_description_names_the_side_and_ceils_the_degrees(double deg, string expected)
+        => Assert.Equal(expected, DockingGuidanceManager.AskewDescription(deg));
+
+    [Fact]
+    public void Askew_description_never_speaks_a_number_inside_the_square_gate()
+    {
+        // 7.4 deg is NOT square, but an "F0" format would say "7 degrees" — and 7 IS square,
+        // so the phrase would name a number that reads as acceptable. Ceiling says 8.
+        Assert.False(DockingGeometry.IsSquare(7.4));
+        Assert.Equal("Nose 8 degrees right of the gate heading",
+                     DockingGuidanceManager.AskewDescription(7.4));
+    }
+
+    [Fact]
+    public void Askew_description_normalizes_wraparound()
+        // 350 vs 10 degrees is 20 deg left, not 340 deg right.
+        => Assert.Equal("Nose 20 degrees left of the gate heading",
+                        DockingGuidanceManager.AskewDescription(350.0 - 10.0));
 }
