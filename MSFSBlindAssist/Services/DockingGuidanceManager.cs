@@ -562,28 +562,6 @@ public sealed class DockingGuidanceManager : IDisposable
     ///   <item>Vgds*, Honeywell*, Dummy, "1", unknown → empty (no callout)</item>
     /// </list>
     /// </summary>
-    /// <summary>
-    /// Spoken quantification of the lateral steering demand (deg, + = steer right):
-    /// "Slight right, 5 degrees." / "Right, 15 degrees." / "Sharp right, 30 degrees."
-    /// Empty inside the ±3° deadband (the tone already reads centered there). Degrees
-    /// round to the nearest 5 — this is tiller planning, not surgery; the tone remains
-    /// the fine instrument. Heading degrees are a permitted verbal quantity (unlike
-    /// feet of cross-track — every pilot has a heading instrument; see the
-    /// taxi-guidance verbal-cue rule). Bands: 3-12 slight, 12-25 plain, ≥25 sharp —
-    /// "sharp" starting at 25° flags demands the 15°-saturated pan cannot convey and
-    /// that on a heavy airframe mean substantial, early tiller.
-    /// </summary>
-    internal static string SteerPhrase(double steerDeg)
-    {
-        double a = Math.Abs(steerDeg);
-        if (a < 3.0) return string.Empty;
-        string dir = steerDeg > 0 ? "right" : "left";
-        int rounded = Math.Max(5, (int)Math.Round(a / 5.0) * 5);
-        string strength = a >= 25.0 ? "Sharp " : a >= 12.0 ? "" : "Slight ";
-        string dirWord = strength.Length == 0 ? char.ToUpperInvariant(dir[0]) + dir[1..] : dir;
-        return $"{strength}{dirWord}, {rounded} degrees.";
-    }
-
     internal static string FriendlyVdgs(string? v)
     {
         if (string.IsNullOrWhiteSpace(v)) return string.Empty;
@@ -596,6 +574,34 @@ public sealed class DockingGuidanceManager : IDisposable
         // but guard here so if a deice gate somehow reaches this path it stays silent.
         // Generic Vgds* / Honeywell* / unknown → no spoken type (not actionable for blind pilot).
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Spoken quantification of the lateral steering demand (deg, + = steer right):
+    /// "Slight right, 5 degrees." / "Right, 15 degrees." / "Sharp right, 30 degrees."
+    /// Empty inside the ±3° deadband (the tone already reads centered there). Degrees round
+    /// to the nearest 5 — this is tiller planning, not surgery; the tone remains the fine
+    /// instrument. Heading degrees are a permitted verbal quantity (unlike feet of
+    /// cross-track — every pilot has a heading instrument; see the taxi-guidance verbal-cue rule).
+    /// <para>
+    /// The strength word is chosen from the ROUNDED number, never the raw angle, so the word
+    /// and the number can never disagree: bands are 5-10 "Slight", 15-20 plain, ≥25 "Sharp".
+    /// Choosing from the raw angle made 12.4° say "Right, 10 degrees." — the plain band's word
+    /// on a Slight-band number — and gave 24.9° and 25.0° the same number under two different
+    /// words. Rounding is AwayFromZero, not the default banker's rounding, which sent 12.5° to
+    /// 10 and 22.5° to 20. "Sharp" at ≥25° flags demands the 15°-saturated pan cannot convey,
+    /// which on a heavy airframe mean substantial, early tiller.
+    /// </para>
+    /// </summary>
+    internal static string SteerPhrase(double steerDeg)
+    {
+        double a = Math.Abs(steerDeg);
+        if (a < 3.0) return string.Empty;
+        string dir = steerDeg > 0 ? "right" : "left";
+        int rounded = Math.Max(5, (int)Math.Round(a / 5.0, MidpointRounding.AwayFromZero) * 5);
+        string strength = rounded >= 25 ? "Sharp " : rounded >= 15 ? "" : "Slight ";
+        string dirWord = strength.Length == 0 ? char.ToUpperInvariant(dir[0]) + dir[1..] : dir;
+        return $"{strength}{dirWord}, {rounded} degrees.";
     }
 
     /// <summary>
