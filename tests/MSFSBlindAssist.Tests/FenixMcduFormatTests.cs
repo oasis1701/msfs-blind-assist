@@ -148,14 +148,54 @@ public class FenixMcduFormatTests
             FenixMcduFormat.StripFormatCodes("c£wsNONEl/sMINORl/cALLw  cRANDOM*w"));
     }
 
+    [Fact]
+    public void StripFormatCodes_marks_each_qualifying_group_on_a_multi_column_line()
+    {
+        // Two independent whitespace-bounded groups, each with its own selection. The
+        // whitespace bound is what keeps them from merging into one four-option group.
+        Assert.Equal("A/*B  C/*D", FenixMcduFormat.StripFormatCodes("sA/lB  sC/lD"));
+    }
+
+    [Fact]
+    public void StripFormatCodes_unsized_first_option_is_treated_as_large()
+    {
+        // Pins the decoder's "a line starts large until an 's' appears" default, which is
+        // load-bearing rather than a fallback: the live NONE-selected capture
+        // (see StripFormatCodes_marks_the_selected_option_when_NONE_is_active) carries no
+        // size code at all before NONE, so that fixture only decodes correctly because an
+        // unsized glyph counts as large. Flipping the default breaks that capture.
+        Assert.Equal("*ABC/DEF/GHI", FenixMcduFormat.StripFormatCodes("ABC/sDEF/sGHI"));
+    }
+
     // --- Both rules on one line --------------------------------------------------------
 
     [Fact]
-    public void StripFormatCodes_green_and_size_rules_do_not_double_mark()
+    public void StripFormatCodes_green_and_size_rules_do_not_double_mark_when_anchors_agree()
     {
-        // A green large option among small siblings gets exactly one marker.
+        // Green segment starts on the option's first letter, so both rules pick index 2.
         string result = FenixMcduFormat.StripFormatCodes("wsAl/gB");
         Assert.Equal("A/*B", result);
         Assert.Equal(1, result.Count(c => c == '*'));
+    }
+
+    [Fact]
+    public void StripFormatCodes_green_and_size_rules_do_not_double_mark_when_anchors_differ()
+    {
+        // The load-bearing case: the green segment starts on '(' (index 2) while the size
+        // rule's anchor is the first letter 'B' (index 3). A shared marker SET does not
+        // catch this — only the per-token overlap check does. Regression guard for
+        // "A/*(*B)", which reads as "star paren star B" on a screen reader.
+        foreach (var (raw, expected) in new[]
+                 {
+                     ("wsAl/g(B)", "A/*(B)"),
+                     ("wsAl/g[B]", "A/*[B]"),
+                     ("wsAl/g£B",  "A/*←B"),
+                     ("wsAl/g-B",  "A/*-B"),
+                 })
+        {
+            string result = FenixMcduFormat.StripFormatCodes(raw);
+            Assert.Equal(expected, result);
+            Assert.Equal(1, result.Count(c => c == '*'));
+        }
     }
 }

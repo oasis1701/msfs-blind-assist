@@ -26,14 +26,21 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public static class FenixMcduFormat
 {
+    /// <summary>
+    /// Display glyph -> accessible glyph. Written as \uXXXX escapes ON PURPOSE, not as
+    /// literals: the KEYS are Latin-1 supplement characters matched against live dataref
+    /// text, so if this file were ever re-saved as CP1252 the literals would mangle and
+    /// arrow decoding would break silently at RUNTIME, with no compile error. Escapes are
+    /// encoding-proof. (The file is UTF-8 without a BOM, matching the rest of the repo.)
+    /// </summary>
     private static readonly Dictionary<char, char> SpecialChars = new()
     {
         { '#', '-' },  // box -> hyphen (better for Braille displays)
-        { '&', 'Δ' },  // delta
-        { '¤', '↑' }, // up arrow
-        { '¥', '↓' }, // down arrow
-        { '¢', '→' }, // right arrow
-        { '£', '←' }, // left arrow
+        { '&', '\u0394' },  // delta
+        { '\u00A4', '\u2191' }, // ¤ -> up arrow
+        { '\u00A5', '\u2193' }, // ¥ -> down arrow
+        { '\u00A2', '\u2192' }, // ¢ -> right arrow
+        { '\u00A3', '\u2190' }, // £ -> left arrow
     };
 
     private static readonly HashSet<char> ColorCodeSet = new() { 'a', 'c', 'g', 'm', 'w', 'y' };
@@ -50,7 +57,7 @@ public static class FenixMcduFormat
     {
         public string Text = "";
         public List<Segment> Segments = new();
-        public bool[] Large = System.Array.Empty<bool>();
+        public bool[] Large = Array.Empty<bool>();
     }
 
     private static Decoded Decode(string text)
@@ -61,7 +68,16 @@ public static class FenixMcduFormat
         var large = new List<bool>();
 
         char currentColor = 'w'; // default white
-        bool currentLarge = true; // lines start in large font until an 's' appears
+
+        // LOAD-BEARING, not a mere fallback: a line starts in large font and only an
+        // explicit 's' makes it small. The live "NONE selected" capture
+        // (c£wcNONEw/sMINORl/sALLl) carries NO size code anywhere before NONE — NONE reads
+        // as large purely from this initial value, which is the only reason that capture
+        // decodes to the correct selection. Flip this to false and the NONE case silently
+        // stops marking. The cost of the default is that an unsized-but-meant-small first
+        // option would be marked as selected ("ABC/sDEF/sGHI" -> "*ABC/DEF/GHI"); the Fenix
+        // always emits 's' explicitly to go small, so that shape does not occur in practice.
+        bool currentLarge = true;
         var currentText = new StringBuilder();
 
         foreach (char c in text)
@@ -115,8 +131,13 @@ public static class FenixMcduFormat
 
         var decoded = Decode(text);
 
-        // Marker insertion points, as indices into decoded.Text. A set so the two rules can
-        // never double-mark the same token.
+        // Marker insertion points, as indices into decoded.Text.
+        //
+        // ORDER MATTERS: rule 1 runs FIRST and rule 2 then skips any option token rule 1
+        // already claimed. The HashSet alone is NOT enough — it only collapses an IDENTICAL
+        // index, and the two rules deliberately pick different anchors (rule 1 the green
+        // segment's first character, rule 2 the option's first letter/digit), so on e.g.
+        // "wsAl/g(B)" they would otherwise emit "A/*(*B)".
         var markers = new HashSet<int>();
         AddGreenMarkers(decoded, markers);
         AddSelectedOptionMarkers(decoded, markers);
@@ -209,6 +230,7 @@ public static class FenixMcduFormat
 
         int largeCount = 0;
         int largeMarkerIndex = -1;
+        int largeTokenStart = -1, largeTokenEnd = -1;
 
         for (int t = 0; t < tokenStarts.Count; t++)
         {
@@ -232,9 +254,22 @@ public static class FenixMcduFormat
             {
                 largeCount++;
                 largeMarkerIndex = firstAlnum;
+                largeTokenStart = tokenStarts[t];
+                largeTokenEnd = tokenEnds[t];
             }
         }
 
-        if (largeCount == 1) markers.Add(largeMarkerIndex);
+        if (largeCount != 1) return;
+
+        // Rule 1 may already have marked this very token, at a DIFFERENT index: its anchor
+        // is the green segment's first character, which is only the same character when the
+        // segment happens to start on a letter/digit. Marking again would emit two
+        // asterisks in one token ("A/*(*B)"), which reads as noise. One marker per token.
+        foreach (int m in markers)
+        {
+            if (m >= largeTokenStart && m < largeTokenEnd) return;
+        }
+
+        markers.Add(largeMarkerIndex);
     }
 }
