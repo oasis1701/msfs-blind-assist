@@ -118,6 +118,28 @@ Both markers moved together, which is what establishes the convention (it is als
 
 `MCDUDisplayData.Lines[]` (the 24-column `SplitLine` pairs) is written but never read — the Fenix form renders `RawLines` — so the marker's column shift has no consumer. If a future feature starts reading `Lines[]`, re-check that truncation.
 
+### The FBW A32NX MCDU does NOT have this bug — checked live, no code change (2026-08)
+
+`FbwMcduFormat` drops `{small}`/`{big}` as "styling only" (`DropTags`, line ~27) — structurally the same assumption that caused the Fenix bug above — so the FBW A32NX was probed live to see whether it loses a selection the same way. **It does not. `FbwMcduFormat` was deliberately left unchanged; do not port the Fenix size rule to it.**
+
+**Method:** ~350 cells across 11 pages read straight off SimBridge (`ws://localhost:8380/interfaces/v1/mcdu`), dumping RAW cell markup so the size tags stay visible: MCDU MENU, INIT A, PERF TAKE OFF RWY, RADIO NAV, INIT FUEL PRED, DATA INDEX, F-PLN, AIDS, ATSU DATALINK, AOC MENU, ATC MENU. (`tools/fbw-mcdu-probe` does the same job but needs Node, which this machine lacks — a throwaway `ClientWebSocket` console app was used instead. Note SimBridge streams updates continuously, so the first frame after a key press is usually STALE: drain to the LAST frame, and never cancel a `ReceiveAsync` to do it — that aborts the socket.)
+
+**Result: zero instances of the Fenix idiom** (a `/`-separated group of ≥2 real options with exactly one large among small siblings). FBW *does* use the size tags meaningfully, but for the other Airbus convention — **large = pilot-entered / entry field, small = FMS-computed, default, or optional**:
+
+```
+INIT A          big:"---"   small:"36090"        CRZ FL entry     / TROPO default
+PERF TAKE OFF   big:"___"   small:"    F=---"    V-speed entry    / computed F-speed
+RADIO NAV       big:"[  ]"  small:"/[    ]"      VOR ident entry  / optional course
+```
+
+Those are adjacent FIELDS in one cell, not competing options. Selection/availability on the FBW MCDU is carried by **colour** instead (`{green}<FMGC (REQ)`, `{inop}NAV B/UP>`), which `DecodeCell`'s existing mixed-colour green rule already surfaces.
+
+The RADIO NAV rows are the closest false-positive candidate — they carry both a `/` and mixed sizes — and the Fenix rule would correctly ignore them anyway: `[  ]`/`[    ]` contain no letters or digits, so the `firstAlnum < 0` guard disqualifies the group. The conservatism guards hold against FBW markup too.
+
+**Two things this sweep could NOT reach — re-check them before calling the FBW fully clear:**
+- **PERF APPR.** FBW gates PERF page selection on flight phase; on the ground in preflight `NEXTPAGE`/`PREVPAGE` do not move off TAKE OFF. PERF APPR carries `LDG CONF` (CONF 3 vs FULL), the one genuinely mutually-exclusive pair on an A320 MCDU.
+- **A populated F-PLN.** No flight plan was loaded, so F-PLN was empty. On a populated F-PLN, FBW renders *entered* speed/altitude constraints large and *predicted* values small — the same number carrying different meaning with no other cue. That would be a real gap of a DIFFERENT kind (not "which option is selected" but "is this value mine or the FMS's"), and it needs a loaded flight plan to observe.
+
 ### A32NX dev-feedback sweep (2026-07) — A380-batch bugs mirrored + fixed on the A32NX
 
 The `fix/dev-feedback-batch` A380 fixes were swept against the A32NX with live-sim verification (aircraft at gate, calc-path writes + downstream read-backs). Confirmed + fixed:
