@@ -91,6 +91,27 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 **TO CONFIG announces its result** (`AnnounceTakeoffConfigResult`, via the `onHeld` callback + `TakeoffConfigTestHoldMs = 1500`): the button is held 1.5 s so the FWC evaluates the config, then the cached `I_MIP_MASTER_WARNING_CAPT` is read and spoken — "Takeoff config normal." / "Takeoff config: check configuration." — the blind-pilot equivalent of the sighted `TO CONFIG NORMAL`, then it releases. Verification is in-sim (no automated tests); the reproduce/validate recipe is the §5.3 MCP recipe: press `1 (>L:S_ECAM_TO)` → master warning fires → `0` → clears. **First Officer flow has the SAME bug on its own writer** (`FirstOfficer/Generic/LVarActionExecutor.cs` `PulseCoreAsync`, on the `feature/first-officer` branch) — apply the identical release there when that branch is worked.
 
 
+### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
+
+**Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
+
+**How the Fenix encodes a selection.** The `aircraft.mcduN.display` dataref carries inline single-letter codes — colours `a c g m w y`, font sizes `s` (small) / `l` (large), all lowercase and case-sensitive so uppercase display text is never mistaken for a code. A selected option is marked **TWO ways at once: cyan (`c`) AND large font**, with its siblings small + white. Live capture, failure type = ALL, then after ONE `LSK1L` press:
+
+```
+before: c£wsNONEl/sMINORl/cALLw  cRANDOM*w    → ALL  is cyan+large
+after:  c£wcNONEw/sMINORl/sALLl  cRANDOM*w    → NONE is cyan+large
+```
+
+Both markers moved together, which is what establishes the convention (it is also the standard Airbus "selected option is large, the others small" idiom). There is **no failure-mode dataref** — all 481 datarefs were enumerated and only `I_CDU1_FAIL`/`I_CDU2_FAIL` match "fail" — so the display markup is the ONLY source of this state.
+
+**Root cause:** `StripFormatCodes` discarded both signals. Size codes were skipped unconditionally, and the one marker it emitted (a leading `*`) was gated on GREEN: `hasMixedColors = distinctColors.Count > 1 && distinctColors.Contains('g')`. This page's selection is cyan, so the gate was false and nothing was marked. The green-only assumption dates to the original Fenix MCDU commit (`07ba886e`) and had never been revisited.
+
+**Fix:** the decoding moved to `Services/FenixMcduFormat.cs` (pure + unit-tested, mirroring `FbwMcduFormat`), which keeps the per-character large/small flag and adds a **second, additive** rule: within a whitespace-delimited field holding a `/`-separated option group, mark the one option in LARGE font while every sibling is small. The original green rule is preserved byte-for-byte (colour segmentation still splits on every colour code, even a repeated one) and the two rules share a marker set so a line can never be double-marked. Result: `←NONE/MINOR/*ALL` and `←*REALISTIC/HIGH`.
+
+**Do NOT "simplify" this to a colour test.** Broadening the colour rule to "green or cyan" is the obvious-looking fix and it is wrong: cyan is used throughout the MCDU for entry fields, brackets and the leading `←` cycle arrow, so it would emit an asterisk on nearly every line — including `*←` on this very line. The size rule is deliberately conservative and bails out unless there are ≥2 options, each option's letters/digits are uniformly one size, and EXACTLY one is large; that leaves page counters (`1/1`), labels (`FROM/TO`) and same-size values (`250/.78`) untouched. A token's size is read from its **letters/digits only**, so the always-large `←` prefix can't misreport the first option as selected. The group is bounded by whitespace so the adjacent TRIGGER column (`RANDOM*`) is never pulled in as a fourth option.
+
+`MCDUDisplayData.Lines[]` (the 24-column `SplitLine` pairs) is written but never read — the Fenix form renders `RawLines` — so the marker's column shift has no consumer. If a future feature starts reading `Lines[]`, re-check that truncation.
+
 ### A32NX dev-feedback sweep (2026-07) — A380-batch bugs mirrored + fixed on the A32NX
 
 The `fix/dev-feedback-batch` A380 fixes were swept against the A32NX with live-sim verification (aircraft at gate, calc-path writes + downstream read-backs). Confirmed + fixed:

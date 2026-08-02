@@ -462,6 +462,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A32NX wipers are circuits 77 (Capt) / 80 (F/O) — not the A380's 141/143 — and the live OFF/SLOW/FAST position needs BOTH circuit switch AND power (power rests at 100% while off; the switch bool alone can't read back FAST); `XMLVAR_A320_WiperSwitch_*` does not exist in FBW. → [a32nx.md](docs/a32nx.md)
 - A32NX seat belts is genuinely 2-position ON/OFF in the FBW model (no AUTO — unlike the A380); don't "fix" it to 3-position. → [a32nx.md](docs/a32nx.md)
 - A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set (same lesson as the A380 pax fix). → [a32nx.md](docs/a32nx.md)
+- The Fenix MCDU marks a selected option with cyan AND large font — never gate the accessible `*` marker on green alone (that left CONFIG > FAILURES with no indication of NONE/MINOR/ALL), and never "fix" it by broadening the colour test to cyan: cyan is used for entry fields, brackets and the leading `←` cycle arrow, so it asterisks nearly every line. Selection detection belongs in `FenixMcduFormat`'s size rule (large-among-small within a `/`-separated group), which must stay conservative — ≥2 options, each uniformly one size, exactly one large. → [a32nx.md](docs/a32nx.md)
 
 ### Gemini AI (→ [gemini.md](docs/gemini.md))
 
