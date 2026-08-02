@@ -293,6 +293,12 @@ public sealed class DockingGuidanceManager : IDisposable
                     DockLog(groundSpeedKts, distM, alongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
                 }
                 double absCrossM = Math.Abs(crossFt) * 0.3048;
+                // Heading misalignment vs the gate axis. Hoisted above the switch because BOTH
+                // the engage frame (to seed the Y status) and the Docking case (the completion
+                // gate) need it: all sections of a C# switch share one declaration space, so a
+                // variable declared in the Docking case is in scope but definitely-unassigned
+                // in the Idle/Armed case.
+                double headingOffDeg = DockingGeometry.NormalizeDeg180(acHdgTrue - centerHdg);
 
                 switch (_state)
                 {
@@ -316,7 +322,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // is false until the aircraft first comes within detail range.
                         if (wantDetail)
                             _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
-                        if (shouldEngage) EngageLocked(alongM, lineupErr);
+                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg);
                         else _state = DockState.Armed;
                         break;
 
@@ -355,7 +361,6 @@ public sealed class DockingGuidanceManager : IDisposable
                         // not. Deice pads are wide and datum-aligned: they keep along-only
                         // semantics and skip both the cross and square gates.
                         bool deice = _gate?.IsDeiceArea == true;
-                        double headingOffDeg = DockingGeometry.NormalizeDeg180(acHdgTrue - centerHdg);
                         bool atStopBand = DockingGeometry.IsStop(alongM)
                                           && (deice || absCrossM <= DockingGeometry.StopMaxCrossMetres);
                         bool square = deice || DockingGeometry.IsSquare(headingOffDeg);
@@ -482,11 +487,15 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double alongM, double lineupErrDeg)
+    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg)
     {
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
         _lastLineupErrDeg = lineupErrDeg;
+        // Seed the squareness too, or a Y press on the engage frame reports "Square with the
+        // gate." from the ResetLocked default of 0.0 whatever the real alignment — the Docking
+        // case does not run on the frame that engages.
+        _lastHeadingOffDeg = headingOffDeg;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
