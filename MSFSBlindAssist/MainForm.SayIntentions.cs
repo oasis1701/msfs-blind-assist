@@ -919,6 +919,25 @@ public partial class MainForm
         throw new InvalidOperationException("Aircraft position unavailable.");
     }
 
+    /// <summary>Whether the stand the aircraft is parked at IS the assigned gate — by
+    /// its name, its display name, or any of this scenery's own online aliases for
+    /// it. The alias leg exists for the same naming variance the import's resolver
+    /// handles (KDTW: scenery A24A, SI/OSM A24) — without it this readout announced
+    /// "not assigned gate A24" at the very stand SI assigned.</summary>
+    internal static bool NearestSpotMatchesAssignedGate(ParkingSpot nearest, string assignedGate)
+    {
+        string wanted = SayIntentionsClearanceParser.NormalizeParkingName(assignedGate);
+        if (wanted.Length == 0) return false;
+
+        return MatchesWanted(nearest.ToString())
+            || MatchesWanted(TaxiGraph.FormatParkingDisplayName(nearest))
+            || nearest.Aliases.Any(MatchesWanted);
+
+        bool MatchesWanted(string label) =>
+            SayIntentionsClearanceParser.NormalizeParkingName(label)
+                .Equals(wanted, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Reports whether the aircraft is actually sitting at the gate SI
     /// assigned. Purely informational — it never changes the route.
     ///
@@ -954,10 +973,7 @@ public partial class MainForm
 
             if (nearest == null || nearestMetres > 100.0) return null;
 
-            string wanted = SayIntentionsClearanceParser.NormalizeParkingName(assignedGate);
-            bool matchesAssigned =
-                SayIntentionsClearanceParser.NormalizeParkingName(nearest.ToString()).Equals(wanted, StringComparison.OrdinalIgnoreCase)
-                || SayIntentionsClearanceParser.NormalizeParkingName(TaxiGraph.FormatParkingDisplayName(nearest)).Equals(wanted, StringComparison.OrdinalIgnoreCase);
+            bool matchesAssigned = NearestSpotMatchesAssignedGate(nearest, assignedGate);
 
             string proximity = nearestMetres < 30
                 ? "near"

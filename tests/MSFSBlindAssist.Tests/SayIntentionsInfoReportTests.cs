@@ -499,16 +499,28 @@ public class SayIntentionsInfoReportTests
     [Fact]
     public void FlatteningRendersEachSectionAsAHeadingThenItsItems()
     {
-        var sections = EddfArrivalSections();
-        var report = SayIntentionsInfoReport.Flatten(sections);
+        var report = SayIntentionsInfoReport.Flatten(EddfArrivalSections());
 
-        var expected = new List<string>();
-        foreach (var section in sections)
+        // A literal, not a re-derivation of Flatten's own loop — the point of this test
+        // is to pin the actual shape (heading, its items, one blank line between
+        // blocks, none at either end), not to restate the implementation and always
+        // agree with it.
+        var expected = new[]
         {
-            if (expected.Count > 0) expected.Add("");
-            expected.Add(section.Heading);
-            expected.AddRange(section.Items);
-        }
+            "Flight",
+            "Current airport: EDDF",
+            "Origin: LMML",
+            "Destination: EDDF",
+            "",
+            "Gate and runway",
+            "Assigned arrival gate: Terminal 3 Gate J1",
+            "",
+            "EDDF airport",
+            "Altimeter: 30.12 inches (1020 hPa)",
+            "",
+            "LMML airport",
+            "Altimeter: 30.00 inches (1016 hPa)",
+        };
 
         Assert.Equal(expected, report);
         Assert.NotEmpty(report);
@@ -522,9 +534,14 @@ public class SayIntentionsInfoReportTests
         var landing = KbosContext();
         landing.ClearedForLanding = "22L";
 
-        var report = Report(landing, null, null, null);
+        var sections = Sections(landing, null, null, null);
 
-        Assert.Contains("Cleared to land runway: 22L", report);
-        Assert.DoesNotContain(report, line => line.StartsWith("Departure runway", StringComparison.Ordinal));
+        // Membership in the actual "Gate and runway" section, not just somewhere in the
+        // flattened report — the flattened Contains this replaced would have passed
+        // just as happily had the line landed in a different section entirely.
+        var gateSection = Assert.Single(sections, s => s.Heading == "Gate and runway");
+        Assert.Contains("Cleared to land runway: 22L", gateSection.Items);
+        Assert.DoesNotContain(gateSection.Items,
+            line => line.StartsWith("Departure runway", StringComparison.Ordinal));
     }
 }

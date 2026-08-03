@@ -74,6 +74,12 @@ public static class SayIntentionsInfoReport
         return lines;
     }
 
+    /// <summary>The one gate-section item that is a placeholder rather than content.
+    /// <see cref="HasContent"/> must treat a report carrying only this line as empty,
+    /// and the two sites must never spell it separately — a reword of the emit site
+    /// silently broke the emptiness test before this const tied them.</summary>
+    internal const string NoAssignedGateItem = "Assigned arrival gate: none assigned yet";
+
     /// <summary>
     /// True when the report says anything worth opening a window for.
     ///
@@ -87,7 +93,7 @@ public static class SayIntentionsInfoReport
     public static bool HasContent(IReadOnlyList<InfoSection> sections) =>
         sections.Any(section => section.Items.Any(item =>
             !string.IsNullOrWhiteSpace(item)
-            && !item.StartsWith("Assigned arrival gate: none", StringComparison.Ordinal)));
+            && !item.Equals(NoAssignedGateItem, StringComparison.Ordinal)));
 
     private static void AddFlight(List<InfoSection> sections, SayIntentionsFlightContext context)
     {
@@ -121,7 +127,7 @@ public static class SayIntentionsInfoReport
         // is better than dropping the line: a pilot who has heard about assigned gates
         // and sees nothing cannot tell "none yet" from "we failed to read it".
         items.Add(string.IsNullOrWhiteSpace(assignedGate)
-            ? "Assigned arrival gate: none assigned yet"
+            ? NoAssignedGateItem
             : $"Assigned arrival gate: {assignedGate}");
 
         if (!string.IsNullOrWhiteSpace(nearbyParkingStatus))

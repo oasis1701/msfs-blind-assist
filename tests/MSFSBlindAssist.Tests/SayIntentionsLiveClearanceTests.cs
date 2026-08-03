@@ -304,7 +304,9 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+        try { Directory.Delete(_dir, recursive: true); }
+        catch (IOException) { /* a leaked handle must not cascade into every teardown */ }
+        catch (UnauthorizedAccessException) { }
     }
 
     [Fact]

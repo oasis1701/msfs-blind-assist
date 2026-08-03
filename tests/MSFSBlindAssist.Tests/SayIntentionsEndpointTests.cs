@@ -52,9 +52,11 @@ public class SayIntentionsEndpointTests
     }
 
     [Fact]
-    public void RedactionStripsTheKeyForLogging()
+    public void RedactionStripsTheKeyAndKeepsTheEndpoint()
     {
-        string url = SayIntentionsEndpoint.Build(null, "getParking", "SECRET");
-        Assert.DoesNotContain("SECRET", SayIntentionsEndpoint.Redact(url));
+        string url = SayIntentionsEndpoint.Build(null, "getCommsHistory", "SECRET123");
+        string redacted = SayIntentionsEndpoint.Redact(url);
+        Assert.Equal("https://apipri.sayintentions.ai/sapi/getCommsHistory?api_key=***", redacted);
+        Assert.DoesNotContain("SECRET123", redacted);
     }
 }

@@ -19,6 +19,7 @@
 // the sim per the PR's test plan.
 
 using MSFSBlindAssist;
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Services.SayIntentions;
 
@@ -1433,5 +1434,43 @@ public class SayIntentionsExternalRouteTests
     {
         Assert.Equal(-1, TaxiAssistForm.RestoredIntersectionIndex(
             Array.Empty<string>(), "T4 — 1800 m remaining"));
+    }
+
+    // --- NearestSpotMatchesAssignedGate: the "at the assigned gate" status readout -----
+    //
+    // The live KDTW arrival: scenery names the stand A24A, SI and OSM say A24. The
+    // import's own resolver finds this stand through the alias (see
+    // MatchDestinationAlias above); the "are you at your assigned gate" status readout
+    // ran a name-only comparison and announced a false mismatch at the very stand SI
+    // assigned. The fix shares the alias leg with the import.
+
+    [Fact]
+    public void TheParkedStandMatchesTheAssignedGateThroughItsOnlineAlias()
+    {
+        // The KDTW arrival: scenery names the stand A24A, SI and OSM say A24. The
+        // import's resolver finds it through the alias — the "are you at your assigned
+        // gate" status readout compared names only and announced a false mismatch at
+        // the very stand SI assigned.
+        var spot = new ParkingSpot
+        {
+            AirportICAO = "KDTW",
+            Name = "A",
+            Number = 24,
+            Suffix = "A",
+            Type = 10, // Gate Medium
+            Aliases = { "A24" }
+        };
+        Assert.True(MainForm.NearestSpotMatchesAssignedGate(spot, "South Terminal Gate A24"));
+        Assert.False(MainForm.NearestSpotMatchesAssignedGate(spot, "Gate B12"));
+    }
+
+    [Fact]
+    public void TheRunwaySideIsDiscriminatedWhenBothSiblingsAreOffered()
+    {
+        var offered = new[] { "Runway 15L", "Runway 15R", "Runway 33C" };
+        Assert.Equal("Runway 15R", TaxiAssistForm.MatchDestinationLabel(offered, true, "15R"));
+        Assert.Equal("Runway 15L", TaxiAssistForm.MatchDestinationLabel(offered, true, "15L"));
+        Assert.Equal(2, TaxiAssistForm.FindRunwayItemIndex(new[] { "(none)", "15L", "15R" }, "15R"));
+        Assert.Equal(1, TaxiAssistForm.FindRunwayItemIndex(new[] { "(none)", "15R", "15L" }, "15R"));
     }
 }

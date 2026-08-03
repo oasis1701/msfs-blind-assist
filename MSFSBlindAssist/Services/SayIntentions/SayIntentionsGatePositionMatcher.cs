@@ -107,10 +107,14 @@ public static class SayIntentionsGatePositionMatcher
 
         foreach (var candidate in candidates)
         {
-            if (candidate.RadiusMetres <= 0) continue;
+            // A candidate with no usable radius states no scale; NaN additionally slides
+            // through every comparison below (NaN <= 0 and NaN > x are both false), which
+            // made a corrupt-radius stand admissible AT ANY DISTANCE.
+            if (candidate.RadiusMetres <= 0 || double.IsNaN(candidate.RadiusMetres)) continue;
 
             double metres = TaxiGeo.HaversineMeters(
                 candidate.Latitude, candidate.Longitude, latitude, longitude);
+            if (double.IsNaN(metres)) continue;
             if (metres > Math.Min(candidate.RadiusMetres * NoseStopRadiusFactor, MaxMatchMetres))
                 continue;
 

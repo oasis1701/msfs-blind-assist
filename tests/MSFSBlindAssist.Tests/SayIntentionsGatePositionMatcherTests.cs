@@ -92,6 +92,17 @@ public class SayIntentionsGatePositionMatcherTests
     }
 
     [Fact]
+    public void ANaNRadiusCandidateNeverMatches()
+    {
+        // NaN slides through both raw comparisons in the guard: `NaN <= 0` is false (so
+        // the no-radius skip missed it) and `distance > NaN * factor` is also false (so
+        // the tolerance check admitted it at ANY distance). A corrupt-radius stand would
+        // therefore have matched every point on Earth.
+        var candidates = new[] { new GatePositionCandidate("NaN stand", 52.0, 13.0, double.NaN) };
+        Assert.Null(SayIntentionsGatePositionMatcher.Match(candidates, 52.0, 13.0));
+    }
+
+    [Fact]
     public void The_backstop_rejects_a_distant_stand_with_an_absurd_radius()
     {
         // Not the discriminator — the guard for pathological navdata, where a whole apron
