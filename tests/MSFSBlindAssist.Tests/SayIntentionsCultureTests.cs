@@ -53,19 +53,20 @@ public class SayIntentionsCultureTests
     [Fact]
     public void TheClassifierStillClassifiesUnderTurkishCaseFolding() => UnderCulture("tr-TR", () =>
     {
-        // No station/channel signal on purpose: this forces the AtcVocabulary path,
-        // whose TAXI (with its I) is exactly what tr-TR folding broke.
+        // No station/channel signal on purpose: this forces the AtcVocabulary path.
+        // The message carries ONLY the TAXI keyword (no RUNWAY, GROUND, etc.), so this
+        // can only pass via the TAXI branch — whose I is exactly what tr-TR folding broke.
         Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
-            "", "", null, "Taxi to runway 22 via Alpha"));
+            "", "", null, "Taxi via Alpha and Bravo"));
         Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
             "", null, "INTERCOM", "Cabin crew doors to arrival"));
     });
 
     [Fact]
-    public void ParkingNamesStillNormalizeUnderTurkishCaseFolding() => UnderCulture("tr-TR", () =>
+    public void AGateKeywordStillMatchesUnderTurkishCaseFolding() => UnderCulture("tr-TR", () =>
     {
-        // "Parking" and "Position" both carry an i through the keyword/noise regexes.
-        Assert.Equal("A24", SayIntentionsClearanceParser.NormalizeParkingName("South Terminal Parking A24"));
-        Assert.Equal("B6", SayIntentionsClearanceParser.NormalizeParkingName("Position B06"));
+        // GateInClearance sees the raw mixed-case clearance, and PARKING/POSITION
+        // carry the letter I that tr-TR folding breaks.
+        Assert.Equal("A24", SayIntentionsClearanceParser.ParseDestinationGate("Taxi to parking A24 via Lima"));
     });
 }
