@@ -185,6 +185,39 @@ public static class SayIntentionsTransmissionClassifier
     ///    clearances whose designator follows a preposition ("Proceed to runway 27 via
     ///    Alpha") — a silenced instruction traded for a leaked announcement. Left open
     ///    deliberately and recorded here rather than traded away silently.
+    /// e. NOMINAL USE of "taxi to" — the noun, not the imperative — passes the TAXI TO leg.
+    ///    Both of these classify radio AND satisfy LooksLikeTaxiClearance, so both are
+    ///    selector-reachable: "Welcome to Frankfurt ladies and gentlemen. Taxi to the gate
+    ///    will take about ten minutes, cabin crew please remain seated", and "Cabin crew,
+    ///    prepare for arrival. During taxi to the gate please remain seated".
+    ///
+    ///    The guard STRUCTURALLY cannot see this shape, which is why it is a residual and
+    ///    not a bug to be tuned out: the guard reads one word back looking for REGISTER,
+    ///    and the words in front of a nominal "taxi" are not register markers — a sentence
+    ///    start, or During/After/Before. Nothing at that position distinguishes the noun
+    ///    from the imperative. Accepted on three grounds, in order of weight:
+    ///      - The leg is load-bearing. It is what rescues the no-via clearances that had no
+    ///        leg at all ("Taxi to the passenger terminal, contact ground on 121.9"), which
+    ///        is finding C — the reason the leg exists. Every closure tried against this
+    ///        residual re-silenced those.
+    ///      - The downstream damage is bounded and DISCLOSED. A PA line selected as the
+    ///        clearance carries no via-list, no runway and no gate, so the import finds
+    ///        nothing to apply and degrades to shortest path — which it says out loud
+    ///        ("No taxiways from the clearance matched this airport. Using shortest path.",
+    ///        MainForm.SayIntentions.cs). The pilot is told, not silently misrouted.
+    ///      - The alternative is the worse direction. Narrowing the leg to close this
+    ///        silences real instructions, and a silenced instruction is the failure this
+    ///        readout must never have. Same asymmetry as (d).
+    /// f. The PLEASE entry in the guard silences a real instruction: "Please continue taxi
+    ///    via Alpha" and "Please hold short of runway 27" do not match any leg. This is the
+    ///    DANGEROUS direction of loss, so it is inventoried rather than buried. Two things
+    ///    bound it. It only bites when the message ALSO carries a cabin word — without one
+    ///    the veto never runs and the instruction reaches the readout untouched via the
+    ///    ordinary AtcVocabulary path (measured, both ways). And SayIntentions' controller
+    ///    register does not say "please" — no live capture carries it — while its cabin
+    ///    register says it constantly, which is what earns PLEASE its place in the guard.
+    ///    If a live capture of a "please"-prefixed controller instruction ever turns up,
+    ///    this entry is the first thing to revisit.
     /// </summary>
     private static readonly Regex AtcInstructionVocabulary = new(
         @"\b(?:" +

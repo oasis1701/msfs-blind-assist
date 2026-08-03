@@ -145,8 +145,12 @@ public class SayIntentionsTransmissionClassifierTests
     [InlineData("ATC", "Tower", "118.700", "Line up and wait at Charlie, passenger jet crossing")]
     // --- Real clearances that had NO leg at all before this round: silenced from the
     // readout AND from the clearance selector, despite LooksLikeTaxiClearance being true.
-    // TAXI TO is the leg that rescues the first two; the guard still blocks "we/will/our
-    // taxi to ...", so the leg costs nothing on the cabin side.
+    // TAXI TO is the leg that rescues the first two. The guard blocks the INFLECTED cabin
+    // forms of it ("we/will/our taxi to ..."), but not every one: NOMINAL use — "taxi to the
+    // gate will take ten minutes", "During taxi to the gate" — has no register word in front
+    // of it to read, so it passes. That is residual (e) on AtcInstructionVocabulary, load-
+    // tested by ADocumentedResidual_ANominalTaxiToCabinPaStillPasses below. The leg is kept
+    // because narrowing it re-silences these two rows, which is the worse direction.
     [InlineData("ATC", "Ground", "COM1", "Taxi to the passenger terminal, contact ground on 121.9")]
     [InlineData("ATC", "Ground", null, "Taxi to runway 22 remain this frequency, caution passenger bus crossing")]
     // The designator-led abbreviated clearance: no verb anywhere, so no verb leg could ever
@@ -261,5 +265,34 @@ public class SayIntentionsTransmissionClassifierTests
         Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
             "", null, null,
             "This is your captain, we will taxi to runway 27 via Alpha and Bravo, cabin crew please be seated"));
+    }
+
+    /// <summary>
+    /// The second KNOWN, DOCUMENTED LEAK, pinned for the same reason as the one above. See
+    /// residual (e) on AtcInstructionVocabulary: the narration guard reads ONE word back
+    /// looking for first-person/narrative REGISTER, so it catches every inflected cabin form
+    /// of "taxi to" ("we/will/our taxi to the gate") — but NOMINAL use of the same words has
+    /// no register word in front of it to read. A sentence start, or During/After/Before, is
+    /// not a register marker, so the guard structurally cannot tell the noun from the
+    /// imperative here. Both of these classify radio AND satisfy LooksLikeTaxiClearance.
+    ///
+    /// Kept open deliberately: the TAXI TO leg is what rescues the no-via clearances of
+    /// finding C ("Taxi to the passenger terminal, contact ground on 121.9"), every attempted
+    /// closure re-silenced those, and a PA selected as the clearance names no via-list,
+    /// runway or gate — so the import degrades to shortest path and SAYS SO. Same asymmetry
+    /// as residual (d): a silenced instruction is the worse direction.
+    ///
+    /// If a future round closes it, DELETE this test rather than weakening it.
+    /// </summary>
+    [Fact]
+    public void ADocumentedResidual_ANominalTaxiToCabinPaStillPasses()
+    {
+        Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "", null, null,
+            "Welcome to Frankfurt ladies and gentlemen. Taxi to the gate will take about ten minutes, cabin crew please remain seated"));
+
+        Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "", null, null,
+            "Cabin crew, prepare for arrival. During taxi to the gate please remain seated"));
     }
 }
