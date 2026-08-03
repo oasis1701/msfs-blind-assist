@@ -59,6 +59,15 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
     private double _lastAlongM;  // last forward (along-track) distance to the stop (m), for the status query
+    // Last intercept-lineup steering demand (deg, + = steer right) while engaged — feeds the
+    // spoken turn quantification (engage callout + Y status). The pan tone saturates at
+    // DockMaxPanThresholdDeg (15°), so on a slow-yawing airframe (A380: releasing the tiller
+    // does not stop the turn) a hard-panned ear alone can't tell 16° from 35° — the pilot
+    // needs the number to plan how much tiller the turn actually takes.
+    private double _lastLineupErrDeg;
+    // Live heading misalignment vs the gate axis (deg, + = aircraft right of the axis) while
+    // engaged, for the Y status. Also gates the "docking complete" callout — see the stop branch.
+    private double _lastHeadingOffDeg;
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -130,7 +139,18 @@ public sealed class DockingGuidanceManager : IDisposable
             string what = _gate?.IsDeiceArea == true ? "deicing pad" : "stop";
             if (_state == DockState.Stopped) return "At the stop. Hold position.";
             if (_state == DockState.Docking)
-                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}.";
+            {
+                // Append the live steering demand in degrees — the pan tone saturates at
+                // 15°, so the number is the only way to size the turn before committing
+                // tiller on a slow-yawing airframe. "Centered." when inside the deadband.
+                string steer = SteerPhrase(_lastLineupErrDeg);
+                if (steer.Length == 0) steer = "Centered.";
+                // Also report how square the aircraft is with the gate axis — the second
+                // condition the completion callout now requires, so the pilot can check it
+                // on demand rather than discovering it only when GSX refuses the park.
+                string squareness = SquarenessClause(_gate?.IsDeiceArea == true, _lastHeadingOffDeg);
+                return $"Docking. {DistanceFormatter.FromMetres(Math.Max(0.0, _lastAlongM))} to {what}. {steer}{squareness}";
+            }
             return string.Empty;
         }
     }
@@ -273,6 +293,12 @@ public sealed class DockingGuidanceManager : IDisposable
                     DockLog(groundSpeedKts, distM, alongM, hdgErr, lineupErr, crossFt, centerHdg, acHdgTrue, sLat, sLon, lat, lon);
                 }
                 double absCrossM = Math.Abs(crossFt) * 0.3048;
+                // Heading misalignment vs the gate axis. Hoisted above the switch because BOTH
+                // the engage frame (to seed the Y status) and the Docking case (the completion
+                // gate) need it: all sections of a C# switch share one declaration space, so a
+                // variable declared in the Docking case is in scope but definitely-unassigned
+                // in the Idle/Armed case.
+                double headingOffDeg = DockingGeometry.NormalizeDeg180(acHdgTrue - centerHdg);
 
                 switch (_state)
                 {
@@ -296,7 +322,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // is false until the aircraft first comes within detail range.
                         if (wantDetail)
                             _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
-                        if (shouldEngage) EngageLocked(alongM);
+                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg);
                         else _state = DockState.Armed;
                         break;
 
@@ -326,8 +352,41 @@ public sealed class DockingGuidanceManager : IDisposable
                             SilenceLocked(); _overshootStop = true;
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
-                        if (DockingGeometry.IsStop(alongM)
-                            && (_gate?.IsDeiceArea == true || absCrossM <= DockingGeometry.StopMaxCrossMetres))
+                        // Reaching the stop band on the centerline is NOT enough to call the
+                        // park complete — the aircraft must also be SQUARE with the gate axis.
+                        // KJFK gate 20 (A380, 2026-08-01): the stop fired with the aircraft
+                        // 17.4° askew, GSX refused to register it as parked, and (worst for a
+                        // blind pilot) the "complete" callout landed MID-ALIGNMENT-TURN — the one
+                        // cue meaning "you're done" told the pilot the park was good when it was
+                        // not. Deice pads are wide and datum-aligned: they keep along-only
+                        // semantics and skip both the cross and square gates.
+                        bool deice = _gate?.IsDeiceArea == true;
+                        bool atStopBand = DockingGeometry.IsStop(alongM)
+                                          && (deice || absCrossM <= DockingGeometry.StopMaxCrossMetres);
+                        bool square = deice || DockingGeometry.IsSquare(headingOffDeg);
+
+                        if (atStopBand && !square)
+                        {
+                            // At the stop, on the line, but crooked. This is a FAILED dock, not a
+                            // nudge: only 1.3 m of travel remains (stop band along 0.3 -> -1.0 m),
+                            // which buys ~1.9° of heading change at an A380's full-tiller radius
+                            // and ~4° on a 737 — the misalignment cannot be turned out from here,
+                            // and GSX refuses to register the park anyway (KJFK gate 20, A380,
+                            // 2026-08-01: 17.4° askew -> "reposition"). So mirror IsLateralMiss:
+                            // verbal stop-and-retry, silence, overshoot-flavoured Stopped so no
+                            // "docked" tone marks a bad park, and let the existing back-up re-arm
+                            // (RearmBackupMetres) start a clean re-dock. Naming where the aircraft
+                            // IS rather than commanding a turn is deliberate — a steering command
+                            // would contradict "Back up and try again."
+                            _announcer.AnnounceImmediate(
+                                $"Stop. {AskewDescription(headingOffDeg)}. Back up and try again.");
+                            SilenceLocked(); _overshootStop = true;
+                            _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
+                        }
+
+                        // Square by now — the askew case broke out above, and deice pads set
+                        // square = true unconditionally.
+                        if (atStopBand)
                         {
                             // Cue 3: announce "GSX docking complete." instead of bare "Stop."
                             // when the gate is a GSX .ini stand with a real VDGS stop position
@@ -367,6 +426,8 @@ public sealed class DockingGuidanceManager : IDisposable
                         // heading to the gate, so the final park is square, not askew. The
                         // connector turns happen earlier, before docking engages, and are
                         // steered by taxi's route-following tone.
+                        _lastLineupErrDeg = lineupErr;
+                        _lastHeadingOffDeg = headingOffDeg;
                         _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(alongM, active: true);
                         if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
@@ -426,10 +487,15 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double alongM)
+    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg)
     {
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
+        _lastLineupErrDeg = lineupErrDeg;
+        // Seed the squareness too, or a Y press on the engage frame reports "Square with the
+        // gate." from the ResetLocked default of 0.0 whatever the real alignment — the Docking
+        // case does not run on the frame that engages.
+        _lastHeadingOffDeg = headingOffDeg;
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -440,10 +506,17 @@ public sealed class DockingGuidanceManager : IDisposable
         _stoppedShortSaid = false;
         string dist = DistanceFormatter.FromMetres(alongM);
 
+        // The initial steering demand, spoken BEFORE the pilot commits tiller: the pan
+        // tone saturates at 15°, so "far right ear" alone can't distinguish a 16° nudge
+        // from a 35° maximum-tiller swing — on a slow-yawing airframe (A380) that
+        // difference decides how much tiller to use and when to release it.
+        string steerPhrase = SteerPhrase(lineupErrDeg);
+        string steer = steerPhrase.Length == 0 ? "" : $" {steerPhrase}";
+
         if (_gate?.IsDeiceArea == true)
         {
             // Deice areas: datum-aligned pad, no VDGS, no jetway/door-side phrase.
-            _announcer.AnnounceImmediate($"Deicing guidance. {dist} to stop.");
+            _announcer.AnnounceImmediate($"Deicing guidance. {dist} to stop.{steer}");
         }
         else
         {
@@ -454,7 +527,7 @@ public sealed class DockingGuidanceManager : IDisposable
             string baseMsg = string.IsNullOrEmpty(vdgs)
                 ? $"Docking guidance. {dist} to stop."
                 : $"Docking guidance. {vdgs}. {dist} to stop.";
-            _announcer.AnnounceImmediate(baseMsg + orientationPhrase);
+            _announcer.AnnounceImmediate(baseMsg + steer + orientationPhrase);
         }
 
         _tone.InvertPan = SettingsManager.Current.TaxiGuidanceInvertSteeringTone;
@@ -503,6 +576,71 @@ public sealed class DockingGuidanceManager : IDisposable
         // Generic Vgds* / Honeywell* / unknown → no spoken type (not actionable for blind pilot).
         return string.Empty;
     }
+
+    /// <summary>
+    /// Spoken quantification of the lateral steering demand (deg, + = steer right):
+    /// "Slight right, 5 degrees." / "Right, 15 degrees." / "Sharp right, 30 degrees."
+    /// Empty inside the ±3° deadband (the tone already reads centered there). Degrees round
+    /// to the nearest 5 — this is tiller planning, not surgery; the tone remains the fine
+    /// instrument. Heading degrees are a permitted verbal quantity (unlike feet of
+    /// cross-track — every pilot has a heading instrument; see the taxi-guidance verbal-cue rule).
+    /// <para>
+    /// The strength word is chosen from the ROUNDED number, never the raw angle, so the word
+    /// and the number can never disagree: bands are 5-10 "Slight", 15-20 plain, ≥25 "Sharp".
+    /// Choosing from the raw angle made 12.4° say "Right, 10 degrees." — the plain band's word
+    /// on a Slight-band number — and gave 24.9° and 25.0° the same number under two different
+    /// words. Rounding is AwayFromZero, not the default banker's rounding, which sent 12.5° to
+    /// 10 and 22.5° to 20. "Sharp" at ≥25° flags demands the 15°-saturated pan cannot convey,
+    /// which on a heavy airframe mean substantial, early tiller.
+    /// </para>
+    /// </summary>
+    internal static string SteerPhrase(double steerDeg)
+    {
+        double a = Math.Abs(steerDeg);
+        if (a < 3.0) return string.Empty;
+        string dir = steerDeg > 0 ? "right" : "left";
+        int rounded = Math.Max(5, (int)Math.Round(a / 5.0, MidpointRounding.AwayFromZero) * 5);
+        string strength = rounded >= 25 ? "Sharp " : rounded >= 15 ? "" : "Slight ";
+        string dirWord = strength.Length == 0 ? char.ToUpperInvariant(dir[0]) + dir[1..] : dir;
+        return $"{strength}{dirWord}, {rounded} degrees.";
+    }
+
+    /// <summary>
+    /// Descriptive misalignment phrase for the gate axis: "Nose 18 degrees right of the gate
+    /// heading". <paramref name="headingOffDeg"/> is (aircraft heading − gate stop heading),
+    /// normalized internally; positive = the nose sits clockwise of (right of) the axis. No
+    /// leading or trailing punctuation — callers compose it.
+    /// <para>
+    /// Degrees CEIL, never round: with "F0" a not-square 7.4° speaks "7 degrees", and 7 is
+    /// inside <see cref="DockingGeometry.StopMaxHeadingErrorDeg"/> — the phrase would name a
+    /// number that reads as acceptable. Floored at 1 so the phrase is well-defined for any
+    /// input, though callers only reach it when NOT square.
+    /// </para>
+    /// <para>
+    /// The wording follows the <see cref="DockingGeometry.IsLateralMiss"/> callout: it names
+    /// where the aircraft IS, not what to do with the tiller. The terminal callout pairs it
+    /// with "Back up and try again." — which a steering command would contradict.
+    /// </para>
+    /// </summary>
+    internal static string AskewDescription(double headingOffDeg)
+    {
+        double off = DockingGeometry.NormalizeDeg180(headingOffDeg);
+        int deg = Math.Max(1, (int)Math.Ceiling(Math.Abs(off)));
+        string side = off > 0 ? "right" : "left";
+        return $"Nose {deg} degrees {side} of the gate heading";
+    }
+
+    /// <summary>
+    /// The squareness clause of the Y status, WITH its leading space so the caller can
+    /// concatenate it directly. Empty for a deice pad: pads are wide and datum-aligned, no
+    /// square gate is evaluated for them, and the engage callout already drops the
+    /// gate/jetway phrasing there — announcing "Square with the gate." on a pad named both
+    /// the wrong noun and a condition that was never checked.
+    /// </summary>
+    internal static string SquarenessClause(bool isDeiceArea, double headingOffDeg)
+        => isDeiceArea ? ""
+         : DockingGeometry.IsSquare(headingOffDeg) ? " Square with the gate."
+         : $" {AskewDescription(headingOffDeg)}.";
 
     /// <summary>
     /// Appends a throttled telemetry line (≤ ~2/s) so a live docking run can be diagnosed
@@ -613,6 +751,7 @@ public sealed class DockingGuidanceManager : IDisposable
     {
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
+        _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;

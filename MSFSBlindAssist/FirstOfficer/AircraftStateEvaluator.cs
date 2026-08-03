@@ -225,7 +225,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsGearDown()             => IsPosition("GEAR_Lever", 1);
     public bool IsGearUp()               => IsPosition("GEAR_Lever", 0);
 
-    // Autobrake: 0=RTO, 1=Off, 2=1, 3=2, 4=3, 5=4, 6=Auto
+    // Autobrake (PMDG_777X_SDK.h line 272): 0=RTO, 1=Off, 2=Disarm, 3="1", 4="2",
+    // 5="3", 6="4", 7=Max Auto. The DISARM detent used to be missing from this map;
+    // only 0 and 1 are used below, and both survived the correction unchanged.
     public int AutobrakeSelector()       => (int)Math.Round(GetValue("BRAKES_AutobrakeSelector"));
     public bool IsAutobrakRTO()          => AutobrakeSelector() == 0;
     public bool IsAutobrakeOff()         => AutobrakeSelector() == 1;
