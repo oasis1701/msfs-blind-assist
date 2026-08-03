@@ -727,7 +727,7 @@ public partial class MainForm
     internal readonly record struct ClearanceHoldShort(string AfterTaxiway, string Runway);
 
     private static readonly Regex ViaWord = new(
-        @"\bVIA\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\bVIA\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>The taxiway sequence a clearance names, plus every hold-short tied to
     /// the taxiway it follows.

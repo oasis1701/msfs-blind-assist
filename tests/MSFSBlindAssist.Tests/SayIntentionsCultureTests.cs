@@ -1,4 +1,5 @@
 using System.Globalization;
+using MSFSBlindAssist;
 using MSFSBlindAssist.Services.SayIntentions;
 using Xunit;
 
@@ -68,5 +69,18 @@ public class SayIntentionsCultureTests
         // GateInClearance sees the raw mixed-case clearance, and PARKING/POSITION
         // carry the letter I that tr-TR folding breaks.
         Assert.Equal("A24", SayIntentionsClearanceParser.ParseDestinationGate("Taxi to parking A24 via Lima"));
+    });
+
+    [Fact]
+    public void TheClearancePlanStillSplitsUnderTurkishCaseFolding() => UnderCulture("tr-TR", () =>
+    {
+        // ParseClearanceTaxiPlan's own ViaWord ("\bVIA\b", IgnoreCase) sees the raw
+        // mixed-case clearance before ScanTaxiways ever runs, and carries the letter I
+        // tr-TR folding breaks — a gap Task 1's Services-only sweep missed because this
+        // regex lives in MainForm.SayIntentions.cs, not Services/SayIntentions/.
+        var (taxiways, holdShorts, _) = MainForm.ParseClearanceTaxiPlan(
+            "Runway 22 taxi via Alpha, hold short of runway 15, then Bravo", new[] { "A", "B" });
+        Assert.Equal(new[] { "A", "B" }, taxiways);
+        Assert.Equal(("A", "15"), (holdShorts[0].AfterTaxiway, holdShorts[0].Runway));
     });
 }

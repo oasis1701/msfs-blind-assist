@@ -37,10 +37,12 @@ qualifies through its runway designator.
 That instruction shape rests on two discriminators, both in
 `SayIntentionsTransmissionClassifier.cs` beside `AtcInstructionVocabulary`. A shared
 `NarrationGuard` lookbehind sits in front of every verb-initial leg — `hold short`,
-`hold position`, `give way`, `cross`, `taxi to`, `continue taxi`, `line up and wait` —
-and refuses to match when a first-person or narrative word (WE, WILL, PLEASE, OUR,
-CONTINUE…) sits immediately in front of the verb, since the verb alone cannot tell a
-controller's "cross runway 27" from a captain's "we will cross runway 27". Where the
+`hold position`, `give way`, `cross`, `taxi to`, `taxi…via` (which additionally
+carries its own gap blocklist, below), `continue taxi`, `line up and wait` — eight
+legs in all — and refuses to match when a first-person or narrative word (WE,
+WILL, PLEASE, OUR, CONTINUE…) sits immediately in front of the verb, since the
+verb alone cannot tell a controller's "cross runway 27" from a captain's "we
+will cross runway 27". Where the
 guard would also catch a genuine ATC form, the fix is an explicit rescue leg beside
 it, never a hole in the guard — `CLEARED TO CROSS` rescues what it blocks on `CROSS`,
 `CONTINUE TAXI` rescues what it blocks on `CONTINUE`. Inside the `TAXI…VIA` gap a
@@ -746,8 +748,11 @@ read as a route leg. That is acceptable while the phrase cannot occur on the
 wire; if SI ever adds taxiway hold-shorts this is the first thing to revisit —
 the fix belongs in the shared `HoldPrefix`/`RunwayList` consts (mask the span,
 report "could not set hold short of taxiway …"), never in a second copy of the
-phrasing. The dialog carries no taxiway-hold-short row either, so parsing alone
-would not be enough.
+phrasing. The per-row hold-short combo the import populates is runway-only too
+("Hold short of runway"), so parsing alone would not be enough — Progressive
+Taxi's separate terminator block does offer a taxiway-terminator option, but
+that block is self-contained with its own combos and sits outside the import's
+path entirely.
 
 ### Taxiway matching case asymmetry
 
