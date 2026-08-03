@@ -48,31 +48,64 @@ public static class SayIntentionsTransmissionClassifier
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CabinVocabulary = new(
-        @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANTS?|ATTENDANTS?|PURSER|INTERCOM|BOARDING|" +
+        @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANTS?|ATTENDANTS?|PURSER|INTERCOM|ANNOUNCEMENTS?|BOARDING|" +
         @"SEAT\s?BELTS?|BEVERAGE|MEAL|WELCOME\s+ABOARD|GALLEY|LAVATORY)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
-    /// Imperative ground-instruction shapes only a controller utters — the override
-    /// key that lets a REAL instruction survive one cabin word in its text. Kept to
-    /// instruction SHAPES rather than ATC nouns on purpose: purser speech routinely
-    /// contains "taxi", "runway" and "cleared to land" as prose ("while we taxi to
-    /// the runway"), so those alone must not open the gate. CLEARED TO LAND is
-    /// deliberately absent — "we've been cleared to land" is standard purser
-    /// phrasing; a real landing clearance still qualifies through its runway
-    /// designator ("cleared to land runway 27" matches RUNWAY 27).
-    /// TAXI's gap before VIA is deliberately bounded (up to five words), not a strict
-    /// "TAXI VIA" adjacency: SayIntentions' standard clearance shape puts the destination
-    /// BETWEEN the verb and the via-list ("taxi to the passenger terminal via Alpha,
-    /// Bravo"), so the gap has to admit "TAXI TO &lt;destination&gt; VIA". The bound stops
-    /// a whole purser sentence from bridging its own unrelated "taxi" to a much later
-    /// "via" — and since "via" almost never appears in cabin PA prose at all, the gap
-    /// alone is not the risk; requiring VIA to close the match is what keeps this narrow.
+    /// Imperative ground-instruction VERBS only a controller utters — the override key
+    /// that lets a REAL instruction survive one cabin word in its text. Verb-anchored,
+    /// not noun-anchored: an ATC NOUN like "runway 27" appears constantly in captain PA
+    /// ("we will taxi to runway 27 in a few minutes, cabin crew please prepare") — a bare
+    /// RUNWAY-designator leg let that pass as radio, and a filtered-in transmission can be
+    /// SELECTED as the taxi clearance destination by SayIntentionsClearanceSelector. So a
+    /// runway designator alone no longer opens the gate; it only counts beside CLEARED TO
+    /// LAND / CLEARED FOR TAKEOFF (either word order) or a LINE UP form. A bare LINE UP had
+    /// the same problem ("please line up at the forward door for boarding" is a boarding
+    /// announcement) — both LINE UP forms below are anchored (AND WAIT, or a runway
+    /// designator) so a boarding line-up can't match either.
+    ///
+    /// Purser speech routinely contains "taxi", "runway" and "cleared to land" as prose
+    /// ("while we taxi to the runway"), so those alone must not open the gate. CLEARED TO
+    /// LAND is deliberately absent from the bare form — "we've been cleared to land" is
+    /// standard purser phrasing; a real landing (or takeoff) clearance still qualifies
+    /// through its adjacent runway designator, in either word order SI uses.
+    ///
+    /// TAXI's gap before VIA is bounded at seven words and tolerates a trailing comma per
+    /// gap word ("Taxi to the passenger terminal, via Alpha, Bravo"): a live EDDF capture
+    /// needed exactly five with zero margin, and "Taxi to gate 22 at the passenger terminal
+    /// via Alpha" needs the full seven. A bound alone is not enough, though: seven words is
+    /// also wide enough to bridge an UNRELATED "taxi" to a much-later "via" in ordinary
+    /// prose — "After we taxi in, cabin crew will deplane passengers via the front door"
+    /// has only six gap words ("in, cabin crew will deplane passengers"), so any bound wide
+    /// enough for the seven-word legitimate case is also wide enough for that six-word leak,
+    /// and unlike the CLEARED-TO-LAND residual below, nothing downstream catches it — a
+    /// message with both "taxi" and "via" satisfies SayIntentionsClearanceParser's
+    /// TaxiClearanceShape outright. So the gap is additionally ANCHORED: when non-empty it
+    /// must start with TO, matching how every real "taxi to a destination via taxiways"
+    /// clearance is actually phrased (SI never omits "to" before a named destination), which
+    /// the deplane sentence's "taxi IN," does not.
+    ///
+    /// CONTINUE TAXI is separate from the VIA form — it rescues a no-destination-list
+    /// continuation like "Continue taxi to the passenger terminal, contact ground on
+    /// 121.9" (no "via" at all, so TAXI...VIA can never reach it). Purser speech says
+    /// "continue taxiing" or "continue our taxi", never the bare imperative "continue
+    /// taxi", so the trailing word boundary keeps those out.
+    ///
+    /// Accepted residual: a captain PA saying verbatim "cleared to land on runway 27,
+    /// cabin crew be seated" still passes this override — CLEARED TO LAND plus an adjacent
+    /// runway designator is indistinguishable from a real landing clearance by vocabulary
+    /// alone. This is contained one layer up, not here: SayIntentionsClearanceSelector
+    /// requires SayIntentionsClearanceParser.LooksLikeTaxiClearance, which excludes on the
+    /// same CLEARED TO LAND phrase — so this residual can be classified "radio" and kept
+    /// in history, but can never become the SELECTED taxi clearance.
     /// </summary>
     private static readonly Regex AtcInstructionVocabulary = new(
-        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|LINE\s+UP|TAXI\s+(?:[A-Z0-9']+\s+){0,5}VIA|" +
-        @"CROSS\s+RUNWAYS?|GIVE\s+WAY|" +
-        @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?|" +
+        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|GIVE\s+WAY|CROSS(?:ING)?(?:\s+THE)?\s+RUNWAYS?|" +
+        @"TAXI\s+(?:TO\s+(?:[A-Z0-9']+,?\s+){0,6})?VIA|CONTINUE\s+TAXI\b|" +
+        @"LINE\s+UP\s+AND\s+WAIT|LINE\s+UP\s+RUNWAYS?\s+[0-9]{1,2}|" +
+        @"CLEARED\s+(?:TO\s+LAND|FOR\s+TAKE\s?OFF)[\s,]+(?:ON\s+)?(?:THE\s+)?RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?|" +
+        @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?[\s,]+CLEARED\s+(?:TO\s+LAND|FOR\s+TAKE\s?OFF)|" +
         @"SQUAWK\s+[0-9]{4})\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 

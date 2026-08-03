@@ -120,6 +120,12 @@ public class SayIntentionsTransmissionClassifierTests
     [InlineData("ATC", "Metro Ground", "COM1", "Taxi to the passenger terminal via Alpha, Bravo")]
     [InlineData("ATC", "Ground", null, "Hold position, passenger aircraft crossing left to right")]
     [InlineData("ATC", "Tower", "118.700", "Line up and wait runway 27, passenger jet departing ahead")]
+    // CONTINUE TAXI rescues a no-"via" continuation clearance.
+    [InlineData("ATC", "Ground", "COM1", "Continue taxi to the passenger terminal, contact ground on 121.9")]
+    // Comma-tolerant gap: "terminal," before the via-list.
+    [InlineData("ATC", "Ground", null, "Taxi to the passenger terminal, via Alpha, Bravo")]
+    // Runway designator beside CLEARED FOR TAKEOFF (reverse order: runway first).
+    [InlineData("ATC", "Tower", "118.700", "Runway 27, cleared for takeoff, caution passenger bus crossing behind")]
     public void AnAtcInstructionCarryingACabinWordIsStillRadio(
         string speaker, string station, string? channel, string message)
         => Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
@@ -135,6 +141,17 @@ public class SayIntentionsTransmissionClassifierTests
     [InlineData("", null, null, "Ladies and gentlemen we have been cleared to land, flight attendants please be seated")]
     // A cabin marker in the CHANNEL stays authoritative whatever the message says.
     [InlineData("", "Purser", "PA", "Cabin crew be seated, we are holding short of runway 27")]
+    // A bare runway NOUN is captain-PA-common and must not open the gate by itself — this
+    // is the flagship leak fix round 2 exists to close (a filtered-in record here could be
+    // SELECTED as the taxi clearance destination by SayIntentionsClearanceSelector).
+    [InlineData("", null, null, "This is your captain speaking, we will taxi to runway 27 in a few minutes, cabin crew please prepare")]
+    // A bare LINE UP is boarding-PA-common; only the anchored forms (AND WAIT / a runway
+    // designator) may open the gate.
+    [InlineData("", null, null, "Passengers please line up at the forward door for boarding")]
+    // The widened, comma-tolerant TAXI...VIA gap must not bridge an unrelated "taxi" to a
+    // later "via" that describes something else entirely (how passengers deplane, not a
+    // taxi route).
+    [InlineData("", null, null, "After we taxi in, cabin crew will deplane passengers via the front door")]
     public void CabinSpeechStaysFilteredEvenWhenItSoundsOperational(
         string speaker, string? station, string? channel, string message)
         => Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
