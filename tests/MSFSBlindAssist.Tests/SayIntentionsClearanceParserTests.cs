@@ -346,6 +346,36 @@ public class SayIntentionsClearanceParserTests
         Assert.Equal(new[] { "B", "R" }, result);
     }
 
+    // RouteTerminator originally stopped only at CONTACT/MONITOR/SQUAWK/REMAIN/
+    // REPORT/GIVE WAY/FOLLOW/INFORMATION. CAUTION/TRAFFIC/EXPECT open the same kind
+    // of advisory tail SI appends after a real clearance, and a phonetic word inside
+    // one ("caution golf cart crossing") became a route leg ATC never cleared.
+    [Theory]
+    [InlineData("Runway 4L taxi via Kilo, Quebec, caution golf cart crossing", new[] { "K", "Q" })]
+    [InlineData("Taxi via Alpha, Bravo, traffic is a Boeing 737 on short final", new[] { "A", "B" })]
+    [InlineData("Taxi via Alpha, expect further clearance on the way", new[] { "A" })]
+    [InlineData("Taxi via Alpha, Bravo, monitor ground on point nine", new[] { "A", "B" })]
+    [InlineData("Taxi via Alpha, report reaching the ramp", new[] { "A" })]
+    [InlineData("Taxi via Alpha, give way to the Airbus, then Bravo", new[] { "A" })]
+    [InlineData("Taxi via Alpha, follow the company 737 ahead", new[] { "A" })]
+    public void AnAdvisoryTailNeverAddsALeg(string clearance, string[] expected)
+        => Assert.Equal(expected, SayIntentionsClearanceParser.ParseTaxiways(
+            clearance, new[] { "A", "B", "C", "G", "K", "Q", "F", "N" }));
+
+    [Fact]
+    public void APushbackApprovalCarryingTheRouteIsAcceptedAsATaxiClearance()
+    {
+        // Pinned deliberately: SI can fold the taxi clearance into the pushback
+        // approval, and the route information in it is real — rejecting the shape
+        // would lose the clearance. EXPECT terminates only ROUTE text after "via";
+        // ahead of it, "expect runway 22L" stays the destination.
+        string text = "Pushback approved, expect runway 22L, after push taxi via Alpha, hold short of runway 22L";
+        Assert.True(SayIntentionsClearanceParser.LooksLikeTaxiClearance(text));
+        Assert.Equal(new[] { "A" }, SayIntentionsClearanceParser.ParseTaxiways(text, new[] { "A" }));
+        Assert.Equal("22L", SayIntentionsClearanceParser.ParseDestinationRunway(text));
+        Assert.Equal("22L", SayIntentionsClearanceParser.ParseHoldShortRunway(text));
+    }
+
     [Fact]
     public void ConsecutiveDuplicatesCollapse()
     {

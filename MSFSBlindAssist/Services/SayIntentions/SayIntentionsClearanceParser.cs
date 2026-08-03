@@ -156,6 +156,17 @@ public static class SayIntentionsClearanceParser
         ("LEFT", "L"), ("RIGHT", "R"), ("CENTER", "C"), ("CENTRE", "C")
     };
 
+    /// <summary>One precompiled pattern per <see cref="DigitWords"/> entry, built once
+    /// instead of by <see cref="NormalizeSpokenRunway"/> on every call — that call ran
+    /// 17 dynamic <c>Regex.Replace</c>s per invocation, blowing past the 15-entry static
+    /// Regex cache every time.</summary>
+    private static readonly (Regex Word, string Digit)[] DigitWordPatterns =
+        DigitWords.Select(w => (
+            new Regex($@"\b{w.Word}\b", RegexOptions.CultureInvariant | RegexOptions.Compiled),
+            w.Digit)).ToArray();
+
+    private static readonly Regex NonRunwayCharacters = new(@"[^0-9LCR]", RegexOptions.Compiled);
+
     /// <summary>True when the text is shaped like a taxi clearance. Guards the
     /// "fall back to the last radio transmission" path — without it a landing
     /// clearance heard on rollout ("cleared to land runway 23") became a taxi
@@ -222,9 +233,9 @@ public static class SayIntentionsClearanceParser
     public static string NormalizeSpokenRunway(string value)
     {
         string normalized = value.ToUpperInvariant();
-        foreach (var (word, digit) in DigitWords)
-            normalized = Regex.Replace(normalized, $@"\b{word}\b", digit);
-        return Regex.Replace(normalized, @"[^0-9LCR]", "");
+        foreach (var (word, digit) in DigitWordPatterns)
+            normalized = word.Replace(normalized, digit);
+        return NonRunwayCharacters.Replace(normalized, "");
     }
 
     private static readonly Regex ViaKeyword = new(
@@ -239,9 +250,13 @@ public static class SayIntentionsClearanceParser
     /// INFORMATION is here because the ATIS letter is spoken phonetically ("advise you
     /// have information Sierra"). Read as route text it silently appends a real taxiway
     /// S to the clearance, or — once unresolved names are reported — claims the airport
-    /// is missing one.</summary>
+    /// is missing one.
+    ///
+    /// CAUTION/TRAFFIC/EXPECT end the route for the same reason: they open the advisory
+    /// tails SI appends after a clearance, and a phonetic word inside one ("caution golf
+    /// cart") otherwise becomes a leg ATC never cleared.</summary>
     private static readonly Regex RouteTerminator = new(
-        @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW|INFORMATION)\b",
+        @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW|INFORMATION|CAUTION|TRAFFIC|EXPECT)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>Spoken forms per character. DIGITS matter as much as letters: without
@@ -441,7 +456,7 @@ public static class SayIntentionsClearanceParser
         var hits = new List<(string Name, int Index, int End)>();
         foreach (string taxiway in knownTaxiways)
         {
-            foreach (Match match in Regex.Matches(route, BuildTaxiwayPattern(taxiway), RegexOptions.CultureInvariant))
+            foreach (Match match in TaxiwayPattern(taxiway).Matches(route))
                 hits.Add((taxiway, match.Index, match.Index + match.Length));
         }
 
@@ -488,6 +503,19 @@ public static class SayIntentionsClearanceParser
         resolved.AddRange(CollapseConsecutive(
             selected.OrderBy(h => h.Index).Select(h => h.Name).ToList()));
         return (resolved, unresolved);
+    }
+
+    /// <summary>Compiled pattern per taxiway name. ScanTaxiways runs one pattern per
+    /// known taxiway per keypress (~100 at a large airport), and the static
+    /// Regex.Matches cache holds 15 entries — so every call re-parsed every pattern.
+    /// Bounded: cleared wholesale if it ever grows past a few airports' worth.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> TaxiwayPatterns = new();
+
+    private static Regex TaxiwayPattern(string taxiway)
+    {
+        if (TaxiwayPatterns.Count > 4096) TaxiwayPatterns.Clear();
+        return TaxiwayPatterns.GetOrAdd(taxiway,
+            t => new Regex(BuildTaxiwayPattern(t), RegexOptions.CultureInvariant));
     }
 
     /// <summary>
@@ -541,6 +569,13 @@ public static class SayIntentionsClearanceParser
         @"\b(?:GATE|STAND|PARKING|SPOT|RAMP|POSITION)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    /// <summary>Shared by <see cref="NormalizeParkingName"/> and
+    /// <see cref="NormalizeTaxiwayName"/>: strips everything but letters/digits, and
+    /// tests whether any survive.</summary>
+    private static readonly Regex NonAlphanumeric = new(@"[^A-Z0-9]", RegexOptions.Compiled);
+
+    private static readonly Regex AnyAlphanumeric = new(@"[A-Z0-9]", RegexOptions.Compiled);
+
     /// <summary>
     /// Canonical form for comparing a SayIntentions gate label against a navdata
     /// parking spot.
@@ -565,11 +600,11 @@ public static class SayIntentionsClearanceParser
             string tail = cleaned[(last.Index + last.Length)..];
             // Only take the tail when it actually carries an id — a bare "Gate"
             // must not normalize to nothing.
-            if (Regex.IsMatch(tail, @"[A-Z0-9]")) cleaned = tail;
+            if (AnyAlphanumeric.IsMatch(tail)) cleaned = tail;
         }
 
         cleaned = ParkingNoiseWords.Replace(cleaned, "");
-        cleaned = Regex.Replace(cleaned, @"[^A-Z0-9]", "");
+        cleaned = NonAlphanumeric.Replace(cleaned, "");
         return PaddingZeros.Replace(cleaned, "");
     }
 
@@ -603,7 +638,7 @@ public static class SayIntentionsClearanceParser
 
     /// <summary>Strips punctuation/spacing for name comparison: "A 1" → "A1".</summary>
     public static string NormalizeTaxiwayName(string value) =>
-        Regex.Replace(value.ToUpperInvariant(), @"[^A-Z0-9]", "");
+        NonAlphanumeric.Replace(value.ToUpperInvariant(), "");
 
     /// <summary>Collapses runs of the same name. Non-consecutive reuse survives —
     /// a clearance legitimately revisits a taxiway after a runway crossing.</summary>
@@ -618,13 +653,22 @@ public static class SayIntentionsClearanceParser
         return result;
     }
 
+    /// <summary>The bare word "RUNWAY", stripped from an already-uppercased value by
+    /// <see cref="CleanRunway"/>. Named apart from the list-building <see cref="RunwayWord"/>
+    /// (an optional plural token with a trailing separator, used inside
+    /// <see cref="RunwayList"/>) so the two — same concept, different shape — can never
+    /// be confused for one another.</summary>
+    private static readonly Regex CleanRunwayWord = new(@"\bRUNWAY\b", RegexOptions.Compiled);
+
+    private static readonly Regex RunwayDesignator = new(@"([0-9]{1,2})\s*([LCR])?", RegexOptions.Compiled);
+
     /// <summary>Canonicalizes a runway identifier to zero-padded digits plus an
     /// optional side. Returns null when the text carries no runway number.</summary>
     public static string? CleanRunway(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
-        string cleaned = Regex.Replace(value.Trim().ToUpperInvariant(), @"\bRUNWAY\b", "").Trim();
-        var match = Regex.Match(cleaned, @"([0-9]{1,2})\s*([LCR])?");
+        string cleaned = CleanRunwayWord.Replace(value.Trim().ToUpperInvariant(), "").Trim();
+        var match = RunwayDesignator.Match(cleaned);
         if (!match.Success) return null;
         string number = match.Groups[1].Value.PadLeft(2, '0');
         return number + match.Groups[2].Value;
