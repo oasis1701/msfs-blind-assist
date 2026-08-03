@@ -4037,6 +4037,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _ = simConnect.SendPMDGMomentaryToggle((uint)id, 1);
     }
 
+    /// <summary>
+    /// The AFDS INHIBITS CMD engagement below 400 ft RA after takeoff (Boeing 737 NG SDS
+    /// 4.20 / FCTM). A CMD A press below it is accepted by the transport and rejected by the
+    /// aircraft — silently. With the ~1 Hz position feed the old 350 ft default landed in
+    /// [350, 400) on essentially every takeoff, which is why auto-AP-engage announced but
+    /// never engaged while LNAV/VNAV (fixed at 400 ft) worked. Do NOT lower this.
+    /// </summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 400;
+
+    /// <summary>
+    /// CMD A engaged state for the universal auto-engage's verify/retry loop. NULL until the
+    /// first CDA snapshot — before that <c>GetFieldValue</c> returns the 0.0 "unknown" sentinel
+    /// for every field, and reporting that as "not engaged" would retry-press a toggle switch
+    /// over an already-engaged autopilot.
+    /// </summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm is not { IsReady: true }) return null;
+        return dm.GetFieldValue("MCP_annunCMD_A") > 0.5;
+    }
+
     // Per-detent flaps lever events. The base EVT_CONTROL_STAND_FLAPS_LEVER is a
     public override bool HandleUIVariableSet(
         string varKey, double value,

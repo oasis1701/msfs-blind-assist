@@ -69,9 +69,21 @@ group starts the matching flow.
 ### B4. Auto-fly (opt-in via Settings → First Officer)
 Enable Auto Gear / Auto AP in **File → Settings… → First Officer tab**, then fly:
 - Positive rate after takeoff → **"Gear up"**.
-- Climbing through the **configured AP altitude** (numeric field in the First Officer settings
-  tab, default **350 ft AGL**) → **autopilot CMD A engaged**; the announcement speaks the
-  configured number.
+- Climbing through the **effective AP altitude** → **autopilot CMD A engaged**; the
+  announcement speaks that height. The effective height is the configured number (numeric
+  field in the First Officer settings tab, default **350 ft AGL**) **raised to the 737's
+  400 ft floor** — its AFDS inhibits CMD engagement below 400 ft RA after takeoff — so at
+  the default you should hear **"400 feet. Autopilot engaged."**, not 350. **Verify the CMD A
+  annunciator is actually lit when it announces** (that is the whole point of the 2026-08
+  fix: the callout now comes from the annunciator readback, not from the press). Cases worth
+  flying:
+  - Set the field to **1000** → engages at 1000 ft (the setting wins above the floor).
+  - Set it to **200** → still engages at 400 (the floor wins below it).
+  - Engage CMD A **manually below 400 ft** → the FO must stay **silent** and must NOT press
+    (a press on the toggle would disconnect it).
+  - Force a rejection (e.g. hold the AP disengage bar down through the climb) → up to 5
+    presses ~1 s apart, then **"Autopilot did not engage. Captain action required: engage
+    the autopilot."** — and no false "Autopilot engaged."
 - Climbing through **400 ft AGL** (fixed) → **LNAV/VNAV pushed** — only modes whose MCP
   annunciators are unlit are pressed; the announcement names what was pushed ("400 feet. LNAV
   and VNAV engaged."), and nothing is announced if both were already armed. Fires once per leg,

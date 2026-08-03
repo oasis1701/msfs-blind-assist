@@ -296,6 +296,23 @@ public interface IAircraftDefinition
     /// </summary>
     void EngageAutopilot(SimConnect.SimConnectManager simConnect);
 
+    /// <summary>
+    /// Hard floor (ft AGL) below which THIS aircraft's autopilot refuses to engage, so the
+    /// universal auto-engage never presses into a rejection. 0 = no floor. The PMDG 737's
+    /// AFDS inhibits CMD engagement below 400 ft RA after takeoff — pressing at the 350 ft
+    /// default was silently rejected by the aircraft (the 2026-08 "AP never engages" bug).
+    /// </summary>
+    int MinimumAutopilotEngageAltitudeAgl { get; }
+
+    /// <summary>
+    /// Whether the autopilot is currently engaged: <c>true</c>/<c>false</c> when the aircraft
+    /// can be read, <c>null</c> when it exposes no engaged state OR its data feed isn't ready
+    /// yet. Never return <c>false</c> for "don't know" — the universal auto-engage retries a
+    /// definitive <c>false</c>, and the PMDG engage switches are TOGGLES, so a guessed
+    /// <c>false</c> over an engaged autopilot would disconnect it.
+    /// </summary>
+    bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect);
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 

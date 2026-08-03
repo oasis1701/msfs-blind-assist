@@ -527,7 +527,10 @@ public partial class MainForm : Form
             msg => announcer.AnnounceImmediate(msg),
             // AP engage routes through the current aircraft def: PMDG jets press their own
             // MCP switch (CMD A / A/P L), everything else falls back to stock AUTOPILOT_ON.
-            () => currentAircraft?.EngageAutopilot(simConnectManager));
+            () => currentAircraft?.EngageAutopilot(simConnectManager),
+            // ...and is verified against the def's engaged-readback where it has one, so a
+            // press the aircraft rejected is retried instead of being announced as success.
+            () => currentAircraft?.IsAutopilotEngaged(simConnectManager));
 
         simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
 
@@ -540,6 +543,9 @@ public partial class MainForm : Form
             universalAutomation.AutoGearDownEnabled     = s.FOAutoGearDownEnabled;
             universalAutomation.AutoApEnabled           = s.FOAutoApEnabled;
             universalAutomation.AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl;
+            // Per-aircraft engage floor — the 737 refuses CMD below 400 ft RA after takeoff.
+            universalAutomation.MinimumApEngageAltitudeAgl =
+                currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
             if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();

@@ -5902,6 +5902,24 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             simConnect.SendPMDGEvent("EVT_MCP_AP_L_SWITCH", (uint)id, 1);
     }
 
+    /// <summary>
+    /// Minimum A/P engage height after takeoff (777 FCOM). Below the 350 ft default, so this
+    /// changes nothing unless the pilot lowers the setting — it exists so they can't set the
+    /// auto-engage under the aircraft's own limit the way the 737 was (see that override).
+    /// </summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 200;
+
+    /// <summary>
+    /// A/P L engaged state for the universal auto-engage's verify/retry loop. NULL until the
+    /// first CDA snapshot — see the 737's override for why "unknown" must not read as false.
+    /// </summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        var dm = simConnect.PMDGDataManager;
+        if (dm is not { IsReady: true }) return null;
+        return dm.GetFieldValue("MCP_annunAP_0") > 0.5;
+    }
+
     // ----------------------------------------------------------------------
     // Serializes the emergency-exit light guard→switch sequence (see the
     // LTS_EmerLights block in HandleUIVariableSet). The sequence spans an
