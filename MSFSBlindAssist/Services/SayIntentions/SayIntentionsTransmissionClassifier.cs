@@ -48,7 +48,7 @@ public static class SayIntentionsTransmissionClassifier
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CabinVocabulary = new(
-        @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANT|ATTENDANT|PURSER|INTERCOM|BOARDING|" +
+        @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANTS?|ATTENDANTS?|PURSER|INTERCOM|BOARDING|" +
         @"SEAT\s?BELTS?|BEVERAGE|MEAL|WELCOME\s+ABOARD|GALLEY|LAVATORY)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
@@ -61,9 +61,17 @@ public static class SayIntentionsTransmissionClassifier
     /// deliberately absent — "we've been cleared to land" is standard purser
     /// phrasing; a real landing clearance still qualifies through its runway
     /// designator ("cleared to land runway 27" matches RUNWAY 27).
+    /// TAXI's gap before VIA is deliberately bounded (up to five words), not a strict
+    /// "TAXI VIA" adjacency: SayIntentions' standard clearance shape puts the destination
+    /// BETWEEN the verb and the via-list ("taxi to the passenger terminal via Alpha,
+    /// Bravo"), so the gap has to admit "TAXI TO &lt;destination&gt; VIA". The bound stops
+    /// a whole purser sentence from bridging its own unrelated "taxi" to a much later
+    /// "via" — and since "via" almost never appears in cabin PA prose at all, the gap
+    /// alone is not the risk; requiring VIA to close the match is what keeps this narrow.
     /// </summary>
     private static readonly Regex AtcInstructionVocabulary = new(
-        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|LINE\s+UP|TAXI\s+VIA|CROSS\s+RUNWAYS?|GIVE\s+WAY|" +
+        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|LINE\s+UP|TAXI\s+(?:[A-Z0-9']+\s+){0,5}VIA|" +
+        @"CROSS\s+RUNWAYS?|GIVE\s+WAY|" +
         @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?|" +
         @"SQUAWK\s+[0-9]{4})\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);

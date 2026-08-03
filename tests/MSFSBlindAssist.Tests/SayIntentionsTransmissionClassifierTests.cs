@@ -115,6 +115,9 @@ public class SayIntentionsTransmissionClassifierTests
     // a genuine ground instruction must not kill it — it also vanishes from the
     // clearance selector's history, which never sees a filtered record.
     [InlineData("ATC", "Metro Ground", "COM1", "Taxi via Alpha, Bravo to the passenger terminal")]
+    // SI's standard clearance shape: destination BEFORE the via-list. The override must
+    // rescue this shape, not just a verb-adjacent "taxi via" — see AtcInstructionVocabulary.
+    [InlineData("ATC", "Metro Ground", "COM1", "Taxi to the passenger terminal via Alpha, Bravo")]
     [InlineData("ATC", "Ground", null, "Hold position, passenger aircraft crossing left to right")]
     [InlineData("ATC", "Tower", "118.700", "Line up and wait runway 27, passenger jet departing ahead")]
     public void AnAtcInstructionCarryingACabinWordIsStillRadio(
@@ -127,6 +130,9 @@ public class SayIntentionsTransmissionClassifierTests
     // purser speech routinely carries "taxi", "runway" and "cleared to land" as prose.
     [InlineData("", null, null, "Please keep your seat belts fastened while we taxi to the runway")]
     [InlineData("", null, null, "Ladies and gentlemen we have been cleared to land, cabin crew please be seated")]
+    // Plural "attendants" — CabinVocabulary must catch it the same as the singular form,
+    // mirroring the existing PASSENGERS? tolerance in the same regex.
+    [InlineData("", null, null, "Ladies and gentlemen we have been cleared to land, flight attendants please be seated")]
     // A cabin marker in the CHANNEL stays authoritative whatever the message says.
     [InlineData("", "Purser", "PA", "Cabin crew be seated, we are holding short of runway 27")]
     public void CabinSpeechStaysFilteredEvenWhenItSoundsOperational(
