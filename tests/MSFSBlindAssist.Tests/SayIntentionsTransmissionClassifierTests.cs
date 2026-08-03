@@ -137,6 +137,47 @@ public class SayIntentionsTransmissionClassifierTests
     // CLEARED FOR IMMEDIATE TAKEOFF — the IMMEDIATE qualifier must not break exact
     // adjacency to the runway designator.
     [InlineData("ATC", "Tower", "118.700", "Runway 27, cleared for immediate takeoff, passenger jet on short final")]
+    // --- The LINE UP redesign: the trailing (?!\s+(?:TO|AT|FOR|IN)) lookahead is GONE.
+    // It was aimed at the boarding PA "line up and wait TO be called" but silenced real
+    // tower instructions on the same words. The narration guard blocks the boarding form
+    // instead (on PLEASE), which is where the difference actually is.
+    [InlineData("ATC", "Tower", "118.700", "Line up and wait for the passenger jet on short final")]
+    [InlineData("ATC", "Tower", "118.700", "Line up and wait at Charlie, passenger jet crossing")]
+    // --- Real clearances that had NO leg at all before this round: silenced from the
+    // readout AND from the clearance selector, despite LooksLikeTaxiClearance being true.
+    // TAXI TO is the leg that rescues the first two; the guard still blocks "we/will/our
+    // taxi to ...", so the leg costs nothing on the cabin side.
+    [InlineData("ATC", "Ground", "COM1", "Taxi to the passenger terminal, contact ground on 121.9")]
+    [InlineData("ATC", "Ground", null, "Taxi to runway 22 remain this frequency, caution passenger bus crossing")]
+    // The designator-led abbreviated clearance: no verb anywhere, so no verb leg could ever
+    // have matched it.
+    [InlineData("ATC", "Ground", "COM1", "Runway 15L via Bravo, Charlie, caution passenger bus")]
+    // --- The three live captures (KDTW / LEPA / EDDF), each with the cabin word that makes
+    // them exercise the override rather than the plain ATC heuristic. Verified but never
+    // committed in round 3; permanent now.
+    [InlineData("ATC", "Ground", "COM1", "Runway 22R, taxi via Alpha, Bravo. Squawk 4571, caution passenger bus crossing")]
+    [InlineData("ATC", "Ground", "COM1", "Taxi to holding point runway 24R via LE, E, North, H2, caution passenger bus crossing")]
+    [InlineData("ATC", "Ground", "COM1", "Taxi to Terminal 3 Gate J1 via Papa-8, Papa, November-1-1, Lima, caution passenger bus crossing")]
+    // --- Guard-interaction rescues. The guard reads ONE word back; these pin the cases
+    // where the word in front of a leg is punctuation or an ordinary connective, not
+    // narration register. This row isolates the question — unlike the KDTW capture above
+    // it has no SQUAWK and no runway designator, so TAXI...VIA is the only leg that can fire.
+    [InlineData("ATC", "Ground", "COM1", "Alpha, Bravo, taxi via Charlie, Delta, caution passenger bus")]
+    // THEN is not a guard word (the live KDTW clearance shape).
+    [InlineData("ATC", "Ground", null, "cross-runway 4R, then continue taxi via K, Q, caution passenger bus")]
+    // TO is IN the guard (for "about to cross"), which would block a bare CROSS here — this
+    // is the explicit rescue leg that pattern requires.
+    [InlineData("ATC", "Ground", "COM1", "cleared to cross runway 28, caution passenger bus")]
+    // A leg at the very start of the message: nothing precedes it, so the lookbehind cannot
+    // match and the guard must not fire.
+    [InlineData("ATC", "Ground", null, "hold short of runway 4R, passenger aircraft crossing")]
+    // CONTINUE is a guard word (see NarrationGuard), so the real imperative it would block
+    // has to keep working through the CONTINUE TAXI leg — that pairing is the whole design.
+    [InlineData("ATC", "Ground", "COM1", "Continue taxi via Kilo, Quebec, caution passenger bus")]
+    // The \b INSIDE the lookbehind: "Lima" merely ENDS in the guard word "a". Deliberately
+    // written without a comma after Lima — a comma would make the row vacuous, because the
+    // guard needs a guard word plus one space immediately before the leg.
+    [InlineData("ATC", "Ground", "COM1", "At Lima hold short of runway 22, caution passenger bus")]
     public void AnAtcInstructionCarryingACabinWordIsStillRadio(
         string speaker, string station, string? channel, string message)
         => Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
@@ -171,11 +212,54 @@ public class SayIntentionsTransmissionClassifierTests
     [InlineData("", null, null, "Cabin crew, after we taxi to stand 22, please deplane via door one left")]
     // CROSS is imperative-only now: "crossing" (not the bare verb "cross") must not match.
     [InlineData("", null, null, "Ladies and gentlemen we are crossing the runway, cabin crew please be seated")]
-    // LINE UP AND WAIT's trailing negative lookahead: "...to be called" marks this as a
-    // boarding-PA continuation, not a runway hold instruction.
+    // Still blocked after the trailing TO/AT/FOR/IN lookahead was removed — now by the
+    // narration guard, on the PLEASE in front of the leg rather than on what follows it.
     [InlineData("", null, null, "Boarding groups three and four, please line up and wait to be called")]
+    // --- The modal variants. Rounds 1-3 each blocked one surface form ("crossing", "we
+    // continue", "wait to") and the inflected version walked straight through; these are
+    // the two the round-3 re-review found still leaking, the second of them SELECTOR-
+    // REACHABLE (LooksLikeTaxiClearance is true for it, so it could be imported as the
+    // taxi clearance). Both are blocked by the one shared guard, on WILL.
+    [InlineData("", null, null, "Ladies and gentlemen, we will cross runway 27 shortly, cabin crew please be seated")]
+    [InlineData("", null, null, "Ladies and gentlemen, we will continue taxi to the gate, cabin crew be seated")]
+    // CONTINUE's blocking direction, on the via-shaped variant. This pair is why CONTINUE
+    // itself is a guard word: blocking the CONTINUE TAXI leg alone was not enough, because
+    // the TAXI TO / TAXI...VIA legs then matched one word later.
+    [InlineData("", null, null, "Ladies and gentlemen, we will continue taxi via Kilo, cabin crew be seated")]
+    // The guard on HOLD, which round 3 had no guard on at all.
+    [InlineData("", null, null, "Ladies and gentlemen, we will hold short of runway 27 for a moment, cabin crew be seated")]
+    // Third person, NO modal at all: every gap word between "taxi" and "via" is clean, so
+    // the blocklist inside the gap cannot see this one. The guard catches it instead — WE
+    // sits one word in front of TAXI. Neither discriminator is a superset of the other.
+    [InlineData("", null, null, "After we taxi to the gate, passengers deplane via the front door")]
+    // --- CabinVocabulary's own gap, a leak path INDEPENDENT of the override: with no
+    // "passenger"/"cabin"/"crew" anywhere, these carried no cabin word at all, so the veto
+    // never looked at them and the ATC heuristic published them on the strength of "taxi".
+    [InlineData("", null, null, "After we taxi to the gate, everyone may deplane via the front door")]
+    [InlineData("", null, null, "Once we taxi in, everyone will disembark via the forward door")]
+    [InlineData("", null, null, "Disembarkation will begin once we taxi to the gate via the jet bridge")]
     public void CabinSpeechStaysFilteredEvenWhenItSoundsOperational(
         string speaker, string? station, string? channel, string message)
         => Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
             speaker, station, channel, message));
+
+    /// <summary>
+    /// A KNOWN, DOCUMENTED LEAK, pinned so it stays visible and so closing it has to be a
+    /// deliberate act rather than an accident. See residual (d) on AtcInstructionVocabulary:
+    /// the designator-led "RUNWAY n ... VIA" leg is unguarded (it is a noun-phrase shape,
+    /// and a narration guard reads register in front of a VERB), so it also matches inside a
+    /// captain PA that names a runway and later says "via". This is not a regression — the
+    /// same sentence leaked in round 3 through TAXI...VIA, whose gap words here are all
+    /// clean — and guarding the leg would re-silence verb-less clearances whose designator
+    /// follows a preposition ("Proceed to runway 27 via Alpha").
+    ///
+    /// If a future round closes it, DELETE this test rather than weakening it.
+    /// </summary>
+    [Fact]
+    public void ADocumentedResidual_ACaptainPaNamingARunwayAndThenAViaListStillPasses()
+    {
+        Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            "", null, null,
+            "This is your captain, we will taxi to runway 27 via Alpha and Bravo, cabin crew please be seated"));
+    }
 }

@@ -47,92 +47,157 @@ public static class SayIntentionsTransmissionClassifier
         @"PILOT|RUNWAY|TAXI|CLEARED|CONTACT|FREQUENCY|SQUAWK|HOLD\s+SHORT|LINE\s+UP)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    /// <summary>
+    /// What marks a line as cabin/PA speech. DEPLANE/DISEMBARK are here because they are
+    /// the ONE thing a disembarkation PA is guaranteed to say, and without them a line
+    /// like "after we taxi to the gate, everyone may deplane via the front door" carried
+    /// no cabin word at all — so it never reached the cabin veto in the first place, went
+    /// straight to the <see cref="AtcVocabulary"/> heuristic on the strength of "taxi",
+    /// and was published as radio. That is a second leak path, INDEPENDENT of the
+    /// instruction-shape override below: the override can only rescue or refuse a line the
+    /// veto is already looking at.
+    /// </summary>
     private static readonly Regex CabinVocabulary = new(
         @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANTS?|ATTENDANTS?|PURSER|INTERCOM|ANNOUNCEMENTS?|BOARDING|" +
+        @"DEPLANE|DISEMBARK(?:ATION)?|" +
         @"SEAT\s?BELTS?|BEVERAGE|MEAL|WELCOME\s+ABOARD|GALLEY|LAVATORY)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    /// <summary>First-person/narrative register immediately before a verb leg — the
+    /// word that separates a controller ISSUING an instruction from a crew member
+    /// NARRATING one ("we will cross runway 27", "our taxi to the gate", "please
+    /// line up"). One guard shared by every verb-initial leg: rounds 1-3 proved
+    /// that per-leg, single-inflection guards always leave the modal variant open.
+    /// TO is here for "about to cross"; the ATC form it would catch is rescued by
+    /// the explicit CLEARED TO CROSS leg.
+    ///
+    /// CONTINUE is the one entry that is not register but structure, and it is
+    /// load-bearing: without it "we will continue taxi to the gate" still leaked, and
+    /// SELECTOR-REACHABLY so. The CONTINUE TAXI leg blocked correctly on WILL, and the
+    /// TAXI TO leg then matched one word later — the guard has to cover the second verb
+    /// too, or every guard is bypassable by prefixing another verb. Reading it the same
+    /// way as TO: a verb leg preceded by another leg's own keyword defers to THAT leg's
+    /// guard, and the ATC form the guard then catches ("Continue taxi to the gate",
+    /// "continue taxi via K, Q") is rescued by the explicit CONTINUE TAXI leg — exactly
+    /// the TO / CLEARED TO CROSS pairing, one level along.
+    ///
+    /// The single <c>\s</c> is not a narrowness: SayIntentionsService.CleanSpeech collapses
+    /// every whitespace run to one space before the classifier ever sees the text, so
+    /// "we&#160;&#160;cross" cannot exist here. The <c>\b</c> inside the lookbehind is what
+    /// stops a word merely ENDING in a guard word from firing it — "via India hold short",
+    /// "Bravo, taxi to gate 22" both stay instructions.</summary>
+    private const string NarrationGuard =
+        @"(?<!\b(?:WE|WE'LL|I|WILL|MAY|SHALL|ABOUT|TO|PLEASE|THE|A|AN|OUR|YOUR|CONTINUE)\s)";
+
     /// <summary>
-    /// Imperative ground-instruction VERBS only a controller utters — the override key
-    /// that lets a REAL instruction survive one cabin word in its text. Verb-anchored,
-    /// not noun-anchored: an ATC NOUN like "runway 27" appears constantly in captain PA
-    /// ("we will taxi to runway 27 in a few minutes, cabin crew please prepare") — a bare
-    /// RUNWAY-designator leg let that pass as radio, and a filtered-in transmission can be
-    /// SELECTED as the taxi clearance destination by SayIntentionsClearanceSelector. So a
-    /// runway designator alone no longer opens the gate; it only counts beside CLEARED TO
-    /// LAND / CLEARED FOR TAKEOFF (either word order) or a LINE UP form.
+    /// Ground-instruction shapes only a controller utters — the override key that lets a
+    /// REAL instruction survive one cabin word in its text. Getting this boundary wrong is
+    /// dangerous in BOTH directions, and it took four rounds because each direction was
+    /// fixed in isolation: too tight and a hold instruction is silenced (the failure this
+    /// readout must never have); too loose and captain/purser PA is published as radio —
+    /// where, being in history, SayIntentionsClearanceSelector can SELECT it as the taxi
+    /// clearance and route a blind pilot on it.
     ///
-    /// Purser speech routinely contains "taxi", "runway" and "cleared to land" as prose
-    /// ("while we taxi to the runway"), so those alone must not open the gate. CLEARED TO
-    /// LAND is deliberately absent from the bare form — "we've been cleared to land" is
-    /// standard purser phrasing; a real landing (or takeoff) clearance still qualifies
-    /// through its adjacent runway designator, in either word order SI uses.
+    /// TWO discriminators do all the work, and each covers a different shape of leak.
     ///
-    /// TAXI's gap before VIA: the discriminator is NOT a preposition anchor. Round 2 tried
-    /// requiring the gap to start with "TO", and that safety claim was FALSE — "to" is the
-    /// single most common word in a cabin bridge sentence too ("taxi TO the gate, passengers
-    /// deplane via the door"), and the anchor simultaneously SILENCED real ICAO phrasings
-    /// that never say "to" at all ("Taxi holding point A1 via Alpha", "Taxi straight ahead
-    /// via Alpha"). The actual, probe-verified discriminator: a genuine clearance's gap is a
-    /// destination NOUN PHRASE — a place ("the passenger terminal", "holding point A1",
-    /// "straight ahead", "gate A-9") with no pronoun, modal, or conjunction in it — while
-    /// every cabin bridge sentence found carries at least one (a subject doing something:
-    /// "we WILL deplane", "passengers MAY deplane", "PLEASE deplane", "OUR gate"). So each
-    /// gap word is checked against a blocklist (AND/WILL/MAY/SHOULD/PLEASE/WE/YOU/OUR/I) via
-    /// a per-token negative lookahead — the FIRST blocked word anywhere in the gap kills the
-    /// whole match, no matter how many clean words came before it. Gap tokens admit a hyphen
-    /// ("gate A-9" is a documented SI stand form) and a trailing comma; the bound is a
-    /// generous eight words — the blocklist does the discriminating, the count is only a
-    /// backstop. A full stop bounds the gap for free too: the token class has no period in
-    /// it, so a sentence break between "taxi" and "via" blocks the bridge exactly like a
-    /// blocklisted word would, with no separate handling needed.
+    /// 1. THE NARRATION GUARD (<see cref="NarrationGuard"/>) on every VERB-initial leg.
+    /// The verb is the same in both registers — a controller says "cross runway 27", a
+    /// captain says "we will cross runway 27" — so what separates them is the word in
+    /// front of it, not the verb. Rounds 1-3 each blocked ONE surface form with its own
+    /// per-leg guard (round 3: "crossing" on CROSS, "we continue" on CONTINUE, "wait to"
+    /// on LINE UP AND WAIT) and the next review found the modal variant still open ("we
+    /// WILL cross", "we WILL continue taxi") or a real instruction newly silenced. So
+    /// there is now ONE guard, spelled once and shared: HOLD SHORT, HOLD POSITION, GIVE
+    /// WAY, CROSS, TAXI TO, TAXI…VIA, CONTINUE TAXI and LINE UP AND WAIT all carry it, and
+    /// a new verb leg must carry it too. Where the guard would catch a genuine ATC form,
+    /// the answer is an explicit RESCUE LEG beside it, never a hole in the guard: CLEARED
+    /// TO CROSS rescues what TO blocks, CONTINUE TAXI rescues what CONTINUE blocks. That
+    /// pairing is the pattern to follow — widen the guard, then add the rescue.
     ///
-    /// This NARROWS the leak class, it does not CLOSE it: an adversarial cabin sentence that
-    /// avoids every blocklisted word in its gap can still bridge an unrelated "taxi" to a
-    /// later "via" (e.g. phrased entirely in third person with no modal at all). Accepted
-    /// for now as a real limitation, not claimed as complete.
+    /// This is also why LINE UP AND WAIT no longer carries round 3's trailing
+    /// (?!\s+(?:TO|AT|FOR|IN)) lookahead. That lookahead was aimed at the boarding PA
+    /// "please line up and wait TO be called", but it silenced real ATC on the same words:
+    /// "Line up and wait FOR the passenger jet on short final", "Line up and wait AT
+    /// Charlie". The boarding line is blocked by the guard instead (PLEASE), which is
+    /// where the difference actually is. A BARE "line up" is still not enough on its own
+    /// ("passengers please line up at the forward door") — it needs AND WAIT or a runway
+    /// designator.
     ///
-    /// CROSS is imperative-only — the "crossing" form (round 2's optional (?:ING)?) is
-    /// dropped: "we are crossing the runway" is purser narration, not a controller's
-    /// imperative "cross the runway". Its separator admits a hyphen as well as whitespace
-    /// (the live KDTW capture "cross-runway 4R" — the same hyphen evidence behind
-    /// SayIntentionsClearanceParser's PrefixToRunway).
+    /// 2. THE NOUN-PHRASE BLOCKLIST inside TAXI's gap before VIA. A genuine clearance's
+    /// gap is a destination noun phrase — "the passenger terminal", "holding point A1",
+    /// "straight ahead", "gate A-9" — with no pronoun, modal or conjunction in it, while a
+    /// cabin bridge sentence puts a subject doing something in there ("we WILL deplane",
+    /// "passengers MAY deplane", "PLEASE deplane", "OUR gate"). Each gap token therefore
+    /// carries a negative lookahead against AND/WILL/MAY/SHOULD/PLEASE/WE/YOU/OUR/I, and
+    /// the FIRST blocked word anywhere in the gap kills the whole match however many clean
+    /// words preceded it. Tokens admit a hyphen ("gate A-9" is a documented SI stand form)
+    /// and a trailing comma; the eight-word bound is only a backstop — the blocklist does
+    /// the discriminating. A full stop bounds the gap for free, the token class having no
+    /// period in it. Round 2's alternative — requiring the gap to START with "TO" — was
+    /// wrong in both directions at once ("to" is the commonest word in a cabin bridge
+    /// sentence too, and real ICAO phrasings never say it: "Taxi holding point A1 via
+    /// Alpha"); do not reintroduce it.
     ///
-    /// A bare LINE UP is boarding-PA-common too ("please line up at the forward door for
-    /// boarding"), so it is anchored to one of two forms: AND WAIT, or a runway designator.
-    /// LINE UP AND WAIT additionally carries a negative lookahead against a trailing
-    /// TO/AT/FOR/IN: "please line up and wait TO be called" is a boarding-PA continuation,
-    /// not a runway hold instruction — without the lookahead the anchored phrase still
-    /// matched regardless of what followed it.
+    /// The guard and the blocklist overlap on purpose. "After we taxi to the gate,
+    /// passengers deplane via the front door" defeats the blocklist alone — it is third
+    /// person with no modal, every gap word clean — and is caught by the guard, because WE
+    /// sits one word before TAXI. Neither discriminator is a superset of the other.
     ///
-    /// CONTINUE TAXI carries a negative lookbehind against a leading WE/WE'LL/I: "we
-    /// continue taxi to the gate" is purser narration of an ongoing taxi-in, not a
-    /// controller's imperative. Purser speech also says "continue taxiing" or "continue our
-    /// taxi" rather than the bare imperative "continue taxi" — the trailing word boundary
-    /// (kept from round 2) still guards that case on its own.
+    /// The remaining legs are NOUN-phrase shapes, and deliberately unguarded: a narration
+    /// guard reads register in front of a verb and has nothing to say about a designator.
+    /// CLEARED TO LAND / CLEARED FOR TAKEOFF (either word order, with an optional IMMEDIATE
+    /// qualifier) count only BESIDE a runway designator — "we've been cleared to land" is
+    /// standard purser phrasing and must not qualify on its own. RUNWAY &lt;n&gt; … VIA is the
+    /// designator-led abbreviated clearance ("Runway 15L via Bravo, Charlie") that carries
+    /// no verb at all. SQUAWK plus four digits stands alone.
     ///
-    /// CLEARED FOR TAKEOFF now admits an optional IMMEDIATE qualifier between FOR and
-    /// TAKEOFF ("cleared for immediate takeoff") — exact adjacency silenced it before.
+    /// CROSS here is DELIBERATELY NARROWER than SayIntentionsClearanceParser's CrossPrefix,
+    /// and the divergence must not be "fixed". The parser's mask has to catch every way a
+    /// crossing can be MENTIONED — including the pilot's readback and the gerund
+    /// ("crossing runway 4R") — because anything it misses becomes a taxi destination. This
+    /// override has the opposite duty: it must fire only on a controller's IMPERATIVE, and
+    /// "we are crossing the runway" is exactly the purser narration it exists to refuse. So
+    /// no (?:ING)? here, and no borrowing the parser's spelling. The hyphen separator IS
+    /// shared, from the same evidence: the live KDTW capture "cross-runway 4R".
     ///
-    /// Accepted residual: a captain PA saying verbatim "cleared to land on runway 27, cabin
-    /// crew be seated" still passes this override — CLEARED TO LAND plus an adjacent runway
-    /// designator is indistinguishable from a real landing clearance by vocabulary alone.
-    /// THIS ONE residual is contained one layer up: SayIntentionsClearanceSelector requires
-    /// SayIntentionsClearanceParser.LooksLikeTaxiClearance, which excludes on the same
-    /// CLEARED TO LAND phrase — so it can be classified "radio" and kept in history, but can
-    /// never become the SELECTED taxi clearance. The CLEARED FOR TAKEOFF residual is NOT
-    /// covered by that same mechanism — NotATaxiClearance never lists it. It is kept out of
-    /// the selector for an unrelated reason instead: it carries neither "taxi" nor "via", so
-    /// LooksLikeTaxiClearance's TaxiClearanceShape check fails it on its own terms. Two
-    /// different mechanisms landing on the same "not selectable" outcome — do not conflate
-    /// them, and do not assume either containment covers a residual it was not built for.
+    /// HONEST RESIDUALS — none of these is claimed closed:
+    ///
+    /// a. An adversarial cabin sentence that avoids every register word in front of the
+    ///    verb AND every blocklisted word in the gap can still bridge an unrelated "taxi"
+    ///    to a later "via". Narrowed across four rounds, never closed.
+    /// b. A captain PA saying verbatim "cleared to land on runway 27, cabin crew be
+    ///    seated" passes this override — by vocabulary alone it is indistinguishable from
+    ///    a real landing clearance. Contained one layer up: the selector requires
+    ///    SayIntentionsClearanceParser.LooksLikeTaxiClearance, whose NotATaxiClearance
+    ///    excludes on that very phrase. Radio yes, selectable never.
+    /// c. The CLEARED FOR TAKEOFF forms are NOT covered by that same mechanism —
+    ///    NotATaxiClearance does not list them. They stay out of the selector for an
+    ///    unrelated reason: they carry neither "taxi" nor "via", so TaxiClearanceShape
+    ///    fails them on its own terms. Two different mechanisms reaching the same "not
+    ///    selectable" outcome — do not conflate them, and do not assume either containment
+    ///    covers a residual it was not built for.
+    /// d. The unguarded RUNWAY &lt;n&gt; … VIA leg matches inside a captain PA that names a
+    ///    runway and later says "via" — "we will taxi to runway 27 via Alpha and Bravo,
+    ///    cabin crew please be seated" is radio AND selector-reachable. This is NOT a
+    ///    regression: the same sentence leaked in round 3 through TAXI…VIA (its gap words
+    ///    are all clean), so the leg changes which alternative fires, not the verdict.
+    ///    Guarding the leg would close it, at the price of re-silencing verb-less
+    ///    clearances whose designator follows a preposition ("Proceed to runway 27 via
+    ///    Alpha") — a silenced instruction traded for a leaked announcement. Left open
+    ///    deliberately and recorded here rather than traded away silently.
     /// </summary>
     private static readonly Regex AtcInstructionVocabulary = new(
-        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|GIVE\s+WAY|" +
-        @"CROSS(?:\s+THE)?[\s-]+RUNWAYS?|" +
-        @"TAXI\s+(?:(?!(?:AND|WILL|MAY|SHOULD|PLEASE|WE|YOU|OUR|I)\b)[A-Z0-9'-]+,?\s+){0,8}VIA|" +
-        @"(?<!\b(?:WE|WE'LL|I)\s)CONTINUE\s+TAXI\b|" +
-        @"LINE\s+UP\s+AND\s+WAIT\b(?!\s+(?:TO|AT|FOR|IN)\b)|LINE\s+UP\s+RUNWAYS?\s+[0-9]{1,2}|" +
+        @"\b(?:" +
+        NarrationGuard + @"HOLD\s+SHORT|" +
+        NarrationGuard + @"HOLD\s+POSITION|" +
+        NarrationGuard + @"GIVE\s+WAY|" +
+        NarrationGuard + @"CROSS(?:\s+THE)?[\s-]+RUNWAYS?|" +
+        @"CLEARED\s+TO\s+CROSS(?:\s+THE)?[\s-]+RUNWAYS?|" +
+        NarrationGuard + @"TAXI\s+TO\b|" +
+        NarrationGuard + @"TAXI\s+(?:(?!(?:AND|WILL|MAY|SHOULD|PLEASE|WE|YOU|OUR|I)\b)[A-Z0-9'-]+,?\s+){0,8}VIA|" +
+        NarrationGuard + @"CONTINUE\s+TAXI\b|" +
+        NarrationGuard + @"LINE\s+UP\s+AND\s+WAIT\b|LINE\s+UP\s+RUNWAYS?\s+[0-9]{1,2}|" +
+        @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?[\s,]+(?:TAXI\s+)?VIA\b|" +
         @"CLEARED\s+(?:TO\s+LAND|FOR\s+(?:IMMEDIATE\s+)?TAKE\s?OFF)[\s,]+(?:ON\s+)?(?:THE\s+)?RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?|" +
         @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?[\s,]+CLEARED\s+(?:TO\s+LAND|FOR\s+(?:IMMEDIATE\s+)?TAKE\s?OFF)|" +
         @"SQUAWK\s+[0-9]{4})\b",
