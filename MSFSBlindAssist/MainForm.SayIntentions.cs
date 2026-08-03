@@ -88,14 +88,21 @@ public partial class MainForm
 
             // One window at a time. Pressing the key again means "give me this again,
             // now" — leaving the old window open would stack stale copies and, worse,
-            // hand focus to whichever one Windows felt like.
-            if (sayIntentionsInfoForm is { IsDisposed: false }) sayIntentionsInfoForm.Close();
+            // hand focus to whichever one Windows felt like. The replacement inherits
+            // the OLD window's focus-return handle: if the old window currently HAS the
+            // foreground, capturing it fresh would record a handle that is about to die.
+            IntPtr? inheritedFocusReturn = null;
+            if (sayIntentionsInfoForm is { IsDisposed: false })
+            {
+                inheritedFocusReturn = sayIntentionsInfoForm.PreviousWindow;
+                sayIntentionsInfoForm.Close();
+            }
 
             // No announcement here on purpose. The screen reader speaks the window and
             // then the first line as focus lands; announcing a summary on top of that
             // would talk over it (CLAUDE.md: never announce a UI interaction the
             // screen reader already covers).
-            sayIntentionsInfoForm = new SayIntentionsInfoForm(lines);
+            sayIntentionsInfoForm = new SayIntentionsInfoForm(lines, inheritedFocusReturn);
             sayIntentionsInfoForm.Show();
         }
         catch (Exception ex)

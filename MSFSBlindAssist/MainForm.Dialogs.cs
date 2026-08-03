@@ -665,7 +665,7 @@ public partial class MainForm
         catch { return false; }
     }
 
-    internal TaxiAssistForm GetOrCreateTaxiAssistForm()
+    private TaxiAssistForm GetOrCreateTaxiAssistForm()
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {

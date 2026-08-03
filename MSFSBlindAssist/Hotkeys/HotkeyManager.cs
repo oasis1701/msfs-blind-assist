@@ -177,6 +177,16 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SI_ASSIGNED_STATUS = 9217;
         private const int HOTKEY_SI_BUILD_TAXI_ROUTE = 9218;
 
+        /// <summary>Ctrl+Shift+Y as its registration constants PLUS the human-readable
+        /// chord the hotkey guides print. ONE definition on purpose:
+        /// HotkeyGuideSayIntentionsChordTests asserts every guide against this string,
+        /// so the guides, the test and the registration cannot drift — the chord used
+        /// to exist as three independent spellings (guide prose, test const, raw
+        /// MOD_CONTROL|MOD_SHIFT,0x59 call).</summary>
+        internal const uint SI_BUILD_TAXI_ROUTE_MODIFIERS = MOD_CONTROL | MOD_SHIFT;
+        internal const uint SI_BUILD_TAXI_ROUTE_KEY = 0x59; // Y
+        internal const string SayIntentionsBuildTaxiRouteChordText = "Ctrl+Shift+Y";
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -934,7 +944,7 @@ public class HotkeyManager : IDisposable
             // past a hold-short, Shift+Y opens the taxi form, Ctrl+Y stops guidance. Named
             // for what it produces rather than for SayIntentions, so a pilot reaching for
             // it thinks of the route, not the source.
-            RegisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE, MOD_CONTROL | MOD_SHIFT, 0x59); // Ctrl+Shift+Y (Build taxi route from SI)
+            RegisterHotKey(windowHandle, HOTKEY_SI_BUILD_TAXI_ROUTE, SI_BUILD_TAXI_ROUTE_MODIFIERS, SI_BUILD_TAXI_ROUTE_KEY); // Ctrl+Shift+Y (Build taxi route from SI)
 
             // Access GSX hotkey (Input mode). Alt+G is free here — output mode
             // Alt+G is taken by Nearest Ground Traffic, but each mode has its

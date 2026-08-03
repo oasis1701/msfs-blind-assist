@@ -46,13 +46,21 @@ public class SayIntentionsInfoForm : Form
     private const int MaxVisibleItems = 12;
 
     private readonly IntPtr _previousWindow;
+
+    /// <summary>Where Escape hands the foreground back to. Exposed so a REPLACING
+    /// instance can inherit it: on a chord re-press the old window may itself be the
+    /// foreground window, and capturing GetForegroundWindow() then would record a
+    /// handle that is about to be destroyed — Escape would hand focus to a dead
+    /// window and Windows would pick a winner instead of the simulator.</summary>
+    internal IntPtr PreviousWindow => _previousWindow;
+
     private readonly List<DisplayListBox> _sectionBoxes = new();
     private Panel _sectionPanel = null!;
     private Button _closeButton = null!;
 
-    public SayIntentionsInfoForm(IReadOnlyList<InfoSection> sections)
+    public SayIntentionsInfoForm(IReadOnlyList<InfoSection> sections, IntPtr? previousWindow = null)
     {
-        _previousWindow = GetForegroundWindow();
+        _previousWindow = previousWindow ?? GetForegroundWindow();
         InitializeComponent(sections);
     }
 

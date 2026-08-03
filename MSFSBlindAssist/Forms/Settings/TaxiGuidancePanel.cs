@@ -442,9 +442,9 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             gsxAutoSelectGateCheckBox,
             dockingGroup,
             refreshTaxiwayNamesButton,
+            taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel,
             sayIntentionsHeadingLabel,
-            sayIntentionsAutoStartCheckBox,
-            taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel
+            sayIntentionsAutoStartCheckBox
         });
     }
 
@@ -469,6 +469,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepTestButton.TabIndex = 3;
         refreshTaxiwayNamesButton.TabIndex = tabIdx++;
         taxiAugmentEnabledCheckBox.TabIndex = tabIdx++;
+        sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)

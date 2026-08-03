@@ -202,7 +202,8 @@ SayIntentions:
                Fills the Taxi Assist form with the destination, taxiways and
                hold-short runways ATC gave, and names anything it could not
                apply. Review the fields and press Calculate Route to start
-               guidance, or turn on auto-start in Settings > SayIntentions.
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
 
 General:
   Escape     Exit active hotkey mode

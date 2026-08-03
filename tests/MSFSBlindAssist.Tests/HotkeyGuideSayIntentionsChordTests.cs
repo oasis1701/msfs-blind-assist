@@ -19,14 +19,16 @@
 // relative path (AppContext.BaseDirectory\HotkeyGuides) the app itself uses in
 // Forms/HotkeyListForm.cs, so a guide the app cannot find is a guide this cannot find.
 
+using MSFSBlindAssist.Hotkeys;
+
 namespace MSFSBlindAssist.Tests;
 
 public class HotkeyGuideSayIntentionsChordTests
 {
-    /// <summary>The chord Input mode registers for HOTKEY_SI_BUILD_TAXI_ROUTE
-    /// (Hotkeys/HotkeyManager.cs). It joins the Y family every other taxi-guidance
-    /// hotkey already uses: Y, Shift+Y, Ctrl+Y, Ctrl+Shift+Y.</summary>
-    private const string BuildTaxiRouteChord = "Ctrl+Shift+Y";
+    /// <summary>Sourced from the registration itself, so the chord the guides
+    /// document and the chord the app registers cannot drift — this used to be an
+    /// independent third spelling of it.</summary>
+    private static readonly string BuildTaxiRouteChord = HotkeyManager.SayIntentionsBuildTaxiRouteChordText;
 
     /// <summary>The description the chord's entry carries in every guide. Used to FIND the
     /// entry independently of the chord, so the test can assert which chord introduces
