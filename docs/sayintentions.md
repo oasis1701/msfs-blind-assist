@@ -24,6 +24,39 @@ Speaks the most recent **ATC** transmission. Two things are filtered out, for di
 reasons. SayIntentions mixes cabin PA and crew intercom lines into the same message
 stream, so pressing this during taxi gives you the ground controller, not the purser.
 
+A message SHAPED like a ground instruction survives one cabin word in its text:
+*"Hold position, passenger aircraft crossing left to right"* used to die on
+"passenger" before the ATC speaker or COM1 channel were consulted — and a filtered
+record is invisible to the clearance selector too. The override is three-keyed
+(channel not a cabin channel, no cabin marker in the speaker/station/channel FIELDS,
+imperative instruction shape in the message — `AtcInstructionVocabulary`), so purser
+speech, which says "taxi", "runway" and "cleared to land" as prose, stays filtered.
+`CLEARED TO LAND` is deliberately not an instruction shape; a real landing clearance
+qualifies through its runway designator.
+
+That instruction shape rests on two discriminators, both in
+`SayIntentionsTransmissionClassifier.cs` beside `AtcInstructionVocabulary`. A shared
+`NarrationGuard` lookbehind sits in front of every verb-initial leg — `hold short`,
+`hold position`, `give way`, `cross`, `taxi to`, `continue taxi`, `line up and wait` —
+and refuses to match when a first-person or narrative word (WE, WILL, PLEASE, OUR,
+CONTINUE…) sits immediately in front of the verb, since the verb alone cannot tell a
+controller's "cross runway 27" from a captain's "we will cross runway 27". Where the
+guard would also catch a genuine ATC form, the fix is an explicit rescue leg beside
+it, never a hole in the guard — `CLEARED TO CROSS` rescues what it blocks on `CROSS`,
+`CONTINUE TAXI` rescues what it blocks on `CONTINUE`. Inside the `TAXI…VIA` gap a
+second discriminator, a per-token noun-phrase blocklist, does the equivalent job: a
+real clearance's gap is a bare destination ("the passenger terminal", "gate A-9"),
+where a cabin bridge sentence puts a pronoun, modal or PLEASE instead.
+
+Neither discriminator claims to be complete, and the file inventories six honest
+residuals rather than hiding them. The two worth knowing before touching this code:
+a nominal, non-imperative "taxi to the gate" inside cabin PA still passes and is
+selector-reachable, because nothing at that position is a register word for the
+guard to read; and PLEASE, needed to keep boarding PA filtered, also silences a real
+"Please continue taxi via Alpha" if a controller ever phrases it that way. Both are
+accepted trade-offs — see the lettered residuals (a)-(f) in the source for the rest
+and why each was left open rather than traded for a worse failure.
+
 And **your own transmissions are never returned**. A readback is normally the newest
 thing on the frequency at exactly the moment you press the key, so ordering by timestamp
 announced the pilot their own words back, prefixed "Pilot:". Preferring the ATC call only
@@ -154,8 +187,11 @@ is announced that way from the moment you push back, not just once you get there
 
 Only once you are actually at the destination does the readout also compare the gate
 against where you are parked: within 100 m of a stand it reports whether that stand
-*is* the assigned gate, which catches a mis-set arrival position. At any other airport
-that comparison is meaningless and is not made.
+*is* the assigned gate, which catches a mis-set arrival position. That comparison
+honors this scenery's own online aliases for the stand as well as its name — a KDTW
+arrival parked at scenery stand A24A, which SayIntentions and OSM both call A24,
+reports a match rather than "not assigned gate A24" at the very stand it was assigned.
+At any other airport that comparison is meaningless and is not made.
 
 ### Build taxi route
 
@@ -585,7 +621,7 @@ taxiways behind the aircraft. A controller interleaving advisories with clearanc
 ordinary, so this is not a one-off.
 
 The lookup now **scans newest-first for the newest transmission that IS a taxi clearance**.
-Three things bound what it may return, and each has a failure behind it:
+Four things bound what it may return, and each has a failure behind it:
 
 - **Never the pilot.** That rule already existed at the reader, and a scan-back is exactly
   where it stops being obvious: this same capture carries the pilot's readback of the
@@ -604,12 +640,32 @@ Three things bound what it may return, and each has a failure behind it:
   refusing clearances that are still in force. Half an hour is well past that and well
   short of a turnaround dwell, which is the resurrection worth stopping — a clearance from
   the leg before this one is a route already flown.
+- **Route content, between two otherwise-eligible transmissions.** The newest one that
+  carries something a route can be built FROM — a via-list, a destination runway or a
+  destination gate (`HasRouteContent`) — outranks a newer one that is merely taxi-shaped
+  but empty of any of those.
 
 The airport bound does most of that work; the window is the belt beside it, and the only
 one that bites at the `flight.json` site, where no ident exists. That site has never been
 observed to carry comms at all, so its widening from one transmission to half an hour of
 them is theoretical — but it is the bound to revisit first if SayIntentions ever starts
 filling it.
+
+**No callsign bound, deliberately.** The comms history only ever carries
+transmissions to and from the user's own aircraft — SayIntentions does not put
+ambient AI traffic or other network pilots into `getCommsHistory` (owner-
+relayed, 2026-08-03). A callsign gate would therefore only ever exclude
+records mis-parsed from our own feed, and `callsign_icao` is unreliable for
+matching anyway (it is the hyphenated speech form). If a capture ever shows a
+foreign clearance in the feed, this is the assumption it breaks.
+
+**A bare advisory does not outrank the clearance behind it.** "Continue taxi,
+give way to the company 737." is taxi-shaped, and as the newest transmission it
+used to win the scan outright — degrading the import to shortest path while the
+clearance actually in force sat 40 s further back. The scan now runs twice:
+first for the newest transmission with ROUTE CONTENT (a via-list, a destination
+runway or a gate — `HasRouteContent`), then, only when that finds nothing,
+exactly as before, so a lone contentless advisory is still better than nothing.
 
 **Ctrl+S is deliberately untouched.** It still speaks the newest ATC transmission, clearance
 or not. The two are different questions of the same history — *what was just said* versus
@@ -649,13 +705,49 @@ const of its own, shared between the mask and the capture for the same reason `H
 is, and `HoldPrefix` already had `[\s-]+` inside its own "hold-short" — the same lesson,
 one clause further along.
 
+**And a crossing or hold-short can name SEVERAL runways.** KDTW-style parallel
+pairs arrive as *"cross runway 28L and runway 28R"* or *"cross runways 4L and
+4R"*; with only the first token bound, the second runway stayed unmasked and —
+on a gate-bound clearance — became the leftmost "runway NN" the destination
+capture found: an aircraft routed AT a runway it was cleared to cross. The list
+tail (`RunwayList`) is one spelling shared by the mask and the hold-short
+capture, plural "runways" included, and a plural hold-short yields one
+hold-short per runway (the dialog carries one per row, so the second is
+announced as "could not set" rather than dropped in silence). The tail admits
+WRITTEN runways only (`WrittenRunwayTailToken`, at most two digits, never the
+full spoken-word branch) — a spoken multi-runway list ("runways four left and
+four right") therefore still masks only its first runway, the same coverage as
+before lists existed, and a missed mask extension can only under-mask, never
+fabricate a hold-short.
+
 The same masking is why the taxiway scan does **not** truncate at `cross`/`then`: a
 clearance legitimately continues, and reuses taxiways, across a runway crossing (the
 KBOS pattern in [taxi-guidance.md](taxi-guidance.md)). It stops only at a genuine
 terminator — `contact`, `monitor`, `squawk`, `remain`, `report`, `give way`, `follow`,
-`information`. `information` is there because the ATIS letter is spoken phonetically
-("advise you have information Sierra"): read as route text it silently appends a real
-taxiway S to the clearance, or claims the airport is missing one.
+`information`, `caution`, `traffic`, `expect`. `information` is there because the ATIS
+letter is spoken phonetically ("advise you have information Sierra"): read as route
+text it silently appends a real taxiway S to the clearance, or claims the airport is
+missing one. `caution`/`traffic`/`expect` are there for the same reason from the other
+direction: SI appends advisory tails to a clearance, and a phonetic word inside one
+("caution golf cart crossing") became a route leg the controller never cleared.
+
+**Known residual:** a SENTENCE-INITIAL bare designator in an un-terminated tail can
+still match — "…via Kilo, Quebec. A 737 is on short final." reads the capital A as
+taxiway A, because no terminator word precedes it and the case asymmetry only
+protects lowercase prose. Same family as the "proceed north then LE" residual below:
+closing it needs a guard on what may FOLLOW a single-letter designator, whose failure
+mode is the silent dropped leg.
+
+**Hold-shorts are RUNWAY hold-shorts, by SayIntentions' own behaviour.**
+SayIntentions never instructs a hold short of a TAXIWAY (owner-confirmed,
+2026-08-03), so the mask and captures deliberately bind the hold/cross prefixes
+to runway tokens only, and a taxiway name after "hold short of" would today be
+read as a route leg. That is acceptable while the phrase cannot occur on the
+wire; if SI ever adds taxiway hold-shorts this is the first thing to revisit —
+the fix belongs in the shared `HoldPrefix`/`RunwayList` consts (mask the span,
+report "could not set hold short of taxiway …"), never in a second copy of the
+phrasing. The dialog carries no taxiway-hold-short row either, so parsing alone
+would not be enough.
 
 ### Taxiway matching case asymmetry
 
@@ -667,6 +759,11 @@ and the preposition "at" as taxiway AT. Callers must never pass
 
 Overlapping candidates resolve longest-first, so "Alpha-Tango" reads as `AT` rather
 than `A` followed by `T`.
+
+Each taxiway's pattern is compiled once and cached (`TaxiwayPatterns`, keyed on the
+normalized name) rather than rebuilt on every scan — `ScanTaxiways` runs one pattern
+per known taxiway per keypress, upwards of a hundred at a large airport, past what the
+static `Regex.Matches` cache holds.
 
 **Digits carry spoken forms too**, exactly like letters. Without them "Bravo Four"
 decayed to taxiway B — a real taxiway at most airports, so the wrong route was delivered
@@ -724,6 +821,12 @@ cannot tell the two apart. It is ambiguous to a human reader too, no live captur
 prose after `via` at all, and the router's own sanity check catches the resulting route.
 Closing it needs a whitelist of what may PRECEDE a compass word, whose failure mode is the
 silent dropped leg this change exists to remove.
+
+Case folding is CULTURE-INVARIANT everywhere: every IgnoreCase regex in the
+integration carries `RegexOptions.CultureInvariant`, because under tr-TR the
+pattern letter I folds to dotless ı and `\b(?:TAXI|VIA)\b` stops matching
+"taxi" — which killed the entire import for Turkish-locale users.
+`SayIntentionsCultureTests` runs the load-bearing paths under tr-TR.
 
 ### Reporting what did not survive
 
