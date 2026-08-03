@@ -53,26 +53,66 @@ public static class SayIntentionsTransmissionClassifier
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
+    /// Imperative ground-instruction shapes only a controller utters — the override
+    /// key that lets a REAL instruction survive one cabin word in its text. Kept to
+    /// instruction SHAPES rather than ATC nouns on purpose: purser speech routinely
+    /// contains "taxi", "runway" and "cleared to land" as prose ("while we taxi to
+    /// the runway"), so those alone must not open the gate. CLEARED TO LAND is
+    /// deliberately absent — "we've been cleared to land" is standard purser
+    /// phrasing; a real landing clearance still qualifies through its runway
+    /// designator ("cleared to land runway 27" matches RUNWAY 27).
+    /// </summary>
+    private static readonly Regex AtcInstructionVocabulary = new(
+        @"\b(?:HOLD\s+SHORT|HOLD\s+POSITION|LINE\s+UP|TAXI\s+VIA|CROSS\s+RUNWAYS?|GIVE\s+WAY|" +
+        @"RUNWAYS?\s+[0-9]{1,2}(?:\s?(?:LEFT|RIGHT|CENTER|CENTRE)\b|[LCR](?![A-Za-z0-9]))?|" +
+        @"SQUAWK\s+[0-9]{4})\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>
     /// A RECOGNIZED channel is authoritative in both directions; an unrecognized one
     /// defers to the vocabulary heuristic rather than vetoing. The SayIntentions comms
     /// schema is third-party and undocumented, and the old rule ("non-empty channel
     /// must be in the allowlist, otherwise reject") meant a single unseen token —
     /// "com1_out", "ATC", a frequency string — rejected EVERY transmission and left
     /// Ctrl+S saying "no communication history found" for the rest of the flight.
-    /// Cabin content is still rejected even on a radio channel.
+    /// Cabin content is still rejected even on a radio channel — unless the message
+    /// itself is shaped like a ground instruction; see IsCabinVetoOverridden for why
+    /// that direction of ambiguity is the safe one.
     /// </summary>
     public static bool IsRadioTransmission(string? speaker, string? stationName, string? channel, string? message)
     {
         if (string.IsNullOrWhiteSpace(message)) return false;
-        if (LooksLikeCabinAnnouncement(speaker, stationName, channel, message)) return false;
 
-        return ClassifyChannel(channel) switch
+        ChannelKind kind = ClassifyChannel(channel);
+        if (LooksLikeCabinAnnouncement(speaker, stationName, channel, message)
+            && !IsCabinVetoOverridden(speaker, stationName, channel, kind, message))
+        {
+            return false;
+        }
+
+        return kind switch
         {
             ChannelKind.Radio => true,
             ChannelKind.NonRadio => false,
             _ => AtcVocabulary.IsMatch($"{speaker} {stationName} {message}")
         };
     }
+
+    /// <summary>
+    /// Whether a cabin-vocabulary hit may be overruled. The veto's false-positive
+    /// direction is a SILENCED ATC instruction — "Hold position, passenger aircraft
+    /// crossing" died on its one cabin word, and a filtered record is also invisible
+    /// to the clearance selector. Overridden only when ALL THREE hold: the channel is
+    /// not a known cabin channel; no cabin marker sits in the speaker/station/channel
+    /// FIELDS (fields are labels and stay authoritative — message text is where ATC
+    /// legitimately says "passenger"); and the message carries an imperative
+    /// instruction shape (<see cref="AtcInstructionVocabulary"/>).
+    /// </summary>
+    private static bool IsCabinVetoOverridden(
+        string? speaker, string? stationName, string? channel, ChannelKind kind, string message) =>
+        kind != ChannelKind.NonRadio
+        && !CabinVocabulary.IsMatch($"{speaker} {stationName} {channel}")
+        && AtcInstructionVocabulary.IsMatch(message);
 
     public static bool LooksLikeCabinAnnouncement(string? speaker, string? stationName, string? channel, string? message) =>
         CabinVocabulary.IsMatch($"{speaker} {stationName} {channel} {message}");

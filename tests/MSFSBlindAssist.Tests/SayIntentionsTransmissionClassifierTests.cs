@@ -79,6 +79,10 @@ public class SayIntentionsTransmissionClassifierTests
             "", null, channel, "See you at the hotel later"));
     }
 
+    // Still rejected after the override was added: the speaker field itself ("Flight
+    // Attendant") is a cabin marker, which blocks IsCabinVetoOverridden on the fields leg
+    // regardless of message shape — and this message carries no instruction shape either,
+    // so both override legs independently fail. This pins the surviving filter.
     [Fact]
     public void CabinContentOnARadioChannelIsStillRejected()
     {
@@ -105,4 +109,28 @@ public class SayIntentionsTransmissionClassifierTests
     {
         Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission("ATC", "Ground", "COM1", "   "));
     }
+
+    [Theory]
+    // The veto's dangerous direction is a silenced ATC instruction. One cabin word in
+    // a genuine ground instruction must not kill it — it also vanishes from the
+    // clearance selector's history, which never sees a filtered record.
+    [InlineData("ATC", "Metro Ground", "COM1", "Taxi via Alpha, Bravo to the passenger terminal")]
+    [InlineData("ATC", "Ground", null, "Hold position, passenger aircraft crossing left to right")]
+    [InlineData("ATC", "Tower", "118.700", "Line up and wait runway 27, passenger jet departing ahead")]
+    public void AnAtcInstructionCarryingACabinWordIsStillRadio(
+        string speaker, string station, string? channel, string message)
+        => Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            speaker, station, channel, message));
+
+    [Theory]
+    // The override needs an imperative instruction SHAPE, not ATC-adjacent nouns:
+    // purser speech routinely carries "taxi", "runway" and "cleared to land" as prose.
+    [InlineData("", null, null, "Please keep your seat belts fastened while we taxi to the runway")]
+    [InlineData("", null, null, "Ladies and gentlemen we have been cleared to land, cabin crew please be seated")]
+    // A cabin marker in the CHANNEL stays authoritative whatever the message says.
+    [InlineData("", "Purser", "PA", "Cabin crew be seated, we are holding short of runway 27")]
+    public void CabinSpeechStaysFilteredEvenWhenItSoundsOperational(
+        string speaker, string? station, string? channel, string message)
+        => Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
+            speaker, station, channel, message));
 }
