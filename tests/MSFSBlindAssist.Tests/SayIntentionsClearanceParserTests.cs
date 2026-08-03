@@ -352,8 +352,8 @@ public class SayIntentionsClearanceParserTests
     // one ("caution golf cart crossing") became a route leg ATC never cleared.
     [Theory]
     [InlineData("Runway 4L taxi via Kilo, Quebec, caution golf cart crossing", new[] { "K", "Q" })]
-    [InlineData("Taxi via Alpha, Bravo, traffic is a Boeing 737 on short final", new[] { "A", "B" })]
-    [InlineData("Taxi via Alpha, expect further clearance on the way", new[] { "A" })]
+    [InlineData("Taxi via Alpha, Bravo, traffic is a Foxtrot company Cessna on short final", new[] { "A", "B" })]
+    [InlineData("Taxi via Alpha, expect to hold for a Kilo company arrival", new[] { "A" })]
     [InlineData("Taxi via Alpha, Bravo, monitor ground on point nine", new[] { "A", "B" })]
     [InlineData("Taxi via Alpha, report reaching the ramp", new[] { "A" })]
     [InlineData("Taxi via Alpha, give way to the Airbus, then Bravo", new[] { "A" })]
