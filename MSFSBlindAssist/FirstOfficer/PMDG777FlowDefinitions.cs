@@ -13,7 +13,10 @@ namespace MSFSBlindAssist.FirstOfficer;
 ///
 /// PMDG event values:
 /// - Transponder mode: 0=STBY, 1=ALT-OFF, 2=ON, 3=TA, 4=TA/RA
-/// - Autobrake: 0=RTO, 1=Off, 2=1, 3=2, 4=3, 5=4, 6=Auto/Med
+/// - Autobrake (PMDG_777X_SDK.h line 272): 0=RTO, 1=Off, 2=Disarm, 3="1", 4="2",
+///   5="3", 6="4", 7=Max Auto. The DISARM detent was missing from an earlier copy of
+///   this map, so every entry from 2 up was one step ahead of reality. Only RTO and Off
+///   are ever driven here — the numbered landing detents are a Captain item.
 /// - Packs: 0=OFF, 1=Auto (single pack), 2=AUTO (both packs auto)
 ///   (PMDG pack switch: 0=OFF, 1=Auto — two separate events for L and R)
 /// - Flaps lever position: 0=UP, 1=1, 2=5, 3=15, 4=20, 5=25, 6=30
@@ -87,7 +90,14 @@ public static class PMDG777FlowDefinitions
             Skip(SW("EPU_ADIRU",       "ADIRU: ON",                 "EVT_OH_ADIRU_SWITCH",                1, "ADIRU_Sw_On", v => v > 0.5),
                 s => s.IsADIRUOn()),
             Wait("EPU_WAIT_ADIRU", "ADIRU aligning — 30 seconds", 30),
-            SW("EPU_EMER_EXIT_GRD", "Emer exit guard: closed",  "EVT_OH_EMER_EXIT_LIGHT_GUARD",     1),
+            // ARMED is the guard-CLOSED position, so "guard closed" IS "lights armed" —
+            // reaching it means moving the switch to ARMED and letting the guard shut over
+            // it, which is what the pseudo-key sequence does. (This step used to write the
+            // guard event directly with 1, which OPENS the guard, under a label saying
+            // "closed", and left it standing open over ARMED.)
+            Skip(SW("EPU_EMER_EXIT_LIGHTS", "Emer exit lights: ARMED", "EMER_EXIT_LIGHTS",
+                    EmerExitLightSequence.Armed),
+                s => s.EmerLightsSelector() == EmerExitLightSequence.Armed),
             Skip(SW("EPU_THRUST_ASYM", "Thrust asym comp: AUTO",    "EVT_OH_THRUST_ASYM_COMP",            1),
                 s => s.IsThrustAsymCompAuto()),
         }
@@ -555,7 +565,11 @@ public static class PMDG777FlowDefinitions
             Skip(SW("SEC_ADIRU_OFF", "ADIRU: OFF",           "EVT_OH_ADIRU_SWITCH",         0,
                "ADIRU_Sw_On", v => v < 0.5, "SEC_ADIRU"),
                 s => !s.IsADIRUOn()),
-            SW("SEC_EMER_LIGHTS","Emer exit lights: OFF","EVT_OH_EMER_EXIT_LIGHT_SWITCH",0),
+            // OFF sits outside the guard — the guard must be lifted first, so this goes
+            // through the guarded pseudo-key rather than a bare switch write (which over
+            // CDA could never leave ARMED at all).
+            SW("SEC_EMER_LIGHTS", "Emer exit lights: OFF", "EMER_EXIT_LIGHTS",
+                EmerExitLightSequence.Off),
             Multi("SEC_PACKS",   "Packs: OFF",
                 ("EVT_OH_AIRCOND_PACK_SWITCH_L", 0), ("EVT_OH_AIRCOND_PACK_SWITCH_R", 0)),
             SW("SEC_APU_OFF",    "APU: OFF",             "EVT_OH_ELEC_APU_SEL_SWITCH",  0),

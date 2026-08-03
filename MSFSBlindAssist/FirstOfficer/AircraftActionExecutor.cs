@@ -1,6 +1,7 @@
 using System.Threading;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer;
 
@@ -84,6 +85,10 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "FIRE_OVHT_TEST": return FireOvhtTestAsync();
                 case "TCAS_TEST":      return TcasTestAsync();
                 case "WXR_TEST":       return WxrTestAsync();
+                // Guarded switch — the guard and the settle gap can't be expressed as
+                // a plain SetSwitch dispatch. See SetEmerExitLightsAsync.
+                case "EMER_EXIT_LIGHTS":
+                    return SetEmerExitLightsAsync(step.TargetValue ?? EmerExitLightSequence.Armed);
             }
         }
         return step.ActionType switch
@@ -477,10 +482,86 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetSeatbeltSign(bool on) => SetSeatBelts(on ? 2 : 0);
     public bool SetNoSmoking(int position)      => ExecuteSingle("EVT_OH_NO_SMOKING_LIGHT_SWITCH", position, false, false);
 
-    // Emer exit lights (guarded switch — guard must be closed/open first)
-    // Guard: 0=open, 1=closed. Switch: 0=Off, 1=Armed
-    public bool CloseEmerExitLightGuard()       => ExecuteSingle("EVT_OH_EMER_EXIT_LIGHT_GUARD", 1, false, false);
-    public bool SetEmerExitLights(int position)  => ExecuteSingle("EVT_OH_EMER_EXIT_LIGHT_SWITCH", position, false, false);
+    // Emergency exit lights — a GUARDED switch. Ordering and polarity come from
+    // EmerExitLightSequence (0 = guard CLOSED, 1 = guard OPEN; ARMED is the normal
+    // guard-closed position, OFF and ON sit outside it), which mirrors
+    // PMDG777Definition's LTS_EmerLights block — both are the same user-verified
+    // model (MobiFlight against the real switch, 2026-08-01). An earlier version of
+    // this file had the polarity INVERTED and named the open-guard write
+    // "CloseEmerExitLightGuard"; EmerExitLightSequenceTests pins it now.
+    //
+    // Two things make this unlike every other switch here:
+    //  1. The guard and the switch travel on DIFFERENT transports — the guard is a
+    //     CDA write, the switch an absolute-target TransmitClientEvent. The CDA
+    //     selector only ever steps one detent UPWARD, which is why Armed -> Off is
+    //     unreachable through it (the bug this replaces: the FO dispatched the
+    //     switch over CDA and could never actually reach OFF).
+    //  2. Because the transports differ, the two writes are not guaranteed to arrive
+    //     in the order they were issued — a settle gap orders them. Fired back to
+    //     back, the switch can reach PMDG before the guard has lifted and the write
+    //     is refused.
+    //
+    // The whole sequence is awaited INSIDE _dispatchGate so WaitForDispatchDrainAsync
+    // still covers it and ChecklistManager's revert grace cannot fire mid-gap.
+    private const int EmerLightsGuardSettleMs = 80;
+
+    /// <summary>Drive the guarded emergency-exit light switch to <paramref name="target"/>
+    /// (0 = Off, 1 = Armed, 2 = On), guard included.</summary>
+    public async Task<bool> SetEmerExitLightsAsync(int target)
+    {
+        var sc = _simConnect;
+        if (sc == null) return false;
+        if (!PMDG777Definition.EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_SWITCH", out int switchEventId))
+            return false;
+
+        // Reading the live position needs a ready CDA snapshot — before the first one
+        // GetFieldValue returns 0.0 for every field, which would read as "already Off"
+        // and silently skip a real write.
+        var dm = sc.PMDGDataManager;
+        if (dm == null || !dm.IsReady) return false;
+        int current = (int)Math.Round(dm.GetFieldValue("LTS_EmerLightsSelector"));
+
+        bool haveGuard = PMDG777Definition.EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
+        var steps = EmerExitLightSequence.Plan(current, target, haveGuard);
+        if (steps.Count == 0) return true;   // already there
+
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            await PaceAsync();
+            for (int i = 0; i < steps.Count; i++)
+            {
+                if (i > 0) await Task.Delay(EmerLightsGuardSettleMs);
+                var step = steps[i];
+                if (step.Kind == EmerExitStepKind.Guard)
+                    sc.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, step.Value);
+                else
+                    sc.SendPMDGEventViaTransmitWithTarget((uint)switchEventId, (uint)step.Value);
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // The synchronous entry below is fire-and-forget, so an escaped exception
+            // would vanish as an unobserved task fault with nothing in the log.
+            Log.Debug("PMDG", $"FO emergency exit lights set to {target} failed: " +
+                              $"{ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+        finally
+        {
+            _lastWriteUtc = DateTime.UtcNow;
+            _dispatchGate.Release();
+        }
+    }
+
+    /// <summary>Synchronous entry for checklist CheckAction lambdas (queues the
+    /// gated sequence; sequential calls still queue FIFO behind it).</summary>
+    public bool SetEmerExitLights(int target)
+    {
+        _ = SetEmerExitLightsAsync(target);
+        return true;
+    }
 
     // ADIRU
     public bool SetAdiru(int position) => ExecuteSingle("EVT_OH_ADIRU_SWITCH", position, false, false);

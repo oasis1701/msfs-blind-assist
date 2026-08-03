@@ -754,8 +754,11 @@ public static class PMDG777ChecklistDefinitions
             Auto("SEC_ADIRU", "SECURE", "ADIRU switch: OFF",
                 "ADIRU_Sw_On", v => v < 0.5,
                 action: (e, _) => e.SetAdiru(0)),
+            // One guarded call — it lifts the guard, waits out the settle gap, then moves
+            // the switch. The old two-call form wrote the guard to 1 under a method named
+            // "Close…" and sent the switch over CDA, which cannot reach OFF from ARMED.
             ActionManual("SEC_EMER_EXIT_OFF", "SECURE", "Emergency Exit Lights switch: OFF",
-                (e, _) => { e.CloseEmerExitLightGuard(); e.SetEmerExitLights(0); }),
+                (e, _) => e.SetEmerExitLights(EmerExitLightSequence.Off)),
             Auto("SEC_PACKS_OFF", "SECURE", "Pack switches: OFF",
                 "AIR_Pack_Sw_AUTO_0", v => v < 0.5,
                 new[] { "AIR_Pack_Sw_AUTO_1" },
