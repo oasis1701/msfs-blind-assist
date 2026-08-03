@@ -87,7 +87,7 @@ public static class SayIntentionsTransmissionClassifier
     /// stops a word merely ENDING in a guard word from firing it — "via India hold short",
     /// "Bravo, taxi to gate 22" both stay instructions.</summary>
     private const string NarrationGuard =
-        @"(?<!\b(?:WE|WE'LL|I|WILL|MAY|SHALL|ABOUT|TO|PLEASE|THE|A|AN|OUR|YOUR|CONTINUE)\s)";
+        @"(?<!\b(?:WE|WE['’]LL|I|I['’]LL|WILL|MAY|SHALL|ABOUT|TO|PLEASE|THE|A|AN|OUR|YOUR|CONTINUE)\s)";
 
     /// <summary>
     /// Ground-instruction shapes only a controller utters — the override key that lets a

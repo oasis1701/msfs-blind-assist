@@ -53,7 +53,7 @@ public static class SayIntentionsClearanceSelector
     /// the same (stamp, id) key the last-transmission readout uses, so a caller cannot
     /// get the direction of "newest" wrong.
     ///
-    /// THREE things bound what this may return, and all three are load-bearing:
+    /// FOUR things bound what this may return, and all four are load-bearing:
     ///
     /// 1. It is NEVER a <see cref="SayIntentionsTransmission.PilotSpeaker"/> transmission.
     ///    That rule already exists at the reader, and this repeats it rather than relying

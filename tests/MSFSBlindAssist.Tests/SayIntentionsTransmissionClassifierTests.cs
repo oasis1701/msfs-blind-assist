@@ -225,6 +225,11 @@ public class SayIntentionsTransmissionClassifierTests
     // REACHABLE (LooksLikeTaxiClearance is true for it, so it could be imported as the
     // taxi clearance). Both are blocked by the one shared guard, on WILL.
     [InlineData("", null, null, "Ladies and gentlemen, we will cross runway 27 shortly, cabin crew please be seated")]
+    // WE'LL, not WE WILL — and with a typographic (U+2019) apostrophe, the form SI
+    // actually sends. NarrationGuard's WE'LL branch must accept both the ASCII and
+    // curly apostrophe, mirroring BuildTaxiwayPattern's ['’] lookarounds elsewhere
+    // in this same feature.
+    [InlineData("", null, null, "We’ll cross runway 27 shortly, cabin crew please be seated")]
     [InlineData("", null, null, "Ladies and gentlemen, we will continue taxi to the gate, cabin crew be seated")]
     // CONTINUE's blocking direction, on the via-shaped variant. This pair is why CONTINUE
     // itself is a guard word: blocking the CONTINUE TAXI leg alone was not enough, because

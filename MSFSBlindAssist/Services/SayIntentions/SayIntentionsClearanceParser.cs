@@ -532,7 +532,7 @@ public static class SayIntentionsClearanceParser
     private static Regex TaxiwayPattern(string taxiway)
     {
         if (TaxiwayPatterns.Count > 4096) TaxiwayPatterns.Clear();
-        // Normalized so cosmetic spellings of one name ("B4", " b4 ", "b 4") share a
+        // Normalized so cosmetic spellings of one name ("B4", " b4 ") share a
         // single entry — BuildTaxiwayPattern trims/uppercases internally, so they'd
         // produce a byte-identical pattern anyway; this just stops them paying for
         // separate cache slots and separate Regex compilations.
