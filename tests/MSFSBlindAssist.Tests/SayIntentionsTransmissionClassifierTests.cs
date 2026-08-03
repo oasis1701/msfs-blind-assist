@@ -126,6 +126,17 @@ public class SayIntentionsTransmissionClassifierTests
     [InlineData("ATC", "Ground", null, "Taxi to the passenger terminal, via Alpha, Bravo")]
     // Runway designator beside CLEARED FOR TAKEOFF (reverse order: runway first).
     [InlineData("ATC", "Tower", "118.700", "Runway 27, cleared for takeoff, caution passenger bus crossing behind")]
+    // No "TO" in the gap at all — round 2's TO-anchor wrongly silenced this real ICAO
+    // phrasing; the blocklist discriminator admits it (none of its gap words are blocked).
+    [InlineData("ATC", "Ground", "COM1", "Taxi holding point A1 via Alpha, caution passenger bus")]
+    [InlineData("ATC", "Ground", null, "Taxi straight ahead via Alpha, caution passenger aircraft")]
+    // Hyphenated SI stand form ("gate A-9") must survive the gap-token character class.
+    [InlineData("ATC", "Ground", "COM1", "Taxi to gate A-9 via Alpha, caution passenger bus")]
+    // Hyphen as the CROSS/RUNWAY separator (live KDTW form), not just whitespace.
+    [InlineData("ATC", "Ground", null, "Cross-runway 4R at Kilo, caution passenger bus")]
+    // CLEARED FOR IMMEDIATE TAKEOFF — the IMMEDIATE qualifier must not break exact
+    // adjacency to the runway designator.
+    [InlineData("ATC", "Tower", "118.700", "Runway 27, cleared for immediate takeoff, passenger jet on short final")]
     public void AnAtcInstructionCarryingACabinWordIsStillRadio(
         string speaker, string station, string? channel, string message)
         => Assert.True(SayIntentionsTransmissionClassifier.IsRadioTransmission(
@@ -152,6 +163,17 @@ public class SayIntentionsTransmissionClassifierTests
     // later "via" that describes something else entirely (how passengers deplane, not a
     // taxi route).
     [InlineData("", null, null, "After we taxi in, cabin crew will deplane passengers via the front door")]
+    // The blocklist discriminator, not a TO-anchor: "to" is the COMMON cabin preposition
+    // too ("taxi to the gate"), so these four all carry "to" in the gap — what stops them
+    // is a later blocked word (WILL/OUR+MAY/PLEASE) before the gap can reach VIA.
+    [InlineData("", null, null, "After we taxi to the gate, passengers will deplane via the front door")]
+    [InlineData("", null, null, "Once we taxi to our gate, passengers may deplane via the forward doors")]
+    [InlineData("", null, null, "Cabin crew, after we taxi to stand 22, please deplane via door one left")]
+    // CROSS is imperative-only now: "crossing" (not the bare verb "cross") must not match.
+    [InlineData("", null, null, "Ladies and gentlemen we are crossing the runway, cabin crew please be seated")]
+    // LINE UP AND WAIT's trailing negative lookahead: "...to be called" marks this as a
+    // boarding-PA continuation, not a runway hold instruction.
+    [InlineData("", null, null, "Boarding groups three and four, please line up and wait to be called")]
     public void CabinSpeechStaysFilteredEvenWhenItSoundsOperational(
         string speaker, string? station, string? channel, string message)
         => Assert.False(SayIntentionsTransmissionClassifier.IsRadioTransmission(
