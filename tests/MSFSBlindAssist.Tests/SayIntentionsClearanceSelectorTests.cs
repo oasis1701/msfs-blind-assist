@@ -190,4 +190,65 @@ public class SayIntentionsClearanceSelectorTests
         // must not mean an absent answer.
         Assert.Equal(CrossingClearance, Select(KdtwTail, airport: null));
     }
+
+    [Fact]
+    public void ABareContinueTaxiAdvisoryDoesNotOutrankTheClearanceBehindIt()
+    {
+        var stamp = new DateTime(2026, 7, 31, 23, 41, 34, DateTimeKind.Utc);
+        var history = new List<SayIntentionsTransmission>
+        {
+            new(SayIntentionsTransmission.AtcSpeaker,
+                "Runway 22R taxi via Alpha, Bravo, hold short of runway 15",
+                "Ground", "COM1", stamp, 1, "KBOS"),
+            new(SayIntentionsTransmission.AtcSpeaker,
+                "Continue taxi, give way to the company 737.",
+                "Ground", "COM1", stamp.AddSeconds(40), 2, "KBOS"),
+        };
+        Assert.Equal("Runway 22R taxi via Alpha, Bravo, hold short of runway 15",
+            SayIntentionsClearanceSelector.SelectLatestTaxiClearance(history, "KBOS")?.Message);
+    }
+
+    [Fact]
+    public void ARouteContentlessAdvisoryIsStillSelectedWhenItIsAllThereIs()
+    {
+        var stamp = new DateTime(2026, 7, 31, 23, 41, 34, DateTimeKind.Utc);
+        var history = new List<SayIntentionsTransmission>
+        {
+            new(SayIntentionsTransmission.AtcSpeaker,
+                "Continue taxi, give way to the company 737.",
+                "Ground", "COM1", stamp, 1, "KBOS"),
+        };
+        Assert.Equal("Continue taxi, give way to the company 737.",
+            SayIntentionsClearanceSelector.SelectLatestTaxiClearance(history, "KBOS")?.Message);
+    }
+
+    [Fact]
+    public void EqualStampsFallBackToTheHigherId()
+    {
+        var stamp = new DateTime(2026, 7, 31, 23, 41, 34, DateTimeKind.Utc);
+        var history = new List<SayIntentionsTransmission>
+        {
+            new(SayIntentionsTransmission.AtcSpeaker, "Runway 22R taxi via Alpha",
+                "Ground", "COM1", stamp, 1, "KBOS"),
+            new(SayIntentionsTransmission.AtcSpeaker, "Runway 22R taxi via Bravo",
+                "Ground", "COM1", stamp, 2, "KBOS"),
+        };
+        Assert.Equal("Runway 22R taxi via Bravo",
+            SayIntentionsClearanceSelector.SelectLatestTaxiClearance(history, "KBOS")?.Message);
+    }
+
+    [Fact]
+    public void AnUnstampedRecordSortsOldestAmongStampedOnes()
+    {
+        var stamp = new DateTime(2026, 7, 31, 23, 41, 34, DateTimeKind.Utc);
+        var history = new List<SayIntentionsTransmission>
+        {
+            new(SayIntentionsTransmission.AtcSpeaker, "Runway 22R taxi via Alpha",
+                "Ground", "COM1", null, 9, "KBOS"),
+            new(SayIntentionsTransmission.AtcSpeaker, "Runway 22R taxi via Bravo",
+                "Ground", "COM1", stamp, 1, "KBOS"),
+        };
+        Assert.Equal("Runway 22R taxi via Bravo",
+            SayIntentionsClearanceSelector.SelectLatestTaxiClearance(history, "KBOS")?.Message);
+    }
 }

@@ -80,6 +80,9 @@ public static class SayIntentionsClearanceSelector
     /// already puts an unstamped transmission at the bottom of the history, so it is the
     /// last thing this reaches, and refusing it as well would mean a payload shape we
     /// cannot time is a payload shape we cannot ever use.
+    ///
+    /// 4. Between two eligible transmissions, one a route can be built FROM outranks a
+    ///    newer bare "continue taxi" — see SayIntentionsClearanceParser.HasRouteContent.
     /// </summary>
     public static SayIntentionsTransmission? SelectLatestTaxiClearance(
         IReadOnlyList<SayIntentionsTransmission>? transmissions, string? airportIcao)
@@ -93,6 +96,14 @@ public static class SayIntentionsClearanceSelector
 
         DateTime? newestStamp = ordered[^1].StampZulu;
 
+        return Scan(ordered, newestStamp, airportIcao, requireRouteContent: true)
+            ?? Scan(ordered, newestStamp, airportIcao, requireRouteContent: false);
+    }
+
+    private static SayIntentionsTransmission? Scan(
+        List<SayIntentionsTransmission> ordered, DateTime? newestStamp, string? airportIcao,
+        bool requireRouteContent)
+    {
         for (int i = ordered.Count - 1; i >= 0; i--)
         {
             var transmission = ordered[i];
@@ -103,6 +114,8 @@ public static class SayIntentionsClearanceSelector
             if (transmission.Speaker == SayIntentionsTransmission.PilotSpeaker) continue;
             if (!IsAtAirport(transmission.Ident, airportIcao)) continue;
             if (!SayIntentionsClearanceParser.LooksLikeTaxiClearance(transmission.Message)) continue;
+            if (requireRouteContent
+                && !SayIntentionsClearanceParser.HasRouteContent(transmission.Message)) continue;
 
             return transmission;
         }

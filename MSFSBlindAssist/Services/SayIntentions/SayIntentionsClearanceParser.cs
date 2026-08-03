@@ -177,6 +177,24 @@ public static class SayIntentionsClearanceParser
         return TaxiClearanceShape.IsMatch(text) && !NotATaxiClearance.IsMatch(text);
     }
 
+    /// <summary>True when the text carries something a route can be built FROM: a
+    /// "via" list, a destination runway, or a destination gate.
+    ///
+    /// The selector prefers the newest taxi-shaped transmission that has this, over
+    /// a newer one that does not — a bare "Continue taxi, give way to the company
+    /// 737." is taxi-shaped, and being newest it used to win the scan outright while
+    /// the clearance actually in force sat seconds behind it, degrading a perfectly
+    /// good import to shortest path. It is a PREFERENCE, not a gate: with nothing
+    /// else in reach the contentless advisory is still returned, because "no
+    /// clearance found" helps the pilot even less.</summary>
+    public static bool HasRouteContent(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return ViaKeyword.IsMatch(text)
+            || ParseDestinationRunway(text) != null
+            || ParseDestinationGate(text) != null;
+    }
+
     /// <summary>The runway the clearance routes TO, or null when the clearance
     /// names no destination runway (e.g. it is a clearance to a gate).</summary>
     public static string? ParseDestinationRunway(string? clearance)
