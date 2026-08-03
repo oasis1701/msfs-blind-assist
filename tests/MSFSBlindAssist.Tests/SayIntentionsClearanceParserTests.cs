@@ -148,6 +148,30 @@ public class SayIntentionsClearanceParserTests
     public void ASideLetterOnlyBindsWhenItIsARunwaySide(string clearance, string expected)
         => Assert.Equal(expected, SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
 
+    // ---- The list tail must never fabricate a runway ----
+    //
+    // RunwayList's tail originally reused the full RunwayToken, whose spoken branch
+    // is `(?:...|[-\s])+` — one bare space or hyphen alone satisfies that `+`. So
+    // after a real "," or "and", ANY next character could make the tail "succeed":
+    // a following digit run ("737") was read as a second runway, a following bare
+    // spoken word ("one", "Center") was read as a second runway (or, for Center,
+    // simply consumed and lost as a taxiway), and even ordinary prose let the tail
+    // eat the separator's own trailing space for no reason. The fix gives the TAIL
+    // its own narrower token — written runways only, digits capped at two — so it
+    // can only ever extend the list onto a REAL second runway.
+
+    [Theory]
+    [InlineData("Taxi to gate A9 via Alpha, hold short of runway 15, 737 on the runway", new[] { "15" })]
+    [InlineData("Hold short of runway 22, one moment please", new[] { "22" })]
+    [InlineData("Hold short of runways 4L and 4R", new[] { "04L", "04R" })]
+    public void TheListTailNeverFabricatesARunway(string clearance, string[] expected)
+        => Assert.Equal(expected, SayIntentionsClearanceParser.ParseHoldShortRunways(clearance));
+
+    [Fact]
+    public void ACompassNamedTaxiwayAfterACrossingSurvives()
+        => Assert.Equal(new[] { "H", "C", "A" }, SayIntentionsClearanceParser.ParseTaxiways(
+            "Taxi via Hotel, cross runway 22, Center, Alpha", new[] { "H", "C", "A" }));
+
     // ---- Spoken-form normalization ----
 
     [Theory]
@@ -290,6 +314,11 @@ public class SayIntentionsClearanceParserTests
         => Assert.Equal(new[] { "A", "B" },
             SayIntentionsClearanceParser.ParseTaxiways(
                 "Taxi via Alpha, Bravo, I'll call your crossing", new[] { "A", "B", "I" }));
+
+    [Fact]
+    public void ATypographicApostropheContractionIsNotATaxiway()
+        => Assert.Equal(new[] { "A", "B" }, SayIntentionsClearanceParser.ParseTaxiways(
+            "Taxi via Alpha, Bravo, I’ll call your crossing", new[] { "A", "B", "I" }));
 
     [Fact]
     public void SpokenAlphanumericTaxiwaysResolveWholly()

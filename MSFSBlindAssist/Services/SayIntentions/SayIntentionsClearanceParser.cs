@@ -16,6 +16,11 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 /// </summary>
 public static class SayIntentionsClearanceParser
 {
+    /// <summary>The written side suffix of a runway designator, bound tightly (see
+    /// RunwayToken's doc). One spelling shared by the main token and the list tail.</summary>
+    private const string WrittenRunwaySide =
+        @"(?:LEFT\b|RIGHT\b|CENTER\b|CENTRE\b|[LCR](?![A-Za-z0-9]))";
+
     /// <summary>Runway token: written ("15", "15L", "15 left") or spoken
     /// ("one five left"). The written branch absorbs an optional spoken side so
     /// "runway 15 left" doesn't truncate to "15".
@@ -26,8 +31,20 @@ public static class SayIntentionsClearanceParser
     /// a side and made the destination 22R — and the \s* could reach clean across
     /// a blanked hold-short span to do it.</summary>
     private const string RunwayToken =
-        @"(?:[0-9]{1,2}\s?(?:LEFT\b|RIGHT\b|CENTER\b|CENTRE\b|[LCR](?![A-Za-z0-9]))?" +
+        @"(?:[0-9]{1,2}\s?" + WrittenRunwaySide + "?" +
         @"|(?:ZERO|ONE|TWO|THREE|TREE|FOUR|FIVE|FIFE|SIX|SEVEN|EIGHT|NINER|NINE|LEFT|RIGHT|CENTER|CENTRE|[-\s])+)";
+
+    /// <summary>What may EXTEND a runway list past its first token: a WRITTEN runway
+    /// only, and never a number longer than two digits. The full RunwayToken's spoken
+    /// branch matches whitespace or a lone word, so using it as the tail let an
+    /// iteration "succeed" on a single space and reach past the list's end — "hold
+    /// short of runway 15, 737 on the runway" captured a phantom runway 73, and
+    /// "cross runway 22, Center, Alpha" masked away taxiway Center. A SPOKEN
+    /// multi-runway list ("runways four left and four right") therefore only masks
+    /// its first runway — the same coverage as before lists existed, and the safe
+    /// direction: a missed mask extension never fabricates a hold-short.</summary>
+    private const string WrittenRunwayTailToken =
+        @"[0-9]{1,2}(?![0-9])\s?" + WrittenRunwaySide + "?";
 
     /// <summary>
     /// Every phrasing that means "stop before this runway rather than taxi onto it".
@@ -43,6 +60,12 @@ public static class SayIntentionsClearanceParser
 
     private const string CrossPrefix = @"(?:CROSS(?:ING)?(?:\s+THE)?)";
 
+    /// <summary>The optional "runway"/"runways" word between a prefix and the runway
+    /// it introduces. Deduplicated here — it used to be spelled once inside
+    /// PrefixToRunway and again inside RunwayList's own separator, so a plural fix
+    /// to one could silently miss the other.</summary>
+    private const string RunwayWord = @"(?:RUNWAYS?\s*)?";
+
     /// <summary>
     /// What joins the hold/cross prefix to the runway it names. A HYPHEN counts as the
     /// separator, exactly as it already does inside <see cref="HoldPrefix"/>'s own
@@ -57,26 +80,29 @@ public static class SayIntentionsClearanceParser
     /// capture for the same reason the prefix itself is: two spellings of one concept
     /// drift, and this one had already drifted once.
     /// </summary>
-    private const string PrefixToRunway = @"[\s-]+(?:RUNWAYS?\s*)?";
+    private const string PrefixToRunway = @"[\s-]+" + RunwayWord;
 
     /// <summary>
-    /// A runway token, optionally followed by more of them — "28L and runway 28R",
+    /// A token, optionally followed by more of them — "28L and runway 28R",
     /// "runways 4L and 4R", "28L, 28R". ONE spelling of the separator, used by both
     /// the mask and the capture, for the same reason HoldPrefix is shared: a crossing
     /// of two runways with only the first masked left "runway 28R" in the open, and
     /// the leftmost-runway destination capture read the crossed runway as the place
-    /// to taxi TO. The separator requires an explicit "and" or comma, so a token can
-    /// never gobble prose past the list's end.
+    /// to taxi TO. The head and the tail are separate parameters on purpose — see
+    /// <see cref="WrittenRunwayTailToken"/> for why the tail must never be the same
+    /// token as the head.
     /// </summary>
-    private static string RunwayList(string token) =>
-        token + @"(?:\s*(?:,|\bAND\b)[\s-]*(?:RUNWAYS?\s*)?" + token + @")*";
+    private static string RunwayList(string token, string tailToken) =>
+        token + @"(?:\s*(?:,|\bAND\b)[\s-]*" + RunwayWord + tailToken + @")*";
 
     private static readonly Regex HoldShortOrCrossing = new(
-        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway + RunwayList(RunwayToken),
+        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway +
+        RunwayList(RunwayToken, WrittenRunwayTailToken),
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex HoldShortRunwayCapture = new(
-        @"\b" + HoldPrefix + PrefixToRunway + RunwayList(@"(?<runway>" + RunwayToken + @")"),
+        @"\b" + HoldPrefix + PrefixToRunway +
+        RunwayList(@"(?<runway>" + RunwayToken + @")", @"(?<runway>" + WrittenRunwayTailToken + @")"),
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex AnyRunwayCapture = new(
@@ -490,7 +516,7 @@ public static class SayIntentionsClearanceParser
             parts.Add(Regex.Replace(Regex.Escape(trimmed), @"(\\)?\s+", @"[\s-]*"));
         }
 
-        return $@"(?<!['A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?!['A-Za-z0-9])";
+        return $@"(?<!['’A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?!['’A-Za-z0-9])";
     }
 
     /// <summary>A descriptor tail is separated by a SPACED dash ("A9 - Terminal 1").
