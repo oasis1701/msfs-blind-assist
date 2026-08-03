@@ -55,21 +55,21 @@ public static class SayIntentionsClearanceParser
 
     private static readonly Regex HoldShortOrCrossing = new(
         @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway + RunwayToken,
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex HoldShortRunwayCapture = new(
         @"\b" + HoldPrefix + PrefixToRunway + @"(?<runway>" + RunwayToken + @")",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex AnyRunwayCapture = new(
         @"\bRUNWAY\s*(?<runway>" + RunwayToken + @")",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>"Taxi" or a bare "via" — an abbreviated clearance can omit the verb
     /// ("Runway 15L via Bravo, Charlie"), so the word is not required. What that
     /// admits is ruled back out by <see cref="NotATaxiClearance"/>.</summary>
     private static readonly Regex TaxiClearanceShape = new(
-        @"\b(?:TAXI|VIA)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"\b(?:TAXI|VIA)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
     /// Phrasings that rule a transmission out however taxi-shaped it looks.
@@ -100,7 +100,7 @@ public static class SayIntentionsClearanceParser
         @"\bCLEARED\s+TO\s+LAND\b" +
         @"|\bCLIMB\s+AND\s+MAINTAIN\b" +
         @"|\bAS\s+FILED\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>Ordered longest-first so NINER is consumed before NINE and TREE
     /// before the bare digit words that share a prefix.</summary>
@@ -164,7 +164,7 @@ public static class SayIntentionsClearanceParser
 
     private static readonly Regex ViaKeyword = new(
         @"\bVIA\b(?<route>.+)$",
-        RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>Ends the route: everything after one of these is no longer a
     /// taxiway list. Deliberately EXCLUDES "cross" and "then" — a clearance
@@ -177,7 +177,7 @@ public static class SayIntentionsClearanceParser
     /// is missing one.</summary>
     private static readonly Regex RouteTerminator = new(
         @"\b(?:CONTACT|MONITOR|SQUAWK|REMAIN|REPORT|GIVE\s+WAY|FOLLOW|INFORMATION)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>Spoken forms per character. DIGITS matter as much as letters: without
     /// them "Bravo Four" decayed to taxiway B — a real taxiway, so the wrong route was
@@ -235,7 +235,7 @@ public static class SayIntentionsClearanceParser
     /// do not match, or miss one they do.</summary>
     private static readonly Regex CompassWord = new(
         @"(?<![A-Za-z0-9])(?:" + string.Join("|", Compass.Values) + @")(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
     /// What comes BEFORE a compass word and settles that it is a direction.
@@ -252,7 +252,7 @@ public static class SayIntentionsClearanceParser
     /// </summary>
     private static readonly Regex DirectionPhrasePrefix = new(
         @"(?:\bTHE|\bRUNWAY[\s-]*" + RunwayToken + @")[\s-]*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>The very next word — within three separators, so a blanked-out
     /// hold-short span (twenty-odd spaces) reads as "nothing follows", which is what it
@@ -262,7 +262,7 @@ public static class SayIntentionsClearanceParser
 
     /// <summary>The only English words that may sit between two taxiways.</summary>
     private static readonly Regex RouteConnector = new(
-        @"^(?:AND|THEN)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"^(?:AND|THEN)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
     /// True when a compass word is being used as a DIRECTION rather than as the name of
@@ -319,7 +319,7 @@ public static class SayIntentionsClearanceParser
         $@"(?<![A-Za-z0-9])(?:{NatoAlternation(NatoLetters, 'L')})" +
         $@"(?:[\s-]*(?:{NatoAlternation(NatoDigits, 'D')}|(?<lit>[0-9])))?" +
         @"(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>The designator a phonetic match spells: "Bravo Four" → "B4".</summary>
     private static string PhoneticDesignator(Match match)
@@ -376,7 +376,7 @@ public static class SayIntentionsClearanceParser
         var hits = new List<(string Name, int Index, int End)>();
         foreach (string taxiway in knownTaxiways)
         {
-            foreach (Match match in Regex.Matches(route, BuildTaxiwayPattern(taxiway)))
+            foreach (Match match in Regex.Matches(route, BuildTaxiwayPattern(taxiway), RegexOptions.CultureInvariant))
                 hits.Add((taxiway, match.Index, match.Index + match.Length));
         }
 
@@ -461,7 +461,7 @@ public static class SayIntentionsClearanceParser
 
     private static readonly Regex ParkingNoiseWords = new(
         @"\b(?:GATE|PARKING|STAND|SPOT|RAMP|POSITION)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>The separator class admits a HYPHEN as well as a space: normalizing
     /// "A-9" to "A9" was not enough while the capture itself stopped at the bare
@@ -469,12 +469,12 @@ public static class SayIntentionsClearanceParser
     /// through to the departure RUNWAY as the destination.</summary>
     private static readonly Regex GateInClearance = new(
         @"\b(?:GATE|STAND|PARKING|RAMP|SPOT)\s+(?<gate>[A-Z]{0,2}[\s-]?[0-9]{1,3}[A-Z]?|[A-Z][0-9]{0,3})\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>Matches the keyword that introduces the stand id in a full gate label.</summary>
     private static readonly Regex ParkingKeyword = new(
         @"\b(?:GATE|STAND|PARKING|SPOT|RAMP|POSITION)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
     /// Canonical form for comparing a SayIntentions gate label against a navdata

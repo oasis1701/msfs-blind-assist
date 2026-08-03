@@ -18,7 +18,7 @@ public static class SayIntentionsEndpoint
     private const string AllowedDomain = "sayintentions.ai";
 
     private static readonly Regex ApiKeyQuery = new(
-        @"([?&]api_key=)[^&]*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"([?&]api_key=)[^&]*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public static bool IsAllowedHost(string? hostname)
     {

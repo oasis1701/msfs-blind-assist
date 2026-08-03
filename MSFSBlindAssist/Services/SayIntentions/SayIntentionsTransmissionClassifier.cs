@@ -22,7 +22,7 @@ public static class SayIntentionsTransmissionClassifier
     /// suffix already stripped by <see cref="NormalizeChannel"/>.</summary>
     private static readonly Regex RadioChannelPattern = new(
         @"^(?:COM|VHF|HF|RADIO)\s?\d*$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>A channel given as the tuned frequency ("121.9", "118.700").</summary>
     private static readonly Regex RadioFrequencyPattern = new(
@@ -40,17 +40,17 @@ public static class SayIntentionsTransmissionClassifier
 
     private static readonly Regex ChannelDirectionSuffix = new(
         @"\s(?:IN|OUT|RX|TX)$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex AtcVocabulary = new(
         @"\b(?:GROUND|TOWER|DELIVERY|DEPARTURE|APPROACH|CENTER|CENTRE|RADIO|ATIS|CLEARANCE|" +
         @"PILOT|RUNWAY|TAXI|CLEARED|CONTACT|FREQUENCY|SQUAWK|HOLD\s+SHORT|LINE\s+UP)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex CabinVocabulary = new(
         @"\b(?:CABIN|PASSENGERS?|FLIGHT\s+ATTENDANT|ATTENDANT|PURSER|INTERCOM|BOARDING|" +
         @"SEAT\s?BELTS?|BEVERAGE|MEAL|WELCOME\s+ABOARD|GALLEY|LAVATORY)\b",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     /// <summary>
     /// A RECOGNIZED channel is authoritative in both directions; an unrecognized one

@@ -65,6 +65,7 @@ public sealed class SayIntentionsService
         @"\b(?:ERROR|INVALID|UNAUTHORI[SZ]ED|FORBIDDEN|DENIED|EXPIRED|REQUIRED|MISSING|" +
         @"FAILED|FAILURE|API\s+KEY|NOT\s+FOUND|BAD\s+REQUEST|RATE\s+LIMIT)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant |
         System.Text.RegularExpressions.RegexOptions.Compiled);
 
     private readonly string _flightJsonPath;
