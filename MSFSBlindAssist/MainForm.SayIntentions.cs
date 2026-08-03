@@ -779,11 +779,16 @@ public partial class MainForm
                 routeStarted = true;
             }
 
-            string? runway = SayIntentionsClearanceParser.ParseHoldShortRunway(maskedSpan);
-            repeatAllowed = !string.IsNullOrWhiteSpace(runway);
-            if (repeatAllowed)
+            // A span can hold short of SEVERAL runways ("runways 4L and 4R") — one
+            // ClearanceHoldShort each, all anchored to the same preceding taxiway. The
+            // form carries one hold-short per row, so the second one on the same row is
+            // reported as unset rather than dropped in silence (ApplyExternalRoute's
+            // rowTaken path), which is the honest half of a limitation the router shares.
+            var runways = SayIntentionsClearanceParser.ParseHoldShortRunways(maskedSpan);
+            repeatAllowed = runways.Count > 0;
+            foreach (string runway in runways)
                 holdShorts.Add(new ClearanceHoldShort(
-                    taxiways.Count > 0 ? taxiways[^1] : "", runway!));
+                    taxiways.Count > 0 ? taxiways[^1] : "", runway));
         }
 
         return (taxiways, holdShorts, unknown);

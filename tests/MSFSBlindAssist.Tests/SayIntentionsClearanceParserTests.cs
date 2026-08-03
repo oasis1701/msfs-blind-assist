@@ -100,6 +100,54 @@ public class SayIntentionsClearanceParserTests
         Assert.Equal("27", SayIntentionsClearanceParser.ParseHoldShortRunway(clearance));
     }
 
+    // ---- Multi-runway hold-short and crossing lists ----
+    //
+    // CrossPrefix/HoldPrefix originally bound exactly ONE runway token, so "cross
+    // runway 28L and runway 28R" left 28R unmasked and the destination capture read
+    // it as the place to taxi TO on a gate-bound clearance. Plural "cross runways 4L
+    // and 4R" masked nothing at all. RunwayList is the one shared spelling of the
+    // list tail, used by both the mask and the hold-short capture.
+
+    [Fact]
+    public void ACrossingListedAsTwoSingularRunwaysIsWhollyMasked()
+    {
+        string clearance = "Taxi to gate B6 via Bravo, cross runway 28L and runway 28R";
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+        Assert.Equal("B6", SayIntentionsClearanceParser.ParseDestinationGate(clearance));
+        Assert.Equal(new[] { "B" }, SayIntentionsClearanceParser.ParseTaxiways(clearance, new[] { "B" }));
+    }
+
+    [Fact]
+    public void APluralRunwaysCrossingIsMaskedToo()
+    {
+        string clearance = "Continue taxi via Bravo, cross runways 4L and 4R, then Charlie";
+        Assert.Null(SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+        Assert.Equal(new[] { "B", "C" },
+            SayIntentionsClearanceParser.ParseTaxiways(clearance, new[] { "B", "C" }));
+    }
+
+    [Fact]
+    public void APluralHoldShortYieldsEveryRunwayItNames()
+    {
+        Assert.Equal(new[] { "04L", "04R" },
+            SayIntentionsClearanceParser.ParseHoldShortRunways(
+                "Taxi via Alpha, hold short of runways 4L and 4R"));
+    }
+
+    // ---- Runway side binding ----
+    //
+    // RunwayToken's side suffix used to be `\s*(?:LEFT|RIGHT|CENTER|CENTRE|[LCR])?` —
+    // \s* could reach across a masked hold-short span, and the bare [LCR] had no
+    // trailing boundary, so "taxi to runway 22 remain this frequency" parsed
+    // destination "22R" from the r of "remain".
+
+    [Theory]
+    [InlineData("Taxi to runway 22 remain this frequency", "22")]
+    [InlineData("Taxi to runway 22, hold short of runway 4L, remain this frequency", "22")]
+    [InlineData("Taxi to runway 15 left via Alpha", "15L")]
+    public void ASideLetterOnlyBindsWhenItIsARunwaySide(string clearance, string expected)
+        => Assert.Equal(expected, SayIntentionsClearanceParser.ParseDestinationRunway(clearance));
+
     // ---- Spoken-form normalization ----
 
     [Theory]
@@ -114,6 +162,25 @@ public class SayIntentionsClearanceParserTests
         Assert.Equal(expected, SayIntentionsClearanceParser.CleanRunway(
             SayIntentionsClearanceParser.NormalizeSpokenRunway(spoken)));
     }
+
+    [Theory]
+    [InlineData("one five right", "15R")]
+    [InlineData("two four center", "24C")]
+    [InlineData("three one centre", "31C")]
+    public void SpokenRightAndCenterSidesNormalize(string spoken, string expected)
+        => Assert.Equal(expected,
+            SayIntentionsClearanceParser.CleanRunway(
+                SayIntentionsClearanceParser.NormalizeSpokenRunway(spoken)));
+
+    [Fact]
+    public void ASpokenRightDestinationParses()
+        => Assert.Equal("15R", SayIntentionsClearanceParser.ParseDestinationRunway(
+            "Taxi to runway one five right via Alpha"));
+
+    [Fact]
+    public void ASpokenCenterHoldShortParses()
+        => Assert.Equal("24C", SayIntentionsClearanceParser.ParseHoldShortRunway(
+            "Hold short of runway two four center"));
 
     [Fact]
     public void WrittenRunwayWithSpacedSideKeepsTheSide()
@@ -217,6 +284,12 @@ public class SayIntentionsClearanceParserTests
             "Runway 15L via Romeo, then a short taxi at the terminal", CyyzTaxiways);
         Assert.Equal(new[] { "R" }, result);
     }
+
+    [Fact]
+    public void AnApostropheContractionIsNotATaxiway()
+        => Assert.Equal(new[] { "A", "B" },
+            SayIntentionsClearanceParser.ParseTaxiways(
+                "Taxi via Alpha, Bravo, I'll call your crossing", new[] { "A", "B", "I" }));
 
     [Fact]
     public void SpokenAlphanumericTaxiwaysResolveWholly()

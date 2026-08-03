@@ -160,6 +160,18 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
+    public void APluralHoldShortProducesOneHoldShortPerRunwayOnTheSameTaxiway()
+    {
+        var (taxiways, holdShorts, _) = MainForm.ParseClearanceTaxiPlan(
+            "Runway 22 taxi via Alpha, hold short of runways 4L and 4R, then Bravo",
+            new[] { "A", "B" });
+        Assert.Equal(new[] { "A", "B" }, taxiways);
+        Assert.Equal(2, holdShorts.Count);
+        Assert.Equal(("A", "04L"), (holdShorts[0].AfterTaxiway, holdShorts[0].Runway));
+        Assert.Equal(("A", "04R"), (holdShorts[1].AfterTaxiway, holdShorts[1].Runway));
+    }
+
+    [Fact]
     public void Spoken_hold_short_runway_is_normalized()
     {
         var hold = Assert.Single(HoldShorts("Taxi to gate A9 via Alpha, hold short of runway one five left"));

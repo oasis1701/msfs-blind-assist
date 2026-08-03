@@ -18,9 +18,15 @@ public static class SayIntentionsClearanceParser
 {
     /// <summary>Runway token: written ("15", "15L", "15 left") or spoken
     /// ("one five left"). The written branch absorbs an optional spoken side so
-    /// "runway 15 left" doesn't truncate to "15".</summary>
+    /// "runway 15 left" doesn't truncate to "15".
+    ///
+    /// The side binds TIGHTLY: one space at most, a word boundary after the word
+    /// forms, and no letter/digit after a bare L/C/R. With the old \s* and bare
+    /// [LCR], "taxi to runway 22 remain this frequency" read the r of "remain" as
+    /// a side and made the destination 22R — and the \s* could reach clean across
+    /// a blanked hold-short span to do it.</summary>
     private const string RunwayToken =
-        @"(?:[0-9]{1,2}\s*(?:LEFT|RIGHT|CENTER|CENTRE|[LCR])?" +
+        @"(?:[0-9]{1,2}\s?(?:LEFT\b|RIGHT\b|CENTER\b|CENTRE\b|[LCR](?![A-Za-z0-9]))?" +
         @"|(?:ZERO|ONE|TWO|THREE|TREE|FOUR|FIVE|FIFE|SIX|SEVEN|EIGHT|NINER|NINE|LEFT|RIGHT|CENTER|CENTRE|[-\s])+)";
 
     /// <summary>
@@ -51,14 +57,26 @@ public static class SayIntentionsClearanceParser
     /// capture for the same reason the prefix itself is: two spellings of one concept
     /// drift, and this one had already drifted once.
     /// </summary>
-    private const string PrefixToRunway = @"[\s-]+(?:RUNWAY\s*)?";
+    private const string PrefixToRunway = @"[\s-]+(?:RUNWAYS?\s*)?";
+
+    /// <summary>
+    /// A runway token, optionally followed by more of them — "28L and runway 28R",
+    /// "runways 4L and 4R", "28L, 28R". ONE spelling of the separator, used by both
+    /// the mask and the capture, for the same reason HoldPrefix is shared: a crossing
+    /// of two runways with only the first masked left "runway 28R" in the open, and
+    /// the leftmost-runway destination capture read the crossed runway as the place
+    /// to taxi TO. The separator requires an explicit "and" or comma, so a token can
+    /// never gobble prose past the list's end.
+    /// </summary>
+    private static string RunwayList(string token) =>
+        token + @"(?:\s*(?:,|\bAND\b)[\s-]*(?:RUNWAYS?\s*)?" + token + @")*";
 
     private static readonly Regex HoldShortOrCrossing = new(
-        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway + RunwayToken,
+        @"\b(?:" + HoldPrefix + "|" + CrossPrefix + ")" + PrefixToRunway + RunwayList(RunwayToken),
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex HoldShortRunwayCapture = new(
-        @"\b" + HoldPrefix + PrefixToRunway + @"(?<runway>" + RunwayToken + @")",
+        @"\b" + HoldPrefix + PrefixToRunway + RunwayList(@"(?<runway>" + RunwayToken + @")"),
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex AnyRunwayCapture = new(
@@ -131,12 +149,33 @@ public static class SayIntentionsClearanceParser
         return match.Success ? CleanRunway(NormalizeSpokenRunway(match.Groups["runway"].Value)) : null;
     }
 
-    /// <summary>The runway the clearance says to hold short OF, or null.</summary>
+    /// <summary>The runway the clearance says to hold short OF, or null. First of
+    /// <see cref="ParseHoldShortRunways"/> — kept because most clearances hold short
+    /// of exactly one runway and most callers want exactly that.</summary>
     public static string? ParseHoldShortRunway(string? clearance)
     {
-        if (string.IsNullOrWhiteSpace(clearance)) return null;
-        var match = HoldShortRunwayCapture.Match(clearance);
-        return match.Success ? CleanRunway(NormalizeSpokenRunway(match.Groups["runway"].Value)) : null;
+        var runways = ParseHoldShortRunways(clearance);
+        return runways.Count > 0 ? runways[0] : null;
+    }
+
+    /// <summary>EVERY runway a hold-short phrase names, in order. "Hold short of
+    /// runways 4L and 4R" is two stops, and returning only the first silently
+    /// dropped the second — the same lost-hold-short failure class the mask exists
+    /// to prevent.</summary>
+    public static IReadOnlyList<string> ParseHoldShortRunways(string? clearance)
+    {
+        if (string.IsNullOrWhiteSpace(clearance)) return Array.Empty<string>();
+
+        var runways = new List<string>();
+        foreach (Match match in HoldShortRunwayCapture.Matches(clearance))
+        {
+            foreach (Capture capture in match.Groups["runway"].Captures)
+            {
+                string? runway = CleanRunway(NormalizeSpokenRunway(capture.Value));
+                if (runway != null && !runways.Contains(runway)) runways.Add(runway);
+            }
+        }
+        return runways;
     }
 
     /// <summary>Replaces every hold-short/crossing span with spaces, preserving
@@ -451,7 +490,7 @@ public static class SayIntentionsClearanceParser
             parts.Add(Regex.Replace(Regex.Escape(trimmed), @"(\\)?\s+", @"[\s-]*"));
         }
 
-        return $@"(?<![A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?![A-Za-z0-9])";
+        return $@"(?<!['A-Za-z0-9]){string.Join(@"[\s-]*", parts)}(?!['A-Za-z0-9])";
     }
 
     /// <summary>A descriptor tail is separated by a SPACED dash ("A9 - Terminal 1").
