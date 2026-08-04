@@ -733,12 +733,21 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
     }
 
-    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
+    // ---- the PMDG Ctrl+P autopilot window). ----
     // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
-    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
-    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
-    // keep live windows (and the E/WD window's refresh timer) running against the
-    // new aircraft.
+    // stacking a duplicate (HS787 _autopilotWindow pattern).
+    //
+    // DisposeTrackedWindows() is called UNCONDITIONALLY on the outgoing def by
+    // MainForm.SwitchAircraft — that call is the authoritative teardown for EVERY def,
+    // present and future, not just the two FBW ones that also call it from their own
+    // StopAllMotion(). It must stay unconditional: a discarded def instance that keeps a
+    // live window running against the new aircraft is not merely stale UI, it is a
+    // mis-actuation hazard. The window's buttons still dispatch into the OLD def's
+    // HandleUIVariableSet, and the PMDG 737 and 777 EventIds tables use different
+    // event_base + N numberings — so a surviving 777 window can actuate an arbitrary
+    // wrong control on a loaded 737 (and renders the new aircraft's CDA data under the
+    // old aircraft's labels). The refresh timers keep ticking too.
     private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
 
     protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
@@ -754,7 +763,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         show(form);
     }
 
-    protected void DisposeTrackedWindows()
+    /// <summary>
+    /// Closes and disposes every tracked window this def instance created. Public because
+    /// MainForm.SwitchAircraft calls it on the outgoing def for every aircraft type.
+    /// Idempotent: it skips already-disposed forms and clears the dictionary, so the
+    /// second call (the FBW defs also reach it via StopAllMotion()) iterates nothing.
+    /// </summary>
+    public void DisposeTrackedWindows()
     {
         foreach (var f in _trackedWindows.Values.ToList())
         {
