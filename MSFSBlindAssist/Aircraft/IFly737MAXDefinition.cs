@@ -2579,22 +2579,26 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         if (!RequireSdk(announcer)) return;
 
-        // Mnemonics harmonized with the Ctrl+P autopilot window (2026-08-04 spec):
-        // same function = same Alt-key in dialog and window (VOR LOC=O, Approach=P,
-        // Bank Limit=L). LNAV moves to Alt+N as the forced consequence — Bank Limit
-        // takes L. (PMDG/HS787 dialogs keep &LNAV: they carry no Bank Limit, so no
-        // collision exists there.)
+        // Mnemonics PARTIALLY harmonized with the Ctrl+P autopilot window: VOR LOC
+        // (Alt+O) and Approach (Alt+P) match the window. LNAV deliberately KEEPS
+        // Alt+L — every heading dialog in the fleet (PMDG 737/777, HS787) binds
+        // &LNAV, it is a critical AP control, and evicting it broke that muscle
+        // memory (user ruling 2026-08-05, reverting the 2026-08-04 LNAV=Alt+N
+        // attempt). Bank Limit therefore keeps its original Alt+B HERE while the
+        // Ctrl+P window uses Alt+L (no LNAV exists there, so nothing collides) — a
+        // deliberate dialog-vs-window asymmetry for the least-critical harmonized
+        // control; don't "re-harmonize" it back onto L in this dialog.
         var toggles = new List<ToggleButtonDef>
         {
             new("&Heading Select", () => McpModeState(IFlySdkOffsets.HDG_SEL_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_HDG_SEL)),
-            new("L&NAV", () => McpModeState(IFlySdkOffsets.LNAV_Switch_Status),
+            new("&LNAV", () => McpModeState(IFlySdkOffsets.LNAV_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_LNAV)),
             new("V&OR LOC", () => McpModeState(IFlySdkOffsets.VOR_LOC_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_VORLOC)),
             new("A&pproach", () => McpModeState(IFlySdkOffsets.APP_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_APP)),
-            new("Bank &Limit", () =>
+            new("&Bank Limit", () =>
             {
                 var s = Sdk.Snapshot;
                 if (s == null) return "?";
