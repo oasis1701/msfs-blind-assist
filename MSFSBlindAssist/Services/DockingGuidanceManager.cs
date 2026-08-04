@@ -65,6 +65,15 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool _completedGood;
     private DateTime _completedAtUtc = DateTime.MinValue; // first frame of the concluded park
     private bool _completedToneStopped;                   // hold tone already faded out (latch)
+    // One-shot fade-out for the hold tone. MUST be a timer, not a per-frame countdown: the
+    // completion raises DockingCompleted → MainForm stops taxi guidance → the taxi state change
+    // calls StopTaxiGuidanceMonitoring(), and this manager is fed from that same
+    // TAXI_GUIDANCE_POSITION stream. So the completing frame is typically the LAST frame this
+    // manager ever sees for the arrival, and anything scheduled "a few frames later" never runs —
+    // the solid tone simply held forever (reported live, 2026-08-04). The Stopped-branch countdown
+    // is kept as a second path for the case where frames do keep arriving; both latch on
+    // _completedToneStopped so the fade happens exactly once.
+    private System.Threading.Timer? _holdToneTimer;
     /// <summary>
     /// How long the SOLID "docked" tone keeps sounding after a verified-good park before
     /// guidance falls silent. Long enough to give the pilot a positional reference at the
@@ -437,12 +446,17 @@ public sealed class DockingGuidanceManager : IDisposable
                             _tone.Stop();      // lateral steering done — kill the pan tone
                             // Keep the SOLID hold tone (the beeper's continuous mode, which fires
                             // at alongM <= StopTolerance) for CompletedHoldToneSeconds so the
-                            // pilot keeps a positional reference through the moment of stopping;
-                            // the Stopped branch below fades it out once the window elapses.
+                            // pilot keeps a positional reference through the moment of stopping.
+                            // The fade-out is scheduled on a TIMER, not counted down in the
+                            // Stopped branch below: completing here raises DockingCompleted, which
+                            // stops taxi guidance, which stops the position feed this manager runs
+                            // on — so there are NO further frames to count in. See
+                            // ScheduleHoldToneStopLocked.
                             _beeper.Update(alongM, active: true);
                             _completedGood = true;
                             _completedAtUtc = DateTime.UtcNow;
                             _completedToneStopped = false;
+                            ScheduleHoldToneStopLocked();
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
@@ -498,7 +512,10 @@ public sealed class DockingGuidanceManager : IDisposable
                         // of stopping — then guidance falls silent for good: the aircraft is
                         // verified on the stop and square, the pilot has been told to set the
                         // parking brake, and there is nothing left to steer toward until a new
-                        // route is set. Latched so the fade-out runs once, not every frame.
+                        // route is set. The fade normally comes from the timer armed at completion
+                        // (the position feed usually stops with taxi guidance, so this branch may
+                        // never run); this is the second path for when frames DO keep arriving.
+                        // Both latch on _completedToneStopped, so the fade happens exactly once.
                         if (_completedGood)
                         {
                             if (!_completedToneStopped)
@@ -552,6 +569,7 @@ public sealed class DockingGuidanceManager : IDisposable
         _overshootStop = false;
         _completedGood = false;   // a retry dock must be able to conclude again
         _completedAtUtc = DateTime.MinValue; _completedToneStopped = false;
+        CancelHoldToneTimerLocked();  // the previous park's fade must not silence this new run
         _stoppedSinceUtc = DateTime.MinValue;
         _stoppedShortSaid = false;
         string dist = DistanceFormatter.FromMetres(alongM);
@@ -797,8 +815,60 @@ public sealed class DockingGuidanceManager : IDisposable
             offset.LongitudinalMetres, offset.LateralMetres, out sLat, out sLon);
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
+
+    /// <summary>
+    /// Arms the one-shot fade-out of the concluded park's solid hold tone. Call under
+    /// <c>_lock</c> from the completion branch only. Self-contained: it does not need another
+    /// position frame, because after completion there usually isn't one (see
+    /// <see cref="_holdToneTimer"/>).
+    /// </summary>
+    private void ScheduleHoldToneStopLocked()
+    {
+        CancelHoldToneTimerLocked();
+        try
+        {
+            _holdToneTimer = new System.Threading.Timer(
+                OnHoldToneElapsed, null,
+                TimeSpan.FromSeconds(CompletedHoldToneSeconds),
+                System.Threading.Timeout.InfiniteTimeSpan);
+        }
+        catch
+        {
+            // Timer creation failed (shutdown race) — fall back to silencing now rather than
+            // leaving a tone that nothing will ever stop.
+            SilenceLocked(); _completedToneStopped = true;
+        }
+    }
+
+    /// <summary>
+    /// Disposes the pending hold-tone timer. Uses the NON-blocking <c>Dispose()</c> overload, so
+    /// it is safe to call while holding <c>_lock</c> even if the callback is already waiting on
+    /// that same lock (the blocking <c>Dispose(WaitHandle)</c> overload would deadlock there).
+    /// </summary>
+    private void CancelHoldToneTimerLocked()
+    {
+        try { _holdToneTimer?.Dispose(); } catch { }
+        _holdToneTimer = null;
+    }
+
+    private void OnHoldToneElapsed(object? _)
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            // Re-check under the lock: a reset (taxi-away, back-up re-arm, Stop button, gate
+            // cleared) between arming and firing already silenced the tone and cleared the flags,
+            // and a re-engaged dock must NOT have its live tone killed by the previous park's timer.
+            if (!_completedGood || _completedToneStopped) return;
+            SilenceLocked();
+            _completedToneStopped = true;
+            CancelHoldToneTimerLocked();
+        }
+    }
+
     private void ResetLocked()
     {
+        CancelHoldToneTimerLocked();
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
@@ -814,7 +884,7 @@ public sealed class DockingGuidanceManager : IDisposable
         // Set the flag under the lock so any in-progress UpdatePosition sees it
         // before we tear down audio. The beeper is disposed outside the lock to
         // avoid holding _lock across the beeper's own internal teardown.
-        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; _armedAwaitingSnap = false; try { _tone.Stop(); } catch { } }
+        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; _armedAwaitingSnap = false; CancelHoldToneTimerLocked(); try { _tone.Stop(); } catch { } }
         _beeper.Dispose();
     }
 }
