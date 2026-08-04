@@ -20,8 +20,13 @@ public enum ApRowKind
 /// while the 777's are named for the annunciator directly. It is "" for controls
 /// with no readable state (the disconnects), whose buttons show a bare label.
 /// </para>
+/// <para>
+/// <paramref name="Mnemonic"/> is the row's window Alt-key letter, rendered as a
+/// native WinForms mnemonic; '\0' means no hotkey. The letter MUST occur in the
+/// Label (case-insensitive) or the &amp; insertion silently no-ops — pinned by tests.
+/// </para>
 /// </summary>
-public record ApRowSpec(string Label, ApRowKind Kind, string VarKey, string StateField);
+public record ApRowSpec(string Label, ApRowKind Kind, string VarKey, string StateField, char Mnemonic = '\0');
 
 /// <summary>
 /// The engage-cluster row tables for the PMDG Ctrl+P autopilot window.
@@ -38,37 +43,37 @@ public static class PMDGAutopilotRows
 
     private static readonly ApRowSpec[] s_777 =
     {
-        new("AP Left",         ApRowKind.Momentary, "MCP_AP_L",          "MCP_annunAP_0"),
-        new("AP Right",        ApRowKind.Momentary, "MCP_AP_R",          "MCP_annunAP_1"),
+        new("AP Left",         ApRowKind.Momentary, "MCP_AP_L",          "MCP_annunAP_0",  'A'),
+        new("AP Right",        ApRowKind.Momentary, "MCP_AP_R",          "MCP_annunAP_1",  'R'),
         new("F/D Left",        ApRowKind.Toggle,    "MCP_FD_L",          "MCP_FD_Sw_On_0"),
         new("F/D Right",       ApRowKind.Toggle,    "MCP_FD_R",          "MCP_FD_Sw_On_1"),
         new("A/T Arm Left",    ApRowKind.Toggle,    "MCP_ATArm_L",       "MCP_ATArm_Sw_On_0"),
         new("A/T Arm Right",   ApRowKind.Toggle,    "MCP_ATArm_R",       "MCP_ATArm_Sw_On_1"),
-        new("Approach",        ApRowKind.Momentary, "MCP_APP",           "MCP_annunAPP"),
-        new("LOC",             ApRowKind.Momentary, "MCP_LOC",           "MCP_annunLOC"),
+        new("Approach",        ApRowKind.Momentary, "MCP_APP",           "MCP_annunAPP",   'P'),
+        new("LOC",             ApRowKind.Momentary, "MCP_LOC",           "MCP_annunLOC",   'O'),
         new("A/T",             ApRowKind.Momentary, "MCP_AT",            "MCP_annunAT"),
         new("Disengage Bar",   ApRowKind.Toggle,    "MCP_DisengageBar",  "MCP_DisengageBar"),
         new("A/P Disconnect",  ApRowKind.Momentary, "YOKE_APDisc",       ""),
         new("A/T Disconnect",  ApRowKind.Momentary, "ENG_ATDisengage_1", ""),
-        new("Bank Limit",      ApRowKind.Selector,  "MCP_BankLimitSel",  "MCP_BankLimitSel"),
+        new("Bank Limit",      ApRowKind.Selector,  "MCP_BankLimitSel",  "MCP_BankLimitSel", 'L'),
     };
 
     public static IReadOnlyList<ApRowSpec> For737() => s_737;
 
     private static readonly ApRowSpec[] s_737 =
     {
-        new("CMD A",             ApRowKind.Momentary, "MCP_CmdA",         "MCP_annunCMD_A"),
-        new("CMD B",             ApRowKind.Momentary, "MCP_CmdB",         "MCP_annunCMD_B"),
+        new("CMD A",             ApRowKind.Momentary, "MCP_CmdA",         "MCP_annunCMD_A", 'A'),
+        new("CMD B",             ApRowKind.Momentary, "MCP_CmdB",         "MCP_annunCMD_B", 'B'),
         new("CWS A",             ApRowKind.Momentary, "MCP_CwsA",         "MCP_annunCWS_A"),
         new("CWS B",             ApRowKind.Momentary, "MCP_CwsB",         "MCP_annunCWS_B"),
         new("F/D Captain",       ApRowKind.Toggle,    "MCP_FDSw_0",       "MCP_FDSw_0"),
         new("F/D First Officer", ApRowKind.Toggle,    "MCP_FDSw_1",       "MCP_FDSw_1"),
-        new("Approach",          ApRowKind.Momentary, "MCP_AppBtn",       "MCP_annunAPP"),
-        new("VOR LOC",           ApRowKind.Momentary, "MCP_VorLoc",       "MCP_annunVOR_LOC"),
+        new("Approach",          ApRowKind.Momentary, "MCP_AppBtn",       "MCP_annunAPP",   'P'),
+        new("VOR LOC",           ApRowKind.Momentary, "MCP_VorLoc",       "MCP_annunVOR_LOC", 'O'),
         new("A/T Arm",           ApRowKind.Toggle,    "MCP_ATArmSw",      "MCP_ATArmSw"),
         new("Disengage Bar",     ApRowKind.Toggle,    "MCP_DisengageBar", "MCP_DisengageBar"),
         new("A/P Disconnect",    ApRowKind.Momentary, "YOKE_APDisc",      ""),
         new("A/T Disconnect",    ApRowKind.Momentary, "CS_ATDisc_1",      ""),
-        new("Bank Limit",        ApRowKind.Selector,  "MCP_BankLimitSel", "MCP_BankLimitSel"),
+        new("Bank Limit",        ApRowKind.Selector,  "MCP_BankLimitSel", "MCP_BankLimitSel", 'L'),
     };
 }

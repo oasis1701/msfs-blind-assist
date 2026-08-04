@@ -261,6 +261,65 @@ public class PmdgAutopilotRowsTests
         Assert.Null(stateless.IsEnabled);
     }
 
+    // ---- window hotkeys: mnemonics are row data ----
+    // Alt-keys chosen per-window with the user (2026-08-04 spec): first AP engage
+    // Alt+A; second Alt+B (737) / Alt+R (777 — "AP Right" has no B and an
+    // unannounced key was rejected); Approach Alt+P; localizer Alt+O (the letter
+    // exists in both "VOR LOC" and "LOC"); Bank Limit Alt+L (off the requested
+    // Alt+B, which CMD B owns). Uniqueness and label-occurrence are pinned because
+    // both failure modes are silent: a duplicate letter makes Alt+X activate an
+    // arbitrary matching control; a letter absent from its label makes the &
+    // insertion no-op so the hotkey quietly never exists.
+
+    [Theory]
+    [InlineData("CMD A", 'A')]
+    [InlineData("CMD B", 'B')]
+    [InlineData("Approach", 'P')]
+    [InlineData("VOR LOC", 'O')]
+    [InlineData("Bank Limit", 'L')]
+    [InlineData("CWS A", '\0')]
+    [InlineData("Disengage Bar", '\0')]
+    public void Pmdg737_row_pins_its_mnemonic(string label, char mnemonic)
+    {
+        var row = Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == label);
+        Assert.Equal(mnemonic, row.Mnemonic);
+    }
+
+    [Theory]
+    [InlineData("AP Left", 'A')]
+    [InlineData("AP Right", 'R')]
+    [InlineData("Approach", 'P')]
+    [InlineData("LOC", 'O')]
+    [InlineData("Bank Limit", 'L')]
+    [InlineData("A/T", '\0')]
+    public void Pmdg777_row_pins_its_mnemonic(string label, char mnemonic)
+    {
+        var row = Assert.Single(PMDGAutopilotRows.For777(), r => r.Label == label);
+        Assert.Equal(mnemonic, row.Mnemonic);
+    }
+
+    [Fact]
+    public void Assigned_mnemonics_are_unique_within_each_table()
+    {
+        foreach (var table in new[] { PMDGAutopilotRows.For737(), PMDGAutopilotRows.For777() })
+        {
+            var assigned = table.Where(r => r.Mnemonic != '\0')
+                .Select(r => char.ToUpperInvariant(r.Mnemonic)).ToList();
+            Assert.Equal(assigned.Count, assigned.Distinct().Count());
+        }
+    }
+
+    [Fact]
+    public void Assigned_mnemonics_occur_in_their_row_label()
+    {
+        foreach (var row in PMDGAutopilotRows.For737().Concat(PMDGAutopilotRows.For777()))
+        {
+            if (row.Mnemonic == '\0') continue;
+            Assert.True(row.Label.Contains(row.Mnemonic, StringComparison.OrdinalIgnoreCase),
+                $"row '{row.Label}': mnemonic '{row.Mnemonic}' not in label — the & insertion would silently no-op");
+        }
+    }
+
     // Selector rows must actually be multi-position, or they belong on a button.
 
     [Fact]
