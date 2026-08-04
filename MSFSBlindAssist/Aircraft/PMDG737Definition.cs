@@ -5588,6 +5588,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
+            case HotkeyAction.FCUSetAutopilot:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAutopilotWindow(
+                    PMDGAutopilotRows.For737(), "737 Autopilot", simConnect, announcer, parentForm);
+                return true;
+            }
+
             // ------------------------------------------------------------------
             // CDU/EFB form dispatch — MainForm handles these by AircraftCode.
             // ------------------------------------------------------------------
