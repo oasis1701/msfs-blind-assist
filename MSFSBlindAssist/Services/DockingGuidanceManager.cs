@@ -55,6 +55,12 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
     private bool _overshootStop;      // the Stopped state was entered via overshoot — no solid "docked" tone
+    // Guidance CONCLUDED on a verified-good park (at the stop, on the centerline, square with
+    // the gate axis). Keeps the Stopped state silent: no solid hold tone, no beeper. The park
+    // is confirmed correct, so there is nothing left to steer toward and the closure is verbal
+    // ("Aligned with gate. Parking brake.") — the same wording taxi guidance used at a gate
+    // before docking guidance existed. Distinct from _overshootStop, which is a BAD ending.
+    private bool _completedGood;
     private DateTime _stoppedSinceUtc = DateTime.MinValue; // first frame of a gs<0.5 kt standstill while Docking
     private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
@@ -402,18 +408,24 @@ public sealed class DockingGuidanceManager : IDisposable
                             // Narrow residual band (cross 2.0–2.21 m at along 0–0.3 m): neither
                             // stop nor lateral-miss fires; the pilot creeps on and gets the
                             // overshoot "Stop." at −1 m — still a verbal closure.
-                            string stopMsg = (_gate?.StopLatitude != null && _gate?.IsDeiceArea != true)
+                            string stopMsg = (_gate?.StopLatitude != null && !deice)
                                 ? "GSX docking complete."
                                 : "Stop.";
-                            _announcer.AnnounceImmediate(stopMsg);
-                            _tone.Stop(); // lateral steering done — kill the pan tone
-                            // Hold a SOLID continuous tone (the beeper's _solid mode fires when
-                            // alongM <= StopTolerance) as a "docked — hold position" marker.
-                            // Do NOT stop the beeper here: the pilot wants the tone to persist until
-                            // they end guidance (Stop button → SetDestinationGate(null) → ResetLocked)
-                            // or move off the stop. Previously _beeper.Stop() at the same 0.3 m
-                            // threshold the solid tone begins made the solid tone dead code.
-                            _beeper.Update(alongM, active: true);
+                            // Guidance ENDS here, and says so. Reaching this branch now means a
+                            // VERIFIED-good park — at the stop, within StopMaxCrossMetres of the
+                            // centerline, AND square with the gate axis — so there is nothing left
+                            // to steer toward and no reason to keep making noise. The closure is
+                            // the verbal prompt taxi guidance used at a gate before docking
+                            // guidance existed ("Aligned with gate. Parking brake."), which also
+                            // tells the pilot that guidance is finished until a new route is set.
+                            // A deice pad is not a gate, so it gets the brake cue without the
+                            // gate-alignment claim.
+                            _announcer.AnnounceImmediate(deice
+                                ? $"{stopMsg} Parking brake."
+                                : $"{stopMsg} Aligned with gate. Parking brake.");
+                            _tone.Stop();      // lateral steering done — kill the pan tone
+                            SilenceLocked();   // and the beeper: a good park needs no hold marker
+                            _completedGood = true;
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
@@ -464,7 +476,10 @@ public sealed class DockingGuidanceManager : IDisposable
                         // after an overshoot stop, where a "docked" marker over a bad park would
                         // mislead. Ends when the pilot ends guidance (Stop button →
                         // SetDestinationGate(null) → ResetLocked) or moves off the stop (below).
-                        if (!_overshootStop) _beeper.Update(alongM, active: true);
+                        // …and stays silent after a CONCLUDED good park (_completedGood): the
+                        // aircraft is verified on the stop and square, the pilot has been told to
+                        // set the parking brake, and guidance is over until a new route is set.
+                        if (!_overshootStop && !_completedGood) _beeper.Update(alongM, active: true);
                         // Two escape paths, both required:
                         // • ABSOLUTE distance (not along-track) for taxi-away — along-track goes
                         //   NEGATIVE once the stop is behind the aircraft, so the old
@@ -502,6 +517,7 @@ public sealed class DockingGuidanceManager : IDisposable
             if (alongM < _milestones[i].TriggerMetres) _milestoneSaid[i] = true; // already past this milestone at engage
         _slowDownSaid = false;
         _overshootStop = false;
+        _completedGood = false;   // a retry dock must be able to conclude again
         _stoppedSinceUtc = DateTime.MinValue;
         _stoppedShortSaid = false;
         string dist = DistanceFormatter.FromMetres(alongM);
@@ -753,7 +769,7 @@ public sealed class DockingGuidanceManager : IDisposable
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
-        _slowDownSaid = false; _overshootStop = false;
+        _slowDownSaid = false; _overshootStop = false; _completedGood = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
         _occupancyClampLogged = false;
     }
