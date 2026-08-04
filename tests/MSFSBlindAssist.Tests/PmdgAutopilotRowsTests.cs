@@ -34,6 +34,8 @@ public class PmdgAutopilotRowsTests
     [InlineData("A/T Arm Left", "MCP_ATArm_L", "MCP_ATArm_Sw_On_0")]
     [InlineData("A/T Arm Right", "MCP_ATArm_R", "MCP_ATArm_Sw_On_1")]
     [InlineData("A/T", "MCP_AT", "MCP_annunAT")]
+    [InlineData("Approach", "MCP_APP", "MCP_annunAPP")]
+    [InlineData("LOC", "MCP_LOC", "MCP_annunLOC")]
     [InlineData("Disengage Bar", "MCP_DisengageBar", "MCP_DisengageBar")]
     [InlineData("Bank Limit", "MCP_BankLimitSel", "MCP_BankLimitSel")]
     public void Pmdg777_row_pins_its_varkey_and_state_field(string label, string varKey, string stateField)
@@ -53,6 +55,8 @@ public class PmdgAutopilotRowsTests
     [InlineData("F/D Captain", "MCP_FDSw_0", "MCP_FDSw_0")]
     [InlineData("F/D First Officer", "MCP_FDSw_1", "MCP_FDSw_1")]
     [InlineData("A/T Arm", "MCP_ATArmSw", "MCP_ATArmSw")]
+    [InlineData("Approach", "MCP_AppBtn", "MCP_annunAPP")]
+    [InlineData("VOR LOC", "MCP_VorLoc", "MCP_annunVOR_LOC")]
     [InlineData("Disengage Bar", "MCP_DisengageBar", "MCP_DisengageBar")]
     [InlineData("Bank Limit", "MCP_BankLimitSel", "MCP_BankLimitSel")]
     public void Pmdg737_row_pins_its_varkey_and_state_field(string label, string varKey, string stateField)

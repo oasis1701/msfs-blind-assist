@@ -74,14 +74,17 @@ Do **not** translate names from 777 conventions.
 ## Autopilot window (Ctrl+P)
 
 Input-mode Ctrl+P opens the engage-cluster window: CMD A/B, CWS A/B, F/D Captain and
-First Officer, A/T Arm, the disengage bar, the bank limit selector, and the A/P and A/T
-disconnects. Rows are declared as data in `Aircraft/PMDGAutopilotRows.cs` and bound to
-live UI by `Forms/PMDG/PMDGAutopilotRowBinder.cs`; the window itself
+First Officer, Approach, VOR LOC, A/T Arm, the disengage bar, the bank limit selector,
+and the A/P and A/T disconnects. Rows are declared as data in
+`Aircraft/PMDGAutopilotRows.cs` and bound to live UI by
+`Forms/PMDG/PMDGAutopilotRowBinder.cs`; the window itself
 (`Forms/PMDG/PMDGAutopilotWindow.cs`) is shared with the 777.
 
 The per-axis mode buttons (LNAV, VNAV, LVL CHG, HDG SEL, ALT HOLD, VS) are NOT here by
 design — they live in the Ctrl+H/S/A/V value dialogs, and duplicating them would put one
-control in two places.
+control in two places. Approach and VOR LOC ARE here, and are not an exception to that
+rule: no value dialog carries them, so before this window they were reachable only from
+the MCP panel. The test is "is it already in a dialog", not "is it a mode button".
 
 The yoke A/P disconnect variable (`YOKE_APDisc` → `EVT_YOKE_L_AP_DISC_SWITCH`) was added
 for this window: the event had always been in the ID table but no variable mapped to it,
