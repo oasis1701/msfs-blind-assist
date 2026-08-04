@@ -82,7 +82,6 @@ public class PMDGAutopilotWindow : Form
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
-        KeyPreview = true;
 
         const int col1 = 15;
         const int col2 = 215;
@@ -242,7 +241,11 @@ public class PMDGAutopilotWindow : Form
             string state = _buttons[i].GetCurrentState();
             var btn = _buttonControls[i];
             btn.Text = string.IsNullOrEmpty(state) ? _buttons[i].Label : $"{_buttons[i].Label}: {state}";
-            btn.AccessibleName = btn.Text;
+            // Stateful toggles disable while their state is unreadable (a flip target
+            // can't be computed from the "--" sentinel) — the same gate the selector
+            // combos apply below. Momentaries and the disconnects have no IsEnabled
+            // and stay pressable.
+            btn.Enabled = _buttons[i].IsEnabled?.Invoke() ?? true;
         }
 
         foreach (var (def, combo, values) in _selectorControls)

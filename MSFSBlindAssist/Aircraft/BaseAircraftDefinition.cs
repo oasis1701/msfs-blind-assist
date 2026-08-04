@@ -803,15 +803,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return;
         }
 
-        var (buttons, selectors) = Forms.PMDG.PMDGAutopilotRowBinder.Bind(
-            rows,
-            GetVariables(),
-            simConnect,
-            (key, expected) => (parentForm as MainForm)?.SuppressUiEcho(key, expected),
-            (key, value, varDef) => HandleUIVariableSet(key, value, varDef, simConnect, announcer));
-
+        // Bind inside the factory: on the reuse path (window already open, second
+        // Ctrl+P) the existing instance keeps its original closures, so binding
+        // eagerly here would do the work only to discard it.
         ShowTrackedWindow(
-            () => new Forms.PMDG.PMDGAutopilotWindow(title, buttons, selectors),
+            () =>
+            {
+                var (buttons, selectors) = Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+                    rows,
+                    GetVariables(),
+                    simConnect,
+                    (key, expected) => (parentForm as MainForm)?.SuppressUiEcho(key, expected),
+                    (key, value, varDef) => HandleUIVariableSet(key, value, varDef, simConnect, announcer));
+                return new Forms.PMDG.PMDGAutopilotWindow(title, buttons, selectors);
+            },
             w => w.ShowForm());
     }
 

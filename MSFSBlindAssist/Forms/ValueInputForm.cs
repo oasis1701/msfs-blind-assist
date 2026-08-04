@@ -10,7 +10,16 @@ public record ToggleButtonDef(
     string Label,
     Func<string> GetCurrentState,
     Action OnPressed
-);
+)
+{
+    /// <summary>
+    /// Optional enable gate, polled by windows that refresh their buttons from live
+    /// state. Null means always enabled. The PMDG autopilot window uses it to disable
+    /// stateful toggles while the CDA snapshot is missing — a toggle press computes
+    /// its flip target from the current state, which is unreadable until then.
+    /// </summary>
+    public Func<bool>? IsEnabled { get; init; }
+}
 
 public partial class ValueInputForm : Form
     {

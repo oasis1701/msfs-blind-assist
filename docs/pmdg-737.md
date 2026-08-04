@@ -96,7 +96,10 @@ Invariants:
   a SEPARATE annunciator field (`MCP_CmdA` → `MCP_annunCMD_A`), unlike the 777's, which
   are named for the annunciator directly. The row table records the pairing explicitly.
 - Reads gate on `IPMDGDataManager.IsReady` and render `--` before the first CDA
-  snapshot; a 0.0 read there is a sentinel, not a real position.
+  snapshot; a 0.0 read there is a sentinel, not a real position. Stateful toggle
+  buttons (and the bank limit combo) are DISABLED until the snapshot arrives — a
+  toggle press computes its flip target from the current state, which the sentinel
+  would falsify; momentary buttons stay pressable, their press ignores the value.
 - Presses call `MainForm.SuppressUiEcho` with the EXPECTED RESULTING value, not the
   press parameter — the echo gate is value-matched, so marking a press with 1 would
   let the matching disengage announce twice.

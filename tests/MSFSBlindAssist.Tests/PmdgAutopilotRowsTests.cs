@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using MSFSBlindAssist.Aircraft;
 using Xunit;
 
@@ -85,6 +87,47 @@ public class PmdgAutopilotRowsTests
             Assert.True(vars.ContainsKey(row.VarKey), $"737 row '{row.Label}' names unknown varKey '{row.VarKey}'");
     }
 
+    // ---- every state field must resolve against the CDA struct ----
+    // The varKey existence tests above can't catch a StateField typo: reads go through
+    // IPMDGDataManager.GetFieldValue, which returns the 0.0 unknown-field sentinel for
+    // a name it can't resolve instead of throwing — so a misspelled state field ships
+    // as a button silently stuck at "Off". Mirror GetFieldValue's resolution exactly:
+    // an exact-name NON-array struct field (a bare array name reads 0.0 by design), or
+    // a "Base_N" suffix where Base is a marshalled array and N is inside its SizeConst.
+
+    [Fact]
+    public void Every_777_state_field_resolves_against_the_cda_struct()
+    {
+        foreach (var row in PMDGAutopilotRows.For777())
+            AssertStateFieldResolves(typeof(MSFSBlindAssist.SimConnect.PMDG777XDataStruct), row, "777");
+    }
+
+    [Fact]
+    public void Every_737_state_field_resolves_against_the_cda_struct()
+    {
+        foreach (var row in PMDGAutopilotRows.For737())
+            AssertStateFieldResolves(typeof(MSFSBlindAssist.SimConnect.PMDGNG3DataStruct), row, "737");
+    }
+
+    private static void AssertStateFieldResolves(Type cdaStruct, ApRowSpec row, string aircraft)
+    {
+        if (row.StateField.Length == 0) return; // the stateless disconnects read nothing
+
+        var exact = cdaStruct.GetField(row.StateField);
+        if (exact != null && !exact.FieldType.IsArray) return;
+
+        int cut = row.StateField.LastIndexOf('_');
+        if (cut > 0 && int.TryParse(row.StateField[(cut + 1)..], out int index))
+        {
+            var baseField = cdaStruct.GetField(row.StateField[..cut]);
+            int size = baseField?.GetCustomAttribute<MarshalAsAttribute>()?.SizeConst ?? 0;
+            if (baseField != null && baseField.FieldType.IsArray && index < size) return;
+        }
+
+        Assert.Fail($"{aircraft} row '{row.Label}': state field '{row.StateField}' does not " +
+            $"resolve against {cdaStruct.Name} — GetFieldValue would return the 0.0 sentinel forever");
+    }
+
     // The 737's momentary rows read an annunciator that differs from the varDef Name;
     // the def records that pairing in StateVariable, so the two must agree.
 
@@ -160,6 +203,62 @@ public class PmdgAutopilotRowsTests
         Assert.Equal(row.VarKey, row.StateField); // precondition for this case
 
         Assert.Single(EchoKeysForPressing(row, vars));
+    }
+
+    // ---- stateful toggles must not actuate blind ----
+    // A Toggle press computes its flip target from the current state (current == 0
+    // ? 1 : 0), so with no CDA snapshot the read is null and the press would command
+    // a guessed position — the 737's 2-position branch has no IsReady guard and would
+    // set the switch to 1 regardless of where it really is. The binder therefore
+    // gates Toggle rows on the snapshot via IsEnabled and the window disables those
+    // buttons, matching the selector combo. Momentary presses ignore the value
+    // entirely and the stateless disconnects read nothing, so both stay pressable
+    // while the label shows "--".
+
+    /// <summary>Binds the single button the given row produces, against a manager
+    /// that has no PMDG data manager — i.e. no CDA snapshot.</summary>
+    private static MSFSBlindAssist.Forms.ToggleButtonDef BindSingleButton(
+        ApRowSpec row, IReadOnlyDictionary<string, MSFSBlindAssist.SimConnect.SimVarDefinition> vars)
+    {
+        var (buttons, _) = MSFSBlindAssist.Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+            new[] { row },
+            vars,
+            new MSFSBlindAssist.SimConnect.SimConnectManager(IntPtr.Zero),
+            (_, _) => { },
+            (_, _, _) => true);
+        return Assert.Single(buttons);
+    }
+
+    [Fact]
+    public void Toggle_rows_disable_while_the_cda_snapshot_is_missing()
+    {
+        var v737 = new PMDG737Definition().GetVariables();
+        var v777 = new PMDG777Definition().GetVariables();
+
+        foreach (var (row, vars) in
+            PMDGAutopilotRows.For737().Select(r => (r, v737))
+                .Concat(PMDGAutopilotRows.For777().Select(r => (r, v777))))
+        {
+            if (row.Kind != ApRowKind.Toggle) continue;
+
+            var btn = BindSingleButton(row, vars);
+            Assert.NotNull(btn.IsEnabled);
+            Assert.False(btn.IsEnabled!(), $"toggle '{row.Label}' must disable with no snapshot");
+        }
+    }
+
+    [Fact]
+    public void Momentary_and_stateless_rows_never_gate_on_the_snapshot()
+    {
+        var vars = new PMDG737Definition().GetVariables();
+
+        var momentary = BindSingleButton(
+            Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "CMD A"), vars);
+        var stateless = BindSingleButton(
+            Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "A/P Disconnect"), vars);
+
+        Assert.Null(momentary.IsEnabled);
+        Assert.Null(stateless.IsEnabled);
     }
 
     // Selector rows must actually be multi-position, or they belong on a button.

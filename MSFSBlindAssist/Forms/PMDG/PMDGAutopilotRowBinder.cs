@@ -10,8 +10,10 @@ namespace MSFSBlindAssist.Forms.PMDG;
 /// <c>setValue</c>), never a direct SendPMDGEvent. That is load-bearing, not a
 /// convenience: the 777's F/D and A/T Arm switches ignore position values entirely and
 /// require MOUSE_FLAG_LEFTSINGLE simulation plus an already-at-target guard, momentary
-/// controls need CDA parameter 1, and ValueDescriptions controls need the IsReady guard.
-/// Firing events directly here would silently break the 777's F/D and A/T Arm buttons.
+/// controls need their aircraft's momentary dispatch (CDA parameter 1 on the 777, a
+/// LEFTSINGLE+RELEASE pair on the 737), and ValueDescriptions controls need the IsReady
+/// guard. Firing events directly here would silently break the 777's F/D and A/T Arm
+/// buttons.
 /// </para>
 /// </summary>
 public static class PMDGAutopilotRowBinder
@@ -62,11 +64,24 @@ public static class PMDGAutopilotRowBinder
                     // but let the matching disengage (1 -> 0) leak through.
                     MarkEcho(suppressEcho, spec, expected);
 
-                    // Momentary controls are dispatched by HandleUIVariableSet on the
-                    // RenderAsButton/IsMomentary branch, which always sends CDA parameter
-                    // 1 regardless of the value passed; toggles take the target position.
+                    // Momentary controls are dispatched by HandleUIVariableSet's
+                    // momentary branch, which ignores the value passed (the 777 sends
+                    // CDA parameter 1, the 737 a LEFTSINGLE+RELEASE TransmitClientEvent
+                    // pair); toggles take the target position.
                     setValue(spec.VarKey, spec.Kind == ApRowKind.Momentary ? 1 : expected, varDef);
-                }));
+                })
+            {
+                // A Toggle press computes its flip target from the current state, so it
+                // must not fire while that state is unreadable (pre-snapshot, or a
+                // dropped data manager): the 737's 2-position branch has no IsReady
+                // guard and would command position 1 regardless of the real switch.
+                // Momentary presses ignore the value and the stateless disconnects read
+                // nothing, so only Toggle rows gate — same rule as the selector combo,
+                // which disables on a null read.
+                IsEnabled = spec.Kind == ApRowKind.Toggle
+                    ? () => ReadRaw(simConnect, spec).HasValue
+                    : null,
+            });
         }
 
         return (buttons, selectors);
