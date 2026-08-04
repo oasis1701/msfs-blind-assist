@@ -1384,6 +1384,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["CS_TOGA_2"]   = Momentary("CS_TOGA_2",   "TO/GA Right");
         d["CS_ATDisc_1"] = Momentary("CS_ATDisc_1", "Autothrottle Disengage Left");
         d["CS_ATDisc_2"] = Momentary("CS_ATDisc_2", "Autothrottle Disengage Right");
+        // Yoke A/P disconnect. The event has always existed in the ID table
+        // (EVT_YOKE_L_AP_DISC_SWITCH) but had no variable mapped to it, so there was
+        // no varKey to drive it from. Mirrors the 777's YOKE_APDisc pair.
+        d["YOKE_APDisc"]  = Momentary("YOKE_APDisc",  "Yoke AP Disconnect");
         // Same array convention as FIRE_HandlePos: [0]=Eng1, [1]=APU, [2]=Eng2.
         d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
         d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "APU Fire Handle Illuminated");
@@ -3583,7 +3587,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["CS_TOGA_1"]   = "EVT_CONTROL_STAND_TOGA1_SWITCH",
             ["CS_TOGA_2"]   = "EVT_CONTROL_STAND_TOGA2_SWITCH",
             ["CS_ATDisc_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
-            ["CS_ATDisc_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+            ["CS_ATDisc_2"]  = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+            ["YOKE_APDisc"]  = "EVT_YOKE_L_AP_DISC_SWITCH",
             // Glareshield — Master Warning / Caution recall
             ["WARN_ResetFireWarning"]      = "EVT_FIRE_WARN_LIGHT_LEFT",
             ["WARN_ResetMasterCaution"]    = "EVT_MASTER_CAUTION_LIGHT_LEFT",
@@ -5580,6 +5585,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 hotkeyManager.ExitInputHotkeyMode();
                 ShowPMDGVSDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetAutopilot:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAutopilotWindow(
+                    PMDGAutopilotRows.For737(), "737 Autopilot", simConnect, announcer, parentForm);
                 return true;
             }
 
