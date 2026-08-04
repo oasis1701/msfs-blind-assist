@@ -105,6 +105,12 @@ Invariants:
   let the matching disengage announce twice.
 - Bank limit is a ComboBox, never a cycling button. Multi-position switches stay
   multi-position combos.
+- Window hotkeys are native mnemonics carried as row DATA (`ApRowSpec.Mnemonic`,
+  rendered by `PMDGAutopilotRowBinder.ApplyMnemonic`): CMD A **Alt+A**, CMD B
+  **Alt+B**, Approach **Alt+P**, VOR LOC **Alt+O**, Bank Limit **Alt+L** (the combo's
+  key lives on its text Label, whose mnemonic focuses the next control in tab
+  order). Tests pin assignment, per-table uniqueness AND that every letter occurs
+  in its label — a letter not in the label silently never becomes a hotkey.
 
 ## Altimeter access
 
