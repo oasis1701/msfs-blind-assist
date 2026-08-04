@@ -95,6 +95,69 @@ public class PmdgAutopilotRowsTests
         }
     }
 
+    // ---- echo suppression must cover every key that can announce the row ----
+    // The binder marks the UI-set echo under BOTH VarKey and StateField because the two
+    // aircraft are asymmetric (see PMDGAutopilotRowBinder.MarkEcho). These pin that,
+    // because the failure mode is silent: marking only VarKey leaves the 737's momentary
+    // rows double-announcing while the 777 stays correct, so nothing fails loudly.
+
+    /// <summary>Presses the single button the given row binds to, returning every
+    /// (key, value) pair the binder marked for echo suppression. No data manager is
+    /// attached, so the row reads no state and the expected result is a plain engage.</summary>
+    private static List<(string Key, double Value)> EchoKeysForPressing(
+        ApRowSpec row, IReadOnlyDictionary<string, MSFSBlindAssist.SimConnect.SimVarDefinition> vars)
+    {
+        var marked = new List<(string, double)>();
+        var (buttons, _) = MSFSBlindAssist.Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+            new[] { row },
+            vars,
+            new MSFSBlindAssist.SimConnect.SimConnectManager(IntPtr.Zero),
+            (key, value) => marked.Add((key, value)),
+            (_, _, _) => true);
+
+        Assert.Single(buttons).OnPressed();
+        return marked;
+    }
+
+    [Fact]
+    public void Pmdg737_momentary_row_marks_the_echo_under_its_annunciator_too()
+    {
+        var vars = new PMDG737Definition().GetVariables();
+        var row = Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "CMD A");
+
+        var marked = EchoKeysForPressing(row, vars);
+
+        // "MCP_CmdA" is declared Momentary with UpdateFrequency.Never and never raises an
+        // event, so an echo under it alone is DEAD. The announcement comes from the
+        // separate "MCP_annunCMD_A" entry, which must be marked or CMD A double-announces.
+        Assert.Contains(("MCP_CmdA", 1d), marked);
+        Assert.Contains(("MCP_annunCMD_A", 1d), marked);
+    }
+
+    [Fact]
+    public void Pmdg777_momentary_row_marks_the_echo_under_its_varkey()
+    {
+        var vars = new PMDG777Definition().GetVariables();
+        var row = Assert.Single(PMDGAutopilotRows.For777(), r => r.Label == "AP Left");
+
+        var marked = EchoKeysForPressing(row, vars);
+
+        // On the 777 the VarKey IS the announced variable (its varDef.Name is the CDA
+        // field), so this is the load-bearing mark. The extra StateField mark is inert
+        // here — "MCP_annunAP_0" is a varDef.Name, not a dictionary key.
+        Assert.Contains(("MCP_AP_L", 1d), marked);
+    }
+
+    [Fact]
+    public void A_row_whose_state_field_equals_its_varkey_marks_the_echo_once()
+    {
+        var vars = new PMDG737Definition().GetVariables();
+        var row = Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "A/T Arm");
+        Assert.Equal(row.VarKey, row.StateField); // precondition for this case
+
+        Assert.Single(EchoKeysForPressing(row, vars));
+    }
+
     // Selector rows must actually be multi-position, or they belong on a button.
 
     [Fact]

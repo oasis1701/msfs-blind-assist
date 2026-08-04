@@ -51,11 +51,6 @@ public class PMDGAutopilotWindow : Form
     private Button _closeButton = null!;
     private IntPtr _previousWindow;
 
-    // Guards the SelectedIndexChanged handler while the refresh timer writes a combo's
-    // index, so a background state sync can never be mistaken for a pilot selection and
-    // actuate the switch.
-    private bool _syncingSelectors;
-
     public PMDGAutopilotWindow(
         string title,
         IReadOnlyList<ToggleButtonDef> buttons,
@@ -140,9 +135,25 @@ public class PMDGAutopilotWindow : Form
 
             var captured = def;
             var capturedValues = values;
-            combo.SelectedIndexChanged += (_, _) =>
+            // SelectionChangeCommitted, NOT SelectedIndexChanged — the same choice every
+            // panel combo in this app makes (MainForm.PanelBuilder.cs wires its
+            // DropDownList combos on this event, with the reasoning in full).
+            // SelectedIndexChanged ALSO fires on programmatic assignment AND on a deferred
+            // replay when the combo is parented and its native handle is created, which
+            // fires a phantom user-action write during form build. No sync-guard flag can
+            // cover that replay here: ShowForm calls RefreshStates() BEFORE Show(), so
+            // SelectedIndex is assigned while no handle exists and any such flag is long
+            // reset by the time the handle is created and the replay lands.
+            // SelectionChangeCommitted fires only on a genuine user commit — which is also
+            // why RefreshStates can assign SelectedIndex with no guard at all.
+            //
+            // Keyboard-safe: the native combo sends CBN_SELCHANGE (what WinForms surfaces
+            // as SelectionChangeCommitted) for arrow-key selection on a closed
+            // DropDownList, not only for mouse picks in the dropdown. This app's blind
+            // users arrow through every panel combo on exactly this event.
+            combo.SelectionChangeCommitted += (_, _) =>
             {
-                if (_syncingSelectors || combo.SelectedIndex < 0) return;
+                if (combo.SelectedIndex < 0) return;
                 captured.OnSelected(capturedValues[combo.SelectedIndex]);
                 RefreshSoon();
             };
@@ -173,11 +184,19 @@ public class PMDGAutopilotWindow : Form
         _refreshTimer.Tick += (_, _) => RefreshStates();
 
         // Hide-on-close so the cached instance survives reopen; the refresh timer stops
-        // while hidden and restarts in ShowForm. Escape and the Close button go through
-        // HideWindow() rather than Close() — Close()'s CloseReason is None for both
-        // paths, which this UserClosing-only guard misses, so the form would dispose
-        // instead of hiding. This handler now only fires for the real close paths (the
-        // title-bar X / Alt+F4 / owner close), which all report UserClosing.
+        // while hidden and restarts in ShowForm. ONLY CloseReason.UserClosing — the
+        // title-bar X and Alt+F4 — is cancelled into a Hide.
+        //
+        // Every other close reason deliberately falls through and really disposes:
+        // Close() called from code reports CloseReason.None, and an owner-form close
+        // reports CloseReason.FormOwnerClosing (NOT UserClosing). That fall-through is
+        // load-bearing in both directions. Escape and the Close button avoid Close()
+        // entirely and call HideWindow() directly, because their CloseReason.None would
+        // slip past this UserClosing-only guard and dispose the form instead of hiding
+        // it. Conversely the aircraft-switch teardown (DisposeTrackedWindows, called on
+        // the outgoing def by MainForm.SwitchAircraft) DOES call Close(), and depends on
+        // CloseReason.None NOT being cancelled so the window and its refresh timer really
+        // go away with the def that owns them.
         FormClosing += (_, e) =>
         {
             if (e.CloseReason == CloseReason.UserClosing)
@@ -239,9 +258,9 @@ public class PMDGAutopilotWindow : Form
             int idx = Array.IndexOf(values, current.Value);
             if (idx < 0 || combo.SelectedIndex == idx) continue;
 
-            _syncingSelectors = true;
-            try { combo.SelectedIndex = idx; }
-            finally { _syncingSelectors = false; }
+            // Unguarded on purpose: the handler is SelectionChangeCommitted, which a
+            // programmatic assignment never raises.
+            combo.SelectedIndex = idx;
         }
     }
 

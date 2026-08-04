@@ -43,7 +43,7 @@ public static class PMDGAutopilotRowBinder
                     target =>
                     {
                         // A selector's expected resulting value IS the chosen position.
-                        suppressEcho(spec.VarKey, target);
+                        MarkEcho(suppressEcho, spec, target);
                         setValue(spec.VarKey, target, varDef);
                     }));
                 continue;
@@ -60,7 +60,7 @@ public static class PMDGAutopilotRowBinder
                     // Mark the EXPECTED RESULT, not the press parameter: the echo gate is
                     // value-matched, so marking a press with 1 would suppress an engage
                     // but let the matching disengage (1 -> 0) leak through.
-                    suppressEcho(spec.VarKey, expected);
+                    MarkEcho(suppressEcho, spec, expected);
 
                     // Momentary controls are dispatched by HandleUIVariableSet on the
                     // RenderAsButton/IsMomentary branch, which always sends CDA parameter
@@ -70,6 +70,35 @@ public static class PMDGAutopilotRowBinder
         }
 
         return (buttons, selectors);
+    }
+
+    /// <summary>
+    /// Marks the UI-set echo for a row under EVERY variable key that can announce it.
+    /// <para>
+    /// Both keys are needed because the two aircraft are ASYMMETRIC. On the 777 the row's
+    /// VarKey IS the announced variable: the dictionary entry is keyed "MCP_AP_L" and its
+    /// varDef.Name is the CDA field "MCP_annunAP_0", so one entry covers switch and state
+    /// and marking VarKey suffices. On the 737 the switch and its annunciator are two
+    /// SEPARATE dictionary entries: "MCP_CmdA" is declared Momentary with
+    /// UpdateFrequency.Never and never raises an event at all — an echo under it is dead —
+    /// while the announcement comes from "MCP_annunCMD_A", which is exactly the row's
+    /// StateField. Marking VarKey alone therefore leaves the 737's CMD A/B and CWS A/B
+    /// double-announcing in both directions, silently inconsistent with the 777.
+    /// </para>
+    /// <para>
+    /// Do NOT "simplify" this back to a single key. Marking the extra key is inert
+    /// wherever it is not itself a variable-dictionary key (the 777's annunciator CDA
+    /// field names are varDef.Name values, not keys, so the entry never matches an event
+    /// VarName), and wherever it IS a key it is by construction the announcing variable
+    /// for the control the pilot just pressed — precisely what the echo gate exists to
+    /// suppress.
+    /// </para>
+    /// </summary>
+    private static void MarkEcho(Action<string, double> suppressEcho, ApRowSpec spec, double expected)
+    {
+        suppressEcho(spec.VarKey, expected);
+        if (spec.StateField.Length > 0 && spec.StateField != spec.VarKey)
+            suppressEcho(spec.StateField, expected);
     }
 
     /// <summary>Raw CDA field read, or null when the row has no state field or the
