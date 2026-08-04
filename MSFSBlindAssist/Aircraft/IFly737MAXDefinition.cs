@@ -2579,17 +2579,22 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     {
         if (!RequireSdk(announcer)) return;
 
+        // Mnemonics harmonized with the Ctrl+P autopilot window (2026-08-04 spec):
+        // same function = same Alt-key in dialog and window (VOR LOC=O, Approach=P,
+        // Bank Limit=L). LNAV moves to Alt+N as the forced consequence — Bank Limit
+        // takes L. (PMDG/HS787 dialogs keep &LNAV: they carry no Bank Limit, so no
+        // collision exists there.)
         var toggles = new List<ToggleButtonDef>
         {
             new("&Heading Select", () => McpModeState(IFlySdkOffsets.HDG_SEL_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_HDG_SEL)),
-            new("&LNAV", () => McpModeState(IFlySdkOffsets.LNAV_Switch_Status),
+            new("L&NAV", () => McpModeState(IFlySdkOffsets.LNAV_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_LNAV)),
-            new("&VOR LOC", () => McpModeState(IFlySdkOffsets.VOR_LOC_Switch_Status),
+            new("V&OR LOC", () => McpModeState(IFlySdkOffsets.VOR_LOC_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_VORLOC)),
-            new("&Approach", () => McpModeState(IFlySdkOffsets.APP_Switch_Status),
+            new("A&pproach", () => McpModeState(IFlySdkOffsets.APP_Switch_Status),
                 () => Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_APP)),
-            new("&Bank Limit", () =>
+            new("Bank &Limit", () =>
             {
                 var s = Sdk.Snapshot;
                 if (s == null) return "?";
