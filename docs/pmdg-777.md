@@ -44,6 +44,30 @@ Note that `RequestVariable(key, forceUpdate: true)` — the combo snap-back used
 
 **VS/FPA event naming (SDK names are misleading):** `EVT_MCP_VS_SWITCH` (69855) is the **engage/disengage** button. `EVT_MCP_VS_FPA_SWITCH` (69852) is the **VS↔FPA display mode toggle**. Confirmed by live sim testing — do not trust the SDK naming alone.
 
+### Autopilot window (Ctrl+P)
+
+Input-mode Ctrl+P opens the engage-cluster window: AP L/R, both flight directors,
+A/T Arm L/R, A/T, the disengage bar, the bank limit selector, and the A/P and A/T
+disconnects. Rows are declared as data in `Aircraft/PMDGAutopilotRows.cs` and bound to
+live UI by `Forms/PMDG/PMDGAutopilotRowBinder.cs`; the window itself
+(`Forms/PMDG/PMDGAutopilotWindow.cs`) is shared with the 737.
+
+The per-axis mode buttons (LNAV, VNAV, LVL CHG, HDG HOLD, ALT HOLD, VS/FPA) are NOT
+here by design — they live in the Ctrl+H/S/A/V value dialogs, and duplicating them
+would put one control in two places.
+
+Invariants:
+- Every row actuates through `HandleUIVariableSet`, never a direct `SendPMDGEvent`.
+  The 777's F/D and A/T Arm switches ignore position values and need
+  `MOUSE_FLAG_LEFTSINGLE` simulation, which only that path applies.
+- Reads gate on `IPMDGDataManager.IsReady` and render `--` before the first CDA
+  snapshot; a 0.0 read there is a sentinel, not a real position.
+- Presses call `MainForm.SuppressUiEcho` with the EXPECTED RESULTING value, not the
+  press parameter — the echo gate is value-matched, so marking a press with 1 would
+  let the matching disengage announce twice.
+- Bank limit is a ComboBox, never a cycling button. Multi-position switches stay
+  multi-position combos.
+
 **Announcements:** Use `Announce()` (queued) in ProcessSimVarUpdate, `AnnounceImmediate()` only in HandleHotkeyAction. `IsAnnounced = true` is required for continuous monitoring registration. Suppress button push state (_Sw_Pushed) announcements via RenderAsButton check. Annunciator lights announce both on and off states. For variables needing cache but no auto-announcement, set `IsAnnounced = true` and return `true` from ProcessSimVarUpdate to suppress.
 
 **System Display synoptic read-outs (`PMDG777Definition.SystemDisplay.cs`, partial class).** A read-only status box in the **Displays → System Display** panel, organized like the real Display Select Panel synoptic pages. A single combo (`PMDG777_SD_PAGE`, `SdPageKey`) selects one of 9 pages (0 Engine, 1 Status, 2 Electrical, 3 Hydraulics, 4 Fuel, 5 Air, 6 Doors, 7 Gear, 8 Flight Controls); selecting a page writes a private L:var (`PMDG777_MSFSBA_SD_PAGE`), and `RefreshSystemDisplayAsync` repaints the box. **HYBRID data sourcing** — each row is `(label, var, fmt)`: most values are **stock SimVars** read from the SimConnect cache (`GetCachedVariableValue` — oil temp/press/qty, EGT, N1/N2, fuel flow, hydraulic pressure/reservoir, electrical voltages, cabin alt/rate/diff, CG%MAC, gear, control surfaces/trim), while a small set of PMDG-SDK-broadcast fields (`_sdPmdgVars`: feed-tank fuel quantities, duct pressures, brake accumulator, IRS aligned, APU running, door states) are read **live** via `simConnect.PMDGDataManager.GetFieldValue(name)` (with `_N` array-index suffix), because OnRequest PMDGVars never land in the SimConnect cache. The box rides the GENERIC MainForm `_DISPLAY_`/`_REFRESH_` status-box infra (a navigable ListBox with a 1 s live auto-refresh + coalesced in-place row reconcile — see "Status-display boxes refresh live") — `OnDisplayPanelShown` triggers a refresh when the panel is shown; `TryGetDisplayOverride(SdPageKey, …)` renders the page name + content. **Documented gaps not in the SDK** (so NOT covered): oxygen, water, brake temp, tire pressure, APU N/EGT/load, generator load amps, EICAS alert message TEXT (WASM-only), wear/cycles, chrono elapsed time. **Formatting (2026-06-21):** the shared `Lbs`/`Pph` formatters show weight/fuel in BOTH units — "`<lb>` pounds (`<kg>` kg)" / "… pounds per hour (… kg per hour)" (1 lb = 0.45359237 kg) — covering every pounds field on every page (Fuel Flow, Fuel Used, Gross Weight, Total Fuel, per-tank). The continuous readouts carry ONE decimal place (`{v:0.0}` on percent / volts / psi / degrees-C) so sub-unit changes are visible — integer rounding had made live values look frozen (a reservoir at 96.9% read a static "97"). Weight/fuel stay whole (sub-unit is noise on a 6-digit number); N1/N2, vibration, flaps, diff-pressure already carried a decimal. The row formatters are `private static` methods (not per-call local funcs) so the compiler caches the method-group delegates — the auto-refresh tick and the 9-page registration loop don't re-allocate them; `TryGetDisplayOverride` renders the page name from `_sdPage` (the same source `_sdContent` was composed from), NOT the cached L:var `value`, which lags the calc-write/read-back and would briefly show the wrong header over fresh content. **PMDG-broadcast reads are gated on `IPMDGDataManager.IsReady`** — until the first CDA snapshot arrives `GetFieldValue` returns `0.0` for EVERY field (interface contract), which `DoorState(0)="open"` would render as "every door open" / "0 lb"; not-ready now renders `--` (matching the stock-SimVar cache-miss path). **MainForm's PMDG panel-populate loop only force-reads `Type == PMDGVar` controls** (`MainForm.cs` ~6598) — reading a non-PMDG control (the SD page combo is an `LVar`) via `GetFieldValue` returns the `0.0` "unknown field" sentinel, which used to force-reset the combo to page 0 on every panel re-show; non-PMDG controls populate via combo-creation + continuous monitoring instead.

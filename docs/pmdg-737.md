@@ -71,6 +71,35 @@ Do **not** translate names from 777 conventions.
 
 `MCP_Heading`, `MCP_Altitude`, `MCP_IASMach`, `MCP_VertSpeed` are declared with `PreventTextInput = true` in `GetPMDGVariables()` (same pattern as the 777). The panel UI shows them as read-only readouts; values are set via the four MCP dialogs accessed by Shift+H / Shift+S / Shift+A / Shift+V. This matches the 777 UX. Do not add inline text inputs.
 
+## Autopilot window (Ctrl+P)
+
+Input-mode Ctrl+P opens the engage-cluster window: CMD A/B, CWS A/B, F/D Captain and
+First Officer, A/T Arm, the disengage bar, the bank limit selector, and the A/P and A/T
+disconnects. Rows are declared as data in `Aircraft/PMDGAutopilotRows.cs` and bound to
+live UI by `Forms/PMDG/PMDGAutopilotRowBinder.cs`; the window itself
+(`Forms/PMDG/PMDGAutopilotWindow.cs`) is shared with the 777.
+
+The per-axis mode buttons (LNAV, VNAV, LVL CHG, HDG SEL, ALT HOLD, VS) are NOT here by
+design — they live in the Ctrl+H/S/A/V value dialogs, and duplicating them would put one
+control in two places.
+
+The yoke A/P disconnect variable (`YOKE_APDisc` → `EVT_YOKE_L_AP_DISC_SWITCH`) was added
+for this window: the event had always been in the ID table but no variable mapped to it,
+so nothing could drive it.
+
+Invariants:
+- Every row actuates through `HandleUIVariableSet`, never a direct `SendPMDGEvent`.
+- The 737's momentary MCP buttons are `UpdateFrequency.Never` and read their state from
+  a SEPARATE annunciator field (`MCP_CmdA` → `MCP_annunCMD_A`), unlike the 777's, which
+  are named for the annunciator directly. The row table records the pairing explicitly.
+- Reads gate on `IPMDGDataManager.IsReady` and render `--` before the first CDA
+  snapshot; a 0.0 read there is a sentinel, not a real position.
+- Presses call `MainForm.SuppressUiEcho` with the EXPECTED RESULTING value, not the
+  press parameter — the echo gate is value-matched, so marking a press with 1 would
+  let the matching disengage announce twice.
+- Bank limit is a ComboBox, never a cycling button. Multi-position switches stay
+  multi-position combos.
+
 ## Altimeter access
 
 ALTIMETER_SETTING is an MSFS simvar (not a PMDG var). It is NOT in the panel
