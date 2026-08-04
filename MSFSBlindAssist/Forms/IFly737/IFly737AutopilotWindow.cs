@@ -5,18 +5,26 @@ using MSFSBlindAssist.SimConnect.IFly;
 namespace MSFSBlindAssist.Forms.IFly737;
 
 /// <summary>
-/// Autopilot engage panel for the iFly 737 MAX8 (Ctrl+P, input mode) — the
-/// Salty747AutopilotWindow shape. Carries the ENGAGE/DISENGAGE cluster: CMD A/B,
-/// CWS A/B, both flight directors, autothrottle arm, the disengage bar, and the
-/// momentary A/P + A/T disconnects. The per-value mode toggles (LNAV, VNAV, APP,
-/// VOR LOC, LVL CHG, ALT HOLD, VS, N1, SPD/ALT INTV) live in the Ctrl+S/H/A/V
-/// dialogs and on the MCP panel — this window is the engage cluster only.
+/// Autopilot panel for the iFly 737 MAX8 (Ctrl+P, input mode) — the
+/// Salty747AutopilotWindow shape. Carries the ENGAGE/DISENGAGE cluster (CMD A/B,
+/// CWS A/B, both flight directors, autothrottle arm, the disengage bar, the
+/// momentary A/P + A/T disconnects) PLUS Approach, VOR LOC and a 5-position Bank
+/// Limit combo. Those three are ALSO on the MCP panel and in the Ctrl+H dialog —
+/// a deliberate exception to the PMDG windows' "not if it's already in a dialog"
+/// rule: Robin chose cross-fleet Ctrl+P parity (2026-08-04, MAX8 support
+/// unreleased). Do not "fix" the duplication back out. They actuate via plain
+/// SendCommand like the dialog — NOT EngageClick: the verified-click trigger
+/// replay has verified clickspot trigger values only for CMD/CWS. The remaining
+/// per-value mode toggles (LNAV, VNAV, LVL CHG, ALT HOLD, VS, N1, SPD/ALT INTV)
+/// stay in the Ctrl+S/H/A/V dialogs and on the MCP panel.
 ///
 /// Button labels show live state from the SDK snapshot (mode buttons use the
 /// 0-5 switch+light encoding — value mod 3 &gt; 0 = light on = engaged); state
 /// refreshes on a 500 ms timer and ~300 ms after each click. No explicit
 /// announcements — the screen reader announces the click, and the label refresh
-/// means the new state reads on focus (screen-reader rule).
+/// means the new state reads on focus (screen-reader rule). Window Alt-keys are
+/// native mnemonics in the labels: CMD A/B Alt+A/B, Approach Alt+P, VOR LOC
+/// Alt+O, Bank Limit Alt+L (on its text Label, which focuses the combo).
 /// </summary>
 public class IFly737AutopilotWindow : Form
 {
@@ -43,8 +51,11 @@ public class IFly737AutopilotWindow : Form
     private Button _cwsBButton = null!;
     private Button _fdCaptButton = null!;
     private Button _fdFoButton = null!;
+    private Button _appButton = null!;
+    private Button _vorLocButton = null!;
     private Button _atArmButton = null!;
     private Button _disengageBarButton = null!;
+    private ComboBox _bankCombo = null!;
     private Button _closeButton = null!;
     private System.Windows.Forms.Timer _refreshTimer = null!;
 
@@ -77,13 +88,11 @@ public class IFly737AutopilotWindow : Form
     private void BuildForm()
     {
         Text = "737 Autopilot";
-        Size = new Size(430, 370);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
-        KeyPreview = true;
 
         const int col1 = 15;
         const int col2 = 215;
@@ -126,6 +135,21 @@ public class IFly737AutopilotWindow : Form
             _def.NoteWindowWrite(nameof(IFlySdkOffsets.FD_2_Switch_Status));
             _sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_RIGHT_FD_SET,
                 State(IFlySdkOffsets.FD_2_Switch_Status) == 0 ? 1 : 0);
+        });
+        row += rowH;
+        // Approach / VOR LOC — plain SDK click, same call the Ctrl+H dialog makes.
+        // Deliberately NOT EngageClick: its clickspot-trigger replay is verified for
+        // the CMD/CWS buttons only. NoteWindowWrite suppresses the def's light-edge
+        // echo so the press announces once (the screen reader's own click).
+        _appButton = MakeBtn(col1, row, btnW, btnH, tab++, () =>
+        {
+            _def.NoteWindowWrite(nameof(IFlySdkOffsets.APP_Switch_Status));
+            _sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_APP);
+        });
+        _vorLocButton = MakeBtn(col2, row, btnW, btnH, tab++, () =>
+        {
+            _def.NoteWindowWrite(nameof(IFlySdkOffsets.VOR_LOC_Switch_Status));
+            _sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_VORLOC);
         });
         row += rowH;
         _atArmButton = MakeBtn(col1, row, btnW, btnH, tab++, () =>
@@ -174,6 +198,39 @@ public class IFly737AutopilotWindow : Form
         };
         row += rowH;
 
+        // Bank Limit — a real 5-position combo (10..30 degrees; SelectedIndex IS the
+        // SDK detent index), never a cycling button. The '&' on the label makes Alt+L
+        // the combo's key: a Label's mnemonic focuses the NEXT control in tab order.
+        // AUTOMATICFLIGHT_BANK_ANGLE_SET takes the raw 0-4 index as Value2 (the
+        // Ctrl+H dialog's cycler live-proves that encoding).
+        var bankLabel = new Label
+        {
+            Text = "Bank &Limit",
+            Location = new Point(col1, row + 6),
+            Size = new Size(btnW, 20),
+            TabIndex = tab++,
+        };
+        _bankCombo = new ComboBox
+        {
+            Location = new Point(col2, row),
+            Size = new Size(btnW, 28),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Bank Limit", // explicit names don't strip '&' — keep clean
+            TabIndex = tab++,
+        };
+        _bankCombo.Items.AddRange(new object[]
+            { "10 degrees", "15 degrees", "20 degrees", "25 degrees", "30 degrees" });
+        // SelectionChangeCommitted only — fires on genuine user commits (arrow-key
+        // selection included), never on the programmatic sync in RefreshButtonStates.
+        _bankCombo.SelectionChangeCommitted += (_, _) =>
+        {
+            if (_bankCombo.SelectedIndex < 0) return;
+            _def.NoteWindowWrite(nameof(IFlySdkOffsets.Bank_Limit_Selector_Status));
+            _sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_BANK_ANGLE_SET, _bankCombo.SelectedIndex);
+            RefreshSoon();
+        };
+        row += rowH;
+
         _closeButton = new Button
         {
             Text = "Close",
@@ -187,11 +244,16 @@ public class IFly737AutopilotWindow : Form
         Controls.AddRange(new Control[]
         {
             _cmdAButton, _cmdBButton, _cwsAButton, _cwsBButton,
-            _fdCaptButton, _fdFoButton, _atArmButton, _disengageBarButton,
-            apDiscButton, atDiscButton, _closeButton,
+            _fdCaptButton, _fdFoButton, _appButton, _vorLocButton,
+            _atArmButton, _disengageBarButton,
+            apDiscButton, atDiscButton, bankLabel, _bankCombo, _closeButton,
         });
 
         CancelButton = _closeButton; // Escape presses Close (HideWindow) via ProcessDialogKey
+
+        // Height follows the row layout (same formula as PMDGAutopilotWindow) instead
+        // of a hand-kept constant that silently clips when rows are added.
+        ClientSize = new Size(col2 + btnW + col1, row + btnH + 15);
 
         _refreshTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _refreshTimer.Tick += (_, _) => RefreshButtonStates();
@@ -311,8 +373,8 @@ public class IFly737AutopilotWindow : Form
 
     private void RefreshButtonStates()
     {
-        UpdateBtn(_cmdAButton, "CMD A", Lit(IFlySdkOffsets.CMD_A_Switch_Status) ? "Engaged" : "Off");
-        UpdateBtn(_cmdBButton, "CMD B", Lit(IFlySdkOffsets.CMD_B_Switch_Status) ? "Engaged" : "Off");
+        UpdateBtn(_cmdAButton, "CMD &A", Lit(IFlySdkOffsets.CMD_A_Switch_Status) ? "Engaged" : "Off");
+        UpdateBtn(_cmdBButton, "CMD &B", Lit(IFlySdkOffsets.CMD_B_Switch_Status) ? "Engaged" : "Off");
         UpdateBtn(_cwsAButton, "CWS A", Lit(IFlySdkOffsets.CWS_A_Switch_Status) ? "Engaged" : "Off");
         UpdateBtn(_cwsBButton, "CWS B", Lit(IFlySdkOffsets.CWS_B_Switch_Status) ? "Engaged" : "Off");
         UpdateBtn(_fdCaptButton, "F/D Captain", State(IFlySdkOffsets.FD_1_Switch_Status) != 0 ? "On" : "Off");
@@ -320,12 +382,29 @@ public class IFly737AutopilotWindow : Form
         UpdateBtn(_atArmButton, "A/T Arm", State(IFlySdkOffsets.AT_Switch_Status) != 0 ? "Armed" : "Off");
         UpdateBtn(_disengageBarButton, "Disengage Bar",
             State(IFlySdkOffsets.DISENGAGE_Bar_Switch_Status) != 0 ? "Up, normal" : "Down, disengaged");
+        UpdateBtn(_appButton, "A&pproach", Lit(IFlySdkOffsets.APP_Switch_Status) ? "Engaged" : "Off");
+        UpdateBtn(_vorLocButton, "V&OR LOC", Lit(IFlySdkOffsets.VOR_LOC_Switch_Status) ? "Engaged" : "Off");
+
+        // Never repaint a combo the pilot is in; disable while there is no snapshot
+        // (index 0 would otherwise show a false "10 degrees").
+        if (!_bankCombo.Focused)
+        {
+            bool ready = _sdk.Snapshot != null;
+            _bankCombo.Enabled = ready;
+            if (ready)
+            {
+                int idx = State(IFlySdkOffsets.Bank_Limit_Selector_Status);
+                if (idx >= 0 && idx <= 4 && _bankCombo.SelectedIndex != idx)
+                    _bankCombo.SelectedIndex = idx;
+            }
+        }
     }
 
     private static void UpdateBtn(Button btn, string label, string status)
     {
+        // No explicit AccessibleName: it would carry the literal '&' (explicit names
+        // don't strip the mnemonic marker); the Text-derived name reads clean.
         btn.Text = $"{label}: {status}";
-        btn.AccessibleName = btn.Text;
     }
 
     protected override void Dispose(bool disposing)
