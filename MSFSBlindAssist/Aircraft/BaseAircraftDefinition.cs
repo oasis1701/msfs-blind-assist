@@ -769,6 +769,37 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         _trackedWindows.Clear();
     }
 
+    /// <summary>
+    /// Shows the PMDG Ctrl+P autopilot engage-cluster window. Shared by the 737 and 777,
+    /// which differ only in their row table and window title — the binder, the echo
+    /// suppression and the tracked-window lifecycle are identical, so they live here
+    /// rather than being duplicated across both defs.
+    /// </summary>
+    protected void ShowPMDGAutopilotWindow(
+        IReadOnlyList<ApRowSpec> rows,
+        string title,
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.Announce("Not connected to simulator");
+            return;
+        }
+
+        var (buttons, selectors) = Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+            rows,
+            GetVariables(),
+            simConnect,
+            (key, expected) => (parentForm as MainForm)?.SuppressUiEcho(key, expected),
+            (key, value, varDef) => HandleUIVariableSet(key, value, varDef, simConnect, announcer));
+
+        ShowTrackedWindow(
+            () => new Forms.PMDG.PMDGAutopilotWindow(title, buttons, selectors),
+            w => w.ShowForm());
+    }
+
     // Momentary L:var pulse: write 1 then auto-release to 0 (~250 ms) via the calc path so the
     // systems logic latches on the rising edge; announce the press. Callers keep their own guard.
     protected void PulseMomentaryLVar(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string varKey, string displayName)
