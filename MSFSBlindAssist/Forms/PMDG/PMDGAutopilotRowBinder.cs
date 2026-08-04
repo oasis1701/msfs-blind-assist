@@ -22,6 +22,18 @@ public static class PMDGAutopilotRowBinder
     /// for every field until then, which must never render as a real position.</summary>
     private const string NotReady = "--";
 
+    /// <summary>Inserts the WinForms mnemonic marker before the first case-insensitive
+    /// occurrence of <paramref name="mnemonic"/> ("CMD A", 'A' -> "CMD &amp;A").
+    /// '\0' or a letter not present returns the label unchanged — the row-table tests
+    /// pin that every ASSIGNED letter does occur, so unchanged-return is safety
+    /// degradation, not an expected path.</summary>
+    public static string ApplyMnemonic(string label, char mnemonic)
+    {
+        if (mnemonic == '\0') return label;
+        int at = label.IndexOf(char.ToString(mnemonic), StringComparison.OrdinalIgnoreCase);
+        return at < 0 ? label : label.Insert(at, "&");
+    }
+
     public static (List<ToggleButtonDef> Buttons, List<SelectorRowDef> Selectors) Bind(
         IReadOnlyList<ApRowSpec> specs,
         IReadOnlyDictionary<string, SimVarDefinition> vars,
@@ -47,12 +59,16 @@ public static class PMDGAutopilotRowBinder
                         // A selector's expected resulting value IS the chosen position.
                         MarkEcho(suppressEcho, spec, target);
                         setValue(spec.VarKey, target, varDef);
-                    }));
+                    },
+                    spec.Mnemonic));
                 continue;
             }
 
             buttons.Add(new ToggleButtonDef(
-                spec.Label,
+                // Pre-decorated with the Alt-key mnemonic, the same convention the
+                // ValueInputForm dialog toggles use ("&Approach"). The state suffix
+                // never contains '&', so the marker stays unique in the button Text.
+                ApplyMnemonic(spec.Label, spec.Mnemonic),
                 () => RenderState(simConnect, spec, varDef),
                 () =>
                 {

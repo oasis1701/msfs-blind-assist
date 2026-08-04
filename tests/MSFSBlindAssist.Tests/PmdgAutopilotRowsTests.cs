@@ -320,6 +320,48 @@ public class PmdgAutopilotRowsTests
         }
     }
 
+    // ---- mnemonic rendering ----
+    // ToggleButtonDef labels arrive pre-decorated (the ValueInputForm dialog
+    // convention — "&Approach" etc.); SelectorRowDef stays clean-label and carries
+    // the char, because the window must decorate its text Label control while the
+    // combo's explicit AccessibleName must NOT contain '&' (explicit names don't
+    // strip the marker; only Text-derived names do).
+
+    [Theory]
+    [InlineData("CMD A", 'A', "CMD &A")]
+    [InlineData("AP Left", 'A', "&AP Left")]
+    [InlineData("AP Right", 'R', "AP &Right")]
+    [InlineData("Approach", 'P', "A&pproach")]
+    [InlineData("VOR LOC", 'O', "V&OR LOC")]
+    [InlineData("LOC", 'O', "L&OC")]
+    [InlineData("Bank Limit", 'L', "Bank &Limit")]
+    [InlineData("CWS A", '\0', "CWS A")]
+    [InlineData("Disengage Bar", 'Q', "Disengage Bar")]
+    public void ApplyMnemonic_marks_the_first_case_insensitive_occurrence(string label, char m, string expected)
+        => Assert.Equal(expected, MSFSBlindAssist.Forms.PMDG.PMDGAutopilotRowBinder.ApplyMnemonic(label, m));
+
+    [Fact]
+    public void Binder_decorates_button_labels_with_their_mnemonic()
+    {
+        var vars = new PMDG737Definition().GetVariables();
+        var row = Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "CMD A");
+        Assert.Equal("CMD &A", BindSingleButton(row, vars).Label);
+    }
+
+    [Fact]
+    public void Binder_passes_the_selector_mnemonic_through_with_a_clean_label()
+    {
+        var vars = new PMDG737Definition().GetVariables();
+        var row = Assert.Single(PMDGAutopilotRows.For737(), r => r.Label == "Bank Limit");
+        var (_, selectors) = MSFSBlindAssist.Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+            new[] { row }, vars,
+            new MSFSBlindAssist.SimConnect.SimConnectManager(IntPtr.Zero),
+            (_, _) => { }, (_, _, _) => true);
+        var sel = Assert.Single(selectors);
+        Assert.Equal('L', sel.Mnemonic);
+        Assert.Equal("Bank Limit", sel.Label);
+    }
+
     // Selector rows must actually be multi-position, or they belong on a button.
 
     [Fact]

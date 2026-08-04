@@ -14,12 +14,18 @@ namespace MSFSBlindAssist.Forms.PMDG;
 /// <paramref name="GetCurrentValue"/> returns null when the CDA snapshot has not
 /// arrived, which disables the combo rather than showing a false position 0.
 /// </para>
+/// <para>
+/// <paramref name="Mnemonic"/> is the row's Alt-key letter ('\0' = none), rendered
+/// on the combo's TEXT LABEL — a Label's mnemonic focuses the next control in tab
+/// order, which is how a WinForms combo gets an Alt-key.
+/// </para>
 /// </summary>
 public record SelectorRowDef(
     string Label,
     IReadOnlyDictionary<double, string> Positions,
     Func<double?> GetCurrentValue,
-    Action<double> OnSelected);
+    Action<double> OnSelected,
+    char Mnemonic = '\0');
 
 /// <summary>
 /// Shared Ctrl+P autopilot engage-cluster window for the PMDG 737 and 777. Aircraft-
@@ -117,9 +123,15 @@ public class PMDGAutopilotWindow : Form
         {
             var label = new Label
             {
-                Text = def.Label,
+                // The '&' makes this the combo's Alt-key: a Label's mnemonic focuses
+                // the NEXT control in tab order, which is why the label needs a real
+                // TabIndex immediately before its combo (Labels are not tab STOPS,
+                // so keyboard tabbing is unaffected). The combo's explicit
+                // AccessibleName stays clean — explicit names don't strip '&'.
+                Text = PMDGAutopilotRowBinder.ApplyMnemonic(def.Label, def.Mnemonic),
                 Location = new Point(col1, row + 6),
                 Size = new Size(btnW, 20),
+                TabIndex = tab++,
             };
             var values = def.Positions.Keys.OrderBy(v => v).ToArray();
             var combo = new ComboBox
