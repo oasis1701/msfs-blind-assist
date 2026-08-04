@@ -741,6 +741,21 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// Public wrapper over <see cref="MarkUiSet"/> for hotkey windows that live outside
+    /// MainForm (the PMDG Ctrl+P autopilot window) and set panel-monitored variables
+    /// directly. Without it those windows triple-announce: the screen reader announces
+    /// the click, the refreshed button label announces on focus, and the background
+    /// monitor announces the change.
+    /// <para>
+    /// Pass the EXPECTED RESULTING value, not the press parameter. The generic
+    /// _uiSetEcho gate is value-matched, so marking a momentary press with 1 would
+    /// suppress an engage but let the matching DISENGAGE (annunciator 1 -> 0) leak
+    /// through as a duplicate announcement.
+    /// </para>
+    /// </summary>
+    public void SuppressUiEcho(string varKey, double expectedValue) => MarkUiSet(varKey, expectedValue);
+
+    /// <summary>
     /// Cached <c>currentAircraft.GetPanelDisplayVariables()</c> (see the cache fields for why:
     /// the defs rebuild the dictionary per call and the per-event Step-3 gate made that a
     /// per-second allocation storm). Self-invalidates when the aircraft instance changes.
