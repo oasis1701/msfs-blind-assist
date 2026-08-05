@@ -364,9 +364,12 @@ written to the log.
 `%LOCALAPPDATA%\SayIntentionsAI\flight.json` only while connected to a flight.
 
 Every aborted import now writes `Import aborted: <reason>` to `sayintentions.log`, at
-Info — the same text the pilot heard, for every guard that stops the import (database
-unavailable, the database/simulator mismatch dialog, a `flight.json` error, no current
-airport found, no taxi path data for the resolved airport, no usable destination).
+Info. For five of the guards that stop the import — database unavailable, a
+`flight.json` error, no current airport found, no taxi path data for the resolved
+airport, no usable destination — `<reason>` is the same text the pilot heard. The
+sixth, the database/simulator mismatch guard, announces through its own dialog rather
+than a spoken line, so its log entry is a fixed note that the dialog was shown
+(`Import aborted: database/simulator mismatch dialog shown.`), not the dialog's text.
 Before this, an abort left no trace at all: the import and Ctrl+S both call into the
 same SayIntentions comms endpoint, so a comms fetch with **nothing logged after it**
 used to be indistinguishable between the two — a silently failed import and an
