@@ -30,4 +30,14 @@
     <ProjectReference Include="..\..\MSFSBlindAssist\MSFSBlindAssist.csproj" />
   </ItemGroup>
 
+  <!-- Captured wire data the characterization tests read at run time. They resolve it
+       relative to AppContext.BaseDirectory, so it has to be copied next to the test
+       assembly; without this the fixtures are just loose files in the source tree and
+       every test that loads one fails with FileNotFoundException. -->
+  <ItemGroup>
+    <None Update="Fixtures\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

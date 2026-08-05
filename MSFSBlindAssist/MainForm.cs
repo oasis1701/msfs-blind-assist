@@ -10,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
@@ -185,6 +186,7 @@ public partial class MainForm : Form
     private LandingExitPlanner landingExitPlanner = null!;
 
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+    private SayIntentionsService sayIntentionsService = null!;
 
     // Access GSX integration — owns its own SimConnect client (distinct
     // WM_USER id 0x0403). The form is created lazily on first hotkey use and
@@ -567,6 +569,7 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+        sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
         dockingGuidanceManager = new DockingGuidanceManager(announcer);

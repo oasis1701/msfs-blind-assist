@@ -1364,7 +1364,7 @@ Some airports have a mismatch between navdata taxiway names and OSM/apt.dat name
 
 ### Gate / Parking Aliases
 
-Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
+Sceneries and online sources spell the same stand differently: navdata may carry a bare `"51"` where OSM and real-world charts say `"A51"`, or `"N3"` where apt.dat spells the MARS position `"N3A"`. Without an alias, a pilot searching for the name ATC used cannot find the stand. An alias only ever RE-LETTERS the same stand — the **number is the identity**, and a differently-numbered stand is a different stand (see the resolver rules below).
 
 **How parking aliases are collected — REWORKED 2026-06-23 (identity-matched, alias-only).** The earlier nearest-within-50 m gate-NAME fill was REMOVED: it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Now the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)` flattens the online stands once and, for each authoritative gate, sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — a **pure, idempotent** resolver that:
 
@@ -1379,14 +1379,14 @@ Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-
 
 **How parking aliases are surfaced:**
 
-1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the normal label (e.g. `"GN 3 - Gate Large"`) is added first, then one additional combo item per alias formatted as `"{alias} ({normalLabel})"` (e.g. `"47 (GN 3 - Gate Large)"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical regardless of which label the pilot picks. This alias loop runs at both spots where parking spots are added to the dropdown: the deice section and the regular parking section.
+1. **TaxiAssistForm destination dropdown** — **ONE entry per spot**, labelled `spot.ToString()`, which appends `", also A51 (online)"` when `Aliases.Count > 0`. The pilot reaches an alias through the **gate search box** (`GateSearchFilter`, which matches `ParkingSpot.Aliases`) by typing the name ATC used. A separate combo item per alias was deliberately REMOVED: at airports whose online names differ from the scenery names (e.g. LIMC) it doubled the gate list with a near-identical "online" duplicate of every "scenery" gate.
 
-2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `" (also 47)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name without a separate selection.
+2. **GateTeleportForm listbox** — the same `ParkingSpot.ToString()` label, so a screen reader reading the gate list hears the alternative name without a separate selection.
 
 **Safety invariants:**
-- Spots with no aliases produce identical behavior (empty `Aliases` list → the alias loop is a no-op in TaxiAssistForm; `ToString()` is unchanged in GateTeleportForm).
+- Spots with no aliases produce identical behavior (empty `Aliases` list → `ToString()` appends nothing).
 - The navdata name is always authoritative; aliases are additive display helpers only.
-- Both dropdown entries for the same spot resolve to the same navdata spot object and therefore the same routing endpoint.
+- An alias is a searchable label, never a destination of its own: one dropdown entry per spot means there is only ever one routing endpoint to pick.
 
 ### Background fetch / deduplication
 
