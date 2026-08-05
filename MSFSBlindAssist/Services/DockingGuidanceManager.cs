@@ -94,6 +94,10 @@ public sealed class DockingGuidanceManager : IDisposable
     // Live heading misalignment vs the gate axis (deg, + = aircraft right of the axis) while
     // engaged, for the Y status. Also gates the "docking complete" callout — see the stop branch.
     private double _lastHeadingOffDeg;
+    // 1-knot ground-speed callouts for the final approach (setting-gated). Speed is the
+    // variable that decides whether the squaring turn can be finished before the stop,
+    // and it is the one a blind pilot cannot poll mid-turn — both hands are busy.
+    private readonly DockingSpeedCallout _speedCallout = new();
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -363,7 +367,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // is false until the aircraft first comes within detail range.
                         if (wantDetail)
                             _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
-                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg);
+                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg, groundSpeedKts);
                         else _state = DockState.Armed;
                         break;
 
@@ -478,7 +482,27 @@ public sealed class DockingGuidanceManager : IDisposable
                             _announcer.AnnounceImmediate("Slow down.");
                             return; // one callout per frame, consistent with the milestone pattern
                         }
-                        AnnounceMilestonesLocked(alongM);
+                        bool milestoneSpoke = AnnounceMilestonesLocked(alongM);
+                        // Ground-speed callout, LAST of the approach cues and QUEUED, never
+                        // immediate. Both of those are load-bearing and were learned the hard way:
+                        //
+                        // • It runs AFTER the one-shots (and is skipped on a frame one of them
+                        //   fired) because every other callout here is AnnounceImmediate, which
+                        //   INTERRUPTS. Speaking speed first didn't make speed win — whatever
+                        //   speaks LAST wins the speaker — it just meant the knot was consumed by
+                        //   Update() and then cut off, so the pilot skipped a number outright.
+                        //   Deferring costs one frame (16-33 ms) and the number still lands, right
+                        //   behind the distance it belongs with.
+                        // • It uses plain Announce (queued) because it is the only PERIODIC callout
+                        //   on this path — a chatty cue must never displace a one-shot instruction.
+                        //   Same rule, same reason, as GroundSpeedAnnouncer's queued callout: the
+                        //   milestone the pilot is braking for is exactly what an interrupt kills,
+                        //   and braking is exactly what makes the speed change on that frame.
+                        if (!milestoneSpoke && settings.DockingSpeedCalloutsEnabled)
+                        {
+                            string? speedPhrase = _speedCallout.Update(groundSpeedKts);
+                            if (speedPhrase != null) _announcer.Announce(speedPhrase);
+                        }
                         // Stopped-short reminder: engaged, parked mid-approach (past the milestones,
                         // short of the stop band), sitting still. Without this the pilot gets an
                         // endless fast-but-not-solid beep and no verbal closure — taxi's own
@@ -553,7 +577,7 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg)
+    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg, double groundSpeedKts)
     {
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
@@ -562,6 +586,11 @@ public sealed class DockingGuidanceManager : IDisposable
         // gate." from the ResetLocked default of 0.0 whatever the real alignment — the Docking
         // case does not run on the frame that engages.
         _lastHeadingOffDeg = headingOffDeg;
+        // ARM at the current speed, not Reset: the engage callout below runs several seconds
+        // and the position feed is SIM_FRAME, so a "next sample always speaks" re-arm put a
+        // number on top of it 16-33 ms later. Priming silently means the first callout is the
+        // first genuine CHANGE — which on a decelerating approach is a second or two away.
+        _speedCallout.Arm(groundSpeedKts);
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -605,7 +634,12 @@ public sealed class DockingGuidanceManager : IDisposable
         _beeper.Start(SettingsManager.Current.DockingBeepWaveform, SettingsManager.Current.DockingBeepVolume);
     }
 
-    private void AnnounceMilestonesLocked(double alongM)
+    /// <summary>
+    /// Speaks at most one distance milestone. Returns true when it announced, so the caller
+    /// can hold the periodic speed callout back for a frame rather than have it consumed and
+    /// then interrupted by this one (see the call site).
+    /// </summary>
+    private bool AnnounceMilestonesLocked(double alongM)
     {
         for (int i = 0; i < _milestones.Count; i++)
         {
@@ -613,9 +647,10 @@ public sealed class DockingGuidanceManager : IDisposable
             {
                 _milestoneSaid[i] = true;
                 _announcer.AnnounceImmediate($"{_milestones[i].Label} to stop.");
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     /// <summary>
@@ -917,6 +952,7 @@ public sealed class DockingGuidanceManager : IDisposable
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
+        _speedCallout.Reset();
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false; _completedGood = false;
         _completedAtUtc = DateTime.MinValue; _completedToneStopped = false;
