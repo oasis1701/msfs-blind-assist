@@ -38,15 +38,42 @@ public sealed record InfoSection(string Heading, IReadOnlyList<string> Items);
 /// </summary>
 public static class SayIntentionsInfoReport
 {
+    /// <summary>
+    /// Whether a current_airport value is a US ARTCC facility ident rather than an
+    /// airport. Live log, 2026-08-04/05 (KDEN→KSFO): in the cruise SI publishes the
+    /// CONTROLLING CENTER's ident in current_airport — KZLC (Salt Lake), then KZOA
+    /// (Oakland) at the handoff — and restores the real airport on the ground.
+    /// Presented as "Current airport", a center ident tells a blind pilot something
+    /// false about where they are.
+    ///
+    /// BOTH keys are required, deliberately: US ARTCC idents are exactly KZ + two
+    /// letters, but so are the real airports KZPH (Zephyrhills) and KZZV
+    /// (Zanesville) — the shape alone must never demote a real airport, so the
+    /// caller supplies whether the navigation database knows the ident, and only a
+    /// shape-matching UNKNOWN becomes a facility. An unknown ident of any other
+    /// shape stays "Current airport": a small strip missing from navdata is more
+    /// likely than a non-US facility, and this label asserts only the observed
+    /// pattern.
+    /// </summary>
+    public static bool LooksLikeArtccFacility(string? ident, bool isKnownAirport)
+    {
+        if (isKnownAirport || string.IsNullOrWhiteSpace(ident)) return false;
+        string trimmed = ident.Trim();
+        return trimmed.Length == 4
+            && trimmed[0] == 'K' && trimmed[1] == 'Z'
+            && char.IsAsciiLetterUpper(trimmed[2]) && char.IsAsciiLetterUpper(trimmed[3]);
+    }
+
     public static IReadOnlyList<InfoSection> Build(
         SayIntentionsFlightContext context,
         string? assignedGate,
         string? departureRunway,
-        string? nearbyParkingStatus)
+        string? nearbyParkingStatus,
+        bool currentAirportIsKnownAirport = true)
     {
         var sections = new List<InfoSection>();
 
-        AddFlight(sections, context);
+        AddFlight(sections, context, currentAirportIsKnownAirport);
         AddGateAndRunway(sections, context, assignedGate, departureRunway, nearbyParkingStatus);
         AddAirports(sections, context);
 
@@ -95,11 +122,17 @@ public static class SayIntentionsInfoReport
             !string.IsNullOrWhiteSpace(item)
             && !item.Equals(NoAssignedGateItem, StringComparison.Ordinal)));
 
-    private static void AddFlight(List<InfoSection> sections, SayIntentionsFlightContext context)
+    private static void AddFlight(
+        List<InfoSection> sections, SayIntentionsFlightContext context,
+        bool currentAirportIsKnownAirport)
     {
         var items = new List<string>();
 
-        Add(items, "Current airport", context.CurrentAirport);
+        Add(items,
+            LooksLikeArtccFacility(context.CurrentAirport, currentAirportIsKnownAirport)
+                ? "Controlling facility"
+                : "Current airport",
+            context.CurrentAirport);
         Add(items, "Origin", context.Origin);
         Add(items, "Destination", context.Destination);
         Add(items, "Aircraft", context.AircraftIcao);

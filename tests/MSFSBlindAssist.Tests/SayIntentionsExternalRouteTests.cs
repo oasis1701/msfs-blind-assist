@@ -1473,4 +1473,27 @@ public class SayIntentionsExternalRouteTests
         Assert.Equal(2, TaxiAssistForm.FindRunwayItemIndex(new[] { "(none)", "15L", "15R" }, "15R"));
         Assert.Equal(1, TaxiAssistForm.FindRunwayItemIndex(new[] { "(none)", "15R", "15L" }, "15R"));
     }
+
+    // --- SelectImportAirport: the DB-validated import airport chain -------------------
+    //
+    // Live log, 2026-08-05: a KDEN -> KSFO leg published the controlling ARTCC's ident
+    // (KZOA, Oakland Center; KZLC, Salt Lake Center, earlier in the same flight) in
+    // current_airport during cruise. Preferring it unvalidated dead-ended the import
+    // with "No taxi path data available for KZOA." The chain now tries each candidate
+    // in order and only accepts one the navigation database actually knows.
+
+    [Fact]
+    public void TheImportAirportChainSkipsIdentsTheDatabaseDoesNotKnow()
+    {
+        // Live log, 2026-08-05: current_airport held Oakland Center's ident in cruise.
+        var known = new HashSet<string> { "KDEN", "KSFO" };
+        Assert.Equal("KDEN", MainForm.SelectImportAirport(
+            new string?[] { "KZOA", "KDEN", "KSFO" }, known.Contains));
+        Assert.Equal("KSFO", MainForm.SelectImportAirport(
+            new string?[] { "KZOA", null, "KSFO" }, known.Contains));
+        Assert.Null(MainForm.SelectImportAirport(
+            new string?[] { "KZOA", "KZLC", null }, known.Contains));
+        Assert.Null(MainForm.SelectImportAirport(
+            new string?[] { null, "", null }, known.Contains));
+    }
 }

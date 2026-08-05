@@ -208,6 +208,46 @@ public class SayIntentionsInfoReportTests
         Assert.Contains("Callsign: Skyhawk One Two Three Alpha Zulu", KbosReport());
     }
 
+    // --- current_airport: a real airport vs a controlling facility --------------------
+    //
+    // Live log, 2026-08-04/05 (KDEN -> KSFO): in the cruise SI publishes the
+    // controlling ARTCC's ident in current_airport (KZLC, then KZOA at the Salt Lake ->
+    // Oakland handoff) and restores the real airport on the ground. Presented
+    // unconditionally as "Current airport", a center ident tells a blind pilot
+    // something false about where they are — so the caller (who has already checked
+    // the navigation database) decides which label applies.
+
+    [Theory]
+    // The facility inference needs BOTH keys: the KZxx shape AND absence from the
+    // database — KZPH (Zephyrhills) and KZZV (Zanesville) are real airports.
+    [InlineData("KZOA", false, true)]
+    [InlineData("KZLC", false, true)]
+    [InlineData("KZPH", true, false)]
+    [InlineData("KZZV", true, false)]
+    [InlineData("XXQQ", false, false)]  // unknown but not KZxx: could be a strip missing from navdata
+    [InlineData("KSFO", true, false)]
+    [InlineData(null, false, false)]
+    [InlineData("KZO", false, false)]   // three letters: not the ARTCC shape
+    public void AnArtccFacilityIsOnlyInferredFromShapePlusAbsence(
+        string? ident, bool known, bool expected)
+        => Assert.Equal(expected, SayIntentionsInfoReport.LooksLikeArtccFacility(ident, known));
+
+    [Fact]
+    public void ACruisePhaseFacilityIdentIsLabelledAsAFacilityNotAnAirport()
+    {
+        var context = new SayIntentionsFlightContext { CurrentAirport = "KZOA" };
+
+        var sections = SayIntentionsInfoReport.Build(context, null, null, null,
+            currentAirportIsKnownAirport: false);
+        var flat = SayIntentionsInfoReport.Flatten(sections);
+        Assert.Contains("Controlling facility: KZOA", flat);
+        Assert.DoesNotContain("Current airport: KZOA", flat);
+
+        var normal = SayIntentionsInfoReport.Build(context, null, null, null,
+            currentAirportIsKnownAirport: true);
+        Assert.Contains("Current airport: KZOA", SayIntentionsInfoReport.Flatten(normal));
+    }
+
     // --- the altimeter ----------------------------------------------------------------
 
     // SayIntentions publishes the altimeter numerically in inHg, and half the world

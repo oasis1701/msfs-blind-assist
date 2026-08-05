@@ -69,11 +69,21 @@ public partial class MainForm
                 ? null
                 : await GetSayIntentionsNearbyParkingStatusAsync(context, gate);
 
+            // In the cruise SI publishes the controlling ARTCC's ident here, not an
+            // airport (live log: KZLC, then KZOA at the handoff) — LooksLikeArtccFacility
+            // needs to know whether the database has it before the report can tell a
+            // facility from a real airport. An empty CurrentAirport is vacuously "known"
+            // (nothing to demote), and a missing provider never blocks the readout.
+            bool currentAirportKnown = context.CurrentAirport is not { Length: > 0 }
+                || airportDataProvider == null
+                || KnownAirport(context.CurrentAirport);
+
             var lines = SayIntentionsInfoReport.Build(
                 context,
                 gate,
                 ResolveDepartureRunwayForStatus(context, _lastOnGround),
-                nearbyParking);
+                nearbyParking,
+                currentAirportKnown);
 
             // Nothing to show means SayIntentions isn't publishing a flight. SPEAK that
             // rather than opening a window onto it: an empty window costs the pilot a
@@ -129,19 +139,35 @@ public partial class MainForm
     {
         if (Interlocked.CompareExchange(ref _sayIntentionsImportBusy, 1, 0) != 0)
         {
+            _siLog.Debug("Import refused: one is already running.");
             announcer.AnnounceImmediate("SayIntentions taxi route already being built.");
             return;
         }
 
         try
         {
+            // Every abort a pilot HEARS also lands in the log. The live-test log showed
+            // a comms fetch with no import line after it — indistinguishable between a
+            // Ctrl+S and a failed import, exactly the silence the log line per import
+            // exists to prevent. The announcement already happens at each site; this
+            // adds the missing log half, never a second utterance.
+            void AbortImport(string reason)
+            {
+                _siLog.Info($"Import aborted: {reason}");
+                announcer.AnnounceImmediate(reason);
+            }
+
             if (airportDataProvider == null || !airportDataProvider.DatabaseExists)
             {
-                announcer.AnnounceImmediate("Airport database not available. Configure database in settings.");
+                AbortImport("Airport database not available. Configure database in settings.");
                 return;
             }
 
-            if (!ValidateDatabaseSimulatorMatch()) return;
+            if (!ValidateDatabaseSimulatorMatch())
+            {
+                _siLog.Info("Import aborted: database/simulator mismatch dialog shown.");
+                return;
+            }
 
             announcer.AnnounceImmediate("Reading SayIntentions taxi clearance.");
 
@@ -149,7 +175,7 @@ public partial class MainForm
             var context = status.Context;
             if (!string.IsNullOrWhiteSpace(context.Error))
             {
-                announcer.AnnounceImmediate(context.Error);
+                AbortImport(context.Error);
                 return;
             }
 
@@ -157,7 +183,7 @@ public partial class MainForm
             string? icao = ResolveSayIntentionsAirport(context, position);
             if (string.IsNullOrWhiteSpace(icao))
             {
-                announcer.AnnounceImmediate("SayIntentions route unavailable. No current airport found.");
+                AbortImport("SayIntentions route unavailable. No current airport found.");
                 return;
             }
 
@@ -203,7 +229,7 @@ public partial class MainForm
                 position.Latitude, position.Longitude, position.HeadingMagnetic, icao);
             if (knownTaxiways.Count == 0)
             {
-                announcer.AnnounceImmediate($"No taxi path data available for {icao}.");
+                AbortImport($"No taxi path data available for {icao}.");
                 return;
             }
 
@@ -260,8 +286,7 @@ public partial class MainForm
                     out bool isRunway, out string label,
                     out TaxiAssistForm.GateSubstitution? gateSubstitution))
             {
-                announcer.AnnounceImmediate(
-                    "SayIntentions route unavailable. No usable assigned runway or gate found.");
+                AbortImport("SayIntentions route unavailable. No usable assigned runway or gate found.");
                 return;
             }
 
@@ -888,10 +913,40 @@ public partial class MainForm
         return mapped;
     }
 
+    /// <summary>The first candidate ident the navigation database actually knows.
+    /// current_airport is NOT always an airport: in the cruise SI publishes the
+    /// controlling ARTCC's ident there (live log: KZLC, then KZOA at the handoff),
+    /// and preferring it unvalidated dead-ended the import with "No taxi path data
+    /// available for KZOA." Validation is BY DATABASE LOOKUP, never by ident shape
+    /// — KZPH and KZZV are real airports. Null when no candidate is known, so the
+    /// caller falls through to the position fallback.</summary>
+    internal static string? SelectImportAirport(
+        IReadOnlyList<string?> candidates, Func<string, bool> isKnownAirport)
+    {
+        foreach (string? candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            string icao = candidate.Trim().ToUpperInvariant();
+            if (isKnownAirport(icao)) return icao;
+            _siLog.Debug($"Import airport candidate '{icao}' is not in the navigation database; trying the next.");
+        }
+        return null;
+    }
+
+    /// <summary>Whether the navigation database knows this airport — the lightest
+    /// existing single-row lookup on IAirportDataProvider (AirportExists), never
+    /// GetTaxiPaths (thousands of rows) or a graph build just to validate an ident.
+    /// A missing provider never blocks a caller: every candidate is treated as known
+    /// rather than rejected outright, so a caller with no provider at all falls
+    /// straight through to whatever it does next instead of dead-ending here.</summary>
+    private bool KnownAirport(string icao) =>
+        airportDataProvider == null || airportDataProvider.AirportExists(icao);
+
     private string? ResolveSayIntentionsAirport(
         SayIntentionsFlightContext context, SimConnectManager.AircraftPosition position)
     {
-        string? icao = FirstNonEmptySi(context.CurrentAirport, context.Origin, context.Destination);
+        string? icao = SelectImportAirport(
+            new[] { context.CurrentAirport, context.Origin, context.Destination }, KnownAirport);
         if (string.IsNullOrWhiteSpace(icao))
         {
             icao = airportDataProvider!
