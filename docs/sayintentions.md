@@ -363,6 +363,20 @@ written to the log.
 "SayIntentions flight.json not found" means no flight is active — SayIntentions writes
 `%LOCALAPPDATA%\SayIntentionsAI\flight.json` only while connected to a flight.
 
+Every aborted import now writes `Import aborted: <reason>` to `sayintentions.log`, at
+Info — the same text the pilot heard, for every guard that stops the import (database
+unavailable, the database/simulator mismatch dialog, a `flight.json` error, no current
+airport found, no taxi path data for the resolved airport, no usable destination).
+Before this, an abort left no trace at all: the import and Ctrl+S both call into the
+same SayIntentions comms endpoint, so a comms fetch with **nothing logged after it**
+used to be indistinguishable between the two — a silently failed import and an
+ordinary Ctrl+S last-transmission readout (which is a different feature and was never
+expected to log anything) looked identical in `sayintentions.log`. Now every import
+that runs writes something, always, so a comms fetch with nothing following it in the
+log is a Ctrl+S, not a failed import. A second Ctrl+Shift+Y press while one import is
+already running logs separately, at Debug (`Import refused: one is already
+running.`), since a refusal is not a failed import.
+
 ---
 
 ## Developer internals
@@ -536,18 +550,28 @@ committed fixture.
 ### What flight.json holds AIRBORNE is unknown
 
 Every field above was read from an aircraft **stopped on the ground at the
-destination**. There is no airborne capture, so nothing here says what SI writes at
-1,000 ft or in the cruise. Do not design an airborne readout against this table.
+destination**. Two fields are now measured in flight too — the first two bullets
+below — but the rest of this table is still untested airborne. Do not design a
+further airborne readout against it.
 
 The specific open questions, any of which a single mid-cruise copy of the file would
 settle:
 
-- **`current_airport` in flight** — the last airport, the nearest one, or empty? The
-  status readout opens with it, so if it holds a departure airport for four hours it
-  is telling the pilot something false about where they are.
-- **`assigned_gate` before arrival** — is it published from the start of the flight, or
-  only once approach assigns it? It is the most useful airborne field there is if the
-  former.
+- **`current_airport` in flight is now measured.** In the cruise it holds the
+  **controlling ARTCC's ident, not an airport**: `KZLC` (Salt Lake Center), then
+  `KZOA` (Oakland Center) at the handoff — visible as two successive reads of the
+  same field — restoring the real airport once back on the ground. Neither center
+  ident exists in the airport table, which is exactly what the taxi import's
+  candidate validation (see "Which airport the import resolves against" below) and
+  the flight-information window's facility label both key on, alongside the
+  `^KZ[A-Z]{2}$` shape — `KZPH` (Zephyrhills) and `KZZV` (Zanesville) are real
+  airports, so the shape alone is forbidden as a filter. Measured from the owner's
+  live log, 2026-08-04/05, a KDEN→KSFO leg plus a KATL session — the first airborne
+  observations this integration has.
+- **`assigned_gate` before arrival is now measured: yes.** "Terminal 2 Gate C6"
+  appeared at least 31 minutes before landing on the same KDEN→KSFO leg, so the
+  arrival-gate line in the flight-information window is available well before
+  descent begins. Same provenance as above.
 - **`runway` in flight** — departure, expected arrival, or last-used?
 - **`flight_plan_route` and `callsign_icao`** — both are already parsed into
   `SayIntentionsFlightContext` and **never spoken**. Neither appears in the captured
@@ -1470,6 +1494,28 @@ first callout after the aircraft rolls still cuts the tail. And the lead sentenc
 destination only when the destination actually seated — it used to open *"SayIntentions
 route to Gate A9."* and then say *"Destination not set."* two sentences later, the first
 thing the pilot hears contradicting the second.
+
+### Which airport the import resolves against
+
+`ResolveSayIntentionsAirport` tries `context.CurrentAirport`, then `context.Origin`,
+then `context.Destination`, in that order, through `SelectImportAirport` — the first
+candidate the navigation **database** actually knows wins, checked via `AirportExists`
+(the lightest single-row lookup on `IAirportDataProvider`; never `GetTaxiPaths`, which
+returns thousands of rows, and never a graph build just to validate an ident). A
+candidate skipped for not being in the database is logged at **Debug**
+(`Import airport candidate 'KZOA' is not in the navigation database; trying the
+next.`) rather than Info — it is normal traffic on a cruise-phase read, not a problem.
+Only once every candidate has been tried and rejected does `ResolveSayIntentionsAirport`
+fall back to the nearest airport by position, exactly as it did before this validation
+existed.
+
+This is the fix behind the ARTCC-facility finding above: preferring `current_airport`
+unvalidated dead-ended the import on a controlling-center ident with *"No taxi path
+data available for KZOA"* — correctly, since there is no taxi path data for an ARTCC,
+but not what the pilot asked for. `KnownAirport`, the small wrapper `MainForm` passes
+as the lookup, treats a missing `airportDataProvider` as "every candidate known" rather
+than blocking — a missing provider must never dead-end a caller that would otherwise
+work.
 
 ### One graph build per keypress
 
