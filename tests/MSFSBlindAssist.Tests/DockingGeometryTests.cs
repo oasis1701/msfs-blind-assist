@@ -274,7 +274,9 @@ public class DockingGeometryTests
     public void Documented_tuning_constants_are_pinned()
     {
         Assert.Equal(6.0, DockingGeometry.SlowDownMetres);
-        Assert.Equal(5.0, DockingGeometry.SlowDownSpeedKts);
+        // 3.0, not 5.0: at 5.0 the callout was silent through all three live A380 approaches
+        // that ended askew or through the stop (4.0 kt @ 5 m, 4.3 kt @ 2 m, 4.7 kt @ 2 m).
+        Assert.Equal(3.0, DockingGeometry.SlowDownSpeedKts);
         Assert.Equal(50.0, DockingGeometry.EngageRangeMetres);
         Assert.Equal(30.0, DockingGeometry.BeepFarMetres);
         Assert.Equal(2.0, DockingGeometry.OccupancyClampMarginMetres);
