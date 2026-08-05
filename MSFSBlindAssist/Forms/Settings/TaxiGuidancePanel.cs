@@ -44,6 +44,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     private Button refreshTaxiwayNamesButton = null!;
     private CheckBox taxiAugmentEnabledCheckBox = null!;
+    private Label sayIntentionsHeadingLabel = null!;
+    private CheckBox sayIntentionsAutoStartCheckBox = null!;
     private Label taxiAugmentAttributionLabel = null!;
 
     // Optional callback for the manual taxiway-names refresh. Null when the caller doesn't
@@ -416,6 +418,33 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleName = "Online taxiway name data attribution"
         };
 
+        // SayIntentions route import. It lives here rather than on a tab of its own:
+        // the setting decides what happens to a TAXI ROUTE, which is this tab's
+        // subject, and it was the only option left once the API key was retired.
+        sayIntentionsHeadingLabel = new Label
+        {
+            Text = "SayIntentions",
+            Location = new Point(20, 795),
+            Size = new Size(450, 20),
+            AccessibleName = "SayIntentions section"
+        };
+
+        // The scope has to lead. A screen-reader user arrows between FOCUSABLE controls,
+        // and the "SayIntentions" heading above is a Label — not a tab stop — so this
+        // checkbox is read entirely on its own. Wording that opened with "Start taxi
+        // guidance immediately…" and qualified itself at the end was heard as a general
+        // taxi-guidance option, which it is not: it changes nothing about a route the
+        // pilot builds by hand.
+        sayIntentionsAutoStartCheckBox = new CheckBox
+        {
+            Text = "SayIntentions import starts taxi &guidance immediately",
+            Location = new Point(20, 820),
+            Size = new Size(450, 40),
+            AccessibleName = "SayIntentions import starts taxi guidance immediately",
+            AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
+                                    + "instead of waiting for you to press Calculate Route"
+        };
+
         Controls.AddRange(new Control[]
         {
             titleLabel, toneTypeLabel, toneTypeCombo,
@@ -431,7 +460,9 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             gsxAutoSelectGateCheckBox,
             dockingGroup,
             refreshTaxiwayNamesButton,
-            taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel
+            taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel,
+            sayIntentionsHeadingLabel,
+            sayIntentionsAutoStartCheckBox
         });
     }
 
@@ -456,6 +487,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepTestButton.TabIndex = 3;
         refreshTaxiwayNamesButton.TabIndex = tabIdx++;
         taxiAugmentEnabledCheckBox.TabIndex = tabIdx++;
+        sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
     }
 
     private void TestToneButton_Click(object? sender, EventArgs e)
@@ -665,6 +697,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepVolumeValueLabel.Text = $"{dockingBeepVolumeTrackBar.Value}%";
 
         taxiAugmentEnabledCheckBox.Checked = settings.TaxiAugmentEnabled;
+        sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -706,6 +739,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.DockingBeepVolume = dockingBeepVolumeTrackBar.Value / 100.0;
 
         settings.TaxiAugmentEnabled = taxiAugmentEnabledCheckBox.Checked;
+        settings.SayIntentionsAutoStartTaxiGuidance = sayIntentionsAutoStartCheckBox.Checked;
     }
 
     /// <summary>Stops both the steering test tone and the docking-beep test whenever this tab

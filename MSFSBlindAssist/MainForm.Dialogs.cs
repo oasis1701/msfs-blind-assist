@@ -665,14 +665,28 @@ public partial class MainForm
         catch { return false; }
     }
 
-    private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
+    private TaxiAssistForm GetOrCreateTaxiAssistForm()
     {
         if (taxiAssistForm == null || taxiAssistForm.IsDisposed)
         {
+            // The form gets the import as a CALLBACK, not a MainForm reference, so it
+            // stays independent of MainForm (same shape as the Settings panel's
+            // taxiway-name refresh). Reaching back into this same method from inside
+            // BuildTaxiRouteFromSayIntentionsAsync returns the instance below, already
+            // constructed — the import re-enters the form it is filling, which is what it
+            // does on the hotkey path too.
             taxiAssistForm = new TaxiAssistForm(
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
-                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager);
+                simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager,
+                importFromSayIntentions: BuildTaxiRouteFromSayIntentionsAsync);
         }
+
+        return taxiAssistForm;
+    }
+
+    private void OpenTaxiForm(SimConnectManager.AircraftPosition position)
+    {
+        taxiAssistForm = GetOrCreateTaxiAssistForm();
 
         // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
         // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's

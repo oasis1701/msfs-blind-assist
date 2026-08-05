@@ -3,6 +3,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -130,6 +131,7 @@ public class TaxiAssistForm : Form
         "End of last taxiway",
         "Hold at named holding point"
     };
+    private Button btnSayIntentions = null!;
     private Button btnCalculate = null!;
     private Button btnStop = null!;
     private Label lblStatus = null!;
@@ -233,6 +235,14 @@ public class TaxiAssistForm : Form
     // docking stop moves to where GSX's VDGS would stop THIS airframe. Lazy + cached.
     private readonly Services.Gsx.GsxStopOffsetResolver _stopOffsetResolver = new();
 
+    /// <summary>Runs the SayIntentions taxi-route import — the same operation the
+    /// Ctrl+Shift+Y hotkey performs. Supplied by the caller rather than reached through a
+    /// MainForm reference, so this form keeps knowing nothing about MainForm (the pattern
+    /// TaxiGuidancePanel already uses for its taxiway-name refresh). Null when the caller
+    /// has no import to offer, and the button then stays present but disabled — a control
+    /// that appears and disappears is worse to navigate than one consistently there.</summary>
+    private readonly Func<Task>? _importFromSayIntentions;
+
     public TaxiAssistForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
@@ -242,7 +252,8 @@ public class TaxiAssistForm : Form
         double aircraftWingspan = 0,
         Services.GateDataSource? gateSource = null,
         Services.Gsx.GsxGateSelector? gsxGateSelector = null,
-        Services.DockingGuidanceManager? dockingManager = null)
+        Services.DockingGuidanceManager? dockingManager = null,
+        Func<Task>? importFromSayIntentions = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
@@ -253,6 +264,7 @@ public class TaxiAssistForm : Form
         _gateSource = gateSource;
         _gsxGateSelector = gsxGateSelector;
         _dockingManager = dockingManager;
+        _importFromSayIntentions = importFromSayIntentions;
         InitializeFormControls();
     }
 
@@ -269,7 +281,7 @@ public class TaxiAssistForm : Form
         if (!string.IsNullOrEmpty(nearestIcao))
         {
             txtAirport.Text = nearestIcao.ToUpperInvariant();
-            LoadAirportData(nearestIcao);
+            _ = LoadAirportDataSafeAsync(nearestIcao);
         }
     }
 
@@ -321,6 +333,7 @@ public class TaxiAssistForm : Form
         //          "Cross at ta&xiway" picker (Alt+X) for type "After crossing runway"
         //   Alt+P  Progressive-taxi terminator named holding-&point combo (last row
         //          only, type "Hold at named holding point")
+        //   Alt+Y  Fill from Sa&yIntentions (matches the Ctrl+Shift+Y hotkey)
         //   Alt+C  Calculate Route
         //   Alt+S  Stop Guidance
         //   Alt+R  Remove (dynamic) — shared across all Remove buttons (cycle)
@@ -350,7 +363,7 @@ public class TaxiAssistForm : Form
             AccessibleName = "Airport ICAO",
             AccessibleDescription = "Enter the four-letter ICAO code for the airport"
         };
-        txtAirport.Leave += (s, e) => LoadAirportData(txtAirport.Text.Trim());
+        txtAirport.Leave += (s, e) => _ = LoadAirportDataSafeAsync(txtAirport.Text.Trim());
         y += 30;
 
         // Destination type
@@ -694,6 +707,28 @@ public class TaxiAssistForm : Form
         };
         // y will be adjusted dynamically
 
+        // SayIntentions import. Sits immediately above Calculate because it is the step
+        // BEFORE it: it fills the fields, it does not start guidance. The label says
+        // "Fill from" for exactly that reason — a pilot who reads it as "go" would press
+        // it expecting to be moving.
+        //
+        // Disabled rather than hidden when no import callback was supplied (see
+        // _importFromSayIntentions).
+        btnSayIntentions = new Button
+        {
+            Text = "Fill from Sa&yIntentions",
+            Location = new System.Drawing.Point(controlX, y),
+            Width = 180,
+            Height = 30,
+            Enabled = _importFromSayIntentions != null,
+            AccessibleName = "Fill from SayIntentions",
+            AccessibleDescription = _importFromSayIntentions != null
+                ? "Fill this form from the latest SayIntentions taxi clearance. Same as Ctrl+Shift+Y."
+                : "Fill this form from the latest SayIntentions taxi clearance. Unavailable in this window."
+        };
+        btnSayIntentions.Click += OnSayIntentionsClicked;
+        y += 35;
+
         // Calculate button
         btnCalculate = new Button
         {
@@ -814,6 +849,7 @@ public class TaxiAssistForm : Form
         lblTerminatorHoldPoint.TabIndex = 9004;
         cmbTerminatorHoldPoint.TabIndex = 9005;
         this.Controls.Add(pnlTaxiways);
+        this.Controls.Add(btnSayIntentions);
         this.Controls.Add(btnCalculate);
         this.Controls.Add(btnStop);
         this.Controls.Add(lblStatus);
@@ -822,7 +858,10 @@ public class TaxiAssistForm : Form
 
         // Tab order: Airport → Type → Destination → First taxiway → First
         // hold-short → First hold-short-of-runway → Add Taxiway → DYNAMIC
-        // TAXIWAYS → Calculate → Stop. The dynamic-taxiway panel needs an
+        // TAXIWAYS → Fill from SayIntentions → Calculate → Stop. The import sits
+        // with the other actions rather than at the top: it is one of three things
+        // the pilot can DO once the fields are in view, and it is the one that
+        // feeds Calculate. The dynamic-taxiway panel needs an
         // explicit TabIndex BETWEEN Add and Calculate; without that, its inner
         // controls land at the END of the tab order (after Stop), which is
         // what made adding taxiways feel "illogical" — Tab from Add jumped
@@ -846,6 +885,7 @@ public class TaxiAssistForm : Form
         btnAddTaxiway.TabIndex = tabIdx++;
         pnlTaxiways.TabStop = true;
         pnlTaxiways.TabIndex = tabIdx++;
+        btnSayIntentions.TabIndex = tabIdx++;
         btnCalculate.TabIndex = tabIdx++;
         btnStop.TabIndex = tabIdx++;
         txtRouteSummary.TabIndex = tabIdx++;
@@ -870,7 +910,697 @@ public class TaxiAssistForm : Form
     // the nearest-airport auto-load) — wrapped end-to-end so a DB/graph-build fault
     // can't escape as an unobserved async-void exception; only the augmentation
     // prefetch and the graph build had their own local guards before this.
-    private async void LoadAirportData(string icao)
+    /// <summary>Outcome of applying an externally-sourced (SayIntentions) route.
+    /// Skipped taxiways AND hold-shorts are reported so the caller can tell the pilot
+    /// which parts of the clearance did not survive — silently degrading to a
+    /// shortest-path route, or dropping a hold-short ATC gave, is the failure a blind
+    /// pilot cannot see.</summary>
+    public sealed record ExternalRouteOutcome(
+        bool DestinationApplied,
+        IReadOnlyList<string> AppliedTaxiways,
+        IReadOnlyList<string> SkippedTaxiways,
+        IReadOnlyList<AppliedHoldShort> AppliedHoldShorts,
+        IReadOnlyList<string> SkippedHoldShortRunways);
+
+    /// <summary>A hold-short that actually landed on a row: the runway designator
+    /// spelled the way the combo (and therefore the router) spells it, and the
+    /// taxiway whose row carries it.</summary>
+    public sealed record AppliedHoldShort(string Runway, string AfterTaxiway);
+
+    /// <summary>A hold-short from the clearance, tied to the taxiway it FOLLOWS.
+    /// TaxiwayIndex indexes the taxiway list passed to ApplyExternalRoute; -1 means
+    /// the clearance named no taxiway ahead of it, so no row can carry it.</summary>
+    public readonly record struct ExternalHoldShort(int TaxiwayIndex, string Runway);
+
+    /// <summary>One destination an external clearance would accept. Callers pass the
+    /// whole list in priority order so the form lists each destination type once.
+    ///
+    /// <paramref name="Position"/> is where the source says that destination IS, for the
+    /// gate candidates that have one. It is a FALLBACK for the name and nothing else: it
+    /// is consulted only after <see cref="MatchDestinationLabel"/> has failed on this
+    /// same candidate, because the name is what the pilot was actually told.</summary>
+    public readonly record struct ExternalDestination(
+        bool IsRunway, string? Identifier, GeoPoint? Position = null);
+
+    /// <summary>Which step seated a stand the source named something else. The pilot
+    /// hears a different sentence for each, because they are different claims about the
+    /// airport: an ALIAS says this scenery holds the stand under another label, a
+    /// POSITION says no label matched at all and the published coordinate decided.</summary>
+    public enum GateSubstitutionKind
+    {
+        Alias,
+        Position
+    }
+
+    /// <summary>A destination seated under a label the source did not use.
+    /// <paramref name="AssignedName"/> is the name SayIntentions ASKED for. The import's
+    /// lead sentence names only the label that WON, so this is the one thing that can
+    /// tell the pilot they are being taxied to a stand the controller did not name.</summary>
+    public readonly record struct GateSubstitution(
+        string AssignedName, GateSubstitutionKind Kind);
+
+    /// <summary>One gate entry as the alias step sees it: the label the combo carries,
+    /// and the online names the spot behind it also answers to.</summary>
+    internal readonly record struct AliasedDestination(
+        string Label, IReadOnlyList<string> Aliases);
+
+    /// <summary>Loads the airport for an external route and returns the taxiway
+    /// names its graph knows. The caller resolves its clearance against THIS list
+    /// so no second TaxiGraph is ever built.</summary>
+    public async Task<IReadOnlyList<string>> LoadAirportForExternalRouteAsync(
+        double lat, double lon, double heading, string icao)
+    {
+        _aircraftLat = lat;
+        _aircraftLon = lon;
+        _aircraftHeading = heading;
+        txtAirport.Text = icao.ToUpperInvariant();
+        await LoadAirportDataAsync(icao);
+        return _graph?.GetAllTaxiwayNames() ?? new List<string>();
+    }
+
+    /// <summary>Every named taxiway SEGMENT of the airport this form currently has
+    /// loaded, for a caller matching published geometry against the pavement. Exposed
+    /// for the same reason the taxiway names are: the SayIntentions import must never
+    /// build a second TaxiGraph, and this graph is the one the route will be calculated
+    /// on. Empty before an airport is loaded.</summary>
+    public IReadOnlyList<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>
+        GetLoadedTaxiwayEdges() =>
+        _graph == null
+            ? Array.Empty<(string, double, double, double, double)>()
+            : _graph.GetNamedEdges().ToList();
+
+    /// <summary>Selects the first candidate that names a real entry in the form's
+    /// destination list. The form owns its label formats — callers pass a normalized
+    /// identifier ("15L", "A9"), never a constructed "Runway 15L".
+    ///
+    /// PROBING LEAVES NO MARK. Listing a destination type re-reads the database and
+    /// re-walks the taxi graph, so each type is listed at most ONCE however many
+    /// candidates ask for it; and when nothing resolves, the form is put back the way
+    /// it was found — a failed import must not throw away the destination the pilot
+    /// had already selected.
+    ///
+    /// "The way it was found" includes the ROUTE-SHAPING boxes, not just the destination.
+    /// Probing a gate candidate sets the destination type, and OnDestTypeChanged unticks
+    /// the intersection-departure and CAT III / LVP boxes on the way out of runway mode
+    /// (the first also empties the intersection list and its map). Restoring the type
+    /// re-SHOWS them, unticked. So a pilot who hand-built "Runway 27L, intersection T4,
+    /// CAT III hold", pressed Ctrl+Shift+Y and heard "SayIntentions route unavailable" —
+    /// i.e. "nothing happened" — silently lost both, and their next Calculate lined them
+    /// up at the full-length threshold holding at the CAT I line. This is the mirror
+    /// image of what ResetRouteShapingControls exists to prevent on a SUCCESSFUL
+    /// import.
+    ///
+    /// A GATE CANDIDATE IS RESOLVED IN THREE STEPS: its name, then this scenery's online
+    /// ALIASES for that name, then the coordinate SayIntentions published beside it. Each
+    /// is weaker evidence than the one before — an alias is still the same stand under
+    /// another label, a coordinate is a guess at which pavement an unrecognized name must
+    /// have meant — so each only runs when the one above it found nothing.
+    ///
+    /// <paramref name="gateSubstitution"/> names the gate a candidate ASKED for when one
+    /// of those two fallbacks seated it, and says which — non-null only then, so the
+    /// caller can tell the pilot they are being routed to a stand under a label the
+    /// controller did not use.</summary>
+    public bool TryResolveExternalDestination(
+        IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label,
+        out GateSubstitution? gateSubstitution)
+    {
+        isRunway = false;
+        label = "";
+        gateSubstitution = null;
+
+        int priorType = cmbDestType.SelectedIndex;
+        string priorSearch = txtGateSearch.Text;
+        string? priorDestination = cmbDestination.SelectedItem?.ToString();
+        bool priorIntersection = chkIntersection.Checked;
+        string? priorIntersectionLabel = cmbIntersection.SelectedItem?.ToString();
+        bool priorCatIiiHold = chkCatIiiHold.Checked;
+
+        // A gate search left over from a manual lookup filters the gate list, and a
+        // filtered-out gate reads exactly like "this airport has no such gate".
+        if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
+
+        List<string>? runwayLabels = null;
+        List<string>? gateLabels = null;
+
+        foreach (var candidate in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(candidate.Identifier)) continue;
+
+            var offered = candidate.IsRunway
+                ? (runwayLabels ??= ListDestinations(true))
+                : (gateLabels ??= ListDestinations(false));
+
+            string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
+
+            // BOTH GATE FALLBACKS RUN HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
+            // BELOW THE LOOP. The chain ends with the ARRIVAL RUNWAY — that is the whole
+            // reason they exist: a gate name the scenery does not carry fell through every
+            // remaining candidate and routed a just-landed aircraft at the runway it had
+            // landed on. A fallback placed after the loop would let the runway win first
+            // and reproduce exactly that.
+            GateSubstitution? substitution = null;
+            if (match == null && !candidate.IsRunway)
+            {
+                // _destinationThresholdMap / _destinationSpotMap only hold GATE entries
+                // while gate mode is the selected type, and a runway candidate probed
+                // between here and the gate listing has repopulated both with runway
+                // entries. The list itself was snapshotted; the maps behind it were not.
+                // Selected ONCE for both steps below — they read the same two maps.
+                SelectDestinationType(false);
+
+                match = MatchGateByAlias(offered, candidate.Identifier);
+                if (match != null)
+                {
+                    substitution = new GateSubstitution(
+                        candidate.Identifier!, GateSubstitutionKind.Alias);
+                }
+                else if (candidate.Position is GeoPoint published)
+                {
+                    match = MatchGateByPosition(offered, published);
+                    if (match != null)
+                    {
+                        substitution = new GateSubstitution(
+                            candidate.Identifier!, GateSubstitutionKind.Position);
+                    }
+                }
+            }
+
+            if (match == null) continue;
+
+            // The list for this type may have been snapshotted several candidates
+            // ago, so switch back to it before selecting.
+            SelectDestinationType(candidate.IsRunway);
+            int index = cmbDestination.Items.IndexOf(match);
+            if (index < 0) continue;
+
+            cmbDestination.SelectedIndex = index;
+            isRunway = candidate.IsRunway;
+            label = match;
+            gateSubstitution = substitution;
+            return true;
+        }
+
+        RestoreDestinationState(
+            priorType, priorSearch, priorDestination,
+            priorIntersection, priorIntersectionLabel, priorCatIiiHold);
+        return false;
+    }
+
+    /// <summary>The destination label matching a normalized identifier, or null.
+    /// BOTH sides are normalized, and zero-padding is a difference in spelling on
+    /// either of them: the clearance zero-pads a runway ("05L") where the combo
+    /// carries whatever navdata spells ("5L"), and it zero-pads a stand the same way
+    /// ("B06" against EDDB's "B 6"). A gate label also carries a terminal descriptor
+    /// the clearance never says.</summary>
+    internal static string? MatchDestinationLabel(
+        IReadOnlyList<string> offered, bool isRunway, string? identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier)) return null;
+
+        string wanted = isRunway
+            ? SayIntentionsClearanceParser.CleanRunway(identifier) ?? ""
+            : SayIntentionsClearanceParser.NormalizeParkingName(identifier);
+        if (wanted.Length == 0) return null;
+
+        foreach (string text in offered)
+        {
+            string candidate = isRunway
+                ? SayIntentionsClearanceParser.CleanRunway(text) ?? ""
+                : SayIntentionsClearanceParser.NormalizeParkingName(text);
+
+            if (candidate.Length > 0 && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+                return text;
+        }
+
+        return null;
+    }
+
+    /// <summary>The gate label whose ONLINE ALIASES answer to a published gate name, or
+    /// null. Runs after the name failed on this candidate and before its coordinate is
+    /// consulted.
+    ///
+    /// It exists because the alias is INVISIBLE to MatchDestinationLabel, not because the
+    /// alias was missing. The combo carries ParkingSpot.ToString() — at KDTW,
+    /// "A 24A - Gate Medium, also A24 (online)" — and NormalizeParkingName deletes
+    /// everything from the first spaced dash onward, which every Describe() branch puts
+    /// ahead of the alias (" - {type}"). So on the live 2026-07-31 KDTW arrival, where
+    /// the controller, SayIntentions and OSM all said A24 and only the scenery said A24A,
+    /// the assigned gate could not resolve by name at all and destination resolution ran
+    /// its whole chain to the ARRIVAL RUNWAY — with the taxiway half of the import
+    /// (A5, A, R, hold short of 4R) perfectly correct, so nothing else sounded wrong. The
+    /// form's own gate search finds that stand: GateSearchFilter reads ParkingSpot.Aliases
+    /// directly. The data was there all along; only this resolver could not see it.</summary>
+    private string? MatchGateByAlias(IReadOnlyList<string> gateLabels, string? identifier)
+    {
+        var offered = new List<AliasedDestination>(gateLabels.Count);
+        foreach (string gateLabel in gateLabels)
+        {
+            if (!_destinationSpotMap.TryGetValue(gateLabel, out var spot)) continue;
+            if (spot.Aliases.Count == 0) continue;
+            offered.Add(new AliasedDestination(gateLabel, spot.Aliases));
+        }
+
+        return MatchDestinationAlias(offered, identifier);
+    }
+
+    /// <summary>The offered label one of whose aliases IS the identifier, or null. Both
+    /// sides go through NormalizeParkingName, exactly as the name match does, so a full
+    /// label ("South Terminal Gate A24") meets a bare alias ("A24") and zero-padding is
+    /// still a spelling rather than an identity.
+    ///
+    /// EXACT normalized comparison, never a substring test. A stand id is one or two
+    /// characters, so Contains would match almost any entry the combo offers, and "A2"
+    /// must never seat the stand aliased A24 — the wrong-stand failure the padding rules
+    /// already exist to prevent, pointed a different way.</summary>
+    internal static string? MatchDestinationAlias(
+        IReadOnlyList<AliasedDestination> offered, string? identifier)
+    {
+        if (string.IsNullOrWhiteSpace(identifier)) return null;
+
+        string wanted = SayIntentionsClearanceParser.NormalizeParkingName(identifier);
+        if (wanted.Length == 0) return null;
+
+        foreach (var entry in offered)
+        {
+            foreach (string alias in entry.Aliases)
+            {
+                string candidate = SayIntentionsClearanceParser.NormalizeParkingName(alias);
+                if (candidate.Length > 0
+                    && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+                {
+                    return entry.Label;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The gate label whose own radius reaches a published gate coordinate, or
+    /// null. Called only after the NAME and its aliases failed on the same candidate.
+    ///
+    /// The unit conversion is the point of this method existing at all: ParkingSpot.Radius
+    /// is FEET on a navdata spot and METRES on a GSX-sourced one, and the matcher takes
+    /// metres so nothing downstream has to remember which it was holding. Feeding raw
+    /// feet in is the same mistake ParkingSpot.FitsAircraft records — a navdata stand's
+    /// 71 would read as 71 m, a circle three times too big, and a point on the neighbour
+    /// would match.
+    ///
+    /// A gate the maps do not carry is skipped rather than defaulted to (0, 0): a spot
+    /// with no known centre cannot be shown to contain anything, and null island is
+    /// 150 m from nothing.</summary>
+    private string? MatchGateByPosition(IReadOnlyList<string> gateLabels, GeoPoint published)
+    {
+        const double FeetToMetres = 0.3048;
+
+        var candidates = new List<GatePositionCandidate>(gateLabels.Count);
+        foreach (string gateLabel in gateLabels)
+        {
+            if (!_destinationThresholdMap.TryGetValue(gateLabel, out var centre)) continue;
+            if (!_destinationSpotMap.TryGetValue(gateLabel, out var spot)) continue;
+
+            double radiusMetres = spot.Source == GateSource.Gsx
+                ? spot.Radius
+                : spot.Radius * FeetToMetres;
+
+            candidates.Add(new GatePositionCandidate(
+                gateLabel, centre.lat, centre.lon, radiusMetres));
+        }
+
+        return SayIntentionsGatePositionMatcher.Match(
+            candidates, published.Latitude, published.Longitude);
+    }
+
+    /// <summary>Every label the destination combo offers for one destination type.
+    /// Switching type repopulates the list, so callers cache the result per type.</summary>
+    private List<string> ListDestinations(bool isRunway)
+    {
+        SelectDestinationType(isRunway);
+        return ComboItemTexts(cmbDestination);
+    }
+
+    private void SelectDestinationType(bool isRunway)
+    {
+        int wanted = isRunway ? 0 : 1;
+        if (cmbDestType.SelectedIndex != wanted) cmbDestType.SelectedIndex = wanted;
+    }
+
+    private void RestoreDestinationState(
+        int priorType, string priorSearch, string? priorDestination,
+        bool priorIntersection, string? priorIntersectionLabel, bool priorCatIiiHold)
+    {
+        // Type first: leaving gate mode blanks the gate search, which would undo the
+        // search restore if it ran the other way round.
+        if (priorType >= 0 && cmbDestType.SelectedIndex != priorType)
+            cmbDestType.SelectedIndex = priorType;
+        if (txtGateSearch.Text != priorSearch)
+            txtGateSearch.Text = priorSearch;
+
+        if (!string.IsNullOrEmpty(priorDestination))
+        {
+            int index = cmbDestination.Items.IndexOf(priorDestination);
+            if (index >= 0) cmbDestination.SelectedIndex = index;
+        }
+
+        // Both boxes are runway-only, and the intersection list is rebuilt against
+        // whichever runway is selected — so this has to run AFTER the destination is
+        // back, or the departure is restored onto the wrong runway's intersections.
+        RestoreIntersectionState(priorIntersection, priorIntersectionLabel);
+        if (chkCatIiiHold.Checked != priorCatIiiHold) chkCatIiiHold.Checked = priorCatIiiHold;
+    }
+
+    /// <summary>Puts the intersection-departure box and its selection back after a failed
+    /// destination probe.
+    ///
+    /// Deliberately NOT done by re-ticking the checkbox and letting its handler run:
+    /// OnIntersectionToggled → ShowIntersectionListOrFallback MOVES FOCUS to the
+    /// intersection combo and can announce "No runway intersections available. Full
+    /// length departure." Neither belongs to a silent restore — the pilot performed no
+    /// action here, and CLAUDE.md's announcement rule reserves speech for real state
+    /// changes. So the list is rebuilt directly, with the handler detached.</summary>
+    private void RestoreIntersectionState(bool wasChecked, string? priorLabel)
+    {
+        if (!wasChecked)
+        {
+            if (chkIntersection.Checked) chkIntersection.Checked = false;
+            return;
+        }
+
+        chkIntersection.CheckedChanged -= OnIntersectionToggled;
+        try { chkIntersection.Checked = true; }
+        finally { chkIntersection.CheckedChanged += OnIntersectionToggled; }
+
+        PopulateIntersections();
+        int index = RestoredIntersectionIndex(ComboItemTexts(cmbIntersection), priorLabel);
+        if (index >= 0)
+        {
+            cmbIntersection.Visible = true;
+            cmbIntersection.SelectedIndex = index;
+        }
+        else
+        {
+            // Nothing to offer any more. Untick through the handler so the list and its
+            // map are cleared too — a checked box over an empty list is the worse state:
+            // Calculate silently reverts to a full-length departure while the box still
+            // reads as ticked (the bug ShowIntersectionListOrFallback exists to prevent).
+            chkIntersection.Checked = false;
+        }
+    }
+
+    /// <summary>Which intersection entry a restore selects: the one that was selected
+    /// before the probe, the FIRST when that exact intersection is no longer offered (the
+    /// probe can leave a different runway selected), and -1 when the runway offers none
+    /// at all — in which case the caller unticks rather than leaving a checked-but-empty
+    /// control.</summary>
+    internal static int RestoredIntersectionIndex(IReadOnlyList<string> offered, string? priorLabel)
+    {
+        if (offered.Count == 0) return -1;
+
+        if (!string.IsNullOrEmpty(priorLabel))
+        {
+            for (int i = 0; i < offered.Count; i++)
+            {
+                if (string.Equals(offered[i], priorLabel, StringComparison.Ordinal)) return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private static List<string> ComboItemTexts(ComboBox combo)
+    {
+        var texts = new List<string>(combo.Items.Count);
+        foreach (object? item in combo.Items)
+            texts.Add(item?.ToString() ?? "");
+        return texts;
+    }
+
+    /// <summary>Index of the "Hold short of runway" entry naming this runway, or -1.
+    /// BOTH sides go through CleanRunway: a clearance always zero-pads ("05L") while
+    /// the combo carries the raw navdata designator, which need not ("5L"). A literal
+    /// match silently drops the hold-short ATC just gave.</summary>
+    internal static int FindRunwayItemIndex(IReadOnlyList<string> items, string? runway)
+    {
+        string? wanted = SayIntentionsClearanceParser.CleanRunway(runway);
+        if (string.IsNullOrEmpty(wanted)) return -1;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            // The "(none)" sentinel carries no runway number and can never match.
+            string? candidate = SayIntentionsClearanceParser.CleanRunway(items[i]);
+            if (!string.IsNullOrEmpty(candidate)
+                && candidate.Equals(wanted, StringComparison.OrdinalIgnoreCase))
+                return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>Fills the route fields from an external clearance. Selection is by
+    /// EXACT combo entry — never a substring match, which for a one-character
+    /// taxiway name would hit almost any entry in the list.
+    ///
+    /// An imported route starts from a CLEAN SLATE (ResetRouteShapingControls): a
+    /// leftover intersection departure, CAT III hold or hold-short from a route the
+    /// pilot built by hand would otherwise reshape the imported one with nothing said
+    /// about it.
+    ///
+    /// Each hold-short is seated on the row of the taxiway it FOLLOWS in the
+    /// clearance, and anything that could not be seated comes back in the outcome so
+    /// the caller can say so out loud.
+    ///
+    /// This only FILLS the fields. Starting guidance is a separate call
+    /// (<see cref="StartImportedRoute"/>) because the caller's summary is built from the
+    /// outcome returned here, and that summary has to reach the pilot as part of the
+    /// form's own single standstill utterance rather than as queued speech the first
+    /// tactical callout discards.</summary>
+    public ExternalRouteOutcome ApplyExternalRoute(
+        bool isRunway, string destinationLabel, IReadOnlyList<string> taxiways,
+        IReadOnlyList<ExternalHoldShort> holdShorts)
+    {
+        ResetRouteShapingControls();
+
+        cmbDestType.SelectedIndex = isRunway ? 0 : 1;
+        int destIndex = cmbDestination.Items.IndexOf(destinationLabel);
+        bool destinationApplied = destIndex >= 0;
+        if (destinationApplied) cmbDestination.SelectedIndex = destIndex;
+
+        var applied = new List<string>();
+        var skipped = new List<string>();
+        var appliedHoldShorts = new List<AppliedHoldShort>();
+        var skippedHoldShorts = new List<string>();
+
+        // A hold-short the clearance hung on no taxiway at all has no row to sit on.
+        // Reported first because it precedes every taxiway in the clearance.
+        foreach (var holdShort in holdShorts)
+        {
+            if (holdShort.TaxiwayIndex < 0 || holdShort.TaxiwayIndex >= taxiways.Count)
+                skippedHoldShorts.Add(holdShort.Runway);
+        }
+
+        for (int i = 0; i < taxiways.Count; i++)
+        {
+            ComboBox combo;
+            if (applied.Count == 0)
+            {
+                combo = cmbFirstTaxiway;
+            }
+            else
+            {
+                OnAddTaxiwayClicked(btnAddTaxiway, EventArgs.Empty);
+                if (_additionalTaxiways.Count < applied.Count) { SkipTaxiway(i); continue; }
+                combo = _additionalTaxiways[applied.Count - 1].Combo;
+            }
+
+            int index = combo.Items.IndexOf(taxiways[i]);
+            if (index < 0) { SkipTaxiway(i); continue; }
+
+            combo.SelectedIndex = index;
+            applied.Add(taxiways[i]);
+
+            // Seat this taxiway's hold-short BEFORE the next row is added: the Add
+            // handler only offers the same taxiway a second time when the previous
+            // row already carries a hold-short (the KBOS "N, hold short 15R, N"
+            // clearance), so seating afterwards would lose the repeat.
+            ComboBox holdCombo = applied.Count == 1
+                ? cmbFirstHoldShortRunway
+                : _additionalTaxiways[applied.Count - 2].HoldShortRunway;
+            var holdComboItems = ComboItemTexts(holdCombo);
+            bool rowTaken = false;
+
+            foreach (var holdShort in holdShorts)
+            {
+                if (holdShort.TaxiwayIndex != i) continue;
+
+                // One hold-short per row is all the form — and the router's
+                // sequence-index map — can carry.
+                int hsIndex = rowTaken ? -1 : FindRunwayItemIndex(holdComboItems, holdShort.Runway);
+                if (hsIndex < 0) { skippedHoldShorts.Add(holdShort.Runway); continue; }
+
+                holdCombo.SelectedIndex = hsIndex;
+                rowTaken = true;
+                appliedHoldShorts.Add(new AppliedHoldShort(holdComboItems[hsIndex], taxiways[i]));
+            }
+        }
+
+        if (applied.Count == 0)
+        {
+            int noneIndex = cmbFirstTaxiway.Items.IndexOf("(None - calculate shortest path)");
+            if (noneIndex >= 0) cmbFirstTaxiway.SelectedIndex = noneIndex;
+        }
+
+        // Always refreshed — PR #86 skipped this on every early-exit path, leaving
+        // the Add button's enabled state stale.
+        UpdateAddTaxiwayButtonState();
+
+        return new ExternalRouteOutcome(
+            destinationApplied, applied, skipped, appliedHoldShorts, skippedHoldShorts);
+
+        void SkipTaxiway(int taxiwayIndex)
+        {
+            skipped.Add(taxiways[taxiwayIndex]);
+            foreach (var holdShort in holdShorts)
+            {
+                if (holdShort.TaxiwayIndex == taxiwayIndex)
+                    skippedHoldShorts.Add(holdShort.Runway);
+            }
+        }
+    }
+
+    /// <summary>The summary an in-progress import wants spoken, as a function of whether
+    /// guidance actually started. Non-null only for the duration of the
+    /// <see cref="OnCalculateClicked"/> call inside <see cref="StartImportedRoute"/>.</summary>
+    private Func<bool, string>? _importSummary;
+
+    /// <summary>Calculates and starts guidance for a route that
+    /// <see cref="ApplyExternalRoute"/> has just filled in, speaking the caller's summary
+    /// as part of the SAME utterance the form already makes at standstill.
+    ///
+    /// It cannot be spoken by the caller. Announce() queues, and the sequence here is
+    /// Calculate → LoadRoute (queued router summary) → StartGuidance (first-taxiway
+    /// AnnounceImmediate, which DISCARDS whatever is queued) → the standstill
+    /// AnnounceImmediate. A queued import summary therefore reached the pilot only if
+    /// nothing tactical happened first, which is exactly backwards for the safety lines it
+    /// carries: "could not apply D, E", "could not set hold short of runway 22L", "the
+    /// ground track differs from the clearance". This codebase has learned the same thing
+    /// twice already — see the comments on the length advisory in
+    /// TaxiGuidanceManager.Routing.cs and on the standstill block below.
+    ///
+    /// <paramref name="describe"/> takes whether guidance started, so a route that failed
+    /// to calculate is never announced as "Guidance started."; it gets the "review the
+    /// fields" tail instead, which is also the right advice after a failed Calculate.</summary>
+    public void StartImportedRoute(Func<bool, string> describe)
+    {
+        _importSummary = describe;
+        try { OnCalculateClicked(btnCalculate, EventArgs.Empty); }
+        finally { _importSummary = null; }
+    }
+
+    /// <summary>Announces why Calculate stopped, carrying any pending import summary with
+    /// it. Consecutive AnnounceImmediate calls stomp each other, so an abort that spoke
+    /// only its own reason would swallow the import's "could not apply …" /
+    /// "could not set hold short …" lines — the part a blind pilot cannot otherwise
+    /// discover. Guidance did not start, so the summary gets its "review the fields"
+    /// tail; the reason leads, because it is why there is no route at all.</summary>
+    private void AnnounceCalculateAbort(string reason)
+    {
+        string? imported = _importSummary?.Invoke(false);
+        _announcer.AnnounceImmediate(
+            string.IsNullOrEmpty(imported) ? reason : reason + " " + imported);
+    }
+
+    /// <summary>Puts every route-shaping control an import does not itself set back to
+    /// its default, so the imported clearance is the WHOLE route.
+    ///
+    /// OnDestTypeChanged only clears the runway-only boxes when the type CHANGES, so a
+    /// runway route imported over a hand-built runway route keeps the old intersection
+    /// departure and CAT III hold — a different lineup point with nothing in the
+    /// announcement to reveal it.</summary>
+    private void ResetRouteShapingControls()
+    {
+        // Unticking fires OnIntersectionToggled, which also empties the intersection
+        // list and its map.
+        if (chkIntersection.Checked) chkIntersection.Checked = false;
+        if (chkCatIiiHold.Checked) chkCatIiiHold.Checked = false;
+        if (chkFirstHoldShort.Checked) chkFirstHoldShort.Checked = false;
+        if (cmbFirstHoldShortRunway.SelectedIndex > 0) cmbFirstHoldShortRunway.SelectedIndex = 0;
+
+        // Repopulates the gate list on its way out, so it has to run BEFORE the
+        // destination is selected.
+        if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
+
+        // Every dynamic row's taxiway, hold-short checkbox and hold-short runway go
+        // with the row itself.
+        ClearAllAdditionalTaxiways();
+
+        // chkFitFilter is deliberately NOT reset: it describes the aircraft's
+        // wingspan rather than the route, and forcing it either way could hide the
+        // very gate the clearance names.
+    }
+
+    /// <summary>Fire-and-forget wrapper. LoadAirportData was `async void`, so a
+    /// throw crashed the app; a bare discard would swallow it silently instead.
+    /// Neither is acceptable — log it and tell the pilot.</summary>
+    private async Task LoadAirportDataSafeAsync(string icao)
+    {
+        try
+        {
+            await LoadAirportDataAsync(icao);
+        }
+        catch (Exception ex)
+        {
+            _taxiFormLog.Error($"Airport load failed for '{icao}': {ex}");
+            _announcer.Announce($"Could not load airport data for {icao}.");
+        }
+    }
+
+    private static readonly LogChannel _taxiFormLog = Log.Channel("taxi_guidance");
+
+    /// <summary>The airport load currently in flight, or null. Never awaited by more than
+    /// one chained caller at a time; see <see cref="LoadAirportDataAsync"/>.</summary>
+    private Task? _airportLoadInFlight;
+
+    /// <summary>Loads an airport into the form's combos, SERIALIZED against any load
+    /// already running.
+    ///
+    /// Every caller is on the UI thread, but this method awaits — the augmentation
+    /// prefetch alone can wait seconds — and it CLEARS cmbFirstTaxiway, the dynamic rows
+    /// and cmbDestination before those awaits and repopulates them after. Two loads
+    /// interleaving at an await point therefore leave one of them repopulating combos the
+    /// other has just emptied. The SayIntentions import is what makes that reachable and
+    /// dangerous: it can run 9 s end to end (comms history, position, prefetch, graph
+    /// build), and an import landing in that window resolved every leg against an empty
+    /// combo — announcing "No taxiways from the clearance matched this airport. Using
+    /// shortest path." for a perfectly good clearance, and starting guidance on it.
+    ///
+    /// Chained rather than dropped: a second load is usually a DIFFERENT airport (typed
+    /// ICAO, aircraft moved), and dropping it would leave the form on the wrong one.
+    /// Three callers reach here — SetAircraftPosition, the airport textbox's Leave
+    /// handler, and LoadAirportForExternalRouteAsync.</summary>
+    private async Task LoadAirportDataAsync(string icao)
+    {
+        Task? previous = _airportLoadInFlight;
+        var mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _airportLoadInFlight = mine.Task;
+        try
+        {
+            // The previous load reports its own failures; waiting on it is only about
+            // ordering, so a fault there must not cancel this one.
+            if (previous != null)
+            {
+                try { await previous.ConfigureAwait(true); } catch { /* not ours to report */ }
+            }
+
+            await LoadAirportDataCoreAsync(icao).ConfigureAwait(true);
+        }
+        finally
+        {
+            mine.SetResult();
+            if (ReferenceEquals(_airportLoadInFlight, mine.Task)) _airportLoadInFlight = null;
+        }
+    }
+
+    private async Task LoadAirportDataCoreAsync(string icao)
     {
       try
       {
@@ -892,7 +1622,23 @@ public class TaxiAssistForm : Form
 
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
-        _currentIcao = icao.ToUpperInvariant();
+        // DROP THE OLD AIRPORT'S GRAPH BEFORE ANYTHING ELSE, and do not claim the new
+        // ICAO until one is actually built (below, right after BuildAsync).
+        //
+        // Every exit between here and there is a failure — airport not in the database,
+        // no taxi paths, an exception — and none of them used to touch _graph, while
+        // _currentIcao was claimed up front. So a failed load left the form holding the
+        // PREVIOUS airport's graph under the NEW airport's name, and the early return
+        // above then matched forever, so it could never rebuild.
+        //
+        // The SayIntentions import turned that from cosmetic into a wrong route:
+        // LoadAirportForExternalRouteAsync reports success as "the graph knows some
+        // taxiway names", so after taxiing at LMML and flying to an EDDF with no taxi
+        // paths, Ctrl+Shift+Y got LMML's taxiway names, snapped EDDF coordinates onto
+        // LMML pavement, and — with auto-start on — began guidance on it. A null graph
+        // makes the caller's "no taxi path data available" guard do its job, and every
+        // _graph == null path in this form already early-returns.
+        _graph = null;
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
         // ICAO inside the GATE branch of PopulateDestinations (defence in depth),
@@ -971,6 +1717,11 @@ public class TaxiAssistForm : Form
         {
             btnCalculate.Enabled = true;
         }
+
+        // Claimed only now, on a graph that exists. Everything below reads _currentIcao
+        // (PopulateDestinations, ResolveNamedHoldingPoints, the gate-spot cache), so it
+        // has to be set before them and cannot simply move to the end of the method.
+        _currentIcao = icao.ToUpperInvariant();
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 
@@ -2224,6 +2975,9 @@ public class TaxiAssistForm : Form
         int y = pnlTaxiways.Location.Y + panelHeight;
         if (panelHeight > 0) y += 5;
 
+        btnSayIntentions.Location = new System.Drawing.Point(15, y);
+        y += 35;
+
         btnCalculate.Location = new System.Drawing.Point(15, y);
         btnStop.Location = new System.Drawing.Point(15 + 190, y);
         y += 40;
@@ -2247,11 +3001,44 @@ public class TaxiAssistForm : Form
         this.ClientSize = new System.Drawing.Size(this.ClientSize.Width, formHeight);
     }
 
+    /// <summary>Runs the SayIntentions import — the same call the Ctrl+Shift+Y hotkey
+    /// makes, which re-enters this very form (it loads the airport here and applies the
+    /// route to these controls). That is safe: the import's own one-at-a-time latch is
+    /// taken by the CALLER, not by anything on this path, so a click never contends with
+    /// itself; and the airport load it triggers CHAINS on any load already running rather
+    /// than rejecting it, so a nested call waits for pending work instead of deadlocking
+    /// on it.
+    ///
+    /// NOTHING IS ANNOUNCED HERE. The screen reader already speaks the button activation,
+    /// and the import speaks its own progress and its summary — a third utterance would
+    /// only talk over them. A second press while one is running is answered by the
+    /// caller's latch, out loud, which is also why the button is not disabled for the
+    /// duration: disabling the control that currently has focus moves focus off it.
+    ///
+    /// try/catch because this is `async void`: the import handles its own failures, but an
+    /// escaped throw here would take the app down rather than the operation. QUEUED, not
+    /// immediate — the import's own handler reports the specific failure immediately, and
+    /// an immediate announcement here would discard that queue to say something vaguer.</summary>
+    private async void OnSayIntentionsClicked(object? sender, EventArgs e)
+    {
+        if (_importFromSayIntentions == null) return;
+
+        try
+        {
+            await _importFromSayIntentions();
+        }
+        catch (Exception ex)
+        {
+            _taxiFormLog.Error($"SayIntentions import from the taxi form failed: {ex}");
+            _announcer.Announce("SayIntentions taxi route failed.");
+        }
+    }
+
     private void OnCalculateClicked(object? sender, EventArgs e)
     {
         if (_graph == null)
         {
-            _announcer.AnnounceImmediate("No airport loaded. Enter an ICAO code first.");
+            AnnounceCalculateAbort("No airport loaded. Enter an ICAO code first.");
             return;
         }
 
@@ -2473,13 +3260,14 @@ public class TaxiAssistForm : Form
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
-            _announcer.AnnounceImmediate("Please select a destination.");
+            AnnounceCalculateAbort("Please select a destination.");
             return;
         }
 
         if (destNodeId < 0)
         {
-            _announcer.AnnounceImmediate($"No taxi route to {destName}. This stand can't be reached by the taxi network.");
+            AnnounceCalculateAbort(
+                $"No taxi route to {destName}. This stand can't be reached by the taxi network.");
             lblStatus.Text = "Selected stand has no taxi route.";
             return;
         }
@@ -2537,7 +3325,7 @@ public class TaxiAssistForm : Form
 
         if (error != null)
         {
-            _announcer.AnnounceImmediate(error);
+            AnnounceCalculateAbort(error);
             lblStatus.Text = error;
             txtRouteSummary.Text = error;
             return;
@@ -2578,7 +3366,14 @@ public class TaxiAssistForm : Form
         // joined, warning last so the safety-relevant text ends the utterance.
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
+        //
+        // An imported (SayIntentions) route's summary rides at the FRONT of that same
+        // utterance — see StartImportedRoute. Front, because the reach warning stays the
+        // last thing said, per the ordering above; the import summary leads with its own
+        // warnings for the same reason.
         var standstillParts = new List<string>();
+        string? imported = _importSummary?.Invoke(true);
+        if (!string.IsNullOrEmpty(imported)) standstillParts.Add(imported);
         if (intersection != null)
         {
             string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)

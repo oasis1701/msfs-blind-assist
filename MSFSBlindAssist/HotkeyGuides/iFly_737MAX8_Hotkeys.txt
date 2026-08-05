@@ -113,6 +113,13 @@ Monitoring:
 FMS Data panel (FMS section) shows the FMC-computed V1, VR, V2, VREF,
 takeoff and landing flaps, cruise altitude, transition altitude and level.
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
+
 INPUT MODE - Press left bracket to activate
 
 MCP Value Windows:
@@ -201,6 +208,14 @@ Radios:
   1-2) plus a receiver enable combo and a receiver volume combo (0 Min to
   6 Max) for every source the aircraft can listen to, including NAV, ADF,
   Marker and Speaker.
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
 
 Notes:
   - Fuel and payload are set from the EFB Payload and Balance app (Shift+T).
