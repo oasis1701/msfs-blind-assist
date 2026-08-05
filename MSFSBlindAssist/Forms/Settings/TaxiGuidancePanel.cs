@@ -391,7 +391,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         refreshTaxiwayNamesButton = new Button
         {
             Text = "Refresh Taxiway Names",
-            Location = new Point(20, 680),
+            Location = new Point(20, 715),
             Size = new Size(200, 35),
             Enabled = _onRefreshTaxiwayNames != null,
             AccessibleName = "Refresh Taxiway Names",
@@ -403,7 +403,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         taxiAugmentEnabledCheckBox = new CheckBox
         {
             Text = "Online taxiway and gate names (OpenStreetMap + X-Plane)",
-            Location = new Point(20, 720),
+            Location = new Point(20, 755),
             Size = new Size(450, 25),
             AccessibleName = "Online taxiway and gate names",
             AccessibleDescription = "When enabled, fetches real-world taxiway and gate names from OpenStreetMap and the X-Plane Scenery Gateway to enrich your navdata, on demand for departure and destination. Disable to use navdata names only with no online requests. Applies immediately."
@@ -413,7 +413,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         taxiAugmentAttributionLabel = new Label
         {
             Text = "Online names: © OpenStreetMap contributors (ODbL) + X-Plane Scenery Gateway.",
-            Location = new Point(20, 747),
+            Location = new Point(20, 782),
             Size = new Size(450, 30),
             AccessibleName = "Online taxiway name data attribution"
         };
@@ -424,7 +424,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsHeadingLabel = new Label
         {
             Text = "SayIntentions",
-            Location = new Point(20, 795),
+            Location = new Point(20, 830),
             Size = new Size(450, 20),
             AccessibleName = "SayIntentions section"
         };
@@ -438,7 +438,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
             Text = "SayIntentions import starts taxi &guidance immediately",
-            Location = new Point(20, 820),
+            Location = new Point(20, 855),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
             AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
@@ -485,6 +485,10 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepTypeCombo.TabIndex = 1;
         dockingBeepVolumeTrackBar.TabIndex = 2;
         dockingBeepTestButton.TabIndex = 3;
+        // Explicit, and it has to be: an unset TabIndex defaults to 0, which TIES with
+        // dockingEnabledCheckBox and breaks to child index — putting this checkbox second
+        // in the group while it sits last on screen.
+        dockingSpeedCalloutsCheckBox.TabIndex = 4;
         refreshTaxiwayNamesButton.TabIndex = tabIdx++;
         taxiAugmentEnabledCheckBox.TabIndex = tabIdx++;
         sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
