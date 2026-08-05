@@ -38,6 +38,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     private ComboBox dockingBeepTypeCombo = null!;
     private Label dockingBeepVolumeLabel = null!;
     private TrackBar dockingBeepVolumeTrackBar = null!;
+    private CheckBox dockingSpeedCalloutsCheckBox = null!;
     private Label dockingBeepVolumeValueLabel = null!;
     private Button dockingBeepTestButton = null!;
 
@@ -275,7 +276,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         {
             Text = "Docking guidance",
             Location = new Point(20, 455),
-            Size = new Size(450, 210),
+            Size = new Size(450, 245),
             AccessibleName = "Docking guidance"
         };
 
@@ -359,12 +360,29 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         };
         dockingBeepTestButton.Click += DockingBeepTestButton_Click;
 
+        // Ground-speed callouts during the final approach. The GLOBAL ground-speed
+        // announcer works in 5/10-knot buckets, so it is silent across the whole
+        // 0-5 kt docking band — the band where speed decides whether the squaring
+        // turn completes before the stop, and which a pilot on tiller + thrust
+        // cannot poll by hotkey.
+        dockingSpeedCalloutsCheckBox = new CheckBox
+        {
+            Text = "Announce ground speed every knot while docking",
+            Location = new Point(15, 190),
+            Size = new Size(420, 25),
+            AccessibleName = "Docking ground speed callouts",
+            AccessibleDescription = "When enabled, ground speed is spoken at every 1-knot change "
+                + "while docking guidance is engaged. The normal ground-speed announcer only reports "
+                + "every 5 or 10 knots, which is silent at gate speeds."
+        };
+
         dockingGroup.Controls.AddRange(new Control[]
         {
             dockingEnabledCheckBox,
             dockingBeepTypeLabel, dockingBeepTypeCombo,
             dockingBeepVolumeLabel, dockingBeepVolumeTrackBar, dockingBeepVolumeValueLabel,
-            dockingBeepTestButton
+            dockingBeepTestButton,
+            dockingSpeedCalloutsCheckBox
         });
 
         // Refresh Taxiway Names Button — manual refresh, only wired when callback is provided
@@ -641,6 +659,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         gsxAutoSelectGateCheckBox.Checked = settings.GsxAutoSelectGateOnRoute;
 
         dockingEnabledCheckBox.Checked = settings.DockingGuidanceEnabled;
+        dockingSpeedCalloutsCheckBox.Checked = settings.DockingSpeedCalloutsEnabled;
         dockingBeepTypeCombo.SelectedIndex = (int)settings.DockingBeepWaveform;
         dockingBeepVolumeTrackBar.Value = (int)(settings.DockingBeepVolume * 100);
         dockingBeepVolumeValueLabel.Text = $"{dockingBeepVolumeTrackBar.Value}%";
@@ -682,6 +701,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.GsxAutoSelectGateOnRoute = gsxAutoSelectGateCheckBox.Checked;
 
         settings.DockingGuidanceEnabled = dockingEnabledCheckBox.Checked;
+        settings.DockingSpeedCalloutsEnabled = dockingSpeedCalloutsCheckBox.Checked;
         settings.DockingBeepWaveform = (HandFlyWaveType)dockingBeepTypeCombo.SelectedIndex;
         settings.DockingBeepVolume = dockingBeepVolumeTrackBar.Value / 100.0;
 

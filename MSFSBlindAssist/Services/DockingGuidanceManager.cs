@@ -68,6 +68,10 @@ public sealed class DockingGuidanceManager : IDisposable
     // Live heading misalignment vs the gate axis (deg, + = aircraft right of the axis) while
     // engaged, for the Y status. Also gates the "docking complete" callout — see the stop branch.
     private double _lastHeadingOffDeg;
+    // 1-knot ground-speed callouts for the final approach (setting-gated). Speed is the
+    // variable that decides whether the squaring turn can be finished before the stop,
+    // and it is the one a blind pilot cannot poll mid-turn — both hands are busy.
+    private readonly DockingSpeedCallout _speedCallout = new();
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -428,6 +432,15 @@ public sealed class DockingGuidanceManager : IDisposable
                         // steered by taxi's route-following tone.
                         _lastLineupErrDeg = lineupErr;
                         _lastHeadingOffDeg = headingOffDeg;
+
+                        // Ground-speed callout BEFORE the milestone/slow-down callouts below:
+                        // those return early (one callout per frame), and speed is the more
+                        // actionable number on the final approach.
+                        if (settings.DockingSpeedCalloutsEnabled)
+                        {
+                            string? speedPhrase = _speedCallout.Update(groundSpeedKts);
+                            if (speedPhrase != null) _announcer.AnnounceImmediate(speedPhrase);
+                        }
                         _tone.UpdateHeadingErrorWithThresholds(lineupErr, DockSilentThresholdDeg, DockActivationThresholdDeg, DockMaxPanThresholdDeg);
                         _beeper.Update(alongM, active: true);
                         if (!_slowDownSaid && alongM <= DockingGeometry.SlowDownMetres && groundSpeedKts > DockingGeometry.SlowDownSpeedKts)
@@ -496,6 +509,7 @@ public sealed class DockingGuidanceManager : IDisposable
         // gate." from the ResetLocked default of 0.0 whatever the real alignment — the Docking
         // case does not run on the frame that engages.
         _lastHeadingOffDeg = headingOffDeg;
+        _speedCallout.Reset();
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
@@ -752,6 +766,7 @@ public sealed class DockingGuidanceManager : IDisposable
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
+        _speedCallout.Reset();
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
         _slowDownSaid = false; _overshootStop = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;

@@ -378,6 +378,15 @@ public class UserSettings
         public bool DockingGuidanceEnabled { get; set; } = true;
         public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
         public double DockingBeepVolume { get; set; } = 0.05;
+        /// <summary>
+        /// Speak ground speed at every 1-knot change while docking guidance is engaged.
+        /// The global ground-speed announcer works in 5/10-knot buckets, so it is silent
+        /// across the whole 0-5 kt docking band — exactly where fine speed control decides
+        /// whether the squaring turn can be completed before the stop. A pilot flying with
+        /// one hand on the tiller and one on the thrust levers cannot poll it by hotkey.
+        /// Default ON; opinions differ on callout density, hence the switch.
+        /// </summary>
+        public bool DockingSpeedCalloutsEnabled { get; set; } = true;
 
         // Weather Settings
         /// <summary>
@@ -585,7 +594,8 @@ public class UserSettings
             GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
             DockingGuidanceEnabled = DockingGuidanceEnabled,
             DockingBeepWaveform = DockingBeepWaveform,
-            DockingBeepVolume = DockingBeepVolume
+            DockingBeepVolume = DockingBeepVolume,
+            DockingSpeedCalloutsEnabled = DockingSpeedCalloutsEnabled
         };
         clone.RebuildDisabledMonitorVariableCaches();
         return clone;
