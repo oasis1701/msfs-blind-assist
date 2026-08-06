@@ -161,6 +161,10 @@ node_modules/
 tools/osm-audit/
 tools/taxi-census/
 
+# Superpowers SDD scratch (briefs, reports, review packages, ledger)
+.superpowers/
+*.zip
+
 # iFly 737 MAX8 aircraft package — reference material only (multi-GB vendor
 # payload); read to derive the IFly737MAXDefinition, never committed.
 ifly-aircraft-737max8/

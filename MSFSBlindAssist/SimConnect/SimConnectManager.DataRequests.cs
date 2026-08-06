@@ -238,6 +238,99 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Request AGL altitude for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_ALTITUDE_AGL" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAltitudeAGL()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_FO_ALTITUDE_AGL;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "PLANE ALT ABOVE GROUND", "feet",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO altitude AGL: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request indicated airspeed for the First Officer background timer.
+    /// Fires SimVarUpdated with VarName "FO_AIRSPEED_IAS" — NOT announced by HandleSpecialAnnouncements.
+    /// </summary>
+    public void RequestFOAirspeedIndicated()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = DATA_DEFINITIONS.DEF_FO_AIRSPEED_IAS;
+                SafelyClearDataDefinition(tempDefId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "AIRSPEED INDICATED", "knots",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS,
+                    tempDefId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO airspeed IAS: {ex.Message}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request both engines' N2 for the First Officer background timer. The PMDG NG3 data
+    /// struct exposes no N1/N2, so the FO reads the stock TURB ENG N2 SimVars to reliably
+    /// tell "engine running" from "cold/unpowered" (the fuel-valve byte alone can't).
+    /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" (percent) — NOT announced.
+    /// </summary>
+    public void RequestFOEngineN2()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var def1 = DATA_DEFINITIONS.DEF_FO_ENG1_N2;
+                SafelyClearDataDefinition(def1, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(def1,
+                    "TURB ENG N2:1", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(def1);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG1_N2,
+                    def1, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                var def2 = DATA_DEFINITIONS.DEF_FO_ENG2_N2;
+                SafelyClearDataDefinition(def2, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(def2,
+                    "TURB ENG N2:2", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(def2);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG2_N2,
+                    def2, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO engine N2: {ex.Message}");
+            }
+        }
+    }
+
     public void RequestAirspeedTrue()
     {
         if (!IsConnected || simConnect == null) return;

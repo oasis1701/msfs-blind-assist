@@ -645,6 +645,25 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return false;
     }
 
+    /// <summary>
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the sim).
+    /// The PMDG jets override this to press their MCP engage switch instead.
+    /// </summary>
+    public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+        => simConnect.SendEvent("AUTOPILOT_ON");
+
+    /// <summary>
+    /// Default: no engage floor. Aircraft whose autopilot REFUSES to engage below a height
+    /// override this (the PMDG 737 inhibits CMD below 400 ft RA after takeoff).
+    /// </summary>
+    public virtual int MinimumAutopilotEngageAltitudeAgl => 0;
+
+    /// <summary>
+    /// Default: no readable engaged state, so the auto-engage can't be verified. Aircraft
+    /// with an engage annunciator override this (the PMDG jets read theirs from the CDA).
+    /// </summary>
+    public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 

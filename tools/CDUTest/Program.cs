@@ -139,13 +139,23 @@ internal static class Program
         }
         else if (method == "transmit")
         {
+            // Optional args 5+6: repeat count + gap ms — replicates multi-click rotary
+            // walks (e.g. the FO WalkedSelector / baro-knob rotation) at their real
+            // inter-click timing, which a one-shot-per-process launch can't test.
+            int count = args.Length >= 5 ? int.Parse(args[4]) : 1;
+            int gapMs = args.Length >= 6 ? int.Parse(args[5]) : 80;
+
             string alias = "#" + eventId;
             uint mappedId = _nextEventAliasId++;
             _sc.MapClientEventToSimEvent((EVENT_ID)mappedId, alias);
             Thread.Sleep(100);
-            _sc.TransmitClientEvent(SIMCONNECT_OBJECT_ID_USER, (EVENT_ID)mappedId,
-                parameter, GROUP_PRIORITY.HIGHEST, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
-            Console.WriteLine($"[Transmit] Fired '{alias}' with dwData=0x{parameter:X}");
+            for (int i = 0; i < count; i++)
+            {
+                _sc.TransmitClientEvent(SIMCONNECT_OBJECT_ID_USER, (EVENT_ID)mappedId,
+                    parameter, GROUP_PRIORITY.HIGHEST, SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
+                Console.WriteLine($"[Transmit] Fired '{alias}' with dwData=0x{parameter:X} ({i + 1}/{count})");
+                if (i < count - 1) Thread.Sleep(gapMs);
+            }
         }
         else
         {
