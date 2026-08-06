@@ -765,6 +765,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     }
 
     // ---- Waypoint Flight Director tone preview -------------------------------------------
+    // History worth knowing: this button was originally written against the standalone
+    // Forms/HandFlyOptionsForm.cs. main later retired that dialog into this panel, and when the
+    // feature branch merged main the file was deleted — taking the button with it, silently and
+    // without a conflict. The FD's other settings controls had been ported here; only the preview
+    // was lost, which is why the docs described a button that did not exist. If you move this
+    // panel again, move the preview with it.
+    //
     // Mirrors the Hand Fly Test Tone button above, but plays BOTH FD tones together: the
     // "desired" (command) tone sweeps left↔right while the "current" (actual attitude) tone
     // holds steady at centre. That is the idiom the pilot flies — you hear the command move
