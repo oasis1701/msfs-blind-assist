@@ -36,6 +36,10 @@ public class FenixA320Definition : BaseAircraftDefinition
         FlareTargetPitchDeg       = 6.0     // A320 FCTM: flare attitude ~+5–6°
     };
 
+    // Waypoint Flight Director: A320 CEO uses the baseline profile (narrowbody, agile roll).
+    // Explicit override for discoverability; values equal BaseAircraftDefinition's defaults.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+
     // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
     public override double TaxiTurnLeadSeconds => 1.3;
 

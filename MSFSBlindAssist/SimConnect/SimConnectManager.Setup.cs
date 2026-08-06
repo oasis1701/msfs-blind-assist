@@ -169,6 +169,9 @@ public partial class SimConnectManager
         // nominal converges on the actual stabilized-approach pitch automatically.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        // AUTOPILOT MASTER — last def line (matches the last struct field) for the FD's AP auto-mute.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AUTOPILOT MASTER", "Bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)12);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)
@@ -331,9 +334,14 @@ public partial class SimConnectManager
                 // set up a per-var continuous subscription right here. Same data def, but
                 // SIMCONNECT_PERIOD.SECOND instead of one-shot ONCE — gives us auto-announce
                 // without any batch-struct position drift.
+                // DeferredSubscription vars are registered above but NOT subscribed here — the
+                // feature that consumes them turns the stream on via
+                // StartDeferredVariableMonitoring. ReassertDeferredSubscriptions (below, once the
+                // whole loop has run) restores any that were already wanted.
                 if (varDef.UpdateFrequency == UpdateFrequency.Continuous &&
                     varDef.IsAnnounced &&
-                    varDef.ExcludeFromBatch)
+                    varDef.ExcludeFromBatch &&
+                    !varDef.DeferredSubscription)
                 {
                     sc.RequestDataOnSimObject(
                         (DATA_REQUESTS)dataDefId,
@@ -372,6 +380,12 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", $"⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
         try { _registrationLog.Info(regSummary); }
         catch { }
+
+        // Re-assert any DeferredSubscription var whose feature is currently switched on. The
+        // definitions were just rebuilt (fresh ids), so a subscription taken before this call — the
+        // pilot toggled the feature on before connecting, or switched aircraft with it running —
+        // would otherwise be silently lost.
+        ReassertDeferredSubscriptions();
     }
 
     private void StartContinuousMonitoring()

@@ -696,6 +696,15 @@ public partial class SimConnectManager
                     Description = ""
                 });
 
+                // Autopilot master (0/1) — consumed only by the Waypoint Flight Director's
+                // optional AP auto-mute. Emitted before AGL so it's applied for this frame.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_AP_MASTER",
+                    Value = vgData.AutopilotMaster,
+                    Description = ""
+                });
+
                 // AGL last — its handler triggers ProcessUpdate() with all the above already
                 // applied to this frame's caches.
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
