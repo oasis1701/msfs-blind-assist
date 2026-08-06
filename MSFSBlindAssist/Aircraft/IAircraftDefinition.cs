@@ -145,8 +145,12 @@ public sealed class WaypointFlightDirectorProfile
     /// per-aircraft taxi-tone turn lead; heavier jets need more.</summary>
     public double BankRateLeadSec { get; init; } = 1.0;
 
-    /// <summary>Fallback approach AoA (degrees) used only if the live INCIDENCE ALPHA reading is
-    /// unavailable / out of band. Live AoA (the normal case) makes this obsolete.</summary>
+    /// <summary>Fallback AoA (degrees) used only when the live INCIDENCE ALPHA reading has not
+    /// arrived, is non-finite, or is outside the plausible band (see
+    /// <c>WaypointFlightDirectorManager.EffectiveAoaDeg</c>). Live AoA is the normal case and
+    /// encodes weight/flap/speed, which is what lets the FD command pitch with no performance
+    /// model. Caveat: an addon that never publishes INCIDENCE ALPHA reads a constant 0.0, which is
+    /// inside the band — that case is deliberately NOT second-guessed.</summary>
     public double TypicalApproachAoaDeg { get; init; } = 6.0;
 
     /// <summary>Course-tracking (option 3): maximum intercept angle (degrees) when far off a course

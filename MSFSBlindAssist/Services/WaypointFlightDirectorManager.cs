@@ -53,7 +53,18 @@ public class WaypointFlightDirectorManager : IDisposable
     private double actualBankDegSc;  // raw SimConnect bank (left-positive), as fed
     private double aoaDeg;
     private bool apMaster;
-    private bool hasLat, hasLon, hasAlt, hasTrack;
+    private bool hasLat, hasLon, hasAlt, hasTrack, hasAoa;
+
+    // Plausibility band for the live INCIDENCE ALPHA reading. Real in-flight AoA spans roughly
+    // -10° (a pushover) to +25° (past the stall of any transport aircraft), so anything outside
+    // this — or non-finite — is a sensor/addon artifact rather than an attitude, and the profile's
+    // TypicalApproachAoaDeg is used instead. NOTE the honest limit of this check: an addon that
+    // simply never publishes INCIDENCE ALPHA reads a constant 0.0, which is INSIDE the band and
+    // indistinguishable from genuine zero-AoA flight on any single sample. We deliberately do NOT
+    // guess at that — substituting ~5° over a real 0° would command a persistently nose-high level
+    // attitude, which is worse than the flat command it would replace.
+    private const double MinPlausibleAoaDeg = -10.0;
+    private const double MaxPlausibleAoaDeg = 25.0;
 
     // Lateral rate-lead: derive a turn rate from the ground-track derivative.
     private double lastTrackForRate;
@@ -142,7 +153,7 @@ public class WaypointFlightDirectorManager : IDisposable
         int firstFilled = tracker.NextFilledSlot(1);
         activeSlot = firstFilled == 0 ? 1 : firstFilled;
         apMutedAnnounced = false;
-        hasLat = hasLon = hasAlt = hasTrack = false;
+        hasLat = hasLon = hasAlt = hasTrack = hasAoa = false;
         lastRateTime = DateTime.MinValue;
         yawRateDegPerSec = 0;
         cmdInit = false;   // command slew baseline re-seeds on the first frame
@@ -186,7 +197,18 @@ public class WaypointFlightDirectorManager : IDisposable
     public void UpdateMagVar(double v) => magvar = v;
     public void UpdatePitch(double standardPitchDeg) => actualPitchDeg = standardPitchDeg;
     public void UpdateBank(double simConnectBankDeg) => actualBankDegSc = simConnectBankDeg;
-    public void UpdateAoA(double v) => aoaDeg = v;
+    public void UpdateAoA(double v) { aoaDeg = v; hasAoa = true; }
+
+    /// <summary>
+    /// The angle of attack the pitch command is built on: the LIVE INCIDENCE ALPHA reading when it
+    /// has arrived and is plausible (the normal case — it encodes weight/flap/speed, which is what
+    /// lets the FD work with no performance model), otherwise the per-aircraft
+    /// <see cref="WaypointFlightDirectorProfile.TypicalApproachAoaDeg"/> fallback.
+    /// </summary>
+    private double EffectiveAoaDeg =>
+        hasAoa && double.IsFinite(aoaDeg) && aoaDeg >= MinPlausibleAoaDeg && aoaDeg <= MaxPlausibleAoaDeg
+            ? aoaDeg
+            : profile.TypicalApproachAoaDeg;
     public void UpdateApMaster(double v) => apMaster = v > 0.5;
 
     /// <summary>SimConnect PLANE BANK DEGREES is left-positive; the AudioToneGenerator + commanded
@@ -294,7 +316,7 @@ public class WaypointFlightDirectorManager : IDisposable
 
         // Vertical: nominal (hold-level: pitch ≈ AoA) unless an active crossing constraint commands
         // a climb/descent. Live AoA encodes weight/flap/speed so this needs no performance model.
-        cmdPitch = G.CommandedPitchDeg(0.0, aoaDeg, profile.MaxPitchDeg);
+        cmdPitch = G.CommandedPitchDeg(0.0, EffectiveAoaDeg, profile.MaxPitchDeg);
         if (slot.Value.Constraint != AltitudeConstraintType.None && slot.Value.CrossingAltitude.HasValue)
         {
             double projected = G.ProjectedCrossingAltFt(altMsl, vsFpm, distNm, groundSpeedKts);
@@ -315,7 +337,7 @@ public class WaypointFlightDirectorManager : IDisposable
                                   || -reqFpa >= profile.DescentArmFpaDeg
                                   || distNm <= profile.VerticalArmRangeNm;
                 if (descentDue)
-                    cmdPitch = G.CommandedPitchDeg(reqFpa, aoaDeg, profile.MaxPitchDeg);
+                    cmdPitch = G.CommandedPitchDeg(reqFpa, EffectiveAoaDeg, profile.MaxPitchDeg);
             }
         }
 
@@ -343,7 +365,22 @@ public class WaypointFlightDirectorManager : IDisposable
         // Advance to the next FILLED slot, skipping empty INTERIOR slots so a gap (e.g. the user
         // tracked slots 1, 2, 4 from the EFB, or slot 3 was a position-less leg that couldn't be
         // tracked) doesn't silently end the route — fly whatever slots are filled, in order, up to 5.
+        //
+        // Then keep going, IN THIS FRAME, across any further slots the aircraft has already flown
+        // past. Sequencing one slot per frame instead spoke one AnnounceImmediate per slot, and
+        // AnnounceImmediate interrupts — engaging with several tracked fixes already behind you
+        // produced a burst of half-spoken waypoint names ending in "Final waypoint reached."
+        // The skipped fixes are summarised in the single callout below instead.
+        int skipped = 0;
         int next = tracker?.NextFilledSlot(activeSlot + 1) ?? 0;
+        while (next != 0)
+        {
+            var candidate = tracker!.GetSlot(next);
+            if (candidate == null || !IsAlreadyBehind(candidate.Value)) break;
+            skipped++;
+            next = tracker.NextFilledSlot(next + 1);
+        }
+
         if (next == 0)
         {
             announcer.AnnounceImmediate("Final waypoint reached. Flight director off.");
@@ -357,7 +394,40 @@ public class WaypointFlightDirectorManager : IDisposable
 
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, s.Value.Latitude, s.Value.Longitude);
         double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, s.Value.Latitude, s.Value.Longitude, magvar);
-        announcer.AnnounceImmediate($"Next, {s.Value.Ident}, {distNm:F0} miles, bearing {brgMag:F0}.");
+        string skipNote = skipped switch
+        {
+            0 => "",
+            1 => " Skipped 1 waypoint already behind you.",
+            _ => $" Skipped {skipped} waypoints already behind you."
+        };
+        announcer.AnnounceImmediate($"Next, {s.Value.Ident}, {distNm:F0} miles, bearing {brgMag:F0}.{skipNote}");
+    }
+
+    /// <summary>
+    /// True if the aircraft has ALREADY flown past this fix, so sequencing onto it would only
+    /// advance again on the next frame. Used solely to collapse a multi-slot skip into one callout
+    /// (see <see cref="AdvanceLeg"/>); the per-leg arrival logic in <see cref="ProcessUpdate"/>
+    /// remains the authority for a leg actually being flown.
+    ///
+    /// Deliberately conservative — it only reports the unambiguous case, station passage while
+    /// MOVING:
+    ///   - A fix INSIDE the capture radius is NOT "behind": that is the engaged-overhead case the
+    ///     armed-capture logic (legInsideAtStart / legArmedCapture) exists to handle, and skipping
+    ///     it here would resurrect exactly the cascade that logic prevents.
+    ///   - A COURSE leg is never skipped. An outbound radial legitimately starts behind the
+    ///     aircraft, so "behind" carries no information there — and a course the pilot deliberately
+    ///     set is intent worth honouring rather than silently dropping.
+    /// </summary>
+    private bool IsAlreadyBehind(WaypointSlotData slot)
+    {
+        if (slot.Course.HasValue) return false;
+        if (groundSpeedKts < profile.LowSpeedFloorKts) return false;
+
+        double d = NavigationCalculator.CalculateDistance(lat, lon, slot.Latitude, slot.Longitude);
+        if (d <= profile.CaptureRadiusNm) return false;
+
+        double b = NavigationCalculator.CalculateMagneticBearing(lat, lon, slot.Latitude, slot.Longitude, magvar);
+        return Math.Abs(G.NormalizeSigned(b - groundTrack)) > 90.0;
     }
 
     private void UpdateYawRate(double track)
