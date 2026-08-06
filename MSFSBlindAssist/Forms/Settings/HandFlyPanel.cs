@@ -68,10 +68,15 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private CheckBox fdApMuteCheckBox = null!;
     private CheckBox fdCenteredCheckBox = null!;
     private Label fdCenteredWaveLabel = null!; private ComboBox fdCenteredWaveCombo = null!;
+    private Button fdTestToneButton = null!;
     private Label slipVolumeLabel = null!; private TrackBar slipVolumeTrackBar = null!; private Label slipVolumeValueLabel = null!;
     private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
 
     private AudioToneGenerator? testToneGenerator;
+    // The FD preview plays BOTH tones at once (that is the whole point — the pilot flies by
+    // matching them), so it needs its own pair, separate from the single-tone Hand Fly preview.
+    private AudioToneGenerator? fdTestDesiredTone;
+    private AudioToneGenerator? fdTestCurrentTone;
 
     public string TabTitle => "Hand Fly";
 
@@ -526,17 +531,26 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         fdCenteredWaveLabel = new Label { Text = "Centered tone type:", Location = new Point(20, 1156), Size = new Size(250, 20), AccessibleName = "FD centered tone type Label" };
         fdCenteredWaveCombo = new ComboBox { Location = new Point(280, 1154), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD centered tone type" };
         fdCenteredWaveCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
-        slipVolumeLabel = new Label { Text = "Slip cue volume (Ctrl+K):", Location = new Point(20, 1188), Size = new Size(160, 20), AccessibleName = "Slip cue volume Label" };
-        slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1183), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
-        slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1188), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
+        fdTestToneButton = new Button
+        {
+            Text = "Test Flight Director Tones",
+            Location = new Point(20, 1184),
+            Size = new Size(220, 35),
+            AccessibleName = "Test Flight Director Tones",
+            AccessibleDescription = "Play both Flight Director tones together with a left to right bank sweep, so you can hear the command tone move against the steady current-attitude tone. Applies your waveform, volume, hard-pan and centered-tone selections. Stops on its own after a few seconds."
+        };
+        fdTestToneButton.Click += FdTestToneButton_Click;
+        slipVolumeLabel = new Label { Text = "Slip cue volume (Ctrl+K):", Location = new Point(20, 1233), Size = new Size(160, 20), AccessibleName = "Slip cue volume Label" };
+        slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1228), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
+        slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1233), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
         slipVolumeTrackBar.ValueChanged += (_, _) => slipVolumeValueLabel.Text = slipVolumeTrackBar.Value + "%";
         // Auto-Activate Hand Fly on Takeoff Checkbox — completes the taxi → Takeoff Assist →
-        // Hand Fly hands-free chain. Placed BELOW the Waypoint FD section (y 900–1188) to
+        // Hand Fly hands-free chain. Placed BELOW the Waypoint FD section (y 900–1273) to
         // avoid overlapping it (the panel AutoScrolls).
         handFlyAutoActivateOnTakeoffCheckBox = new CheckBox
         {
             Text = "Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)",
-            Location = new Point(20, 1235),
+            Location = new Point(20, 1285),
             Size = new Size(460, 25),
             AccessibleName = "Auto-activate Hand Fly on takeoff",
             AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
@@ -561,6 +575,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             fdSectionLabel, fdToneLabel, fdToneCombo, fdVolumeLabel, fdVolumeTrackBar, fdVolumeValueLabel,
             fdCurrentToneLabel, fdCurrentToneCombo, fdCurrentVolumeLabel, fdCurrentVolumeTrackBar, fdCurrentVolumeValueLabel,
             fdHardPanCheckBox, fdApMuteCheckBox, fdCenteredCheckBox, fdCenteredWaveLabel, fdCenteredWaveCombo,
+            fdTestToneButton,
             slipVolumeLabel, slipVolumeTrackBar, slipVolumeValueLabel,
             handFlyAutoActivateOnTakeoffCheckBox
         });
@@ -749,6 +764,170 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         }
     }
 
+    // ---- Waypoint Flight Director tone preview -------------------------------------------
+    // Mirrors the Hand Fly Test Tone button above, but plays BOTH FD tones together: the
+    // "desired" (command) tone sweeps left↔right while the "current" (actual attitude) tone
+    // holds steady at centre. That is the idiom the pilot flies — you hear the command move
+    // against the reference and match them — so a preview of one tone alone would be useless.
+    // Honours the panel's LIVE selections (waveform, volume, hard-pan, centered tone change),
+    // not the saved settings, so the pilot can audition a change before pressing OK.
+
+    /// <summary>Deadband within which the command tone counts as centred, for the centered-tone
+    /// waveform swap. Mirrors <c>WaypointFlightDirectorManager.CenteredDeadbandDeg</c> — keep the
+    /// two in step or the preview lies about where the timbre changes.</summary>
+    private const double FdPreviewCenteredDeadbandDeg = 1.5;
+
+    private void FdTestToneButton_Click(object? sender, EventArgs e)
+    {
+        if (fdTestDesiredTone?.IsPlaying == true || fdTestCurrentTone?.IsPlaying == true)
+        {
+            StopFdTestTones();
+            fdTestToneButton.Text = "Test Flight Director Tones";
+        }
+        else
+        {
+            PlayFdTestTones();
+            fdTestToneButton.Text = "Stop FD Test";
+        }
+    }
+
+    private void PlayFdTestTones()
+    {
+        try
+        {
+            var desiredWave = (HandFlyWaveType)fdToneCombo.SelectedIndex;
+            var currentWave = (HandFlyWaveType)fdCurrentToneCombo.SelectedIndex;
+            var centeredWave = (HandFlyWaveType)fdCenteredWaveCombo.SelectedIndex;
+            double desiredVol = fdVolumeTrackBar.Value / 100.0;
+            double currentVol = fdCurrentVolumeTrackBar.Value / 100.0;
+            bool hardPan = fdHardPanCheckBox.Checked;
+            bool centeredOn = fdCenteredCheckBox.Checked;
+
+            // Map Hz/pan the way the FD actually does. Configure must precede Start (the mapping is
+            // captured there). The settings panel has no aircraft context, so this uses the baseline
+            // profile defaults — which is what most airframes fly with anyway; a widebody's only
+            // difference here is a wider TonePitchRangeDeg.
+            var toneProfile = new MSFSBlindAssist.Aircraft.WaypointFlightDirectorProfile();
+
+            fdTestDesiredTone = new AudioToneGenerator();
+            fdTestDesiredTone.Configure(toneProfile.ToneMinFrequencyHz, toneProfile.ToneMaxFrequencyHz,
+                                        toneProfile.TonePitchRangeDeg, toneProfile.ToneBankRangeDeg);
+            fdTestDesiredTone.Start(desiredWave, desiredVol);
+            fdTestCurrentTone = new AudioToneGenerator();
+            fdTestCurrentTone.Configure(toneProfile.ToneMinFrequencyHz, toneProfile.ToneMaxFrequencyHz,
+                                        toneProfile.TonePitchRangeDeg, toneProfile.ToneBankRangeDeg);
+            fdTestCurrentTone.Start(currentWave, currentVol);
+
+            // The current tone is the steady reference: level, wings level, for the whole preview.
+            fdTestCurrentTone.UpdatePitch(0.0);
+            ApplyPreviewBank(fdTestCurrentTone, 0.0, hardPan);
+
+            var appliedDesiredWave = desiredWave;
+
+            Task.Run(async () =>
+            {
+                for (int i = 0; i < 60 && fdTestDesiredTone?.IsPlaying == true; i++)
+                {
+                    // One slow left↔right cycle plus a gentler pitch swing, so both the pan
+                    // (bank command) and the frequency (pitch command) are audible against the
+                    // steady current tone.
+                    double phase = i * 0.105;
+                    double bank = Math.Sin(phase) * 12.0;
+                    double pitch = Math.Sin(phase * 0.5) * 4.0;
+
+                    fdTestDesiredTone?.UpdatePitch(pitch);
+                    var tone = fdTestDesiredTone;
+                    if (tone != null) ApplyPreviewBank(tone, bank, hardPan);
+
+                    if (centeredOn && tone != null)
+                    {
+                        var want = Math.Abs(bank) <= FdPreviewCenteredDeadbandDeg ? centeredWave : desiredWave;
+                        if (want != appliedDesiredWave)
+                        {
+                            tone.UpdateWaveType(want);
+                            appliedDesiredWave = want;
+                        }
+                    }
+
+                    await Task.Delay(100);
+                }
+
+                // Auto-stop after ~6 seconds.
+                if (fdTestDesiredTone?.IsPlaying == true || fdTestCurrentTone?.IsPlaying == true)
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                    {
+                        try
+                        {
+                            Invoke(() =>
+                            {
+                                StopFdTestTones();
+                                fdTestToneButton.Text = "Test Flight Director Tones";
+                            });
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            // Handle destroyed mid-flight (tab switched/dialog closed) —
+                            // StopFdTestTones is also called from OnLeaving/Dispose.
+                        }
+                    }
+                    else
+                    {
+                        StopFdTestTones();
+                    }
+                }
+            });
+        }
+        catch
+        {
+            // Audio is optional feedback — never let a preview take the settings dialog down.
+            StopFdTestTones();
+        }
+    }
+
+    /// <summary>Applies a bank to a preview tone the same way
+    /// <c>WaypointFlightDirectorManager.ApplyBank</c> does, so hard-pan sounds in the preview
+    /// exactly as it will in flight (snap to full left/right outside a 1° deadband).</summary>
+    private static void ApplyPreviewBank(AudioToneGenerator tone, double bankDeg, bool hardPan)
+    {
+        if (hardPan)
+            tone.SetPan(Math.Abs(bankDeg) < 1.0 ? 0f : (bankDeg > 0 ? 1f : -1f));
+        else
+            tone.UpdateBank(bankDeg);
+    }
+
+    /// <summary>Stops and disposes both FD preview tones. Idempotent and non-throwing.</summary>
+    private void StopFdTestTones()
+    {
+        try
+        {
+            fdTestDesiredTone?.Stop();
+            fdTestDesiredTone?.Dispose();
+        }
+        catch
+        {
+            // Ignore — teardown is best-effort.
+        }
+        finally
+        {
+            fdTestDesiredTone = null;
+        }
+
+        try
+        {
+            fdTestCurrentTone?.Stop();
+            fdTestCurrentTone?.Dispose();
+        }
+        catch
+        {
+            // Ignore — teardown is best-effort.
+        }
+        finally
+        {
+            fdTestCurrentTone = null;
+        }
+    }
+
     /// <summary>Stops and disposes the test-tone generator. Idempotent and non-throwing —
     /// safe to call whether or not a tone is currently playing.</summary>
     private void StopTestTone()
@@ -871,6 +1050,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     {
         StopTestTone();
         testToneButton.Text = "Test Tone";
+        StopFdTestTones();
+        fdTestToneButton.Text = "Test Flight Director Tones";
     }
 
     protected override void Dispose(bool disposing)
@@ -878,6 +1059,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         if (disposing)
         {
             StopTestTone();
+            StopFdTestTones();
         }
         base.Dispose(disposing);
     }
