@@ -669,6 +669,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
 
+    // Per-tank fuel readout slots (output Ctrl/Alt+digit). Null = not wired for this
+    // aircraft; see FuelTankSlot. Uses the stock fuel system, so only aircraft whose
+    // tanks live in FUELSYSTEM TANK WEIGHT:n can opt in (PMDG reads its own CDA instead).
+    public virtual IReadOnlyList<FuelTankSlot>? GetFuelTankSlots() => null;
+
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 
     public virtual bool HasOwnIcingAnnouncer => false;

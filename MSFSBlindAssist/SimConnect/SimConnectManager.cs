@@ -48,6 +48,7 @@ public partial class SimConnectManager
     public event EventHandler<string>? SimulatorVersionDetected;
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
+    public event EventHandler<FuelTankWeightsData>? FuelTankWeightsReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     // Fired when a RequestAiTrafficData sweep delivers its final entry
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
@@ -360,6 +361,7 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
+        REQUEST_FUEL_TANK_WEIGHTS = 340,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -416,6 +418,8 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
+        // Paired with REQUEST_FUEL_TANK_WEIGHTS (340) — per-tank fuel readout (output Ctrl/Alt+digit)
+        DEF_FUEL_TANK_WEIGHTS = 340,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -759,6 +763,20 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    // Per-tank fuel weights (pounds), FUELSYSTEM TANK WEIGHT:1..16. Fixed 16 slots so the
+    // data definition always matches the struct regardless of how many tanks the loaded
+    // aircraft actually models — nonexistent tank indices simply read 0.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FuelTankWeightsData
+    {
+        public double t1; public double t2; public double t3; public double t4;
+        public double t5; public double t6; public double t7; public double t8;
+        public double t9; public double t10; public double t11; public double t12;
+        public double t13; public double t14; public double t15; public double t16;
+
+        public double[] ToArray() => new[] { t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16 };
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

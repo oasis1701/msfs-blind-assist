@@ -351,6 +351,10 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FUEL_TANK_WEIGHTS:
+                FuelTankWeightsReceived?.Invoke(this, (FuelTankWeightsData)data.dwData[0]);
+                break;
+
             case DATA_REQUESTS.REQUEST_FUEL_QUANTITY: // Fenix: pounds
                 SingleValue fuelData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
