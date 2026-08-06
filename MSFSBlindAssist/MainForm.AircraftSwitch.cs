@@ -600,6 +600,10 @@ public partial class MainForm
         {
             slipCueGenerator?.Stop();
             _slipCueOn = false;
+            // Drop the wanted-subscription claim too, or the ball var would be re-asserted onto the
+            // SIM_FRAME path for the NEW aircraft when its definitions are rebuilt — streaming for a
+            // cue that is now switched off.
+            simConnectManager.StopDeferredVariableMonitoring("TURN_COORDINATOR_BALL");
         }
 
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing

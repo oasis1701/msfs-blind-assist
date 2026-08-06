@@ -439,13 +439,17 @@ public partial class MainForm
         // Inclinometer ball → the "step on the ball" rudder-coordination slip cue (Ctrl+K).
         // Sits beside G_FORCE at the top of the ladder for the SAME reason: TURN_COORDINATOR_BALL
         // is registered HighFrequency=true, so it fires every SIM_FRAME and would otherwise make
-        // every branch below re-test its own VarName on every frame. Only acted on when the cue
-        // is toggled on. Never a generic call-out.
+        // every branch below re-test its own VarName on every frame. Never a generic call-out.
+        // The var is only SUBSCRIBED while the cue is on (StartSlipCueMonitoring), so in the normal
+        // default-off case this branch is not reached at all — the _slipCueOn re-check below just
+        // covers the frames already in flight when the pilot toggles it off.
+        // Scaling/sign live in the SlipCueBallFullScale / SlipCueBallSign consts (MainForm.cs);
+        // the sign is UNVERIFIED in-sim — see the comment there before trusting the cue's side.
         if (e.VarName == "TURN_COORDINATOR_BALL")
         {
             if (_slipCueOn)
             {
-                double ball = e.Value / 127.0;
+                double ball = e.Value / SlipCueBallFullScale * SlipCueBallSign;
                 slipCueGenerator.Update(ball, deadband: 0.08, fullScale: 0.5, active: true);
             }
             return true;

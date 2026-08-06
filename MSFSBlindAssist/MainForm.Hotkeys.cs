@@ -766,11 +766,16 @@ public partial class MainForm
         _slipCueOn = !_slipCueOn;
         if (_slipCueOn)
         {
+            // TURN_COORDINATOR_BALL is a DeferredSubscription var — it does not stream at all until
+            // this call, so the cue costs nothing (no SIM_FRAME traffic, no per-frame dispatch) for
+            // the majority of users who never switch it on.
+            simConnectManager.StartDeferredVariableMonitoring("TURN_COORDINATOR_BALL");
             slipCueGenerator.Start(MSFSBlindAssist.Settings.SettingsManager.Current.SlipCueVolume);
             announcer.AnnounceImmediate("Rudder coordination ticks on");
         }
         else
         {
+            simConnectManager.StopDeferredVariableMonitoring("TURN_COORDINATOR_BALL");
             slipCueGenerator.Stop();
             announcer.AnnounceImmediate("Rudder coordination ticks off");
         }
