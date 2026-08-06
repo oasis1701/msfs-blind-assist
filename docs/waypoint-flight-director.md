@@ -39,12 +39,13 @@ frequencies zero-beat (pitch matched). When they match, you are tracking the leg
    (feet MSL) and pick a **constraint** (At / At or above / At or below / Between). Leave the altitude
    blank for **lateral-only** guidance at that fix. The **Upper Altitude** box appears **only when you
    select "Between"** (it's not used by the other constraints).
-3. **Engage.** Output mode → **Ctrl+F**. The FD starts on slot 1 and announces the active leg. If slot
-   1 is empty it says "No waypoints to track" and does nothing.
+3. **Engage.** Output mode → **Ctrl+F**. The FD starts on the first **filled** slot and announces the
+   active leg. If *no* slot holds a waypoint it says "No waypoints to track" and does nothing.
 4. **Hand-fly** to match the tones. On reaching each fix the FD announces the next leg
    (e.g. *"Next, TOPM, 18 miles, bearing 102."*) and sequences automatically.
-5. **It stops** at the first empty slot or after slot 5 ("Final waypoint reached"). Press **Ctrl+F**
-   again to turn it off at any time.
+5. **It stops** after the last filled slot ("Final waypoint reached"). Empty slots *between* filled
+   ones are skipped, not treated as the end — tracking into 1, 2 and 4 flies 1 → 2 → 4. Press
+   **Ctrl+F** again to turn it off at any time.
 
 The FD is an **audio overlay only — it never touches the controls or the autopilot.** It does not
 validate your route: put the right fixes in the right slots in the right order; it walks them as given.
@@ -122,8 +123,14 @@ the inclinometer ball is out of centre it plays a **hard-panned white-noise tick
 on the side of the rudder to press — ball left → left ear → press left rudder; ball right → right ear →
 press right rudder ("step on the ball"). The tick speeds up the further out the ball is and is silent
 when you're coordinated. Nothing else — no pitch, no proportional pan, no speech. Default off; the tick
-volume is `UserSettings.SlipCueVolume`. (The ball sign is confirmed in-sim; if ever reversed it's a
-one-line flip.)
+volume is `UserSettings.SlipCueVolume`.
+
+> **⚠️ The ball SIDE is not yet confirmed in-sim.** The cue is wired on the documented SimConnect
+> convention (`TURN COORDINATOR BALL` in the `Position` unit, -127..+127, positive = ball right), but
+> that has not been flown. A reversed cue would tell you to press the *wrong* pedal, so confirm the
+> side on a first flight before relying on it. If it is backwards, flip the single
+> `MainForm.SlipCueBallSign` constant to `-1.0` — that is the entire fix, and it is the only place
+> the convention is applied.
 
 ## Autopilot auto-mute
 
@@ -209,13 +216,52 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 
 ## Architecture (maintainers)
 
-- `Navigation/WaypointFlightDirectorGeometry.cs` — pure command math, probe-tested by
-  `tools/WaypointFdProbe` (`dotnet run --project tools/WaypointFdProbe -p:Platform=x64`).
+- `Navigation/WaypointFlightDirectorGeometry.cs` + `Navigation/WaypointConstraintMapper.cs` — pure
+  command math and the navdata→slot constraint mapping. Guarded in CI by
+  `tests/MSFSBlindAssist.Tests/WaypointFlightDirectorGeometryTests.cs` and
+  `WaypointConstraintMapperTests.cs`. `tools/WaypointFdProbe`
+  (`dotnet run --project tools/WaypointFdProbe -p:Platform=x64`) runs the same cases as a dev-loop
+  console probe — it is standalone, not in the solution, and **not** run by CI, so any case added
+  there must be added to the xUnit tests as well.
+  The geometry exposes: `TrackError` (bearing-to-fix vs **GPS ground track**, so nulling it flies a
+  wind-corrected straight line), `CommandedBankDeg` (proportional roll law
+  `KRoll·(trackErr − yawRate·lead)` clamped to the bank cap — the rate-lead off the track derivative
+  is what kills overshoot), `RequiredFpaDeg` + `CommandedPitchDeg` (`pitch ≈ FPA + live AoA`, the VG
+  nominal-pitch trick, so there is no performance model), `ResolveVerticalTarget`
+  (At / AtOrAbove / AtOrBelow / Between → command or neutral), `ProjectedCrossingAltFt`,
+  `CrossTrackNm` + `CourseInterceptTrackDeg` (the generalised ILS localizer capture), and
+  `HasArrived` (capture radius OR abeam >90° off track). `AltitudeConstraintType` lives here too.
 - `Services/WaypointFlightDirectorManager.cs` — stateful manager (tones, sequencing, announcements,
-  AP auto-mute). Mirrors `VisualGuidanceManager`; owns its own two `AudioToneGenerator`s.
-- Rides the shared `VISUAL_GUIDANCE_DATA` (req 505) stream, reference-counted in `SimConnectManager`.
-  Fed by MainForm sibling handler blocks. FD and Visual Guidance are mutually exclusive.
-- `WaypointTracker` slots carry the optional crossing altitude/constraint; entered in `TrackFixForm`.
+  AP auto-mute). Mirrors `VisualGuidanceManager`; owns its own two `AudioToneGenerator`s with the
+  same deferred start (and starts the follower only if the desired tone started). It NEVER touches
+  the controls. `StandardBank` negates SimConnect's left-positive bank, same as VG. Notable state:
+  - **Arrival/sequencing.** Capture-radius arrival is *armed* — it only counts once the fix has been
+    approached from outside the radius (`legInsideAtStart` / `legArmedCapture`), so a leg that
+    starts on the fix cannot cascade. Abeam (station passage) counts only while moving. A course leg
+    uses abeam only when it started well outside the fix (`legStartDistNm > 4× capture radius`); an
+    outbound radial starts behind the fix, where abeam would misfire.
+  - **Multi-slot skips are coalesced.** `AdvanceLeg` keeps advancing within one frame across fixes
+    already flown past (`IsAlreadyBehind`) and speaks ONE callout naming how many were skipped —
+    every advance uses `AnnounceImmediate`, which interrupts, so one advance per frame produced a
+    burst of half-spoken waypoint names.
+  - **Descent-arm gate.** A crossing-altitude CLIMB commands immediately; a DESCENT is held (vertical
+    stays level) until the required FPA reaches `DescentArmFpaDeg` (~3°) or the fix is within
+    `VerticalArmRangeNm` (~25 NM), so a far constrained STAR fix does not nudge a descent at cruise.
+  - **`EffectiveAoaDeg`** uses the live INCIDENCE ALPHA when it has arrived and is plausible,
+    otherwise the profile's `TypicalApproachAoaDeg`. See its comment for what it deliberately does
+    not try to detect.
+  - **`SlewCommands`** rate-limits the rendered bank/pitch between frames
+    (`MaxBankRateDegPerSec` / `MaxPitchRateDegPerSec`) so the tone does not wobble on track jitter.
+- Rides the shared `VISUAL_GUIDANCE_DATA` (req 505) stream, reference-counted in `SimConnectManager`
+  (`Acquire`/`ReleaseVisualGuidanceMonitoring`). Fed by MainForm sibling handler blocks. FD and
+  Visual Guidance are mutually exclusive — activating one stops the other. `AUTOPILOT MASTER` is the
+  LAST `VisualGuidanceData` field (so existing offsets are unchanged), surfaced as
+  `VISUAL_GUIDANCE_AP_MASTER`; VG ignores it.
+- `WaypointTracker` slots carry the optional crossing altitude/constraint/course; entered in
+  `TrackFixForm`, or pre-filled there from the EFB via `TrackToSlotRequested` →
+  `ShowFormPrefilled` → `WaypointConstraintMapper.FromFix`. The dialog keeps the resolved fix in
+  `_prefilledFix` so Track uses its exact coordinates (navaid/runway fixes are not in the `waypoint`
+  table) unless the pilot edits the ident.
 - Per-aircraft tuning via `WaypointFlightDirectorProfile`.
 
 Design spec: `docs/superpowers/specs/2026-06-16-waypoint-flight-director-design.md`.
