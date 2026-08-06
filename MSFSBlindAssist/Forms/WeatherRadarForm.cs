@@ -21,18 +21,33 @@ public class WeatherRadarForm : Form
     private bool? _activeSkyAvailable;
     private readonly IntPtr _previousWindow;
 
+    private TextBox _asModeBox = null!;
     private Label _currentWeatherLabel = null!;
-    private TextBox _currentWeatherBox = null!;
+    private DisplayListBox _currentWeatherBox = null!;
+    private Label _stationLabel = null!;
+    private DisplayListBox _stationBox = null!;
+    private Label _profileLabel = null!;
+    private DisplayListBox _profileBox = null!;
+    private Label _routeAdvisoriesLabel = null!;
+    private DisplayListBox _routeAdvisoriesBox = null!;
     private Label _advisoriesLabel = null!;
-    private TextBox _advisoriesBox = null!;
+    private DisplayListBox _advisoriesBox = null!;
     private Label _windsAloftLabel = null!;
-    private TextBox _windsAloftBox = null!;
-    private Label _statusLabel = null!;
+    private DisplayListBox _windsAloftBox = null!;
+    private TextBox _statusBox = null!;
     private Button _refreshButton = null!;
     private Button _closeButton = null!;
     private CheckBox _decodeCheckBox = null!;
 
     private bool _isFetching = false;
+    private bool _pendingForceRefresh;
+
+    // 30 s live refresh (spec 2026-07-12 §3). Safe only because the readouts are
+    // DisplayListBox rows reconciled in place — an unchanged tick is a no-op and a
+    // changed one never moves the reading cursor. forceRefresh:false lets the
+    // internet-backed fetches (advisories, Open-Meteo winds) serve from their TTL
+    // caches; the cheap local AS/SimConnect fetches re-run each tick.
+    private System.Windows.Forms.Timer? _autoRefreshTimer;
 
     public WeatherRadarForm(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
@@ -50,7 +65,8 @@ public class WeatherRadarForm : Form
     private void InitializeComponent()
     {
         Text = "Weather Radar";
-        Size = new Size(600, 710);
+        Size = new Size(600, 1034);
+        AutoScroll = true;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -58,100 +74,158 @@ public class WeatherRadarForm : Form
         ShowInTaskbar = true;
         KeyPreview = true;
 
+        int y = 12;
+
+        // ── ActiveSky mode status (hidden when the AS switch is off) ──────
+        // A read-only TextBox, not a Label: labels have no tab stop, so a screen
+        // reader user could never reach the mode line by keyboard.
+        _asModeBox = new TextBox
+        {
+            Text = "",
+            Location = new Point(12, y),
+            Size = new Size(566, 24),
+            ReadOnly = true,
+            Font = new Font("Consolas", 9),
+            AccessibleName = "ActiveSky status",
+            AccessibleDescription = "ActiveSky weather engine mode and weather time",
+            Visible = false
+        };
+        y += 24 + 12;
+
         // ── Current position weather ──────────────────────────────────────
         _currentWeatherLabel = new Label
         {
             Text = "Weather at Current Position:",
-            Location = new Point(12, 12),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Weather at Current Position label"
         };
+        y += 24;
 
-        _currentWeatherBox = new TextBox
+        _currentWeatherBox = new DisplayListBox
         {
-            Location = new Point(12, 36),
+            Location = new Point(12, y),
             Size = new Size(566, 100),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch weather data.",
             AccessibleName = "Weather at Current Position",
             AccessibleDescription = "Ambient weather conditions at aircraft position from simulator"
         };
+        _currentWeatherBox.SetText("Press F5 or Refresh to fetch weather data.");
+        y += 100 + 12;
+
+        // ── Closest station (ActiveSky only; hidden when AS is off) ───────
+        _stationLabel = new Label
+        {
+            Text = "Closest Station Weather (ActiveSky):",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "Closest Station Weather label",
+            Visible = false
+        };
+        y += 24;
+
+        _stationBox = new DisplayListBox
+        {
+            Location = new Point(12, y),
+            Size = new Size(566, 100),
+            Font = new Font("Consolas", 9),
+            AccessibleName = "Closest Station Weather",
+            AccessibleDescription = "Decoded weather and raw METAR at the nearest reporting station, from ActiveSky",
+            Visible = false
+        };
+        y += 100 + 12;
+
+        // ── Vertical profile (ActiveSky only; hidden when AS is off) ──────
+        _profileLabel = new Label
+        {
+            Text = "Vertical Profile (ActiveSky):",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "Vertical Profile label",
+            Visible = false
+        };
+        y += 24;
+
+        _profileBox = new DisplayListBox
+        {
+            Location = new Point(12, y),
+            Size = new Size(566, 120),
+            Font = new Font("Consolas", 9),
+            AccessibleName = "Vertical Profile",
+            AccessibleDescription = "Cloud layers with tops and icing, and winds and temperatures aloft, at the current position from ActiveSky",
+            Visible = false
+        };
+        y += 120 + 12;
+
+        // ── Route advisories (ActiveSky only; hidden when AS is off) ──────
+        _routeAdvisoriesLabel = new Label
+        {
+            Text = "Route Advisories (ActiveSky):",
+            Location = new Point(12, y),
+            Size = new Size(570, 20),
+            AccessibleName = "Route Advisories label",
+            Visible = false
+        };
+        y += 24;
+
+        _routeAdvisoriesBox = new DisplayListBox
+        {
+            Location = new Point(12, y),
+            Size = new Size(566, 100),
+            Font = new Font("Consolas", 9),
+            AccessibleName = "Route Advisories",
+            AccessibleDescription = "SIGMETs and AIRMETs affecting the flight plan loaded in ActiveSky",
+            Visible = false
+        };
+        y += 100 + 12;
 
         // ── Advisories (SIGMETs, AIRMETs, PIREPs) ────────────────────────
         _advisoriesLabel = new Label
         {
             Text = "Nearby Advisories (SIGMETs / AIRMETs / PIREPs):",
-            Location = new Point(12, 148),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Nearby Advisories label"
         };
+        y += 24;
 
-        _advisoriesBox = new TextBox
+        _advisoriesBox = new DisplayListBox
         {
-            Location = new Point(12, 172),
-            Size = new Size(566, 210),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Location = new Point(12, y),
+            Size = new Size(566, 120),
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch advisories.",
             AccessibleName = "Nearby Advisories",
             AccessibleDescription = "Active SIGMETs, AIRMETs, and pilot reports near the aircraft"
         };
+        _advisoriesBox.SetText("Press F5 or Refresh to fetch advisories.");
+        y += 120 + 12;
 
         // ── Winds Aloft ───────────────────────────────────────────────────
         _windsAloftLabel = new Label
         {
             Text = "Winds Aloft (±5000 ft):",
-            Location = new Point(12, 394),
+            Location = new Point(12, y),
             Size = new Size(570, 20),
             AccessibleName = "Winds Aloft label"
         };
+        y += 24;
 
-        _windsAloftBox = new TextBox
+        _windsAloftBox = new DisplayListBox
         {
-            Location = new Point(12, 418),
-            Size = new Size(566, 170),
-            Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical,
+            Location = new Point(12, y),
+            Size = new Size(566, 120),
             Font = new Font("Consolas", 9),
-            Text = "Press F5 or Refresh to fetch winds aloft.",
             AccessibleName = "Winds Aloft",
             AccessibleDescription = "Forecast wind direction and speed at each 1000 ft from 5000 ft below to 5000 ft above aircraft altitude"
         };
+        _windsAloftBox.SetText("Press F5 or Refresh to fetch winds aloft.");
+        y += 120 + 10;
 
         // ── Status + buttons ──────────────────────────────────────────────
-        _statusLabel = new Label
-        {
-            Location = new Point(12, 632),
-            Size = new Size(370, 20),
-            Text = "",
-            AccessibleName = "Status"
-        };
-
-        _refreshButton = new Button
-        {
-            Text = "&Refresh (F5)",
-            Location = new Point(390, 626),
-            Size = new Size(100, 28),
-            AccessibleName = "Refresh",
-            AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
-        };
-        _refreshButton.Click += (s, e) => _ = RefreshAsync(forceRefresh: true);
-
-        _closeButton = new Button
-        {
-            Text = "&Close",
-            Location = new Point(500, 626),
-            Size = new Size(78, 28),
-            DialogResult = DialogResult.OK,
-            AccessibleName = "Close",
-            AccessibleDescription = "Close weather radar window"
-        };
-        _closeButton.Click += CloseButton_Click;
-
         _decodeCheckBox = new CheckBox
         {
             Text = "&Decode advisories into plain English",
-            Location = new Point(12, 598),
+            Location = new Point(12, y),
             Size = new Size(370, 24),
             Checked = SettingsManager.Current.DecodeWeatherAdvisories,
             AccessibleName = "Decode advisories into plain English",
@@ -162,13 +236,52 @@ public class WeatherRadarForm : Form
             SettingsManager.Current.DecodeWeatherAdvisories = _decodeCheckBox.Checked;
             SettingsManager.Save();
         };
+        y += 28;
+
+        _refreshButton = new Button
+        {
+            Text = "&Refresh (F5)",
+            Location = new Point(390, y),
+            Size = new Size(100, 28),
+            AccessibleName = "Refresh",
+            AccessibleDescription = "Fetch current weather, advisories, and winds aloft"
+        };
+        _refreshButton.Click += (s, e) => _ = RefreshAsync(forceRefresh: true);
+
+        _closeButton = new Button
+        {
+            Text = "&Close",
+            Location = new Point(500, y),
+            Size = new Size(78, 28),
+            DialogResult = DialogResult.OK,
+            AccessibleName = "Close",
+            AccessibleDescription = "Close weather radar window"
+        };
+        _closeButton.Click += CloseButton_Click;
+
+        // Read-only TextBox, not a Label: this is the only surface for fetch errors and
+        // the "Last updated" freshness stamp, and background auto-refresh errors land
+        // here — a Label has no tab stop, so a blind user could never reach either.
+        _statusBox = new TextBox
+        {
+            Location = new Point(12, y + 6),
+            Size = new Size(370, 22),
+            ReadOnly = true,
+            Text = "",
+            AccessibleName = "Status",
+            AccessibleDescription = "Fetch status, errors, and last-updated time"
+        };
 
         Controls.AddRange(new Control[]
         {
+            _asModeBox,
             _currentWeatherLabel, _currentWeatherBox,
+            _stationLabel, _stationBox,
+            _profileLabel, _profileBox,
+            _routeAdvisoriesLabel, _routeAdvisoriesBox,
             _advisoriesLabel, _advisoriesBox,
             _windsAloftLabel, _windsAloftBox,
-            _decodeCheckBox, _statusLabel, _refreshButton, _closeButton
+            _decodeCheckBox, _statusBox, _refreshButton, _closeButton
         });
 
         CancelButton = _closeButton;
@@ -176,18 +289,41 @@ public class WeatherRadarForm : Form
 
     private void SetupAccessibility()
     {
-        _currentWeatherBox.TabIndex = 0;
-        _advisoriesBox.TabIndex = 1;
-        _windsAloftBox.TabIndex = 2;
-        _decodeCheckBox.TabIndex = 3;
-        _refreshButton.TabIndex = 4;
-        _closeButton.TabIndex = 5;
+        _asModeBox.TabIndex = 0;
+        _currentWeatherBox.TabIndex = 1;
+        _stationBox.TabIndex = 2;
+        _profileBox.TabIndex = 3;
+        _routeAdvisoriesBox.TabIndex = 4;
+        _advisoriesBox.TabIndex = 5;
+        _windsAloftBox.TabIndex = 6;
+        _decodeCheckBox.TabIndex = 7;
+        _refreshButton.TabIndex = 8;
+        _closeButton.TabIndex = 9;
+        _statusBox.TabIndex = 10;
 
         Load += async (s, e) =>
         {
             BringToFront(); Activate();
             _currentWeatherBox.Focus();
+
+            // Fixed 1034 px exceeds small/scaled working areas; with AutoScroll on,
+            // clamping the window height turns clipped content into a scrollbar
+            // (design 2026-07-12 §3 — blind users are unaffected either way).
+            var workingArea = Screen.FromControl(this).WorkingArea;
+            if (Height > workingArea.Height)
+                Height = workingArea.Height;
+
             await RefreshAsync(forceRefresh: true);
+            // IsDisposed guards: the form can be closed during the initial await —
+            // the continuation still runs, and an unguarded Start() would create a
+            // zombie 30 s timer no cleanup path ever stops (same race and fix as
+            // FlyByWireDcduForm's poll timer).
+            if (!IsDisposed)
+            {
+                _autoRefreshTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+                _autoRefreshTimer.Tick += (_, _) => { if (!IsDisposed) _ = RefreshAsync(forceRefresh: false); };
+                _autoRefreshTimer.Start();
+            }
         };
 
         KeyDown += (s, e) =>
@@ -198,10 +334,19 @@ public class WeatherRadarForm : Form
 
     private async Task RefreshAsync(bool forceRefresh)
     {
-        if (_isFetching) return;
+        if (_isFetching)
+        {
+            // A manual F5 during an in-flight auto tick must not silently lose its
+            // cache-bust — remember it and replay one forced pass after this one.
+            _pendingForceRefresh |= forceRefresh;
+            return;
+        }
         _isFetching = true;
         SetStatus("Fetching weather data...");
-        _refreshButton.Enabled = false;
+        // The Refresh button is deliberately NEVER disabled: WinForms moves focus
+        // off a focused control when it's disabled, and the 30 s auto-refresh would
+        // steal focus from a user resting on the button every tick. The _isFetching
+        // guard above already makes mid-fetch clicks harmless no-ops.
 
         try
         {
@@ -210,21 +355,59 @@ public class WeatherRadarForm : Form
             // of THIS refresh so we don't ping /GetMode for every sub-query.
             _activeSkyAvailable = await _activeSky.IsRunningAsync();
 
+            // Closed during the probe (the 30 s auto-refresh makes this common):
+            // skip the control writes below and don't launch fetches for a dead
+            // window. Same post-await guard as METARReportForm's FetchMETAR.
+            if (IsDisposed) return;
+
+            // Mode status line — hidden entirely when the AS switch is off (spec:
+            // AS-only UI disappears, not "disabled" text). Re-evaluated per refresh
+            // so toggling the setting takes effect without an app restart.
+            bool asEnabled = SettingsManager.Current.ActiveSkyEnabled;
+            _asModeBox.Visible = asEnabled;
+            if (asEnabled)
+                // SetPreserveCaret, not Text= : the mode line embeds the AS weather clock,
+                // which advances every minute — a raw reassignment resets the NVDA review
+                // cursor to position 0 on every clock roll while the user reads the line.
+                DisplayText.SetPreserveCaret(_asModeBox, _activeSkyAvailable == true
+                    ? MSFSBlindAssist.Services.ActiveSkyFormatting.FormatModeLine(_activeSky.LastModeText)
+                    : $"ActiveSky: {_activeSky.LastStatus}");
+            _stationLabel.Visible = asEnabled;
+            _stationBox.Visible = asEnabled;
+            _profileLabel.Visible = asEnabled;
+            _profileBox.Visible = asEnabled;
+            _routeAdvisoriesLabel.Visible = asEnabled;
+            _routeAdvisoriesBox.Visible = asEnabled;
+
             // Get aircraft position (needed for advisories and winds aloft)
             (double lat, double lon, int altFt) = await GetPositionAsync();
 
-            // Fetch all three in parallel
-            var ambientTask    = FetchAmbientAsync();
-            var advisoriesTask = FetchAdvisoriesAsync(lat, lon, forceRefresh);
-            var windsTask      = FetchWindsAloftAsync(lat, lon, altFt, forceRefresh);
+            // Nearby Advisories stays aviationweather.gov-sourced (live real-world data,
+            // exact geometry). When AS runs a non-Live mode the sim's weather diverges
+            // from live data, so the box carries a caveat line instead of switching
+            // source (2026-07-13 decision — see docs/weather.md §13).
+            string? advisoriesModeCaveat = _activeSkyAvailable == true
+                ? MSFSBlindAssist.Services.ActiveSkyFormatting.BuildNearbyAdvisoriesModeCaveat(_activeSky.LastModeText)
+                : null;
 
-            await Task.WhenAll(ambientTask, advisoriesTask, windsTask);
+            // Fetch all five in parallel
+            var ambientTask          = FetchAmbientAsync();
+            var advisoriesTask       = FetchAdvisoriesAsync(lat, lon, forceRefresh, advisoriesModeCaveat);
+            var windsTask            = FetchWindsAloftAsync(lat, lon, altFt, forceRefresh);
+            var profileTask          = FetchProfileAsync(lat, lon, altFt);
+            var routeAdvisoriesTask  = FetchRouteAdvisoriesAsync();
+
+            await Task.WhenAll(ambientTask, advisoriesTask, windsTask, profileTask, routeAdvisoriesTask);
 
             // await, not .Result — the tasks are already completed (WhenAll above), so
             // this doesn't block, but await avoids wrapping a fault in AggregateException.
-            _currentWeatherBox.Text = await ambientTask;
-            _advisoriesBox.Text     = await advisoriesTask;
-            _windsAloftBox.Text     = await windsTask;
+            (string ambientText, string stationText) = await ambientTask;
+            _currentWeatherBox.SetText(ambientText);
+            _stationBox.SetText(stationText);
+            _advisoriesBox.SetText(await advisoriesTask);
+            _windsAloftBox.SetText(await windsTask);
+            _profileBox.SetText(await profileTask);
+            _routeAdvisoriesBox.SetText(await routeAdvisoriesTask);
 
             // Silent fallback by design — user shouldn't have to know whether
             // ActiveSky is the source or the SimConnect AMBIENT_* fallback is.
@@ -240,7 +423,11 @@ public class WeatherRadarForm : Form
         finally
         {
             _isFetching = false;
-            _refreshButton.Enabled = true;
+            if (_pendingForceRefresh && !IsDisposed)
+            {
+                _pendingForceRefresh = false;
+                _ = RefreshAsync(forceRefresh: true);
+            }
         }
     }
 
@@ -280,7 +467,7 @@ public class WeatherRadarForm : Form
     /// where its rendered clouds are regardless of who set them, so reading
     /// AMBIENT IN CLOUD remains valid.
     /// </summary>
-    private async Task<string> FetchAmbientAsync()
+    private async Task<(string ambient, string station)> FetchAmbientAsync()
     {
         // Always grab SimConnect ambient too — needed for in-cloud and as a
         // fallback. simConnected tracks whether we actually got data so we can
@@ -322,15 +509,23 @@ public class WeatherRadarForm : Form
             string? stationMetar = await stationMetarTask;
 
             if (asConditions != null)
-                return FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);
+            {
+                string ambient = FormatAmbientFromActiveSky(asConditions, simData, simConnected, posMetar, stationMetar);
+                string station = string.IsNullOrWhiteSpace(stationMetar)
+                    ? "unavailable"
+                    : MSFSBlindAssist.Services.ActiveSkyWeatherMonitor.BuildDecodedWeatherText(stationMetar, asConditions)
+                      + Environment.NewLine + Environment.NewLine
+                      + "Raw METAR:" + Environment.NewLine + stationMetar.Trim();
+                return (ambient, station);
+            }
             // AS pinged OK earlier but the conditions call failed — fall
             // through to SimConnect rather than returning an error.
         }
 
         if (!simConnected)
-            return "Not connected to simulator.";
+            return ("Not connected to simulator.", "unavailable");
 
-        return WeatherService.FormatAmbientWeather(simData);
+        return (WeatherService.FormatAmbientWeather(simData), "unavailable");
     }
 
     /// <summary>
@@ -374,6 +569,9 @@ public class WeatherRadarForm : Form
         sb.AppendLine($"Visibility: {visStr}");
         sb.AppendLine($"Temperature (at altitude): {c.AmbientTemperature:F0}°C");
         sb.AppendLine($"Surface temperature: {c.SurfaceTemperature:F0}°C");
+        string? tempDew = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildTempDewLine(positionMetar);
+        if (tempDew != null)
+            sb.AppendLine(tempDew);
         if (c.CloudCeilingFtAgl > 0)
             sb.AppendLine($"Cloud ceiling: {c.CloudCeilingFtAgl:N0} ft AGL");
         else
@@ -539,7 +737,8 @@ public class WeatherRadarForm : Form
 
     // ── Advisories (SIGMETs + PIREPs) ────────────────────────────────────────
 
-    private async Task<string> FetchAdvisoriesAsync(double lat, double lon, bool forceRefresh)
+    private async Task<string> FetchAdvisoriesAsync(double lat, double lon, bool forceRefresh,
+        string? modeCaveat = null)
     {
         if (lat == 0 && lon == 0)
             return "Aircraft position unavailable — connect to simulator first.";
@@ -565,6 +764,11 @@ public class WeatherRadarForm : Form
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Position: {lat:F2}°, {lon:F2}° | Range: {displayRange} nm");
         sb.AppendLine(new string('─', 58));
+        if (modeCaveat != null)
+        {
+            sb.AppendLine(modeCaveat);
+            sb.AppendLine();
+        }
 
         if (sigmets.Count > 0)
         {
@@ -626,6 +830,19 @@ public class WeatherRadarForm : Form
         if (lat == 0 && lon == 0)
             return "Aircraft position unavailable — connect to simulator first.";
 
+        // Per-engine wind truth (docs/weather.md §3): with AS enabled and
+        // reachable, the box shows what the sim is actually flying through —
+        // AS historic/custom weather can contradict live internet data. The
+        // Open-Meteo path below is the unchanged non-AS fallback.
+        if (_activeSkyAvailable == true)
+        {
+            var asLevels = await _activeSky.GetAtmosphereAsync(
+                lat, lon, MSFSBlindAssist.Services.ActiveSkyFormatting.WindsAloftAltitudes(altFt));
+            if (asLevels is { Count: > 0 })
+                return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildWindsAloftText(altFt, asLevels);
+            // AS answered the probe but not this call — fall through to Open-Meteo.
+        }
+
         var winds = await WeatherService.GetWindsAloftAsync(lat, lon, altFt, forceRefresh);
 
         if (winds.Count == 0)
@@ -641,14 +858,51 @@ public class WeatherRadarForm : Form
             sb.AppendLine($"{w.AltitudeFt:N0} ft:  {w.DirectionDeg:F0}° / {w.SpeedKts:F0} kts{marker}");
         }
 
+        sb.AppendLine("Source: Open-Meteo");
         return sb.ToString().TrimEnd();
+    }
+
+    // ── Vertical profile ─────────────────────────────────────────────────────
+
+    private async Task<string> FetchProfileAsync(double lat, double lon, int altFt)
+    {
+        if (_activeSkyAvailable != true) return "unavailable";
+        if (lat == 0 && lon == 0) return "Aircraft position unavailable — connect to simulator first.";
+        var profile = await _activeSky.GetWeatherInfoXmlAsync(lat, lon);
+        if (profile == null || !MSFSBlindAssist.Services.ActiveSkyFormatting.ProfileLooksValid(profile))
+            return "unavailable";
+        return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProfileNarrative(profile, altFt);
+    }
+
+    // ── Route advisories ─────────────────────────────────────────────────────
+
+    private async Task<string> FetchRouteAdvisoriesAsync()
+    {
+        if (_activeSkyAvailable != true) return "unavailable";
+        string? raw = await _activeSky.GetRouteAdvisoriesTextAsync();
+        if (raw == null) return "unavailable";
+        var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
+
+        // Location context (spec 2026-07-13): additive-only — an empty dictionary
+        // renders the box exactly as before. Recomputed per pass (the aircraft moves);
+        // the DisplayListBox reconcile keeps an updating row from stealing the cursor.
+        Dictionary<string, string> locations = new();
+        if (_simConnect.LastKnownPosition is { } pos)
+            locations = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeLocationsAsync(
+                _activeSky, advisories, pos, spoken: false);
+
+        // Decode gating rides the same checkbox as the Nearby Advisories box; the
+        // CheckedChanged handler saves the setting and the next refresh (≤30 s auto
+        // or F5) picks it up — same latency contract as the sibling box.
+        return MSFSBlindAssist.Services.ActiveSkyFormatting.BuildRouteAdvisoriesText(
+            advisories, SettingsManager.Current.DecodeWeatherAdvisories, locations);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void SetStatus(string text)
     {
-        if (IsHandleCreated && !IsDisposed) _statusLabel.Text = text;
+        if (IsHandleCreated && !IsDisposed) DisplayText.SetPreserveCaret(_statusBox, text);
     }
 
     private void CloseButton_Click(object? sender, EventArgs e)
@@ -665,7 +919,21 @@ public class WeatherRadarForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        _autoRefreshTimer?.Stop();
+        _autoRefreshTimer?.Dispose();
+        _autoRefreshTimer = null;
         base.OnFormClosed(e);
         if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _autoRefreshTimer?.Stop();
+            _autoRefreshTimer?.Dispose();
+            _autoRefreshTimer = null;
+        }
+        base.Dispose(disposing);
     }
 }

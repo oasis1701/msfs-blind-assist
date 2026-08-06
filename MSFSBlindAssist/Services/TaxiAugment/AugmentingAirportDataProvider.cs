@@ -164,6 +164,24 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             spot.Aliases = GateAliasResolver.ResolveAliases(spot, online);
     }
 
+    /// <summary>
+    /// Returns the NAMED holding points (OSM <c>aeroway=holding_position</c> nodes with a
+    /// designator — VIKAS, N2E, A11…) for this airport from the cached online sources, as raw
+    /// online coordinates. Rides the same per-ICAO cache GetTaxiPaths populates; never triggers
+    /// its own fetch. Empty when disabled or uncached. Callers must resolve each point onto
+    /// navdata graph geometry (<c>Navigation.NamedHoldingPointResolver</c>) before routing to
+    /// it — the online coordinate itself is never a route target (anti-grass rule).
+    /// </summary>
+    public List<(string Name, double Lat, double Lon, string Kind)> GetNamedHoldingPoints(string icao)
+    {
+        var result = new List<(string, double, double, string)>();
+        if (!Enabled) return result;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return result;
+        foreach (var src in sources)
+            result.AddRange(src.HoldingPoints);
+        return result;
+    }
+
     // ── The enriching member ────────────────────────────────────────────────
     /// <summary>
     /// Returns taxi paths for the given airport, enriching unnamed segments with

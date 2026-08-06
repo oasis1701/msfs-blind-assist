@@ -58,6 +58,16 @@ namespace MSFSBlindAssist.Services;
 /// unreachable mid-flight, we reset the baseline so the next poll after
 /// AS returns is also silent (avoids "weather update" right after sim
 /// resume).
+///
+/// <para><b>Mode-change announcement.</b></para>
+///
+/// The same tick also owns the baseline-first ActiveSky mode-change
+/// announcement, decided by <see cref="ActiveSkyModeTracker"/>. Unlike the
+/// weather baseline above, the mode baseline deliberately SURVIVES
+/// unreachable gaps — the tracker is only ever fed successful reads (the
+/// tick returns early before calling it when AS is unreachable), so a
+/// reconnect in a different mode is a genuine change the pilot must hear,
+/// not a silently re-seeded baseline.
 /// </summary>
 public class ActiveSkyWeatherMonitor : IDisposable
 {
@@ -66,6 +76,8 @@ public class ActiveSkyWeatherMonitor : IDisposable
     private readonly ActiveSkyClient _activeSky;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly System.Windows.Forms.Timer _timer;
+    private readonly ActiveSkyModeTracker _modeTracker = new();
+    private readonly TurbulenceCategoryTracker _turbulenceTracker = new();
 
     /// <summary>Last seen JSON TimeStamp. 0 = no baseline yet.</summary>
     private long _lastTimeStamp;
@@ -152,6 +164,17 @@ public class ActiveSkyWeatherMonitor : IDisposable
                 return;
             }
 
+            // Mode-change announce (baseline-first, silent on first sight). The
+            // probe inside IsRunningAsync just refreshed LastModeText, so this
+            // costs no extra request. Announced even when the weather fetch
+            // below fails — mode is independent of weather data.
+            string? modeChange = _modeTracker.Observe(_activeSky.LastModeText);
+            if (modeChange != null && !_disposed)
+            {
+                Log.Debug("Services", $"mode change: \"{modeChange}\"");
+                _announcer.Announce(modeChange);
+            }
+
             // Pull the structured conditions (TimeStamp + ambient/surface fields)
             // and the position METAR in parallel. The closest-station METAR is
             // pulled separately because it's only used for the announcement
@@ -162,6 +185,20 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
             var conditions = await conditionsTask;
             string? positionMetar = await positionMetarTask;
+
+            // Turbulence category announce (baseline-first; TurbulenceCategoryTracker).
+            // Needs only `conditions` — deliberately BEFORE the position-METAR check, so a
+            // blank METAR fetch can't delay a boundary crossing to the next tick
+            // (weather.md §10a: the read happens right after the conditions fetch succeeds).
+            if (conditions != null && Settings.SettingsManager.Current.AnnounceTurbulenceEnabled)
+            {
+                string? turb = _turbulenceTracker.Observe(conditions.AmbientTurbulence);
+                if (turb != null && !_disposed)
+                {
+                    Log.Debug("Services", $"turbulence: \"{turb}\"");
+                    _announcer.Announce(turb);
+                }
+            }
 
             if (conditions == null || string.IsNullOrWhiteSpace(positionMetar))
             {
@@ -285,14 +322,22 @@ public class ActiveSkyWeatherMonitor : IDisposable
             ? closestStationMetar!
             : positionMetar;
 
-        var decoded = DecodeMetar(metarToUse);
+        return "Active sky weather updated. " + BuildDecodedWeatherText(metarToUse, conditions);
+    }
+
+    /// <summary>The "Decoded weather at {station}. Wind… Altimeter…" text, shared
+    /// verbatim between the auto-announce and the Weather Radar form's on-demand
+    /// closest-station box (spec 2026-07-10 §4.1: identical wording, one code path).
+    /// Internal for the form + tests.</summary>
+    internal static string BuildDecodedWeatherText(string metar, ActiveSkyClient.Conditions conditions)
+    {
+        var decoded = DecodeMetar(metar);
         string locationLabel = decoded.IsPositionMetar
             ? "your position"
             : decoded.Station;
 
         var parts = new List<string>
         {
-            "Active sky weather updated.",
             $"Decoded weather at {locationLabel}."
         };
 
@@ -329,7 +374,7 @@ public class ActiveSkyWeatherMonitor : IDisposable
 
         // Precipitation — METAR weather group decoded by the shared helper.
         // None when the METAR has no weather token.
-        string precip = WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metarToUse);
+        string precip = WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
         if (!string.IsNullOrEmpty(precip))
             parts.Add($"Precipitation: {Capitalise(precip)}.");
         else
@@ -821,6 +866,11 @@ public class ActiveSkyWeatherMonitor : IDisposable
         }
         return string.Join(" ", keep);
     }
+
+    /// <summary>Re-baselines the turbulence announcer (aircraft switch — position
+    /// and airframe discontinuities make the old category baseline meaningless).
+    /// The next successful poll re-baselines silently.</summary>
+    public void ResetTurbulenceTracker() => _turbulenceTracker.Reset();
 
     public void Dispose()
     {

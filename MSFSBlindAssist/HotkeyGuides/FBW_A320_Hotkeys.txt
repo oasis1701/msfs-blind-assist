@@ -190,6 +190,13 @@ Ground Services:
              the window. If multiple GSX services are active, use the Active
              services combo to choose which service drives tooltip announcements.
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
+
 INPUT MODE - Press [ to activate
 
 Teleport:
@@ -240,12 +247,16 @@ Windows:
              press arms the answer (e.g. Alt+2 = WILCO) and the keys change
              to CANCEL / SEND — the second Alt+2 actually transmits. After
              sending, right 2 becomes CLOSE to dismiss the message.
-             PageUp/PageDown = older/newer message, Ctrl+PageUp/PageDown =
-             scroll within a long message (Ctrl+PageDown = next page). NOTE:
-             on a long multi-page uplink the answer keys stay inactive until
-             you have paged to the END of the message — the window says
-             "not available yet" if you try early. F5 = refresh, Escape =
-             close.
+             PageUp/PageDown = scroll within the message you are reading
+             (PageDown = next page), the same as in the MCDU window.
+             Ctrl+PageUp/PageDown = older/newer message. NOTE: on a long
+             multi-page uplink the answer keys stay inactive until you have
+             paged to the END of the message — the window then says which
+             page you are on, e.g. "WILCO not available yet. Page 1 of 2.
+             Press page down to read on." On a message you HAVE read to the
+             end, a key the unit is still refusing is unblocked automatically
+             and then pressed, so you never get stuck.
+             F5 = refresh, Escape = close.
              Needs a datalink connection: set the ACARS provider (Hoppie /
              SayIntentions / BeyondATC) in the flyPad Settings, then log on
              to ATC from the MCDU ATSU pages — the NOTIFY key needs the ATC
@@ -262,6 +273,14 @@ Taxi Guidance:
 
 Ground Services:
   Alt+G      Open Access GSX window (accessible GSX Ground Services Pro menu)
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
 
 General:
   Escape     Exit active hotkey mode

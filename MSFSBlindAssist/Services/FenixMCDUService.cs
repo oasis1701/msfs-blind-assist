@@ -41,16 +41,6 @@ public class FenixMCDUService : IDisposable
     private const string WS_URL = "ws://localhost:8083/graphql";
     private const string HTTP_URL = "http://localhost:8083/graphql";
 
-    private static readonly Dictionary<char, char> SpecialChars = new Dictionary<char, char>
-    {
-        { '#', '-' },  // box -> hyphen (better for Braille displays)
-        { '&', '\u0394' },  // delta
-        { '\u00A4', '\u2191' }, // ¤ -> up arrow
-        { '\u00A5', '\u2193' }, // ¥ -> down arrow
-        { '\u00A2', '\u2192' }, // ¢ -> right arrow
-        { '\u00A3', '\u2190' }, // £ -> left arrow
-    };
-
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _cts;
     private readonly HttpClient _httpClient;
@@ -295,90 +285,8 @@ public class FenixMCDUService : IDisposable
         return data;
     }
 
-    private static readonly HashSet<char> ColorCodeSet = new HashSet<char> { 'a', 'c', 'g', 'm', 'w', 'y' };
-    private static readonly HashSet<char> SizeCodeSet = new HashSet<char> { 's', 'l' };
-
-    private static string StripFormatCodes(string text)
-    {
-        if (string.IsNullOrEmpty(text)) return "";
-
-        // First pass: parse into colored segments
-        var segments = ParseColorSegments(text);
-
-        // Check if this line has mixed colors (indicates toggle/selection options)
-        var distinctColors = new HashSet<char>();
-        foreach (var seg in segments)
-        {
-            if (!string.IsNullOrWhiteSpace(seg.Text))
-                distinctColors.Add(seg.Color);
-        }
-        bool hasMixedColors = distinctColors.Count > 1 && distinctColors.Contains('g');
-
-        // Second pass: build output, marking green segments on mixed-color lines
-        var sb = new StringBuilder();
-        foreach (var seg in segments)
-        {
-            if (hasMixedColors && seg.Color == 'g' && !string.IsNullOrWhiteSpace(seg.Text))
-            {
-                sb.Append('*');
-                sb.Append(seg.Text);
-            }
-            else
-            {
-                sb.Append(seg.Text);
-            }
-        }
-
-        return sb.ToString();
-    }
-
-    private static List<(char Color, string Text)> ParseColorSegments(string text)
-    {
-        var segments = new List<(char Color, string Text)>();
-        char currentColor = 'w'; // default white
-        var currentText = new StringBuilder();
-
-        for (int i = 0; i < text.Length; i++)
-        {
-            char c = text[i];
-
-            if (ColorCodeSet.Contains(c))
-            {
-                // Flush current segment
-                if (currentText.Length > 0)
-                {
-                    segments.Add((currentColor, currentText.ToString()));
-                    currentText.Clear();
-                }
-                currentColor = c;
-                continue;
-            }
-
-            if (SizeCodeSet.Contains(c))
-            {
-                // Skip size codes
-                continue;
-            }
-
-            // Handle special characters
-            if (SpecialChars.TryGetValue(c, out char replacement))
-            {
-                currentText.Append(replacement);
-            }
-            else
-            {
-                currentText.Append(c);
-            }
-        }
-
-        // Flush last segment
-        if (currentText.Length > 0)
-        {
-            segments.Add((currentColor, currentText.ToString()));
-        }
-
-        return segments;
-    }
+    // Format-code decoding lives in FenixMcduFormat (pure + unit-tested).
+    private static string StripFormatCodes(string text) => FenixMcduFormat.StripFormatCodes(text);
 
     private static (string left, string right) SplitLine(string line)
     {

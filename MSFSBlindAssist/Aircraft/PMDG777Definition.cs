@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -3398,10 +3399,17 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
+                // SDK PMDG_777X_SDK.h line 272: "0: RTO  1: OFF  2: DISARM  3: \"1\" ...".
+                // The DISARM detent was MISSING here, so every label from index 2 up was one
+                // step ahead of reality: selecting "4" wrote 5, which is autobrake 3 — the
+                // ACARS/EICAS reported one setting lower than MSFSBA claimed, and landing
+                // rollouts ran long against the calculated setting (user-reported, then
+                // confirmed position-by-position against hardware via MobiFlight, including
+                // that index 7 exists and is the top detent). Verified live 2026-08-01.
                 ValueDescriptions = new Dictionary<double, string>
                 {
-                    [0] = "RTO", [1] = "Off", [2] = "1", [3] = "2",
-                    [4] = "3", [5] = "4", [6] = "Auto"
+                    [0] = "RTO", [1] = "Off", [2] = "Disarm", [3] = "1",
+                    [4] = "2", [5] = "3", [6] = "4", [7] = "Max Auto"
                 }
             },
             ["BRAKES_ParkingBrake"] = new SimConnect.SimVarDefinition
@@ -5847,6 +5855,26 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return isCargoKnob ? isFreighter : !isFreighter;
     }
 
+    // ----------------------------------------------------------------------
+    // Serializes the emergency-exit light guard→switch sequence (see the
+    // LTS_EmerLights block in HandleUIVariableSet). The sequence spans an
+    // 80 ms settle gap, and a screen-reader user arrowing through the combo
+    // commits one set PER ARROW KEY — so a second sequence starts while the
+    // first is still mid-gap. Left to interleave, the Armed sequence's
+    // guard-CLOSE can land between the Off sequence's guard-OPEN and its
+    // switch write: PMDG then refuses the switch and the combo displays a
+    // position the aircraft never reached — the exact "pick it twice"
+    // symptom the settle gap exists to prevent. (This is cooperative
+    // interleaving across awaits on ONE thread, not a data race; the gate is
+    // required even though every write stays on the UI thread.)
+    //
+    // A burst additionally collapses to its LAST selection via
+    // _emerLightsRequest — superseded picks are skipped WHOLE, never
+    // half-applied, so the guard can't be left open over a closed position.
+    // ----------------------------------------------------------------------
+    private static readonly SemaphoreSlim _emerLightsGate = new(1, 1);
+    private static int _emerLightsRequest;
+
     public override bool HandleUIVariableSet(
         string varKey, double value,
         SimConnect.SimVarDefinition varDef,
@@ -5913,7 +5941,94 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 return false;
             }
-            simConnect.SendEvent("#" + switchEventId, (uint)target);
+
+            // The switch is GUARDED, and the guard must be driven explicitly (user-verified
+            // against the real switch via MobiFlight, 2026-08-01): EVT_OH_EMER_EXIT_LIGHT_GUARD
+            // takes 0 = closed, 1 = open. ARMED is the normal, guard-closed position; OFF and ON
+            // sit outside the guard, so the guard has to be lifted BEFORE the switch will move
+            // there, and it closes again when the switch returns to ARMED.
+            //
+            // An earlier build deliberately never touched the guard, on the belief that opening
+            // it left the switch unusable afterwards. That was wrong — the guard is just another
+            // event, and driving it is what makes OFF/ON reachable at all.
+            //
+            // The SWITCH itself still goes out via TransmitClientEvent with the absolute target
+            // ("#<id>", see the block comment above) — the CDA selector only ever steps one
+            // detent upward, which is why Armed → Off was unreachable through it. The GUARD is a
+            // plain momentary CDA event (SendPMDGEvent), the same path the generic guarded-switch
+            // dispatch uses.
+            //
+            // ⚠️ The guard and the switch travel on DIFFERENT transports — the guard is a CDA
+            // write (SendPMDGEvent), the switch a TransmitClientEvent — so they are NOT
+            // guaranteed to arrive in the order they were issued. Fired back-to-back, the
+            // switch could reach PMDG before the guard had opened, and the write was refused:
+            // the pilot had to pick the position TWICE (press one opened the guard, press two
+            // moved the switch, since by then the guard was already up). A MobiFlight profile
+            // doesn't show this because both of its writes take the same path.
+            //
+            // A short settle gap orders them reliably. 80 ms is the user's own hardware-informed
+            // figure and tested good; it is far below the generic SendGuardedSet's 150 ms, so
+            // the control still feels immediate. Do NOT drop it back to zero.
+            const int EmerLightsArmed = 1;      // 0 = Off, 1 = Armed, 2 = On
+            const int GuardSettleMs = 80;       // guard→switch ordering gap (see above)
+            bool haveGuard = EventIds.TryGetValue("EVT_OH_EMER_EXIT_LIGHT_GUARD", out int guardEventId);
+
+            if (!haveGuard)
+            {
+                // No guard event resolved — move the switch alone rather than doing nothing.
+                simConnect.SendEvent("#" + switchEventId, (uint)target);
+                return true;
+            }
+
+            // Fire-and-forget, but deliberately NOT via Task.Run. HandleUIVariableSet is only
+            // ever called on the UI thread, and with no ConfigureAwait(false) the awaits below
+            // resume there too — so every SimConnect call stays on the UI thread, exactly as the
+            // generic SendPMDGGuardedSet path does. Task.Run would move SendEvent onto a pool
+            // thread, where its lazy "#<id>" registration races the UI thread on SimConnectManager's
+            // UNLOCKED eventIds dictionary.
+            async Task DriveEmerLightsAsync(int seq)
+            {
+                // The settle gap makes these sequences overlap: a second combo commit starts
+                // while the first is still mid-gap. See _emerLightsGate for why that must be
+                // serialized rather than left to interleave.
+                await _emerLightsGate.WaitAsync();
+                try
+                {
+                    if (Volatile.Read(ref _emerLightsRequest) != seq)
+                    {
+                        return; // a later selection superseded this one — skip it WHOLE
+                    }
+                    if (target != EmerLightsArmed)
+                    {
+                        // Leaving the guarded position (to Off or On): lift the guard, let it
+                        // land, then move the switch.
+                        simConnect.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, 1);
+                        await Task.Delay(GuardSettleMs);
+                        simConnect.SendEvent("#" + switchEventId, (uint)target);
+                    }
+                    else
+                    {
+                        // Back to ARMED: move the switch first, then close the guard over it.
+                        simConnect.SendEvent("#" + switchEventId, (uint)target);
+                        await Task.Delay(GuardSettleMs);
+                        simConnect.SendPMDGEvent("EVT_OH_EMER_EXIT_LIGHT_GUARD", (uint)guardEventId, 0);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Fire-and-forget: an escaped exception would otherwise vanish as an
+                    // unobserved task fault, leaving the switch unmoved with nothing in the log
+                    // to explain it. A failed guard/switch write must never break the panel.
+                    Log.Debug("PMDG", $"Emergency exit lights set to {target} failed: " +
+                                      $"{ex.GetType().Name}: {ex.Message}");
+                }
+                finally
+                {
+                    _emerLightsGate.Release();
+                }
+            }
+
+            _ = DriveEmerLightsAsync(Interlocked.Increment(ref _emerLightsRequest));
             return true;
         }
 
@@ -6774,40 +6889,52 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     var monitor = pfTod.GetPMDGProgPageMonitor();
                     if (monitor != null)
                     {
-                        // Fire-and-forget. The probe takes ~100-500 ms in the
-                        // worst case (off-PROG cold cache); during that
-                        // window the user hears nothing, then the
-                        // announcement arrives. Subsequent presses within
-                        // 30 s reuse the cache and announce instantly.
+                        // Fire-and-forget. Every press live-reads the PROG
+                        // page (~150 ms on-PROG, ~500 ms if it must switch
+                        // pages first) so the distance is always current —
+                        // the FMC ticks every mile and the readout must too.
                         _ = Task.Run(async () =>
                         {
-                            var prog = await monitor.ReadProgPageAsync();
-                            if (prog != null && prog.IsValid)
+                            try
                             {
-                                if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                var prog = await monitor.ReadProgPageAsync();
+                                if (prog != null && prog.IsValid)
                                 {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
-                                    return;
+                                    if (!prog.TOCPassed && prog.DistanceToTOC > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToTOC) ? $", {prog.ETAToTOC}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to T O C: {Math.Round(prog.DistanceToTOC)}{eta}");
+                                        return;
+                                    }
+                                    if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
+                                        return;
+                                    }
+                                    if (prog.DistanceToTOD > 0)
+                                    {
+                                        string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
+                                        announcer.AnnounceImmediate(
+                                            $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
+                                        return;
+                                    }
+                                    // PROG showed none of those phases — fall through to SDK.
                                 }
-                                if (!prog.StepClimbIsNone && prog.DistanceToStepClimb > 0)
-                                {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToStepClimb) ? $", {prog.ETAToStepClimb}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to step climb: {Math.Round(prog.DistanceToStepClimb)}{eta}");
-                                    return;
-                                }
-                                if (prog.DistanceToTOD > 0)
-                                {
-                                    string eta = !string.IsNullOrEmpty(prog.ETAToTOD) ? $", {prog.ETAToTOD}" : "";
-                                    announcer.AnnounceImmediate(
-                                        $"Distance to T O D: {Math.Round(prog.DistanceToTOD)}{eta}");
-                                    return;
-                                }
-                                // PROG showed none of those phases — fall through to SDK.
+                                AnnounceTODFromSDK(simConnect, dm, announcer);
                             }
-                            AnnounceTODFromSDK(simConnect, dm, announcer);
+                            catch (Exception ex)
+                            {
+                                // Fire-and-forget: an escaped exception would vanish
+                                // as an unobserved task fault, leaving the press
+                                // silent with nothing in the log to explain it.
+                                // ReadProgPageAsync never throws, so reaching here
+                                // means the SDK readout itself failed — there is no
+                                // further fallback to try, only a record to leave.
+                                Log.Debug("PMDG", $"TOD readout failed: {ex.GetType().Name}: {ex.Message}");
+                            }
                         });
                         return true;
                     }
@@ -6831,20 +6958,28 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     {
                         _ = Task.Run(async () =>
                         {
-                            var prog = await monitor.ReadProgPageAsync();
-                            if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                            try
                             {
-                                string distStr = Math.Round(prog.DistanceToDest)
-                                    .ToString(System.Globalization.CultureInfo.InvariantCulture);
-                                string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
-                                string fuelStr = prog.LandingFuel >= 0
-                                    ? $", landing fuel {prog.LandingFuel:F1}"
-                                    : "";
-                                announcer.AnnounceImmediate(
-                                    $"Distance to destination: {distStr}{etaStr}{fuelStr}");
-                                return;
+                                var prog = await monitor.ReadProgPageAsync();
+                                if (prog != null && prog.IsValid && prog.DistanceToDest >= 0)
+                                {
+                                    string distStr = Math.Round(prog.DistanceToDest)
+                                        .ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                    string etaStr = !string.IsNullOrEmpty(prog.ETAToDest) ? $" {prog.ETAToDest}" : "";
+                                    string fuelStr = prog.LandingFuel >= 0
+                                        ? $", landing fuel {prog.LandingFuel:F1}"
+                                        : "";
+                                    announcer.AnnounceImmediate(
+                                        $"Distance to destination: {distStr}{etaStr}{fuelStr}");
+                                    return;
+                                }
+                                AnnounceDestFromSDK(simConnect, dm, announcer);
                             }
-                            AnnounceDestFromSDK(simConnect, dm, announcer);
+                            catch (Exception ex)
+                            {
+                                // See the TOD handler — same fire-and-forget rule.
+                                Log.Debug("PMDG", $"Destination readout failed: {ex.GetType().Name}: {ex.Message}");
+                            }
                         });
                         return true;
                     }
@@ -6883,6 +7018,14 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 hotkeyManager.ExitInputHotkeyMode();
                 ShowPMDGVSDialog(simConnect, announcer, parentForm);
+                return true;
+            }
+
+            case HotkeyAction.FCUSetAutopilot:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAutopilotWindow(
+                    PMDGAutopilotRows.For777(), "777 Autopilot", simConnect, announcer, parentForm);
                 return true;
             }
 

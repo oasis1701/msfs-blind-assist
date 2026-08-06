@@ -33,6 +33,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
 
+    // Coherent GT view title-needle hosting the MCDU instrument, used by the
+    // D / Shift+D FMS flight-info eval (CoherentEvalClient → coherent-a32nx-flightinfo.js).
+    // Overridden by the Headwind A330 fork, whose view is "A339X_MCDU".
+    public virtual string FlightInfoMcduView => "A32NX_MCDU";
+
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
     public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
@@ -1770,9 +1775,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["A32NX_SPOILERS_HANDLE_POSITION"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPOILERS_HANDLE_POSITION",
-            DisplayName = "Spoiler Handle Position",
+            // "Spoilers", not "Spoiler Handle Position" — Fenix/PMDG announce-wording
+            // parity. Continuous: announced by 10% band from ProcessSimVarUpdate
+            // (mirrors the A380; returns true, so the generic path can never speak a
+            // raw mid-travel fraction like "0.35"). ValueDescriptions only render the
+            // display row at the exact detents.
+            DisplayName = "Spoilers",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Retracted", [0.5] = "Half Extended", [1] = "Full Extended" }
         },
         ["SPOILERS_ON"] = new SimConnect.SimVarDefinition
@@ -1795,7 +1806,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // Critical for ground operations
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Released", [1] = "Set" }
+            // On/Off (not Set/Released) — fleet-wide parity: the A380 (OnOff helper),
+            // Fenix (OffOn) and PMDG 737 all announce "Parking brake on/off".
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
 
         // PEDESTAL SECTION - Engines Panel
@@ -2496,29 +2509,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // L:vars (A32NX_AUTOTHRUST_TLA:n precedent).
         // Silent caches — their speech rides the A32NX_TCAS_STATE monitor entry,
         // so they're hidden from the Ctrl+M list (ExcludeFromMonitorManager).
+        // ⚠️ Units MUST be "number" (raw), NEVER "feet per minute": FBW writes the
+        // VSPEED bands + rate-to-maintain already in fpm but UNITLESS, so a velocity-unit
+        // data-def read multiplies by 196.85 (native assumed m/s) — a 1500-fpm target
+        // spoke "295276". The "feet per minute" label is hardcoded in TcasRaGuidance.
+        // (Same bug + fix as the A380; do not re-add a velocity unit here.)
         ["A32NX_TCAS_VSPEED_GREEN:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:1", DisplayName = "TCAS target vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_GREEN:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_GREEN:2", DisplayName = "TCAS target vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:1"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:1", DisplayName = "TCAS avoid vertical speed minimum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_VSPEED_RED:2"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TCAS_VSPEED_RED:2", DisplayName = "TCAS avoid vertical speed maximum",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         ["A32NX_TCAS_RA_CORRECTIVE"] = new SimConnect.SimVarDefinition
         {
@@ -2542,7 +2560,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_TCAS_RA_RATE_TO_MAINTAIN", DisplayName = "TCAS RA rate to maintain",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "feet per minute", ExcludeFromMonitorManager = true
+            IsAnnounced = true, Units = "number", ExcludeFromMonitorManager = true
         },
         // EGPWS (GPWS/TAWS) escape-maneuver callouts — enum verified against the FBW EGPWS source.
         ["A32NX_GPWS_AURAL_OUTPUT"] = new SimConnect.SimVarDefinition
@@ -4301,7 +4319,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_ACTIVE_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM ACTIVE FREQUENCY:1",
-            DisplayName = "COM 1 Set Active Frequency",
+            // No "Set" in NumSet-style display names — MainForm.PanelBuilder labels
+            // the pair itself ("<name> value" textbox + "Set <name>" button), so an
+            // embedded "Set" doubles up ("Set COM 1 Set Active Frequency").
+            DisplayName = "COM 1 Active Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -4309,7 +4330,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ["COM_STANDBY_FREQUENCY_SET:1"] = new SimConnect.SimVarDefinition
         {
             Name = "COM STANDBY FREQUENCY:1",
-            DisplayName = "COM 1 Set Standby Frequency",
+            DisplayName = "COM 1 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar,
             Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
@@ -4363,13 +4384,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- COM2 / VHF2 (parity: the Radios panel now exposes COM1 + COM2) ----
         ["COM_ACTIVE_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM ACTIVE FREQUENCY:2", DisplayName = "COM 2 Set Active Frequency",
+            Name = "COM ACTIVE FREQUENCY:2", DisplayName = "COM 2 Active Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["COM_STANDBY_FREQUENCY_SET:2"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Set Standby Frequency",
+            Name = "COM STANDBY FREQUENCY:2", DisplayName = "COM 2 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -4396,13 +4417,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // COM3_RADIO_SWAP; HandleUIVariableSet already branches on idx "3" (varKey.EndsWith(":3")).
         ["COM_ACTIVE_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Set Active Frequency",
+            Name = "COM ACTIVE FREQUENCY:3", DisplayName = "COM 3 Active Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
         ["COM_STANDBY_FREQUENCY_SET:3"] = new SimConnect.SimVarDefinition
         {
-            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Set Standby Frequency",
+            Name = "COM STANDBY FREQUENCY:3", DisplayName = "COM 3 Standby Frequency",
             Type = SimConnect.SimVarType.SimVar, Units = "kHz",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
@@ -6344,12 +6365,22 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (mode == 0) return "Altimeter standard";
         if (mode == 2)
         {
-            double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * 0.0295299830714;
+            double inches = (inUnit >= 22 && inUnit <= 33) ? inUnit : hpa * HpaToInHg;
             return $"Altimeter {inches:F2} inches";
         }
         double hpaVal = (inUnit >= 745 && inUnit <= 1100) ? inUnit : hpa;
         return $"Altimeter {hpaVal:F0} hectopascals";
     }
+
+    // hPa → inHg (shared with forks; keep the one constant so conversions can't drift).
+    protected const double HpaToInHg = 0.0295299830714;
+
+    // Set true by a fork (Headwind A330) whose airframe never DELIVERS the FBW EFIS
+    // baro display words: gates the FBW-word baro announce at this single chokepoint
+    // so the fork's replacement read path (stock Kohlsman) can't double-talk with it.
+    // Fail-closed by construction — every FBW baro var case funnels through
+    // AnnounceBaroIfChanged, so a baro leg added later is silenced on the fork too.
+    protected virtual bool SuppressFbwEfisBaroAnnounce => false;
 
     // Phrase-level dedup + announce for either side's baro. Phrase-keyed (not
     // whole-hPa-keyed) so a 0.01-inch knob click that doesn't cross a whole-hPa
@@ -6357,6 +6388,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // First valid phrase per side seeds SILENTLY (the startup double-announce fix).
     private void AnnounceBaroIfChanged(bool capt, ScreenReaderAnnouncer announcer)
     {
+        if (SuppressFbwEfisBaroAnnounce) return;
         int mode = capt ? _baroMode : _baroModeR;
         double hpa = capt ? _baroHpa : _baroHpaR;
         double inUnit = capt ? _baroInUnitL : _baroInUnitR;
@@ -6393,6 +6425,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Decode (switch wins over the persisted power setting) is the shared WiperPosition.
     private double? _wiperSwL, _wiperPwrL, _wiperSwR, _wiperPwrR;
     private int _wiperStateL, _wiperStateR;
+
+    // ---- Speed-brake handle band (10% steps) last announced; -1 = silent first-sample
+    // baseline. See the band announce in ProcessSimVarUpdate (A380 parity).
+    private int _lastSpoilerBand = -1;
 
     // ---- Approach minimums last-announced values (-1 = unset); see ProcessSimVarUpdate.
     private int _lastBaroMin = -1, _lastDh = -1;
@@ -7443,6 +7479,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             case "WIPER_L_PWR": _wiperPwrL = value; _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
             case "WIPER_R_SW":  _wiperSwR = value;  _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
             case "WIPER_R_PWR": _wiperPwrR = value; _wiperStateR = WiperPosition.FromCircuit(_wiperSwR, _wiperPwrR); return true;
+        }
+
+        // Speed-brake handle: a 0..1 fraction. Announce by 10% band (with Retracted/Full
+        // at the ends) so a steady lever doesn't spam but movement is spoken — the same
+        // tuned band announce as the A380, with the Fenix/PMDG-parity "Spoilers" wording.
+        // Silent baseline on the first sample.
+        if (varName == "A32NX_SPOILERS_HANDLE_POSITION")
+        {
+            int band = (int)Math.Round(Math.Max(0.0, Math.Min(1.0, value)) * 10.0);
+            if (_lastSpoilerBand < 0) { _lastSpoilerBand = band; return true; }
+            if (band != _lastSpoilerBand)
+            {
+                _lastSpoilerBand = band;
+                string phrase = band == 0 ? "Spoilers retracted"
+                              : band == 10 ? "Spoilers full"
+                              : $"Spoilers {band * 10} percent";
+                announcer.Announce(phrase);
+            }
+            return true;
         }
 
         // Passengers on board: each *_DESIRED* station L:var is an integer seat-bitmask
@@ -8722,6 +8777,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (readbackAction != null) DeferReadback(readbackAction);
     }
 
+    // FCU/AP annunciator state-var keys read by the Ctrl+P Autopilot window. Virtual so a
+    // future FBW fork whose build exposes different equivalents can repoint them without
+    // touching the shared window (the Headwind A330 keeps the base names).
+    public virtual string LocLightVar  => "A32NX_FCU_LOC_LIGHT_ON";
+    public virtual string ApprLightVar => "A32NX_FCU_APPR_LIGHT_ON";
+    public virtual string FdLeftLightVar  => "A32NX_FCU_EFIS_L_FD_LIGHT_ON";
+    public virtual string FdRightLightVar => "A32NX_FCU_EFIS_R_FD_LIGHT_ON";
+
     // Request the live AP/mode state vars so the Autopilot window can refresh labels.
     public void RequestAutopilotStates(SimConnect.SimConnectManager s)
     {
@@ -8731,11 +8794,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // the LOC/APPR/FD labels never refreshed (the reported bug).
         foreach (var v in new[] {
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
-            "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
-            "A32NX_FMA_EXPEDITE_MODE", "A32NX_FCU_EFIS_L_FD_LIGHT_ON",
-            "A32NX_FCU_EFIS_R_FD_LIGHT_ON" })
+            LocLightVar, ApprLightVar,
+            "A32NX_FMA_EXPEDITE_MODE", FdLeftLightVar, FdRightLightVar })
             s.RequestVariable(v, forceUpdate: true);
     }
+
+    // EFIS baro (Ctrl+B window) — virtual so an FBW fork can intercept or reroute the
+    // mechanism (the Headwind A330 overrides all four: the setters stamp its window-echo
+    // suppression before delegating here, and the mode read comes from the stock Kohlsman
+    // vars because the FBW baro display words are never delivered on that airframe).
+    // Base impl = the current new-FCU behaviour (both sides), extracted verbatim from
+    // FBWA320BaroWindow so the A320 is unchanged.
+    public virtual void SetEfisBaroPressureHpa(double hpa, SimConnect.SimConnectManager s)
+    {
+        uint encoded = (uint)Math.Round(hpa * 16);
+        s.SendEvent("A32NX.FCU_EFIS_L_BARO_SET", encoded);
+        s.SendEvent("A32NX.FCU_EFIS_R_BARO_SET", encoded);
+    }
+    public virtual void SetEfisBaroStd(bool std, SimConnect.SimConnectManager s)
+    {
+        string action = std ? "PULL" : "PUSH";   // PULL = STD, PUSH = QNH
+        s.SendEvent($"A32NX.FCU_EFIS_L_BARO_{action}", 0);
+        s.SendEvent($"A32NX.FCU_EFIS_R_BARO_{action}", 0);
+    }
+    public virtual void SetEfisBaroUnitInHg(bool inHg, SimConnect.SimConnectManager s)
+    {
+        s.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_L_BARO_IS_INHG)");
+        s.ExecuteCalculatorCode($"{(inHg ? 1 : 0)} (>L:A32NX_FCU_EFIS_R_BARO_IS_INHG)");
+    }
+    // Returns the FCU baro display mode: 0 = STD, 1 = hPa (QNH), 2 = inHg (QNH).
+    public virtual double ReadEfisBaroDisplayMode(SimConnect.SimConnectManager s)
+        => s.GetCachedVariableValue("A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE") ?? 1;
 
     // SetAltIncrement and RequestFuelQuantity moved to BaseAircraftDefinition
     // (byte-identical FBW A320/A380 pair and Fenix/FBW A320 pair respectively).

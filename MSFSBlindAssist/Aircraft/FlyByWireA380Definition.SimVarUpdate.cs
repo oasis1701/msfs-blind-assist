@@ -223,9 +223,9 @@ public partial class FlyByWireA380Definition
             if (band != _lastSpoilerBand)
             {
                 _lastSpoilerBand = band;
-                string phrase = band == 0 ? "Speed brake retracted"
-                              : band == 10 ? "Speed brake full"
-                              : $"Speed brake {band * 10} percent";
+                string phrase = band == 0 ? "Spoilers retracted"
+                              : band == 10 ? "Spoilers full"
+                              : $"Spoilers {band * 10} percent";
                 announcer.Announce(phrase);
             }
             return true;

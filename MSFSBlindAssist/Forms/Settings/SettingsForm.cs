@@ -33,7 +33,7 @@ public class SettingsForm : Form
         AddPanel(new WeatherPanel());
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
-        AddPanel(new GeminiPanel());
+        AddPanel(new AiSettingsPanel());
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
 

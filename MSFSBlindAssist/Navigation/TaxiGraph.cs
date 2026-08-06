@@ -592,6 +592,105 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Every named taxiway edge in the graph as flat (name, endpoint-coordinate) tuples —
+    /// airport pavement geometry for <c>SayIntentionsTaxiPathSnapper.Snap</c> to measure a
+    /// SayIntentions taxi-path point against, instead of parsing an ATC clearance's
+    /// phrasing. Returns a tuple rather than <see cref="TaxiEdge"/> (or the snapper's own
+    /// <c>NamedEdge</c>) so Navigation carries no dependency on Services.SayIntentions.
+    ///
+    /// <see cref="Adjacency"/> stores BOTH directions of every physical segment — the
+    /// forward copy in the start node's list, the reverse copy in the end node's — so a
+    /// bare walk would double the snapper's per-point work for no benefit. Two node ids on
+    /// one edge are never equal (<see cref="Build"/> skips degenerate same-node segments),
+    /// so of a segment's two directional copies exactly one always has
+    /// <c>FromNodeId &lt; ToNodeId</c>; keeping only that one selects exactly one
+    /// representative per physical segment without a separate seen-set.
+    ///
+    /// A blank <see cref="TaxiEdge.TaxiwayName"/> is skipped — nothing downstream filters
+    /// an unnamed segment out, so a blank would flow straight through into a snapped route
+    /// as an empty leg name. An edge whose endpoint node id is missing from
+    /// <see cref="Nodes"/> is also skipped rather than resolved to (0,0): Build() never
+    /// leaves a dangling reference itself, but a (0,0) edge would sit ~5000 km from any
+    /// real airport and could still win a nearest-edge distance comparison for an outlier
+    /// point, so this stays defensive rather than assuming the invariant always holds.
+    ///
+    /// Output order is explicit and deterministic — sorted by ascending TaxiwayName, then by
+    /// the FROM endpoint's latitude/longitude, then the TO endpoint's — and must never be
+    /// replaced by a bare Adjacency/Dictionary walk: Dictionary&lt;TKey,TValue&gt; enumeration
+    /// order is an implementation detail, not a contract. The snapper resolves nearest-edge
+    /// ties with a strict "&lt;" (first candidate in the sequence wins on an exact tie), so a
+    /// reordering here can silently change which taxiway a pilot is told — on a live LSZH
+    /// capture one point was decided by a 3.24 cm margin, and two taxiways meeting at a
+    /// junction can legitimately sit at an exactly equal distance from a point.
+    ///
+    /// The key is intrinsic to each edge's own data, deliberately NOT the node-id pair: node
+    /// ids are stable only WITHIN one <see cref="Build"/> call — they are assigned by a
+    /// monotonic counter in the order the caller's <c>paths</c> list was processed, not by
+    /// anything about the edge's geography or name. So the very same physical edges fed to
+    /// <see cref="Build"/> in a different order (a navdata re-import that changes
+    /// <c>taxi_path_id</c> assignment, or any future caller that doesn't share today's
+    /// <c>ORDER BY taxi_path_id</c> query) would silently reorder a node-id-keyed result even
+    /// though the airport itself never changed. Sorting on name plus coordinates instead makes
+    /// the order hold across rebuilds, independent of processing order — it depends only on
+    /// the edges themselves. This introduces no new ties: <see cref="ResolveNode"/>'s merge
+    /// check (endpoints within <see cref="MERGE_THRESHOLD_METERS"/> of each other are merged
+    /// into one node) guarantees two DISTINCT nodes can never share bit-identical coordinates
+    /// — they would have been merged into one — so a coordinate+name key is exactly as
+    /// tie-free as the node-id key it replaces.
+    /// </summary>
+    public IEnumerable<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)> GetNamedEdges()
+    {
+        var candidates = new List<TaxiEdge>();
+
+        foreach (var nodeEdges in Adjacency.Values)
+        {
+            foreach (var edge in nodeEdges)
+            {
+                if (string.IsNullOrEmpty(edge.TaxiwayName)) continue;
+                // Reciprocal copy of this physical segment — the other direction
+                // represents it (see method doc comment).
+                if (edge.FromNodeId >= edge.ToNodeId) continue;
+                if (!Nodes.ContainsKey(edge.FromNodeId) || !Nodes.ContainsKey(edge.ToNodeId)) continue;
+                candidates.Add(edge);
+            }
+        }
+
+        // Explicit, total-order sort — never rely on Dictionary/Adjacency enumeration
+        // order, and never on FromNodeId/ToNodeId. See method doc comment for why: node ids
+        // are stable only within one Build() call (assigned by processing order), not across
+        // rebuilds, so a node-id key can silently reorder the same physical airport. Keyed on
+        // TaxiwayName, then the FROM endpoint's coordinates, then the TO endpoint's —
+        // intrinsic to the edge's own data, so the order holds regardless of the order paths
+        // were supplied to Build(). All candidates already passed the Nodes-containment check
+        // above, so these lookups cannot throw.
+        candidates.Sort((a, b) =>
+        {
+            int cmp = string.CompareOrdinal(a.TaxiwayName, b.TaxiwayName);
+            if (cmp != 0) return cmp;
+            var fromA = Nodes[a.FromNodeId];
+            var fromB = Nodes[b.FromNodeId];
+            cmp = fromA.Latitude.CompareTo(fromB.Latitude);
+            if (cmp != 0) return cmp;
+            cmp = fromA.Longitude.CompareTo(fromB.Longitude);
+            if (cmp != 0) return cmp;
+            var toA = Nodes[a.ToNodeId];
+            var toB = Nodes[b.ToNodeId];
+            cmp = toA.Latitude.CompareTo(toB.Latitude);
+            if (cmp != 0) return cmp;
+            return toA.Longitude.CompareTo(toB.Longitude);
+        });
+
+        var result = new List<(string Name, double FromLat, double FromLon, double ToLat, double ToLon)>(candidates.Count);
+        foreach (var edge in candidates)
+        {
+            var from = Nodes[edge.FromNodeId];
+            var to = Nodes[edge.ToNodeId];
+            result.Add((edge.TaxiwayName, from.Latitude, from.Longitude, to.Latitude, to.Longitude));
+        }
+        return result;
+    }
+
+    /// <summary>
     /// Finds the nearest graph node to a given position. When
     /// <paramref name="requiredComponentId"/> is set, only nodes in that
     /// connected component are considered (the spatial-hash ring and the

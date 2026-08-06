@@ -10,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
@@ -137,6 +138,14 @@ public partial class MainForm : Form
     // On-demand EICAS alert window (Alt+E), fed by hs787CasClient.GetAlertsText().
     private Forms.HS787.HS787EicasForm? hs787EicasForm;
 
+    // iFly 737 MAX8: CDU window (renders the SDK shared-memory screen) + the SP1
+    // HTTP EFB tablet hosted in WebView2. The SDK client itself lives on the def.
+    private Forms.IFly737.IFly737CDUForm? iflyCduForm;
+
+    private Forms.IFly737.IFlyEfbForm? iflyEfbForm;
+
+    private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+
     private TakeoffAssistManager takeoffAssistManager = null!;
 
     private HandFlyManager handFlyManager = null!;
@@ -191,6 +200,7 @@ public partial class MainForm : Form
     private LandingExitPlanner landingExitPlanner = null!;
 
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+    private SayIntentionsService sayIntentionsService = null!;
 
     // Access GSX integration — owns its own SimConnect client (distinct
     // WM_USER id 0x0403). The form is created lazily on first hotkey use and
@@ -348,6 +358,8 @@ public partial class MainForm : Form
 
     private double _prevInCloud = -1;
 
+    private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -363,6 +375,23 @@ public partial class MainForm : Form
     private readonly HashSet<string> _announcedPirepKeys  = new HashSet<string>();
 
     private DateTime _sigmetKeysClearedAt = DateTime.MinValue;
+
+    private readonly MSFSBlindAssist.Services.RouteAdvisoryProximityTracker _routeAdvisoryProximity = new();
+
+    // Turnaround liftoff re-baseline for the route-advisory proximity tracker — see
+    // Services/TurnaroundLiftoffDetector.cs for the touchdown+dwell+liftoff semantics.
+    private readonly MSFSBlindAssist.Services.TurnaroundLiftoffDetector _turnaroundDetector = new();
+
+    private bool _routeAdvisoryCheckRunning;
+
+    // Consecutive-empty-feed counter for the route-advisory proximity tracker (M3, final
+    // review): a single successfully-fetched empty feed ("No airmet/sigmet…") must NOT prune
+    // every tracked zone in one tick — symmetric with LeaveConfirmTicks, a 1-tick feed flap
+    // (e.g. ActiveSky reloading its flight plan) can't wipe zone state and re-announce
+    // everything nearby as first-sight. Two consecutive empty ticks confirm a genuine plan
+    // change before CheckRouteAdvisoriesAsync lets the prune through. Reset to 0 on any tick
+    // that returns advisories, and on both tracker Reset sites.
+    private int _emptyRouteFeedTicks;
 
     // Reentrancy latch for CheckWeatherProximityAsync — the announcement timer tick fires
     // it fire-and-forget, and a slow WeatherService call could still be in flight when the
@@ -461,6 +490,11 @@ public partial class MainForm : Form
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
 
+        // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
+        // it works whenever the sim + iFly plugin are running). Generic announcements
+        // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
+        StartIFlySdkBridge();
+
         // Don't set focus - let default tab order handle it for proper menu accessibility
     }
 
@@ -556,6 +590,7 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+        sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
         dockingGuidanceManager = new DockingGuidanceManager(announcer);
@@ -730,6 +765,21 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// Public wrapper over <see cref="MarkUiSet"/> for hotkey windows that live outside
+    /// MainForm (the PMDG Ctrl+P autopilot window) and set panel-monitored variables
+    /// directly. Without it those windows triple-announce: the screen reader announces
+    /// the click, the refreshed button label announces on focus, and the background
+    /// monitor announces the change.
+    /// <para>
+    /// Pass the EXPECTED RESULTING value, not the press parameter. The generic
+    /// _uiSetEcho gate is value-matched, so marking a momentary press with 1 would
+    /// suppress an engage but let the matching DISENGAGE (annunciator 1 -> 0) leak
+    /// through as a duplicate announcement.
+    /// </para>
+    /// </summary>
+    public void SuppressUiEcho(string varKey, double expectedValue) => MarkUiSet(varKey, expectedValue);
+
+    /// <summary>
     /// Cached <c>currentAircraft.GetPanelDisplayVariables()</c> (see the cache fields for why:
     /// the defs rebuild the dictionary per call and the per-event Step-3 gate made that a
     /// per-second allocation storm). Self-invalidates when the aircraft instance changes.
@@ -835,6 +885,15 @@ public partial class MainForm : Form
         hs787IrsClient = null;
         hs787CasClient?.Dispose();
         hs787CasClient = null;
+
+        // Clean up the iFly SDK client (otherwise only shut down on aircraft swap — a
+        // quit with the iFly active would leave the 250 ms poll + off-sweep timers
+        // firing into the teardown, the same leak class as the PMDG EFB clients above).
+        if (currentAircraft is IFly737MAXDefinition iflyExitDef)
+        {
+            iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            iflyExitDef.Shutdown();
+        }
 
         // Clean up managers and resources
         slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close

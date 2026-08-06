@@ -203,6 +203,17 @@ public class FenixMCDUForm : Form
         // Handle form closing: hide instead of dispose
         FormClosing += (sender, e) =>
         {
+            // Let real app/OS shutdown through: Application.Exit raises FormClosing on
+            // every open form (hidden included) and ABORTS the whole exit if any form
+            // cancels — an unconditional cancel here left the auto-updater stalled
+            // against a still-running exe. Everything else still hides.
+            if (e.CloseReason is CloseReason.ApplicationExitCall
+                or CloseReason.WindowsShutDown
+                or CloseReason.TaskManagerClosing)
+            {
+                return;
+            }
+
             e.Cancel = true;
             Hide();
 

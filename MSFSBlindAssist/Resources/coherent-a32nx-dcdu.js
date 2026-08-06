@@ -20,10 +20,17 @@
 // answer keys stay inactive until the pilot has paged to the end of a long
 // uplink. The flag is carried per key in "act" so the form can tell the
 // pilot WHY a press did nothing instead of falsely confirming it.
+//
+// "page" carries the unit's own page counter (idx/cnt, 0 when the message
+// fits one page and no counter renders). The form needs it to tell a message
+// with genuinely unread pages apart from one whose end-of-message flag the
+// DCDU simply lost — the two look IDENTICAL in "act". See the form's
+// ReassertEndOfMessageAndFireAsync.
 (function () {
   try {
     var btns = { L1: '', L2: '', R1: '', R2: '' };
     var act = { L1: false, L2: false, R1: false, R2: false };
+    var page = { idx: 0, cnt: 0 };
     var entries = [];
     var svg = document.querySelector('svg.dcdu');
     var sr = svg ? svg.getBoundingClientRect() : null;
@@ -105,6 +112,15 @@
         } else {
           var ptxt = (t.textContent || '').replace(/\s+/g, ' ').trim();
           if (!ptxt) continue;
+          // The page counter — MessageVisualization renders "PG" + "<idx> /
+          // <cnt>" as two class="status-atsu" texts, and ONLY when the message
+          // spans more than one page. Absent counter = single page = nothing
+          // left to read. (The other status-atsu text is the system status
+          // line, which never matches this shape.)
+          if (cls.indexOf('status-atsu') !== -1) {
+            var pm = ptxt.match(/^(\d+)\s*\/\s*(\d+)$/);
+            if (pm) { page.idx = parseInt(pm[1], 10); page.cnt = parseInt(pm[2], 10); }
+          }
           entries.push({ x: r.left, y: r.top, h: r.height || 0, txt: ptxt, btn: '' });
         }
       }
@@ -144,7 +160,7 @@
       else cur.c.push(it.txt);
     }
     flush();
-    return JSON.stringify({ ok: true, rows: rows, btns: btns, act: act });
+    return JSON.stringify({ ok: true, rows: rows, btns: btns, act: act, page: page });
   } catch (e) {
     return JSON.stringify({ ok: false, err: (e && e.message) ? e.message : String(e) });
   }

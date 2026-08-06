@@ -193,7 +193,7 @@ public static class SettingsManager
             {
                 lock (_lock)
                 {
-                    // Every known mutation site for the five *DisabledMonitorVariables lists
+                    // Every known mutation site for the six *DisabledMonitorVariables lists
                     // (monitor-manager ItemCheck handlers, ToggleECAMMonitoring,
                     // SeedFenixMonitorDefaults) calls Save immediately after mutating — so this
                     // is the single choke point that keeps the HashSet sidecars from going stale.

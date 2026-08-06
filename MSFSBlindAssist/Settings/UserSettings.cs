@@ -188,10 +188,30 @@ public class UserSettings
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
 
+        // SayIntentions Settings
+        // There is NO API key setting: SayIntentions always publishes the key in
+        // %LOCALAPPDATA%\SayIntentionsAI\flight.json, so a hand-entered copy of it
+        // was redundant. Auto-start defaults OFF: the taxi route is built from parsed
+        // ATC speech, so the pilot reviews the pre-filled dialog before guidance begins.
+        public bool SayIntentionsAutoStartTaxiGuidance { get; set; } = false;
+
+        // iFly 737 MAX8 Settings — the SP1 EFB HTTP server port (iFly Manager
+        // default 8084; user-configurable there since hotfix 1.1.0.1).
+        public int IFlyEfbPort { get; set; } = 8084;
+
+        // AI provider selection. Gemini (default) preserves existing behavior; Claude routes ALL
+        // three AI features (display reading, scene description, route briefing) through Anthropic.
+        public AiProvider AiProvider { get; set; } = AiProvider.Gemini;
+
         // Gemini AI Settings
         public string GeminiApiKey { get; set; } = "";
         public bool GeminiSearchGrounding { get; set; } = false;
         public string GeminiModel { get; set; } = "gemini-flash-latest";
+
+        // Claude (Anthropic) AI Settings — used when AiProvider == Claude. User-supplied key only.
+        public string ClaudeApiKey { get; set; } = "";
+        public string ClaudeModel { get; set; } = "claude-opus-4-8";
+        public bool ClaudeWebSearch { get; set; } = false;
 
         // Range Settings (in selected distance units)
         public int NearbyCitiesRange { get; set; } = 25;
@@ -291,6 +311,18 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> A32NXDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Auto-announced iFly 737 MAX8 variables the user has muted via the iFly
+        // Monitor Manager (Ctrl+M, IFly737MonitorManagerForm). Consulted in
+        // MainForm.OnSimVarUpdated when AircraftCode == "IFLY_737MAX8" — both at
+        // the generic Step-6 gate AND via the Step-2.5 iflyMuted Suppressed-wrap
+        // (the iFly def announces annunciators/MCP lights from INSIDE
+        // ProcessSimVarUpdate, the HS787 pattern). Persisted across sessions.
+        public List<string> IFlyDisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="IFlyDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> IFlyDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
 
@@ -381,6 +413,15 @@ public class UserSettings
         public bool DockingGuidanceEnabled { get; set; } = true;
         public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
         public double DockingBeepVolume { get; set; } = 0.05;
+        /// <summary>
+        /// Speak ground speed at every 1-knot change while docking guidance is engaged.
+        /// The global ground-speed announcer works in 5/10-knot buckets, so it is silent
+        /// across the whole 0-5 kt docking band — exactly where fine speed control decides
+        /// whether the squaring turn can be completed before the stop. A pilot flying with
+        /// one hand on the tiller and one on the thrust levers cannot poll it by hotkey.
+        /// Default ON; opinions differ on callout density, hence the switch.
+        /// </summary>
+        public bool DockingSpeedCalloutsEnabled { get; set; } = true;
 
         // Weather Settings
         /// <summary>
@@ -407,6 +448,40 @@ public class UserSettings
         public bool PirepProximityAlertsEnabled { get; set; } = false;
         public int SigmetProximityRangeNm { get; set; } = 100;
         public bool DecodeWeatherAdvisories { get; set; } = false;
+
+        /// <summary>
+        /// Speak turbulence category transitions (ActiveSky-sourced; rides the
+        /// decoded-weather monitor, so it needs ActiveSkyEnabled AND
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceTurbulenceEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Speak airframe ice-accretion start/clear (sim-truth STRUCTURAL ICE PCT,
+        /// any weather engine; rides the ambient auto-announce tick, so it needs
+        /// WeatherAutoAnnounceEnabled to be live). Default on.
+        /// </summary>
+        public bool AnnounceIcingEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Announce a NEW SIGMET/AIRMET appearing on the flight-plan route loaded in
+        /// ActiveSky (parameterless GetActiveSigmetsAt; AS's SimBrief link keeps the
+        /// route current). Independent of WeatherAutoAnnounceEnabled — a sibling of
+        /// the SIGMET/PIREP proximity alerts — but requires ActiveSkyEnabled.
+        /// Default on.
+        /// </summary>
+        public bool AnnounceRouteAdvisoriesEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Approach-ring distance (nautical miles) for the en-route advisory proximity
+        /// announcements (<see cref="Services.RouteAdvisoryProximityTracker"/>) — the ring
+        /// at which an ahead advisory first announces "approach". Independent of
+        /// <see cref="SigmetProximityRangeNm"/> (the nearby-SIGMET/AIRMET/PIREP alert range)
+        /// BY DESIGN: tuning one must not silently move the other. Default 100 (matches the
+        /// tracker's former fixed constant); UI-clamped 10-500. A missing key in an older
+        /// settings JSON deserializes to this property initializer's default, 100.
+        /// </summary>
+        public int RouteAdvisoryProximityNm { get; set; } = 100;
 
         // HS787 bridge — community folder override for non-standard installs
         public string? Hs787CommunityFolderOverride { get; set; } = null;
@@ -438,8 +513,8 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the five *DisabledMonitorVariables HashSet sidecars from their backing Lists.
-    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX monitor-manager
+    /// Rebuilds the six *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
     /// which calls this — so a mutation is never visible to the List without also being visible
@@ -452,6 +527,7 @@ public class UserSettings
         A380DisabledMonitorVariablesSet = new HashSet<string>(A380DisabledMonitorVariables);
         HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
+        IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
     }
 
     /// <summary>
@@ -502,9 +578,15 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            SayIntentionsAutoStartTaxiGuidance = SayIntentionsAutoStartTaxiGuidance,
+            IFlyEfbPort = IFlyEfbPort,
+            AiProvider = AiProvider,
             GeminiApiKey = GeminiApiKey,
             GeminiSearchGrounding = GeminiSearchGrounding,
             GeminiModel = GeminiModel,
+            ClaudeApiKey = ClaudeApiKey,
+            ClaudeModel = ClaudeModel,
+            ClaudeWebSearch = ClaudeWebSearch,
             NearbyCitiesRange = NearbyCitiesRange,
             RegionalCitiesRange = RegionalCitiesRange,
             MajorCitiesRange = MajorCitiesRange,
@@ -530,6 +612,7 @@ public class UserSettings
             A380DisabledMonitorVariables = new List<string>(A380DisabledMonitorVariables),
             HS787DisabledMonitorVariables = new List<string>(HS787DisabledMonitorVariables),
             A32NXDisabledMonitorVariables = new List<string>(A32NXDisabledMonitorVariables),
+            IFlyDisabledMonitorVariables = new List<string>(IFlyDisabledMonitorVariables),
             AltitudeCalloutsEnabled = AltitudeCalloutsEnabled,
             MCDUUseAlternateLSKKeys = MCDUUseAlternateLSKKeys,
             PMDGEnhancedDistanceMode = PMDGEnhancedDistanceMode,
@@ -540,6 +623,10 @@ public class UserSettings
             PirepProximityAlertsEnabled = PirepProximityAlertsEnabled,
             SigmetProximityRangeNm = SigmetProximityRangeNm,
             DecodeWeatherAdvisories = DecodeWeatherAdvisories,
+            AnnounceTurbulenceEnabled = AnnounceTurbulenceEnabled,
+            AnnounceIcingEnabled = AnnounceIcingEnabled,
+            AnnounceRouteAdvisoriesEnabled = AnnounceRouteAdvisoriesEnabled,
+            RouteAdvisoryProximityNm = RouteAdvisoryProximityNm,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
@@ -554,7 +641,8 @@ public class UserSettings
             GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
             DockingGuidanceEnabled = DockingGuidanceEnabled,
             DockingBeepWaveform = DockingBeepWaveform,
-            DockingBeepVolume = DockingBeepVolume
+            DockingBeepVolume = DockingBeepVolume,
+            DockingSpeedCalloutsEnabled = DockingSpeedCalloutsEnabled
         };
         clone.RebuildDisabledMonitorVariableCaches();
         return clone;

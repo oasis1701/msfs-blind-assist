@@ -280,6 +280,11 @@ public partial class MainForm
         SwitchAircraft(new HorizonSim787Definition());
     }
 
+    private void HeadwindA330MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new HeadwindA330Definition());
+    }
+
     private async void UpdateApplicationMenuItem_Click(object? sender, EventArgs e)
     {
         try

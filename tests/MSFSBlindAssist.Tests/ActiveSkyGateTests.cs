@@ -78,4 +78,61 @@ public class ActiveSkyGateTests : IDisposable
 
         Assert.Null(await client.GetCurrentConditionsAsync());
     }
+
+    // Defense-in-depth pins for the four newer AS endpoints — same contract-only limit
+    // documented above applies (can't observe "no I/O happened" without an injection seam).
+
+    [Fact]
+    public async Task GetAtmosphere_WhenDisabled_ReturnsNull_EvenWithCachedPort()
+    {
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
+        Assert.Null(await client.GetAtmosphereAsync(1, 2, new[] { 1000 }));
+    }
+
+    [Fact]
+    public async Task GetWeatherInfoXml_WhenDisabled_ReturnsNull_EvenWithCachedPort()
+    {
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
+        Assert.Null(await client.GetWeatherInfoXmlAsync(1, 2));
+    }
+
+    [Fact]
+    public async Task GetRouteAdvisoriesText_WhenDisabled_ReturnsNull_EvenWithCachedPort()
+    {
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
+        Assert.Null(await client.GetRouteAdvisoriesTextAsync());
+    }
+
+    [Fact]
+    public async Task GetPositionalAdvisoriesText_WhenDisabled_ReturnsNull_EvenWithCachedPort()
+    {
+        var client = new ActiveSkyClient { LastSuccessfulPort = 19285 };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
+        Assert.Null(await client.GetPositionalAdvisoriesTextAsync(1, 2));
+    }
+
+    [Fact]
+    public async Task IsRunningAsync_WhenDisabled_ClearsModeText()
+    {
+        // The same enable -> discover -> disable leak as LastSuccessfulPort, but for the
+        // /GetMode body text: a mode string captured while the switch was on must not
+        // survive turning it off, or the UI could keep showing a stale "Live Real time
+        // mode (Active)" readout after AS integration has been disabled.
+        var client = new ActiveSkyClient
+        {
+            LastSuccessfulPort = 19285,
+            LastModeText = "Live Real time mode (Active) (2026/7/13 2013z)",
+        };
+        SettingsManager.Current.ActiveSkyEnabled = false;
+
+        Assert.False(await client.IsRunningAsync());
+        Assert.Null(client.LastModeText);
+    }
 }
