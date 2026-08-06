@@ -1,3 +1,12 @@
+// Dev-loop probe for the Waypoint Flight Director's pure command math. Standalone (NOT part of
+// MSFSBlindAssist.sln), same arrangement as tools/DockingProbe:
+//     dotnet run --project tools/WaypointFdProbe -p:Platform=x64
+//
+// ⚠️ This probe is NOT what guards the math — it is not in the solution and CI never runs it.
+// Every case below is also ported to tests/MSFSBlindAssist.Tests/WaypointFlightDirectorGeometryTests.cs
+// and WaypointConstraintMapperTests.cs, which DO run on every PR. When you add a case here, add it
+// there too, or it is not actually protecting anything.
+
 using MSFSBlindAssist.Navigation;
 using G = MSFSBlindAssist.Navigation.WaypointFlightDirectorGeometry;
 
