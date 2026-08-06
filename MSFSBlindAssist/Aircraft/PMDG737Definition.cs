@@ -185,6 +185,18 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // their own anticipation may relax as they learn to trust it.
     public override double TaxiTurnLeadSeconds => 0.4;
 
+    // Waypoint Flight Director: 737-class narrowbody — rolls about as briskly as an A320, so the
+    // baseline profile fits. Stated explicitly rather than inherited so the choice is visible
+    // (same reason the FBW A320 and Fenix defs spell theirs out); values equal
+    // BaseAircraftDefinition's defaults, so this is a no-op today. Unlike the 777 below it, this
+    // airframe needs no widebody softening.
+    //
+    // NOTE the measured taxi-turn lead above is NOT evidence for BankRateLeadSec — that figure is
+    // ground steering, dominated by the pilot's own rollout anticipation; the FD's lead models
+    // airframe roll rate in flight (the 777 runs taxi 0.3 s against FD lead 1.3 s). Best-effort
+    // default; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+
     // =========================================================================
     // Panel Structure
     // =========================================================================

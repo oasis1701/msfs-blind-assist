@@ -145,12 +145,24 @@ Tunables live on `WaypointFlightDirectorProfile` (`IAircraftDefinition.GetWaypoi
 Heavier/faster jets roll more slowly and cover ground faster, so they use a gentler roll gain, a
 larger capture radius and a longer rate-lead.
 
+Every supported aircraft carries an explicit profile — including the ones that simply take the
+baseline, so the choice is visible in the definition rather than inherited by accident.
+
 | Aircraft | Roll gain (°/° error) | Max bank | Max pitch | Capture radius | Speed floor | Rate-lead |
 |---|---|---|---|---|---|---|
 | A320 baseline — FBW A32NX (NEO), Fenix (CEO) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
+| PMDG 737-800 (baseline — 737-class narrowbody) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
+| iFly 737 MAX8 (baseline — 737-class narrowbody) | 1.1 | 25° | 12° | 0.5 NM | 40 kt | 1.0 s |
+| Headwind A330neo | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.4 s |
 | PMDG 777 | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.3 s |
 | HorizonSim 787 | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.3 s |
 | FlyByWire A380X | 0.85 | 28° | 10° | 0.9 NM | 60 kt | 1.5 s |
+
+> The Headwind A330 override is load-bearing, not decorative: that class derives from
+> `FlyByWireA320Definition`, so without its own profile it inherits an *explicit* narrowbody one and
+> the wrong values look deliberate. Note also that a per-aircraft **taxi**-turn lead is not evidence
+> for `BankRateLeadSec` — the taxi figure is ground steering dominated by the pilot's own rollout
+> anticipation (the PMDG 777 runs a 0.3 s taxi lead against a 1.3 s FD lead).
 
 > **⚠️ These are best-effort class defaults and need live in-sim tuning.** Because the FD is for
 > *hand-flying*, there is no autopilot to verify against — the gains, caps, capture radius and

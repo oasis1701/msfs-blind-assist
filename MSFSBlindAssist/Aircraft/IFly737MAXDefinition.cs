@@ -32,6 +32,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;
 
+    // Waypoint Flight Director: 737-class narrowbody — rolls about as briskly as an A320, so the
+    // baseline profile fits. Stated explicitly rather than inherited so the choice is visible
+    // (same reason the FBW A320 and Fenix defs spell theirs out); values equal
+    // BaseAircraftDefinition's defaults, so this is a no-op today.
+    //
+    // NOTE the taxi-turn lead above is NOT evidence for BankRateLeadSec: that 0.4 s is a measured
+    // GROUND-steering figure dominated by the pilot's own rollout anticipation, whereas the FD's
+    // lead models airframe roll rate in flight. The PMDG 777 shows the same split (taxi 0.3 s,
+    // FD lead 1.3 s) — don't derive one from the other. Best-effort default; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+
     /// <summary>The shared-memory SDK client. Owned by the definition; started/bridged by MainForm.</summary>
     public IFlySdkClient Sdk { get; } = new();
 

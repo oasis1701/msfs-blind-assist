@@ -75,6 +75,28 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     // and flare biases are ESTIMATES pending an in-sim coupled-ILS-autoland calibration
     // (same status as the A320's — do not treat as measured). Flare initiation per the
     // A330 FCTM (~40 ft RA, ~2° pitch increase from the ~3° approach attitude).
+    // Waypoint Flight Director: heavy widebody twin. This override is REQUIRED, not cosmetic —
+    // HeadwindA330Definition derives from FlyByWireA320Definition, which carries an EXPLICIT
+    // baseline profile commented "A320neo uses the baseline profile (narrowbody, agile roll)".
+    // Without this the A330 silently inherited a narrowbody's roll gain, 0.5 NM capture radius and
+    // 40 kt speed floor — the same defect class as the A380X/HS787 visual-guidance profiles that
+    // were corrected alongside the FD work, and harder to spot here because the inherited value
+    // reads as deliberate.
+    //
+    // Positioned between the A320 and the A380 (its taxi-turn lead sits there too, 1.7 s vs 1.6/1.8),
+    // i.e. 777/787 class. TypicalApproachAoaDeg is kept at 4.5 to agree with this airframe's own
+    // visual-guidance profile below. Best-effort class defaults; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        KRollDegPerDegTrack = 0.9,
+        MaxBankDeg          = 27.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.8,
+        LowSpeedFloorKts    = 60.0,
+        BankRateLeadSec     = 1.4,
+        TypicalApproachAoaDeg = 4.5
+    };
+
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
     {
         TypicalApproachAoaDeg     = 4.5,    // widebody approach AoA (lower than the A320's 6°)
