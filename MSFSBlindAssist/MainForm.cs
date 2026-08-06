@@ -170,6 +170,20 @@ public partial class MainForm : Form
     private MSFSBlindAssist.Services.LandingRateAnnouncer landingRateAnnouncer = null!;
     private MSFSBlindAssist.Services.SlipCueGenerator slipCueGenerator = null!;
     private bool _slipCueOn;   // runtime toggle (Ctrl+K); default off, not persisted
+
+    // TURN COORDINATOR BALL is requested in the "Position" unit, which the MSFS SDK documents as a
+    // fixed -127..+127 range — divide by this to normalise to [-1, 1]. Do NOT sniff the magnitude
+    // to guess the scaling; that mis-scaled real deflections sitting near the ±1-2 band.
+    private const double SlipCueBallFullScale = 127.0;
+
+    // ⚠️ UNVERIFIED IN-SIM. Sign convention of the normalised ball: +1.0 means a POSITIVE reading is
+    // the ball out to the RIGHT, which the cue renders as a right-ear tick = press RIGHT rudder
+    // ("step on the ball"). If a live check shows the cue calls for the wrong pedal, flip this ONE
+    // constant to -1.0 — that is the whole fix, and it is the only place the convention is applied.
+    // Until it has been flown, treat the ball SIDE as unconfirmed: a reversed rudder-coordination
+    // cue actively instructs a blind pilot to press the wrong pedal, so this must be checked before
+    // the feature is relied on. See docs/waypoint-flight-director.md.
+    private const double SlipCueBallSign = 1.0;
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
 
     private ElectronicFlightBagForm? electronicFlightBagForm;
@@ -571,9 +585,8 @@ public partial class MainForm : Form
         visualGuidanceManager = new VisualGuidanceManager(announcer);
         visualGuidanceManager.VisualGuidanceActiveChanged += OnVisualGuidanceActiveChanged;
 
-        waypointFdManager = new WaypointFlightDirectorManager(announcer);
-        waypointFdManager.WaypointFlightDirectorActiveChanged += OnWaypointFdActiveChanged;
-
+        // Synthetic en-route audio flight director (Ctrl+F). Mutually exclusive with visual
+        // guidance; MainForm's ActiveChanged handler arbitrates the shared 505 stream.
         waypointFdManager = new WaypointFlightDirectorManager(announcer);
         waypointFdManager.WaypointFlightDirectorActiveChanged += OnWaypointFdActiveChanged;
 
@@ -896,7 +909,6 @@ public partial class MainForm : Form
         }
 
         // Clean up managers and resources
-        slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
         slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
