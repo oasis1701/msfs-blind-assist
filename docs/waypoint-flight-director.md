@@ -158,6 +158,16 @@ baseline, so the choice is visible in the definition rather than inherited by ac
 | HorizonSim 787 | 0.9 | 27° | 10° | 0.8 NM | 60 kt | 1.3 s |
 | FlyByWire A380X | 0.85 | 28° | 10° | 0.9 NM | 60 kt | 1.5 s |
 
+`TonePitchRangeDeg` (the pitch at which the tone frequency saturates) is **kept equal to
+`MaxPitchDeg`** on every profile — 12° on the narrowbodies, 10° on the widebodies. The FD clamps its
+pitch command to `MaxPitchDeg`, so a tone that saturates earlier cannot represent commands the FD
+itself issues: it originally inherited Visual Guidance's 6°, which pinned the tone at full frequency
+through any normal en-route climb and cost the pilot all pitch resolution in exactly the regime the
+FD exists for. The resulting matching slopes (25 Hz/° at 12°, 30 Hz/° at 10°) sit in the band the
+777's in-sim calibration settled on. This is deliberately a *different* number from the VG profile's
+`TonePitchRangeDeg`, which covers only the narrow approach envelope and is sized for beat
+sensitivity rather than reach.
+
 > The Headwind A330 override is load-bearing, not decorative: that class derives from
 > `FlyByWireA320Definition`, so without its own profile it inherits an *explicit* narrowbody one and
 > the wrong values look deliberate. Note also that a per-aircraft **taxi**-turn lead is not evidence

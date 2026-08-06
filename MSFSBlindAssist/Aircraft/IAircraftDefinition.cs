@@ -179,11 +179,27 @@ public sealed class WaypointFlightDirectorProfile
     /// at-or-below step isn't missed. Big descents arm earlier via the angle gate.</summary>
     public double VerticalArmRangeNm { get; init; } = 25.0;
 
-    // Dual-tone mapping — same idiom and defaults as VisualGuidanceProfile so the FD's tones
-    // sound consistent with Visual Guidance (the pilot zero-beats desired vs current).
+    // Dual-tone mapping — same idiom as VisualGuidanceProfile (the pilot zero-beats desired vs
+    // current), but the pitch range is sized differently; see TonePitchRangeDeg below.
     public float ToneMinFrequencyHz { get; init; } = 200f;
     public float ToneMaxFrequencyHz { get; init; } = 800f;
-    public double TonePitchRangeDeg { get; init; } = 6.0;
+
+    /// <summary>
+    /// Pitch (degrees) at which the tone frequency saturates. KEEP THIS EQUAL TO
+    /// <see cref="MaxPitchDeg"/>: the FD clamps its pitch command to MaxPitchDeg, so a tone that
+    /// saturates earlier cannot represent commands the FD itself generates. It previously inherited
+    /// Visual Guidance's 6°, which meant every profile except the PMDG 777 pinned the tone at full
+    /// frequency through any normal en-route climb — the pilot lost all pitch resolution above 6°
+    /// in exactly the regime the FD exists for.
+    ///
+    /// Note this is deliberately NOT the same value as VisualGuidanceProfile.TonePitchRangeDeg.
+    /// VG covers a narrow approach envelope (-3° glideslope to +6° flare), so its range is chosen
+    /// for beat sensitivity rather than reach. The resulting slopes land in the same comfortable
+    /// band either way: 12° gives 25 Hz/°, 10° gives 30 Hz/° — the figure the 777's in-sim
+    /// calibration settled on after finding 50 Hz/° (a 6° range) too dissonant at small errors.
+    /// </summary>
+    public double TonePitchRangeDeg { get; init; } = 12.0;
+
     public double ToneBankRangeDeg { get; init; } = 5.0;
 }
 

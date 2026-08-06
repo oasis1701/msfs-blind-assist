@@ -250,7 +250,8 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,
         BankRateLeadSec     = 1.3,
-        TypicalApproachAoaDeg = 4.5
+        TypicalApproachAoaDeg = 4.5,
+        TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
     };
 
     // Visual Landing Guidance: the 787-9 is a heavy widebody and must NOT use the A320 baseline.

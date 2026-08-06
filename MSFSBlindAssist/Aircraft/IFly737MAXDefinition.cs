@@ -43,6 +43,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // FD lead 1.3 s) — don't derive one from the other. Best-effort default; calibrate in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
 
+    // Visual Landing Guidance: same 737 airframe class as the PMDG 737-800, so the same three
+    // Boeing-flare deltas off the (Airbus-tuned) baseline — flare initiated at ~20 ft RA rather
+    // than 30, flare attitude ~+5° rather than +6°, and a 5° approach-AoA fallback. See the fuller
+    // rationale on PMDG737Definition.GetVisualGuidanceProfile. Estimates pending in-sim
+    // calibration, like the baseline's own datum biases.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 5.0,
+        FlareTriggerWheelHeightFt = 20.0,
+        FlareTargetPitchDeg       = 5.0
+    };
+
     /// <summary>The shared-memory SDK client. Owned by the definition; started/bridged by MainForm.</summary>
     public IFlySdkClient Sdk { get; } = new();
 

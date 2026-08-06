@@ -59,7 +59,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         CaptureRadiusNm     = 0.9,
         LowSpeedFloorKts    = 60.0,
         BankRateLeadSec     = 1.5,
-        TypicalApproachAoaDeg = 4.0
+        TypicalApproachAoaDeg = 4.0,
+        TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
     };
 
     // Visual Landing Guidance: the A380 is a heavy widebody and must NOT use the A320 baseline

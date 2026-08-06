@@ -94,7 +94,8 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,
         BankRateLeadSec     = 1.4,
-        TypicalApproachAoaDeg = 4.5
+        TypicalApproachAoaDeg = 4.5,
+        TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
     };
 
     public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
@@ -106,7 +107,12 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         GlideslopeAltitudeBiasFt  = 70.0,   // estimate — calibrate vs a coupled ILS autoland
         FlareAltitudeBiasFt       = 30.0,   // estimate
         FlareTriggerWheelHeightFt = 40.0,   // A330 FCTM: flare initiation ~40 ft RA
-        FlareTargetPitchDeg       = 5.0     // ~2° increase from the ~3° widebody approach pitch
+        FlareTargetPitchDeg       = 5.0,    // ~2° increase from the ~3° widebody approach pitch
+        // Joins the other widebodies at 10°. The 6° default gives 50 Hz/° of beat, which the
+        // PMDG 777's in-sim calibration found too dissonant at the ±0.1° errors a stabilized
+        // approach actually produces; 10° = 30 Hz/°. This airframe was the one widebody still
+        // left on the default.
+        TonePitchRangeDeg         = 10.0
     };
 
     // Slightly longer turn-rollout lead than the A320 (1.6 s): the A330's longer

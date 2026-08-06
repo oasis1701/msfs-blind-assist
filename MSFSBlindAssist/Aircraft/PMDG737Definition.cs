@@ -197,6 +197,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // default; calibrate in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
 
+    // Visual Landing Guidance: a 737-800 is close enough to the A320 in size and approach speed
+    // that most of the baseline carries over — but the FLARE is Boeing, not Airbus, and the
+    // baseline's flare numbers are explicitly Airbus-tuned. Three deltas, all from the same FCTM
+    // reasoning the measured PMDG 777 profile uses:
+    //   - FlareTriggerWheelHeightFt = 20: Boeing 737 FCTM initiates the flare at ~20 ft RA, vs the
+    //     A320 FCTM's 30 ft. On the baseline the cue fired ~10 ft high on every 737 landing.
+    //   - FlareTargetPitchDeg = 5.0: Boeing FCTM specifies a 2-3° increase from approach attitude;
+    //     the 737-800 approaches at ~+2.5°, so flare ≈ +5°. The Airbus default of 6° overshoots.
+    //   - TypicalApproachAoaDeg = 5.0: only a fallback for a missing/implausible live AoA reading.
+    // Everything else (Vref ~140 like the A320, narrowbody pitch/bank rates, the datum biases) is
+    // left on the baseline deliberately — a 737-800 does not differ markedly there. The glideslope
+    // and flare datum biases remain ESTIMATES pending an in-sim coupled-ILS-autoland calibration,
+    // exactly as the A320 baseline's are.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 5.0,
+        FlareTriggerWheelHeightFt = 20.0,
+        FlareTargetPitchDeg       = 5.0
+    };
+
     // =========================================================================
     // Panel Structure
     // =========================================================================
