@@ -56,6 +56,9 @@ public partial class TrackFixForm : Form
         // Reset to search mode
         SwitchToSearchMode();
 
+        // Plain open — drop any per-fix caption a previous pre-filled open left behind.
+        Text = DefaultCaption;
+
         Show();
         BringToFront();
         Activate();
@@ -65,6 +68,8 @@ public partial class TrackFixForm : Form
         // Focus on waypoint textbox
         waypointTextBox.Focus();
     }
+
+    private const string DefaultCaption = "Track Fix Window";
 
     /// <summary>
     /// Open the dialog PRE-POPULATED from an EFB-selected route fix — its ident, the chosen slot, and
@@ -91,15 +96,21 @@ public partial class TrackFixForm : Form
         courseTextBox.Text = course.HasValue ? course.Value.ToString("F0") : "";
         UpdateUpperAltVisibility();
 
+        // Which fix and slot this is goes in the CAPTION, not a spoken announcement. The screen
+        // reader already speaks the window title and then the focused field on activation, so an
+        // Announce here just talks over its own context (and the project rule is to leave UI
+        // interactions to the reader). The caption carries the same information, and the pilot can
+        // re-read it at any time — an announcement is gone once spoken.
+        Text = $"{DefaultCaption} — {fix.Ident}, slot {slotNumber}";
+
         Show();
         BringToFront();
         Activate();
         TopMost = true;
         TopMost = false; // Flash to bring to front
 
-        // Focus the crossing-altitude field (the value most likely to add/edit), then announce context.
+        // Focus the crossing-altitude field — the value most likely to be added or edited.
         crossingAltTextBox.Focus();
-        _announcer.Announce($"Editing {fix.Ident} for slot {slotNumber}. Review altitude and course, then press Track.");
     }
 
     /// <summary>Maps an <see cref="AltitudeConstraintType"/> to the constraint combo's item index
