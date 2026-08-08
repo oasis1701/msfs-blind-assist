@@ -74,7 +74,11 @@ namespace MSFSBlindAssist.VPilotPlugin
                 {
                     lock (_gate)
                     {
-                        if (_queue.Count > 0) _queue.Dequeue();
+                        // Dequeue only the item we actually wrote. Send()'s drop-oldest eviction can
+                        // shift a different, never-sent message to the head while the write is in
+                        // flight outside the lock — an unconditional Dequeue would discard that one.
+                        if (_queue.Count > 0 && ReferenceEquals(_queue.Peek(), line))
+                            _queue.Dequeue();
                     }
                     _consecutiveFailures = 0;
                 }

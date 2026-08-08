@@ -22,6 +22,13 @@ namespace MSFSBlindAssist.VPilotPlugin
             try
             {
                 PluginLog.Info("Plugin initializing");
+
+                // vPilot can call Initialize twice on a reload. Dispose the old client first or its
+                // sender thread outlives the reload and keeps polling for the life of the process.
+                if (_pipe != null)
+                {
+                    try { _pipe.Dispose(); } catch { }
+                }
                 _pipe = new PipeClient();
 
                 // Unsubscribe first: vPilot can call Initialize twice on a reload, and a
