@@ -45,6 +45,21 @@ named, let alone added, until the PR exists. Do not try to pre-create it before 
 the PR. A required CI check fails without it. Full convention:
 [changelog.d/README.md](changelog.d/README.md).
 
+**The procedure — the number is READ, never guessed:**
+
+1. Commit the code changes and push the branch.
+2. Open the PR (`gh pr create …`). It prints the PR URL; the trailing number IS `<pr>`.
+3. Add `changelog.d/<pr>-<slug>.<category>.md`, commit, push.
+
+**NEVER infer the next number.** GitHub draws issue and PR numbers from ONE shared
+sequence — in this repo issue #172 sits between PRs #171 and #173, issue #169 between
+#168 and #170 — so anyone filing an *issue* between your guess and `gh pr create` shifts
+it, as does a second PR opened in that window (four people contribute here). A fragment
+carrying the WRONG number is worse than one carrying none: it looks authoritative, so
+nobody re-checks it, and the archive quietly attributes a change to a PR that never made
+it. Step 2 costs nothing and cannot be wrong. If a number does end up wrong or missing,
+CI prints the exact `git mv` — that is the backstop, not the detection mechanism.
+
 - `<pr>` — this pull request's own number, no leading zero. Traces every fragment to the
   PR that added it and stops two PRs on the same area from colliding on a file name. CI
   checks this against the real PR number and, if it's wrong or missing, fails with the
