@@ -66,6 +66,31 @@ jobs:
         shell: bash
         run: dotnet run --project tools/ChangelogBuilder -- --out preview.md --from-file changed.txt
 
+      - name: Check the PR number prefix on fragments added by this PR
+        if: steps.added.outputs.count != '0'
+        shell: bash
+        run: |
+          # The builder (ChangelogFragment.cs) validates SHAPE only — is there a numeric
+          # prefix at all — because it has no git access and cannot know which PR is
+          # actually running. Checking the prefix VALUE against the real PR number is
+          # this workflow's job alone.
+          #
+          # added.txt ONLY — never changed.txt. A later PR legitimately edits an older
+          # PR's fragment (e.g. #183 editing 182-foo.fix.md), and that fragment's prefix
+          # correctly still names #182, the PR it belongs to, not #183.
+          pr="${{ github.event.pull_request.number }}"
+          fail=0
+          while IFS= read -r file || [ -n "$file" ]; do
+            [ -z "$file" ] && continue
+            base="$(basename "$file")"
+            if [[ "$base" != "$pr"-* ]]; then
+              fail=1
+              suggested="$(echo "$base" | sed -E 's/^[0-9]+-//')"
+              echo "::error::Changelog fragment is missing the PR number prefix.%0ARun:%0A  git mv $file changelog.d/$pr-$suggested"
+            fi
+          done < added.txt
+          exit $fail
+
       - name: Require a fragment or the skip-changelog label
         if: steps.added.outputs.count == '0' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
         shell: bash
@@ -73,7 +98,7 @@ jobs:
           # %0A folds the full guidance into ONE ::error:: annotation so it's visible on
           # the PR checks UI without opening the raw log — a plain stdout echo after the
           # first ::error:: line is invisible there.
-          echo "::error::This PR adds no changelog fragment.%0AAdd changelog.d/<slug>.<category>.md describing the user-facing change. Categories: aircraft, feature, improvement, fix, internal. See changelog.d/README.md.%0AFor a change with nothing to announce, use an 'internal' fragment or apply the skip-changelog label."
+          echo "::error::This PR adds no changelog fragment.%0AAdd changelog.d/<pr>-<slug>.<category>.md (pr = this PR's own number) describing the user-facing change. Categories: aircraft, feature, improvement, fix, internal. See changelog.d/README.md.%0AFor a change with nothing to announce, use an 'internal' fragment or apply the skip-changelog label."
           exit 1
 
       - name: Summary

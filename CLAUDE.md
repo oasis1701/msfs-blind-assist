@@ -39,12 +39,18 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Release notes — every PR adds a changelog fragment
 
-**Before opening a PR, add `changelog.d/<slug>.<category>.md`** describing the change in
-user-facing terms. A required CI check fails without one. Full convention:
+**After opening the PR, add `changelog.d/<pr>-<slug>.<category>.md`** describing the
+change in user-facing terms — `<pr>` is this PR's own number, so the file cannot be
+named, let alone added, until the PR exists. Do not try to pre-create it before opening
+the PR. A required CI check fails without it. Full convention:
 [changelog.d/README.md](changelog.d/README.md).
 
+- `<pr>` — this pull request's own number, no leading zero. Traces every fragment to the
+  PR that added it and stops two PRs on the same area from colliding on a file name. CI
+  checks this against the real PR number and, if it's wrong or missing, fails with the
+  exact `git mv` to fix it.
 - `<slug>` — lower-case letters/digits/dashes, starting with a letter or digit, short and
-  descriptive, unique.
+  descriptive, unique within the PR.
 - `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
   (existing capability made better), `fix`, or `internal` (validated, never published —
   for refactors/CI/tests).

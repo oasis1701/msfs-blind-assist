@@ -13,11 +13,11 @@ namespace MSFSBlindAssist.Tests;
 public class ChangelogFragmentTests
 {
     [Theory]
-    [InlineData("docking-speed.aircraft.md", ChangelogCategory.Aircraft)]
-    [InlineData("si-import.feature.md", ChangelogCategory.Feature)]
-    [InlineData("tone-fade.improvement.md", ChangelogCategory.Improvement)]
-    [InlineData("autobrake.fix.md", ChangelogCategory.Fix)]
-    [InlineData("ci-bump.internal.md", ChangelogCategory.Internal)]
+    [InlineData("182-docking-speed.aircraft.md", ChangelogCategory.Aircraft)]
+    [InlineData("182-si-import.feature.md", ChangelogCategory.Feature)]
+    [InlineData("182-tone-fade.improvement.md", ChangelogCategory.Improvement)]
+    [InlineData("182-autobrake.fix.md", ChangelogCategory.Fix)]
+    [InlineData("182-ci-bump.internal.md", ChangelogCategory.Internal)]
     public void Parse_accepts_every_category(string fileName, ChangelogCategory expected)
     {
         var result = ChangelogFragment.Parse(fileName, "Something changed.");
@@ -29,15 +29,32 @@ public class ChangelogFragmentTests
     [Fact]
     public void Parse_extracts_the_slug()
     {
-        var result = ChangelogFragment.Parse("docking-speed-callouts.improvement.md", "Body.");
+        var result = ChangelogFragment.Parse("182-docking-speed-callouts.improvement.md", "Body.");
 
         Assert.Equal("docking-speed-callouts", result.Fragment!.Slug);
     }
 
     [Fact]
+    public void Parse_extracts_the_pr_number()
+    {
+        var result = ChangelogFragment.Parse("182-docking.fix.md", "Body.");
+
+        Assert.Equal(182, result.Fragment!.PrNumber);
+    }
+
+    [Fact]
+    public void Parse_accepts_a_large_pr_number()
+    {
+        var result = ChangelogFragment.Parse("100000-x.fix.md", "Body.");
+
+        Assert.True(result.Ok);
+        Assert.Equal(100000, result.Fragment!.PrNumber);
+    }
+
+    [Fact]
     public void Parse_trims_the_body()
     {
-        var result = ChangelogFragment.Parse("a.fix.md", "\n\n  Body text.  \n\n");
+        var result = ChangelogFragment.Parse("182-a.fix.md", "\n\n  Body text.  \n\n");
 
         Assert.Equal("Body text.", result.Fragment!.Body);
     }
@@ -45,19 +62,23 @@ public class ChangelogFragmentTests
     [Fact]
     public void Parse_rejects_an_unknown_category()
     {
-        var result = ChangelogFragment.Parse("a.bugfix.md", "Body.");
+        var result = ChangelogFragment.Parse("182-a.bugfix.md", "Body.");
 
         Assert.False(result.Ok);
-        Assert.Contains("a.bugfix.md", result.Error!);
+        Assert.Contains("182-a.bugfix.md", result.Error!);
     }
 
     [Theory]
-    [InlineData("Uppercase.fix.md")]        // slug must be lower-case
-    [InlineData("-leading-dash.fix.md")]    // slug must start alphanumeric
-    [InlineData("no-category.md")]          // category segment missing
-    [InlineData("a.fix.markdown")]          // wrong extension
-    [InlineData("a.fix.txt")]
-    [InlineData("under_score.fix.md")]      // underscore not allowed
+    [InlineData("182-Uppercase.fix.md")]        // slug must be lower-case
+    [InlineData("182--leading-dash.fix.md")]    // slug must start alphanumeric
+    [InlineData("182-no-category.md")]          // category segment missing
+    [InlineData("182-a.fix.markdown")]          // wrong extension
+    [InlineData("182-a.fix.txt")]
+    [InlineData("182-under_score.fix.md")]      // underscore not allowed
+    [InlineData("docking.fix.md")]              // no numeric PR prefix at all
+    [InlineData("0182-docking.fix.md")]         // leading zero on the PR prefix
+    [InlineData("abc-docking.fix.md")]          // non-numeric PR prefix
+    [InlineData("182.fix.md")]                  // PR number with no slug
     public void Parse_rejects_a_malformed_filename(string fileName)
     {
         var result = ChangelogFragment.Parse(fileName, "Body.");
@@ -72,16 +93,16 @@ public class ChangelogFragmentTests
     [InlineData("\n\n  \n")]
     public void Parse_rejects_an_empty_body(string content)
     {
-        var result = ChangelogFragment.Parse("a.fix.md", content);
+        var result = ChangelogFragment.Parse("182-a.fix.md", content);
 
         Assert.False(result.Ok);
-        Assert.Contains("a.fix.md", result.Error!);
+        Assert.Contains("182-a.fix.md", result.Error!);
     }
 
     [Fact]
     public void Parse_accepts_a_full_path_and_uses_only_the_file_name()
     {
-        var result = ChangelogFragment.Parse("changelog.d/a-b.fix.md", "Body.");
+        var result = ChangelogFragment.Parse("changelog.d/182-a-b.fix.md", "Body.");
 
         Assert.True(result.Ok);
         Assert.Equal("a-b", result.Fragment!.Slug);

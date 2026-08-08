@@ -27,9 +27,14 @@ public static class ChangelogRenderer
 
         foreach (var (category, heading) in Sections)
         {
+            // Numeric, not lexicographic: as strings "1000-x" sorts before "182-x" (their
+            // first characters tie at '1', then '0' < '8'), which would shuffle release
+            // notes out of PR order. Slug is only a tiebreak, for the PR that adds more
+            // than one fragment.
             var entries = all
                 .Where(f => f.Category == category)
-                .OrderBy(f => f.Slug, StringComparer.Ordinal)
+                .OrderBy(f => f.PrNumber)
+                .ThenBy(f => f.Slug, StringComparer.Ordinal)
                 .ToList();
 
             if (entries.Count == 0)

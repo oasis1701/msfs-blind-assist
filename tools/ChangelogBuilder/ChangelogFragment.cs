@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace ChangelogBuilder;
@@ -14,11 +15,18 @@ public enum ChangelogCategory
     Internal,
 }
 
-/// <summary>One user-facing change, read from changelog.d/&lt;slug&gt;.&lt;category&gt;.md.</summary>
-public sealed record ChangelogFragment(string Slug, ChangelogCategory Category, string Body)
+/// <summary>
+/// One user-facing change, read from changelog.d/&lt;pr&gt;-&lt;slug&gt;.&lt;category&gt;.md.
+/// </summary>
+public sealed record ChangelogFragment(int PrNumber, string Slug, ChangelogCategory Category, string Body)
 {
+    // This is a SHAPE check only — is there a numeric prefix at all — never a value check.
+    // Parse has no git or filesystem access and cannot know which PR is actually running,
+    // so it can't confirm the number is THIS PR's own; that's .github/workflows/changelog.yml's
+    // job, the only place github.event.pull_request.number is available. Keep that boundary:
+    // don't grow this into anything that needs to know "the real" PR number.
     private static readonly Regex NamePattern = new(
-        @"^(?<slug>[a-z0-9][a-z0-9-]*)\.(?<cat>aircraft|feature|improvement|fix|internal)\.md$",
+        @"^(?<pr>[1-9][0-9]*)-(?<slug>[a-z0-9][a-z0-9-]*)\.(?<cat>aircraft|feature|improvement|fix|internal)\.md$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -34,9 +42,10 @@ public sealed record ChangelogFragment(string Slug, ChangelogCategory Category, 
         if (!match.Success)
         {
             return new ParseResult(null,
-                $"{fileName}: name must be <slug>.<category>.md, where slug is lower-case " +
-                "letters, digits and dashes (starting with a letter or digit) and category " +
-                "is one of aircraft, feature, improvement, fix, internal.");
+                $"{fileName}: name must be <pr>-<slug>.<category>.md, where pr is the pull " +
+                "request number (no leading zero), slug is lower-case letters, digits and " +
+                "dashes (starting with a letter or digit) and category is one of aircraft, " +
+                "feature, improvement, fix, internal.");
         }
 
         var body = content.Trim();
@@ -57,7 +66,10 @@ public sealed record ChangelogFragment(string Slug, ChangelogCategory Category, 
                 "ChangelogCategory mapping. Add the arm — an unmapped category would be silently dropped."),
         };
 
-        return new ParseResult(new ChangelogFragment(match.Groups["slug"].Value, category, body), null);
+        var prNumber = int.Parse(match.Groups["pr"].Value, CultureInfo.InvariantCulture);
+
+        return new ParseResult(
+            new ChangelogFragment(prNumber, match.Groups["slug"].Value, category, body), null);
     }
 }
 

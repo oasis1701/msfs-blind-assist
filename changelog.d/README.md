@@ -9,10 +9,18 @@ path moved.
 
 ## Naming
 
-    changelog.d/<slug>.<category>.md
+    changelog.d/<pr>-<slug>.<category>.md
+
+`<pr>` is the number of the pull request the fragment belongs to (no leading zero). It
+makes `changelog.d/` a traceable archive and stops two PRs touching the same area from
+ever colliding on a file name. **You add the fragment after opening the PR** — the
+number does not exist before that, so there is nothing to name the file until GitHub has
+assigned it. The required check verifies the number is actually this PR's own; get it
+wrong, or forget it, and the check fails with the exact `git mv` command to fix it.
 
 `<slug>` is lower-case letters, digits and dashes, starting with a letter or digit —
-anything short and descriptive; it only has to be unique. `<category>` is one of:
+anything short and descriptive; it only has to be unique within the PR. `<category>` is
+one of:
 
 | Category | Appears under | Use for |
 | --- | --- | --- |
@@ -27,7 +35,7 @@ anything short and descriptive; it only has to be unique. `<category>` is one of
 Markdown prose, no heading. It becomes a bullet, so start with the change itself.
 Multiple paragraphs are fine — continuation lines are indented under the bullet.
 
-Example — `changelog.d/docking-speed-callouts.improvement.md`:
+Example — `changelog.d/178-docking-speed-callouts.improvement.md`:
 
     Ground speed is now called out every knot during the final approach to the gate. The
     general speed announcer works in 5-knot steps, so it was silent across the whole
