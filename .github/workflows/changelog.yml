@@ -1,0 +1,116 @@
+name: Changelog
+
+# labeled/unlabeled are load-bearing: without them, applying skip-changelog leaves this
+# required check red until someone pushes an unrelated commit to re-run it.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: changelog-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Changelog fragment
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        # Full history: the merge-base diff below needs the base branch.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Find fragments added by this PR
+        id: added
+        shell: bash
+        run: |
+          # fetch-depth: 0 above already brings the base branch down, but fetch it
+          # explicitly by refspec so the ref is guaranteed present. (`--depth=0` is not
+          # valid fetch syntax — do not "simplify" this back to it.)
+          git fetch --no-tags --prune origin \
+            "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          # Three dots = compare from the MERGE BASE. Two dots would also match
+          # fragments merged into the base since this branch diverged, so a PR that
+          # added none would pass on somebody else's file.
+          # The README documents the convention and is not a fragment — it fails the
+          # filename grammar, so leaving it in makes the builder exit 1.
+          git diff --name-only --diff-filter=A \
+            "origin/$GITHUB_BASE_REF...HEAD" \
+            -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > added.txt
+          echo "count=$(grep -c . added.txt || true)" >> "$GITHUB_OUTPUT"
+          cat added.txt
+
+      - name: Validate the fragments this PR touches
+        if: steps.added.outputs.count != '0'
+        shell: bash
+        run: dotnet run --project tools/ChangelogBuilder -- --out preview.md --from-file added.txt
+
+      - name: Require a fragment or the skip-changelog label
+        if: steps.added.outputs.count == '0' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+        shell: bash
+        run: |
+          echo "::error::This PR adds no changelog fragment."
+          echo "Add changelog.d/<slug>.<category>.md describing the user-facing change."
+          echo "Categories: aircraft, feature, improvement, fix, internal."
+          echo "See changelog.d/README.md. For a change with nothing to announce, use an"
+          echo "'internal' fragment or apply the skip-changelog label."
+          exit 1
+
+      - name: Summary
+        shell: bash
+        run: |
+          if [ "${{ steps.added.outputs.count }}" != "0" ]; then
+            {
+              echo "### Changelog preview"
+              echo
+              cat preview.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No fragment; skip-changelog label present." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  preview:
+    name: Preview unreleased notes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        # Full history AND tags: git describe needs the previous tag.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Render everything unreleased
+        shell: bash
+        run: |
+          # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
+          # makes the builder exit 1 if it reaches it.
+          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            echo "No previous tag; taking every fragment."
+            git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          else
+            echo "Fragments added since $PREV:"
+            git diff --name-only --diff-filter=A "$PREV..HEAD" \
+              -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          fi
+          cat fragments.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt
+          {
+            echo "### Unreleased notes (preview — nothing published)"
+            echo
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
