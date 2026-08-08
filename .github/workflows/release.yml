@@ -53,8 +53,11 @@ jobs:
           Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA.zip
         shell: pwsh
 
+      # v3 is the Node 24 runtime line; v2 targets the deprecated Node 20 and was
+      # only still working because the runner force-ran it on 24. v3.0.0 changed
+      # nothing but the runtime -- the inputs below are unchanged from v2.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: MSFSBA.zip
           generate_release_notes: true
