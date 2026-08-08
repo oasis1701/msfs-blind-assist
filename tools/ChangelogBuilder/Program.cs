@@ -24,6 +24,13 @@ for (var i = 0; i < args.Length; i++)
         case "--from-file" when i + 1 < args.Length:
             listPath = args[++i];
             break;
+        case "--out" or "--from-file":
+            // The guarded cases above only match when a value follows; reaching here means
+            // the flag is real but was given no value (e.g. it was the last argument) — a
+            // different fault than an unrecognized flag, so it needs its own message or a
+            // CI log reader is sent looking for a typo that isn't there.
+            Console.Error.WriteLine($"Missing value for option: {args[i]}");
+            return 2;
         case "--help" or "-h":
             Console.WriteLine("Usage: ChangelogBuilder --out <file> [--from-file <list>] [<path> ...]");
             return 0;
