@@ -44,15 +44,25 @@ public static class VPilotPluginInstaller
     private const string ShippedSubfolder = "vPilotPlugin";
 
     /// <summary>
-    /// Pure resolution, filesystem probe injected. Order: user override, then vPilot's
+    /// Pure resolution, filesystem probes injected. Order: user override, then vPilot's
     /// own registry key, then the default install location. A candidate may name either
     /// the vPilot install folder or the Plugins folder itself — Browse accepts both, and
-    /// the user should not have to know which one we wanted.
+    /// the user should not have to know which one we wanted. A candidate that is neither
+    /// of those, and has never loaded a plugin (no Plugins subfolder yet either), only
+    /// counts when vPilot.exe itself is found directly inside it — see the comment on
+    /// the third branch below for why that check exists at all.
     /// </summary>
     public static string? ResolvePluginsFolder(
         string? overridePath, string? registryInstallDir, string? localAppData,
-        Func<string, bool> directoryExists)
+        Func<string, bool> directoryExists, Func<string, bool>? fileExists = null)
     {
+        // Defaults to "no" rather than "yes": a caller that does not care about the
+        // vPilot.exe signal (i.e. does not pass one) gets the SAFE, tightened answer —
+        // never the pre-fix behaviour of treating every existing directory as a vPilot
+        // install. FindPluginsFolder, the one production caller, always passes a real
+        // File.Exists.
+        fileExists ??= _ => false;
+
         string? defaultInstall = string.IsNullOrWhiteSpace(localAppData)
             ? null
             : Path.Combine(localAppData, "vPilot");
@@ -75,8 +85,14 @@ public static class VPilotPluginInstaller
             if (directoryExists(plugins))
                 return plugins;
 
-            // vPilot is here but has never loaded a plugin. Install() creates the folder.
-            if (directoryExists(trimmed))
+            // vPilot is here but has never loaded a plugin, so there is no Plugins
+            // folder yet for the check above to find (Install() creates it). Requiring
+            // vPilot.exe here — rather than accepting any directory that merely exists,
+            // as this branch used to — is what stops a mistaken Browse into an unrelated
+            // folder (Documents, say) from being treated as a vPilot install: without
+            // it, Install() would create Documents\Plugins, copy the DLL into it, and
+            // report success.
+            if (fileExists(Path.Combine(trimmed, "vPilot.exe")))
                 return plugins;
         }
 
@@ -102,7 +118,8 @@ public static class VPilotPluginInstaller
                 overridePath,
                 ReadRegistryInstallDir(),
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                Directory.Exists);
+                Directory.Exists,
+                File.Exists);
         }
         catch (Exception ex)
         {
@@ -143,8 +160,15 @@ public static class VPilotPluginInstaller
     {
         string? pluginsFolder = FindPluginsFolder();
         if (pluginsFolder == null)
-            return new VPilotInstallResult(VPilotInstallStatus.VPilotNotFound,
+        {
+            // The commonest "why did VATSIM stop working" outcome of all — nothing else
+            // in this branch logs anything, so without this line debug.log has no record
+            // that an install was even attempted.
+            var notFound = new VPilotInstallResult(VPilotInstallStatus.VPilotNotFound,
                 "vPilot was not found.", false, null);
+            Log.Debug("VPilot", $"Install: {notFound.Detail} PluginsFolder={notFound.PluginsFolder ?? "(none)"}");
+            return notFound;
+        }
 
         string source = ShippedPluginPath;
         if (!File.Exists(source))
@@ -164,8 +188,14 @@ public static class VPilotPluginInstaller
             bool destExisted = File.Exists(dest);
 
             if (destExisted && IsPluginCurrent(pluginsFolder))
-                return new VPilotInstallResult(VPilotInstallStatus.AlreadyCurrent,
+            {
+                // The other silent outcome, and the one that fires on every ordinary
+                // startup once the plugin is up to date — equally worth a trace line.
+                var current = new VPilotInstallResult(VPilotInstallStatus.AlreadyCurrent,
                     "The plugin is installed and up to date.", legacyRemoved, pluginsFolder);
+                Log.Debug("VPilot", $"Install: {current.Detail} PluginsFolder={current.PluginsFolder}");
+                return current;
+            }
 
             try
             {
