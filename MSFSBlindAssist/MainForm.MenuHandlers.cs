@@ -79,7 +79,9 @@ public partial class MainForm
             };
         }
 
-        using var dlg = new Forms.Settings.SettingsForm(refreshTaxiwayNames: refreshCallback);
+        using var dlg = new Forms.Settings.SettingsForm(
+            refreshTaxiwayNames: refreshCallback,
+            vatsimStatus: () => vatsimService?.GetStatus());
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             ApplyRuntimeSettings();
@@ -196,6 +198,39 @@ public partial class MainForm
         // to push into; apply it here so it takes effect immediately (next route build).
         if (_augmentingProvider != null)
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
+
+        // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
+        // The outcome is spoken because the pilot cannot see whether a file landed in
+        // another application's folder — and because "Installed" always means "now
+        // restart vPilot", which nothing else would tell them.
+        var vatsimInstall = vatsimService?.ApplySettings(settings);
+        if (vatsimInstall != null)
+        {
+            if (vatsimInstall.LegacyRemoved)
+            {
+                announcer.Announce(
+                    "Removed the old vPilot to TTS plugin. MSFS Blind Assist now handles VATSIM announcements.");
+            }
+
+            switch (vatsimInstall.Status)
+            {
+                case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Installed:
+                    announcer.Announce("vPilot plugin installed. Restart vPilot to load it.");
+                    break;
+                case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Locked:
+                    announcer.Announce(
+                        "vPilot is running with an older plugin. Close vPilot and re-open Settings to update it.");
+                    break;
+                case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.VPilotNotFound:
+                    announcer.Announce(
+                        "vPilot not found. Use Browse in the VATSIM settings to locate it.");
+                    break;
+                case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Failed:
+                    announcer.Announce("The vPilot plugin could not be installed. See the log for details.");
+                    break;
+                // AlreadyCurrent says nothing — "Settings saved" already covers it.
+            }
+        }
     }
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)
