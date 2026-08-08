@@ -165,18 +165,11 @@ public class VatsimPanel : UserControl, ISettingsPanel
         _status.Text = VatsimStatusText.Compose(status);
     }
 
-    /// <summary>Resolves the folder using the value currently typed into the dialog,
-    /// so Browse shows its effect before OK is pressed.</summary>
-    private string? ResolveFolderForPreview()
-    {
-        if (string.IsNullOrWhiteSpace(_pluginsFolderOverride))
-            return VPilotPluginInstaller.FindPluginsFolder();
-
-        return VPilotPluginInstaller.ResolvePluginsFolder(
-            _pluginsFolderOverride, null,
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            Directory.Exists);
-    }
+    /// <summary>Resolves the folder using the override currently held by the dialog, so
+    /// Browse shows its effect before OK is pressed. Delegates to the installer so the
+    /// preview and the real install can never consult different candidates.</summary>
+    private string? ResolveFolderForPreview() =>
+        VPilotPluginInstaller.FindPluginsFolder(_pluginsFolderOverride);
 
     public void LoadFrom(UserSettings settings)
     {

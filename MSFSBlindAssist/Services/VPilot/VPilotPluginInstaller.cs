@@ -83,12 +83,23 @@ public static class VPilotPluginInstaller
         return null;
     }
 
-    public static string? FindPluginsFolder()
+    public static string? FindPluginsFolder() =>
+        FindPluginsFolder(SettingsManager.Current.VPilotPluginsFolderOverride);
+
+    /// <summary>
+    /// Resolve exactly as <see cref="FindPluginsFolder()"/> does, but against a
+    /// caller-supplied override rather than the saved one — so the settings panel can
+    /// preview an unsaved Browse result without its candidate list diverging from the
+    /// path the install will actually take. A preview that consults fewer candidates
+    /// than the installer can report "vPilot was not found" about a vPilot the
+    /// installer finds immediately.
+    /// </summary>
+    public static string? FindPluginsFolder(string? overridePath)
     {
         try
         {
             return ResolvePluginsFolder(
-                SettingsManager.Current.VPilotPluginsFolderOverride,
+                overridePath,
                 ReadRegistryInstallDir(),
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 Directory.Exists);
