@@ -21,11 +21,20 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # The git tag is the single source of truth for the shipped version.
+      # v8.0.0 -> 8.0.0, which -p:Version below hands to every project in the
+      # solution; the SDK derives AssemblyVersion, FileVersion and
+      # InformationalVersion from it. A prerelease tag works too: v8.0.0-rc1
+      # gives InformationalVersion 8.0.0-rc1 with Assembly/FileVersion 8.0.0.0.
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
         shell: bash
 
+      # Do NOT drop -p:Version. Without it the build falls back to the csproj's
+      # local-only <Version>0.0.0</Version> and every release ships as 0.0.0 —
+      # the app's update check compares its own AssemblyVersion against the
+      # latest GitHub tag, so a 0.0.0 release would offer itself as an update.
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
