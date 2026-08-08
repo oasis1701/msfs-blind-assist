@@ -43,7 +43,8 @@ The `main` branch is protected. Always create a new branch for changes and open 
 user-facing terms. A required CI check fails without one. Full convention:
 [changelog.d/README.md](changelog.d/README.md).
 
-- `<slug>` — lower-case letters/digits/dashes, short and descriptive, unique.
+- `<slug>` — lower-case letters/digits/dashes, starting with a letter or digit, short and
+  descriptive, unique.
 - `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
   (existing capability made better), `fix`, or `internal` (validated, never published —
   for refactors/CI/tests).

@@ -51,7 +51,10 @@ public sealed record ChangelogFragment(string Slug, ChangelogCategory Category, 
             "feature" => ChangelogCategory.Feature,
             "improvement" => ChangelogCategory.Improvement,
             "fix" => ChangelogCategory.Fix,
-            _ => ChangelogCategory.Internal,
+            "internal" => ChangelogCategory.Internal,
+            _ => throw new InvalidOperationException(
+                $"Category '{match.Groups["cat"].Value}' matched the filename pattern but has no " +
+                "ChangelogCategory mapping. Add the arm — an unmapped category would be silently dropped."),
         };
 
         return new ParseResult(new ChangelogFragment(match.Groups["slug"].Value, category, body), null);

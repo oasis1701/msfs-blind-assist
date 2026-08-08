@@ -62,6 +62,16 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF_NAME}"
+          # KNOWN LIMITATION, documented not handled: `$TAG^` is this tag's parent
+          # commit, so if TAG is a prerelease (e.g. v8.0.0-rc1), PREV resolves to
+          # whatever tag sits on/before that parent — not necessarily the previous FULL
+          # release — so the WRITTEN notes below can cover only since the rc. GitHub's
+          # own generated half (`generate_release_notes: true` further down, requested
+          # with no `previous_tag`) still compares against the previous full release, so
+          # the two halves of one release body would describe different ranges. This has
+          # never happened (20 tags, all full releases). If an rc is ever cut: either
+          # pass `previous_tag` explicitly to softprops/action-gh-release below so both
+          # halves agree, or accept the narrower written range deliberately.
           PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
           # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
           # makes the builder exit 1 if it reaches it.

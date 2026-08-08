@@ -42,16 +42,29 @@ jobs:
           # added none would pass on somebody else's file.
           # The README documents the convention and is not a fragment — it fails the
           # filename grammar, so leaving it in makes the builder exit 1.
+          #
+          # Two lists, on purpose — do not collapse them back into one:
+          #   added.txt   (diff-filter=A)  additions only. Drives the "did this PR add
+          #     a fragment" gate below — editing an existing fragment is not a new
+          #     entry, so an edit-only PR must not satisfy that gate.
+          #   changed.txt (diff-filter=AM) added OR modified. Drives validation, so an
+          #     edit to an existing unreleased fragment (e.g. one that empties it) is
+          #     caught here, not at tag time in release.yml — after the build and zip,
+          #     with the tag already pushed.
           git diff --name-only --diff-filter=A \
             "origin/$GITHUB_BASE_REF...HEAD" \
             -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > added.txt
+          git diff --name-only --diff-filter=AM \
+            "origin/$GITHUB_BASE_REF...HEAD" \
+            -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > changed.txt
           echo "count=$(grep -c . added.txt || true)" >> "$GITHUB_OUTPUT"
+          echo "changed_count=$(grep -c . changed.txt || true)" >> "$GITHUB_OUTPUT"
           cat added.txt
 
       - name: Validate the fragments this PR touches
-        if: steps.added.outputs.count != '0'
+        if: steps.added.outputs.changed_count != '0'
         shell: bash
-        run: dotnet run --project tools/ChangelogBuilder -- --out preview.md --from-file added.txt
+        run: dotnet run --project tools/ChangelogBuilder -- --out preview.md --from-file changed.txt
 
       - name: Require a fragment or the skip-changelog label
         if: steps.added.outputs.count == '0' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
