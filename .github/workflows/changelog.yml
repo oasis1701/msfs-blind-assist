@@ -57,11 +57,10 @@ jobs:
         if: steps.added.outputs.count == '0' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
         shell: bash
         run: |
-          echo "::error::This PR adds no changelog fragment."
-          echo "Add changelog.d/<slug>.<category>.md describing the user-facing change."
-          echo "Categories: aircraft, feature, improvement, fix, internal."
-          echo "See changelog.d/README.md. For a change with nothing to announce, use an"
-          echo "'internal' fragment or apply the skip-changelog label."
+          # %0A folds the full guidance into ONE ::error:: annotation so it's visible on
+          # the PR checks UI without opening the raw log — a plain stdout echo after the
+          # first ::error:: line is invisible there.
+          echo "::error::This PR adds no changelog fragment.%0AAdd changelog.d/<slug>.<category>.md describing the user-facing change. Categories: aircraft, feature, improvement, fix, internal. See changelog.d/README.md.%0AFor a change with nothing to announce, use an 'internal' fragment or apply the skip-changelog label."
           exit 1
 
       - name: Summary
