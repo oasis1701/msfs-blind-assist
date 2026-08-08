@@ -14,7 +14,12 @@ jobs:
 
     steps:
       - name: Checkout
+        # Full history AND tags: the changelog step's `git describe` needs the previous
+        # tag, and the default shallow clone fetches only the tagged commit — which
+        # would silently produce an empty range and a release with no written notes.
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
@@ -53,6 +58,36 @@ jobs:
           Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA.zip
         shell: pwsh
 
+      - name: Build release notes from changelog fragments
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # KNOWN LIMITATION, documented not handled: `$TAG^` is this tag's parent
+          # commit, so if TAG is a prerelease (e.g. v8.0.0-rc1), PREV resolves to
+          # whatever tag sits on/before that parent — not necessarily the previous FULL
+          # release — so the WRITTEN notes below can cover only since the rc. GitHub's
+          # own generated half (`generate_release_notes: true` further down, requested
+          # with no `previous_tag`) still compares against the previous full release, so
+          # the two halves of one release body would describe different ranges. This has
+          # never happened (20 tags, all full releases). If an rc is ever cut: either
+          # pass `previous_tag` explicitly to softprops/action-gh-release below so both
+          # halves agree, or accept the narrower written range deliberately.
+          PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
+          # makes the builder exit 1 if it reaches it.
+          if [ -z "$PREV" ]; then
+            echo "No previous tag found; taking every fragment."
+            git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          else
+            echo "Fragments added between $PREV and $TAG:"
+            git diff --name-only --diff-filter=A "$PREV..$TAG" \
+              -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          fi
+          cat fragments.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt
+          echo "--- release notes ---"
+          cat release-notes.md
+
       # v3 is the Node 24 runtime line; v2 targets the deprecated Node 20 and was
       # only still working because the runner force-ran it on 24. v3.0.0 changed
       # nothing but the runtime -- the inputs below are unchanged from v2.
@@ -60,4 +95,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: MSFSBA.zip
+          # body_path is PREPENDED to the generated notes (per the action's docs), so
+          # the written entries lead and the full PR list follows below them.
+          body_path: release-notes.md
           generate_release_notes: true
