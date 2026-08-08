@@ -93,6 +93,10 @@ public class VatsimPanel : UserControl, ISettingsPanel
             Multiline = true,
             ReadOnly = true,
             ScrollBars = ScrollBars.Vertical,
+            // OFF, matching the SayIntentions flight-information window's precedent:
+            // wrapped, the plugins-folder path becomes several visual lines and a
+            // screen reader's down-arrow walks the fragments instead of the line.
+            WordWrap = false,
             AccessibleName = "vPilot status",
             AccessibleDescription = "Whether vPilot was found, whether the plugin is installed, and whether vPilot is connected",
         };
@@ -158,7 +162,26 @@ public class VatsimPanel : UserControl, ISettingsPanel
             if (!string.IsNullOrWhiteSpace(_pluginsFolderOverride))
             {
                 string? preview = ResolveFolderForPreview();
-                if (preview != null) status = status with { PluginsFolder = preview };
+
+                // Install state is folder-specific — carrying the PROVIDER's
+                // PluginInstalled/PluginCurrent forward here would describe a plugin
+                // that lives in a folder the pilot just browsed away from. Recompute
+                // both against the preview folder, the same way the (status == null)
+                // fallback branch above already does, so the two paths can never
+                // disagree. A null preview is let through too: the old
+                // `if (preview != null)` guard silently kept the previous folder on
+                // screen, so a rejected Browse (or a stale saved override pointing at a
+                // folder that no longer resolves) gave no feedback at all — Compose
+                // already knows how to report "vPilot was not found" for a null
+                // PluginsFolder.
+                bool installed = preview != null && VPilotPluginInstaller.IsPluginInstalled(preview);
+                bool current = installed && VPilotPluginInstaller.IsPluginCurrent(preview!);
+                status = status with
+                {
+                    PluginsFolder = preview,
+                    PluginInstalled = installed,
+                    PluginCurrent = current,
+                };
             }
         }
 
