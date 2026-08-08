@@ -49,7 +49,10 @@ public static class VatsimStatusText
             sb.AppendLine("The plugin is installed and up to date.");
         }
 
-        if (status.PluginInstalled)
+        // Only meaningful while the feature is on — with it off the pipe server is not
+        // listening, so "not connected" would send the pilot to restart vPilot when the
+        // real reason for silence is the switch above.
+        if (status.Enabled && status.PluginInstalled)
         {
             sb.AppendLine(status.ClientConnected
                 ? "vPilot is connected."

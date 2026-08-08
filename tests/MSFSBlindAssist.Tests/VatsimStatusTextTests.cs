@@ -88,4 +88,16 @@ public class VatsimStatusTextTests
             Assert.False(string.IsNullOrWhiteSpace(VatsimStatusText.Compose(status)));
         }
     }
+
+    [Fact]
+    public void A_disabled_feature_does_not_send_the_pilot_off_to_start_vPilot()
+    {
+        // The folder and plugin lines still matter here — the panel refreshes this text
+        // as the master switch is ticked — but the connection advice would point at the
+        // wrong cause.
+        string text = VatsimStatusText.Compose(Ready() with { Enabled = false, ClientConnected = false });
+        Assert.Contains("The plugin is installed and up to date.", text);
+        Assert.DoesNotContain("not connected", text);
+        Assert.DoesNotContain("restart vPilot", text);
+    }
 }
