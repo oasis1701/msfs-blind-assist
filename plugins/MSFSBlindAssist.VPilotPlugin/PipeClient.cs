@@ -15,7 +15,9 @@ namespace MSFSBlindAssist.VPilotPlugin
 {
     internal sealed class PipeClient : IDisposable
     {
-        private const string PipeName = "MSFSBlindAssist.vPilot";
+        // The pipe name lives in VPilotWireFormat.cs (linked into this project, not
+        // copied) — see its PipeName doc comment for why. Referenced directly here
+        // rather than aliased, since nothing else in this assembly needs to spell it.
         private const int ConnectTimeoutMs = 100;
         private const int MaxQueue = 200;
         private const int IdlePollMs = 200;
@@ -122,7 +124,7 @@ namespace MSFSBlindAssist.VPilotPlugin
         private void Connect()
         {
             Disconnect();
-            _pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.Out);
+            _pipe = new NamedPipeClientStream(".", VPilotWireFormat.PipeName, PipeDirection.Out);
             _pipe.Connect(ConnectTimeoutMs);
             _writer = new StreamWriter(_pipe);
             PluginLog.Info("Connected to MSFS Blind Assist");

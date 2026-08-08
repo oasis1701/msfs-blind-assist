@@ -19,6 +19,17 @@ namespace MSFSBlindAssist.VPilot
     /// </summary>
     public static class VPilotWireFormat
     {
+        /// <summary>
+        /// The named pipe both ends use. It lives HERE, in the file linked into both
+        /// assemblies, for the same reason the escaping does: this is one half of a wire
+        /// contract, and a contract with two independent copies is a contract that drifts.
+        /// It must never go back to "MSFSBlindAssist" + the legacy "vPilot-to-TTS" name:
+        /// NamedPipeServerStream allows one server instance per name by default, so if a
+        /// user still runs the old standalone tray app it owns that name and this app's
+        /// server cannot start at all.
+        /// </summary>
+        public const string PipeName = "MSFSBlindAssist.vPilot";
+
         public static string Encode(string type, string from, string message)
         {
             return Escape(type) + "\t" + Escape(from) + "\t" + Escape(message);

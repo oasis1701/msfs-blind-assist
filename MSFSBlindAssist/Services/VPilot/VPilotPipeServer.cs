@@ -7,15 +7,17 @@ namespace MSFSBlindAssist.Services.VPilot;
 
 /// <summary>
 /// Listens for the vPilot plugin and raises one event per VATSIM message.
-///
-/// The pipe name MUST differ from the standalone vPilot-to-TTS project's
-/// ("vPilot-to-TTS"): NamedPipeServerStream defaults to ONE server instance per name, so
-/// if a user still has the old tray app running it owns that name and this server could
-/// not start at all.
+/// See <see cref="MSFSBlindAssist.VPilot.VPilotWireFormat.PipeName"/> for why the pipe
+/// name is what it is — that is now the ONE place the name is spelled out.
 /// </summary>
 public sealed class VPilotPipeServer : IDisposable
 {
-    public const string PipeName = "MSFSBlindAssist.vPilot";
+    /// <summary>Compile-time alias so nothing outside this class needs to change. The
+    /// canonical constant lives in <see cref="MSFSBlindAssist.VPilot.VPilotWireFormat"/>,
+    /// the file linked into both this app and the vPilot plugin, so the pipe name can
+    /// never drift from the wire format it names — the same reasoning that keeps the
+    /// escaping itself in one place instead of two.</summary>
+    public const string PipeName = MSFSBlindAssist.VPilot.VPilotWireFormat.PipeName;
 
     /// <summary>Raised on the listener thread with (type, from, message). The consumer
     /// marshals — this class does not know about UI.</summary>
