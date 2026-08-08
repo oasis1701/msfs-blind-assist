@@ -38,11 +38,19 @@ public static class VatsimStatusText
 
         if (!status.PluginInstalled)
         {
-            sb.AppendLine("The plugin is not installed. Press OK to install it.");
+            // With the feature off, ApplySettings returns before Install() ever runs
+            // (see VatsimAnnouncementService.ApplySettings) — so "press OK" alone is a
+            // lie for every new user, whose very first read of this box is with the
+            // switch still off. Say what has to happen FIRST.
+            sb.AppendLine(status.Enabled
+                ? "The plugin is not installed. Press OK to install it."
+                : "The plugin is not installed. Turn on the switch above, then press OK to install it.");
         }
         else if (!status.PluginCurrent)
         {
-            sb.AppendLine("An older plugin is installed. Press OK to update it.");
+            sb.AppendLine(status.Enabled
+                ? "An older plugin is installed. Press OK to update it."
+                : "An older plugin is installed. Turn on the switch above, then press OK to update it.");
         }
         else
         {

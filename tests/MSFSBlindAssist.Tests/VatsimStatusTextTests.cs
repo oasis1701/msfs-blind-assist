@@ -100,4 +100,29 @@ public class VatsimStatusTextTests
         Assert.DoesNotContain("not connected", text);
         Assert.DoesNotContain("restart vPilot", text);
     }
+
+    [Fact]
+    public void A_disabled_feature_with_no_plugin_is_told_to_flip_the_switch_before_OK_does_anything()
+    {
+        // ApplySettings returns before Install() ever runs while the master switch is
+        // off, so "Press OK to install it" alone is false for this state — the default
+        // state of every new user's very first read of this box.
+        string text = VatsimStatusText.Compose(Ready() with
+        {
+            Enabled = false, PluginInstalled = false, PluginCurrent = false, ClientConnected = false
+        });
+        Assert.Contains("not installed", text);
+        Assert.Contains("Turn on the switch above, then press OK to install it.", text);
+    }
+
+    [Fact]
+    public void A_disabled_feature_with_an_older_plugin_is_told_to_flip_the_switch_before_OK_does_anything()
+    {
+        string text = VatsimStatusText.Compose(Ready() with
+        {
+            Enabled = false, PluginCurrent = false, ClientConnected = false
+        });
+        Assert.Contains("older plugin", text);
+        Assert.Contains("Turn on the switch above, then press OK to update it.", text);
+    }
 }
