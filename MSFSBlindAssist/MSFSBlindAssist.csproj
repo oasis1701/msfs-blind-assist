@@ -74,6 +74,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The vPilot pipe protocol, compiled from ONE source into both this app and the
+         net48 vPilot plugin. Linked, never copied — the two ends of the wire must not
+         be able to drift. Same pattern as tools/PMDGDispatchTester and PMDGNG3DataStruct.cs. -->
+    <Compile Include="..\plugins\MSFSBlindAssist.VPilotPlugin\VPilotWireFormat.cs"
+             Link="Services\VPilot\VPilotWireFormat.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- NuGet Packages -->
     <PackageReference Include="GeoTimeZone" Version="6.1.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
