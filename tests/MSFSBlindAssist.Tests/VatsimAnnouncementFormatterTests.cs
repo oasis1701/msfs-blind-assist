@@ -89,6 +89,11 @@ public class VatsimAnnouncementFormatterTests
         => Assert.Null(VatsimAnnouncementFormatter.Format("private_message", "", "", AllOn()));
 
     [Fact]
+    public void Private_message_with_no_sender_still_reports_the_text()
+        => Assert.Equal("Private message: Contact me on 133.60",
+            VatsimAnnouncementFormatter.Format("private_message", "", "Contact me on 133.60", AllOn()));
+
+    [Fact]
     public void Radio_message_with_no_text_is_silent_because_there_is_nothing_to_hear()
         => Assert.Null(VatsimAnnouncementFormatter.Format("radio_message", "EGLL_TWR", "", AllOn()));
 

@@ -75,4 +75,28 @@ public class VPilotWireFormatTests
     {
         Assert.False(VPilotWireFormat.TryDecode(line, out _, out _, out _));
     }
+
+    [Fact]
+    public void A_field_ending_in_a_lone_backslash_keeps_it_rather_than_reading_past_the_end()
+    {
+        // Unescape's `i == s.Length - 1` guard exists for exactly this: a backslash as
+        // the very last character of a field, with no following character to pair it
+        // with. Encode() itself always doubles a real trailing backslash (the plain
+        // round-trip tests above cover that), so this raw shape should never arrive from
+        // a well-behaved sender — but TryDecode must not read past the end of the field
+        // when it does, and must keep the backslash rather than dropping it.
+        Assert.True(VPilotWireFormat.TryDecode("radio_message\tX\tabc\\", out _, out _, out var message));
+        Assert.Equal("abc\\", message);
+    }
+
+    [Fact]
+    public void An_unrecognised_escape_sequence_is_kept_literally_rather_than_dropped()
+    {
+        // \q is not one of the recognised escapes (\\, \n, \r, \t). Unescape's default
+        // branch keeps BOTH characters rather than silently eating the backslash —
+        // load-bearing for an ordinary Windows path landing in a chat message, which is
+        // exactly the shape a private message full of backslashes usually has.
+        Assert.True(VPilotWireFormat.TryDecode("private_message\tX\tpath\\qthing", out _, out _, out var message));
+        Assert.Equal("path\\qthing", message);
+    }
 }
