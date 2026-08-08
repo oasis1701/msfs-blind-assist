@@ -21,7 +21,7 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
+The solution contains five projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all five. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
 
 ## Testing
 
@@ -36,6 +36,35 @@ speculative tests for sim-driven paths.
 ## Git Workflow
 
 The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main.
+
+### Release notes — every PR adds a changelog fragment
+
+**Before opening a PR, add `changelog.d/<slug>.<category>.md`** describing the change in
+user-facing terms. A required CI check fails without one. Full convention:
+[changelog.d/README.md](changelog.d/README.md).
+
+- `<slug>` — lower-case letters/digits/dashes, short and descriptive, unique.
+- `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
+  (existing capability made better), `fix`, or `internal` (validated, never published —
+  for refactors/CI/tests).
+- Content — markdown prose, no heading, becomes a bullet. **Write for a pilot, not a
+  reviewer**: say what is different when they fly, not which code path moved. Compare
+  "Docking no longer says complete when you are parked askew — it tells you to back up
+  and try again" against "fix(docking): require squareness before completion".
+
+Nothing user-facing? Add an `internal` fragment, or apply the `skip-changelog` label.
+Prefer the fragment — it needs no repository permissions.
+
+**Fragments are never deleted.** A release is defined by the fragments *added* between
+two tags (`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a permanent
+per-change archive. Two consequences that are easy to get wrong: never tidy old
+fragments away, and never add a fragment for something already released — it would
+appear in the next release's notes.
+
+At tag time `.github/workflows/release.yml` renders the fragments with
+`tools/ChangelogBuilder` and passes them as `body_path`, which the release action
+prepends to GitHub's generated PR list. Preview any time from Actions → Changelog →
+Run workflow; it publishes nothing.
 
 ## CRITICAL Rules (Always Follow)
 

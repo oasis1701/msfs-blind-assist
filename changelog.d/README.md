@@ -11,8 +11,8 @@ path moved.
 
     changelog.d/<slug>.<category>.md
 
-`<slug>` is lower-case letters, digits and dashes — anything short and descriptive; it
-only has to be unique. `<category>` is one of:
+`<slug>` is lower-case letters, digits and dashes, starting with a letter or digit —
+anything short and descriptive; it only has to be unique. `<category>` is one of:
 
 | Category | Appears under | Use for |
 | --- | --- | --- |
