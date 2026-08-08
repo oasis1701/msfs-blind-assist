@@ -222,21 +222,42 @@
     <!-- Build-order only. ReferenceOutputAssembly=false because a net10 project cannot
          reference a net48 assembly; SkipGetTargetFrameworkProperties stops MSBuild from
          rejecting the cross-framework reference outright. Nothing is linked — the copy
-         below is what actually ships the DLL. -->
+         below is what actually ships the DLL.
+
+         SetPlatform="Platform=AnyCPU" is REQUIRED, not decorative — do not remove it.
+         Platform is a command-line global property, and MSBuild passes a referencing
+         project's global properties straight through to its ProjectReferences unless a
+         ProjectReference overrides them. The plugin project only ever builds
+         Any CPU (see its <Platforms>AnyCPU</Platforms> and the Debug|x64 -> Debug|Any CPU
+         mapping in MSFSBlindAssist.sln), so without this override, building this csproj
+         directly with an explicit platform — e.g.
+         `dotnet build MSFSBlindAssist.csproj -c Debug -p:Platform=x64`, a command CLAUDE.md
+         explicitly sanctions as an alternative to building the .sln — passes Platform=x64
+         straight through to the plugin project too. That sends the plugin's output to
+         bin\x64\Debug\net48\ instead of bin\Debug\net48\, a folder the Copy target below
+         never looks at, so the copy below silently no-ops: either an empty vPilotPlugin\
+         folder ships, or a stale DLL that never updates again. SetPlatform pins the
+         plugin's build to Any CPU regardless of what platform this project is building as,
+         so both build paths land in the same, predictable folder. -->
     <ProjectReference Include="..\plugins\MSFSBlindAssist.VPilotPlugin\MSFSBlindAssist.VPilotPlugin.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
+                      SetPlatform="Platform=AnyCPU"
                       Private="false" />
   </ItemGroup>
 
   <Target Name="CopyVPilotPlugin" AfterTargets="Build">
     <!-- Lands in $(OutDir), so it follows whichever output tree is being built and the
          release zip (which archives the whole output folder) picks it up with no
-         workflow change. VPilotPluginInstaller reads it from here at run time. -->
+         workflow change. VPilotPluginInstaller reads it from here at run time.
+
+         Deliberately NO Condition="Exists(...)" guard on the Copy below: a missing
+         source must fail the build loudly (MSBuild's own "could not find file" error)
+         rather than silently skipping the copy and reporting "Build succeeded" while
+         either shipping an empty vPilotPlugin\ folder or leaving a stale DLL in place. -->
     <Copy SourceFiles="$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll"
           DestinationFolder="$(OutDir)vPilotPlugin"
-          SkipUnchangedFiles="true"
-          Condition="Exists('$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll')" />
+          SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
