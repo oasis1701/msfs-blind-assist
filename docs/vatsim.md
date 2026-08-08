@@ -41,8 +41,12 @@ same install/refresh check runs quietly every time MSFS Blind Assist itself
 starts, so an app update that changes the plugin never leaves an old copy
 behind.
 
-A read-only status box on the tab always tells you what to do next, refreshed
-when the tab opens, after Browse, and after pressing OK:
+A read-only status box on the tab always tells you what to do next. It
+refreshes when the tab opens, when you tick or untick the master switch, and
+after Browse — not after pressing OK, which saves and closes the dialog
+immediately, leaving nothing open to refresh. What OK actually did (installed
+the plugin, updated it, or found no vPilot at all) is spoken instead, as part
+of the regular "Settings saved" confirmation:
 
 - With the master switch off, it leads with *"VATSIM announcements are turned
   off."*
@@ -169,6 +173,31 @@ nothing from it is linked); a separate `Copy` target lands the built DLL in
 `$(OutDir)` needed no release-workflow change — the release zip already
 archives the whole output folder.
 
+### The shared queue has a depth cap
+
+`AnnounceWithQueue` is also what `MainForm`'s ECAM messages use, so VATSIM
+chatter and ECAM callouts share one queue, drained one entry every
+`QUEUE_INTERVAL_MS` (900 ms). Left unbounded, a run of backed-up radio
+transmissions on a busy frequency would delay the next ECAM failure callout by
+several seconds — behind a queue a pilot who cannot see the ECAM has no other
+way to notice. `VatsimAnnouncementService.OnMessageReceived` guards against
+this directly: before queuing a message it reads
+`ScreenReaderAnnouncer.QueuedAnnouncementCount`, and once that is already at or
+past `MaxSharedQueueDepth` (5 — about 4.5 s of backlog) it drops the message
+and logs the drop at Debug instead of queuing it.
+
+Dropping, not queuing without bound, is the deliberate fix here — and the
+*only* correct one. The obvious-looking alternative, switching VATSIM to
+`AnnounceImmediate` so it never sits in the queue at all, is exactly what the
+no-interrupt rule under *Two processes, one pipe*, above, forbids: VATSIM text
+would then interrupt a landing callout or a taxi instruction, which is worse
+than a dropped radio call. VATSIM text is chatter where the newest
+transmission is what matters most, and the plugin's own `PipeClient.Send`
+already drops its oldest queued message under a comparable backlog for the
+same reason (see *Why the plugin's sender never blocks*, below) — the depth
+cap is the same policy applied on the receiving end of the pipe instead of the
+sending end.
+
 ### The wire format, and why it's a linked file
 
 The line protocol is `type \t from \t message`, one line per event. Backslash,
@@ -217,6 +246,11 @@ cannot reference the main app's logger (different process, different target
 framework), so `PluginLog` computes the path itself. It still resolves into the
 same canonical logs folder as everything else, so "send me your logs" stays one
 folder even for this one exception.
+
+Unlike the original `vPilot-to-TTS` plugin, it also does **not** truncate the
+log on every load. The original wiped its log at the start of every vPilot
+session; this one appends instead (with a simple 1 MB-then-roll-to-`.old`
+limit), so a support request can actually contain the session it's about.
 
 ### Installing: `Installed`, `AlreadyCurrent`, `Locked`, `VPilotNotFound`, `Failed`
 
