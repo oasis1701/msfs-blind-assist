@@ -78,10 +78,17 @@ public class VatsimPanel : UserControl, ISettingsPanel
             _connect, _disconnect, _privateMessages, _radioMessages, _selcal
         });
 
-        // Positions are relative to the control above, not hardcoded, so a larger system
-        // font or a display-scaling change grows the panel instead of overlapping it —
-        // the same approach WeatherPanel takes. AutoScroll only stops clipping at the
-        // panel edge; it does nothing about controls colliding with each other.
+        // Positions are relative to the control above (.Bottom + N) rather than
+        // hardcoded — the same approach WeatherPanel takes. This is NOT font/DPI
+        // resilience: _enabled, _eventsGroup and _status all carry an explicit Size, so
+        // each .Bottom below is a compile-time constant (37 / 210 / 240) at any font or
+        // DPI, numerically identical to the hardcoded 45 / 220 / 242 it replaces — the
+        // group box's own children are still hardcoded at y = 25…125 inside a fixed
+        // 165 px box, exactly where a real font/DPI change would still collide. What the
+        // chain actually buys is that moving or resizing ONE control here no longer
+        // requires hand-editing every Y coordinate below it. AutoScroll only stops
+        // clipping at the panel edge; it does nothing about controls colliding with each
+        // other.
         var statusLabel = new Label
         {
             Text = "Status:",
@@ -118,11 +125,43 @@ public class VatsimPanel : UserControl, ISettingsPanel
         AccessibleDescription = description,
     };
 
+    /// <summary>
+    /// Refreshes the status box when this panel becomes the active tab, not only when
+    /// the Settings dialog first opens. SettingsForm hosts every panel as a UserControl
+    /// docked Fill inside its own TabPage; a TabControl shows exactly one page's content
+    /// at a time, and switching tabs flips the effective Visible state of the page that
+    /// left and the page that arrived, which propagates down to Visible children exactly
+    /// like this one (confirmed against a throwaway WinForms probe reproducing this
+    /// SettingsForm/TabPage/UserControl-Dock-Fill shape before relying on it here — the
+    /// same idiom AccessGSXForm, FBWA380RmpForm and HS787FMCForm already use on
+    /// top-level Forms, just not, until now, on a TabPage-hosted panel). Without this,
+    /// a pilot who opens Settings, starts vPilot, then tabs back to VATSIM kept hearing
+    /// the box's stale first read from before vPilot was running.
+    ///
+    /// RefreshStatus only reads the registry and calls File.Exists twice, then writes
+    /// _status.Text — it never announces anything, so firing it again on every visit
+    /// (including the couple of extra times WinForms raises this while the control is
+    /// still being parented into its TabPage, before the dialog is even shown) costs
+    /// nothing and breaks no rule: the screen reader is the one announcing the tab
+    /// change, same as any other tab; this only keeps the box's TEXT from being stale
+    /// once the pilot's own Tab key or review cursor gets to it.
+    /// </summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible)
+            RefreshStatus();
+    }
+
     private void RefreshStatus()
     {
         // Prefer the live service — only it knows whether vPilot is actually attached.
-        // Before it exists (or with the feature off at startup) fall back to a static
-        // probe, which still answers "where is vPilot" and "is the plugin there".
+        // The fallback below is for a VatsimPanel constructed WITHOUT a status provider
+        // at all (there is currently one caller, SettingsForm, and it always passes
+        // one) — NOT for the feature being off: GetStatus() answers just fine either
+        // way, switch on or off. If _statusProvider is null, or is set but its target
+        // (e.g. vatsimService) is gone, fall back to a static probe, which still
+        // answers "where is vPilot" and "is the plugin there" on its own.
         VatsimStatus? status = _statusProvider?.Invoke();
 
         if (status == null)
