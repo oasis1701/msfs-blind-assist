@@ -434,6 +434,11 @@ public partial class MainForm : Form
 
         // Set up form after load
         this.Load += MainForm_Load;
+
+        // The update check runs off Shown, not Load: the window is already up, so the
+        // dialog has a parent and the message pump is running for the queued announcer.
+        // It never blocks startup — the HTTP call is awaited after the form is visible.
+        this.Shown += MainForm_Shown;
     }
 
     private void MainForm_Load(object? sender, EventArgs e)
@@ -484,6 +489,25 @@ public partial class MainForm : Form
         StartIFlySdkBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
+    }
+
+    /// <summary>
+    /// Fires once, the first time the window is displayed. The bool is belt and braces:
+    /// Shown is documented as first-display only, and a second update check would be
+    /// harmless but pointless.
+    /// </summary>
+    private bool _startupUpdateCheckDone;
+
+    private void MainForm_Shown(object? sender, EventArgs e)
+    {
+        if (_startupUpdateCheckDone) return;
+        _startupUpdateCheckDone = true;
+
+        if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
+
+        // Deliberately not awaited: startup must not wait on a network round-trip.
+        // RunUpdateCheckAsync swallows everything when userInitiated is false.
+        _ = RunUpdateCheckAsync(userInitiated: false);
     }
 
     private void InitializeManagers()
