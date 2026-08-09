@@ -1,12 +1,16 @@
 using System.Net.Http;
-using System.Reflection;
-using System.Text.RegularExpressions;
+using MSFSBlindAssist.Settings;
 using Newtonsoft.Json.Linq;
 
 namespace MSFSBlindAssist.Services;
 public class UpdateService
 {
-    private const string GITHUB_API_URL = "https://api.github.com/repos/oasis1701/msfs-blind-assist/releases/latest";
+    // The LIST endpoint, not /releases/latest. /latest by definition never returns a
+    // pre-release, so it cannot serve the preview channel; the list returns both kinds in
+    // one call and the selector decides. 30 is GitHub's default page size and far more
+    // than this repository will ever need — there is exactly one rolling preview.
+    private const string GITHUB_API_URL =
+        "https://api.github.com/repos/oasis1701/msfs-blind-assist/releases?per_page=30";
     private readonly HttpClient httpClient;
 
     public event EventHandler<UpdateProgressEventArgs>? ProgressChanged;
@@ -19,78 +23,79 @@ public class UpdateService
     }
 
     /// <summary>
-    /// Gets the current application version from assembly
+    /// The running version, read from AssemblyInformationalVersion via <see cref="AppVersion"/>.
+    /// NOT AssemblyVersion: that cannot carry a pre-release identifier, so 8.0.1-pre.42 and
+    /// 8.0.1-pre.7 would be indistinguishable and the preview channel could never work.
     /// </summary>
-    public Version? GetCurrentVersion()
-    {
-        return Assembly.GetExecutingAssembly().GetName().Version;
-    }
+    public SemanticVersion? GetCurrentVersion() => AppVersion.Current;
 
     /// <summary>
-    /// Checks GitHub for the latest release and compares with current version
+    /// Fetches the release list and asks <see cref="UpdateCandidateSelector"/> which one to
+    /// offer for the given channel.
     /// </summary>
-    public async Task<UpdateCheckResult> CheckForUpdatesAsync()
+    public async Task<UpdateCheckResult> CheckForUpdatesAsync(UpdateChannel channel)
     {
+        var currentVersion = GetCurrentVersion();
+
         try
         {
             StatusChanged?.Invoke(this, "Checking for updates...");
 
-            var response = await httpClient.GetStringAsync(GITHUB_API_URL);
-            var releaseData = JObject.Parse(response);
+            using var response = await httpClient.GetAsync(GITHUB_API_URL);
 
-            string? tagName = releaseData["tag_name"]?.ToString();
-            string? releaseName = releaseData["name"]?.ToString();
-            string? releaseNotes = releaseData["body"]?.ToString();
-
-            if (string.IsNullOrEmpty(tagName))
+            if (!response.IsSuccessStatusCode)
             {
                 return new UpdateCheckResult
                 {
-                    IsUpdateAvailable = false,
-                    ErrorMessage = "Could not parse release information from GitHub"
+                    CurrentVersion = currentVersion,
+                    ErrorMessage = DescribeHttpFailure(response)
                 };
             }
 
-            // Parse version from tag (handles formats like "v0.2.2-alpha" or "0.2.2")
-            Version remoteVersion = ParseVersion(tagName);
-            Version? currentVersion = GetCurrentVersion();
+            var body = await response.Content.ReadAsStringAsync();
+            var releases = JArray.Parse(body);
 
-            bool isUpdateAvailable = currentVersion != null && remoteVersion > currentVersion;
+            var candidates = releases.Select(ToCandidate).Where(c => c is not null).Select(c => c!).ToList();
+            var selection = UpdateCandidateSelector.Select(candidates, channel, currentVersion);
 
-            // Only check for download URL if an update is actually available
-            string? downloadUrl = null;
-            if (isUpdateAvailable)
+            if (selection.Release is null)
             {
-                // Safely find the ZIP asset in the release
-                var assetResult = FindZipAsset(releaseData);
-                if (!assetResult.Success)
+                return new UpdateCheckResult
                 {
-                    return new UpdateCheckResult
-                    {
-                        IsUpdateAvailable = false,
-                        ErrorMessage = assetResult.ErrorMessage
-                    };
-                }
+                    Verdict = UpdateVerdict.NoCandidate,
+                    CurrentVersion = currentVersion
+                };
+            }
 
-                downloadUrl = assetResult.DownloadUrl;
+            // Only an offer needs a download; being up to date needs no asset at all.
+            if (selection.Verdict is UpdateVerdict.UpdateAvailable or UpdateVerdict.DowngradeAvailable
+                && string.IsNullOrEmpty(selection.Release.ZipDownloadUrl))
+            {
+                return new UpdateCheckResult
+                {
+                    CurrentVersion = currentVersion,
+                    ErrorMessage =
+                        $"Version {selection.Version} is available, but no ZIP file is attached to " +
+                        "that GitHub release. Please contact the developer."
+                };
             }
 
             return new UpdateCheckResult
             {
-                IsUpdateAvailable = isUpdateAvailable,
+                Verdict = selection.Verdict,
                 CurrentVersion = currentVersion,
-                LatestVersion = remoteVersion,
-                DownloadUrl = downloadUrl,
-                ReleaseName = releaseName,
-                ReleaseNotes = releaseNotes,
-                TagName = tagName
+                LatestVersion = selection.Version,
+                DownloadUrl = selection.Release.ZipDownloadUrl,
+                ReleaseName = selection.Release.Name,
+                ReleaseNotes = selection.Release.Body,
+                TagName = selection.Release.TagName
             };
         }
         catch (HttpRequestException ex)
         {
             return new UpdateCheckResult
             {
-                IsUpdateAvailable = false,
+                CurrentVersion = currentVersion,
                 ErrorMessage = $"Network error: {ex.Message}"
             };
         }
@@ -98,10 +103,69 @@ public class UpdateService
         {
             return new UpdateCheckResult
             {
-                IsUpdateAvailable = false,
+                CurrentVersion = currentVersion,
                 ErrorMessage = $"Error checking for updates: {ex.Message}"
             };
         }
+    }
+
+    /// <summary>
+    /// Turns a failed response into something a pilot can act on. The rate limit is the one
+    /// worth naming: unauthenticated GitHub API access is 60 requests per hour per IP, so a
+    /// shared address can hit it even though this app makes one call per check.
+    /// </summary>
+    private static string DescribeHttpFailure(HttpResponseMessage response)
+    {
+        var rateLimited =
+            response.StatusCode == System.Net.HttpStatusCode.Forbidden &&
+            response.Headers.TryGetValues("x-ratelimit-remaining", out var remaining) &&
+            remaining.FirstOrDefault() == "0";
+
+        if (rateLimited)
+        {
+            return "GitHub's hourly request limit was reached. Please try again later.";
+        }
+
+        return $"GitHub returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+    }
+
+    /// <summary>Flattens one release from the API JSON. Returns null if it has no tag name.</summary>
+    private static ReleaseCandidate? ToCandidate(JToken release)
+    {
+        var tagName = release["tag_name"]?.ToString();
+        if (string.IsNullOrEmpty(tagName)) return null;
+
+        return new ReleaseCandidate(
+            TagName: tagName,
+            Name: release["name"]?.ToString(),
+            Body: release["body"]?.ToString(),
+            IsPrerelease: release["prerelease"]?.Value<bool>() ?? false,
+            IsDraft: release["draft"]?.Value<bool>() ?? false,
+            ZipDownloadUrl: FindZipAssetUrl(release));
+    }
+
+    /// <summary>
+    /// The first .zip asset on a release, or null. Each release carries exactly one — the
+    /// full release ships MSFSBA.zip and the rolling preview ships MSFSBA-preview.zip.
+    /// </summary>
+    private static string? FindZipAssetUrl(JToken release)
+    {
+        if (release["assets"] is not JArray assets) return null;
+
+        foreach (var asset in assets)
+        {
+            var fileName = asset["name"]?.ToString();
+            var downloadUrl = asset["browser_download_url"]?.ToString();
+
+            if (!string.IsNullOrEmpty(fileName) &&
+                !string.IsNullOrEmpty(downloadUrl) &&
+                fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                return downloadUrl;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -196,114 +260,21 @@ public class UpdateService
             throw new InvalidOperationException($"Failed to launch updater: {ex.Message}", ex);
         }
     }
-
-    /// <summary>
-    /// Safely finds and validates the ZIP file asset in a GitHub release
-    /// </summary>
-    private AssetSearchResult FindZipAsset(JObject releaseData)
-    {
-        try
-        {
-            // Check if assets property exists
-            var assetsToken = releaseData["assets"];
-            if (assetsToken == null)
-            {
-                return new AssetSearchResult
-                {
-                    Success = false,
-                    ErrorMessage = "Release data does not contain an 'assets' field. Please contact the developer."
-                };
-            }
-
-            // Check if assets is a valid array
-            if (assetsToken is not JArray assetsArray)
-            {
-                return new AssetSearchResult
-                {
-                    Success = false,
-                    ErrorMessage = "Release assets data is malformed. Please contact the developer."
-                };
-            }
-
-            // Check if assets array is empty
-            if (assetsArray.Count == 0)
-            {
-                return new AssetSearchResult
-                {
-                    Success = false,
-                    ErrorMessage = "Update is available, but no download file is attached to the GitHub release. Please contact the developer."
-                };
-            }
-
-            // Search for ZIP file in assets
-            foreach (var asset in assetsArray)
-            {
-                string? fileName = asset["name"]?.ToString();
-                string? downloadUrl = asset["browser_download_url"]?.ToString();
-
-                if (!string.IsNullOrEmpty(fileName) &&
-                    !string.IsNullOrEmpty(downloadUrl) &&
-                    fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new AssetSearchResult
-                    {
-                        Success = true,
-                        DownloadUrl = downloadUrl
-                    };
-                }
-            }
-
-            // No ZIP file found in assets
-            return new AssetSearchResult
-            {
-                Success = false,
-                ErrorMessage = "Update is available, but no ZIP file was found in the release assets. Please contact the developer."
-            };
-        }
-        catch (Exception ex)
-        {
-            return new AssetSearchResult
-            {
-                Success = false,
-                ErrorMessage = $"Error parsing release assets: {ex.Message}"
-            };
-        }
-    }
-
-    /// <summary>
-    /// Parses version from GitHub tag (handles v0.2.2-alpha, 0.2.2, etc.)
-    /// </summary>
-    private Version ParseVersion(string? tagName)
-    {
-        if (string.IsNullOrEmpty(tagName))
-            return new Version(0, 0, 0, 0);
-
-        // Remove 'v' prefix if present
-        string versionString = tagName.TrimStart('v', 'V');
-
-        // Remove any pre-release suffixes (-alpha, -beta, etc.)
-        Match match = Regex.Match(versionString, @"^(\d+\.\d+\.\d+)");
-        if (match.Success)
-        {
-            versionString = match.Groups[1].Value;
-        }
-
-        // Parse as Version (will add .0 if needed)
-        if (Version.TryParse(versionString, out Version? version))
-        {
-            return version;
-        }
-
-        // Fallback: return 0.0.0.0 if parsing fails
-        return new Version(0, 0, 0, 0);
-    }
 }
 
 public class UpdateCheckResult
 {
-    public bool IsUpdateAvailable { get; set; }
-    public Version? CurrentVersion { get; set; }
-    public Version? LatestVersion { get; set; }
+    public UpdateVerdict Verdict { get; set; } = UpdateVerdict.NoCandidate;
+
+    /// <summary>True for BOTH a newer version and an offered downgrade — either way there is something to install.</summary>
+    public bool IsUpdateAvailable =>
+        Verdict is UpdateVerdict.UpdateAvailable or UpdateVerdict.DowngradeAvailable;
+
+    /// <summary>The offered version is OLDER than the one running (preview user returning to the release channel).</summary>
+    public bool IsDowngrade => Verdict == UpdateVerdict.DowngradeAvailable;
+
+    public SemanticVersion? CurrentVersion { get; set; }
+    public SemanticVersion? LatestVersion { get; set; }
     public string? DownloadUrl { get; set; }
     public string? ReleaseName { get; set; }
     public string? ReleaseNotes { get; set; }
@@ -316,14 +287,4 @@ public class UpdateProgressEventArgs : EventArgs
     public int PercentComplete { get; set; }
     public long BytesDownloaded { get; set; }
     public long TotalBytes { get; set; }
-}
-
-/// <summary>
-/// Result of searching for a ZIP asset in a GitHub release
-/// </summary>
-internal class AssetSearchResult
-{
-    public bool Success { get; set; }
-    public string? DownloadUrl { get; set; }
-    public string? ErrorMessage { get; set; }
 }

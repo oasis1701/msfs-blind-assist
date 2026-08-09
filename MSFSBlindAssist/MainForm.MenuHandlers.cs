@@ -378,7 +378,7 @@ public partial class MainForm
             announcer.AnnounceImmediate("Checking for updates...");
 
             var updateService = new UpdateService();
-            var result = await updateService.CheckForUpdatesAsync();
+            var result = await updateService.CheckForUpdatesAsync(SettingsManager.Current.UpdateChannel);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
