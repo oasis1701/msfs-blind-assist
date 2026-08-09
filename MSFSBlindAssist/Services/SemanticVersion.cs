@@ -96,6 +96,24 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>, IEquatable<S
         return ComparePreRelease(PreRelease, other.PreRelease);
     }
 
+    // Semver's numeric identifiers are `0` or [1-9][0-9]* — no leading zeros, no sign.
+    // Using long.TryParse instead would (a) accept "01", making "pre.01" and "pre.1"
+    // compare equal while hashing differently, breaking the Equals/GetHashCode contract,
+    // (b) overflow past ~19 digits, and (c) accept "-5", which the regex admits as an
+    // ordinary identifier and semver ranks alphanumerically.
+    private static bool IsNumericIdentifier(string identifier)
+    {
+        if (identifier.Length == 0) return false;
+        if (identifier.Length > 1 && identifier[0] == '0') return false;
+
+        foreach (var c in identifier)
+        {
+            if (c is < '0' or > '9') return false;
+        }
+
+        return true;
+    }
+
     private static int ComparePreRelease(string left, string right)
     {
         var a = left.Split('.');
@@ -104,11 +122,18 @@ public sealed class SemanticVersion : IComparable<SemanticVersion>, IEquatable<S
 
         for (var i = 0; i < shared; i++)
         {
-            var aNumeric = long.TryParse(a[i], out var aValue);
-            var bNumeric = long.TryParse(b[i], out var bValue);
+            var aNumeric = IsNumericIdentifier(a[i]);
+            var bNumeric = IsNumericIdentifier(b[i]);
 
             int result;
-            if (aNumeric && bNumeric) result = aValue.CompareTo(bValue);
+            if (aNumeric && bNumeric)
+            {
+                // Compared by digit count then ordinally — no leading zeros are possible
+                // here, so this is exact numeric ordering with no overflow at any length.
+                result = a[i].Length != b[i].Length
+                    ? a[i].Length.CompareTo(b[i].Length)
+                    : string.CompareOrdinal(a[i], b[i]);
+            }
             else if (aNumeric) result = -1;               // numeric ranks BELOW alphanumeric
             else if (bNumeric) result = 1;
             else result = string.CompareOrdinal(a[i], b[i]);

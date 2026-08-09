@@ -148,4 +148,43 @@ public class SemanticVersionTests
         Assert.Equal("8.0.1-pre.42", v.ToString());
         Assert.Equal("8.0.0", SemanticVersion.TryParse("v8.0.0")!.ToString());
     }
+
+    [Fact]
+    public void EqualVersions_AgreeOnHashCode()
+    {
+        // Equal objects must hash equally. "pre.01" is NOT a numeric identifier under
+        // semver (leading zero), so it must not compare equal to "pre.1" in the first
+        // place — which is what keeps the raw-string hash consistent with Equals.
+        var a = SemanticVersion.TryParse("8.0.1-pre.1")!;
+        var b = SemanticVersion.TryParse("8.0.1-pre.1+somesha")!;
+        Assert.True(a.Equals(b));
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+
+        var leadingZero = SemanticVersion.TryParse("8.0.1-pre.01")!;
+        Assert.False(a.Equals(leadingZero));
+    }
+
+    [Fact]
+    public void LeadingZeroIdentifier_IsAlphanumeric_SoOutranksNumeric()
+    {
+        // "01" has a leading zero, so semver treats it as alphanumeric, and alphanumeric
+        // outranks numeric.
+        Assert.True(SemanticVersion.TryParse("8.0.1-pre.01")! > SemanticVersion.TryParse("8.0.1-pre.1")!);
+    }
+
+    [Fact]
+    public void VeryLongNumericIdentifiers_CompareNumerically_WithoutOverflow()
+    {
+        // Longer than long.MaxValue's 19 digits: digit-count comparison keeps this exact.
+        var small = SemanticVersion.TryParse("8.0.1-pre.99999999999999999999")!;
+        var large = SemanticVersion.TryParse("8.0.1-pre.100000000000000000000")!;
+        Assert.True(large > small);
+    }
+
+    [Fact]
+    public void SignedLookingIdentifier_IsAlphanumeric()
+    {
+        // "-5" is an ordinary identifier under the grammar, never the number -5.
+        Assert.True(SemanticVersion.TryParse("8.0.1-pre.-5")! > SemanticVersion.TryParse("8.0.1-pre.5")!);
+    }
 }
