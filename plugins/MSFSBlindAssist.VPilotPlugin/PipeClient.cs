@@ -33,8 +33,8 @@ namespace MSFSBlindAssist.VPilotPlugin
         private sealed class QueuedLine
         {
             public QueuedLine(long seq, string text) { Seq = seq; Text = text; }
-            public long Seq { get; private set; }
-            public string Text { get; private set; }
+            public long Seq { get; }
+            public string Text { get; }
         }
 
         private readonly Queue<QueuedLine> _queue = new Queue<QueuedLine>();
