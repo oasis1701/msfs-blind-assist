@@ -39,12 +39,20 @@ folder — vPilot does not need to be running for a first install to succeed (se
 a plugin at startup, so you need to restart vPilot before it takes effect.** The
 same install/refresh check runs quietly every time MSFS Blind Assist itself
 starts, so an app update that changes the plugin never leaves an old copy
-behind. That startup check stays silent when it succeeds — but it *does* speak
-the two outcomes you could not otherwise notice: *"vPilot is running with an
-older plugin…"* (vPilot was already open, so the file could not be replaced)
-and *"The vPilot plugin could not be installed…"*. Without those two, an update
-that failed would leave you flying a whole leg on the old plugin with nothing
-to hint at it.
+behind. An ordinary refresh there — the plugin was already installed and just
+gets overwritten with the same or a newer copy — stays silent. Three outcomes
+speak even at startup, because each one means VATSIM cannot work this session
+with nothing else to say so: *"vPilot plugin installed. Restart vPilot to load
+it."* if no plugin was installed at all (a first install always succeeds even
+with vPilot already running, but unlike an ordinary refresh there is no
+already-loaded old copy quietly carrying you through until you restart vPilot);
+*"vPilot is running with an older plugin. Close vPilot and restart MSFS Blind
+Assist to update it."* if vPilot was already open and holding the file (this
+startup wording points at restarting MSFS Blind Assist rather than re-opening
+Settings, since the very check you'd trigger there just ran on its own); and
+*"The vPilot plugin could not be installed…"*. Without those three, a missing
+or failed plugin would leave you flying a whole leg in total VATSIM silence
+with nothing to hint at it.
 
 A read-only status box on the tab always tells you what to do next. It
 refreshes when the tab opens and when you tick or untick the master switch —
@@ -204,12 +212,21 @@ Dropping, not queuing without bound, is the deliberate fix here — and the
 `AnnounceImmediate` so it never sits in the queue at all, is exactly what the
 no-interrupt rule under *Two processes, one pipe*, above, forbids: VATSIM text
 would then interrupt a landing callout or a taxi instruction, which is worse
-than a dropped radio call. VATSIM text is chatter where the newest
-transmission is what matters most, and the plugin's own `PipeClient.Send`
-already drops its oldest queued message under a comparable backlog for the
-same reason (see *Why the plugin's sender never blocks*, below) — the depth
-cap is the same policy applied on the receiving end of the pipe instead of the
-sending end.
+than a dropped radio call. The five entries already queued are committed
+speech, about to be spoken — discarding a later arrival instead of one of
+those five is what stops a burst of chatter from queuing behind, and delaying,
+the next ECAM callout.
+
+This is the **opposite** policy from the plugin's own `PipeClient.Send`, which
+drops its **oldest** queued message under a comparable backlog (see *Why the
+plugin's sender never blocks*, below) — and that is the right call there, for
+the opposite reason. With nobody listening on the other end of the pipe,
+nothing in that queue has been heard yet, so the newest transmission is the
+one worth keeping. Here, the backlog is speech already committed to be heard,
+so it's the newer arrival that has to give instead. The depth cap and the
+plugin's queue are deliberately **not** the same policy applied at both ends
+of the pipe — "aligning" them would reintroduce the exact head-of-line block
+this cap exists to prevent, just from the other direction.
 
 ### The wire format, and why it's a linked file
 
@@ -275,32 +292,50 @@ vPilot that can't be found must not block saving the rest of Settings.
 
 `Locked` and a first `Installed` are **different situations that must not be
 collapsed into one message**, because they ask the pilot to do two different
-things:
+things. Both — along with `Failed` — are also the ones that speak unprompted
+when MSFS Blind Assist's own startup check produces them, not only when the
+pilot presses OK in Settings (see *AnnounceVatsimInstallOutcome* in
+`MainForm.MenuHandlers.cs` and `VPilotInstallResult.PluginWasAbsent`):
 
 - **`Locked`** — an *older* DLL is already installed and vPilot currently has
   it open. Only an *existing* file can be locked, and vPilot holds its plugins
   open for as long as it runs. Spoken as *"vPilot is running with an older
-  plugin. Close vPilot and re-open Settings to update it."*
+  plugin. Close vPilot and re-open Settings to update it."* — or, at MSFS Blind
+  Assist's own startup, *"…Close vPilot and restart MSFS Blind Assist to
+  update it."*, since there is no just-opened Settings dialog to point back to
+  there.
 - **A first `Installed`** — there is nothing there yet, so nothing can be
   locked. The copy always succeeds, even with vPilot running; vPilot just won't
   load it until it next restarts. Spoken as *"vPilot plugin installed. Restart
-  vPilot to load it."*
+  vPilot to load it."*, startup included — unlike an ordinary update-refresh
+  `Installed` (the file already existed), which stays silent there because it
+  needed nothing from the pilot. A first install can't rely on an
+  already-loaded old copy to quietly carry the pilot through until they
+  notice, so it speaks regardless of how the check was triggered.
 
 The other statuses: `AlreadyCurrent` (the installed DLL already matches the
 shipped one — same length and `LastWriteTimeUtc`, which `File.Copy` preserves,
 so this is an exact match rather than a heuristic) says nothing extra, since
-"Settings saved" already covers it; `VPilotNotFound` (*"vPilot was not found.
-Install vPilot, then re-open Settings."*) means neither lookup route below found
-a vPilot folder at all; `Failed` covers everything else —
-permissions, a missing shipped file, a disk error — reported as *"The vPilot
-plugin could not be installed. See the log for details."*
+"Settings saved" already covers it, and at startup it is the ordinary outcome
+of every launch; `VPilotNotFound` (*"vPilot was not found. Install vPilot,
+then re-open Settings."*) means neither lookup route below found a vPilot
+folder at all, and is likewise silent at startup; `Failed` covers everything
+else — permissions, a missing shipped file, a disk error — reported as *"The
+vPilot plugin could not be installed. See the log for details."*, startup
+included.
 
 Keying "up to date" on the timestamp does mean the status is sensitive to
 anything that rewrites one: an extractor that doesn't preserve mtimes, or a
 folder copied with a tool that stamps *now*. The failure is benign in both
-directions — a spurious *"An older plugin is installed"* and a harmless
-re-copy of an identical file — which is why this is a timestamp compare and not
-a content hash. Don't be surprised by a support report of that shape.
+directions **while vPilot is closed** — a spurious *"An older plugin is
+installed"* and a harmless re-copy of an identical file — which is why this is
+a timestamp compare and not a content hash. It stops being quite so benign now
+that the startup check speaks `Locked`: hit the same spurious "not current"
+verdict while vPilot happens to be running, and the re-copy this triggers is
+attempted for real and blocked for real, turning a false mtime mismatch into a
+genuine `Locked` result — which then speaks on **every single launch**, not
+silently and not just once, until the pilot closes vPilot. Don't be surprised
+by a support report of that shape.
 
 Removing the legacy `vPilot-to-TTS.dll` (see *Migrating from vPilot-to-TTS*,
 above) happens inside the same `Install()` call and is itself best-effort: if

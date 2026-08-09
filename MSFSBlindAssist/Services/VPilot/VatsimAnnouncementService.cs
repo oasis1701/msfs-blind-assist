@@ -26,11 +26,20 @@ public sealed class VatsimAnnouncementService : IDisposable
     /// burst of frequency traffic without dropping anything, short enough that a system
     /// message queued behind it is never meaningfully late. The check is made on the UI
     /// thread, inside the marshal, so it sees the real queue rather than one a burst of
-    /// pending marshals has not reached yet. Dropping — not queuing
-    /// without bound, and NOT switching to AnnounceImmediate — is deliberate: VATSIM
-    /// text is chatter, the newest transmission is the one worth hearing, and the
-    /// plugin's own sender already drops its oldest queued message under backlog for
-    /// the same reason (see PipeClient.Send).
+    /// pending marshals has not reached yet. Dropping — not queuing without bound, and
+    /// NOT switching to AnnounceImmediate — is deliberate: the five entries already
+    /// queued are committed speech about to be heard, so discarding a LATER arrival
+    /// (never one of those five) is what keeps an ECAM callout from queuing behind
+    /// chatter.
+    ///
+    /// This is the OPPOSITE policy from the plugin's own PipeClient.Send, which drops
+    /// its OLDEST queued message under backlog, not its newest — correct there for the
+    /// opposite reason: with vPilot's own queue, a backlog means nobody is listening at
+    /// all (MSFS Blind Assist is closed, or the feature is off), so nothing in it has
+    /// been heard yet and the newest transmission is the one worth keeping. Here, the
+    /// messages ahead are already about to be spoken, so it's the opposite end that has
+    /// to give. Do not "harmonise" the two into one policy — either direction would
+    /// reintroduce the exact head-of-line blocking this cap exists to prevent.
     /// </summary>
     private const int MaxSharedQueueDepth = 5;
 

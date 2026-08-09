@@ -32,6 +32,13 @@ vPilot loads an older-referenced plugin fine, so there is no routine update:
 
 1. Copy the file from a current vPilot install (`%LOCALAPPDATA%\vPilot\`).
 2. Update the table above — version, size and SHA-256 (`Get-FileHash <path> -Algorithm SHA256`).
-3. `dotnet build MSFSBlindAssist.sln -c Debug`, and re-run the in-sim VATSIM
-   checks in `docs/vatsim.md` — nothing in the automated suite exercises this
-   assembly, since the net10 test project cannot reference a net48 one.
+3. `dotnet build MSFSBlindAssist.sln -c Debug`, then confirm the plugin still
+   works against a real vPilot — nothing in the automated suite exercises this
+   assembly, since the net10 test project cannot reference a net48 one. Install
+   the plugin (Settings → VATSIM → tick the master switch → OK), restart
+   vPilot, connect it to the network and confirm you hear the connect
+   announcement ("Connected as *your callsign*"), then have someone send a
+   private message and confirm it's spoken, then tune a frequency with traffic
+   on it and confirm a radio message is spoken too. That covers the plugin's
+   whole surface: the API types it references, the pipe it writes to, and the
+   wire format both ends decode.
