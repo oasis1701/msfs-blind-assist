@@ -24,7 +24,9 @@ public sealed class VatsimAnnouncementService : IDisposable
     /// failure callout by many seconds — unacceptable for a pilot who cannot see the
     /// ECAM. 5 is a judgement call: about 4.5 s of backlog, enough to ride out a short
     /// burst of frequency traffic without dropping anything, short enough that a system
-    /// message queued behind it is never meaningfully late. Dropping — not queuing
+    /// message queued behind it is never meaningfully late. The check is made on the UI
+    /// thread, inside the marshal, so it sees the real queue rather than one a burst of
+    /// pending marshals has not reached yet. Dropping — not queuing
     /// without bound, and NOT switching to AnnounceImmediate — is deliberate: VATSIM
     /// text is chatter, the newest transmission is the one worth hearing, and the
     /// plugin's own sender already drops its oldest queued message under backlog for
@@ -131,22 +133,27 @@ public sealed class VatsimAnnouncementService : IDisposable
             if (text == null)
                 return;
 
-            // VATSIM chatter shares ScreenReaderAnnouncer's queue with ECAM messages and
-            // must never head-of-line-block a system message behind a busy frequency.
-            // Drop rather than queue once the shared queue is already this deep — see
-            // MaxSharedQueueDepth's doc comment for why dropping, not queuing without
-            // bound, is correct here.
-            int depth = _announcer.QueuedAnnouncementCount;
-            if (depth >= MaxSharedQueueDepth)
-            {
-                Log.Debug("VPilot", $"Dropped a VATSIM announcement, shared queue depth {depth}");
-                return;
-            }
-
             if (!_uiContext.IsHandleCreated || _uiContext.IsDisposed)
                 return;
             _uiContext.BeginInvoke(new Action(() =>
             {
+                // The depth check belongs HERE, on the UI thread, immediately before the
+                // enqueue — NOT back on the listener thread where it used to live.
+                // BeginInvoke only POSTS; between a listener-thread read and the enqueue
+                // sits an unbounded window of posted-but-not-yet-run delegates. With the
+                // UI thread busy (a SimVar batch drain, a Coherent scrape, a panel
+                // rebuild) a burst of transmissions would each read a depth that had not
+                // yet absorbed its predecessors, so every one passed the gate and they all
+                // enqueued together — the exact head-of-line block the cap exists to
+                // prevent. Read here it is exact, at the cost of a marshal for a message
+                // that then gets dropped, which is free at chatter rates.
+                int depth = _announcer.QueuedAnnouncementCount;
+                if (depth >= MaxSharedQueueDepth)
+                {
+                    Log.Debug("VPilot", $"Dropped a VATSIM announcement, shared queue depth {depth}");
+                    return;
+                }
+
                 // QUEUED, never AnnounceImmediate: VATSIM chatter must never interrupt a
                 // landing callout or a taxi instruction.
                 _announcer.AnnounceWithQueue(text);

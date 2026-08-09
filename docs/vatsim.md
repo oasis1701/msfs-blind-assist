@@ -181,10 +181,21 @@ chatter and ECAM callouts share one queue, drained one entry every
 transmissions on a busy frequency would delay the next ECAM failure callout by
 several seconds — behind a queue a pilot who cannot see the ECAM has no other
 way to notice. `VatsimAnnouncementService.OnMessageReceived` guards against
-this directly: before queuing a message it reads
+this directly: immediately before queuing a message it reads
 `ScreenReaderAnnouncer.QueuedAnnouncementCount`, and once that is already at or
 past `MaxSharedQueueDepth` (5 — about 4.5 s of backlog) it drops the message
 and logs the drop at Debug instead of queuing it.
+
+That read happens **on the UI thread, inside the `BeginInvoke` marshal** — not
+on the pipe listener thread where the message arrives. `BeginInvoke` only
+*posts*: between a listener-thread read and the enqueue that follows it sits an
+unbounded window of posted-but-not-yet-run delegates. With the UI thread busy —
+a SimVar batch drain, a Coherent scrape, a panel rebuild — a burst of
+transmissions would each read a depth that had not yet absorbed its
+predecessors, every one would pass the gate, and they would all enqueue
+together: precisely the head-of-line block the cap exists to prevent. Checking
+inside the marshal costs one wasted marshal per dropped message, which is
+nothing at chatter rates, and makes the cap exact instead of approximate.
 
 Dropping, not queuing without bound, is the deliberate fix here — and the
 *only* correct one. The obvious-looking alternative, switching VATSIM to
