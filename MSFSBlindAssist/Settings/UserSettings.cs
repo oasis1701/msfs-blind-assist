@@ -57,6 +57,16 @@ public class UserSettings
         public bool VatsimAnnounceRadioMessages { get; set; } = true;
         public bool VatsimAnnounceSelcal { get; set; } = true;
 
+        // ── Updates ──────────────────────────────────────────────────────────
+        // Release by default: preview builds carry the newest changes but have had far
+        // less flying time, so opting in is a deliberate act guarded by a confirmation in
+        // the Updates settings tab.
+        public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Release;
+
+        // On by default. The check is one HTTP call fired after the main window is shown;
+        // it never blocks startup and stays completely silent on any failure.
+        public bool CheckForUpdatesOnStartup { get; set; } = true;
+
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
         // whenever Hand Fly engages — the auto-handoff at rotation AND a manual
