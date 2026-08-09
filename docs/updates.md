@@ -61,7 +61,7 @@ first, then builds, force-moves the `preview` tag and updates one pre-release in
 The notes are the changelog fragments added since the last `v` tag, so a preview and the
 release that eventually contains it describe the same changes.
 
-Three things there are load-bearing:
+Four things there are load-bearing:
 
 - **The preview tag must never start with `v`.** `release.yml` triggers on `tags: ['v*']`
   and would publish a duplicate full release.
