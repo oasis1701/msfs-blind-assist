@@ -9,6 +9,10 @@ namespace MSFSBlindAssist.Forms.Settings;
 ///
 /// The panel has NO side effects. ApplyTo only writes settings; the plugin install runs
 /// in MainForm.ApplyRuntimeSettings() after OK, so pressing Cancel really does cancel.
+///
+/// There is deliberately no Browse button and no folder override. vPilot has no portable
+/// install mode and always writes HKCU\Software\vPilot\Install_Dir, so a user-chosen path
+/// could only ever point somewhere vPilot isn't — see VPilotPluginInstaller.ResolvePluginsFolder.
 /// </summary>
 public class VatsimPanel : UserControl, ISettingsPanel
 {
@@ -22,9 +26,6 @@ public class VatsimPanel : UserControl, ISettingsPanel
     private CheckBox _radioMessages = null!;
     private CheckBox _selcal = null!;
     private TextBox _status = null!;
-    private Button _browse = null!;
-
-    private string _pluginsFolderOverride = "";
 
     public string TabTitle => "VATSIM";
 
@@ -55,7 +56,7 @@ public class VatsimPanel : UserControl, ISettingsPanel
         _eventsGroup = new GroupBox
         {
             Text = "Announce",
-            Location = new Point(12, 45),
+            Location = new Point(12, _enabled.Bottom + 8),
             Size = new Size(460, 165),
             AccessibleName = "Announce",
             AccessibleDescription = "Choose which vPilot events are spoken",
@@ -77,10 +78,14 @@ public class VatsimPanel : UserControl, ISettingsPanel
             _connect, _disconnect, _privateMessages, _radioMessages, _selcal
         });
 
+        // Positions are relative to the control above, not hardcoded, so a larger system
+        // font or a display-scaling change grows the panel instead of overlapping it —
+        // the same approach WeatherPanel takes. AutoScroll only stops clipping at the
+        // panel edge; it does nothing about controls colliding with each other.
         var statusLabel = new Label
         {
             Text = "Status:",
-            Location = new Point(12, 220),
+            Location = new Point(12, _eventsGroup.Bottom + 10),
             Size = new Size(200, 20),
         };
 
@@ -88,7 +93,7 @@ public class VatsimPanel : UserControl, ISettingsPanel
         // so with a screen reader it has to be hunted for with the review cursor.
         _status = new TextBox
         {
-            Location = new Point(12, 242),
+            Location = new Point(12, statusLabel.Bottom + 2),
             Size = new Size(460, 90),
             Multiline = true,
             ReadOnly = true,
@@ -101,17 +106,7 @@ public class VatsimPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Whether vPilot was found, whether the plugin is installed, and whether vPilot is connected",
         };
 
-        _browse = new Button
-        {
-            Text = "Browse...",
-            Location = new Point(12, 340),
-            Size = new Size(120, 28),
-            AccessibleName = "Browse for the vPilot folder",
-            AccessibleDescription = "Select your vPilot installation folder, or its Plugins folder, if it was not found automatically",
-        };
-        _browse.Click += OnBrowseClicked;
-
-        Controls.AddRange(new Control[] { _enabled, _eventsGroup, statusLabel, _status, _browse });
+        Controls.AddRange(new Control[] { _enabled, _eventsGroup, statusLabel, _status });
     }
 
     private static CheckBox MakeCheck(string text, int y, string description) => new()
@@ -123,23 +118,6 @@ public class VatsimPanel : UserControl, ISettingsPanel
         AccessibleDescription = description,
     };
 
-    private void OnBrowseClicked(object? sender, EventArgs e)
-    {
-        using var dialog = new FolderBrowserDialog
-        {
-            Description = "Select your vPilot folder (or its Plugins folder)",
-            UseDescriptionForTitle = true,
-        };
-        if (!string.IsNullOrWhiteSpace(_pluginsFolderOverride))
-            dialog.SelectedPath = _pluginsFolderOverride;
-
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-            return;
-
-        _pluginsFolderOverride = dialog.SelectedPath;
-        RefreshStatus();
-    }
-
     private void RefreshStatus()
     {
         // Prefer the live service — only it knows whether vPilot is actually attached.
@@ -149,7 +127,7 @@ public class VatsimPanel : UserControl, ISettingsPanel
 
         if (status == null)
         {
-            string? folder = ResolveFolderForPreview();
+            string? folder = VPilotPluginInstaller.FindPluginsFolder();
             bool installed = folder != null && VPilotPluginInstaller.IsPluginInstalled(folder);
             bool current = installed && VPilotPluginInstaller.IsPluginCurrent(folder!);
             status = new VatsimStatus(_enabled.Checked, folder, installed, current,
@@ -157,42 +135,15 @@ public class VatsimPanel : UserControl, ISettingsPanel
         }
         else
         {
-            // Reflect the unsaved state of the dialog, not the last-applied one.
+            // Reflect the unsaved state of the dialog, not the last-applied one. The
+            // folder and install state need no such adjustment any more: with no override
+            // to preview, the provider already resolved the same folder the install will
+            // use.
             status = status with { Enabled = _enabled.Checked };
-            if (!string.IsNullOrWhiteSpace(_pluginsFolderOverride))
-            {
-                string? preview = ResolveFolderForPreview();
-
-                // Install state is folder-specific — carrying the PROVIDER's
-                // PluginInstalled/PluginCurrent forward here would describe a plugin
-                // that lives in a folder the pilot just browsed away from. Recompute
-                // both against the preview folder, the same way the (status == null)
-                // fallback branch above already does, so the two paths can never
-                // disagree. A null preview is let through too: the old
-                // `if (preview != null)` guard silently kept the previous folder on
-                // screen, so a rejected Browse (or a stale saved override pointing at a
-                // folder that no longer resolves) gave no feedback at all — Compose
-                // already knows how to report "vPilot was not found" for a null
-                // PluginsFolder.
-                bool installed = preview != null && VPilotPluginInstaller.IsPluginInstalled(preview);
-                bool current = installed && VPilotPluginInstaller.IsPluginCurrent(preview!);
-                status = status with
-                {
-                    PluginsFolder = preview,
-                    PluginInstalled = installed,
-                    PluginCurrent = current,
-                };
-            }
         }
 
         _status.Text = VatsimStatusText.Compose(status);
     }
-
-    /// <summary>Resolves the folder using the override currently held by the dialog, so
-    /// Browse shows its effect before OK is pressed. Delegates to the installer so the
-    /// preview and the real install can never consult different candidates.</summary>
-    private string? ResolveFolderForPreview() =>
-        VPilotPluginInstaller.FindPluginsFolder(_pluginsFolderOverride);
 
     public void LoadFrom(UserSettings settings)
     {
@@ -202,7 +153,6 @@ public class VatsimPanel : UserControl, ISettingsPanel
         _privateMessages.Checked = settings.VatsimAnnouncePrivateMessages;
         _radioMessages.Checked = settings.VatsimAnnounceRadioMessages;
         _selcal.Checked = settings.VatsimAnnounceSelcal;
-        _pluginsFolderOverride = settings.VPilotPluginsFolderOverride ?? "";
         _eventsGroup.Enabled = _enabled.Checked;
         RefreshStatus();
     }
@@ -224,7 +174,6 @@ public class VatsimPanel : UserControl, ISettingsPanel
         settings.VatsimAnnouncePrivateMessages = _privateMessages.Checked;
         settings.VatsimAnnounceRadioMessages = _radioMessages.Checked;
         settings.VatsimAnnounceSelcal = _selcal.Checked;
-        settings.VPilotPluginsFolderOverride = _pluginsFolderOverride;
     }
 
     public void OnLeaving()

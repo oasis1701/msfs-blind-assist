@@ -56,9 +56,6 @@ public class UserSettings
         public bool VatsimAnnouncePrivateMessages { get; set; } = true;
         public bool VatsimAnnounceRadioMessages { get; set; } = true;
         public bool VatsimAnnounceSelcal { get; set; } = true;
-        /// <summary>User-chosen vPilot folder, set by Browse in the VATSIM settings tab.
-        /// Empty means "discover it" (registry, then %LOCALAPPDATA%\vPilot).</summary>
-        public string VPilotPluginsFolderOverride { get; set; } = "";
 
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant

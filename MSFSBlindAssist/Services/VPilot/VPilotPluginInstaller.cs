@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
-using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.VPilot;
@@ -44,16 +43,20 @@ public static class VPilotPluginInstaller
     private const string ShippedSubfolder = "vPilotPlugin";
 
     /// <summary>
-    /// Pure resolution, filesystem probes injected. Order: user override, then vPilot's
-    /// own registry key, then the default install location. A candidate may name either
-    /// the vPilot install folder or the Plugins folder itself — Browse accepts both, and
-    /// the user should not have to know which one we wanted. A candidate that is neither
-    /// of those, and has never loaded a plugin (no Plugins subfolder yet either), only
-    /// counts when vPilot.exe itself is found directly inside it — see the comment on
-    /// the third branch below for why that check exists at all.
+    /// Pure resolution, filesystem probes injected. Two sources in order: vPilot's own
+    /// registry key, then the default install location. There is deliberately NO
+    /// user-supplied override — vPilot has no portable install mode, always writes
+    /// <c>HKCU\Software\vPilot\Install_Dir</c>, and the standalone vPilot-to-TTS ran for
+    /// years on that one key alone without a single reported location problem. A Browse
+    /// button could therefore only introduce a path that points somewhere vPilot isn't.
+    ///
+    /// A candidate counts when a <c>Plugins</c> subfolder already exists under it, or —
+    /// for a vPilot that has never loaded a plugin, so has no <c>Plugins</c> folder yet
+    /// for the first test to find — when <c>vPilot.exe</c> is found directly inside it.
+    /// <see cref="Install"/> creates the folder in the second case.
     /// </summary>
     public static string? ResolvePluginsFolder(
-        string? overridePath, string? registryInstallDir, string? localAppData,
+        string? registryInstallDir, string? localAppData,
         Func<string, bool> directoryExists, Func<string, bool>? fileExists = null)
     {
         // Defaults to "no" rather than "yes": a caller that does not care about the
@@ -67,7 +70,7 @@ public static class VPilotPluginInstaller
             ? null
             : Path.Combine(localAppData, "vPilot");
 
-        foreach (string? candidate in new[] { overridePath, registryInstallDir, defaultInstall })
+        foreach (string? candidate in new[] { registryInstallDir, defaultInstall })
         {
             if (string.IsNullOrWhiteSpace(candidate))
                 continue;
@@ -76,22 +79,15 @@ public static class VPilotPluginInstaller
             if (trimmed.Length == 0)
                 continue;
 
-            // Already the Plugins folder (the user browsed straight to it).
-            if (string.Equals(Path.GetFileName(trimmed), "Plugins", StringComparison.OrdinalIgnoreCase)
-                && directoryExists(trimmed))
-                return trimmed;
-
             string plugins = Path.Combine(trimmed, "Plugins");
             if (directoryExists(plugins))
                 return plugins;
 
             // vPilot is here but has never loaded a plugin, so there is no Plugins
-            // folder yet for the check above to find (Install() creates it). Requiring
-            // vPilot.exe here — rather than accepting any directory that merely exists,
-            // as this branch used to — is what stops a mistaken Browse into an unrelated
-            // folder (Documents, say) from being treated as a vPilot install: without
-            // it, Install() would create Documents\Plugins, copy the DLL into it, and
-            // report success.
+            // folder yet for the check above to find. Requiring vPilot.exe — rather than
+            // accepting any directory that merely exists, as this branch used to — keeps
+            // a stale registry value left behind by an uninstall from resolving to a
+            // folder Install() would then create a Plugins directory inside.
             if (fileExists(Path.Combine(trimmed, "vPilot.exe")))
                 return plugins;
         }
@@ -99,23 +95,15 @@ public static class VPilotPluginInstaller
         return null;
     }
 
-    public static string? FindPluginsFolder() =>
-        FindPluginsFolder(SettingsManager.Current.VPilotPluginsFolderOverride);
-
-    /// <summary>
-    /// Resolve exactly as <see cref="FindPluginsFolder()"/> does, but against a
-    /// caller-supplied override rather than the saved one — so the settings panel can
-    /// preview an unsaved Browse result without its candidate list diverging from the
-    /// path the install will actually take. A preview that consults fewer candidates
-    /// than the installer can report "vPilot was not found" about a vPilot the
-    /// installer finds immediately.
-    /// </summary>
-    public static string? FindPluginsFolder(string? overridePath)
+    /// <summary>Where vPilot's Plugins folder is, or null. The settings panel and the
+    /// installer both call THIS — there is no second, differently-parameterised overload
+    /// any more, so a status preview can never consult a different candidate list from
+    /// the install it is previewing.</summary>
+    public static string? FindPluginsFolder()
     {
         try
         {
             return ResolvePluginsFolder(
-                overridePath,
                 ReadRegistryInstallDir(),
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 Directory.Exists,

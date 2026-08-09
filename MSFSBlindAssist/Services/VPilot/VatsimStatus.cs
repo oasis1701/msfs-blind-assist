@@ -30,7 +30,10 @@ public static class VatsimStatusText
 
         if (status.PluginsFolder == null)
         {
-            sb.AppendLine("vPilot was not found. Use Browse to select your vPilot folder.");
+            // vPilot has no portable install mode and always registers its own location,
+            // so "not found" means it genuinely is not installed — there is nothing for
+            // the pilot to point us at, and no Browse button to point it with.
+            sb.AppendLine("vPilot was not found. Install vPilot, then re-open these settings.");
             return sb.ToString().TrimEnd();
         }
 

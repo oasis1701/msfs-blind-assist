@@ -42,16 +42,16 @@ starts, so an app update that changes the plugin never leaves an old copy
 behind.
 
 A read-only status box on the tab always tells you what to do next. It
-refreshes when the tab opens, when you tick or untick the master switch, and
-after Browse — not after pressing OK, which saves and closes the dialog
-immediately, leaving nothing open to refresh. What OK actually did (installed
+refreshes when the tab opens and when you tick or untick the master switch —
+not after pressing OK, which saves and closes the dialog immediately, leaving
+nothing open to refresh. What OK actually did (installed
 the plugin, updated it, or found no vPilot at all) is spoken instead, as part
 of the regular "Settings saved" confirmation:
 
 - With the master switch off, it leads with *"VATSIM announcements are turned
   off."*
-- If vPilot can't be found at all: *"vPilot was not found. Use Browse to select
-  your vPilot folder."*
+- If vPilot can't be found at all: *"vPilot was not found. Install vPilot, then
+  re-open these settings."*
 - Once vPilot is found, it names the folder and then says one of *"The plugin is
   not installed. Press OK to install it."*, *"An older plugin is installed.
   Press OK to update it."*, or *"The plugin is installed and up to date."*
@@ -64,10 +64,6 @@ of the regular "Settings saved" confirmation:
 
 It's a normal read-only text box you can Tab to and read with your screen
 reader, not a caption you have to hunt for with the review cursor.
-
-If vPilot is installed somewhere MSFS Blind Assist can't find automatically, use
-**Browse…** and point it at either your vPilot folder or the `Plugins` folder
-inside it — either one works.
 
 Turning the master switch back off stops the announcements immediately but
 leaves the plugin DLL sitting in vPilot's `Plugins` folder. That's deliberate:
@@ -287,9 +283,9 @@ things:
 The other statuses: `AlreadyCurrent` (the installed DLL already matches the
 shipped one — same length and `LastWriteTimeUtc`, which `File.Copy` preserves,
 so this is an exact match rather than a heuristic) says nothing extra, since
-"Settings saved" already covers it; `VPilotNotFound` (*"vPilot not found. Use
-Browse in the VATSIM settings to locate it."*) means none of the three lookup
-routes below found a vPilot folder at all; `Failed` covers everything else —
+"Settings saved" already covers it; `VPilotNotFound` (*"vPilot was not found.
+Install vPilot, then re-open Settings."*) means neither lookup route below found
+a vPilot folder at all; `Failed` covers everything else —
 permissions, a missing shipped file, a disk error — reported as *"The vPilot
 plugin could not be installed. See the log for details."*
 
@@ -300,25 +296,28 @@ the next install.
 
 ### Finding vPilot: the Plugins-folder resolution order
 
-`VPilotPluginInstaller.FindPluginsFolder()` tries three candidates in order,
+`VPilotPluginInstaller.FindPluginsFolder()` tries two candidates in order,
 stopping at the first that resolves:
 
-1. **The settings override** (`VPilotPluginsFolderOverride`) — set by pressing
-   **Browse…** in the VATSIM tab.
-2. **vPilot's own registry key**, `HKCU\Software\vPilot\Install_Dir`.
-3. **The default install location**, `%LOCALAPPDATA%\vPilot`.
+1. **vPilot's own registry key**, `HKCU\Software\vPilot\Install_Dir`.
+2. **The default install location**, `%LOCALAPPDATA%\vPilot`.
 
-A candidate only counts if a `Plugins` subfolder actually exists under it — or
-if the candidate path *is itself* already named `Plugins` and exists, which is
-what lets Browse accept either the vPilot install folder or the `Plugins`
-folder directly without the pilot needing to know which one is wanted. If
-vPilot is present but has genuinely never loaded a plugin before (no `Plugins`
-folder yet), `Install()` creates one.
+A candidate counts when a `Plugins` subfolder already exists under it, or — for
+a vPilot that has genuinely never loaded a plugin, so has no `Plugins` folder
+yet for the first test to find — when `vPilot.exe` is found directly inside it.
+`Install()` creates the folder in the second case. Requiring one of those two
+signals is what stops a stale registry value left behind by an uninstall from
+resolving to a folder we would then create a `Plugins` directory inside.
 
-The original `vPilot-to-TTS` tray app only ever read the registry key and gave
-up silently if it wasn't there. The extra candidates, plus Browse as a last
-resort, cover a relocated or portable vPilot install without a support
-round-trip.
+**There is deliberately no Browse button and no folder override**, and re-adding
+one would be a regression, not a feature. vPilot has no portable install mode:
+it always installs under `%LOCALAPPDATA%\vPilot` and always writes
+`Install_Dir`, so the two candidates above cannot both miss on a machine that
+has vPilot. The standalone `vPilot-to-TTS` shipped for years reading that one
+registry key and nothing else, across dozens of users, without a single
+reported location problem. A user-chosen path could therefore only ever point
+somewhere vPilot isn't — it adds a way to mis-install and a setting with no way
+to clear it, in exchange for covering no real case.
 
 ## Not implemented, and why
 

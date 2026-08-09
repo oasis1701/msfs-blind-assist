@@ -223,7 +223,7 @@ public partial class MainForm
                     break;
                 case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.VPilotNotFound:
                     announcer.Announce(
-                        "vPilot not found. Use Browse in the VATSIM settings to locate it.");
+                        "vPilot was not found. Install vPilot, then re-open Settings.");
                     break;
                 case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Failed:
                     announcer.Announce("The vPilot plugin could not be installed. See the log for details.");

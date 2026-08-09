@@ -30,11 +30,14 @@ public class VatsimStatusTextTests
     }
 
     [Fact]
-    public void No_vPilot_folder_tells_the_user_to_browse()
+    public void No_vPilot_folder_says_vPilot_itself_has_to_be_installed()
     {
+        // There is no Browse button to send the pilot to — vPilot always registers its
+        // own location, so this state means vPilot is genuinely not installed.
         string text = VatsimStatusText.Compose(Ready() with { PluginsFolder = null, PluginInstalled = false, PluginCurrent = false, ClientConnected = false });
         Assert.Contains("vPilot was not found", text);
-        Assert.Contains("Browse", text);
+        Assert.Contains("Install vPilot", text);
+        Assert.DoesNotContain("Browse", text);
     }
 
     [Fact]
