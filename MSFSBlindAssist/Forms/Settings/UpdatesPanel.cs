@@ -151,6 +151,13 @@ public class UpdatesPanel : UserControl, ISettingsPanel
             }
         }
 
+        // Resync so a second Validate() in the same dialog session cannot re-prompt for a
+        // switch the pilot already confirmed (or already declined). Without this the
+        // panel is only safe because it happens to be registered LAST in SettingsForm —
+        // a property of another file, which the next panel added after it would silently
+        // break.
+        _loadedChannel = _previewRadio.Checked ? UpdateChannel.Preview : UpdateChannel.Release;
+
         return true;
     }
 
