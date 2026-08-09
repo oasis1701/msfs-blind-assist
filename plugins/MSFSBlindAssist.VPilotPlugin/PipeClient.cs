@@ -24,7 +24,20 @@ namespace MSFSBlindAssist.VPilotPlugin
         private const int BackoffMs = 5000;
         private const int FailuresBeforeBackoff = 3;
 
-        private readonly Queue<string> _queue = new Queue<string>();
+        /// <summary>One queued line plus an identity the sender can check after a write.
+        /// A sequence number rather than object identity: the sender has to confirm that
+        /// the head of the queue is still the item it just wrote, and hanging that on
+        /// reference equality of a string made the correctness of this class depend on
+        /// VPilotWireFormat.Encode never returning a cached or interned instance — an
+        /// invariant living in a different file, silently load-bearing here.</summary>
+        private sealed class QueuedLine
+        {
+            public QueuedLine(long seq, string text) { Seq = seq; Text = text; }
+            public long Seq { get; private set; }
+            public string Text { get; private set; }
+        }
+
+        private readonly Queue<QueuedLine> _queue = new Queue<QueuedLine>();
         private readonly object _gate = new object();
         private readonly Thread _sender;
         private volatile bool _running = true;
@@ -32,6 +45,7 @@ namespace MSFSBlindAssist.VPilotPlugin
         private NamedPipeClientStream _pipe;
         private StreamWriter _writer;
         private int _consecutiveFailures;
+        private long _nextSeq;
 
         public PipeClient()
         {
@@ -51,7 +65,7 @@ namespace MSFSBlindAssist.VPilotPlugin
                 // transmission is the one worth hearing.
                 while (_queue.Count >= MaxQueue)
                     _queue.Dequeue();
-                _queue.Enqueue(line);
+                _queue.Enqueue(new QueuedLine(_nextSeq++, line));
                 Monitor.Pulse(_gate);
             }
         }
@@ -60,26 +74,26 @@ namespace MSFSBlindAssist.VPilotPlugin
         {
             while (_running)
             {
-                string line = null;
+                QueuedLine entry = null;
                 lock (_gate)
                 {
                     if (_queue.Count == 0)
                         Monitor.Wait(_gate, IdlePollMs);
                     if (_queue.Count > 0)
-                        line = _queue.Peek();
+                        entry = _queue.Peek();
                 }
 
-                if (line == null)
+                if (entry == null)
                     continue;
 
-                if (TryWrite(line))
+                if (TryWrite(entry.Text))
                 {
                     lock (_gate)
                     {
                         // Dequeue only the item we actually wrote. Send()'s drop-oldest eviction can
                         // shift a different, never-sent message to the head while the write is in
                         // flight outside the lock — an unconditional Dequeue would discard that one.
-                        if (_queue.Count > 0 && ReferenceEquals(_queue.Peek(), line))
+                        if (_queue.Count > 0 && _queue.Peek().Seq == entry.Seq)
                             _queue.Dequeue();
                     }
                     _consecutiveFailures = 0;
