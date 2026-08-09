@@ -27,7 +27,7 @@ interrupts something more urgent like a landing callout or a taxi instruction.
 
 ## Setting it up
 
-Open **Settings → VATSIM** (the second tab, right after Announcements), tick
+Open **Settings → VATSIM** (the third tab, right after Weather), tick
 **Announce VATSIM events from vPilot**, and press **OK**. Underneath the master
 switch is one checkbox per event above — all five are ticked by default, and the
 group only becomes interactive once the master switch itself is on. Untick any
