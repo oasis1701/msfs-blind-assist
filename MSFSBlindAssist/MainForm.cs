@@ -171,6 +171,8 @@ public partial class MainForm : Form
     // (silent fallback), so users without AS see/hear no change.
     private MSFSBlindAssist.Services.ActiveSkyWeatherMonitor? activeSkyWeatherMonitor;
 
+    private MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService? vatsimService;
+
     private Forms.WeatherRadarForm? weatherRadarForm;
 
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
@@ -681,6 +683,21 @@ public partial class MainForm : Form
         activeSkyWeatherMonitor.Enabled = MSFSBlindAssist.Services.ActiveSkyWeatherMonitor
             .ShouldRun(MSFSBlindAssist.Settings.SettingsManager.Current);
 
+        // VATSIM announcements from vPilot. Constructed always so the settings dialog can
+        // start it live via ApplyRuntimeSettings; ApplySettings is what installs the
+        // plugin and starts the pipe server, and it does nothing at all while the master
+        // switch is off (which is the default).
+        vatsimService = new MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService(announcer, this);
+        var vatsimStartupInstall = vatsimService.ApplySettings(MSFSBlindAssist.Settings.SettingsManager.Current);
+        if (vatsimStartupInstall != null)
+        {
+            // atStartup: only the outcomes the pilot could not otherwise notice. Dropping
+            // the result here entirely — as this line used to — meant an app update that
+            // shipped a new plugin while vPilot happened to be running went through as
+            // Locked in total silence, and the pilot flew the whole leg on the old plugin.
+            AnnounceVatsimInstallOutcome(vatsimStartupInstall, atStartup: true);
+        }
+
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
         eventBatchTimer = new System.Windows.Forms.Timer();
@@ -845,6 +862,9 @@ public partial class MainForm : Form
 
         // Clean up ActiveSky weather-update monitor
         activeSkyWeatherMonitor?.Dispose();
+
+        // Clean up the VATSIM pipe server (owns a background listener thread)
+        vatsimService?.Dispose();
 
         // Clean up A380X Coherent clients
         coherentClient?.Dispose();

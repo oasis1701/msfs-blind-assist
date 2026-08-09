@@ -182,6 +182,9 @@ SayIntentions:
                 field flow and the altimeter. Read-only: arrow keys move line by
                 line, Escape closes.
 
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
 INPUT MODE - Press [ to activate
 
 Teleport:

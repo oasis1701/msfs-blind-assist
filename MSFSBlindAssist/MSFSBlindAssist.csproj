@@ -74,6 +74,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The vPilot pipe protocol, compiled from ONE source into both this app and the
+         net48 vPilot plugin. Linked, never copied — the two ends of the wire must not
+         be able to drift. Same pattern as tools/PMDGDispatchTester and PMDGNG3DataStruct.cs. -->
+    <Compile Include="..\plugins\MSFSBlindAssist.VPilotPlugin\VPilotWireFormat.cs"
+             Link="Services\VPilot\VPilotWireFormat.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- NuGet Packages -->
     <PackageReference Include="GeoTimeZone" Version="6.1.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
@@ -208,6 +216,48 @@
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory (skip if not present)&#xD;&#xA;if exist &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\&quot; (&#xD;&#xA;  if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;  xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;)" />
+  </Target>
+
+  <ItemGroup>
+    <!-- Build-order only. ReferenceOutputAssembly=false because a net10 project cannot
+         reference a net48 assembly; SkipGetTargetFrameworkProperties stops MSBuild from
+         rejecting the cross-framework reference outright. Nothing is linked — the copy
+         below is what actually ships the DLL.
+
+         SetPlatform="Platform=AnyCPU" is REQUIRED, not decorative — do not remove it.
+         Platform is a command-line global property, and MSBuild passes a referencing
+         project's global properties straight through to its ProjectReferences unless a
+         ProjectReference overrides them. The plugin project only ever builds
+         Any CPU (see its <Platforms>AnyCPU</Platforms> and the Debug|x64 -> Debug|Any CPU
+         mapping in MSFSBlindAssist.sln), so without this override, building this csproj
+         directly with an explicit platform — e.g.
+         `dotnet build MSFSBlindAssist.csproj -c Debug -p:Platform=x64`, a command CLAUDE.md
+         explicitly sanctions as an alternative to building the .sln — passes Platform=x64
+         straight through to the plugin project too. That sends the plugin's output to
+         bin\x64\Debug\net48\ instead of bin\Debug\net48\, a folder the Copy target below
+         never looks at, so the copy below silently no-ops: either an empty vPilotPlugin\
+         folder ships, or a stale DLL that never updates again. SetPlatform pins the
+         plugin's build to Any CPU regardless of what platform this project is building as,
+         so both build paths land in the same, predictable folder. -->
+    <ProjectReference Include="..\plugins\MSFSBlindAssist.VPilotPlugin\MSFSBlindAssist.VPilotPlugin.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      SetPlatform="Platform=AnyCPU"
+                      Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyVPilotPlugin" AfterTargets="Build">
+    <!-- Lands in $(OutDir), so it follows whichever output tree is being built and the
+         release zip (which archives the whole output folder) picks it up with no
+         workflow change. VPilotPluginInstaller reads it from here at run time.
+
+         Deliberately NO Condition="Exists(...)" guard on the Copy below: a missing
+         source must fail the build loudly (MSBuild's own "could not find file" error)
+         rather than silently skipping the copy and reporting "Build succeeded" while
+         either shipping an empty vPilotPlugin\ folder or leaving a stale DLL in place. -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll"
+          DestinationFolder="$(OutDir)vPilotPlugin"
+          SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

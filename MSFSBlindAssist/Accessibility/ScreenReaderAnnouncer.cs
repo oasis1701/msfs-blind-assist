@@ -359,6 +359,18 @@ public class ScreenReaderAnnouncer : IDisposable
         }
 
         /// <summary>
+        /// Number of announcements currently waiting in the queue. Lets a caller that
+        /// shares this queue with something more urgent (VATSIM chatter sharing it with
+        /// ECAM messages, see VatsimAnnouncementService) decide to drop a message
+        /// instead of queuing it behind an existing backlog. Read under the same lock
+        /// AnnounceWithQueue/QueueTimer_Tick already use.
+        /// </summary>
+        public int QueuedAnnouncementCount
+        {
+            get { lock (announcementQueue) { return announcementQueue.Count; } }
+        }
+
+        /// <summary>
         /// Timer tick handler that processes one message from the queue at a time.
         /// </summary>
         private void QueueTimer_Tick(object? sender, EventArgs e)

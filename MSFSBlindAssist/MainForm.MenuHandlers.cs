@@ -79,7 +79,9 @@ public partial class MainForm
             };
         }
 
-        using var dlg = new Forms.Settings.SettingsForm(refreshTaxiwayNames: refreshCallback);
+        using var dlg = new Forms.Settings.SettingsForm(
+            refreshTaxiwayNames: refreshCallback,
+            vatsimStatus: () => vatsimService?.GetStatus());
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             ApplyRuntimeSettings();
@@ -196,6 +198,90 @@ public partial class MainForm
         // to push into; apply it here so it takes effect immediately (next route build).
         if (_augmentingProvider != null)
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
+
+        // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
+        var vatsimInstall = vatsimService?.ApplySettings(settings);
+        if (vatsimInstall != null)
+            AnnounceVatsimInstallOutcome(vatsimInstall, atStartup: false);
+    }
+
+    /// <summary>
+    /// Speaks what an install attempt actually did. The outcome is spoken because the
+    /// pilot cannot see whether a file landed in another application's folder — and
+    /// because "Installed" always means "now restart vPilot", which nothing else would
+    /// tell them.
+    ///
+    /// <paramref name="atStartup"/> narrows what gets spoken, but NOT down to "Locked and
+    /// Failed only" — that would silently mute the worse of the two silent-VATSIM
+    /// outcomes. The same install check runs on every launch, so an ordinary
+    /// update-refresh (an already-installed plugin gets overwritten with the same or a
+    /// newer copy while vPilot was not holding it) stays quiet there: it needed nothing
+    /// from the pilot and vPilot will load the new copy the next time it starts on its
+    /// own. A FIRST install (<see cref="MSFSBlindAssist.Services.VPilot.VPilotInstallResult.PluginWasAbsent"/>)
+    /// is a different case entirely and must speak even at startup: nothing was there
+    /// before this write, so vPilot is GUARANTEED not to have the plugin loaded right
+    /// now, and — because vPilot only loads plugins at its OWN startup, never on a
+    /// timer — nothing will load it this session unless vPilot itself is restarted.
+    /// Staying silent there is exactly what used to leave a pilot flying an entire leg in
+    /// total, unexplained VATSIM silence. Locked and Failed speak unconditionally for the
+    /// same underlying reason: the plugin the pilot is about to rely on is NOT the one
+    /// that is actually there, and nothing else on screen or in speech would say so.
+    /// LegacyRemoved (below) is unconditional too, but for an unrelated reason — see its
+    /// own comment.
+    ///
+    /// Startup uses the QUEUED announcer, not the immediate one: its System.Windows.Forms
+    /// timer cannot tick until the message pump is running, which naturally defers the
+    /// speech until the form is up instead of firing it mid-construction.
+    /// </summary>
+    private void AnnounceVatsimInstallOutcome(
+        MSFSBlindAssist.Services.VPilot.VPilotInstallResult result, bool atStartup)
+    {
+        // Inherently one-shot — once the old DLL is gone it can never be removed again —
+        // so it is worth hearing whenever it happens, startup included. It is the only
+        // thing that explains why the duplicate announcements stopped.
+        if (result.LegacyRemoved)
+        {
+            Announce("Removed the old vPilot to TTS plugin. MSFS Blind Assist now handles VATSIM announcements.");
+        }
+
+        switch (result.Status)
+        {
+            case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Installed:
+                // A first install speaks even at startup — see PluginWasAbsent's doc
+                // comment. An update-refresh Installed stays quiet there; it is the
+                // ordinary outcome of every app update and asks nothing of the pilot.
+                if (!atStartup || result.PluginWasAbsent)
+                    Announce("vPilot plugin installed. Restart vPilot to load it.");
+                break;
+            case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Locked:
+                // Startup gets its own wording. The Settings-path phrasing tells the
+                // pilot to re-open a dialog they just used; at startup they have not
+                // opened Settings this session, and the check that produced this result
+                // ran on its own — so the accurate instruction is to relaunch the app
+                // itself, which re-runs the very check that is speaking right now.
+                Announce(atStartup
+                    ? "vPilot is running with an older plugin. Close vPilot and restart MSFS Blind Assist to update it."
+                    : "vPilot is running with an older plugin. Close vPilot and re-open Settings to update it.");
+                break;
+            case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.VPilotNotFound:
+                if (!atStartup)
+                    Announce("vPilot was not found. Install vPilot, then re-open Settings.");
+                break;
+            case MSFSBlindAssist.Services.VPilot.VPilotInstallStatus.Failed:
+                Announce("The vPilot plugin could not be installed. See the log for details.");
+                break;
+            // AlreadyCurrent, and an update-refresh Installed, say nothing further —
+            // "Settings saved" already covers the Settings path, and at startup both are
+            // the normal outcome on every launch.
+        }
+
+        void Announce(string text)
+        {
+            if (atStartup)
+                announcer.AnnounceWithQueue(text);
+            else
+                announcer.Announce(text);
+        }
     }
 
     private void HotkeyListMenuItem_Click(object? sender, EventArgs e)
