@@ -54,6 +54,16 @@ Settings, since the very check you'd trigger there just ran on its own); and
 or failed plugin would leave you flying a whole leg in total VATSIM silence
 with nothing to hint at it.
 
+A fourth thing can speak at startup too, for a different reason: the one-time
+*"Removed the old vPilot to TTS plugin. MSFS Blind Assist now handles VATSIM
+announcements."* notice (see *Migrating from vPilot-to-TTS*, below, for what
+it means). It has nothing to do with a plugin failing to install — it fires
+once, ever, the moment MSFS Blind Assist finds and deletes the standalone
+app's old plugin, whichever check happens to run first while that old file is
+still there. It is worth hearing specifically at startup, unprompted, because
+that is the moment most likely to catch a pilot who just migrated and would
+otherwise have no idea why their duplicate announcements suddenly stopped.
+
 A read-only status box on the tab always tells you what to do next. It
 refreshes when the tab opens and when you tick or untick the master switch —
 not after pressing OK, which saves and closes the dialog immediately, leaving
