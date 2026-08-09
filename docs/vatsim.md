@@ -140,9 +140,10 @@ vPilot process
 
 MSFS Blind Assist process
   VPilotPipeServer (listener thread)
-    -> marshal to UI thread
     -> VatsimAnnouncementService   (master switch, session mute, lifecycle)
     -> VatsimAnnouncementFormatter (pure: per-event toggle, wording)
+    -> marshal to UI thread
+    -> shared queue depth check
     -> announcer.AnnounceWithQueue
 ```
 
@@ -293,6 +294,13 @@ Install vPilot, then re-open Settings."*) means neither lookup route below found
 a vPilot folder at all; `Failed` covers everything else —
 permissions, a missing shipped file, a disk error — reported as *"The vPilot
 plugin could not be installed. See the log for details."*
+
+Keying "up to date" on the timestamp does mean the status is sensitive to
+anything that rewrites one: an extractor that doesn't preserve mtimes, or a
+folder copied with a tool that stamps *now*. The failure is benign in both
+directions — a spurious *"An older plugin is installed"* and a harmless
+re-copy of an identical file — which is why this is a timestamp compare and not
+a content hash. Don't be surprised by a support report of that shape.
 
 Removing the legacy `vPilot-to-TTS.dll` (see *Migrating from vPilot-to-TTS*,
 above) happens inside the same `Install()` call and is itself best-effort: if
