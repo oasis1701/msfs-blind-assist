@@ -34,7 +34,10 @@ public class UpdateAvailableForm : Form
 
         private void InitializeComponent()
         {
-            this.Text = "Update Available";
+            // A downgrade is offered when a pilot on a preview build switches back to the
+            // release channel: the current release is genuinely older than what they run,
+            // so calling it an "update" would be wrong.
+            this.Text = updateInfo.IsDowngrade ? "Return to Release Build" : "Update Available";
             this.Size = new Size(600, 500);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -47,7 +50,9 @@ public class UpdateAvailableForm : Form
             // Title
             titleLabel = new Label
             {
-                Text = "A new version of MSFS Blind Assist is available!",
+                Text = updateInfo.IsDowngrade
+                    ? "Switch back to the current release build"
+                    : "A new version of MSFS Blind Assist is available!",
                 Location = new Point(20, yPos),
                 Size = new Size(540, 30),
                 Font = new Font(Font.FontFamily, 12, FontStyle.Bold),
@@ -128,11 +133,13 @@ public class UpdateAvailableForm : Form
             // Buttons
             updateButton = new Button
             {
-                Text = "&Update Now",
+                Text = updateInfo.IsDowngrade ? "&Install Release" : "&Update Now",
                 Location = new Point(360, yPos),
-                Size = new Size(100, 30),
-                AccessibleName = "Update now",
-                AccessibleDescription = "Download and install the update"
+                Size = new Size(120, 30),
+                AccessibleName = updateInfo.IsDowngrade ? "Install release build" : "Update now",
+                AccessibleDescription = updateInfo.IsDowngrade
+                    ? "Download and install the current release build, replacing the preview build you are running"
+                    : "Download and install the update"
             };
             updateButton.Click += UpdateButton_Click;
             this.Controls.Add(updateButton);
@@ -153,8 +160,15 @@ public class UpdateAvailableForm : Form
 
         private void PopulateUpdateInfo()
         {
-            currentVersionLabel.Text = $"Current Version: {updateInfo.CurrentVersion}";
-            latestVersionLabel.Text = $"Latest Version: {updateInfo.LatestVersion} ({updateInfo.TagName})";
+            currentVersionLabel.Text = $"Current version: {updateInfo.CurrentVersion}";
+
+            // "Latest" is wrong for a downgrade — the offered build is older on purpose,
+            // and a pilot must not be left thinking the version number went backwards by
+            // accident.
+            latestVersionLabel.Text = updateInfo.IsDowngrade
+                ? $"Release version: {updateInfo.LatestVersion} ({updateInfo.TagName}) — older than the preview build you are running"
+                : $"Latest version: {updateInfo.LatestVersion} ({updateInfo.TagName})";
+
             releaseNotesTextBox.Text = updateInfo.ReleaseNotes ?? "No release notes available.";
         }
 
