@@ -510,7 +510,14 @@ public partial class MainForm : Form
         // developer launch would open the update dialog. The MANUAL check still offers
         // the update, which is the documented behaviour for a dev build.
         var current = Services.AppVersion.Current;
-        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0)) return;
+        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0))
+        {
+            // Logged because RunUpdateCheckAsync never runs here, so without this line the
+            // skip is indistinguishable in debug.log from a check that silently failed.
+            Log.Debug("Updates",
+                $"Startup update check skipped: dev build (version {Services.AppVersion.DisplayString}).");
+            return;
+        }
 
         // Deliberately not awaited: startup must not wait on a network round-trip.
         // RunUpdateCheckAsync swallows everything when userInitiated is false.
