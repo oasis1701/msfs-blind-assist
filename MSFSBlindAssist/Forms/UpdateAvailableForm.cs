@@ -56,7 +56,7 @@ public class UpdateAvailableForm : Form
                 Location = new Point(20, yPos),
                 Size = new Size(540, 30),
                 Font = new Font(Font.FontFamily, 12, FontStyle.Bold),
-                AccessibleName = "Update available title"
+                AccessibleName = updateInfo.IsDowngrade ? "Return to release build" : "Update available"
             };
             this.Controls.Add(titleLabel);
             yPos += 40;
@@ -131,10 +131,12 @@ public class UpdateAvailableForm : Form
             yPos += 30;
 
             // Buttons
+            // The update button is wider than the default because "&Install Release" is longer
+            // than "&Update Now", so its left edge is moved to keep the gap before cancel.
             updateButton = new Button
             {
                 Text = updateInfo.IsDowngrade ? "&Install Release" : "&Update Now",
-                Location = new Point(360, yPos),
+                Location = new Point(340, yPos),
                 Size = new Size(120, 30),
                 AccessibleName = updateInfo.IsDowngrade ? "Install release build" : "Update now",
                 AccessibleDescription = updateInfo.IsDowngrade
