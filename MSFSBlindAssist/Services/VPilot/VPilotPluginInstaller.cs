@@ -10,7 +10,7 @@ public enum VPilotInstallStatus
     Installed,
     /// <summary>The installed DLL already matches the one we ship.</summary>
     AlreadyCurrent,
-    /// <summary>No vPilot folder could be found by any of the three routes.</summary>
+    /// <summary>No vPilot folder could be found by either lookup route.</summary>
     VPilotNotFound,
     /// <summary>An OLDER DLL is installed and vPilot currently holds it open.</summary>
     Locked,
