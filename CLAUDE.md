@@ -203,6 +203,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Pre-release identifiers compare NUMERICALLY, not lexically (`pre.10 > pre.9`), and a release outranks a pre-release of the same version (`8.0.1 > 8.0.1-pre.42`) — the second rule is what lets a real release supersede every preview, so the preview channel needs no special case for "a release came out". → [updates.md](docs/updates.md)
 - The preview channel must stay a SUPERSET (highest of pre-releases AND releases) — never narrow it to pre-releases only, or a pilot is stranded with nothing offered in the window between a release being cut and the next merge. → [updates.md](docs/updates.md)
 - The automatic startup check must stay SILENT on failure and when up to date — only the menu item reports those. → [updates.md](docs/updates.md)
+- The rolling preview's version travels in the release NAME (`Preview build <version>`), never the tag — the tag is the fixed string `preview` so the release can be updated in place, and a fixed tag cannot carry a changing version. `UpdateCandidateSelector.ResolveVersion` falls back from tag to name; reading only the tag made every preview an unparseable candidate and left the Preview channel permanently reporting "you are running the latest version". → [updates.md](docs/updates.md)
 
 ### Screen-reader announcements (→ CLAUDE.md — stays as full prose in the lean core)
 

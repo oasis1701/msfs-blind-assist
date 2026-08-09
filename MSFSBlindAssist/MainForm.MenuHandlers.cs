@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -404,14 +405,22 @@ public partial class MainForm
         {
             if (userInitiated) announcer.AnnounceImmediate("Checking for updates...");
 
+            var channel = SettingsManager.Current.UpdateChannel;
+            // Logged regardless of userInitiated: the automatic startup check is silent
+            // toward the PILOT by design, but silence toward the LOG is exactly what made
+            // "auto-update never offers me anything" undiagnosable — this log folder is
+            // this project's entire support mechanism.
+            Log.Debug("Updates", $"Update check starting. Channel={channel}, userInitiated={userInitiated}");
+
             var updateService = new UpdateService();
-            var result = await updateService.CheckForUpdatesAsync(SettingsManager.Current.UpdateChannel);
+            var result = await updateService.CheckForUpdatesAsync(channel);
 
             // The window can be gone by the time the HTTP call returns.
             if (IsDisposed || !IsHandleCreated) return;
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
+                Log.Warn("Updates", $"Update check failed. Channel={channel}: {result.ErrorMessage}");
                 if (!userInitiated) return;
                 announcer.AnnounceImmediate($"Update check failed: {result.ErrorMessage}");
                 MessageBox.Show(this, result.ErrorMessage, "Update Check Failed",
@@ -421,6 +430,8 @@ public partial class MainForm
 
             if (!result.IsUpdateAvailable)
             {
+                Log.Debug("Updates",
+                    $"No update offered. Channel={channel}, Verdict={result.Verdict}, CurrentVersion={result.CurrentVersion}");
                 if (!userInitiated) return;
 
                 // NoCandidate is not the same as UpToDate: claiming "you are on the latest
@@ -434,6 +445,9 @@ public partial class MainForm
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
+            Log.Debug("Updates",
+                $"Update offered. Tag={result.TagName}, Version={result.LatestVersion}, IsDowngrade={result.IsDowngrade}");
 
             var announcement = result.IsDowngrade
                 ? $"Release build {result.LatestVersion} is available. It is older than the preview build you are running."
@@ -462,6 +476,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
+            Log.Error("Updates", "Update check threw an exception.", ex);
             if (!userInitiated) return;
             announcer.AnnounceImmediate($"Update failed: {ex.Message}");
             MessageBox.Show(this, $"An error occurred while checking for updates: {ex.Message}",

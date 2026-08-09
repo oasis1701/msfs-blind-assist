@@ -43,6 +43,7 @@ jobs:
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # Keep the Navdatareader version in sync with preview.yml's identical step.
       - name: Download Navdatareader
         run: |
           gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
@@ -109,6 +110,7 @@ jobs:
       # preview claiming e.g. 8.0.1-pre.42 next to a newer v8.1.0 until the next merge.
       # Preview users behave correctly either way — the selector takes the highest version
       # and offers them the real release — so this must never fail a release.
+      # The name "preview" must match preview.yml's tag_name.
       - name: Retire the rolling preview
         shell: bash
         run: gh release delete preview --yes --cleanup-tag || true

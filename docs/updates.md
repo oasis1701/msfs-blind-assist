@@ -70,6 +70,11 @@ Three things there are load-bearing:
   silently truncate a release's notes.
 - **`generate_release_notes` must stay `false` in `preview.yml`.** GitHub compares against
   the previous tag, which after the force-push is `preview` itself.
+- **The preview's version travels in the release NAME, not the tag.** The tag is the fixed
+  string `preview` so one rolling release can be updated in place; the app reads the
+  version from the `Preview build <version>` name via
+  `UpdateCandidateSelector.PreviewNamePrefix`. Change that format in either place and the
+  preview channel silently stops offering anything.
 
 Force-moving the tag means a local clone that has fetched it will report *"would clobber
 existing tag"*; `git fetch --tags --force` clears that.

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MSFSBlindAssist.Settings;
@@ -41,6 +42,39 @@ public sealed record UpdateSelection(UpdateVerdict Verdict, ReleaseCandidate? Re
 /// </summary>
 public static class UpdateCandidateSelector
 {
+    /// <summary>
+    /// The prefix `preview.yml` puts in front of the version in the rolling pre-release's
+    /// NAME. This string is a CONTRACT between that workflow and this class — change one
+    /// and you must change the other, or the preview channel silently goes inert again.
+    /// </summary>
+    internal const string PreviewNamePrefix = "Preview build ";
+
+    /// <summary>
+    /// A candidate's version, taken from its tag when the tag carries one, and otherwise
+    /// from its name.
+    ///
+    /// The rolling preview's tag is the FIXED string "preview": one tag is force-moved on
+    /// every merge so a single pre-release is updated in place, and a tag cannot both stay
+    /// fixed and carry a changing version. Its version therefore travels in the release
+    /// name instead ("Preview build 8.0.1-pre.7"). Reading only the tag — which is what
+    /// this class did originally — made every preview unparseable, so it was filtered out
+    /// as a malformed candidate and the Preview channel could never offer anything.
+    ///
+    /// The prefix is matched EXACTLY rather than, say, taking the last whitespace-separated
+    /// token: a loose rule would happily read a version out of a hand-titled release that
+    /// was never meant to be one.
+    /// </summary>
+    internal static SemanticVersion? ResolveVersion(ReleaseCandidate candidate)
+    {
+        var fromTag = SemanticVersion.TryParse(candidate.TagName);
+        if (fromTag is not null) return fromTag;
+
+        var name = candidate.Name;
+        if (name is null || !name.StartsWith(PreviewNamePrefix, StringComparison.Ordinal)) return null;
+
+        return SemanticVersion.TryParse(name[PreviewNamePrefix.Length..].Trim());
+    }
+
     public static UpdateSelection Select(
         IEnumerable<ReleaseCandidate> candidates,
         UpdateChannel channel,
@@ -52,7 +86,7 @@ public static class UpdateCandidateSelector
             // lets the version comparison decide — which is what makes it a superset and
             // removes any need to special-case a missing preview.
             .Where(c => channel == UpdateChannel.Preview || !c.IsPrerelease)
-            .Select(c => new { Candidate = c, Version = SemanticVersion.TryParse(c.TagName) })
+            .Select(c => new { Candidate = c, Version = ResolveVersion(c) })
             // A tag nobody can parse is skipped, never fatal: one malformed tag must not
             // blind the updater to every other release.
             .Where(x => x.Version is not null)

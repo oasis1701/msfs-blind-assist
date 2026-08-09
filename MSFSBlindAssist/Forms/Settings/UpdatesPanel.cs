@@ -34,40 +34,48 @@ public class UpdatesPanel : UserControl, ISettingsPanel
         const int labelHeight = 23;
         var yPos = 20;
 
-        var channelLabel = new Label
+        // A GroupBox, not a bold Label, so a screen reader announces the group name
+        // before each radio button ("Which builds..., grouping" then "Release builds,
+        // radio button, 1 of 2") — matching the idiom AnnouncementsPanel/HandFlyPanel/
+        // VatsimPanel already use for a labelled set of controls. A bare Label above
+        // ungrouped radios gives no group context at all.
+        const int groupTopPadding = 24;       // room for the GroupBox's own caption/border
+        const int radioStep = labelHeight + 4; // same 4px gap the two radios always had
+        const int groupBottomPadding = 12;
+        var groupHeight = groupTopPadding + radioStep + labelHeight + groupBottomPadding;
+
+        var channelGroup = new GroupBox
         {
             Text = "Which builds should MSFS Blind Assist offer?",
             Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(560, labelHeight),
-            Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold),
+            Size = new System.Drawing.Size(560, groupHeight),
             AccessibleName = "Update channel section"
         };
-        Controls.Add(channelLabel);
-        yPos += labelHeight + 8;
 
         _releaseRadio = new RadioButton
         {
             Text = "&Release builds (recommended)",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(560, labelHeight),
+            Location = new System.Drawing.Point(12, groupTopPadding),
+            Size = new System.Drawing.Size(530, labelHeight),
             AccessibleName = "Release builds",
             AccessibleDescription = "Only offer full releases. This is the default."
         };
-        Controls.Add(_releaseRadio);
-        yPos += labelHeight + 4;
+        channelGroup.Controls.Add(_releaseRadio);
 
         _previewRadio = new RadioButton
         {
             Text = "&Preview builds",
-            Location = new System.Drawing.Point(20, yPos),
-            Size = new System.Drawing.Size(560, labelHeight),
+            Location = new System.Drawing.Point(12, groupTopPadding + radioStep),
+            Size = new System.Drawing.Size(530, labelHeight),
             AccessibleName = "Preview builds",
             AccessibleDescription =
                 "Also offer the preview build, which is rebuilt every time a change is finished. " +
                 "Preview builds have had less flying time than a release."
         };
-        Controls.Add(_previewRadio);
-        yPos += labelHeight + 16;
+        channelGroup.Controls.Add(_previewRadio);
+
+        Controls.Add(channelGroup);
+        yPos += groupHeight + 16;
 
         _autoCheckBox = new CheckBox
         {

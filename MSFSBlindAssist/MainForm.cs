@@ -505,6 +505,13 @@ public partial class MainForm : Form
 
         if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
 
+        // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
+        // -p:Version), which loses to every published tag, so without this every
+        // developer launch would open the update dialog. The MANUAL check still offers
+        // the update, which is the documented behaviour for a dev build.
+        var current = Services.AppVersion.Current;
+        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0)) return;
+
         // Deliberately not awaited: startup must not wait on a network round-trip.
         // RunUpdateCheckAsync swallows everything when userInitiated is false.
         _ = RunUpdateCheckAsync(userInitiated: false);

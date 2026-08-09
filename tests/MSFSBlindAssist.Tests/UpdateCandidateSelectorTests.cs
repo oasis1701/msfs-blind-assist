@@ -157,4 +157,71 @@ public class UpdateCandidateSelectorTests
         Assert.Equal(UpdateVerdict.UpdateAvailable, result.Verdict);
         Assert.Equal("v8.0.0", result.Release!.TagName);
     }
+
+    [Fact]
+    public void PreviewChannel_SelectsTheRollingPreview_WhoseTagIsNotAVersion()
+    {
+        // The literal strings preview.yml publishes: a FIXED tag "preview" (it is
+        // force-moved on every merge, so it cannot carry a version) with the version in
+        // the name. Reading only the tag made this candidate unparseable and the whole
+        // Preview channel inert.
+        var rollingPreview = new ReleaseCandidate(
+            "preview", "Preview build 8.0.1-pre.7", "notes",
+            IsPrerelease: true, IsDraft: false, ZipDownloadUrl: "https://example/z.zip");
+
+        var result = UpdateCandidateSelector.Select(
+            new List<ReleaseCandidate> { rollingPreview, Release("v8.0.0") },
+            UpdateChannel.Preview,
+            V("8.0.0"));
+
+        Assert.Equal(UpdateVerdict.UpdateAvailable, result.Verdict);
+        Assert.Equal("preview", result.Release!.TagName);
+        Assert.Equal("8.0.1-pre.7", result.Version!.ToString());
+    }
+
+    [Fact]
+    public void ReleaseChannel_StillExcludesTheRollingPreview()
+    {
+        var rollingPreview = new ReleaseCandidate(
+            "preview", "Preview build 8.0.1-pre.7", "notes",
+            IsPrerelease: true, IsDraft: false, ZipDownloadUrl: "https://example/z.zip");
+
+        var result = UpdateCandidateSelector.Select(
+            new List<ReleaseCandidate> { rollingPreview, Release("v8.0.0") },
+            UpdateChannel.Release,
+            V("8.0.0"));
+
+        Assert.Equal(UpdateVerdict.UpToDate, result.Verdict);
+    }
+
+    [Fact]
+    public void ANonVersionNameIsNotMinedForAVersion()
+    {
+        // A hand-titled release must not have a version read out of it by accident.
+        var oddlyNamed = new ReleaseCandidate(
+            "nightly", "Nightly 9.9.9 experimental", "notes",
+            IsPrerelease: true, IsDraft: false, ZipDownloadUrl: "https://example/z.zip");
+
+        var result = UpdateCandidateSelector.Select(
+            new List<ReleaseCandidate> { oddlyNamed, Release("v8.0.0") },
+            UpdateChannel.Preview,
+            V("8.0.0"));
+
+        Assert.Equal(UpdateVerdict.UpToDate, result.Verdict);
+    }
+
+    [Fact]
+    public void APreviewNameWithGarbageAfterThePrefixIsSkipped()
+    {
+        var broken = new ReleaseCandidate(
+            "preview", "Preview build not-a-version", "notes",
+            IsPrerelease: true, IsDraft: false, ZipDownloadUrl: "https://example/z.zip");
+
+        var result = UpdateCandidateSelector.Select(
+            new List<ReleaseCandidate> { broken, Release("v8.0.0") },
+            UpdateChannel.Preview,
+            V("8.0.0"));
+
+        Assert.Equal(UpdateVerdict.UpToDate, result.Verdict);
+    }
 }

@@ -82,6 +82,7 @@ jobs:
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # Keep the Navdatareader version in sync with release.yml's identical step.
       - name: Download Navdatareader
         run: |
           gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
@@ -148,6 +149,10 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: preview
+          # CONTRACT with MSFSBlindAssist/Services/UpdateCandidateSelector.cs
+          # (PreviewNamePrefix): the app reads the preview's version out of THIS name,
+          # because the tag above is the fixed string "preview" and cannot carry one.
+          # Change this format and the Preview channel silently goes inert.
           name: Preview build ${{ steps.version.outputs.VERSION }}
           body_path: preview-notes.md
           files: MSFSBA-preview.zip

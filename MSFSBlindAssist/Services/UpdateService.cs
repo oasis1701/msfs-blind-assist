@@ -139,8 +139,8 @@ public class UpdateService
             TagName: tagName,
             Name: release["name"]?.ToString(),
             Body: release["body"]?.ToString(),
-            IsPrerelease: release["prerelease"]?.Value<bool>() ?? false,
-            IsDraft: release["draft"]?.Value<bool>() ?? false,
+            IsPrerelease: release["prerelease"]?.Value<bool?>() ?? false,
+            IsDraft: release["draft"]?.Value<bool?>() ?? false,
             ZipDownloadUrl: FindZipAssetUrl(release));
     }
 
