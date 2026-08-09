@@ -194,6 +194,16 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
 
+### Updates & release channels (→ [updates.md](docs/updates.md))
+
+- The rolling preview tag must NEVER begin with `v` — `release.yml` triggers on `tags: ['v*']`, so a `v…-pre.N` tag fires the release workflow and publishes a duplicate full release. → [updates.md](docs/updates.md)
+- Every `git describe --tags --abbrev=0` in a workflow must carry `--match 'v*'` — the `preview` tag lives on `main`, and an unscoped lookup returns IT instead of the previous release (verified: a tag planted between v7.0.0 and v8.0.0 made `git describe --tags --abbrev=0 v8.0.0^` return the planted tag), silently truncating the release's written notes. → [updates.md](docs/updates.md)
+- `generate_release_notes` must stay FALSE in `preview.yml` — GitHub's generated list compares against the previous tag, which after the force-push is `preview` itself. → [updates.md](docs/updates.md)
+- Version comparison and display must read `AssemblyInformationalVersion` (via `Services/AppVersion.cs`), NEVER `AssemblyVersion` — the latter cannot carry a pre-release identifier, so `8.0.1-pre.42` and `8.0.1-pre.7` both present as `8.0.1.0` and no preview channel can work. → [updates.md](docs/updates.md)
+- Pre-release identifiers compare NUMERICALLY, not lexically (`pre.10 > pre.9`), and a release outranks a pre-release of the same version (`8.0.1 > 8.0.1-pre.42`) — the second rule is what lets a real release supersede every preview, so the preview channel needs no special case for "a release came out". → [updates.md](docs/updates.md)
+- The preview channel must stay a SUPERSET (highest of pre-releases AND releases) — never narrow it to pre-releases only, or a pilot is stranded with nothing offered in the window between a release being cut and the next merge. → [updates.md](docs/updates.md)
+- The automatic startup check must stay SILENT on failure and when up to date — only the menu item reports those. → [updates.md](docs/updates.md)
+
 ### Screen-reader announcements (→ CLAUDE.md — stays as full prose in the lean core)
 
 - NEVER announce button presses, combo/dropdown value changes, or any direct UI interaction in panel controls — screen readers already announce them; ONLY announce numeric input confirmations, validation errors, and background (non-user-triggered) state changes. → CLAUDE.md
@@ -711,6 +721,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
 - **Working on the SayIntentions integration (clearance parsing, transmission readouts, taxi route import)** → [SayIntentions](docs/sayintentions.md)
 - **Working on the VATSIM integration (vPilot plugin, pipe server, announcement settings)** → [VATSIM](docs/vatsim.md)
+- **Working on the update system (release/preview channels, the updater, CI release workflows)** → [Updates](docs/updates.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Working on the iFly 737 MAX8 (official SDK shared memory, WM_COPYDATA writes, synthetic `SYN_*` fields)** → [iFly 737 MAX8](docs/ifly-737.md)
 - **Working on the PMDG 777 (CDA switches, CDU array indexing, System Display synoptic pages)** → [PMDG 777](docs/pmdg-777.md)
@@ -736,6 +747,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
 - **[VATSIM](docs/vatsim.md)** - vPilot plugin install, named-pipe transport, per-event announcement settings
+- **[Updates](docs/updates.md)** - Release and preview channels, the rolling preview workflow, version derivation, and the route back to a release
 - **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
 - **[iFly 737 MAX8](docs/ifly-737.md)** - official iFly SDK transport (shared memory + WM_COPYDATA), generated offsets, synthetic `SYN_*` fields, command-encoding traps
 - **[PMDG 777](docs/pmdg-777.md)** - CDA switch patterns, fuel-lever/ground-power exceptions, CDU crew-index convention, System Display
