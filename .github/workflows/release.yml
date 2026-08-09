@@ -72,7 +72,12 @@ jobs:
           # never happened (20 tags, all full releases). If an rc is ever cut: either
           # pass `previous_tag` explicitly to softprops/action-gh-release below so both
           # halves agree, or accept the narrower written range deliberately.
-          PREV=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          # --match 'v*' is REQUIRED. The rolling `preview` tag (preview.yml) lives on
+          # main, and a bare `git describe --tags` can return IT instead of the previous
+          # release — verified: with a tag planted between v7.0.0 and v8.0.0,
+          # `git describe --tags --abbrev=0 v8.0.0^` returns the planted tag. The range
+          # would then silently omit every fragment added before it.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
           # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
           # makes the builder exit 1 if it reaches it.
           if [ -z "$PREV" ]; then
@@ -99,3 +104,13 @@ jobs:
           # the written entries lead and the full PR list follows below them.
           body_path: release-notes.md
           generate_release_notes: true
+
+      # Cosmetic, and deliberately best-effort. Without it the Releases page shows a
+      # preview claiming e.g. 8.0.1-pre.42 next to a newer v8.1.0 until the next merge.
+      # Preview users behave correctly either way — the selector takes the highest version
+      # and offers them the real release — so this must never fail a release.
+      - name: Retire the rolling preview
+        shell: bash
+        run: gh release delete preview --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ github.token }}

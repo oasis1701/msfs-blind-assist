@@ -120,7 +120,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        # Full history AND tags: git describe needs the previous tag.
+        # Full history AND tags: git describe --match 'v*' needs the previous release tag.
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -135,7 +135,9 @@ jobs:
         run: |
           # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
           # makes the builder exit 1 if it reaches it.
-          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          # --match 'v*': the rolling `preview` tag from preview.yml lives on main and
+          # would otherwise be picked as the previous release, truncating this preview.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           if [ -z "$PREV" ]; then
             echo "No previous tag; taking every fragment."
             git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
