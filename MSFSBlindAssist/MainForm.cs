@@ -688,7 +688,15 @@ public partial class MainForm : Form
         // plugin and starts the pipe server, and it does nothing at all while the master
         // switch is off (which is the default).
         vatsimService = new MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService(announcer, this);
-        vatsimService.ApplySettings(MSFSBlindAssist.Settings.SettingsManager.Current);
+        var vatsimStartupInstall = vatsimService.ApplySettings(MSFSBlindAssist.Settings.SettingsManager.Current);
+        if (vatsimStartupInstall != null)
+        {
+            // atStartup: only the outcomes the pilot could not otherwise notice. Dropping
+            // the result here entirely — as this line used to — meant an app update that
+            // shipped a new plugin while vPilot happened to be running went through as
+            // Locked in total silence, and the pilot flew the whole leg on the old plugin.
+            AnnounceVatsimInstallOutcome(vatsimStartupInstall, atStartup: true);
+        }
 
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches

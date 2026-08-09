@@ -39,7 +39,12 @@ folder — vPilot does not need to be running for a first install to succeed (se
 a plugin at startup, so you need to restart vPilot before it takes effect.** The
 same install/refresh check runs quietly every time MSFS Blind Assist itself
 starts, so an app update that changes the plugin never leaves an old copy
-behind.
+behind. That startup check stays silent when it succeeds — but it *does* speak
+the two outcomes you could not otherwise notice: *"vPilot is running with an
+older plugin…"* (vPilot was already open, so the file could not be replaced)
+and *"The vPilot plugin could not be installed…"*. Without those two, an update
+that failed would leave you flying a whole leg on the old plugin with nothing
+to hint at it.
 
 A read-only status box on the tab always tells you what to do next. It
 refreshes when the tab opens and when you tick or untick the master switch —
