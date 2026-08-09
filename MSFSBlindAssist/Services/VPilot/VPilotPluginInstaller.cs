@@ -18,11 +18,24 @@ public enum VPilotInstallStatus
     Failed,
 }
 
+/// <summary><paramref name="PluginWasAbsent"/> is only meaningful when
+/// <paramref name="Status"/> is <see cref="VPilotInstallStatus.Installed"/> — every
+/// other return sets it false, since no write happened at all. It distinguishes the two
+/// ways an install can land: a first install, where nothing was at the destination
+/// before this write, so vPilot is GUARANTEED not to have the plugin loaded right now;
+/// versus a successful update, where the copy landed at a path that already held a
+/// file, which only says the write beat vPilot to the lock — not that vPilot had
+/// actually loaded the copy it just replaced. See AnnounceVatsimInstallOutcome in
+/// MainForm.MenuHandlers.cs, the one consumer that needs the distinction: a first
+/// install must speak even at startup, because nothing will load it this session
+/// unless vPilot itself is restarted, while an ordinary update-refresh stays quiet
+/// there.</summary>
 public sealed record VPilotInstallResult(
     VPilotInstallStatus Status,
     string Detail,
     bool LegacyRemoved,
-    string? PluginsFolder);
+    string? PluginsFolder,
+    bool PluginWasAbsent);
 
 /// <summary>
 /// Puts the vPilot plugin where vPilot will find it, and takes the old standalone
@@ -153,7 +166,7 @@ public static class VPilotPluginInstaller
             // in this branch logs anything, so without this line debug.log has no record
             // that an install was even attempted.
             var notFound = new VPilotInstallResult(VPilotInstallStatus.VPilotNotFound,
-                "vPilot was not found.", false, null);
+                "vPilot was not found.", false, null, PluginWasAbsent: false);
             Log.Debug("VPilot", $"Install: {notFound.Detail} PluginsFolder={notFound.PluginsFolder ?? "(none)"}");
             return notFound;
         }
@@ -163,7 +176,8 @@ public static class VPilotPluginInstaller
         {
             Log.Warn("VPilot", $"Shipped plugin missing at {source}");
             return new VPilotInstallResult(VPilotInstallStatus.Failed,
-                "The plugin file is missing from this installation.", false, pluginsFolder);
+                "The plugin file is missing from this installation.", false, pluginsFolder,
+                PluginWasAbsent: false);
         }
 
         bool legacyRemoved = false;
@@ -180,7 +194,8 @@ public static class VPilotPluginInstaller
                 // The other silent outcome, and the one that fires on every ordinary
                 // startup once the plugin is up to date — equally worth a trace line.
                 var current = new VPilotInstallResult(VPilotInstallStatus.AlreadyCurrent,
-                    "The plugin is installed and up to date.", legacyRemoved, pluginsFolder);
+                    "The plugin is installed and up to date.", legacyRemoved, pluginsFolder,
+                    PluginWasAbsent: false);
                 Log.Debug("VPilot", $"Install: {current.Detail} PluginsFolder={current.PluginsFolder}");
                 return current;
             }
@@ -198,7 +213,8 @@ public static class VPilotPluginInstaller
                 {
                     Log.Debug("VPilot", $"Plugin update blocked, vPilot holds the file: {ex.Message}");
                     return new VPilotInstallResult(VPilotInstallStatus.Locked,
-                        "vPilot is running with an older plugin.", legacyRemoved, pluginsFolder);
+                        "vPilot is running with an older plugin.", legacyRemoved, pluginsFolder,
+                        PluginWasAbsent: false);
                 }
                 throw;
             }
@@ -210,13 +226,15 @@ public static class VPilotPluginInstaller
 
             Log.Info("VPilot", $"Plugin installed to {dest}");
             return new VPilotInstallResult(VPilotInstallStatus.Installed,
-                "The plugin was installed.", legacyRemoved, pluginsFolder);
+                "The plugin was installed.", legacyRemoved, pluginsFolder,
+                PluginWasAbsent: !destExisted);
         }
         catch (Exception ex)
         {
             Log.Warn("VPilot", $"Plugin install failed: {ex.Message}");
             return new VPilotInstallResult(VPilotInstallStatus.Failed,
-                "The plugin could not be installed.", legacyRemoved, pluginsFolder);
+                "The plugin could not be installed.", legacyRemoved, pluginsFolder,
+                PluginWasAbsent: false);
         }
     }
 
