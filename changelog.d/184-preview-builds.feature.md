@@ -8,3 +8,7 @@ MSFS Blind Assist can also check for updates on its own each time it starts. Tha
 default and stays completely quiet unless there is something to tell you — no interruption
 when you are already set up and flying. The About window now shows the exact build you are
 running, which is the thing to quote when reporting a problem.
+
+The update window's release notes are now a properly formatted document instead of raw
+Markdown text: headings you can jump between, real lists, and links that open in your
+browser — instead of symbol soup on one long line.

@@ -1,4 +1,8 @@
+using System.Diagnostics;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -7,6 +11,7 @@ public class UpdateAvailableForm : Form
         private Label titleLabel = null!;
         private Label currentVersionLabel = null!;
         private Label latestVersionLabel = null!;
+        private WebView2 releaseNotesView = null!;
         private TextBox releaseNotesTextBox = null!;
         private ProgressBar downloadProgressBar = null!;
         private Label statusLabel = null!;
@@ -92,7 +97,28 @@ public class UpdateAvailableForm : Form
             this.Controls.Add(notesLabel);
             yPos += 25;
 
-            // Release notes
+            // Release notes: a WebView2 rendering the Markdown body properly, so a screen
+            // reader gets a real document — heading navigation, list semantics, working
+            // links — instead of raw Markdown symbols on one run-on line. Same idiom as
+            // the EFB forms (FbwEfbForm): render in WebView2, fall back to a native
+            // control if the runtime is missing or init fails.
+            releaseNotesView = new WebView2
+            {
+                Location = new Point(20, yPos),
+                Size = new Size(540, 180),
+                AccessibleName = "Release notes",
+                AccessibleDescription = "Release notes for the offered version"
+            };
+            // Keys pressed inside the WebView2 document are consumed by the browser
+            // process and never reach the form's ProcessDialogKey — the wrapper only
+            // re-raises accelerator keys (Esc, Alt+letter) as this control's KeyDown.
+            // Without this handler, Escape and the button mnemonics are dead exactly
+            // where a screen-reader user spends the whole dialog, since the notes view
+            // is the first selectable control and therefore the default focus.
+            releaseNotesView.KeyDown += OnNotesKeyDown;
+            this.Controls.Add(releaseNotesView);
+
+            // The fallback, hidden unless WebView2 init fails. Same bounds.
             releaseNotesTextBox = new TextBox
             {
                 Location = new Point(20, yPos),
@@ -100,8 +126,9 @@ public class UpdateAvailableForm : Form
                 Multiline = true,
                 ReadOnly = true,
                 ScrollBars = ScrollBars.Vertical,
+                Visible = false,
                 AccessibleName = "Release notes",
-                AccessibleDescription = "Release notes for the new version"
+                AccessibleDescription = "Release notes for the offered version"
             };
             this.Controls.Add(releaseNotesTextBox);
             yPos += 190;
@@ -171,7 +198,142 @@ public class UpdateAvailableForm : Form
                 ? $"Release version: {updateInfo.LatestVersion} ({updateInfo.TagName}) — older than the preview build you are running"
                 : $"Latest version: {updateInfo.LatestVersion} ({updateInfo.TagName})";
 
-            releaseNotesTextBox.Text = updateInfo.ReleaseNotes ?? "No release notes available.";
+            // The notes themselves are loaded by InitNotesViewAsync (or its fallback),
+            // which OnLoad kicks off — EnsureCoreWebView2Async cannot run in the
+            // constructor.
+        }
+
+        protected override void OnLoad(EventArgs e)
+        {
+            base.OnLoad(e);
+            // Fire-and-forget is safe: the method catches everything and degrades to the
+            // plain-text fallback.
+            _ = InitNotesViewAsync();
+        }
+
+        private async Task InitNotesViewAsync()
+        {
+            try
+            {
+                await releaseNotesView.EnsureCoreWebView2Async();
+                var s = releaseNotesView.CoreWebView2.Settings;
+                s.AreDefaultContextMenusEnabled = false;
+                s.AreDevToolsEnabled = false;
+                s.IsZoomControlEnabled = false;
+                s.AreBrowserAcceleratorKeysEnabled = false;
+                // The page carries no JS of its own (pinned by ReleaseNotesHtmlTests), and
+                // the body is third-party text — belt and braces on top of DisableHtml.
+                s.IsScriptEnabled = false;
+
+                releaseNotesView.CoreWebView2.NavigationStarting += OnNotesNavigationStarting;
+                releaseNotesView.CoreWebView2.NewWindowRequested += OnNotesNewWindowRequested;
+                // The other half of the FbwEfbForm idiom: a browser-process death after a
+                // successful init raises no exception into the form, only this event —
+                // without it a crash strands the pilot on a focusable, silent, empty pane
+                // while the working fallback sits hidden.
+                releaseNotesView.CoreWebView2.ProcessFailed += OnNotesProcessFailed;
+                releaseNotesView.CoreWebView2.NavigateToString(ReleaseNotesHtml.Build(updateInfo.ReleaseNotes));
+            }
+            catch (Exception ex)
+            {
+                // Missing WebView2 runtime, or the dialog closed mid-init. Either way the
+                // pilot still gets the notes, just unrendered.
+                Log.Debug("Updates", $"WebView2 init failed for release notes; using plain text: {ex.Message}");
+                ShowPlainTextNotes();
+            }
+        }
+
+        /// <summary>
+        /// The dialog itself never shows any document but the one NavigateToString
+        /// provided. Both allowed prefixes are load-bearing: NavigateToString's own load
+        /// arrives at this event as a data: navigation (Source reads about:blank only
+        /// afterwards — probe-verified on WebView2 1.0.4022.49), so cancelling data: here
+        /// blanks the notes. A data: link CLICKED inside the notes never gets this far:
+        /// Chromium blocks top-frame data: navigations outright. Everything else is
+        /// cancelled, and http/https links open in the default browser — GitHub's
+        /// generated notes are full of PR links.
+        /// </summary>
+        private void OnNotesNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (e.Uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
+                e.Uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            OpenExternally(e.Uri);
+        }
+
+        private void OnNotesNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+        {
+            e.Handled = true;
+            OpenExternally(e.Uri);
+        }
+
+        /// <summary>Opens http/https links in the default browser; drops anything else.</summary>
+        private static void OpenExternally(string uri)
+        {
+            if (!uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Updates", $"Could not open release-notes link: {ex.Message}");
+            }
+        }
+
+        private void OnNotesProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        {
+            Log.Debug("Updates", $"WebView2 process failed for release notes ({e.ProcessFailedKind}); using plain text.");
+            ShowPlainTextNotes();
+        }
+
+        /// <summary>
+        /// Restores the dialog keys the browser process swallows. Escape and mnemonics go
+        /// through the buttons' own click paths, so disabled-while-downloading semantics
+        /// are preserved (PerformClick no-ops on a disabled button, like CancelButton).
+        /// </summary>
+        private void OnNotesKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                cancelButton.PerformClick();
+            }
+            else if (e.Alt && e.KeyCode is >= Keys.A and <= Keys.Z)
+            {
+                // Form.ProcessMnemonic finds the matching &-labelled button itself, so
+                // this stays correct when the update button's label (and mnemonic)
+                // differs between update and downgrade.
+                if (ProcessMnemonic((char)e.KeyCode)) e.Handled = true;
+            }
+        }
+
+        private void ShowPlainTextNotes()
+        {
+            if (IsDisposed) return;
+
+            // Order matters: show the fallback BEFORE hiding the view. Hiding the focused
+            // WebView2 first makes WinForms move focus to the next visible selectable
+            // control — at that instant the Update button, silently parking a blind
+            // pilot's focus on the destructive action (probe-verified). With the TextBox
+            // already visible, focus lands on it instead.
+            releaseNotesTextBox.Visible = true;
+            releaseNotesView.Visible = false;
+
+            // Both note producers emit LF-only text (preview.yml's bash block,
+            // ChangelogRenderer), and a TextBox only breaks lines on CRLF — normalize, or
+            // the whole body renders as one run-on line.
+            var text = updateInfo.ReleaseNotes ?? "No release notes available.";
+            releaseNotesTextBox.Text = text.Replace("\r\n", "\n").Replace("\n", "\r\n");
         }
 
         private async void UpdateButton_Click(object? sender, EventArgs e)
