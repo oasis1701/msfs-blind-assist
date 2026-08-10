@@ -52,13 +52,18 @@ public class ReleaseNotesHtmlTests
     }
 
     [Fact]
-    public void Build_TreatsLfOnlyLineBreaksAsHardBreaks()
+    public void Build_FlowsParagraphInnerNewlines_NeverHardBreaks()
     {
-        // Both producers emit LF-only text, and GitHub renders release bodies with hard
-        // line breaks — a paragraph's inner newline must become a <br>, not be swallowed.
+        // Both producers hand-wrap their Markdown at ~90 columns (see any changelog.d
+        // fragment), and GitHub's Releases page renders those bodies as flowing
+        // paragraphs. Hard-breaking each source newline reproduced the author's editor
+        // wrapping inside the dialog's narrower box — every ~90-char source line wrapped
+        // once and left a short orphan line (the "lines are way too short" report). An
+        // inner newline must stay a soft break so the paragraph wraps to the container.
         var html = ReleaseNotesHtml.Build("line one\nline two");
 
-        Assert.Contains("<br", html);
+        Assert.Contains("<p>line one\nline two</p>", html);
+        Assert.DoesNotContain("<br", html);
     }
 
     [Fact]

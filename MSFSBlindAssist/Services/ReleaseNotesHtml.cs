@@ -12,10 +12,13 @@ namespace MSFSBlindAssist.Services;
 ///     quote contributor PR titles verbatim — so HTML-shaped input must render as escaped
 ///     text, never as markup. Scripting is additionally disabled on the WebView itself,
 ///     but this is the layer that makes injected markup inert everywhere.
-///   - SoftlineBreakAsHardlineBreak: GitHub renders release bodies with hard line breaks
-///     (comment-style), and both of this repo's note producers (preview.yml's bash block,
-///     ChangelogRenderer) emit LF-only text. Without this, a body's inner newlines are
-///     swallowed into one long line — the exact complaint that motivated the web view.
+///   - Soft line breaks stay SOFT (no SoftlineBreakAsHardlineBreak). Both of this repo's
+///     note producers hand-wrap their Markdown at ~90 columns (see any changelog.d
+///     fragment), and GitHub's Releases page renders those bodies as flowing paragraphs.
+///     Hard-breaking each source newline reproduced the author's editor wrapping inside
+///     the dialog's narrower box — every line wrapped once and left a short orphan line
+///     (the "lines are way too short" report). Structure (paragraphs, bullets, headings)
+///     is what fixes the old TextBox's run-on-line problem; hard breaks are not needed.
 ///   - AutoLinks: the generated notes end each bullet with a bare PR URL
 ///     ("... in https://github.com/.../pull/184"), which should be a real link.
 /// </summary>
@@ -23,7 +26,6 @@ public static class ReleaseNotesHtml
 {
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .DisableHtml()
-        .UseSoftlineBreakAsHardlineBreak()
         .UseAutoLinks()
         .Build();
 
