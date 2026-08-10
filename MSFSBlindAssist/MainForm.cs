@@ -434,6 +434,11 @@ public partial class MainForm : Form
 
         // Set up form after load
         this.Load += MainForm_Load;
+
+        // The update check runs off Shown, not Load: the window is already up, so the
+        // dialog has a parent and the message pump is running for the queued announcer.
+        // It never blocks startup — the HTTP call is awaited after the form is visible.
+        this.Shown += MainForm_Shown;
     }
 
     private void MainForm_Load(object? sender, EventArgs e)
@@ -484,6 +489,39 @@ public partial class MainForm : Form
         StartIFlySdkBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
+    }
+
+    /// <summary>
+    /// Fires once, the first time the window is displayed. The bool is belt and braces:
+    /// Shown is documented as first-display only, and a second update check would be
+    /// harmless but pointless.
+    /// </summary>
+    private bool _startupUpdateCheckDone;
+
+    private void MainForm_Shown(object? sender, EventArgs e)
+    {
+        if (_startupUpdateCheckDone) return;
+        _startupUpdateCheckDone = true;
+
+        if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
+
+        // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
+        // -p:Version), which loses to every published tag, so without this every
+        // developer launch would open the update dialog. The MANUAL check still offers
+        // the update, which is the documented behaviour for a dev build.
+        var current = Services.AppVersion.Current;
+        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0))
+        {
+            // Logged because RunUpdateCheckAsync never runs here, so without this line the
+            // skip is indistinguishable in debug.log from a check that silently failed.
+            Log.Debug("Updates",
+                $"Startup update check skipped: dev build (version {Services.AppVersion.DisplayString}).");
+            return;
+        }
+
+        // Deliberately not awaited: startup must not wait on a network round-trip.
+        // RunUpdateCheckAsync swallows everything when userInitiated is false.
+        _ = RunUpdateCheckAsync(userInitiated: false);
     }
 
     private void InitializeManagers()

@@ -77,13 +77,13 @@
     <!-- The vPilot pipe protocol, compiled from ONE source into both this app and the
          net48 vPilot plugin. Linked, never copied — the two ends of the wire must not
          be able to drift. Same pattern as tools/PMDGDispatchTester and PMDGNG3DataStruct.cs. -->
-    <Compile Include="..\plugins\MSFSBlindAssist.VPilotPlugin\VPilotWireFormat.cs"
-             Link="Services\VPilot\VPilotWireFormat.cs" />
+    <Compile Include="..\plugins\MSFSBlindAssist.VPilotPlugin\VPilotWireFormat.cs" Link="Services\VPilot\VPilotWireFormat.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- NuGet Packages -->
     <PackageReference Include="GeoTimeZone" Version="6.1.0" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
     <PackageReference Include="NAudio" Version="2.3.0" />
@@ -239,11 +239,7 @@
          folder ships, or a stale DLL that never updates again. SetPlatform pins the
          plugin's build to Any CPU regardless of what platform this project is building as,
          so both build paths land in the same, predictable folder. -->
-    <ProjectReference Include="..\plugins\MSFSBlindAssist.VPilotPlugin\MSFSBlindAssist.VPilotPlugin.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true"
-                      SetPlatform="Platform=AnyCPU"
-                      Private="false" />
+    <ProjectReference Include="..\plugins\MSFSBlindAssist.VPilotPlugin\MSFSBlindAssist.VPilotPlugin.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" SetPlatform="Platform=AnyCPU" Private="false" />
   </ItemGroup>
 
   <Target Name="CopyVPilotPlugin" AfterTargets="Build">
@@ -255,9 +251,7 @@
          source must fail the build loudly (MSBuild's own "could not find file" error)
          rather than silently skipping the copy and reporting "Build succeeded" while
          either shipping an empty vPilotPlugin\ folder or leaving a stale DLL in place. -->
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll"
-          DestinationFolder="$(OutDir)vPilotPlugin"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll" DestinationFolder="$(OutDir)vPilotPlugin" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

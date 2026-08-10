@@ -13,6 +13,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist;
 
@@ -371,75 +372,119 @@ public partial class MainForm
         SwitchAircraft(new HeadwindA330Definition());
     }
 
+    /// <summary>
+    /// Guards against the startup check and the menu item running at once — either would
+    /// otherwise open its own update dialog.
+    /// </summary>
+    private int _updateCheckInFlight;
+
     private async void UpdateApplicationMenuItem_Click(object? sender, EventArgs e)
     {
+        await RunUpdateCheckAsync(userInitiated: true);
+    }
+
+    /// <summary>
+    /// The one update-check path, shared by the Application menu item and the startup
+    /// check. The difference between them is only how loud they are:
+    ///
+    ///   userInitiated true  — reports failures and reports being up to date.
+    ///   userInitiated false — silent on both. A pilot who did not ask for a check must
+    ///                         never be interrupted to be told nothing happened.
+    ///
+    /// An available update (or an offered downgrade) is announced and shown either way.
+    /// </summary>
+    private async Task RunUpdateCheckAsync(bool userInitiated)
+    {
+        if (Interlocked.CompareExchange(ref _updateCheckInFlight, 1, 0) != 0)
+        {
+            if (userInitiated) announcer.AnnounceImmediate("An update check is already running.");
+            return;
+        }
+
         try
         {
-            announcer.AnnounceImmediate("Checking for updates...");
+            if (userInitiated) announcer.AnnounceImmediate("Checking for updates...");
+
+            var channel = SettingsManager.Current.UpdateChannel;
+            // Logged regardless of userInitiated: the automatic startup check is silent
+            // toward the PILOT by design, but silence toward the LOG is exactly what made
+            // "auto-update never offers me anything" undiagnosable — this log folder is
+            // this project's entire support mechanism.
+            Log.Debug("Updates", $"Update check starting. Channel={channel}, userInitiated={userInitiated}");
 
             var updateService = new UpdateService();
-            var result = await updateService.CheckForUpdatesAsync();
+            var result = await updateService.CheckForUpdatesAsync(channel);
+
+            // The window can be gone by the time the HTTP call returns.
+            if (IsDisposed || !IsHandleCreated) return;
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
+                Log.Warn("Updates", $"Update check failed. Channel={channel}: {result.ErrorMessage}");
+                if (!userInitiated) return;
                 announcer.AnnounceImmediate($"Update check failed: {result.ErrorMessage}");
-                MessageBox.Show(
-                    result.ErrorMessage,
-                    "Update Check Failed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
+                MessageBox.Show(this, result.ErrorMessage, "Update Check Failed",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             if (!result.IsUpdateAvailable)
             {
-                announcer.AnnounceImmediate("You are running the latest version.");
-                MessageBox.Show(
-                    $"You are running the latest version ({result.CurrentVersion}).",
-                    "No Updates Available",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
+                Log.Debug("Updates",
+                    $"No update offered. Channel={channel}, Verdict={result.Verdict}, CurrentVersion={result.CurrentVersion}");
+                if (!userInitiated) return;
+
+                // NoCandidate is not the same as UpToDate: claiming "you are on the latest
+                // version" when the check found no releases at all would be a small lie.
+                var message = result.Verdict == UpdateVerdict.NoCandidate
+                    ? "No releases were found on GitHub."
+                    : $"You are running the latest version ({result.CurrentVersion}).";
+
+                announcer.AnnounceImmediate(message);
+                MessageBox.Show(this, message, "No Updates Available",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            // Show update dialog
-            announcer.AnnounceImmediate($"Update available: version {result.LatestVersion}");
-            using (var updateDialog = new UpdateAvailableForm(result, updateService))
-            {
-                if (updateDialog.ShowDialog(this) == DialogResult.OK && updateDialog.ShouldUpdate)
-                {
-                    try
-                    {
-                        // Launch updater
-                        announcer.AnnounceImmediate("Launching updater. Application will close and restart.");
-                        updateService.LaunchUpdater(updateDialog.DownloadedZipPath);
+            Log.Debug("Updates",
+                $"Update offered. Tag={result.TagName}, Version={result.LatestVersion}, IsDowngrade={result.IsDowngrade}");
 
-                        // Close the main application
-                        Application.Exit();
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show(
-                            $"Failed to launch updater: {ex.Message}",
-                            "Update Error",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error
-                        );
-                    }
+            var announcement = result.IsDowngrade
+                ? $"Release build {result.LatestVersion} is available. It is older than the preview build you are running."
+                : $"Update available: version {result.LatestVersion}";
+
+            // The startup announcement is QUEUED so it cannot cut off other startup speech;
+            // a check the pilot asked for speaks immediately.
+            if (userInitiated) announcer.AnnounceImmediate(announcement);
+            else announcer.AnnounceWithQueue(announcement);
+
+            using var updateDialog = new UpdateAvailableForm(result, updateService);
+            if (updateDialog.ShowDialog(this) == DialogResult.OK && updateDialog.ShouldUpdate)
+            {
+                try
+                {
+                    announcer.AnnounceImmediate("Launching updater. Application will close and restart.");
+                    updateService.LaunchUpdater(updateDialog.DownloadedZipPath);
+                    Application.Exit();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, $"Failed to launch updater: {ex.Message}", "Update Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
         catch (Exception ex)
         {
+            Log.Error("Updates", "Update check threw an exception.", ex);
+            if (!userInitiated) return;
             announcer.AnnounceImmediate($"Update failed: {ex.Message}");
-            MessageBox.Show(
-                $"An error occurred while checking for updates: {ex.Message}",
-                "Update Error",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error
-            );
+            MessageBox.Show(this, $"An error occurred while checking for updates: {ex.Message}",
+                "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _updateCheckInFlight, 0);
         }
     }
 
