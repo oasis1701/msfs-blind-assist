@@ -111,7 +111,10 @@ jobs:
               -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
           fi
           cat fragments.txt
-          dotnet run --project tools/ChangelogBuilder -- --out fragment-notes.md --from-file fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the preview — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out fragment-notes.md --from-file fragments.txt --contributors contributors.txt
 
           SINCE="${PREV:-the start of the project}"
           {
@@ -133,6 +136,8 @@ jobs:
           } > preview-notes.md
           echo "--- preview notes ---"
           cat preview-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Move the preview tag
         shell: bash

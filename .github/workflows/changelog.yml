@@ -147,9 +147,14 @@ jobs:
               -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
           fi
           cat fragments.txt
-          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the run — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt --contributors contributors.txt
           {
             echo "### Unreleased notes (preview — nothing published)"
             echo
             cat release-notes.md
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}

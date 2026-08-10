@@ -41,6 +41,14 @@ Example — `changelog.d/178-docking-speed-callouts.improvement.md`:
     general speed announcer works in 5-knot steps, so it was silent across the whole
     0–5 knot band where speed actually decides the park.
 
+## Attribution is automatic — do not credit yourself in the text
+
+At publish time each entry gains " — @login" credits derived from its PR: the person who
+opened it plus everyone with a commit in it (`tools/changelog-contributors.sh`, keyed on
+the `<pr>` prefix in the filename). So write only the change itself — a hand-written
+"thanks to X" line would double up with the automatic credit. Bot accounts and AI
+co-author trailers are filtered out.
+
 ## No user-facing change?
 
 Either add an `internal` fragment, or apply the `skip-changelog` label to the PR. Both

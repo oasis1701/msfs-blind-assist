@@ -20,7 +20,12 @@ public static class ChangelogRenderer
         (ChangelogCategory.Fix, "Fixes"),
     ];
 
-    public static string Render(IEnumerable<ChangelogFragment> fragments)
+    public static string Render(IEnumerable<ChangelogFragment> fragments) =>
+        Render(fragments, new Dictionary<int, IReadOnlyList<string>>());
+
+    public static string Render(
+        IEnumerable<ChangelogFragment> fragments,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> contributors)
     {
         var all = fragments.ToList();
         var builder = new StringBuilder();
@@ -51,11 +56,33 @@ public static class ChangelogRenderer
 
             foreach (var entry in entries)
             {
-                AppendBullet(builder, entry.Body);
+                AppendBullet(builder, WithAttribution(entry, contributors));
             }
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Appends " — @a", " — @a and @b" or " — @a, @b and @c" to the bullet body. The map
+    /// is keyed by the fragment's PR number; a PR the generator could not resolve is
+    /// simply absent, and the entry renders unattributed.
+    /// </summary>
+    private static string WithAttribution(
+        ChangelogFragment entry,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> contributors)
+    {
+        if (!contributors.TryGetValue(entry.PrNumber, out var logins) || logins.Count == 0)
+        {
+            return entry.Body;
+        }
+
+        var handles = logins.Select(l => "@" + l).ToList();
+        var joined = handles.Count == 1
+            ? handles[0]
+            : string.Join(", ", handles.Take(handles.Count - 1)) + " and " + handles[^1];
+
+        return entry.Body.TrimEnd() + " — " + joined;
     }
 
     private static void AppendBullet(StringBuilder builder, string body)
