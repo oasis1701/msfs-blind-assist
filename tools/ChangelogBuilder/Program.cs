@@ -1,17 +1,22 @@
 using ChangelogBuilder;
 
 // Usage:
-//   ChangelogBuilder --out <file> [--from-file <list>] [<fragment path> ...]
+//   ChangelogBuilder --out <file> [--from-file <list>] [--contributors <map>] [<fragment path> ...]
 //
 // --from-file takes a newline-delimited list of paths, which is what `git diff
 // --name-only` produces; that avoids shell quoting entirely in the workflows. Positional
 // paths are for local use and the dry run. Both may be combined.
+//
+// --contributors takes the <pr>=<login>,<login> map written by
+// tools/changelog-contributors.sh; entries gain " — @login" attribution. Omitting the
+// flag renders unattributed (local/dry-run use).
 //
 // An empty input is NOT an error: a release with no fragments publishes with GitHub's
 // generated notes alone.
 
 var outPath = (string?)null;
 var listPath = (string?)null;
+var contributorsPath = (string?)null;
 var paths = new List<string>();
 
 for (var i = 0; i < args.Length; i++)
@@ -24,7 +29,10 @@ for (var i = 0; i < args.Length; i++)
         case "--from-file" when i + 1 < args.Length:
             listPath = args[++i];
             break;
-        case "--out" or "--from-file":
+        case "--contributors" when i + 1 < args.Length:
+            contributorsPath = args[++i];
+            break;
+        case "--out" or "--from-file" or "--contributors":
             // The guarded cases above only match when a value follows; reaching here means
             // the flag is real but was given no value (e.g. it was the last argument) — a
             // different fault than an unrecognized flag, so it needs its own message or a
@@ -32,7 +40,7 @@ for (var i = 0; i < args.Length; i++)
             Console.Error.WriteLine($"Missing value for option: {args[i]}");
             return 2;
         case "--help" or "-h":
-            Console.WriteLine("Usage: ChangelogBuilder --out <file> [--from-file <list>] [<path> ...]");
+            Console.WriteLine("Usage: ChangelogBuilder --out <file> [--from-file <list>] [--contributors <map>] [<path> ...]");
             return 0;
         default:
             if (args[i].StartsWith('-'))
@@ -100,8 +108,36 @@ if (errors.Count > 0)
     return 1;
 }
 
+// The contributor map is validated as strictly as the fragments: it is machine-written,
+// so a malformed line means the generating script broke, and rendering anyway would
+// silently misattribute. The graceful path (an unresolvable PR) is the script OMITTING
+// that line, which renders the entry unattributed.
+IReadOnlyDictionary<int, IReadOnlyList<string>> contributors = new Dictionary<int, IReadOnlyList<string>>();
+if (contributorsPath is not null)
+{
+    if (!File.Exists(contributorsPath))
+    {
+        Console.Error.WriteLine($"--contributors not found: {contributorsPath}");
+        return 2;
+    }
+
+    var mapResult = ContributorMap.Parse(File.ReadAllText(contributorsPath));
+    if (!mapResult.Ok)
+    {
+        Console.Error.WriteLine($"{mapResult.Errors.Count} invalid contributor-map line(s) in {contributorsPath}:");
+        foreach (var error in mapResult.Errors)
+        {
+            Console.Error.WriteLine($"  {error}");
+        }
+
+        return 1;
+    }
+
+    contributors = mapResult.Map;
+}
+
 var released = fragments.Count(f => f.Category != ChangelogCategory.Internal);
-File.WriteAllText(outPath, ChangelogRenderer.Render(fragments));
+File.WriteAllText(outPath, ChangelogRenderer.Render(fragments, contributors));
 
 Console.WriteLine(
     $"Wrote {outPath}: {released} entr{(released == 1 ? "y" : "ies")} " +

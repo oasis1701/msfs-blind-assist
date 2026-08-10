@@ -90,9 +90,14 @@ jobs:
               -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
           fi
           cat fragments.txt
-          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the release — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt --contributors contributors.txt
           echo "--- release notes ---"
           cat release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       # v3 is the Node 24 runtime line; v2 targets the deprecated Node 20 and was
       # only still working because the runner force-ran it on 24. v3.0.0 changed

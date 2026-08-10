@@ -166,4 +166,86 @@ public class ChangelogRendererTests
 
         Assert.Equal("## New features\n\n- Feature.\n\n## Fixes\n\n- Fix.\n", body);
     }
+
+    // ---- attribution --------------------------------------------------------
+    // Contributors are keyed by the fragment's PR number and appended to the bullet.
+    // GitHub linkifies the @handles in release bodies; through the app's update dialog
+    // they read as plain text, which is fine.
+
+    private static Dictionary<int, IReadOnlyList<string>> Credits(int pr, params string[] logins) =>
+        new() { [pr] = logins };
+
+    [Fact]
+    public void Render_appends_attribution_for_a_single_contributor()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "It works now.")],
+            Credits(184, "robin24"));
+
+        Assert.Equal("## Fixes\n\n- It works now. — @robin24\n", body);
+    }
+
+    [Fact]
+    public void Render_joins_two_contributors_with_and()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "It works now.")],
+            Credits(184, "robin24", "alice"));
+
+        Assert.Equal("## Fixes\n\n- It works now. — @robin24 and @alice\n", body);
+    }
+
+    [Fact]
+    public void Render_joins_three_contributors_with_commas_then_and()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "It works now.")],
+            Credits(184, "robin24", "alice", "bob"));
+
+        Assert.Equal("## Fixes\n\n- It works now. — @robin24, @alice and @bob\n", body);
+    }
+
+    [Fact]
+    public void Render_leaves_a_fragment_unattributed_when_its_pr_is_not_in_the_map()
+    {
+        // The generating script SKIPS a PR it cannot resolve, so absence is the graceful
+        // path and must not throw or emit a dangling separator.
+        var body = ChangelogRenderer.Render(
+            [F(99, "a", ChangelogCategory.Fix, "It works now.")],
+            Credits(184, "robin24"));
+
+        Assert.Equal("## Fixes\n\n- It works now.\n", body);
+    }
+
+    [Fact]
+    public void Render_puts_attribution_on_the_last_line_of_a_multiline_bullet()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "First line.\nSecond line.")],
+            Credits(184, "robin24"));
+
+        Assert.Equal("## Fixes\n\n- First line.\n  Second line. — @robin24\n", body);
+    }
+
+    [Fact]
+    public void Render_ignores_an_empty_contributor_list()
+    {
+        // The map parser rejects `184=`, but the renderer must still be safe if handed
+        // an empty list directly.
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "It works now.")],
+            Credits(184));
+
+        Assert.Equal("## Fixes\n\n- It works now.\n", body);
+    }
+
+    [Fact]
+    public void Render_still_excludes_internal_fragments_even_with_attribution()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Internal, "Refactor.")],
+            Credits(184, "robin24"));
+
+        Assert.Equal("", body);
+    }
 }
