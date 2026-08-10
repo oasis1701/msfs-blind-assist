@@ -300,7 +300,7 @@ public partial class MainForm
         if (fbwA380MonitorManagerForm == null || fbwA380MonitorManagerForm.IsDisposed)
         {
             fbwA380MonitorManagerForm = new Forms.FBWA380.FBWA380MonitorManagerForm(
-                announcer, currentAircraft.GetVariables());
+                currentAircraft.GetVariables());
         }
         fbwA380MonitorManagerForm.ShowForm();
     }

@@ -212,6 +212,17 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The echo-window suppression must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. → CLAUDE.md
 - Never blanket-suppress value-0 resting-state button labels in MainForm — use the opt-in `SuppressRestingButtonState` flag only; some 0-state labels (PMDG 777 "LNAV: Off", HS787 "Baro STD: QNH") are meaningful and must be spoken. → CLAUDE.md
 
+### Monitor Manager dialogs (Ctrl+M)
+
+- All six per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage.
+- The list rebuilds on exactly THREE events — form open, search text changed, Show filter changed — and NEVER from `ItemCheck`: re-filtering on a tick drops the row out from under the caret in Muted view, slides the next variable into its place, and makes a second Space press mute a variable the pilot never selected.
+- `_suppressItemCheck` must wrap every rebuild. `SetItemChecked` raises `ItemCheck` per row, so without it one filter keystroke on the 400-row PMDG list fires ~400 `SettingsManager.Save()` disk writes on the UI thread.
+- The result count lives in the list's `AccessibleName` ("Auto-announced variables, 12 of 300"), never in a `Label` and never spoken — the count reaches the pilot when focus lands on the list, with no app-generated speech over their typing.
+- `ItemCheck` maps `e.Index` through the VISIBLE rows, never the full row list — the two diverge the moment a filter is applied.
+- The dialog opens clean every time (search empty, Show on All): a remembered filter would open showing a fraction of the list for a reason the pilot cannot see. Do not add persistence.
+- `FBWA380MonitorManagerForm.EcamMemosKey` must stay public with that exact name — `MainForm.AircraftSwitch.cs` gates the Coherent E/WD scrape and the FWS failure client on it, so the one row mutes three independent speech sources.
+- `MonitorVariableFilter` must use `OrdinalIgnoreCase`, never `ToLower()`/`ToLowerInvariant()` — tr-TR folds "I" to dotless "ı" and the search silently stops matching.
+
 ### Core SimConnect / framework (→ [architecture.md](docs/architecture.md))
 
 - CRITICAL: set `IsConnected = true` BEFORE calling `SetupDataDefinitions()` in SimConnectManager — `StartContinuousMonitoring()` guards on `IsConnected == true`. → CLAUDE.md
