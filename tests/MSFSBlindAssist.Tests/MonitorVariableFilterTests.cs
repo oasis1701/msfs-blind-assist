@@ -72,6 +72,20 @@ public class MonitorVariableFilterTests
         Assert.Empty(result);
     }
 
+    // Matches(...) only ever tests row.Label (see MonitorVariableFilter.Matches above) — this is
+    // intentional, not an oversight. MonitorRowBuilder.LabelFor falls back to the raw key ONLY
+    // when a definition has no DisplayName, which is what keeps a key-only variable findable by
+    // its key. A32NX_GEAR has a DisplayName ("Landing Gear"), so its key is deliberately NOT
+    // searchable — a pilot searches what they can read, not the internal variable name. Pin this
+    // so a future "helpful" change that also matches row.Key doesn't slip through unnoticed: it
+    // would pass every other test in this file.
+    [Fact]
+    public void SearchingARowsKeyDoesNotMatchWhenTheRowHasADistinctLabel()
+    {
+        var result = MonitorVariableFilter.Apply(Rows, "A32NX_GEAR", MonitorFilterMode.All, Disabled());
+        Assert.Empty(result);
+    }
+
     // --- mute state ----------------------------------------------------------------
 
     [Fact]

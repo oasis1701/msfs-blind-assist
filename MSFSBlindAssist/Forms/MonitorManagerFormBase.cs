@@ -120,6 +120,12 @@ public abstract class MonitorManagerFormBase : Form
         };
         _showCombo.Items.AddRange(new object[] { "All", "Muted", "Unmuted" });
         _showCombo.SelectedIndex = 0;
+        // Attached AFTER the initial SelectedIndex set above, not before: setting SelectedIndex
+        // fires SelectedIndexChanged synchronously, and _list does not exist yet at this point in
+        // the constructor (it's built a few lines below) — attach earlier and this handler's
+        // ApplyFilter() call throws NullReferenceException on _list, taking every Ctrl+M down with
+        // it. The same trap applies to _searchBox: never give it an initial Text in its own
+        // initializer above for the same reason (TextChanged -> ApplyFilter -> null _list).
         _showCombo.SelectedIndexChanged += (_, _) => ApplyFilter();
 
         _list = new CheckedListBox
@@ -145,6 +151,11 @@ public abstract class MonitorManagerFormBase : Form
         Controls.Add(_list);
     }
 
+    /// <summary>Maps the Show combo's selected index to a filter mode. Positionally coupled to
+    /// the exact item order seeded in this file's InitializeComponent —
+    /// <c>_showCombo.Items.AddRange(new object[] { "All", "Muted", "Unmuted" })</c> — where index
+    /// 0 = All, 1 = Muted, 2 = Unmuted. Reordering or inserting an item there silently changes
+    /// what this switch means; keep the two in sync.</summary>
     private MonitorFilterMode SelectedMode => _showCombo.SelectedIndex switch
     {
         1 => MonitorFilterMode.Muted,
@@ -228,8 +239,16 @@ public abstract class MonitorManagerFormBase : Form
         TopMost = true;
         TopMost = false;
 
-        if (_list.Items.Count > 0 && _lastIndexByForm.TryGetValue(GetType(), out int last))
+        if (_list.Items.Count > 0)
+        {
+            // Default to 0, not "no selection": every one of the six forms this base replaced
+            // restored unconditionally from a static that started at 0, so the FIRST open of a
+            // dialog selected row 0. Leaving SelectedIndex at -1 makes the screen reader announce
+            // the list with no current item, and makes the first Space press a no-op — a
+            // CheckedListBox toggles the item at SelectedIndex.
+            int last = _lastIndexByForm.TryGetValue(GetType(), out int v) ? v : 0;
             _list.SelectedIndex = Math.Min(last, _list.Items.Count - 1);
+        }
 
         // Focus the search box: with 300+ rows, typing three letters beats arrowing.
         _searchBox.Focus();
