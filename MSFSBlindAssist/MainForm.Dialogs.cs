@@ -311,7 +311,7 @@ public partial class MainForm
         if (fbwA320MonitorManagerForm == null || fbwA320MonitorManagerForm.IsDisposed)
         {
             fbwA320MonitorManagerForm = new Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm(
-                announcer, currentAircraft.GetVariables());
+                currentAircraft.GetVariables());
         }
         fbwA320MonitorManagerForm.ShowForm();
     }
@@ -337,7 +337,7 @@ public partial class MainForm
         // a stale instance from the previous aircraft never lingers.
         if (pmdgAnnouncementMonitorForm == null || pmdgAnnouncementMonitorForm.IsDisposed)
         {
-            pmdgAnnouncementMonitorForm = new PMDGAnnouncementMonitorForm(announcer, currentAircraft.GetVariables());
+            pmdgAnnouncementMonitorForm = new PMDGAnnouncementMonitorForm(currentAircraft.GetVariables());
         }
 
         pmdgAnnouncementMonitorForm.ShowForm();
