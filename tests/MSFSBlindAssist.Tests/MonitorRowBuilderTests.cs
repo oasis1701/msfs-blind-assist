@@ -102,4 +102,91 @@ public class MonitorRowBuilderTests
         bare.DisplayName = "";
         Assert.Equal("KEY", MonitorRowBuilder.LabelFor("KEY", bare));
     }
+
+    // --- BuildWithFold: the A380's 20 E/WD line variables behind one row -------------------
+    //
+    // The A380 is the only caller. This lived as a private static on the form, where nothing
+    // could reach it; the two properties below are ones the A380 has always depended on.
+
+    private const string Prefix = "A32NX_EWD_LOWER_";
+    private const string FoldKey = "FBWA380_ECAM_MEMOS";
+    private const string FoldLabel = "ECAM E/WD call-outs";
+
+    private static Dictionary<string, SimVarDefinition> WithEwdLines(
+        Action<SimVarDefinition>? tweakEwd = null)
+    {
+        var vars = new Dictionary<string, SimVarDefinition>
+        {
+            ["A32NX_AUTOBRAKE"] = Announced("Autobrake"),
+            ["A32NX_GEAR"] = Announced("Zulu Gear"),   // sorts last, so the fold row can't hide behind it
+        };
+        for (int i = 1; i <= 3; i++)
+        {
+            var line = Announced($"E/WD Left Line {i}");
+            tweakEwd?.Invoke(line);
+            vars[$"{Prefix}LEFT_LINE_{i}"] = line;
+        }
+        return vars;
+    }
+
+    [Fact]
+    public void FoldReplacesTheWholeFamilyWithOneRow()
+    {
+        var rows = MonitorRowBuilder.BuildWithFold(WithEwdLines(), Prefix, FoldKey, FoldLabel);
+
+        Assert.Equal(new[] { "A32NX_AUTOBRAKE", "A32NX_GEAR", FoldKey }, KeysOf(rows));
+        Assert.DoesNotContain(rows, r => r.Key.StartsWith(Prefix, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheFoldRowIsAppendedLastNotSortedIntoPlace()
+    {
+        // "ECAM E/WD call-outs" would sort BEFORE "Zulu Gear" alphabetically. It stands for a
+        // whole feature rather than one variable, and has always sat at the end of the list.
+        var rows = MonitorRowBuilder.BuildWithFold(WithEwdLines(), Prefix, FoldKey, FoldLabel);
+
+        Assert.Equal(FoldLabel, rows[^1].Label);
+    }
+
+    [Theory]
+    [InlineData(false)]  // not announced
+    [InlineData(true)]   // announced, but opted out of the manager
+    public void NoFoldRowWhenNoFoldedVariableWouldHaveBeenListed(bool excludeInsteadOfSilent)
+    {
+        // A checkbox that mutes nothing is worse than no checkbox: the pilot unticks it, the
+        // call-outs keep coming, and nothing explains why.
+        var vars = WithEwdLines(line =>
+        {
+            if (excludeInsteadOfSilent) line.ExcludeFromMonitorManager = true;
+            else line.IsAnnounced = false;
+        });
+
+        var rows = MonitorRowBuilder.BuildWithFold(vars, Prefix, FoldKey, FoldLabel);
+
+        Assert.Equal(new[] { "A32NX_AUTOBRAKE", "A32NX_GEAR" }, KeysOf(rows));
+    }
+
+    [Fact]
+    public void OneListedMemberIsEnoughToEarnTheFoldRow()
+    {
+        var vars = WithEwdLines(line => line.IsAnnounced = false);
+        vars[$"{Prefix}RIGHT_LINE_1"] = Announced("E/WD Right Line 1");
+
+        var rows = MonitorRowBuilder.BuildWithFold(vars, Prefix, FoldKey, FoldLabel);
+
+        Assert.Equal(FoldLabel, rows[^1].Label);
+    }
+
+    [Fact]
+    public void AVariableSetWithNothingToFoldBuildsExactlyLikeBuild()
+    {
+        var vars = new Dictionary<string, SimVarDefinition>
+        {
+            ["A32NX_AUTOBRAKE"] = Announced("Autobrake"),
+            ["A32NX_GEAR"] = Announced("Landing Gear"),
+        };
+
+        Assert.Equal(KeysOf(MonitorRowBuilder.Build(vars)),
+                     KeysOf(MonitorRowBuilder.BuildWithFold(vars, Prefix, FoldKey, FoldLabel)));
+    }
 }

@@ -38,6 +38,11 @@ public abstract class MonitorManagerFormBase : Form
     /// list fires ~400 SettingsManager.Save() disk writes on the UI thread.</summary>
     private bool _suppressItemCheck;
 
+    /// <summary>Set while <see cref="ShowForm"/> resets the search box and Show combo, so those
+    /// two writes do not each trigger their own rebuild ahead of the single one it then makes
+    /// itself.</summary>
+    private bool _suppressFilter;
+
     /// <summary>The aircraft's persisted mute list. A PROPERTY, re-read on every access: the
     /// live List in UserSettings is the source of truth, and the ...Set HashSet sidecar can
     /// lag between a mutation and the next Save.</summary>
@@ -98,7 +103,7 @@ public abstract class MonitorManagerFormBase : Form
             AccessibleName = "Search",
             AccessibleDescription = "Type to narrow the list to variables whose name contains the typed text"
         };
-        _searchBox.TextChanged += (_, _) => ApplyFilter();
+        _searchBox.TextChanged += (_, _) => { if (!_suppressFilter) ApplyFilter(); };
 
         var showLabel = new Label
         {
@@ -126,7 +131,7 @@ public abstract class MonitorManagerFormBase : Form
         // ApplyFilter() call throws NullReferenceException on _list, taking every Ctrl+M down with
         // it. The same trap applies to _searchBox: never give it an initial Text in its own
         // initializer above for the same reason (TextChanged -> ApplyFilter -> null _list).
-        _showCombo.SelectedIndexChanged += (_, _) => ApplyFilter();
+        _showCombo.SelectedIndexChanged += (_, _) => { if (!_suppressFilter) ApplyFilter(); };
 
         _list = new CheckedListBox
         {
@@ -176,7 +181,12 @@ public abstract class MonitorManagerFormBase : Form
     /// </summary>
     private void ApplyFilter()
     {
-        var disabled = DisabledVariables;
+        // Snapshot into a HashSet for the two scans below (filter, then check state):
+        // DisabledVariables is a List<string>, so ICollection.Contains is O(n) and a 400-row
+        // PMDG rebuild would pay it 800 times per keystroke. NOT the UserSettings ...Set
+        // sidecar — that is rebuilt on Save and lags a mutation, which is the whole reason
+        // DisabledVariables hands out the live List.
+        var disabled = new HashSet<string>(DisabledVariables, StringComparer.Ordinal);
         _visibleRows = MonitorVariableFilter.Apply(_allRows, _searchBox.Text, SelectedMode, disabled);
 
         _suppressItemCheck = true;
@@ -202,6 +212,17 @@ public abstract class MonitorManagerFormBase : Form
         // NAME, not just the count: a fixed prefix made a Show change inaudible.
         _list.AccessibleName =
             MonitorVariableFilter.DescribeList(SelectedMode, _visibleRows.Count, _allRows.Count);
+
+        // Land the caret on a row. Items.Clear() drops SelectedIndex to -1 and NOTHING puts it
+        // back — not adding items, not the list receiving focus (measured, not assumed). With
+        // no current row the screen reader announces the list with no item and the first Space
+        // press does nothing, because a CheckedListBox toggles the item at SelectedIndex. That
+        // is the same -1 the first-open path already had to fix; it applies to every search
+        // keystroke and every Show change too.
+        //
+        // This write goes through SelectedIndexChanged into _lastIndexByForm, which is exactly
+        // why ShowForm reads the remembered row BEFORE calling ApplyFilter.
+        if (_list.Items.Count > 0 && _list.SelectedIndex < 0) _list.SelectedIndex = 0;
     }
 
     private void OnItemCheck(object? sender, ItemCheckEventArgs e)
@@ -226,15 +247,36 @@ public abstract class MonitorManagerFormBase : Form
     {
         _previousWindow = GetForegroundWindow();
 
+        // Read the remembered row FIRST. ApplyFilter selects row 0 when a rebuild leaves the
+        // list with no selection, and that write lands in _lastIndexByForm through
+        // SelectedIndexChanged — so reading afterwards would see 0 every time and the pilot's
+        // last position would be silently lost on every open.
+        // Default to 0, not "no selection": every one of the six forms this base replaced
+        // restored unconditionally from a static that started at 0, so the FIRST open of a
+        // dialog selected row 0.
+        int last = _lastIndexByForm.TryGetValue(GetType(), out int v) ? v : 0;
+
         // Open clean, every time: no remembered search text, no remembered filter. A dialog
         // that reopened into "Muted" would show a fraction of the list for a reason the pilot
         // cannot see, and read as lost variables.
-        _searchBox.Text = string.Empty;     // fires TextChanged -> ApplyFilter, if it changed
-        _showCombo.SelectedIndex = 0;       // fires SelectedIndexChanged -> ApplyFilter, if it changed
-        // ...and unconditionally, for the common case where neither actually changed. This is
-        // also what re-reads check states from the CURRENT persisted set: the form is cached
-        // by MainForm and reused, so a populate that ran only at construction would show stale
-        // checkboxes after any later change to the disabled set.
+        //
+        // Both resets are made with filtering suppressed so the rebuild happens ONCE below,
+        // rather than up to three times (TextChanged, then SelectedIndexChanged, then the
+        // unconditional call) on a list that can carry 400 rows.
+        _suppressFilter = true;
+        try
+        {
+            _searchBox.Text = string.Empty;
+            _showCombo.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressFilter = false;
+        }
+
+        // This is also what re-reads check states from the CURRENT persisted set: the form is
+        // cached by MainForm and reused, so a populate that ran only at construction would show
+        // stale checkboxes after any later change to the disabled set.
         ApplyFilter();
 
         Show();
@@ -244,15 +286,7 @@ public abstract class MonitorManagerFormBase : Form
         TopMost = false;
 
         if (_list.Items.Count > 0)
-        {
-            // Default to 0, not "no selection": every one of the six forms this base replaced
-            // restored unconditionally from a static that started at 0, so the FIRST open of a
-            // dialog selected row 0. Leaving SelectedIndex at -1 makes the screen reader announce
-            // the list with no current item, and makes the first Space press a no-op — a
-            // CheckedListBox toggles the item at SelectedIndex.
-            int last = _lastIndexByForm.TryGetValue(GetType(), out int v) ? v : 0;
             _list.SelectedIndex = Math.Min(last, _list.Items.Count - 1);
-        }
 
         // Focus the search box: with 300+ rows, typing three letters beats arrowing.
         _searchBox.Focus();
@@ -260,7 +294,10 @@ public abstract class MonitorManagerFormBase : Form
 
     protected override bool ProcessDialogKey(Keys keyData)
     {
-        if (keyData == Keys.Escape) { Close(); return true; }
+        // Escape closes the dialog — except while the Show dropdown is open, where it belongs
+        // to the dropdown. ProcessDialogKey runs before the combo ever sees the key, so without
+        // this exemption backing out of the dropdown would close the whole dialog instead.
+        if (keyData == Keys.Escape && !_showCombo.DroppedDown) { Close(); return true; }
         return base.ProcessDialogKey(keyData);
     }
 }
