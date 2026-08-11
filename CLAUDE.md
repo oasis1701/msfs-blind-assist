@@ -212,6 +212,20 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The echo-window suppression must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. → CLAUDE.md
 - Never blanket-suppress value-0 resting-state button labels in MainForm — use the opt-in `SuppressRestingButtonState` flag only; some 0-state labels (PMDG 777 "LNAV: Off", HS787 "Baro STD: QNH") are meaningful and must be spoken. → CLAUDE.md
 
+### Monitor Manager dialogs (Ctrl+M)
+
+- All six per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage.
+- The list rebuilds on exactly THREE events — form open, search text changed, Show filter changed — and NEVER from `ItemCheck`: re-filtering on a tick drops the row out from under the caret in Muted view, slides the next variable into its place, and makes a second Space press mute a variable the pilot never selected.
+- `_suppressItemCheck` must wrap every rebuild. `SetItemChecked` raises `ItemCheck` per row, so without it one filter keystroke on the 400-row PMDG list fires ~400 `SettingsManager.Save()` disk writes on the UI thread.
+- The list's `AccessibleName` names the ACTIVE FILTER and carries the count ("Muted variables, 12 of 300"), never a `Label` and never spoken — it is the only channel by which either reaches the pilot, read when focus lands on the list, with no app-generated speech over their typing. Compose it via `MonitorVariableFilter.DescribeList`; a fixed prefix made changing the Show filter completely inaudible (live report), so the three modes must never render the same leading phrase.
+- `ItemCheck` maps `e.Index` through the VISIBLE rows, never the full row list — the two diverge the moment a filter is applied.
+- Every rebuild must end by selecting row 0 when the list came back with no selection. `Items.Clear()` drops `SelectedIndex` to -1 and NOTHING restores it — not adding items, not the list receiving focus (measured, not assumed) — and at -1 the screen reader announces the list with no current item and the first Space press does nothing, because a `CheckedListBox` toggles the item at `SelectedIndex`. It is the same -1 the first-open path had to fix, and it applies to every search keystroke and every Show change.
+- That write reaches `_lastIndexByForm` through `SelectedIndexChanged`, so `ShowForm` must read the remembered row BEFORE it calls `ApplyFilter` — read it after and it is always 0, and the pilot's last position is silently lost on every open.
+- The dialog opens clean every time (search empty, Show on All): a remembered filter would open showing a fraction of the list for a reason the pilot cannot see. Do not add persistence. Both resets are made under `_suppressFilter` so the open rebuilds the list ONCE, not once per control.
+- The A380 E/WD fold lives in `MonitorRowBuilder.BuildWithFold`, not on the form — a private static on a `Form` is unreachable from the test project. Its synthetic row is appended AFTER the sort (so it lands last) and only when a folded variable would otherwise have been listed: a fold row over a family that is entirely unannounced is a checkbox that silences nothing.
+- `FBWA380MonitorManagerForm.EcamMemosKey` must stay public with that exact name — `MainForm.AircraftSwitch.cs` gates the Coherent E/WD scrape and the FWS failure client on it, so the one row mutes three independent speech sources.
+- `MonitorVariableFilter` must use `OrdinalIgnoreCase`, never `ToLower()`/`ToLowerInvariant()` — tr-TR folds "I" to dotless "ı" and the search silently stops matching.
+
 ### Core SimConnect / framework (→ [architecture.md](docs/architecture.md))
 
 - CRITICAL: set `IsConnected = true` BEFORE calling `SetupDataDefinitions()` in SimConnectManager — `StartContinuousMonitoring()` guards on `IsConnected == true`. → CLAUDE.md

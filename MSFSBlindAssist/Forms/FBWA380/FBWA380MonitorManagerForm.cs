@@ -1,155 +1,31 @@
-using System.Runtime.InteropServices;
-using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
 /// <summary>
-/// Per-variable background-announcement manager for the FlyByWire A380X — the
-/// A380 equivalent of the Fenix / PMDG monitor managers (opened with Ctrl+M).
-///
-/// Unlike the Fenix form's hardcoded key list, this enumerates every
-/// auto-announced variable (UpdateFrequency.Continuous + IsAnnounced) from the
-/// aircraft definition dynamically, so it always matches what the A380 actually
-/// announces. The 20 ECAM E/WD message lines are collapsed into a single
-/// "ECAM E/WD call-outs" entry (sentinel key FBWA380_ECAM_MEMOS) to avoid noise.
-///
-/// Unchecked items are written to UserSettings.A380DisabledMonitorVariables;
-/// MainForm.OnSimVarUpdated skips the announcement for any key in that list,
-/// and FlyByWireA380Definition.ProcessSimVarUpdate honours the ECAM sentinel.
+/// Per-variable background-announcement manager for the FlyByWire A380X (Ctrl+M). Unticked
+/// keys are written to UserSettings.A380DisabledMonitorVariables. All UI behaviour lives in
+/// <see cref="MonitorManagerFormBase"/>; the only thing this form adds is the ECAM fold, and
+/// that lives in <see cref="MonitorRowBuilder.BuildWithFold"/> so it can be unit-tested — a
+/// private static on a Form cannot be.
 /// </summary>
-public partial class FBWA380MonitorManagerForm : Form
+public sealed class FBWA380MonitorManagerForm : MonitorManagerFormBase
 {
-    /// <summary>Sentinel key that mutes all ECAM E/WD memo/warning call-outs.</summary>
+    /// <summary>Sentinel key that mutes all ECAM E/WD memo/warning call-outs.
+    /// MainForm.AircraftSwitch.cs gates the Coherent E/WD scrape AND the FWS failure client on
+    /// this key as well as the SimVar memo path, so it must stay public and keep this name.</summary>
     public const string EcamMemosKey = "FBWA380_ECAM_MEMOS";
 
-    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    private const string EwdLinePrefix = "A32NX_EWD_LOWER_";
+    private const string EcamMemosLabel = "ECAM E/WD call-outs";
 
-    private CheckedListBox _list = null!;
-    private readonly List<string> _keys = new();   // parallel to _list.Items
-    private IntPtr _previousWindow;
-    private static int _lastIndex;
-    private bool _populating;
+    public FBWA380MonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
+        : base("A380 Monitor Manager",
+               MonitorRowBuilder.BuildWithFold(variables, EwdLinePrefix, EcamMemosKey, EcamMemosLabel)) { }
 
-    public FBWA380MonitorManagerForm(ScreenReaderAnnouncer announcer, Dictionary<string, SimVarDefinition> variables)
-    {
-        // Build the manageable list: every announced continuous var, by display
-        // name, plus the single ECAM-memos meta-entry. EWD line vars are folded
-        // into that meta-entry rather than listed individually.
-        bool anyEwd = false;
-        foreach (var kv in variables)
-        {
-            if (kv.Value.UpdateFrequency != UpdateFrequency.Continuous || !kv.Value.IsAnnounced
-                || kv.Value.ExcludeFromMonitorManager) continue;
-            if (kv.Key.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal)) { anyEwd = true; continue; }
-            _keys.Add(kv.Key);
-        }
-        _keys.Sort((a, b) =>
-            string.Compare(DisplayNameFor(variables, a), DisplayNameFor(variables, b), StringComparison.OrdinalIgnoreCase));
-        // Build display labels aligned with _keys.
-        _labels = _keys.Select(k => DisplayNameFor(variables, k)).ToList();
-        if (anyEwd)
-        {
-            _keys.Add(EcamMemosKey);
-            _labels.Add("ECAM E/WD call-outs");
-        }
-
-        InitializeComponent();
-        SetupAccessibility();
-        Populate();
-    }
-
-    private readonly List<string> _labels;
-
-    private static string DisplayNameFor(Dictionary<string, SimVarDefinition> vars, string key) =>
-        vars.TryGetValue(key, out var d) && !string.IsNullOrEmpty(d.DisplayName) ? d.DisplayName : key;
-
-    public void ShowForm()
-    {
-        _previousWindow = GetForegroundWindow();
-        // Rebuild check states from the CURRENT persisted set on every open — the
-        // form is cached by MainForm (constructed once, reused), so a populate that
-        // ran only in the constructor would show stale checkboxes whenever the
-        // disabled set changed after first open (e.g. a settings reload). Guarded
-        // by _populating so it fires no Save writes.
-        Populate();
-        Show();
-        BringToFront();
-        Activate();
-        TopMost = true;
-        TopMost = false;
-        if (_list.Items.Count > 0)
-            _list.SelectedIndex = Math.Min(_lastIndex, _list.Items.Count - 1);
-        _list.Focus();
-    }
-
-    private void InitializeComponent()
-    {
-        Text = "A380 Monitor Manager";
-        Size = new Size(460, 380);
-        StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
-        MinimizeBox = true;
-        ShowInTaskbar = true;
-
-        var label = new Label
-        {
-            Text = "Uncheck a variable to stop announcing it as it changes:",
-            Location = new Point(10, 10),
-            Size = new Size(430, 20),
-            AccessibleName = "Instructions"
-        };
-
-        _list = new CheckedListBox
-        {
-            Location = new Point(10, 35),
-            Size = new Size(425, 290),
-            TabIndex = 0,
-            AccessibleName = "Auto-announced variables",
-            CheckOnClick = true
-        };
-        _list.ItemCheck += OnItemCheck;
-        _list.KeyDown += (_, e) => { if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; } };
-        _list.SelectedIndexChanged += (_, _) => { if (_list.SelectedIndex >= 0) _lastIndex = _list.SelectedIndex; };
-
-        Controls.Add(label);
-        Controls.Add(_list);
-    }
-
-    private void SetupAccessibility()
-    {
-        MonitorManagerShared.HideOnClose(this, () =>
-        {
-            if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
-        });
-    }
-
-    private void Populate()
-    {
-        MonitorManagerShared.Populate(_list, _labels, _keys,
-            SettingsManager.Current.A380DisabledMonitorVariables, ref _populating);
-    }
-
-    private void OnItemCheck(object? sender, ItemCheckEventArgs e)
-    {
-        if (_populating) return;
-        if (e.Index < 0 || e.Index >= _keys.Count) return;
-        string key = _keys[e.Index];
-        var settings = SettingsManager.Current;
-        if (e.NewValue == CheckState.Checked)
-            settings.A380DisabledMonitorVariables.Remove(key);
-        else if (!settings.A380DisabledMonitorVariables.Contains(key))
-            settings.A380DisabledMonitorVariables.Add(key);
-        SettingsManager.Save();
-    }
-
-    protected override bool ProcessDialogKey(Keys keyData)
-    {
-        if (keyData == Keys.Escape) { Close(); return true; }
-        return base.ProcessDialogKey(keyData);
-    }
+    protected override ICollection<string> DisabledVariables
+        => SettingsManager.Current.A380DisabledMonitorVariables;
 }
