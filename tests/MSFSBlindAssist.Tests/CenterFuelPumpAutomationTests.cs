@@ -87,14 +87,64 @@ public class CenterFuelPumpAutomationTests
         Assert.Equal(Action.TurnOff, Tick(a, false, 100, true, true, false));
     }
 
+    // FIELD DEFECT (2026-08, PMDG 737 + 777): the center LOW PRESSURE annunciator does NOT go
+    // steadily lit as the tank empties — it cycles on for a second or two and back out, and the
+    // policy is sampled at ~1 Hz. Against the old reset-to-zero debounce the accumulator's ceiling
+    // was the light's ON-period (1-2 s < LowPressConfirmSeconds), so OFF was UNREACHABLE — not
+    // merely delayed. Pins the reported pattern (2 ticks lit, 1 tick out) firing exactly once.
     [Fact]
-    public void FlickeringDry_DoesNotTurnOff()
+    public void IntermittentDryAtDepletion_TurnsOffExactlyOnce()
+    {
+        var a = Make();
+        bool pumpsOn = true;
+        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);   // rising edge
+        DrainSettleWindow(a);
+
+        var actions = new List<Action>();
+        for (int i = 0; i < 30; i++)
+        {
+            bool dry = i % 3 != 2;   // lit, lit, out, lit, lit, out, ...
+            Action r = a.Update(true, true, false, 100, pumpsOn, dry, true, false, NominalTickMs);
+            actions.Add(r);
+            if (r == Action.TurnOff) pumpsOn = false;
+        }
+
+        Assert.Single(actions.FindAll(x => x == Action.TurnOff));
+        Assert.Empty(actions.FindAll(x => x == Action.TurnOn));
+    }
+
+    // The other half of the old FlickeringDry pin, kept: a SINGLE spurious sample is not evidence.
+    // Fails if the clear window is removed (evidence would never be discarded).
+    [Fact]
+    public void IsolatedDryBlip_ThenSustainedClear_DoesNotTurnOff()
     {
         var a = Make();
         Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);
         DrainSettleWindow(a);
-        foreach (bool dry in new[] { true, true, false, true, true, false })
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: dry, wingPumps: false));
+        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
+        for (int i = 0; i < 30; i++)
+            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false));
+    }
+
+    // Boundary: the accumulator is slow to forget, but it DOES forget. A clear run longer than
+    // LowPressClearSeconds discards accrued dry evidence, so the count restarts from zero.
+    // Fails if the clear window is made unbounded (dry evidence accruing forever across a leg).
+    [Fact]
+    public void ClearRunBeyondClearWindow_DiscardsAccruedDryEvidence()
+    {
+        var a = Make();
+        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);
+        DrainSettleWindow(a);
+        // Two dry ticks: one short of the confirm threshold.
+        for (int i = 0; i < 2; i++)
+            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
+        // A clear run past the clear window wipes them.
+        int clearTicks = (int)(CenterFuelPumpAutomation.LowPressClearSeconds * 1000 / NominalTickMs) + 1;
+        for (int i = 0; i < clearTicks; i++)
+            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false));
+        // Two dry ticks again must now be short of the threshold, not at it.
+        for (int i = 0; i < 2; i++)
+            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
     }
 
     [Fact]

@@ -84,6 +84,25 @@ and touches no SimConnect state.
 - **OFF trigger is `centerTankDry && systemCredible`, debounced** (`LowPressConfirmSeconds`
   = 3 s) — **with no `onGround` gate**, so the tank is correctly switched off if it drains
   in cruise, not just on the ground.
+  - The debounce is **CUMULATIVE with a hysteretic release**, and must never be narrowed back
+    to a reset-to-zero "unbroken run" (2026-08 field defect, both jets). The PMDG center LOW
+    PRESSURE annunciator does **not** latch steadily lit as the tank empties — it cycles on
+    for a second or two and back out — and this policy is sampled at only ~1 Hz. Against a
+    reset-to-zero debounce the accumulator's ceiling was the light's ON-period (1-2 s), so it
+    could never reach the 3 s threshold and **OFF was unreachable on a genuinely dry tank**:
+    the pumps ran dry for the rest of the leg while the pilot heard nothing. Dry time now
+    accrues (clamped at the threshold) and is discarded only after the signal has been
+    **continuously** absent for `LowPressClearSeconds` (5 s) — i.e. the pump demonstrably
+    re-primed. A single spurious sample still cannot trigger OFF; a real depletion flicker
+    now can. Pinned by `IntermittentDryAtDepletion_TurnsOffExactlyOnce`,
+    `IsolatedDryBlip_ThenSustainedClear_DoesNotTurnOff` and
+    `ClearRunBeyondClearWindow_DiscardsAccruedDryEvidence`.
+    `LowPressClearSeconds` (5 s) is **unrelated** to `ObservationGapMs` (also 5 s) despite the
+    shared number — one measures a clean signal, the other a broken feed.
+  - An observed center-pump **rising edge zeroes the accumulator** as well as arming the
+    settle window: spin-up flicker belongs to the previous observation epoch and is not
+    evidence. (Necessary once the accumulator became sticky — under reset-to-zero the same
+    flicker wiped itself.)
   - `centerTankDry` (M-2) is the ALL-form composite `FuelSystemLogic.CenterTankDry(sw0,
     sw1, lp0, lp1)` — each running center pump's own low-press annunciator must be lit
     (`swN ⟹ lpN`); a single failed pump on an otherwise full tank does **not** trip it
@@ -144,8 +163,19 @@ and touches no SimConnect state.
   latch a continuous debounce — hence the two constants are independent.
 - Both actions announce (background state change): "Center fuel pumps on." /
   "Center tank low. Center fuel pumps off." Thresholds (`ArmThresholdLbs` = 500 lb,
-  `LowPressConfirmSeconds` = 3 s, `SettleSecondsAfterOn` = 10 s, `RefuelMarginLbs` = 250
-  lb) are tune-in-sim consts.
+  `LowPressConfirmSeconds` = 3 s, `LowPressClearSeconds` = 5 s, `SettleSecondsAfterOn` = 10 s,
+  `RefuelMarginLbs` = 250 lb) are tune-in-sim consts.
+- **Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\center_pumps.log`** (`CenterPumpDiagnostics`,
+  one instance per FO adapter). Records the inputs the adapter passed to `Update` plus the
+  policy's internal accumulators/latches (`CenterFuelPumpAutomation.Diagnostics`) and the
+  resulting action. **Change-triggered, not per-tick** — a line is written only when an action
+  fires or the state key moves, and center quantity is excluded from that key (it changes every
+  tick while draining and would defeat the suppression), so a quiet cruise costs a handful of
+  lines while a depletion event is traced tick by tick. Silent while the feature is disabled.
+  This exists because the OFF trigger is otherwise invisible from the cockpit — the only
+  observable is whether the announcement happened, which is what made the 2026-08
+  unreachable-OFF defect cost a second debugging round. Ask for this file first when a pilot
+  reports the center pumps not switching off.
 
 **Consolidation (§6 of the design doc) — ONE "Fuel pumps" checklist item per phase, on
 both jets:**

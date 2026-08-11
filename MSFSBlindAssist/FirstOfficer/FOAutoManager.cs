@@ -17,6 +17,7 @@ public class FOAutoManager : IFoAutoManager
     private readonly AircraftStateEvaluator _state;
     private readonly ScreenReaderAnnouncer  _announcer;
     private readonly CenterFuelPumpAutomation _centerPumps = new();
+    private readonly CenterPumpDiagnostics    _centerPumpLog = new("PMDG777");
 
     // Wall-clock elapsed-time measurement for the center-pump policy's wall-clock windows —
     // Update() is driven by AircraftPositionReceived, a variable-rate feed (~1-2.7 Hz), not
@@ -52,16 +53,27 @@ public class FOAutoManager : IFoAutoManager
         _lastCenterPumpsMs = now;
         _centerPumpsClockPrimed = true;
 
+        bool   enabled   = SettingsManager.Current.FOAutoCenterPumpsEnabled;
+        bool   dataReady = _state.IsDataReady;
+        double qty       = _state.FuelCenterLbs();
+        bool   pumpsOn   = _state.IsEitherCenterPumpOn();
+        bool   dry       = _state.IsCenterTankDry();
+        bool   credible  = _state.IsFuelSystemCredible();
+        bool   wingPumps = _state.AreWingFuelPumpsOn();
+
         var action = _centerPumps.Update(
-            enabled:       SettingsManager.Current.FOAutoCenterPumpsEnabled,
-            dataReady:     _state.IsDataReady,
+            enabled:       enabled,
+            dataReady:     dataReady,
             onGround:      onGround,
-            centerQtyLbs:  _state.FuelCenterLbs(),
-            centerPumpsOn: _state.IsEitherCenterPumpOn(),
-            centerTankDry: _state.IsCenterTankDry(),
-            systemCredible:_state.IsFuelSystemCredible(),
-            wingPumpsOn:   _state.AreWingFuelPumpsOn(),
+            centerQtyLbs:  qty,
+            centerPumpsOn: pumpsOn,
+            centerTankDry: dry,
+            systemCredible:credible,
+            wingPumpsOn:   wingPumps,
             rawElapsedMs:  elapsedMs);
+
+        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn, dry, credible,
+                              wingPumps, elapsedMs, action, _centerPumps.Diagnostics);
 
         switch (action)
         {

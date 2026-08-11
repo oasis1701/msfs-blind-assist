@@ -24,8 +24,11 @@ public sealed class CenterFuelPumpAutomation
     /// <summary>Center fuel (lbs) above which the tank holds usable fuel worth running the
     /// pumps. Also the shared executor ON-gate threshold (§6).</summary>
     public const double ArmThresholdLbs = 500;
-    /// <summary>Consecutive confirmed-dry wall-clock seconds required before OFF triggers.</summary>
+    /// <summary>Cumulative confirmed-dry wall-clock seconds required before OFF triggers.</summary>
     public const double LowPressConfirmSeconds = 3.0;
+    /// <summary>Wall-clock seconds the dry signal must be CONTINUOUSLY absent before accrued dry
+    /// evidence is discarded.</summary>
+    public const double LowPressClearSeconds = 5.0;
     /// <summary>Skip OFF-detection for this many seconds after an observed switch-on rising edge
     /// (spin-up transient). Empirical (≈6× over M-6's 1.74 s engines-off lower bound); tune-in-sim.</summary>
     public const double SettleSecondsAfterOn = 10.0;
@@ -47,6 +50,7 @@ public sealed class CenterFuelPumpAutomation
     private bool   _prevPumpsOn;
     private double _settleMs;
     private double _lowPressMs;
+    private double _clearMs;            // unbroken NOT-dry run; discards _lowPressMs at LowPressClearSeconds.
     private bool   _lastCommandedOff;   // edge attribution (M3): set by TurnOff; cleared by any rising edge.
 
     // Policy state — decisions; cleared by ClearPolicyLatches().
@@ -59,12 +63,22 @@ public sealed class CenterFuelPumpAutomation
     // Edge tracking.
     private bool _prevEnabled;
 
+    /// <summary>Internal decision state, for the `center_pumps` diagnostic log ONLY. These windows
+    /// are tune-in-sim consts and the OFF trigger is invisible from outside — without this the only
+    /// observable is whether the announcement happened, which is what made the 2026-08 unreachable-OFF
+    /// defect take a second debugging round. Never branch on this string.</summary>
+    public string Diagnostics =>
+        $"dryMs={_lowPressMs:F0} clearMs={_clearMs:F0} settleMs={_settleMs:F0} "
+        + $"dryOffLatch={(_switchedOffThisLeg ? 1 : 0)} manualOffLatch={(_manualOffLatch ? 1 : 0)} "
+        + $"floor={(double.IsNaN(_qtyFloor) ? "-" : _qtyFloor.ToString("F0"))} pending={_pendingCommand}";
+
     /// <summary>Full reset (aircraft switch / adapter Reset). No production call site otherwise.</summary>
     public void Reset()
     {
         _prevPumpsOn      = false;
         _settleMs         = 0;
         _lowPressMs       = 0;
+        _clearMs          = 0;
         _lastCommandedOff = false;
         _prevEnabled      = false;
         ClearPolicyLatches();
@@ -107,6 +121,7 @@ public sealed class CenterFuelPumpAutomation
         if (!dataReady)
         {
             _lowPressMs  = 0;
+            _clearMs     = 0;
             _prevPumpsOn = false;
             return Action.None;   // _pendingMs is NOT accrued (I2)
         }
@@ -114,8 +129,10 @@ public sealed class CenterFuelPumpAutomation
         // 4. pending accrual — AFTER the !dataReady return (I2).
         if (_pendingCommand != Pending.None) _pendingMs += elapsedMs;
 
-        // 5. a gap breaks the debounce's "unbroken run" contract — BEFORE edge detect.
-        if (gap) { _prevPumpsOn = false; _lowPressMs = 0; }
+        // 5. a gap means we cannot vouch for the signal across it, so accrued dry evidence AND the
+        //    clear run are both void — a hard reset, unlike the hysteretic release below. BEFORE
+        //    edge detect.
+        if (gap) { _prevPumpsOn = false; _lowPressMs = 0; _clearMs = 0; }
 
         // 6. edges.
         bool rising  =  centerPumpsOn && !_prevPumpsOn;
@@ -125,9 +142,31 @@ public sealed class CenterFuelPumpAutomation
             _settleMs         = SettleSecondsAfterOn * 1000;
             _lastCommandedOff = false;   // pumps are back on; the old Off is history
             _manualOffLatch   = false;   // C-A: someone re-armed by hand; the old off-intent is stale
+            _lowPressMs       = 0;       // fresh observation epoch: spin-up flicker is not evidence
+            _clearMs          = 0;
         }
         _prevPumpsOn = centerPumpsOn;
-        _lowPressMs  = (centerTankDry && systemCredible) ? _lowPressMs + elapsedMs : 0;
+
+        // Dry evidence is CUMULATIVE with a hysteretic release — fast to notice, slow to forget.
+        // It must NOT be a reset-to-zero debounce demanding an UNBROKEN run: the PMDG center LOW
+        // PRESSURE annunciator does not latch steadily lit as the tank empties, it cycles on for
+        // a second or two and back out, and this policy is sampled at only ~1 Hz. Under the old
+        // reset-to-zero form the accumulator's ceiling was the light's ON-period (1-2 s), which
+        // never reached LowPressConfirmSeconds (3 s) — so OFF was UNREACHABLE on a genuinely dry
+        // tank, on BOTH the 737 and the 777 (field report, 2026-08). Accrued evidence is discarded
+        // only after the signal has been CONTINUOUSLY absent for LowPressClearSeconds, i.e. the
+        // pump demonstrably re-primed. (LowPressClearSeconds is unrelated to ObservationGapMs
+        // despite both being 5 s — one measures a clean signal, the other a broken feed.)
+        if (centerTankDry && systemCredible)
+        {
+            _clearMs    = 0;
+            _lowPressMs = Math.Min(_lowPressMs + elapsedMs, LowPressConfirmSeconds * 1000);
+        }
+        else
+        {
+            _clearMs = Math.Min(_clearMs + elapsedMs, LowPressClearSeconds * 1000);
+            if (_clearMs >= LowPressClearSeconds * 1000) _lowPressMs = 0;
+        }
         bool dryLatched = _lowPressMs >= LowPressConfirmSeconds * 1000;
 
         // 7. pending resolution.
@@ -165,6 +204,7 @@ public sealed class CenterFuelPumpAutomation
             _switchedOffThisLeg = true;
             SeedFloor(centerQtyLbs);
             _lowPressMs         = 0;
+            _clearMs            = 0;
             _lastCommandedOff   = true;
             _pendingCommand     = Pending.Off; _pendingMs = 0;
             return Action.TurnOff;
