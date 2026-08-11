@@ -47,6 +47,26 @@ public class UserSettings
         /// </summary>
         public bool AnnounceTimeWithSeconds { get; set; } = false;
 
+        // ── VATSIM (vPilot) announcements ────────────────────────────────────
+        // Master switch is OFF by default: turning it on is what installs the plugin
+        // into vPilot's Plugins folder, so it must be a deliberate act.
+        public bool VatsimAnnouncementsEnabled { get; set; } = false;
+        public bool VatsimAnnounceConnect { get; set; } = true;
+        public bool VatsimAnnounceDisconnect { get; set; } = true;
+        public bool VatsimAnnouncePrivateMessages { get; set; } = true;
+        public bool VatsimAnnounceRadioMessages { get; set; } = true;
+        public bool VatsimAnnounceSelcal { get; set; } = true;
+
+        // ── Updates ──────────────────────────────────────────────────────────
+        // Release by default: preview builds carry the newest changes but have had far
+        // less flying time, so opting in is a deliberate act guarded by a confirmation in
+        // the Updates settings tab.
+        public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Release;
+
+        // On by default. The check is one HTTP call fired after the main window is shown;
+        // it never blocks startup and stays completely silent on any failure.
+        public bool CheckForUpdatesOnStartup { get; set; } = true;
+
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
         // whenever Hand Fly engages — the auto-handoff at rotation AND a manual
@@ -159,6 +179,13 @@ public class UserSettings
 
         // SimBrief Settings
         public string SimbriefUsername { get; set; } = "";
+
+        // SayIntentions Settings
+        // There is NO API key setting: SayIntentions always publishes the key in
+        // %LOCALAPPDATA%\SayIntentionsAI\flight.json, so a hand-entered copy of it
+        // was redundant. Auto-start defaults OFF: the taxi route is built from parsed
+        // ATC speech, so the pilot reviews the pre-filled dialog before guidance begins.
+        public bool SayIntentionsAutoStartTaxiGuidance { get; set; } = false;
 
         // iFly 737 MAX8 Settings — the SP1 EFB HTTP server port (iFly Manager
         // default 8084; user-configurable there since hotfix 1.1.0.1).
@@ -425,6 +452,15 @@ public class UserSettings
         public bool DockingGuidanceEnabled { get; set; } = true;
         public HandFlyWaveType DockingBeepWaveform { get; set; } = HandFlyWaveType.Sine;
         public double DockingBeepVolume { get; set; } = 0.05;
+        /// <summary>
+        /// Speak ground speed at every 1-knot change while docking guidance is engaged.
+        /// The global ground-speed announcer works in 5/10-knot buckets, so it is silent
+        /// across the whole 0-5 kt docking band — exactly where fine speed control decides
+        /// whether the squaring turn can be completed before the stop. A pilot flying with
+        /// one hand on the tiller and one on the thrust levers cannot poll it by hotkey.
+        /// Default ON; opinions differ on callout density, hence the switch.
+        /// </summary>
+        public bool DockingSpeedCalloutsEnabled { get; set; } = true;
 
         // Weather Settings
         /// <summary>
@@ -570,6 +606,7 @@ public class UserSettings
             GeoNamesApiUsername = GeoNamesApiUsername,
             NearestCityAnnouncementInterval = NearestCityAnnouncementInterval,
             SimbriefUsername = SimbriefUsername,
+            SayIntentionsAutoStartTaxiGuidance = SayIntentionsAutoStartTaxiGuidance,
             IFlyEfbPort = IFlyEfbPort,
             AiProvider = AiProvider,
             GeminiApiKey = GeminiApiKey,
@@ -644,7 +681,8 @@ public class UserSettings
             GsxAutoSelectGateOnRoute = GsxAutoSelectGateOnRoute,
             DockingGuidanceEnabled = DockingGuidanceEnabled,
             DockingBeepWaveform = DockingBeepWaveform,
-            DockingBeepVolume = DockingBeepVolume
+            DockingBeepVolume = DockingBeepVolume,
+            DockingSpeedCalloutsEnabled = DockingSpeedCalloutsEnabled
         };
         clone.RebuildDisabledMonitorVariableCaches();
         return clone;

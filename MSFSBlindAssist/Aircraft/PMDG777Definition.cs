@@ -7111,6 +7111,14 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
+            case HotkeyAction.FCUSetAutopilot:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAutopilotWindow(
+                    PMDGAutopilotRows.For777(), "777 Autopilot", simConnect, announcer, parentForm);
+                return true;
+            }
+
             // CDU handled by MainForm (Task 13)
             case HotkeyAction.ShowFenixMCDU:
                 return false;

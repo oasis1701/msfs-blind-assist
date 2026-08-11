@@ -590,13 +590,21 @@ public partial class MainForm
         var oldAircraft = currentAircraft;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
-        // Both FBW defs' StopAllMotion also dispose their TCAS RA compose timer and
-        // any tracked hotkey windows (FCU/Baro/E/WD) the old def instance created.
+        // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.
         (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (oldAircraft as FlyByWireA320Definition)?.StopAllMotion();
         // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
         // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
         (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
+        // Every def's tracked hotkey windows (FBW FCU/Baro/E/WD, PMDG Ctrl+P autopilot).
+        // UNCONDITIONAL on purpose — a per-type line here is how the PMDG autopilot window
+        // slipped through: it was the first ShowTrackedWindow user outside the FBW pair,
+        // whose StopAllMotion happened to cover them. A surviving window keeps its 500 ms
+        // refresh timer alive AND stays clickable against the OLD def's HandleUIVariableSet,
+        // so e.g. a stale 777 window can fire 777 event IDs at a loaded 737 (the two
+        // EventIds tables use different event_base + N numberings) and actuate an arbitrary
+        // wrong control. Idempotent, so the FBW double-call above is a no-op.
+        (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
 
         // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
         // spring switch open-ended via a transmit press — release it on swap so it can't

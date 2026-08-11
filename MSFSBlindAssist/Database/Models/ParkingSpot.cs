@@ -36,8 +36,13 @@ public class ParkingSpot
     /// <summary>
     /// Alternative names for this parking spot discovered from online sources (OSM / X-Plane
     /// apt.dat) when those sources use a different label than the navdata <see cref="Name"/>.
-    /// For example, navdata might use "GN 3" while ATC/OSM uses "47" — both refer to the
-    /// same physical stand.
+    /// An alias only ever RE-LETTERS the same stand: bare navdata gate "51" picks up the
+    /// concourse letter OSM spells out ("A51"); navdata "N3" picks up a MARS suffix ("N3A") but
+    /// never "A3", because a letter the navdata name already carries has to agree too.
+    /// <see cref="Number"/> IS the identity — <c>GateAliasResolver</c> rejects any candidate
+    /// whose number differs (and a spot with no number gets no aliases at all). A
+    /// differently-numbered stand is a DIFFERENT stand: letting one lend its label would attach
+    /// the number a pilot searched for to the wrong spot and taxi a blind pilot there.
     /// <para>
     /// In-memory only — never persisted to the database. Empty list when no alias is known.
     /// Navdata <see cref="Name"/> is always authoritative; aliases only ADD extra selectable

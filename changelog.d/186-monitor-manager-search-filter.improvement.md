@@ -1,0 +1,1 @@
+The per-aircraft announcement manager (Ctrl+M) now has a search box and a **Show** filter, on every aircraft. Type a few letters to search for the announcement you want instead of arrowing through hundreds of rows, and set **Show** to **Muted** to review everything you have silenced — or **Unmuted** for all announcements that still speak.

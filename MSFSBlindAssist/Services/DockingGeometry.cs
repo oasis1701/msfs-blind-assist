@@ -117,9 +117,29 @@ public static class DockingGeometry
     public const double StopToleranceMetres = 0.3;
     /// <summary>Announce overshoot when the aircraft datum is 1 m past the stop.</summary>
     public const double OvershootMetres = 1.0;
+    /// <summary>
+    /// "Slow down" only fires inside this distance to the stop (m). Do NOT widen it to make the
+    /// warning arrive earlier: the callout is a ONE-SHOT (<c>_slowDownSaid</c>, re-armed only at
+    /// engage/reset), so a wider gate lets it fire harmlessly during the normal deceleration from
+    /// taxi speed and be SPENT before the band where it matters. The threshold below is the knob.
+    /// </summary>
     public const double SlowDownMetres = 6.0;
-    /// <summary>"Slow down" only fires when ground speed exceeds this threshold (kts).</summary>
-    public const double SlowDownSpeedKts = 5.0;
+    /// <summary>
+    /// "Slow down" only fires when ground speed exceeds this threshold (kts).
+    ///
+    /// <para>Lowered 5.0 → 3.0 (2026-08). At 5.0 the callout never fired in any of the three live
+    /// A380 approaches that motivated the speed callouts: they sat at 4.0 kt with 5 m to run,
+    /// 4.3 kt at 2 m and 4.7 kt at 2 m — all under the threshold, all silent, all ending askew or
+    /// through the stop. The one time it did fire was 5.7 kt at 0.6 m, far too late to act on.</para>
+    ///
+    /// <para>3.0 is where the remaining TIME crosses the failure boundary rather than a round
+    /// number: covering the 6 m gate takes 2.3 s at 5 kt, 3.9 s at 3 kt and 7.6 s at 1.5 kt, and
+    /// the approach ends in a final squaring turn of 7-14° that a widebody cannot make in about
+    /// four seconds. A well-flown dock is ~1.5 kt at 13 m out, so 3 kt inside 6 m is already
+    /// abnormal — this does not fire on a good profile. The per-knot speed callout tells the pilot
+    /// what the speed IS; this one tells them what to do about it, and both are needed.</para>
+    /// </summary>
+    public const double SlowDownSpeedKts = 3.0;
     public const double DisengageRangeMetres = EngageRangeMetres * 1.5;
 
     // Beep interval mapping (ms): slow when far, fast when near.

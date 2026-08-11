@@ -32,7 +32,15 @@ public partial class MainForm
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
             HotkeyAction.ShowPMDGEFBFirstOfficer,
-            HotkeyAction.TaxiStatus
+            HotkeyAction.TaxiStatus,
+            // The two SayIntentions readouts only touch flight.json and the SAPI
+            // endpoints. Building a taxi route is NOT offline — it needs a position.
+            HotkeyAction.SayIntentionsLastTransmission,
+            HotkeyAction.SayIntentionsAssignedStatus,
+            // Muting VATSIM chatter has nothing to do with the simulator. Without this
+            // the pilot gets "Not connected to simulator, please wait" while trying to
+            // silence a busy frequency.
+            HotkeyAction.ToggleVatsimAnnouncements
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -404,6 +412,31 @@ public partial class MainForm
             case HotkeyAction.ReadGsxTooltip:
                 ReadLatestGsxTooltip();
                 break;
+            // Fire-and-forget by design: each of these owns a top-level try/catch and
+            // reports its own failure, so nothing escapes unobserved.
+            case HotkeyAction.SayIntentionsLastTransmission:
+                _ = AnnounceSayIntentionsLastTransmissionAsync();
+                break;
+            case HotkeyAction.SayIntentionsAssignedStatus:
+                _ = AnnounceSayIntentionsAssignedStatusAsync();
+                break;
+            case HotkeyAction.SayIntentionsBuildTaxiRoute:
+                _ = BuildTaxiRouteFromSayIntentionsAsync();
+                break;
+            case HotkeyAction.ToggleVatsimAnnouncements:
+            {
+                if (vatsimService == null || !vatsimService.IsEnabled)
+                {
+                    // Say why nothing happened rather than being a silent dead key.
+                    announcer.AnnounceImmediate("VATSIM announcements are turned off in Settings");
+                    break;
+                }
+                bool muted = vatsimService.ToggleMute();
+                announcer.AnnounceImmediate(muted
+                    ? "VATSIM announcements muted"
+                    : "VATSIM announcements unmuted");
+                break;
+            }
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
         }

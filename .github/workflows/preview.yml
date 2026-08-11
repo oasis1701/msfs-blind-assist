@@ -1,0 +1,168 @@
+name: Preview build
+
+# Every merge to main republishes ONE rolling pre-release, so testers can fly the newest
+# changes without waiting for a tag. See docs/updates.md.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+# Publishing is idempotent: every run recomputes the version, rebuilds, force-moves the
+# tag and replaces the asset. So cancelling an in-flight run is safe — the survivor
+# overwrites the preview wholesale, and a cancelled run leaves the previous one standing.
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Pure-logic tests (xUnit)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run tests
+        run: dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64
+
+  publish:
+    name: Build and publish the rolling preview
+    # A red suite publishes nothing; the last good preview stays up.
+    needs: test
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        # Full history AND tags: the version step counts commits since the last v tag and
+        # the notes step diffs fragments from it. A shallow clone would produce neither.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Derive the preview version
+        id: version
+        shell: bash
+        run: |
+          # --match 'v*' is REQUIRED, not defensive: the rolling `preview` tag lives on
+          # main, so a bare `git describe --tags` returns IT rather than the last release.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            BASE="0.0.0"
+            N=$(git rev-list --count HEAD)
+          else
+            BASE="${PREV#v}"
+            BASE="${BASE%%-*}"        # a v8.0.0-rc1 tag must not make PATCH "0-rc1"
+            N=$(git rev-list --count "$PREV..HEAD")
+          fi
+          IFS=. read -r MAJOR MINOR PATCH <<< "$BASE"
+          PATCH="${PATCH:-0}"         # a two-part tag (v9.1) leaves PATCH empty
+          # Patch+1 so the preview always outranks the release it is built on. Once a real
+          # release is tagged the base moves and the counter restarting is harmless,
+          # because the base version rose at the same time.
+          VERSION="$MAJOR.$MINOR.$((PATCH + 1))-pre.$N"
+          echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "PREV=$PREV" >> "$GITHUB_OUTPUT"
+          echo "Preview version: $VERSION (base ${PREV:-none})"
+
+      # Do NOT drop -p:Version. Without it the build falls back to the csproj's local-only
+      # <Version>0.0.0</Version>, and a 0.0.0 preview would offer itself as an update
+      # forever.
+      - name: Build
+        run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
+
+      # Keep the Navdatareader version in sync with release.yml's identical step.
+      - name: Download Navdatareader
+        run: |
+          gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
+          Expand-Archive -Path Navdatareader-win-1.2.3.zip -DestinationPath temp-navdata
+          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
+          Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader\
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create preview zip
+        run: |
+          Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA-preview.zip
+        shell: pwsh
+
+      - name: Build preview notes from changelog fragments
+        shell: bash
+        run: |
+          PREV="${{ steps.version.outputs.PREV }}"
+          # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
+          # makes the builder exit 1 if it reaches it.
+          if [ -z "$PREV" ]; then
+            git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          else
+            git diff --name-only --diff-filter=A "$PREV..HEAD" \
+              -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          fi
+          cat fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the preview — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out fragment-notes.md --from-file fragments.txt --contributors contributors.txt
+
+          SINCE="${PREV:-the start of the project}"
+          {
+            echo "**Preview build \`${{ steps.version.outputs.VERSION }}\`**, built from \`${GITHUB_SHA:0:7}\`."
+            echo
+            echo "This is a rolling preview: it is replaced every time a change lands on main."
+            echo "It contains everything merged since ${SINCE}."
+            echo
+            echo "---"
+            echo
+            # ChangelogBuilder renders nothing for 'internal' fragments, so a run of
+            # internal-only merges leaves this file empty. Say so in words — a blank
+            # section reads as a broken build.
+            if [ -s fragment-notes.md ]; then
+              cat fragment-notes.md
+            else
+              echo "No user-facing changes since ${SINCE} yet; this preview contains internal changes only."
+            fi
+          } > preview-notes.md
+          echo "--- preview notes ---"
+          cat preview-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Move the preview tag
+        shell: bash
+        run: |
+          # A lightweight tag, so no git identity is needed. actions/checkout persists
+          # credentials, so the force-push authenticates with GITHUB_TOKEN.
+          #
+          # The tag MUST NOT start with 'v': release.yml triggers on tags 'v*' and would
+          # publish a duplicate full release.
+          git tag -f preview
+          git push -f origin preview
+
+      - name: Publish the rolling preview
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: preview
+          # CONTRACT with MSFSBlindAssist/Services/UpdateCandidateSelector.cs
+          # (PreviewNamePrefix): the app reads the preview's version out of THIS name,
+          # because the tag above is the fixed string "preview" and cannot carry one.
+          # Change this format and the Preview channel silently goes inert.
+          name: Preview build ${{ steps.version.outputs.VERSION }}
+          body_path: preview-notes.md
+          files: MSFSBA-preview.zip
+          prerelease: true
+          # MUST stay false. GitHub's generated notes compare against the previous tag,
+          # which after the force-push above is `preview` itself — the generated list
+          # would be nonsense. Our own notes are the whole body here.
+          generate_release_notes: false

@@ -55,6 +55,32 @@ public sealed class DockingGuidanceManager : IDisposable
     private bool[] _milestoneSaid = Array.Empty<bool>();
     private bool _slowDownSaid;
     private bool _overshootStop;      // the Stopped state was entered via overshoot — no solid "docked" tone
+    // Guidance CONCLUDED on a verified-good park (at the stop, on the centerline, square with
+    // the gate axis). The solid hold tone sounds for CompletedHoldToneSeconds — a positional
+    // reference across the moment of stopping — and then the Stopped state falls silent for
+    // good: the park is confirmed correct, so there is nothing left to steer toward, and the
+    // closure is verbal ("Aligned with gate. Parking brake.") — the same wording taxi guidance
+    // used at a gate before docking guidance existed. Distinct from _overshootStop, which is a
+    // BAD ending (silent immediately, no parking-brake prompt).
+    private bool _completedGood;
+    private DateTime _completedAtUtc = DateTime.MinValue; // first frame of the concluded park
+    private bool _completedToneStopped;                   // hold tone already faded out (latch)
+    // One-shot fade-out for the hold tone. MUST be a timer, not a per-frame countdown: the
+    // completion raises DockingCompleted → MainForm stops taxi guidance → the taxi state change
+    // calls StopTaxiGuidanceMonitoring(), and this manager is fed from that same
+    // TAXI_GUIDANCE_POSITION stream. So the completing frame is typically the LAST frame this
+    // manager ever sees for the arrival, and anything scheduled "a few frames later" never runs —
+    // the solid tone simply held forever (reported live, 2026-08-04). The Stopped-branch countdown
+    // is defence in depth only (no live path today — see that branch); both latch on
+    // _completedToneStopped so the fade happens exactly once.
+    private System.Threading.Timer? _holdToneTimer;
+    /// <summary>
+    /// How long the SOLID "docked" tone keeps sounding after a verified-good park before
+    /// guidance falls silent. Long enough to give the pilot a positional reference at the
+    /// moment they stop — the audio equivalent of the VDGS holding its STOP display for a
+    /// beat — but short enough that it never becomes a drone to be tuned out.
+    /// </summary>
+    private const double CompletedHoldToneSeconds = 3.0;
     private DateTime _stoppedSinceUtc = DateTime.MinValue; // first frame of a gs<0.5 kt standstill while Docking
     private bool _stoppedShortSaid;   // one-shot for the stopped-short reminder; re-arms on movement
     private string _doorSide = ""; // "left" / "right" / "" — preferred passenger door side, for jetway orientation
@@ -68,6 +94,10 @@ public sealed class DockingGuidanceManager : IDisposable
     // Live heading misalignment vs the gate axis (deg, + = aircraft right of the axis) while
     // engaged, for the Y status. Also gates the "docking complete" callout — see the stop branch.
     private double _lastHeadingOffDeg;
+    // 1-knot ground-speed callouts for the final approach (setting-gated). Speed is the
+    // variable that decides whether the squaring turn can be finished before the stop,
+    // and it is the one a blind pilot cannot poll mid-turn — both hands are busy.
+    private readonly DockingSpeedCallout _speedCallout = new();
     private GsxOffset _stopOffset = GsxOffset.Zero; // GSX .py per-aircraft stop offset (metres); Zero = base navdata stop
     // Cue 2: GSX gatedistancethreshold override for engage range (null = use DockingGeometry.EngageRangeMetres).
     // Clamped to [20, 70] m when non-null. Set from the .ini gate's gatedistancethreshold field.
@@ -106,6 +136,14 @@ public sealed class DockingGuidanceManager : IDisposable
     /// sequence instead of total verbal silence. Once engaged, docking owns the rest of the
     /// arrival (through Stopped) and taxi stays quiet so the two never contradict. Lock-free
     /// volatile read — safe from the per-frame MainForm handler.
+    /// <para>
+    /// CONCLUDING a good park does NOT release that ownership: guidance goes silent but stays in
+    /// Stopped, so this keeps reading true until something resets the state (a new route or Stop
+    /// guidance via <c>SetDestinationGate</c>, the takeoff-assist / LandingRollout clears, or the
+    /// Stopped branch's own taxi-away / back-up escape). Concluded means "nothing left to steer
+    /// toward", not "docking has let go" — any frame arriving before that reset still mutes taxi's
+    /// steering tone. Every live path resets before frames resume; keep it that way.
+    /// </para>
     /// </summary>
     public bool IsActive => _isActiveSnap;
 
@@ -137,7 +175,14 @@ public sealed class DockingGuidanceManager : IDisposable
         lock (_lock)
         {
             string what = _gate?.IsDeiceArea == true ? "deicing pad" : "stop";
-            if (_state == DockState.Stopped) return "At the stop. Hold position.";
+            // A CONCLUDED good park is finished, not a position to keep holding — "Hold position."
+            // would invite the pilot to keep steering to a park that is already verified square
+            // and on the stop. The bad endings (overshoot / lateral miss / askew) keep the old
+            // wording: they ARE unresolved, and their own callout already said what to do.
+            if (_state == DockState.Stopped)
+                return _completedGood
+                    ? $"Parked at the {what}. Guidance complete."
+                    : "At the stop. Hold position.";
             if (_state == DockState.Docking)
             {
                 // Append the live steering demand in degrees — the pan tone saturates at
@@ -322,7 +367,7 @@ public sealed class DockingGuidanceManager : IDisposable
                         // is false until the aircraft first comes within detail range.
                         if (wantDetail)
                             _armedAwaitingSnap = !shouldEngage && alongM > PENDING_MIN_AHEAD_M;
-                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg);
+                        if (shouldEngage) EngageLocked(alongM, lineupErr, headingOffDeg, groundSpeedKts);
                         else _state = DockState.Armed;
                         break;
 
@@ -388,32 +433,33 @@ public sealed class DockingGuidanceManager : IDisposable
                         // square = true unconditionally.
                         if (atStopBand)
                         {
-                            // Cue 3: announce "GSX docking complete." instead of bare "Stop."
-                            // when the gate is a GSX .ini stand with a real VDGS stop position
-                            // (StopLatitude != null). Reaching OUR computed stop IS the reliable
-                            // signal — no external GSX L-var needed. Deice areas and navdata-only
-                            // gates (no VDGS stop position) keep the plain "Stop." callout.
-                            // FSDT_GSX_OPERATEJETWAYS_STATE was investigated and rejected: it
-                            // fires only when the user manually triggers the jetway, not on
-                            // aircraft arrival, so it cannot serve as an auto-docked signal.
-                            // Cross-gated (non-deice): "docking complete" requires the aircraft
-                            // within StopMaxCrossMetres of the centerline — without it, the KATL
-                            // C55 run would have announced a good dock 60 ft off the gate axis.
-                            // Narrow residual band (cross 2.0–2.21 m at along 0–0.3 m): neither
-                            // stop nor lateral-miss fires; the pilot creeps on and gets the
-                            // overshoot "Stop." at −1 m — still a verbal closure.
-                            string stopMsg = (_gate?.StopLatitude != null && _gate?.IsDeiceArea != true)
-                                ? "GSX docking complete."
-                                : "Stop.";
-                            _announcer.AnnounceImmediate(stopMsg);
-                            _tone.Stop(); // lateral steering done — kill the pan tone
-                            // Hold a SOLID continuous tone (the beeper's _solid mode fires when
-                            // alongM <= StopTolerance) as a "docked — hold position" marker.
-                            // Do NOT stop the beeper here: the pilot wants the tone to persist until
-                            // they end guidance (Stop button → SetDestinationGate(null) → ResetLocked)
-                            // or move off the stop. Previously _beeper.Stop() at the same 0.3 m
-                            // threshold the solid tone begins made the solid tone dead code.
+                            // Guidance ENDS here, and says so — the wording matrix and its
+                            // rationale live in CompletionPhrase. Cross-gated (non-deice):
+                            // "docking complete" requires the aircraft within StopMaxCrossMetres
+                            // of the centerline — without it, the KATL C55 run would have
+                            // announced a good dock 60 ft off the gate axis. Narrow residual band
+                            // (cross 2.0–2.21 m at along 0–0.3 m): neither stop nor lateral-miss
+                            // fires; the pilot creeps on and gets the overshoot "Stop." at −1 m —
+                            // still a verbal closure.
+                            _announcer.AnnounceImmediate(
+                                CompletionPhrase(deice, _gate?.StopLatitude != null));
+                            _tone.Stop();      // lateral steering done — kill the pan tone
+                            // Keep the SOLID hold tone (the beeper's continuous mode, which fires
+                            // at alongM <= StopTolerance) for CompletedHoldToneSeconds so the
+                            // pilot keeps a positional reference through the moment of stopping.
+                            // The fade-out is scheduled on a TIMER, not counted down in the
+                            // Stopped branch below: completing here raises DockingCompleted, which
+                            // stops taxi guidance, which stops the position feed this manager runs
+                            // on — so there are NO further frames to count in. See
+                            // ScheduleHoldToneStopLocked.
                             _beeper.Update(alongM, active: true);
+                            // _completedToneStopped is already false: Docking is only ever entered
+                            // from EngageLocked, which clears all three completion fields (as does
+                            // ResetLocked). Re-clearing here would only mask a future path that
+                            // reached Docking without going through EngageLocked.
+                            _completedGood = true;
+                            _completedAtUtc = DateTime.UtcNow;
+                            ScheduleHoldToneStopLocked();
                             _state = DockState.Stopped; _isActiveSnap = true; fireCompleted = true; break;
                         }
                         if (alongM > DockingGeometry.DisengageRangeMetres || groundSpeedKts >= DockingGeometry.EngageGroundSpeedKts)
@@ -436,7 +482,27 @@ public sealed class DockingGuidanceManager : IDisposable
                             _announcer.AnnounceImmediate("Slow down.");
                             return; // one callout per frame, consistent with the milestone pattern
                         }
-                        AnnounceMilestonesLocked(alongM);
+                        bool milestoneSpoke = AnnounceMilestonesLocked(alongM);
+                        // Ground-speed callout, LAST of the approach cues and QUEUED, never
+                        // immediate. Both of those are load-bearing and were learned the hard way:
+                        //
+                        // • It runs AFTER the one-shots (and is skipped on a frame one of them
+                        //   fired) because every other callout here is AnnounceImmediate, which
+                        //   INTERRUPTS. Speaking speed first didn't make speed win — whatever
+                        //   speaks LAST wins the speaker — it just meant the knot was consumed by
+                        //   Update() and then cut off, so the pilot skipped a number outright.
+                        //   Deferring costs one frame (16-33 ms) and the number still lands, right
+                        //   behind the distance it belongs with.
+                        // • It uses plain Announce (queued) because it is the only PERIODIC callout
+                        //   on this path — a chatty cue must never displace a one-shot instruction.
+                        //   Same rule, same reason, as GroundSpeedAnnouncer's queued callout: the
+                        //   milestone the pilot is braking for is exactly what an interrupt kills,
+                        //   and braking is exactly what makes the speed change on that frame.
+                        if (!milestoneSpoke && settings.DockingSpeedCalloutsEnabled)
+                        {
+                            string? speedPhrase = _speedCallout.Update(groundSpeedKts);
+                            if (speedPhrase != null) _announcer.Announce(speedPhrase);
+                        }
                         // Stopped-short reminder: engaged, parked mid-approach (past the milestones,
                         // short of the stop band), sitting still. Without this the pilot gets an
                         // endless fast-but-not-solid beep and no verbal closure — taxi's own
@@ -464,7 +530,31 @@ public sealed class DockingGuidanceManager : IDisposable
                         // after an overshoot stop, where a "docked" marker over a bad park would
                         // mislead. Ends when the pilot ends guidance (Stop button →
                         // SetDestinationGate(null) → ResetLocked) or moves off the stop (below).
-                        if (!_overshootStop) _beeper.Update(alongM, active: true);
+                        // …and after a CONCLUDED good park (_completedGood) the solid tone holds
+                        // for CompletedHoldToneSeconds — a positional reference across the moment
+                        // of stopping — then guidance falls silent for good: the aircraft is
+                        // verified on the stop and square, the pilot has been told to set the
+                        // parking brake, and there is nothing left to steer toward until a new
+                        // route is set.
+                        // The fade ALWAYS comes from the timer armed at completion; this countdown
+                        // has NO live path today and cannot be exercised in the sim. Completion
+                        // stops the position feed (see _holdToneTimer), the feed's only restart is
+                        // taxi's Taxiing transition, and every route load calls SetDestinationGate
+                        // first — which resets _completedGood. It is kept as defence in depth for
+                        // a future rewiring that leaves frames flowing (or a DockingCompleted
+                        // handler that throws before taxi guidance stops). Both paths latch on
+                        // _completedToneStopped, so the fade happens exactly once.
+                        if (_completedGood)
+                        {
+                            if (!_completedToneStopped)
+                            {
+                                if ((DateTime.UtcNow - _completedAtUtc).TotalSeconds < CompletedHoldToneSeconds)
+                                    _beeper.Update(alongM, active: true);
+                                else
+                                    EndHoldToneLocked();
+                            }
+                        }
+                        else if (!_overshootStop) _beeper.Update(alongM, active: true);
                         // Two escape paths, both required:
                         // • ABSOLUTE distance (not along-track) for taxi-away — along-track goes
                         //   NEGATIVE once the stop is behind the aircraft, so the old
@@ -487,7 +577,7 @@ public sealed class DockingGuidanceManager : IDisposable
         if (fireCompleted) { try { DockingCompleted?.Invoke(); } catch { } }
     }
 
-    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg)
+    private void EngageLocked(double alongM, double lineupErrDeg, double headingOffDeg, double groundSpeedKts)
     {
         _state = DockState.Docking;
         _isActiveSnap = true; _armedAwaitingSnap = false;
@@ -496,12 +586,20 @@ public sealed class DockingGuidanceManager : IDisposable
         // gate." from the ResetLocked default of 0.0 whatever the real alignment — the Docking
         // case does not run on the frame that engages.
         _lastHeadingOffDeg = headingOffDeg;
+        // ARM at the current speed, not Reset: the engage callout below runs several seconds
+        // and the position feed is SIM_FRAME, so a "next sample always speaks" re-arm put a
+        // number on top of it 16-33 ms later. Priming silently means the first callout is the
+        // first genuine CHANGE — which on a decelerating approach is a second or two away.
+        _speedCallout.Arm(groundSpeedKts);
         _milestones = DistanceMilestones.Docking();
         _milestoneSaid = new bool[_milestones.Count];
         for (int i = 0; i < _milestones.Count; i++)
             if (alongM < _milestones[i].TriggerMetres) _milestoneSaid[i] = true; // already past this milestone at engage
         _slowDownSaid = false;
         _overshootStop = false;
+        _completedGood = false;   // a retry dock must be able to conclude again
+        _completedAtUtc = DateTime.MinValue; _completedToneStopped = false;
+        CancelHoldToneTimerLocked();  // the previous park's fade must not silence this new run
         _stoppedSinceUtc = DateTime.MinValue;
         _stoppedShortSaid = false;
         string dist = DistanceFormatter.FromMetres(alongM);
@@ -536,7 +634,12 @@ public sealed class DockingGuidanceManager : IDisposable
         _beeper.Start(SettingsManager.Current.DockingBeepWaveform, SettingsManager.Current.DockingBeepVolume);
     }
 
-    private void AnnounceMilestonesLocked(double alongM)
+    /// <summary>
+    /// Speaks at most one distance milestone. Returns true when it announced, so the caller
+    /// can hold the periodic speed callout back for a frame rather than have it consumed and
+    /// then interrupted by this one (see the call site).
+    /// </summary>
+    private bool AnnounceMilestonesLocked(double alongM)
     {
         for (int i = 0; i < _milestones.Count; i++)
         {
@@ -544,9 +647,10 @@ public sealed class DockingGuidanceManager : IDisposable
             {
                 _milestoneSaid[i] = true;
                 _announcer.AnnounceImmediate($"{_milestones[i].Label} to stop.");
-                return;
+                return true;
             }
         }
+        return false;
     }
 
     /// <summary>
@@ -603,6 +707,32 @@ public sealed class DockingGuidanceManager : IDisposable
         string strength = rounded >= 25 ? "Sharp " : rounded >= 15 ? "" : "Slight ";
         string dirWord = strength.Length == 0 ? char.ToUpperInvariant(dir[0]) + dir[1..] : dir;
         return $"{strength}{dirWord}, {rounded} degrees.";
+    }
+
+    /// <summary>
+    /// The terminal callout of a VERIFIED-good park — at the stop, on the centerline, square
+    /// with the gate axis. Guidance ENDS with this phrase, so it both names the park and hands
+    /// the pilot the one remaining action.
+    /// <para>
+    /// <paramref name="hasGsxStop"/> = the gate carries a real GSX VDGS stop position
+    /// (<c>ParkingSpot.StopLatitude</c>): reaching OUR computed stop IS the reliable "docked"
+    /// signal, so those gates get "GSX docking complete." — no external GSX L:var needed.
+    /// (<c>FSDT_GSX_OPERATEJETWAYS_STATE</c> was investigated and rejected: it fires only when
+    /// the user manually triggers the jetway, not on arrival.) Navdata-only gates target the
+    /// parking-spot centre instead and keep the plain "Stop."
+    /// </para>
+    /// <para>
+    /// "Aligned with gate. Parking brake." is the wording taxi guidance used at a gate before
+    /// docking guidance existed — a familiar closure that also tells the pilot guidance is
+    /// finished until a new route is set. <paramref name="deice"/> pads are not gates: they get
+    /// the brake cue with NO alignment claim and never "GSX docking complete.", since the square
+    /// and cross gates behind that claim are skipped for a wide, datum-aligned pad.
+    /// </para>
+    /// </summary>
+    internal static string CompletionPhrase(bool deice, bool hasGsxStop)
+    {
+        string stop = (hasGsxStop && !deice) ? "GSX docking complete." : "Stop.";
+        return deice ? $"{stop} Parking brake." : $"{stop} Aligned with gate. Parking brake.";
     }
 
     /// <summary>
@@ -747,13 +877,85 @@ public sealed class DockingGuidanceManager : IDisposable
             offset.LongitudinalMetres, offset.LateralMetres, out sLat, out sLon);
 
     private void SilenceLocked() { try { _tone.Stop(); } catch { } try { _beeper.Update(0, active: false); } catch { } }
+
+    /// <summary>
+    /// Arms the one-shot fade-out of the concluded park's solid hold tone. Call under
+    /// <c>_lock</c> from the completion branch only. Self-contained: it does not need another
+    /// position frame, because after completion there usually isn't one (see
+    /// <see cref="_holdToneTimer"/>).
+    /// </summary>
+    private void ScheduleHoldToneStopLocked()
+    {
+        CancelHoldToneTimerLocked();
+        try
+        {
+            _holdToneTimer = new System.Threading.Timer(
+                OnHoldToneElapsed, null,
+                TimeSpan.FromSeconds(CompletedHoldToneSeconds),
+                System.Threading.Timeout.InfiniteTimeSpan);
+        }
+        catch
+        {
+            // Timer creation failed (shutdown race) — fall back to ending the tone now rather
+            // than leaving one that nothing will ever stop.
+            EndHoldToneLocked();
+        }
+    }
+
+    /// <summary>
+    /// Ends the concluded park's hold tone for good: silences both voices, then RELEASES the
+    /// beeper's audio device and its 15 ms tick timer, and latches <c>_completedToneStopped</c>
+    /// so the timer and the Stopped-branch countdown can only fade once between them.
+    /// <para>
+    /// <see cref="SilenceLocked"/> alone would only zero the generator volume — it deliberately
+    /// leaves the device alive so a re-engage resumes instantly. That is wrong HERE: a concluded
+    /// park normally sees no further frame and no <c>ResetLocked</c>, so the open WaveOut and its
+    /// timer would idle for the rest of the session. Stopping is safe — <c>EngageLocked</c> calls
+    /// <c>_beeper.Start()</c>, which recreates the generator and re-arms the tick timer.
+    /// </para>
+    /// </summary>
+    private void EndHoldToneLocked()
+    {
+        SilenceLocked();
+        try { _beeper.Stop(); } catch { }
+        _completedToneStopped = true;
+    }
+
+    /// <summary>
+    /// Disposes the pending hold-tone timer. Uses the NON-blocking <c>Dispose()</c> overload, so
+    /// it is safe to call while holding <c>_lock</c> even if the callback is already waiting on
+    /// that same lock (the blocking <c>Dispose(WaitHandle)</c> overload would deadlock there).
+    /// </summary>
+    private void CancelHoldToneTimerLocked()
+    {
+        try { _holdToneTimer?.Dispose(); } catch { }
+        _holdToneTimer = null;
+    }
+
+    private void OnHoldToneElapsed(object? _)
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            // Re-check under the lock: a reset (taxi-away, back-up re-arm, Stop button, gate
+            // cleared) between arming and firing already silenced the tone and cleared the flags,
+            // and a re-engaged dock must NOT have its live tone killed by the previous park's timer.
+            if (!_completedGood || _completedToneStopped) return;
+            EndHoldToneLocked();
+            CancelHoldToneTimerLocked();
+        }
+    }
+
     private void ResetLocked()
     {
+        CancelHoldToneTimerLocked();
         SilenceLocked(); try { _beeper.Stop(); } catch { }
         _state = DockState.Idle; _isActiveSnap = false; _armedAwaitingSnap = false;
         _lastLineupErrDeg = 0.0; _lastHeadingOffDeg = 0.0;
+        _speedCallout.Reset();
         _milestones = Array.Empty<DistanceMilestone>(); _milestoneSaid = Array.Empty<bool>();
-        _slowDownSaid = false; _overshootStop = false;
+        _slowDownSaid = false; _overshootStop = false; _completedGood = false;
+        _completedAtUtc = DateTime.MinValue; _completedToneStopped = false;
         _stoppedSinceUtc = DateTime.MinValue; _stoppedShortSaid = false;
         _occupancyClampLogged = false;
     }
@@ -763,7 +965,7 @@ public sealed class DockingGuidanceManager : IDisposable
         // Set the flag under the lock so any in-progress UpdatePosition sees it
         // before we tear down audio. The beeper is disposed outside the lock to
         // avoid holding _lock across the beeper's own internal teardown.
-        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; _armedAwaitingSnap = false; try { _tone.Stop(); } catch { } }
+        lock (_lock) { if (_disposed) return; _disposed = true; _isActiveSnap = false; _armedAwaitingSnap = false; CancelHoldToneTimerLocked(); try { _tone.Stop(); } catch { } }
         _beeper.Dispose();
     }
 }

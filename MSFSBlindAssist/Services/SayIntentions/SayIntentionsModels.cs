@@ -1,0 +1,190 @@
+namespace MSFSBlindAssist.Services.SayIntentions;
+
+/// <summary>
+/// Everything read from one snapshot of %LOCALAPPDATA%\SayIntentionsAI\flight.json.
+/// Every field is optional — SayIntentions writes a different subset depending on
+/// flight phase, and a missing field must degrade to "not available", never throw.
+/// </summary>
+public sealed class SayIntentionsFlightContext
+{
+    public string FlightJsonPath { get; init; } = "";
+    public bool FlightJsonExists { get; init; }
+
+    /// <summary>Set when the file existed but could not be read or parsed. When
+    /// non-null this string is spoken verbatim, so it must stay pilot-readable.</summary>
+    public string? Error { get; set; }
+
+    public string? ApiKey { get; set; }
+    public string? Hostname { get; set; }
+    public string? Callsign { get; set; }
+    public string? CurrentAirport { get; set; }
+    public string? Origin { get; set; }
+    public string? Destination { get; set; }
+    public string? AssignedGate { get; set; }
+
+    /// <summary>Where <see cref="AssignedGate"/> is, from
+    /// <c>assigned_gate_lat</c>/<c>assigned_gate_lon</c>. It belongs to the ARRIVAL
+    /// stand at <see cref="Destination"/> exactly as the name does, so it is just as
+    /// wrong at the departure airport and must never be used without the same
+    /// destination check.
+    ///
+    /// It is the NOSE-STOP position rather than the stand datum — measured at EDDB it
+    /// sat 18.9 m from the navdata spot centre on the stand's own axis — so it locates
+    /// a stand, it does not measure one. It exists here only as the fallback for a name
+    /// this scenery does not have: the name is what the pilot heard, and matching it
+    /// stays the primary route.</summary>
+    public GeoPoint? AssignedGatePosition { get; set; }
+
+    public string? DepartureRunway { get; set; }
+    public string? ArrivalRunway { get; set; }
+    public string? Runway { get; set; }
+    public string? ClearedForTakeoff { get; set; }
+    public string? ClearedForLanding { get; set; }
+    public string? FlightPlanRoute { get; set; }
+    /// <summary>The taxi clearance to parse. flight.json carries no clearance text of
+    /// its own in the observed wire format, so in practice this is filled from the
+    /// last radio transmission — which means the taxi import needs the SAPI comms
+    /// endpoint to be reachable. See docs/sayintentions.md.</summary>
+    public string? ClearanceText { get; set; }
+
+    public SayIntentionsTransmission? LastFlightJsonTransmission { get; set; }
+
+    /// <summary>True when flight.json carried radio transmissions but every one of them
+    /// was the PILOT's own, so <see cref="LastFlightJsonTransmission"/> is null for a
+    /// reason worth speaking. "Nothing found" would be a lie: the pilot heard traffic,
+    /// just none of it from the controller.</summary>
+    public bool OnlyPilotTransmissions { get; set; }
+
+    /// <summary>ICAO type code, e.g. "B738". From <c>aircraft_icao</c>.</summary>
+    public string? AircraftIcao { get; set; }
+
+    /// <summary>SayIntentions' own air/ground flag (<c>on_ground</c>), or null when
+    /// absent. Read for the report only — guidance keeps using the SimConnect
+    /// air/ground state, which is a frame old rather than a file-write old.</summary>
+    public bool? OnGround { get; set; }
+
+    /// <summary>Weather and ATIS for the departure airport (<c>departure_wx</c>).</summary>
+    public SayIntentionsAirportWeather? DepartureWeather { get; set; }
+
+    /// <summary>Weather and ATIS for the arrival airport (<c>arrival_wx</c>). Not seen
+    /// in any capture yet — read defensively so it appears if SI starts publishing it
+    /// once a flight plan is filed.</summary>
+    public SayIntentionsAirportWeather? ArrivalWeather { get; set; }
+
+    /// <summary>Coordinates from <c>current_flight.taxi_path</c> — SayIntentions' own
+    /// taxi-route geometry, published per entry as
+    /// <c>{"heading":…, "point":{"lon":…,"lat":…}}</c>. COORDINATES ONLY: no name of
+    /// any kind lives in this array, and none is read from it — see the reader in
+    /// SayIntentionsService for why. Empty (never null) when the field is absent or
+    /// unreadable; nothing consumes this yet, a later task snaps it to the airport's
+    /// own taxiway graph via SayIntentionsTaxiPathSnapper.</summary>
+    public IReadOnlyList<GeoPoint> TaxiPathPoints { get; set; } = Array.Empty<GeoPoint>();
+
+    /// <summary>When this taxi-path snapshot was generated, in UTC. Prefers SI's own
+    /// <c>flight_details.timestamp</c> (a Unix epoch in seconds — confirmed against
+    /// real captures, see SayIntentionsService); falls back to the flight.json file's
+    /// own last-write time when that field is absent, which is a weaker proxy (this
+    /// app's read time, not SI's generation time) but still an honest answer rather
+    /// than silence when a path is genuinely present.</summary>
+    public DateTime? TaxiPathStampUtc { get; set; }
+}
+
+/// <summary>
+/// One airport's weather/ATIS block as SayIntentions publishes it in flight.json.
+///
+/// This is the richest thing in the file and nothing read it before: the ATIS letter
+/// and the ACTIVE RUNWAY CONFIGURATION are not available anywhere else in this app —
+/// not from VATSIM, not from ActiveSky, not from navdata — and they are exactly what
+/// a blind pilot otherwise has to sit through an ATIS loop to learn. Every field is
+/// optional; SI leaves plenty of them empty.
+/// </summary>
+public sealed class SayIntentionsAirportWeather
+{
+    public string? Airport { get; init; }
+
+    /// <summary>The ATIS letter, e.g. "U" for information Uniform.</summary>
+    public string? InformationLetter { get; init; }
+
+    /// <summary>Decoded ATIS as prose. SI also publishes a phonetic variant, which we
+    /// do NOT use: the screen reader is the one deciding how to pronounce things, and
+    /// feeding it "two-two-left" produces a worse reading than "22L".</summary>
+    public string? Atis { get; init; }
+
+    public string? ActiveRunwaysArriving { get; init; }
+    public string? ActiveRunwaysDeparting { get; init; }
+    public string? PreferredRunway { get; init; }
+    public string? CurrentlyOperating { get; init; }
+
+    public double? WindDirection { get; init; }
+    public double? WindSpeed { get; init; }
+    public double? WindGusting { get; init; }
+    public double? Visibility { get; init; }
+    public double? Altimeter { get; init; }
+    public double? DensityAltitude { get; init; }
+
+    public string? Metar { get; init; }
+    public string? Taf { get; init; }
+}
+
+/// <summary>One radio transmission. <paramref name="Speaker"/> is "ATC", "Pilot",
+/// or empty when the source message carried no direction.
+///
+/// <paramref name="Ident"/> is the airport SayIntentions files the record under
+/// (<c>ident</c> on a getCommsHistory record — "KDTW", "KZOB"). It is what bounds the
+/// look-back in <see cref="SayIntentionsClearanceSelector"/> to the field the aircraft
+/// is actually at; null when the payload carried none, which is every transmission read
+/// out of flight.json, so nothing may treat its absence as a mismatch.</summary>
+public sealed record SayIntentionsTransmission(
+    string Speaker,
+    string Message,
+    string? StationName,
+    string? Channel,
+    DateTime? StampZulu,
+    int? Id,
+    string? Ident = null)
+{
+    /// <summary>The pilot's own side of the exchange. It is DROPPED, never outranked —
+    /// see the reader in SayIntentionsService and the selector — so this name exists on
+    /// the type both of them compare against rather than once in each.</summary>
+    public const string PilotSpeaker = "Pilot";
+
+    /// <summary>The controller's side. The only side either readout is for.</summary>
+    public const string AtcSpeaker = "ATC";
+
+    /// <summary>
+    /// The transmission as the pilot hears it: the station that said it, then what was
+    /// said — "Ankara Control: Descend flight level two four zero."
+    ///
+    /// <see cref="Speaker"/> is deliberately NOT spoken. The readout drops Pilot
+    /// transmissions outright, so every transmission that reaches here is either ATC or
+    /// carries no direction at all — saying "ATC" adds a word to every readout and
+    /// distinguishes it from nothing. The caller adds no lead-in either: the pilot just
+    /// pressed the key that means "what was the last transmission", so naming it back to
+    /// them is the same word twice.
+    /// </summary>
+    public string ToAnnouncement() =>
+        string.IsNullOrWhiteSpace(StationName) ? Message : $"{StationName!.Trim()}: {Message}";
+}
+
+/// <summary>A parking assignment from the SAPI getParking endpoint.</summary>
+public sealed class SayIntentionsParking
+{
+    public string? Name { get; init; }
+    public double? Latitude { get; init; }
+    public double? Longitude { get; init; }
+    public double? Heading { get; init; }
+}
+
+/// <summary>The most recent transmission, or the reason there isn't one.</summary>
+public sealed record SayIntentionsTransmissionResult(
+    SayIntentionsTransmission? Transmission,
+    string? Error);
+
+public sealed record SayIntentionsParkingResult(
+    SayIntentionsParking? Parking,
+    string? Error);
+
+public sealed record SayIntentionsStatusResult(
+    SayIntentionsFlightContext Context,
+    SayIntentionsParking? Parking,
+    string? ParkingError);

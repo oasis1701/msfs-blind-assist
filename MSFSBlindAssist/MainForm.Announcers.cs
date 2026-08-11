@@ -617,10 +617,15 @@ public partial class MainForm
         // taxi-scoped: OnTaxiGuidanceStateChanged stops position monitoring when taxi
         // reaches Arrived/Inactive, so docking gets NO frames after that point. That is
         // fine by design — arrival ownership is engage-latched (docking has either already
-        // finished, or never engaged and taxi announced the arrival), the parked solid
-        // tone is self-sustaining until the pilot presses Stop, and stale docking state is
-        // cleared at the next flight boundary (takeoff-assist / LandingRollout) or healed
-        // by the absolute-distance disengage on the next route's frames.
+        // finished, or never engaged and taxi announced the arrival), and stale docking
+        // state is cleared at the next flight boundary (takeoff-assist / LandingRollout)
+        // or healed by the absolute-distance disengage on the next route's frames.
+        // CRITICAL for anything scheduled inside DockingGuidanceManager: completing a dock
+        // raises DockingCompleted → StopGuidance() → Inactive → StopTaxiGuidanceMonitoring()
+        // below, so the completing frame is normally the LAST frame docking ever sees. Its
+        // concluded-park hold tone therefore fades on a one-shot Timer, NOT a per-frame
+        // countdown (that first attempt left the tone sounding forever). Any future
+        // "N seconds after the park" behaviour must be timer-based for the same reason.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;

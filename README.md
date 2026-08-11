@@ -125,6 +125,14 @@ Full accessibility support for the FlyByWire A380X — the free, high-fidelity A
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
 - A complete screen-reader-first manual ships in the `Guides` folder (`Guides/a380-manual.html`).
 
+## VATSIM (vPilot)
+
+MSFS Blind Assist can announce VATSIM network activity reported by [vPilot](https://vpilot.rosscarlson.dev/) through your screen reader: connections and disconnections, private messages, radio chatter on the frequencies you're tuned to, and SELCAL alerts.
+
+It's off by default. Turn it on from **Settings → VATSIM**: tick the master switch and press OK, and MSFS Blind Assist finds your vPilot installation and installs the plugin for you — you just need to restart vPilot afterwards so it picks the plugin up. Mute announcements for the rest of a flight at any time with **Output mode > Alt+V**, without opening Settings.
+
+If you used the older standalone `vPilot-to-TTS` tray application, its vPilot plugin is removed automatically the first time this feature installs its own — you only need to uninstall the old tray application yourself.
+
 ## Discord
 Please join us on discord for support or to hang out with us:
 https://discord.gg/7udKUYFFY7

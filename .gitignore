@@ -140,6 +140,11 @@ tools/fbw-mcdu-probe/node_modules/
 !nvda_controllerClient/
 !nvda_controllerClient/x64/
 !nvda_controllerClient/x64/nvdaControllerClient.dll
+# vPilot plugin API assembly: vPilot supplies this at runtime (the csproj reference
+# is Private=False so it never ships in our output), but the plugin project's build
+# itself needs it present via HintPath — on a fresh clone and on CI — so the vendored
+# copy must be tracked, not just the source that references it.
+!plugins/MSFSBlindAssist.VPilotPlugin/lib/RossCarlson.Vatsim.Vpilot.Plugins.dll
 # A380 flyPad/MCDU live Coherent debugging tools are now TRACKED — they're the
 # primary way to read/write L:vars and scrape the cockpit DOM against the running
 # sim, and genuinely useful to co-developers. See tools/_probe/README.md and the
