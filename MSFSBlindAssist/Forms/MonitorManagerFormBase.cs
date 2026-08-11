@@ -133,7 +133,9 @@ public abstract class MonitorManagerFormBase : Form
             Location = new Point(10, 80),
             Size = new Size(530, 330),
             TabIndex = 5,
-            AccessibleName = "Auto-announced variables",
+            // Placeholder only — ApplyFilter rewrites this with the live filter and count
+            // before the dialog is ever shown. Kept non-empty so the list is never nameless.
+            AccessibleName = "All variables",
             CheckOnClick = true
         };
         _list.ItemCheck += OnItemCheck;
@@ -194,10 +196,12 @@ public abstract class MonitorManagerFormBase : Form
             _suppressItemCheck = false;
         }
 
-        // The result count rides on the list's accessible name — so tabbing in speaks
-        // "Auto-announced variables, 12 of 300" with no extra tab stop and no app-generated
-        // speech talking over the pilot's typing.
-        _list.AccessibleName = $"Auto-announced variables, {_visibleRows.Count} of {_allRows.Count}";
+        // The active filter AND the result count ride on the list's accessible name — so
+        // tabbing in speaks "Muted variables, 12 of 300" with no extra tab stop and no
+        // app-generated speech talking over the pilot's typing. The filter has to be in the
+        // NAME, not just the count: a fixed prefix made a Show change inaudible.
+        _list.AccessibleName =
+            MonitorVariableFilter.DescribeList(SelectedMode, _visibleRows.Count, _allRows.Count);
     }
 
     private void OnItemCheck(object? sender, ItemCheckEventArgs e)

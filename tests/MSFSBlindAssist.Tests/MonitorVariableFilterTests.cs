@@ -158,6 +158,41 @@ public class MonitorVariableFilterTests
         Assert.True(MonitorVariableFilter.Matches(row, null, MonitorFilterMode.All, disabled));
     }
 
+    // --- DescribeList: the list's accessible name ------------------------------------
+
+    // This string is the ONLY way the filter state and the result count reach a blind pilot:
+    // there is no count control and the dialog never speaks, so a screen reader reads it when
+    // focus lands on the list. The leading noun phrase must therefore name the ACTIVE FILTER —
+    // with a fixed prefix, switching Show was completely inaudible (live report).
+    [Theory]
+    [InlineData((int)MonitorFilterMode.All, "All variables, 12 of 300")]
+    [InlineData((int)MonitorFilterMode.Muted, "Muted variables, 12 of 300")]
+    [InlineData((int)MonitorFilterMode.Unmuted, "Unmuted variables, 12 of 300")]
+    public void DescribeListNamesTheActiveFilterAndCarriesTheCount(int mode, string expected)
+        => Assert.Equal(expected, MonitorVariableFilter.DescribeList((MonitorFilterMode)mode, 12, 300));
+
+    [Fact]
+    public void DescribeListGivesEachModeADistinctName()
+    {
+        // The three must never collapse to the same string — that is exactly the bug this
+        // helper exists to prevent, and it is invisible without a screen reader.
+        var names = new[] { MonitorFilterMode.All, MonitorFilterMode.Muted, MonitorFilterMode.Unmuted }
+            .Select(m => MonitorVariableFilter.DescribeList(m, 5, 5))
+            .ToArray();
+
+        Assert.Equal(3, names.Distinct().Count());
+    }
+
+    [Fact]
+    public void DescribeListReportsAnUnfilteredListAsAllOfAll()
+        => Assert.Equal("All variables, 300 of 300",
+                        MonitorVariableFilter.DescribeList(MonitorFilterMode.All, 300, 300));
+
+    [Fact]
+    public void DescribeListReportsAnEmptyResult()
+        => Assert.Equal("Muted variables, 0 of 300",
+                        MonitorVariableFilter.DescribeList(MonitorFilterMode.Muted, 0, 300));
+
     // --- culture safety ------------------------------------------------------------
 
     // Under tr-TR, culture-sensitive case folding maps "I" to dotless "ı", so a

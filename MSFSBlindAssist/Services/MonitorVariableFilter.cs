@@ -47,6 +47,28 @@ public static class MonitorVariableFilter
         return row.Label.Contains(term, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The Monitor Manager list's accessible name for a given filter state — e.g.
+    /// "Muted variables, 12 of 300".
+    ///
+    /// This is the ONLY channel through which the filter state and the result count reach the
+    /// pilot: there is deliberately no count control, and these dialogs never speak. A screen
+    /// reader reads it when focus lands on the list, so the leading noun phrase must name the
+    /// ACTIVE FILTER rather than the list. A fixed prefix made changing Show inaudible — the
+    /// pilot heard the same "Auto-announced variables" whether they were looking at everything
+    /// or only at what they had muted.
+    /// </summary>
+    public static string DescribeList(MonitorFilterMode mode, int shown, int total)
+    {
+        string filtered = mode switch
+        {
+            MonitorFilterMode.Muted => "Muted variables",
+            MonitorFilterMode.Unmuted => "Unmuted variables",
+            _ => "All variables"
+        };
+        return $"{filtered}, {shown} of {total}";
+    }
+
     /// <summary>The rows to show, in the order they were given.</summary>
     public static List<MonitorRow> Apply(IReadOnlyList<MonitorRow> rows, string? search,
                                          MonitorFilterMode mode, ICollection<string> disabled)
