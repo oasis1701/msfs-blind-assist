@@ -2,14 +2,28 @@
   {
     "id": "Deboarding",
     "displayName": "Deboard",
-    "state": "available",
-    "stateRaw": 1,
-    "stateText": "Deboarding service can be requested",
+    "state": "performing",
+    "stateRaw": 5,
+    "stateText": "Deboarding service is being performed",
     "icon": "deboarding",
-    "canTrigger": true,
+    "canTrigger": false,
     "canBypass": false,
     "operator": "OneJet",
-    "progressText": ""
+    "detail": {
+      "busPhase": "in position",
+      "pax": {
+        "done": 181,
+        "total": 186
+      },
+      "bagsPercent": 100
+    },
+    "statusText": "bus in position\npax 181/186\nbags 100%",
+    "progress": {
+      "current": 181,
+      "total": 181,
+      "unit": "pax"
+    },
+    "progressText": "181/181"
   },
   {
     "id": "Catering",
@@ -69,7 +83,7 @@
     "detail": {
       "phase": "docked"
     },
-    "statusText": "docked\n0:16:20 running $127",
+    "statusText": "docked\n0:10:06 running $117",
     "progressText": ""
   },
   {
