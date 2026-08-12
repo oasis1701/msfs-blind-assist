@@ -822,8 +822,12 @@ public partial class MainForm
         }
 
         // Route messages destined for the GSX SimConnect client (distinct
-        // WM_USER id 0x0403). Safe to call unconditionally; it filters on id.
-        _gsxService?.ProcessWindowMessage(ref m);
+        // WM_USER id 0x0403). That client is now retained ONLY for the
+        // read-only SetGate_* confirmation L-vars GsxGateSelector depends on
+        // — menu/tooltip/settings moved to the Couatl Remote API and no
+        // longer need a window-message pump. Safe to call unconditionally;
+        // it filters on id.
+        _gsxService?.PumpSimConnectMessage(ref m);
 
         base.WndProc(ref m);
     }
