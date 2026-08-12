@@ -117,7 +117,15 @@ public sealed class GsxRemoteConnection : IDisposable
     private async Task ReceiveLoopAsync(ClientWebSocket ws, CancellationToken ct)
     {
         var buffer = new byte[ReceiveBufferBytes];
-        var sb = new StringBuilder();
+        // Accumulate RAW BYTES and decode once at EndOfMessage — never per chunk. GSX's
+        // handlerData payload (~1.7 MB) always arrives fragmented across many ReceiveAsync
+        // calls, and Encoding.UTF8.GetString() on each chunk independently silently
+        // corrupts any multi-byte character split across a chunk boundary: UTF8's default
+        // replacement fallback never throws, so each half of a split character becomes
+        // U+FFFD and the result is still syntactically valid JSON — no exception, no log
+        // line, nothing to reveal it happened. Same bug, same fix, as
+        // CoherentDebuggerClient.ReceiveLoop (SimConnect/CoherentDebuggerClient.cs).
+        using var ms = new MemoryStream();
 
         // ONE outstanding ReceiveAsync at a time. Issuing a second while one is
         // pending faults the socket - a real failure hit while probing this API.
@@ -132,11 +140,11 @@ public sealed class GsxRemoteConnection : IDisposable
 
             if (result.MessageType == WebSocketMessageType.Close) return;
 
-            sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+            ms.Write(buffer, 0, result.Count);
             if (!result.EndOfMessage) continue;   // handlerData alone is ~1.7 MB
 
-            string json = sb.ToString();
-            sb.Clear();
+            string json = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+            ms.SetLength(0);   // reset for the next message (also clamps Position to 0)
 
             GsxFrame frame = GsxFrame.Parse(json);   // never throws
             if (frame.Type == GsxFrameType.Unknown) continue;
