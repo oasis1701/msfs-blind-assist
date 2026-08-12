@@ -94,4 +94,41 @@ public class GsxRemoteStateTests
         Assert.True(s.TryGet("parking", out _));
         Assert.True(s.TryGet("menuShown", out _));
     }
+
+    [Fact]
+    public void Clear_preserves_restart_latch_across_socket_loss()
+    {
+        var s = new GsxRemoteState();
+
+        // Latch the restart flag via an engine event
+        s.Apply(GsxFrame.Parse("""{"type":"event","topic":"engine","gsxRunning":false,"restarting":true}"""));
+        Assert.True(s.Restarting);
+
+        // Load a snapshot to set HasSnapshot
+        s.Apply(GsxFrame.Parse("""{"type":"snapshot","parking":"A1"}"""));
+        Assert.True(s.HasSnapshot);
+
+        // Simulate socket loss with Clear()
+        s.Clear();
+
+        // After socket loss:
+        // - Restarting latch SURVIVES (for reconnect UX)
+        // - Other state resets
+        Assert.True(s.Restarting);
+        Assert.False(s.GsxRunning);
+        Assert.False(s.HasSnapshot);
+        Assert.False(s.TryGet("parking", out _));
+    }
+
+    [Fact]
+    public void Engine_event_raises_changed_with_engine_key()
+    {
+        var s = new GsxRemoteState();
+        var seen = new List<string>();
+        s.Changed += k => seen.Add(k);
+
+        s.Apply(GsxFrame.Parse("""{"type":"event","topic":"engine","gsxRunning":true}"""));
+
+        Assert.Contains("engine", seen);
+    }
 }

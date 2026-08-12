@@ -25,12 +25,17 @@ public sealed class GsxRemoteState
 
     public void Apply(GsxFrame frame)
     {
+        string? changeKey = null;
+
         switch (frame.Type)
         {
             case GsxFrameType.Hello:
-                GsxRunning = frame.GsxRunning;
-                if (GsxRunning) Restarting = false;
-                Changed?.Invoke("*");
+                lock (_lock)
+                {
+                    GsxRunning = frame.GsxRunning;
+                    if (GsxRunning) Restarting = false;
+                }
+                changeKey = "*";
                 break;
 
             case GsxFrameType.Snapshot:
@@ -41,7 +46,7 @@ public sealed class GsxRemoteState
                         if (!Envelope.Contains(p.Name))
                             next[p.Name] = p.Value;
                 lock (_lock) { _state = next; HasSnapshot = true; }
-                Changed?.Invoke("*");
+                changeKey = "*";
                 break;
             }
 
@@ -54,20 +59,26 @@ public sealed class GsxRemoteState
                     if (drop) _state.Remove(frame.Key);
                     else _state[frame.Key] = frame.Value;
                 }
-                Changed?.Invoke(frame.Key);
+                changeKey = frame.Key;
                 break;
             }
 
             case GsxFrameType.Event:
                 if (frame.Topic == "engine")
                 {
-                    GsxRunning = frame.GsxRunning;
-                    if (frame.Restarting) Restarting = true;
-                    else if (GsxRunning) Restarting = false;
-                    Changed?.Invoke("engine");
+                    lock (_lock)
+                    {
+                        GsxRunning = frame.GsxRunning;
+                        if (frame.Restarting) Restarting = true;
+                        else if (GsxRunning) Restarting = false;
+                    }
+                    changeKey = "engine";
                 }
                 break;
         }
+
+        if (changeKey != null)
+            Changed?.Invoke(changeKey);
     }
 
     public bool TryGet(string key, out JsonElement value)
@@ -78,8 +89,13 @@ public sealed class GsxRemoteState
     /// <summary>Socket lost: state is no longer trustworthy. Keeps the restart latch.</summary>
     public void Clear()
     {
-        lock (_lock) { _state = new Dictionary<string, JsonElement>(StringComparer.Ordinal); HasSnapshot = false; }
-        GsxRunning = false;
+        lock (_lock)
+        {
+            _state = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+            HasSnapshot = false;
+            GsxRunning = false;
+            // Deliberately NOT resetting Restarting - the restart latch survives the socket drop
+        }
         Changed?.Invoke("*");
     }
 }
