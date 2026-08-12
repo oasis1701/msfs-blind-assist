@@ -84,4 +84,33 @@ public class GsxMenuModelTests
         Assert.False(m.IsSelectable(0));
         Assert.Equal(-1, m.ResolveIndex(0, "anything"));
     }
+
+    [Fact]
+    public void ResolveIndex_refuses_ambiguous_labels_when_painted_index_is_stale()
+    {
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["Request Boarding","Other","Request Boarding"]}""").RootElement);
+        // Painted index 1 pointed at "Other", but we're now looking for "Request Boarding"
+        // which exists at both 0 and 2 — ambiguous, refuse.
+        Assert.Equal(-1, m.ResolveIndex(1, "Request Boarding"));
+    }
+
+    [Fact]
+    public void ResolveIndex_accepts_ambiguous_label_when_painted_index_still_holds_it()
+    {
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["Request Boarding","Other","Request Boarding"]}""").RootElement);
+        // Painted index 2 still holds "Request Boarding" — that is positive evidence,
+        // return it even though the label is duplicated elsewhere.
+        Assert.Equal(2, m.ResolveIndex(2, "Request Boarding"));
+    }
+
+    [Fact]
+    public void ResolveIndex_still_relocates_with_single_match()
+    {
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["Deboarding","Request Boarding","Refuel"]}""").RootElement);
+        // Single match at index 1, painted index was 0 (stale) — relocate to 1.
+        Assert.Equal(1, m.ResolveIndex(0, "Request Boarding"));
+    }
 }

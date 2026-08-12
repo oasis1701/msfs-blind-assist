@@ -61,21 +61,32 @@ public sealed class GsxMenuModel
     /// CRITICAL: a menu navigation can land between the moment an entry is read
     /// out and the moment a key is pressed. GSX's own client re-reads the index
     /// at click time for exactly this reason; trusting a stale index presses an
-    /// arbitrary wrong entry. Returns -1 when the label is gone — the caller
-    /// must then do nothing.
+    /// arbitrary wrong entry. Returns -1 when the label is gone OR when more than
+    /// one entry carries the same label (ambiguous) — the caller must then do nothing.
     /// </summary>
     public int ResolveIndex(int paintedIndex, string expectedLabel)
     {
         if (string.IsNullOrEmpty(expectedLabel) || Count == 0) return -1;
+
+        // Fast path: if the painted index still holds the expected label, that is
+        // positive evidence — return it even if duplicates exist elsewhere.
         if (paintedIndex >= 0 && paintedIndex < Count &&
             string.Equals(Entries[paintedIndex], expectedLabel, StringComparison.Ordinal))
             return paintedIndex;
 
+        // Fallback scan: find the label in the menu. Return -1 if zero matches
+        // (label is gone) or if more than one match exists (ambiguous).
+        int matchIndex = -1;
         for (int i = 0; i < Count; i++)
+        {
             if (string.Equals(Entries[i], expectedLabel, StringComparison.Ordinal))
-                return i;
+            {
+                if (matchIndex >= 0) return -1; // More than one match — ambiguous, refuse
+                matchIndex = i;
+            }
+        }
 
-        return -1;
+        return matchIndex;
     }
 
     /// <summary>
