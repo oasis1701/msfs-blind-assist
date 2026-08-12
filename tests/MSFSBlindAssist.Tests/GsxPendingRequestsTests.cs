@@ -81,4 +81,78 @@ public class GsxPendingRequestsTests
         Assert.Equal("socket closed", (await t2).ErrorMessage);
         Assert.Equal(0, p.PendingCount);
     }
+
+    [Fact]
+    public void PendingCount_returns_to_zero_after_FailAll()
+    {
+        var p = new GsxPendingRequests();
+        p.Register();
+        p.Register();
+        p.Register();
+        Assert.Equal(3, p.PendingCount);
+
+        p.FailAll("disconnected");
+
+        Assert.Equal(0, p.PendingCount);
+    }
+
+    [Fact]
+    public async Task Store_is_reusable_after_FailAll_returns()
+    {
+        var p = new GsxPendingRequests();
+        var (id1, t1) = p.Register();
+
+        p.FailAll("disconnected");
+
+        var r1 = await t1;
+        Assert.False(r1.Ok);
+        Assert.Equal("disconnected", r1.ErrorMessage);
+
+        // After FailAll, the store should be fully reusable for the next connection.
+        // New registrations should work normally.
+        var (id2, t2) = p.Register();
+        Assert.NotEqual(id1, id2);
+
+        // And they should complete via normal Complete() call, not fail automatically.
+        p.Complete(GsxFrame.Parse($"{{\"type\":\"result\",\"ok\":true,\"id\":\"{id2}\"}}"));
+        var r2 = await t2;
+        Assert.True(r2.Ok);
+
+        Assert.Equal(0, p.PendingCount);
+    }
+
+    [Fact]
+    public async Task Concurrent_FailAll_and_Register_do_not_deadlock()
+    {
+        var p = new GsxPendingRequests();
+
+        // Create many registrations
+        var registrations = Enumerable.Range(0, 50).Select(_ => p.Register()).ToList();
+
+        // Run FailAll and Register concurrently multiple times
+        var tasks = new List<Task>();
+
+        for (int i = 0; i < 3; i++)
+        {
+            tasks.Add(Task.Run(() => p.FailAll($"attempt {i}")));
+            tasks.AddRange(Enumerable.Range(0, 10).Select(_ => Task.Run(() => {
+                var (_, task) = p.Register();
+                // Don't await the task, just register it
+            })));
+        }
+
+        // This should complete without deadlock or timeout
+        var timeout = Task.Delay(TimeSpan.FromSeconds(5));
+        var allTasks = Task.WhenAll(tasks);
+        var completed = await Task.WhenAny(allTasks, timeout);
+
+        // If we got the timeout task, we deadlocked
+        Assert.Same(allTasks, completed);
+
+        // Final FailAll to clean up any remaining registrations
+        p.FailAll("final cleanup");
+
+        // PendingCount should now be 0
+        Assert.Equal(0, p.PendingCount);
+    }
 }
