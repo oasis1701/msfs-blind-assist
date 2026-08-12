@@ -1,0 +1,932 @@
+{
+  "tabs": [
+    {
+      "id": "simulation",
+      "label": "Simulation",
+      "subtabs": [
+        {
+          "id": "services",
+          "label": "Services",
+          "fields": [
+            {
+              "type": "toggle",
+              "key": "multiple_trips",
+              "label": "Multiple trips",
+              "tooltip": "If this option is Enabled, services capable of multiple trips (Fuel and Passenger Bus), will go back and forth with a new vehicle, once their reached their maximum capacity. If Disabled, the complete service will be performed by a single Vehicle.",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "loaders_stay_until_departure",
+              "label": "Loaders stay until departure",
+              "tooltip": "If Enabled, belt loaders will stay at the aircraft after boarding is complete, until departure. If Disabled, they will back off as soon as loading is done.",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "ignore_crew",
+              "label": "Ignore crew in boarding/deboarding",
+              "tooltip": "If Enabled, boarding/deboarding of crew and pilots will always be skipped",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "enable_airport_walkers",
+              "label": "Airport walkers",
+              "tooltip": "Some GSX profiles might have defined \"Airport Walkers\", which are Passengers walking around, not related to the Boarding/Deboaring procedure. By Disabling this option, you can reduce their impact on performances.",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "prog_taxi_rerouting",
+              "label": "Progressive taxi AI rerouting",
+              "tooltip": "If Enabled, progressive taxi reroutes when AI hinders",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "assistance_services_auto_mode",
+              "label": "Assistance services Auto Mode",
+              "tooltip": "If Enabled, when Boarding or Deboarding is requested as the first service on gate, GSX will continue with Catering and Refueling, and will select the operator automatically, without interrupting with a menu.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "auto_mode_ignore_doors",
+              "label": "Auto Mode ignore doors",
+              "tooltip": "If the \"Assistance Services Auto Mode\" is Enabled, this option will activate, to allow GSX to always ignore the door open/close status, and perform the service without interrupting, if Enabled, even in case the airplane doesn't support Door Automation.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "auto_select_single_operator",
+              "label": "Auto-select when single operator",
+              "tooltip": "If Enabled, when there is only one operator available for a given service group (handling, catering, refueling), GSX will skip the operator picker and use it directly. Restores the behavior used before GSX 4.0.",
+              "value": 1
+            },
+            {
+              "type": "choice",
+              "key": "auto_reposition",
+              "label": "Automated reposition",
+              "tooltip": "If Enabled, aircraft is automatically repositioned at default gate position when requesting assistance services",
+              "value": 1,
+              "choices": [
+                [
+                  0,
+                  "No"
+                ],
+                [
+                  1,
+                  "Yes"
+                ],
+                [
+                  2,
+                  "Auto"
+                ]
+              ]
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toggle",
+              "key": "refuel_always_progressive",
+              "label": "Always refuel progressively",
+              "tooltip": "If Enabled, the refueling speed will depend by the fuel truck pump, even on airplanes not using a Progressive refuel simulation. Affects only airplanes with a custom fuel system. The ones using a standard fuel system, which are actually refueled by GSX, will always be refueled Progressively.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "detect_custom_refuel",
+              "label": "Detect custom aircraft system refueling",
+              "tooltip": "If Enabled, when the Airplane Fuel quantity increases, GSX will automatically call its own Fuel Truck, in order to not \"miss\" the event. The option is only required in very rare situations, like Airplanes starting refueling automaticallty as part of their own internal Turnaround simulation. It's Disabled by default, and we suggest not to use it, except for those fringe cases.",
+              "value": 0
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "choice",
+              "key": "auto_stairs",
+              "label": "Automated staircases",
+              "tooltip": "If Enabled, staircases automatically operate (attach to/detach from airplane) in Boarding/Deboarding\n\nYou can also enable it partially: staircases will only approach and attach airplane automatically (detach and go away will be started only by user)\n\nIf Disabled, staircases will operate only by user command",
+              "value": 1,
+              "choices": [
+                [
+                  0,
+                  "No"
+                ],
+                [
+                  1,
+                  "Yes"
+                ],
+                [
+                  2,
+                  "Auto"
+                ]
+              ]
+            },
+            {
+              "type": "toggle",
+              "key": "disable_rear_stairs",
+              "label": "Disable rear staircases if jetway",
+              "tooltip": "If Enabled, Rear Stairs will be always Disabled, on gates with a Jetway.",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "id": "pushback",
+          "label": "Pushback",
+          "fields": [
+            {
+              "type": "range",
+              "key": "pushback_speed_ms",
+              "label": "Pushback speed",
+              "tooltip": "Controls the pushback tug speed.",
+              "value": 2.0,
+              "min": 1.5,
+              "max": 2.0,
+              "step": 0.025,
+              "unit": "m/s",
+              "float": true
+            },
+            {
+              "type": "range",
+              "key": "straight_pushback_meters",
+              "label": "Straight pushback distance",
+              "tooltip": "Sets the distance for a Straight Pushback (10 to 300 m).",
+              "value": 100,
+              "min": 10,
+              "max": 300,
+              "step": 10,
+              "unit": "m",
+              "float": false
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toggle",
+              "key": "request_pushback",
+              "label": "Always ask for pushback",
+              "tooltip": "If Enabled, it will always ask if a Pushback is needed. If Disabled, it will only ask on parking spots where the Pushback preference has been set to \"None\".",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "pushback_on_boarding",
+              "label": "Connect Pushback on Boarding",
+              "tooltip": "If Enabled, Pushback will be connected when Boarding is started",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "ignore_icing",
+              "label": "Ignore icing condition in Pushback",
+              "tooltip": "If Enabled, Pushback won't ask to wait to start engines until the end of pushback in icing conditions.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "good_engine_start",
+              "label": "Good engine start confirmation",
+              "tooltip": "If this option is Enabled, you will be asked to Confirm a good Engine Start at the end of Pushback.",
+              "value": 1
+            },
+            {
+              "type": "toggle",
+              "key": "enable_wingwalkers",
+              "label": "Pushback Wingwalkers",
+              "tooltip": "If Enabled, Pushback will use two extra crew",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": "parking",
+          "label": "Parking",
+          "fields": [
+            {
+              "type": "range",
+              "key": "followme_speed_knots",
+              "label": "FollowMe car speed",
+              "tooltip": "Controls the Follow Me Car normal speed, on linear paths.",
+              "value": 18,
+              "min": 5,
+              "max": 40,
+              "step": 1,
+              "unit": "kn",
+              "float": false
+            },
+            {
+              "type": "toggle",
+              "key": "followme_disable_flee",
+              "label": "FollowMe disable flee",
+              "tooltip": "If you follow the Follow Me car from a too close distance (based on your acceleration towards the Car), it will \"Flee\" away, with a message saying it has been \"Aborted for Safety reasons\". Enabling this option will Disable this behiavior. The Follow Me car will still circle around you, if you are too close, but it won't \"Flee\" anymore.",
+              "value": 0
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "range",
+              "key": "slowdown_speed_knots",
+              "label": "Parking \"Slow Down\" speed",
+              "tooltip": "If your are approaching a Parking System (Marshaller or VGDS) with a speed higher than this value, the Parking System will issue a \"SLOW DOWN\" gesture/message.",
+              "value": 7.5,
+              "min": 5.0,
+              "max": 10.0,
+              "step": 0.25,
+              "unit": "kn",
+              "float": true
+            },
+            {
+              "type": "range",
+              "key": "stop_pos_tolerance",
+              "label": "Parking stop position tolerance",
+              "tooltip": "Set parking stop position tolerance multiplier from x1 (default) to x2",
+              "value": 1.0,
+              "min": 1.0,
+              "max": 2.0,
+              "step": 0.1,
+              "unit": "x",
+              "float": true
+            },
+            {
+              "type": "toggle",
+              "key": "marshaller_distance_readout",
+              "label": "Parking System Distance Readout",
+              "tooltip": "If Enabled, a numeric indication of the lateral/longitudinal distance from the selected Parking System (Marshaller or VGDS) will be shown on top of it.",
+              "value": 1
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toggle",
+              "key": "ignore_wingspan",
+              "label": "Ignore wingspan when parking",
+              "tooltip": "If this option is Enabled, the \"Parking Too Small\" message when you select a parking spot will be suppressed. The parking spot will still listed as \"too small\" in the menu (which might still be useful to know), but GSX won't issue any other warnings about it.",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "id": "ui",
+          "label": "UI",
+          "fields": [
+            {
+              "type": "info",
+              "label": "Current controller hotkey",
+              "value": "Not set",
+              "buttons": [
+                {
+                  "key": "joy_hotkey_learn",
+                  "button": "Assign",
+                  "disabled": true
+                }
+              ]
+            },
+            {
+              "type": "choice",
+              "key": "joy_hotkey_device",
+              "label": "Controller",
+              "tooltip": "Pick the controller, click \"Assign\", then press the button you want. Select \"None\" to remove the controller hotkey. Works alongside the keyboard hotkey, not instead of it.",
+              "value": 0,
+              "choices": [
+                [
+                  0,
+                  "None"
+                ],
+                [
+                  1,
+                  "Charlie Pedals"
+                ],
+                [
+                  2,
+                  "Bravo Throttle Quadrant"
+                ],
+                [
+                  3,
+                  "T.Hotas Warthog Joystick"
+                ]
+              ]
+            },
+            {
+              "type": "separator"
+            },
+            {
+              "type": "toggle",
+              "key": "classic_menu_style",
+              "label": "Use classic menu style",
+              "tooltip": "When enabled, GSX uses the classic numbered button stack instead of the modern T9 grid / row-list menus. Useful for low-resolution panels, simpler aesthetics, or users who prefer the legacy look. The invoice viewer / price-list document pages still appear in the read-only iframe above the menu — only the button layout changes.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "menu_numeric_keys",
+              "label": "Select menu options with number keys",
+              "tooltip": "When enabled, the 1-9 and 0 keys pick the matching GSX menu option. Disable this if the number keys are assigned to another application (camera presets, for example) and GSX menu choices get selected unintentionally. The GSX menu hotkey and clicking the menu are not affected.",
+              "value": 1
+            },
+            {
+              "type": "choice",
+              "key": "edit_cursors_mode",
+              "label": "Edit cursors",
+              "tooltip": "How the editing cursors move when you press the arrow keys. \"Camera (new)\" moves the cursor relative to your camera view. \"Object (legacy)\" moves it relative to the cursor's own orientation, like it did before and like MSFS 2020. Only affects MSFS 2024 (2020 is always object-relative).",
+              "value": 0,
+              "choices": [
+                [
+                  0,
+                  "Camera (new)"
+                ],
+                [
+                  1,
+                  "Object (legacy)"
+                ]
+              ]
+            },
+            {
+              "type": "choice",
+              "key": "pinned_menu_mode",
+              "label": "Pinned menu / VR mode",
+              "tooltip": "When enabled, the GSX menu panel stays visible after a menu closes, showing only the static buttons. Useful for VR controllers and pinned/floating menus. 'Auto' enables pinning only while in VR.",
+              "value": 3,
+              "choices": [
+                [
+                  1,
+                  "Disabled"
+                ],
+                [
+                  2,
+                  "Enabled"
+                ],
+                [
+                  3,
+                  "Auto (enable in VR)"
+                ]
+              ]
+            },
+            {
+              "type": "toggle",
+              "key": "disable_invoices",
+              "label": "Disable invoice generation",
+              "tooltip": "When enabled, GSX no longer writes service-completion receipts to disk and the panel banner / cash-register notification is suppressed. The Administration menu still lets you browse, view and clean up receipts you have already generated.",
+              "value": 0
+            },
+            {
+              "type": "toggle",
+              "key": "disable_in_cruise",
+              "label": "Disable GSX in cruise",
+              "tooltip": "If Enabled, GSX will be not available while cruising (higher than 10000 ft, faster than 250 kts).\n\nThis might help fixing possible freezes or crashes due to issues with receiving Navdata during the flight.",
+              "value": 0
+            },
+            {
+              "type": "choice",
+              "key": "ui_verbosity",
+              "label": "Message verbosity",
+              "tooltip": "The number of text messages displayed by GSX.",
+              "value": 2,
+              "choices": [
+                [
+                  0,
+                  "Silent"
+                ],
+                [
+                  1,
+                  "Important only"
+                ],
+                [
+                  2,
+                  "All messages"
+                ]
+              ]
+            },
+            {
+              "type": "text",
+              "key": "creator_nickname",
+              "label": "Profiles creator nickname",
+              "tooltip": "The name that will be displayed upon clicking the 'Details' button on the Airport Customization page.",
+              "value": "",
+              "maxlength": 48,
+              "placeholder": "Your nickname"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "timings",
+      "label": "Timings",
+      "fields": [
+        {
+          "type": "range",
+          "key": "menu_timeout",
+          "label": "Menu timeout",
+          "tooltip": "How long the GSX menu stays open before timing out (seconds)",
+          "value": 30,
+          "min": 5,
+          "max": 120,
+          "step": 5,
+          "unit": "s",
+          "float": false
+        },
+        {
+          "type": "choice",
+          "key": "show_parking_duration",
+          "label": "Lasting time",
+          "tooltip": "This setting controls the \"Show me this spot\" feature. Moving the slider sets pointer show duration, from 5 to 30 sec, or upon reaching the gate",
+          "value": 15,
+          "choices": [
+            [
+              5,
+              "5 sec"
+            ],
+            [
+              10,
+              "10 sec"
+            ],
+            [
+              15,
+              "15 sec"
+            ],
+            [
+              20,
+              "20 sec"
+            ],
+            [
+              25,
+              "25 sec"
+            ],
+            [
+              30,
+              "30 sec"
+            ],
+            [
+              0,
+              "upon reaching the gate"
+            ]
+          ]
+        },
+        {
+          "type": "range",
+          "key": "waiting_msg_delay",
+          "label": "Interval between \"Waiting for your action\" messages",
+          "tooltip": "",
+          "value": 10.0,
+          "min": 1.5,
+          "max": 60.0,
+          "step": 0.5,
+          "unit": "s",
+          "float": true
+        },
+        {
+          "type": "choice",
+          "key": "pax_density",
+          "label": "Boarding density",
+          "tooltip": "This setting controls the Density of Passengers Boarding the airplane, or Airport Walkers. Moving the slider towards the highest settings, will have a direct impact on Boarding times (more Density = quicker times), with some cost on FPS and to the overall number of Simobjects in the sim, since more Passengers will be visible at once.",
+          "value": 3,
+          "choices": [
+            [
+              0,
+              "Sparse"
+            ],
+            [
+              1,
+              "Normal"
+            ],
+            [
+              2,
+              "Dense"
+            ],
+            [
+              3,
+              "Very dense"
+            ],
+            [
+              4,
+              "Insane"
+            ]
+          ]
+        },
+        {
+          "type": "choice",
+          "key": "pax_density_deboarding",
+          "label": "Deboarding density",
+          "tooltip": "This setting controls the Density of Passengers Deboarding the airplane. Moving the slider towards the highest settings, will have a direct impact on Deboarding times (more Density = quicker times), with some cost on FPS and to the overall number of Simobjects in the sim, since more Passengers will be visible at once.",
+          "value": 3,
+          "choices": [
+            [
+              0,
+              "Sparse"
+            ],
+            [
+              1,
+              "Normal"
+            ],
+            [
+              2,
+              "Dense"
+            ],
+            [
+              3,
+              "Very dense"
+            ],
+            [
+              4,
+              "Insane"
+            ]
+          ]
+        },
+        {
+          "type": "range",
+          "key": "delay_pilots_crew",
+          "label": "Delay Pilots/Crew",
+          "tooltip": "This setting adds a delay of x minutes between pilots and crew boarding",
+          "value": 0,
+          "min": 0,
+          "max": 30,
+          "step": 1,
+          "unit": "min",
+          "float": false
+        },
+        {
+          "type": "range",
+          "key": "delay_crew_pax",
+          "label": "Delay Crew/Pax",
+          "tooltip": "This setting adds a delay of x minutes between crew and passengers boarding",
+          "value": 0,
+          "min": 0,
+          "max": 30,
+          "step": 1,
+          "unit": "min",
+          "float": false
+        },
+        {
+          "type": "range",
+          "key": "refueling_time_min",
+          "label": "Refueling minimum time",
+          "tooltip": "Controls the minimum time for the Refueling operation, when Refueling is not performed Progressively.",
+          "value": 10.0,
+          "min": 0.0,
+          "max": 300.0,
+          "step": 1,
+          "unit": "s",
+          "float": true
+        },
+        {
+          "type": "range",
+          "key": "refueling_time_acceleration",
+          "label": "Refueling time acceleration",
+          "tooltip": "Accelerates the Progressive Refueling process. It only affects the simulated \"Fuel Pump\" speed, not the actual animation of the Fuel Truck and Crew.",
+          "value": 1,
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "unit": "x",
+          "float": false
+        },
+        {
+          "type": "toggle",
+          "key": "speedup_far_vehicles",
+          "label": "Speed up far vehicles",
+          "tooltip": "If Enabled, far vehicles approaching your Parking spot will be accelerated in proportion to their distance from you, to reduce waiting times at big airports with parking spots of the \"Vehicle\" type not well spread around. If Disabled, their speed will always be normal.",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "audio",
+      "label": "Audio",
+      "fields": [
+        {
+          "type": "range",
+          "key": "audioVolume",
+          "label": "Master volume",
+          "tooltip": "Master volume that scales all audio channels.",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "float": false,
+          "audioCheck": 1
+        },
+        {
+          "type": "choice",
+          "key": "audioDevice_Comms",
+          "label": "Communications Audio Device",
+          "tooltip": "",
+          "value": 2,
+          "choices": [
+            [
+              0,
+              "— no audio —"
+            ],
+            [
+              1,
+              "Default — Headphones (Arctis GameBuds)"
+            ],
+            [
+              2,
+              "★ OpenAL Soft on SAMSUNG (NVIDIA High Definition Audio)"
+            ],
+            [
+              3,
+              "OpenAL Soft on Speakers (Bose Revolve SoundLink)"
+            ],
+            [
+              4,
+              "OpenAL Soft on Digital Output (Realtek USB2.0 Audio)"
+            ],
+            [
+              5,
+              "OpenAL Soft on Headphones (RØDE PodMic USB)"
+            ],
+            [
+              6,
+              "OpenAL Soft on Headphones (Arctis GameBuds)"
+            ]
+          ]
+        },
+        {
+          "type": "range",
+          "key": "audioVolume_Comms",
+          "label": "Comms volume",
+          "tooltip": "Volume for non-positional sounds, like warnings and menu beeps.",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "float": false,
+          "audioCheck": 2
+        },
+        {
+          "type": "choice",
+          "key": "audioDevice_Cockpit",
+          "label": "Cockpit Audio Device",
+          "tooltip": "",
+          "value": 2,
+          "choices": [
+            [
+              0,
+              "— no audio —"
+            ],
+            [
+              1,
+              "Default — Headphones (Arctis GameBuds)"
+            ],
+            [
+              2,
+              "★ OpenAL Soft on SAMSUNG (NVIDIA High Definition Audio)"
+            ],
+            [
+              3,
+              "OpenAL Soft on Speakers (Bose Revolve SoundLink)"
+            ],
+            [
+              4,
+              "OpenAL Soft on Digital Output (Realtek USB2.0 Audio)"
+            ],
+            [
+              5,
+              "OpenAL Soft on Headphones (RØDE PodMic USB)"
+            ],
+            [
+              6,
+              "OpenAL Soft on Headphones (Arctis GameBuds)"
+            ]
+          ]
+        },
+        {
+          "type": "range",
+          "key": "audioVolume_Cockpit",
+          "label": "Cockpit volume",
+          "tooltip": "Volume for cockpit sounds, like passenger noise and boarding announcements heard from inside the aircraft.",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "float": false,
+          "audioCheck": 3
+        },
+        {
+          "type": "choice",
+          "key": "audioDevice_Outside",
+          "label": "Outside Audio Device",
+          "tooltip": "",
+          "value": 1,
+          "choices": [
+            [
+              0,
+              "— no audio —"
+            ],
+            [
+              1,
+              "★ Default — SAMSUNG (NVIDIA High Definition Audio)"
+            ],
+            [
+              2,
+              "OpenAL Soft on SAMSUNG (NVIDIA High Definition Audio)"
+            ],
+            [
+              3,
+              "OpenAL Soft on Speakers (Bose Revolve SoundLink)"
+            ],
+            [
+              4,
+              "OpenAL Soft on Digital Output (Realtek USB2.0 Audio)"
+            ],
+            [
+              5,
+              "OpenAL Soft on Headphones (RØDE PodMic USB)"
+            ],
+            [
+              6,
+              "OpenAL Soft on Headphones (Arctis GameBuds)"
+            ]
+          ]
+        },
+        {
+          "type": "range",
+          "key": "audioVolume_Outside",
+          "label": "Outside volume",
+          "tooltip": "Volume for positional outside sounds, like ground vehicles, jet bridges, cargo loaders and other ground operations.",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "unit": "%",
+          "float": false,
+          "audioCheck": 4
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "range",
+          "key": "ui_volume",
+          "label": "Beeps volume",
+          "tooltip": "Volume for GSX's notification beeps — warnings, errors, and the cash-register chime on invoice notifications. Plays through the Comms channel. Set to 0 to silence beeps entirely without disabling the aural warnings / cash-register toggles below.",
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "step": 10,
+          "unit": "%",
+          "float": false,
+          "audioCheck": 5
+        },
+        {
+          "type": "toggle",
+          "key": "gsx_aural_cues",
+          "label": "Play audio warnings",
+          "tooltip": "If this option is Enabled, GSX will play several audio speech cues, in addition to Text messages, to be sure they are not missed, in case the Toolbar menu is not Active. In P3D, Text messages might not be displayed, if the \"Show Info\" option is Disabled in the Settings, so audio cues might also help in that case. Disabling this option will remove the speech cues.",
+          "value": 1
+        },
+        {
+          "type": "toggle",
+          "key": "cash_register_beep",
+          "label": "Play cash-register sound on invoice notifications",
+          "tooltip": "When enabled, GSX plays a short cash-register chime each time a service invoice is published (fuel, catering, ground handling). Disable if you'd prefer the silent panel banner + tooltip notification only.",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "label": "Network",
+      "fields": [
+        {
+          "type": "text",
+          "key": "simbrief_username",
+          "label": "SimBrief username",
+          "tooltip": "Insert your SimBrief \"Alias (Username)\" here. Not to be confused with the \"Pilot ID\", which is numeric, and it's not the one you need to use here.",
+          "value": "redacted",
+          "maxlength": 48,
+          "placeholder": "SimBrief username"
+        },
+        {
+          "type": "toggle",
+          "key": "simbrief_ignore_time",
+          "label": "Ignore Simbrief time",
+          "tooltip": "Normally, GSX will tell you are \"Too Late\", if the Departure time in the Simbrief flightplan has already passed. Enabling this option will remove this check, and will allow to accept a flightplan, even if the time in the simulator is past the departure time on the Flightplan.",
+          "value": 0
+        },
+        {
+          "type": "toggle",
+          "key": "trust_simbrief_passengers",
+          "label": "Trust Simbrief passengers number",
+          "tooltip": "When enabled, GSX always uses the number of passengers from the loaded Simbrief flightplan, ignoring any value an add-on aircraft may set through its own LVars. Leave disabled to let the airplane's own passenger count take precedence. Has no effect when no Simbrief flightplan is loaded.",
+          "value": 0
+        },
+        {
+          "type": "separator",
+          "label": "Invoice printing"
+        },
+        {
+          "type": "choice",
+          "key": "invoice_printer",
+          "label": "Invoice printer",
+          "tooltip": "The thermal POS receipt printer used for printing GSX invoices (ESC/POS). Only printers reporting 58 mm or 80 mm roll paper are listed; \"Auto\" uses the first one found. Invoices are previewed in the GSX menu before printing. For printing on a regular full-size printer, use the invoice's \"Open in browser\" option and print from the browser instead.",
+          "value": 0,
+          "choices": [
+            [
+              0,
+              "★ Auto — no receipt printer found"
+            ]
+          ]
+        },
+        {
+          "type": "toggle",
+          "key": "invoice_auto_print",
+          "label": "Auto print new invoices",
+          "tooltip": "When enabled, every newly generated invoice is printed automatically on the receipt printer, with no preview or confirmation. Disabled by default. Manual printing from the invoice pages keeps working either way.",
+          "value": 0
+        },
+        {
+          "type": "info",
+          "label": "Detected paper size",
+          "value": "No receipt printer found — GSX prints on thermal POS printers reporting 58 mm or 80 mm paper",
+          "buttons": [
+            {
+              "key": "invoice_printer_test",
+              "button": "Print test",
+              "disabled": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "diagnostic",
+      "label": "Diagnostic",
+      "fields": [
+        {
+          "type": "toggle",
+          "key": "enable_diagnostic_log",
+          "label": "Enable diagnostic log",
+          "tooltip": "When Enabled, Couatl writes a full diagnostic log on next startup, even if no errors happen. The log helps diagnose issues but slightly impacts startup performance, so it's off by default. The log is overwritten on every Couatl run.",
+          "value": 0
+        },
+        {
+          "type": "info",
+          "label": "Log file location",
+          "value": "(disabled — toggle on to enable)"
+        },
+        {
+          "type": "action",
+          "key": "open_log_folder",
+          "label": "Diagnostic log",
+          "tooltip": "Opens Couatl.log so you can read it or attach it to a bug report. If the log isn't enabled yet, opens the folder where it would be written.",
+          "button": "Open Log",
+          "disabled": false
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "info",
+          "label": "Panic log location",
+          "value": "C:\\Users\\user\\AppData\\Roaming\\Virtuali/Couatl.err"
+        },
+        {
+          "type": "action",
+          "key": "open_panic_folder",
+          "label": "Panic log",
+          "tooltip": "Opens Couatl.err (the crash log). The panic log is appended on every crash and never overwritten, so you may want to delete it manually if it grows large. Disabled when no crash log exists yet.",
+          "button": "Open Panic Log",
+          "disabled": false
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "toggle",
+          "key": "disable_hotfix_notifications",
+          "label": "Disable hotfix notifications",
+          "tooltip": "If Enabled, GSX will not show the hotfix prompt or banner. Useful as a workaround when Cloudflare CDN replication delays cause a transient false hotfix notification.",
+          "value": 0
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "type": "info",
+          "label": "Audio status",
+          "value": "The audio subsystem seems to be working properly. Live audio device switching is enabled — changes take effect immediately without restarting."
+        },
+        {
+          "type": "action",
+          "key": "reset_audio_diagnostics",
+          "label": "Audio diagnostics",
+          "tooltip": "Clears any remembered audio enumeration failure and the list of devices that previously failed to initialise. Take effect on the next Couatl restart.",
+          "button": "Reset",
+          "disabled": false
+        }
+      ]
+    }
+  ]
+}
