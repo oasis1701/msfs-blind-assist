@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Utils.Logging;
+﻿using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Hotkeys;
 
@@ -93,10 +93,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9110;
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
-        // Per-tank fuel readout (output mode): Ctrl+1..9 = pounds (9260-9268),
-        // Alt+1..9 = kilograms (9269-9277). Contiguous ranges, registered in a loop.
-        private const int HOTKEY_FUEL_TANK_LBS_BASE = 9260;
-        private const int HOTKEY_FUEL_TANK_KG_BASE = 9269;
+        private const int HOTKEY_FUEL_TANKS = 9260;    // Output mode: Alt+U (Fuel Tanks window)
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
         private const int HOTKEY_TRACK_SLOT_1 = 9062;
@@ -263,20 +260,6 @@ public class HotkeyManager : IDisposable
                 }
                 else if (outputHotkeyModeActive)
                 {
-                    // Per-tank fuel readout: Ctrl+1..9 (pounds) / Alt+1..9 (kilograms).
-                    // Contiguous id ranges, mapped by offset to the contiguous enum runs.
-                    if (hotkeyId >= HOTKEY_FUEL_TANK_LBS_BASE && hotkeyId < HOTKEY_FUEL_TANK_LBS_BASE + 9)
-                    {
-                        TriggerHotkey(HotkeyAction.ReadFuelTank1 + (hotkeyId - HOTKEY_FUEL_TANK_LBS_BASE));
-                        DeactivateOutputHotkeyMode();
-                        return true;
-                    }
-                    if (hotkeyId >= HOTKEY_FUEL_TANK_KG_BASE && hotkeyId < HOTKEY_FUEL_TANK_KG_BASE + 9)
-                    {
-                        TriggerHotkey(HotkeyAction.ReadFuelTankKg1 + (hotkeyId - HOTKEY_FUEL_TANK_KG_BASE));
-                        DeactivateOutputHotkeyMode();
-                        return true;
-                    }
                     switch (hotkeyId)
                     {
                         case HOTKEY_HEADING:
@@ -446,6 +429,9 @@ public class HotkeyManager : IDisposable
                             return true;
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
+                            break;
+                        case HOTKEY_FUEL_TANKS:
+                            TriggerHotkey(HotkeyAction.ShowFuelTanks);
                             break;
                         case HOTKEY_TRACK_SLOT_1:
                             TriggerHotkey(HotkeyAction.ReadTrackSlot1);
@@ -742,14 +728,11 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
             RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
-            // Per-tank fuel readout: Ctrl+digit = pounds, Alt+digit = kilograms.
-            // Ctrl+0 stays Approach Capability, so slots are capped at nine (1-9);
-            // which slots exist is the aircraft definition's GetFuelTankSlots() table.
-            for (int i = 0; i < 9; i++)
-            {
-                RegisterHotKey(windowHandle, HOTKEY_FUEL_TANK_LBS_BASE + i, MOD_CONTROL, (uint)(0x31 + i)); // Ctrl+1..9
-                RegisterHotKey(windowHandle, HOTKEY_FUEL_TANK_KG_BASE + i, MOD_ALT, (uint)(0x31 + i));      // Alt+1..9
-            }
+            // Fuel Tanks window. Alt+U, not Alt+F: Alt+F is very widely bound to FSUIPC,
+            // and rebinding that is not common knowledge, so it would collide silently for
+            // a lot of users. U is in "fuel" and was unclaimed. This replaced eighteen
+            // per-tank chords (Ctrl/Alt+1-9); the window's type-ahead does that job now.
+            RegisterHotKey(windowHandle, HOTKEY_FUEL_TANKS, MOD_ALT, 0x55);              // Alt+U (Fuel Tanks)
 
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1, MOD_NONE, 0x31);  // 1 (Track Slot 1)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2, MOD_NONE, 0x32);  // 2 (Track Slot 2)
@@ -858,11 +841,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
-            for (int i = 0; i < 9; i++)
-            {
-                UnregisterHotKey(windowHandle, HOTKEY_FUEL_TANK_LBS_BASE + i);
-                UnregisterHotKey(windowHandle, HOTKEY_FUEL_TANK_KG_BASE + i);
-            }
+            UnregisterHotKey(windowHandle, HOTKEY_FUEL_TANKS);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3);
@@ -1323,10 +1302,7 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot5,
         // Per-tank fuel readout — each run MUST stay contiguous and in 1..9 order:
         // the WndProc handler maps the hotkey-id ranges onto them by offset arithmetic.
-        ReadFuelTank1, ReadFuelTank2, ReadFuelTank3, ReadFuelTank4, ReadFuelTank5,
-        ReadFuelTank6, ReadFuelTank7, ReadFuelTank8, ReadFuelTank9,
-        ReadFuelTankKg1, ReadFuelTankKg2, ReadFuelTankKg3, ReadFuelTankKg4, ReadFuelTankKg5,
-        ReadFuelTankKg6, ReadFuelTankKg7, ReadFuelTankKg8, ReadFuelTankKg9,
+        ShowFuelTanks,
         ReadFuelInfo,
         ReadDisplayPFD,
         ReadDisplayLowerECAM,

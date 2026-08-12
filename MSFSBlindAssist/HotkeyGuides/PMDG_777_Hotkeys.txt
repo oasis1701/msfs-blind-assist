@@ -1,4 +1,4 @@
-PMDG 777 HOTKEY REFERENCE
+﻿PMDG 777 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -35,9 +35,10 @@ Navigation:
 Fuel:
   F          Read Total Fuel (pounds)
   Shift+F    Read Total Fuel (kilograms)
-  Ctrl+1-4   Read one fuel tank in pounds (Alt+1-4 for kilograms):
-             1 Left main, 2 Right main, 3 Center,
-             4 Aux (only when it holds fuel)
+  Alt+U      Open the Fuel Tanks window (every tank, live, pounds and kilograms):
+             Left main, Right main, Center, Aux (only when it holds fuel), and a
+             Total. Type a tank's first letter to jump straight to it -- "c" for
+             Center. Escape closes.
 
 Weight:
   W          Read Gross Weight (pounds)

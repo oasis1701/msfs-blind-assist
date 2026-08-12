@@ -6575,6 +6575,39 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return false;
     }
 
+    /// <summary>
+    /// Per-tank fuel for the Fuel Tanks window: Left main, Right main, Center, and Aux
+    /// only when it actually holds fuel. The 777 FCOM names the wing tanks left/right
+    /// main (unlike the 737's numbered Main Tank No. 1/2). Reads the PMDG SDK tank fields
+    /// rather than the base class's stock FUELSYSTEM path — those vars read 0 on this
+    /// aircraft (legacy fuel model). Synchronous: the CDA snapshot is already in hand.
+    /// </summary>
+    public override void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        Action<IReadOnlyList<FuelTankReading>?> onReady)
+    {
+        var dm = simConnect.PMDGDataManager;
+        // Before the first CDA snapshot every field reads 0.0 — publishing that would
+        // show a fuelled aircraft as bone dry. Null means "not available yet", which the
+        // window says out loud instead.
+        if (dm == null || !dm.IsReady) { onReady(null); return; }
+
+        var rows = new List<FuelTankReading>
+        {
+            Row("Left main", dm.GetFieldValue("FUEL_QtyLeft")),
+            Row("Right main", dm.GetFieldValue("FUEL_QtyRight")),
+            Row("Center", dm.GetFieldValue("FUEL_QtyCenter")),
+        };
+        // Aux is fitted on some 777 variants only; an empty aux is indistinguishable from
+        // an absent one over the SDK, so it appears only when it is carrying fuel.
+        double auxLbs = dm.GetFieldValue("FUEL_QtyAux");
+        if (auxLbs > 0.5) rows.Add(Row("Aux", auxLbs));
+        onReady(rows);
+
+        static FuelTankReading Row(string label, double lbs)
+            => new(label, new List<(string?, double)> { (null, lbs) });
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action,
         SimConnect.SimConnectManager simConnect,
@@ -6582,42 +6615,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
-        // Per-tank fuel readout (output Ctrl/Alt+digit): 1 = Left main, 2 = Right main,
-        // 3 = Center, 4 = Aux when it holds fuel. The 777 FCOM names the wing tanks
-        // left/right main (unlike the 737's numbered Main Tank No. 1/2). Reads the PMDG
-        // SDK tank fields — the stock FUELSYSTEM vars read 0 on this aircraft (legacy
-        // fuel model), so the universal slot-table path is bypassed by this def handler.
-        if (action >= HotkeyAction.ReadFuelTank1 && action <= HotkeyAction.ReadFuelTankKg9)
-        {
-            var fuelDm = simConnect.PMDGDataManager;
-            if (fuelDm == null || !fuelDm.IsReady)
-            {
-                announcer.AnnounceImmediate("Fuel data not available yet.");
-                return true;
-            }
-            bool kilograms = action >= HotkeyAction.ReadFuelTankKg1;
-            int slotNumber = kilograms
-                ? action - HotkeyAction.ReadFuelTankKg1 + 1
-                : action - HotkeyAction.ReadFuelTank1 + 1;
-            double auxLbs = fuelDm.GetFieldValue("FUEL_QtyAux");
-            (string Label, double Lbs)? tank = slotNumber switch
-            {
-                1 => ("Left main", fuelDm.GetFieldValue("FUEL_QtyLeft")),
-                2 => ("Right main", fuelDm.GetFieldValue("FUEL_QtyRight")),
-                3 => ("Center", fuelDm.GetFieldValue("FUEL_QtyCenter")),
-                4 when auxLbs > 0.5 => ("Aux", auxLbs),
-                _ => null
-            };
-            if (tank == null)
-            {
-                announcer.AnnounceImmediate($"No fuel tank {slotNumber}.");
-                return true;
-            }
-            announcer.AnnounceImmediate(Services.FuelTankReadout.Format(
-                new FuelTankSlot(tank.Value.Label, (null, 1)), new[] { tank.Value.Lbs }, kilograms));
-            return true;
-        }
-
         switch (action)
         {
             // ------------------------------------------------------------------

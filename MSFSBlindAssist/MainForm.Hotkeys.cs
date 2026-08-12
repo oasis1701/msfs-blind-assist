@@ -73,14 +73,6 @@ public partial class MainForm
             return; // Action was handled by aircraft
         }
 
-        // Per-tank fuel readout (output Ctrl/Alt+digit) — universal, driven by the
-        // aircraft's GetFuelTankSlots() table (null = not wired for this aircraft).
-        if (e.Action >= HotkeyAction.ReadFuelTank1 && e.Action <= HotkeyAction.ReadFuelTankKg9)
-        {
-            HandleFuelTankReadout(e.Action);
-            return;
-        }
-
         // Fall through to universal actions (truly universal, not aircraft-specific)
         switch (e.Action)
         {
@@ -165,6 +157,9 @@ public partial class MainForm
                 break;
             case HotkeyAction.ShowTcasWindow:
                 OpenTcasWindow();
+                break;
+            case HotkeyAction.ShowFuelTanks:
+                ShowFuelTanksWindow();
                 break;
             case HotkeyAction.AnnounceTcasTraffic:
                 AnnounceTrackedTcasTraffic();
@@ -775,28 +770,26 @@ public partial class MainForm
     // Per-tank fuel readout (output Ctrl+1..9 = pounds, Alt+1..9 = kilograms).
     // The slot table comes from the aircraft definition; the weights are a one-shot
     // stock-fuel-system read, formatted by the pure FuelTankReadout helper.
-    private void HandleFuelTankReadout(HotkeyAction action)
+    /// <summary>
+    /// Opens the Fuel Tanks window (output Alt+U). Re-pressing focuses the existing window
+    /// rather than stacking a second one — it refreshes itself, so a duplicate would only
+    /// add another timer reading the same fuel.
+    /// </summary>
+    private void ShowFuelTanksWindow()
     {
-        bool kilograms = action >= HotkeyAction.ReadFuelTankKg1;
-        int slotNumber = kilograms
-            ? action - HotkeyAction.ReadFuelTankKg1 + 1
-            : action - HotkeyAction.ReadFuelTank1 + 1;
+        if (currentAircraft == null) return;
 
-        var slots = currentAircraft?.GetFuelTankSlots();
-        if (slots == null || slots.Count == 0)
+        if (_fuelTanksForm is { IsDisposed: false })
         {
-            announcer.AnnounceImmediate("Per-tank fuel readout is not available on this aircraft.");
+            _fuelTanksForm.Activate();
             return;
         }
-        if (slotNumber > slots.Count)
-        {
-            announcer.AnnounceImmediate($"No fuel tank {slotNumber}.");
-            return;
-        }
-        var slot = slots[slotNumber - 1];
-        simConnectManager.RequestFuelTankWeights(weights =>
-            announcer.AnnounceImmediate(Services.FuelTankReadout.Format(slot, weights, kilograms)));
+        _fuelTanksForm = new Forms.FuelTanksForm(currentAircraft, simConnectManager);
+        _fuelTanksForm.FormClosed += (_, _) => _fuelTanksForm = null;
+        _fuelTanksForm.Show();
     }
+
+    private Forms.FuelTanksForm? _fuelTanksForm;
 
     protected override void WndProc(ref Message m)
     {

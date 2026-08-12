@@ -1,4 +1,4 @@
-PMDG 737-800 HOTKEY REFERENCE
+﻿PMDG 737-800 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -35,8 +35,9 @@ Navigation:
 Fuel:
   F          Read Total Fuel (pounds)
   Shift+F    Read Total Fuel (kilograms)
-  Ctrl+1-3   Read one fuel tank in pounds (Alt+1-3 for kilograms):
-             1 Main 1 (left), 2 Main 2 (right), 3 Center
+  Alt+U      Open the Fuel Tanks window (every tank, live, pounds and kilograms):
+             Main 1 (left), Main 2 (right), Center, and a Total. Type a tank's
+             first letter to jump straight to it -- "c" for Center. Escape closes.
 
 Weight:
   W          Read Gross Weight (pounds)

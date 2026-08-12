@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Aircraft;
+﻿namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
 /// Defines the control type for FCU (Flight Control Unit) controls.
@@ -314,12 +314,26 @@ public interface IAircraftDefinition
     VisualGuidanceProfile GetVisualGuidanceProfile();
 
     /// <summary>
-    /// Ordered per-tank fuel readout slots for the output-mode Ctrl+digit (pounds) /
-    /// Alt+digit (kilograms) hotkeys: slot N is read by Ctrl/Alt+N (max 9 slots).
+    /// Ordered per-tank fuel rows for the Fuel Tanks window (output Alt+U).
     /// Null (the <c>BaseAircraftDefinition</c> default) means the aircraft has no
-    /// per-tank readout wired and the hotkeys announce it as unavailable.
+    /// per-tank readout wired and the window says so.
     /// </summary>
     System.Collections.Generic.IReadOnlyList<FuelTankSlot>? GetFuelTankSlots();
+
+    /// <summary>
+    /// Resolves the per-tank rows with LIVE quantities and hands them to
+    /// <paramref name="onReady"/> (null = no per-tank readout on this aircraft).
+    ///
+    /// This exists as its own member — rather than the window calling
+    /// <see cref="GetFuelTankSlots"/> and reading the fuel itself — because the two
+    /// aircraft families source fuel incompatibly: stock-fuel aircraft await a SimConnect
+    /// <c>FUELSYSTEM TANK WEIGHT</c> request, while the PMDG jets read a CDA snapshot
+    /// synchronously (the stock vars read 0 on them — legacy fuel model). The callback
+    /// shape covers both; it may fire before this method returns.
+    /// </summary>
+    void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        System.Action<System.Collections.Generic.IReadOnlyList<FuelTankReading>?> onReady);
 
     /// <summary>
     /// Taxi-turn rollout-anticipation lead, seconds. The steering tone's

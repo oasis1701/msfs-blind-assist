@@ -5313,6 +5313,34 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         return labels.Count == 0 ? "none" : string.Join(", ", labels);
     }
 
+    /// <summary>
+    /// Per-tank fuel for the Fuel Tanks window: Main 1 (left), Main 2 (right), Center.
+    /// The NG3 has no aux tank. Reads the PMDG SDK tank fields rather than the base
+    /// class's stock FUELSYSTEM path — those vars read 0 on this aircraft (legacy fuel
+    /// model), so the slot table cannot serve it. Synchronous: the CDA snapshot is
+    /// already in hand, so the callback fires before this returns.
+    /// </summary>
+    public override void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        Action<IReadOnlyList<FuelTankReading>?> onReady)
+    {
+        var dm = simConnect.PMDGDataManager;
+        // Before the first CDA snapshot every field reads 0.0 — publishing that would
+        // show a fuelled aircraft as bone dry. Null means "not available yet", which the
+        // window says out loud instead.
+        if (dm == null || !dm.IsReady) { onReady(null); return; }
+
+        onReady(new List<FuelTankReading>
+        {
+            Row("Main 1", dm.GetFieldValue("FUEL_QtyLeft")),
+            Row("Main 2", dm.GetFieldValue("FUEL_QtyRight")),
+            Row("Center", dm.GetFieldValue("FUEL_QtyCenter")),
+        });
+
+        static FuelTankReading Row(string label, double lbs)
+            => new(label, new List<(string?, double)> { (null, lbs) });
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action,
         SimConnect.SimConnectManager simConnect,
@@ -5320,39 +5348,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
-        // Per-tank fuel readout (output Ctrl/Alt+digit): 1 = Main 1 (left), 2 = Main 2
-        // (right), 3 = Center (the NG3 has no aux tank). Reads the PMDG SDK tank
-        // fields — the stock FUELSYSTEM vars don't serve this aircraft (legacy fuel
-        // model), so the universal slot-table path is bypassed by this def handler.
-        if (action >= HotkeyAction.ReadFuelTank1 && action <= HotkeyAction.ReadFuelTankKg9)
-        {
-            var fuelDm = simConnect.PMDGDataManager;
-            if (fuelDm == null || !fuelDm.IsReady)
-            {
-                announcer.AnnounceImmediate("Fuel data not available yet.");
-                return true;
-            }
-            bool kilograms = action >= HotkeyAction.ReadFuelTankKg1;
-            int slotNumber = kilograms
-                ? action - HotkeyAction.ReadFuelTankKg1 + 1
-                : action - HotkeyAction.ReadFuelTank1 + 1;
-            (string Label, double Lbs)? tank = slotNumber switch
-            {
-                1 => ("Main 1", fuelDm.GetFieldValue("FUEL_QtyLeft")),
-                2 => ("Main 2", fuelDm.GetFieldValue("FUEL_QtyRight")),
-                3 => ("Center", fuelDm.GetFieldValue("FUEL_QtyCenter")),
-                _ => null
-            };
-            if (tank == null)
-            {
-                announcer.AnnounceImmediate($"No fuel tank {slotNumber}.");
-                return true;
-            }
-            announcer.AnnounceImmediate(Services.FuelTankReadout.Format(
-                new FuelTankSlot(tank.Value.Label, (null, 1)), new[] { tank.Value.Lbs }, kilograms));
-            return true;
-        }
-
         switch (action)
         {
             // ------------------------------------------------------------------
