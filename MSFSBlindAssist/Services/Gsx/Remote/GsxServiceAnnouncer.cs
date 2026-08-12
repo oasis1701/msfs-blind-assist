@@ -38,7 +38,7 @@ public sealed class GsxServiceAnnouncer
                 else if (was.BusPhase != now.BusPhase && !string.IsNullOrEmpty(now.BusPhase))
                     said.Add($"{Name(s)} bus {now.BusPhase}.");
                 else if ((was.PaxDone != now.PaxDone || was.BagsPercent != now.BagsPercent)
-                         && ProgressPhrase(s) is { Length: > 0 } p)
+                         && ProgressPhrase(s, was, now) is { Length: > 0 } p)
                     said.Add(p);
             }
 
@@ -60,11 +60,11 @@ public sealed class GsxServiceAnnouncer
         _            => string.IsNullOrEmpty(s.StateText) ? $"{Name(s)}: {s.State}." : s.StateText + ".",
     };
 
-    private static string ProgressPhrase(GsxServiceState s)
+    private static string ProgressPhrase(GsxServiceState s, Snapshot was, Snapshot now)
     {
-        if (s.PaxDone is { } done && s.PaxTotal is { } total && total > 0)
+        if (was.PaxDone != now.PaxDone && s.PaxDone is { } done && s.PaxTotal is { } total && total > 0)
             return $"{Name(s)} {done} of {total} passengers.";
-        if (s.BagsPercent is { } bags)
+        if (was.BagsPercent != now.BagsPercent && s.BagsPercent is { } bags)
             return $"{Name(s)} bags {bags} percent.";
         return string.Empty;
     }

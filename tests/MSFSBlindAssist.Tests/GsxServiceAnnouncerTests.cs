@@ -5,11 +5,11 @@ namespace MSFSBlindAssist.Tests;
 public class GsxServiceAnnouncerTests
 {
     private static GsxServiceState Svc(string id, string state, int? paxDone = null, int? paxTotal = null,
-                                       string display = "", string? busPhase = null) =>
+                                       string display = "", string? busPhase = null, int? bagsPercent = null) =>
         new()
         {
             Id = id, State = state, DisplayName = display == "" ? id : display,
-            PaxDone = paxDone, PaxTotal = paxTotal, BusPhase = busPhase,
+            PaxDone = paxDone, PaxTotal = paxTotal, BusPhase = busPhase, BagsPercent = bagsPercent,
             StateText = $"{id} is {state}",
         };
 
@@ -73,5 +73,25 @@ public class GsxServiceAnnouncerTests
         a.Update(new[] { Svc("Boarding", "available") });
         a.Reset();
         Assert.Empty(a.Update(new[] { Svc("Boarding", "performing") }));
+    }
+
+    [Fact]
+    public void Bags_change_alone_announced_when_pax_present()
+    {
+        // Regression: service carries both pax and bags data; when only bags changes,
+        // must announce bags (not the stale pax phrase)
+        var a = new GsxServiceAnnouncer();
+        // Baseline: Deboarding with pax done=150/186 and bags=40%
+        a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 40) });
+
+        // Update: pax unchanged, bags rise to 70%
+        var said = a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 70) });
+        Assert.Single(said);
+        // Must mention bags, not passengers
+        Assert.Contains("bags", said[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("passenger", said[0], StringComparison.OrdinalIgnoreCase);
+
+        // Same bags value again -> silence (no repeat announcement)
+        Assert.Empty(a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 70) }));
     }
 }
