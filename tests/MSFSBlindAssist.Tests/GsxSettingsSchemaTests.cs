@@ -84,4 +84,57 @@ public class GsxSettingsSchemaTests
     {
         Assert.Empty(GsxSettingsSchema.Parse(JsonDocument.Parse("{}").RootElement).Tabs);
     }
+
+    [Fact]
+    public void Parses_tab_with_direct_fields_and_counts_all_81_fields()
+    {
+        var all = Live().AllFields().ToList();
+        // Fixture has 42 fields in simulation subtabs + 39 direct on timings/audio/network/diagnostic tabs
+        Assert.Equal(81, all.Count);
+
+        // Verify direct tab-level fields are included
+        Assert.Contains(all, x => x.Key == "menu_timeout"); // from timings tab
+        Assert.Contains(all, x => x.Key == "audioVolume"); // from audio tab
+    }
+
+    [Fact]
+    public void Parses_action_field_with_button_synthesized()
+    {
+        var all = Live().AllFields().ToList();
+        var action = all.First(x => x.Type == GsxFieldType.Action);
+
+        Assert.Equal("open_log_folder", action.Key);
+        Assert.Equal("Diagnostic log", action.Label);
+        Assert.NotEmpty(action.Buttons);
+        Assert.Equal("open_log_folder", action.Buttons[0].Key);
+        Assert.Equal("Open Log", action.Buttons[0].Label);
+    }
+
+    [Fact]
+    public void Parses_choice_with_numeric_label_without_throwing()
+    {
+        var s = GsxSettingsSchema.Parse(JsonDocument.Parse(
+            """{"tabs":[{"id":"t","label":"T","fields":[{"type":"choice","key":"c","choices":[[0,"Zero"],[1,100]]}]}]}""")
+            .RootElement);
+        var field = s.AllFields().Single();
+
+        Assert.Equal(GsxFieldType.Choice, field.Type);
+        // First choice has string label
+        Assert.Equal("Zero", field.Choices[0].Label);
+        // Second choice has numeric label, should be skipped or empty
+        Assert.Equal("", field.Choices[1].Label);
+    }
+
+    [Fact]
+    public void Range_missing_min_leaves_Min_as_null()
+    {
+        var s = GsxSettingsSchema.Parse(JsonDocument.Parse(
+            """{"tabs":[{"id":"t","label":"T","fields":[{"type":"range","key":"r","max":100}]}]}""")
+            .RootElement);
+        var field = s.AllFields().Single();
+
+        Assert.Equal(GsxFieldType.Range, field.Type);
+        Assert.Null(field.Min);
+        Assert.Equal(100, field.Max);
+    }
 }

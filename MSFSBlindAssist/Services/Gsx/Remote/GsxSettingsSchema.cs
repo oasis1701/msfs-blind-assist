@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace MSFSBlindAssist.Services.Gsx.Remote;
 
-public enum GsxFieldType { Unknown, Toggle, Choice, Range, Text, Info, Separator }
+public enum GsxFieldType { Unknown, Toggle, Choice, Range, Text, Info, Separator, Action }
 
 public sealed record GsxSettingsButton(string Key, string Label, bool Disabled);
 public sealed record GsxSettingsChoice(double Value, string Label);
@@ -19,9 +19,9 @@ public sealed class GsxSettingsField
     public string? TextValue { get; init; }
 
     public IReadOnlyList<GsxSettingsChoice> Choices { get; init; } = Array.Empty<GsxSettingsChoice>();
-    public double Min { get; init; }
-    public double Max { get; init; }
-    public double Step { get; init; }
+    public double? Min { get; init; }
+    public double? Max { get; init; }
+    public double? Step { get; init; }
     public string Unit { get; init; } = "";
     public bool IsFloat { get; init; }
     public int MaxLength { get; init; }
@@ -41,6 +41,7 @@ public sealed class GsxSettingsTab
     public string Id { get; init; } = "";
     public string Label { get; init; } = "";
     public IReadOnlyList<GsxSettingsSubtab> Subtabs { get; init; } = Array.Empty<GsxSettingsSubtab>();
+    public IReadOnlyList<GsxSettingsField> Fields { get; init; } = Array.Empty<GsxSettingsField>();
 }
 
 /// <summary>
@@ -54,7 +55,7 @@ public sealed class GsxSettingsSchema
     public static readonly GsxSettingsSchema Empty = new();
 
     public IEnumerable<GsxSettingsField> AllFields()
-        => Tabs.SelectMany(t => t.Subtabs).SelectMany(s => s.Fields);
+        => Tabs.SelectMany(t => t.Fields.Concat(t.Subtabs.SelectMany(s => s.Fields)));
 
     public static GsxSettingsSchema Parse(JsonElement v)
     {
@@ -84,6 +85,7 @@ public sealed class GsxSettingsSchema
                 Id = Str(t, "id") ?? "",
                 Label = Str(t, "label") ?? "",
                 Subtabs = subs,
+                Fields = ParseFields(t),
             });
         }
         return new GsxSettingsSchema { Tabs = list };
@@ -99,6 +101,9 @@ public sealed class GsxSettingsSchema
         {
             if (f.ValueKind != JsonValueKind.Object) continue;
 
+            var typeStr = Str(f, "type");
+            var fieldType = ParseType(typeStr);
+
             var choices = new List<GsxSettingsChoice>();
             if (f.TryGetProperty("choices", out var cs) && cs.ValueKind == JsonValueKind.Array)
                 foreach (var c in cs.EnumerateArray())
@@ -106,33 +111,46 @@ public sealed class GsxSettingsSchema
                     {
                         var pair = c.EnumerateArray().ToArray();
                         if (pair.Length >= 2 && pair[0].ValueKind == JsonValueKind.Number)
-                            choices.Add(new GsxSettingsChoice(pair[0].GetDouble(),
-                                                              pair[1].GetString() ?? ""));
+                        {
+                            var label = pair[1].ValueKind == JsonValueKind.String ? pair[1].GetString() ?? "" : "";
+                            choices.Add(new GsxSettingsChoice(pair[0].GetDouble(), label));
+                        }
                     }
 
             var buttons = new List<GsxSettingsButton>();
-            if (f.TryGetProperty("buttons", out var bs) && bs.ValueKind == JsonValueKind.Array)
+            if (fieldType == GsxFieldType.Action)
+            {
+                // Action fields have a single button on the field itself
+                var buttonLabel = Str(f, "button") ?? "";
+                var isDisabled = f.TryGetProperty("disabled", out var d) && d.ValueKind == JsonValueKind.True;
+                buttons.Add(new GsxSettingsButton(Str(f, "key") ?? "", buttonLabel, isDisabled));
+            }
+            else if (f.TryGetProperty("buttons", out var bs) && bs.ValueKind == JsonValueKind.Array)
+            {
                 foreach (var b in bs.EnumerateArray())
                     if (b.ValueKind == JsonValueKind.Object)
                         buttons.Add(new GsxSettingsButton(
                             Str(b, "key") ?? "", Str(b, "button") ?? "",
                             b.TryGetProperty("disabled", out var d) && d.ValueKind == JsonValueKind.True));
+            }
 
             JsonElement val = f.TryGetProperty("value", out var vv) ? vv : default;
 
             list.Add(new GsxSettingsField
             {
-                Type = ParseType(Str(f, "type")),
+                Type = fieldType,
                 Key = Str(f, "key") ?? "",
                 Label = Str(f, "label") ?? "",
                 Tooltip = Str(f, "tooltip") ?? "",
                 NumericValue = val.ValueKind == JsonValueKind.Number ? val.GetDouble() : null,
                 TextValue = val.ValueKind == JsonValueKind.String ? val.GetString() : null,
                 Choices = choices,
-                Min = Num(f, "min"), Max = Num(f, "max"), Step = Num(f, "step"),
+                Min = NumOrNull(f, "min"),
+                Max = NumOrNull(f, "max"),
+                Step = NumOrNull(f, "step"),
                 Unit = Str(f, "unit") ?? "",
                 IsFloat = f.TryGetProperty("float", out var fl) && fl.ValueKind == JsonValueKind.True,
-                MaxLength = (int)Num(f, "maxlength"),
+                MaxLength = (int)(NumOrNull(f, "maxlength") ?? 0),
                 Placeholder = Str(f, "placeholder") ?? "",
                 Buttons = buttons,
             });
@@ -148,6 +166,7 @@ public sealed class GsxSettingsSchema
         "text" => GsxFieldType.Text,
         "info" => GsxFieldType.Info,
         "separator" => GsxFieldType.Separator,
+        "action" => GsxFieldType.Action,
         _ => GsxFieldType.Unknown,
     };
 
@@ -156,4 +175,7 @@ public sealed class GsxSettingsSchema
 
     private static double Num(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : 0;
+
+    private static double? NumOrNull(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
 }
