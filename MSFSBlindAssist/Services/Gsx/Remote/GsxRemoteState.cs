@@ -13,15 +13,32 @@ public sealed class GsxRemoteState
 {
     private readonly object _lock = new();
     private Dictionary<string, JsonElement> _state = new(StringComparer.Ordinal);
+    private bool _gsxRunning;
+    private bool _restarting;
+    private bool _hasSnapshot;
     private static readonly HashSet<string> Envelope =
         new(StringComparer.Ordinal) { "v", "type", "ts", "id" };
 
     /// <summary>Key that changed; "*" when a snapshot replaced everything.</summary>
     public event Action<string>? Changed;
 
-    public bool GsxRunning { get; private set; }
-    public bool Restarting { get; private set; }
-    public bool HasSnapshot { get; private set; }
+    /// <summary>GSX is currently running. Read under lock to ensure visibility from WebSocket thread.</summary>
+    public bool GsxRunning
+    {
+        get { lock (_lock) return _gsxRunning; }
+    }
+
+    /// <summary>GSX is restarting. Read under lock to ensure visibility from WebSocket thread.</summary>
+    public bool Restarting
+    {
+        get { lock (_lock) return _restarting; }
+    }
+
+    /// <summary>A snapshot has been received. Read under lock to ensure visibility from WebSocket thread.</summary>
+    public bool HasSnapshot
+    {
+        get { lock (_lock) return _hasSnapshot; }
+    }
 
     public void Apply(GsxFrame frame)
     {
@@ -32,8 +49,8 @@ public sealed class GsxRemoteState
             case GsxFrameType.Hello:
                 lock (_lock)
                 {
-                    GsxRunning = frame.GsxRunning;
-                    if (GsxRunning) Restarting = false;
+                    _gsxRunning = frame.GsxRunning;
+                    if (_gsxRunning) _restarting = false;
                 }
                 changeKey = "*";
                 break;
@@ -45,7 +62,11 @@ public sealed class GsxRemoteState
                     foreach (var p in frame.Root.EnumerateObject())
                         if (!Envelope.Contains(p.Name))
                             next[p.Name] = p.Value;
-                lock (_lock) { _state = next; HasSnapshot = true; }
+                lock (_lock)
+                {
+                    _state = next;
+                    _hasSnapshot = true;
+                }
                 changeKey = "*";
                 break;
             }
@@ -68,9 +89,9 @@ public sealed class GsxRemoteState
                 {
                     lock (_lock)
                     {
-                        GsxRunning = frame.GsxRunning;
-                        if (frame.Restarting) Restarting = true;
-                        else if (GsxRunning) Restarting = false;
+                        _gsxRunning = frame.GsxRunning;
+                        if (frame.Restarting) _restarting = true;
+                        else if (_gsxRunning) _restarting = false;
                     }
                     changeKey = "engine";
                 }
@@ -92,9 +113,9 @@ public sealed class GsxRemoteState
         lock (_lock)
         {
             _state = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-            HasSnapshot = false;
-            GsxRunning = false;
-            // Deliberately NOT resetting Restarting - the restart latch survives the socket drop
+            _hasSnapshot = false;
+            _gsxRunning = false;
+            // Deliberately NOT resetting _restarting - the restart latch survives the socket drop
         }
         Changed?.Invoke("*");
     }
