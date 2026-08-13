@@ -99,21 +99,24 @@ public sealed class GsxMenuAutomation
     /// Does not throw.
     /// </summary>
     /// <remarks>
-    /// GSX's <c>MENU_CHOICE = -1</c> signals "user abandoned" and causes GSX to
-    /// dismiss the menu — this is the same signal used by AccessGSX on timeout.
-    /// We call <see cref="GsxService.Choose"/> with -1 if the menu is currently
-    /// active; otherwise this is a no-op.
+    /// Sends the Remote API's own <c>menu.close</c> (<see cref="GsxService.HideMenu"/>).
+    ///
+    /// It must NOT send <c>Choose(-1)</c>. <c>-1</c> was the OLD SimConnect
+    /// L:var protocol's "user abandoned" value and has no meaning here: it
+    /// becomes <c>menu.pick {"index":-1}</c>, GSX's own client guards
+    /// <c>if (idx &lt; 0) return;</c> so no first-party client ever sends it,
+    /// and Couatl is PYTHON — where <c>entries[-1]</c> is the LAST entry.
+    /// On the captured menu that is "Reposition Aircraft", precisely the
+    /// forbidden-action class <c>GsxMenuClassifier</c> exists to keep the gate
+    /// selector away from. <c>Send</c> is fire-and-forget, so a wrong pick
+    /// raises nothing to notice.
     /// </remarks>
     public void CloseMenu()
     {
         try
         {
             if (_gsx.IsMenuActive)
-            {
-                // Sending choice -1 signals "abandon" to GSX (same as the
-                // HandleToggleEvent case 3 path in GsxService).
-                _gsx.Choose(-1);
-            }
+                _gsx.HideMenu();
         }
         catch (Exception ex)
         {
