@@ -30,6 +30,16 @@ public sealed class GsxServiceState
     public string? ProgressUnit { get; init; }
     public string ProgressText { get; init; } = "";
 
+    /// <summary>
+    /// GSX's own multi-line status block for this row, e.g.
+    /// <c>"bus in position\npax 181/186\nbags 100%"</c>. This is the row's REAL
+    /// detail: <see cref="ProgressText"/> on the same captured row reads
+    /// <c>"181/181"</c> (progress.current out of progress.total, which GSX
+    /// clamps to the current count), which a pilot hears as "everybody is off"
+    /// while five passengers are still aboard. Prefer this.
+    /// </summary>
+    public string StatusText { get; init; } = "";
+
     public static IReadOnlyList<GsxServiceState> ParseList(JsonElement array)
     {
         if (array.ValueKind != JsonValueKind.Array) return Array.Empty<GsxServiceState>();
@@ -60,6 +70,7 @@ public sealed class GsxServiceState
                 ProgressTotal = prog.ValueKind == JsonValueKind.Object ? Int(prog, "total") : null,
                 ProgressUnit = prog.ValueKind == JsonValueKind.Object ? Str(prog, "unit") : null,
                 ProgressText = Str(e, "progressText") ?? "",
+                StatusText = Str(e, "statusText") ?? "",
             });
         }
         return list;

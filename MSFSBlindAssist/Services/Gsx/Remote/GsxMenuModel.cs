@@ -108,18 +108,24 @@ public sealed class GsxMenuModel
 
     /// <summary>
     /// The literal keyboard key AccessGSXForm binds to entry <paramref name="index"/>
-    /// (0-based): <c>1</c>-<c>9</c> for entries 0-8, <c>0</c> for entry 9, then
-    /// <c>A</c>-<c>E</c> for entries 10-14 — every GSX menu observed so far pages at
-    /// 10 entries, so this covers a full page. An index beyond 14 has no working
-    /// keyboard shortcut; it renders its 1-based position instead so it still reaches
-    /// a screen reader stepping through the list, even though no single keypress can
-    /// choose it directly.
+    /// (0-based): <c>1</c>-<c>9</c> for entries 0-8 and <c>0</c> for entry 9 — the
+    /// in-sim GSX numpad layout, and every menu observed so far fits in it.
+    ///
+    /// <c>A</c>-<c>E</c> are deliberately NOT returned for entries 10-14. Those
+    /// letters are GSX's own system block (Customize Airport/Airplane, Settings,
+    /// Restart GSX, Reload SimBrief — see <see cref="GsxSystemCommands"/>), which
+    /// is what they have always done in AccessGSX and what the pilot expects them
+    /// to do. Advertising "A" beside menu entry 11 would tell a blind pilot to
+    /// press a key that runs something else entirely.
+    ///
+    /// An entry past 9 therefore has no single-keypress shortcut. It renders its
+    /// 1-based position instead, so a screen reader stepping the list still reads
+    /// a stable, sensible marker.
     /// </summary>
     public static string Shortcut(int index) => index switch
     {
         >= 0 and <= 8 => (index + 1).ToString(CultureInfo.InvariantCulture),
         9 => "0",
-        >= 10 and <= 14 => ((char)('A' + (index - 10))).ToString(),
         _ => (index + 1).ToString(CultureInfo.InvariantCulture),
     };
 

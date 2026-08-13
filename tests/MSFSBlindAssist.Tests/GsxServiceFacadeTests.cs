@@ -44,13 +44,25 @@ public class GsxServiceFacadeTests
     [InlineData("SetSettingText")]
     [InlineData("PulseSettingAction")]
     [InlineData("PickMenuEntry")]
+    // GSX's own system commands (command.run). AccessGSXForm binds A/B/D/E to
+    // these; they were dropped, not migrated, in the transport swap, and
+    // "Restart GSX" is the standard recovery when Couatl wedges.
+    [InlineData("RunCommand")]
     public void Public_method_exists(string name) => Assert.NotNull(T.GetMethod(name));
+
+    [Fact]
+    public void MenuTimedOut_is_gone()
+        // The Remote API publishes no menu-timeout frame, so the event carried
+        // over from the old transport could never be raised (a live CS0067) and
+        // its whole UI path was dead with it. Do not re-add it without a real
+        // frame to raise it from; WaitForNextMenuAsync's own await-timeout is
+        // the only timeout signal there is.
+        => Assert.Null(T.GetEvent("MenuTimedOut"));
 
     [Theory]
     [InlineData("StateChanged")]
     [InlineData("MenuChanged")]
     [InlineData("MenuHidden")]
-    [InlineData("MenuTimedOut")]
     [InlineData("TooltipChanged")]
     [InlineData("AnnouncementReady")]
     [InlineData("ActiveServicesChanged")]

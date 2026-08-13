@@ -119,16 +119,29 @@ public class GsxMenuModelTests
     [InlineData(1, "2")]
     [InlineData(8, "9")]
     [InlineData(9, "0")]
-    [InlineData(10, "A")]
-    [InlineData(14, "E")]
     public void Shortcut_matches_the_accessgsx_keyboard_convention(int index, string expected)
         => Assert.Equal(expected, GsxMenuModel.Shortcut(index));
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(13)]
+    [InlineData(14)]
+    public void Shortcut_never_claims_a_letter_for_a_menu_entry(int index)
+    {
+        // A-E are GSX's own system block (Customize Airport/Airplane, Settings,
+        // Restart GSX, Reload SimBrief). Rendering "A." beside menu entry 11
+        // would tell a blind pilot to press a key that runs something else.
+        string shortcut = GsxMenuModel.Shortcut(index);
+        Assert.False(string.IsNullOrEmpty(shortcut));
+        Assert.DoesNotContain(shortcut, new[] { "A", "B", "C", "D", "E" });
+    }
+
     [Fact]
-    public void Shortcut_beyond_the_lettered_range_still_renders_something()
+    public void Shortcut_beyond_the_numbered_range_still_renders_something()
     {
         // No GSX menu observed so far exceeds 10 entries, but the display must
-        // never throw or go blank for a hypothetical longer page.
+        // never throw or go blank for a longer page.
         string shortcut = GsxMenuModel.Shortcut(20);
         Assert.False(string.IsNullOrEmpty(shortcut));
     }

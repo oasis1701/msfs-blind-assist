@@ -170,4 +170,98 @@ public class GsxActiveServiceResolverTests
         var s = Svc("Deboarding", "performing", stateText: "Deboarding in progress", progressText: "");
         Assert.Equal("Deboarding in progress", GsxActiveServiceResolver.ComposeTooltip(s));
     }
+
+    [Fact]
+    public void ComposeTooltip_prefers_GSXs_own_statusText_over_progressText()
+    {
+        var s = new GsxServiceState
+        {
+            Id = "Deboarding", DisplayName = "Deboard", State = "performing",
+            StateText = "Deboarding service is being performed",
+            StatusText = "bus in position\npax 181/186\nbags 100%",
+            ProgressText = "181/181",
+        };
+
+        Assert.Equal("Deboarding service is being performed (bus in position, pax 181/186, bags 100%)",
+                     GsxActiveServiceResolver.ComposeTooltip(s));
+    }
+
+    [Fact]
+    public void ComposeTooltip_never_renders_the_misleading_bare_n_over_n()
+    {
+        // The real captured row: progress.current/total is 181/181 while
+        // detail.pax is 181 of 186. Rendered bare, "(181/181)" tells a blind
+        // pilot deboarding finished with five passengers still on board.
+        var services = GsxServiceState.ParseList(Fixture("gsx-services.json"));
+        var deboarding = Assert.Single(services, s => s.Id == "Deboarding");
+
+        string tooltip = GsxActiveServiceResolver.ComposeTooltip(deboarding);
+
+        Assert.DoesNotContain("181/181", tooltip, StringComparison.Ordinal);
+        Assert.Contains("181/186", tooltip, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComposeTooltip_composes_from_typed_detail_when_GSX_sent_no_statusText()
+    {
+        var s = new GsxServiceState
+        {
+            Id = "Boarding", DisplayName = "Board", State = "performing",
+            StateText = "Boarding service is being performed",
+            PaxDone = 40, PaxTotal = 186, BagsPercent = 25,
+            ProgressText = "40/40",
+        };
+
+        Assert.Equal("Boarding service is being performed (pax 40/186, bags 25%)",
+                     GsxActiveServiceResolver.ComposeTooltip(s));
+    }
+
+    // ── MessageText (GSX's idle tooltip slot) ────────────────────────────
+
+    [Fact]
+    public void MessageText_reads_the_object_shape_GSX_actually_publishes()
+    {
+        // The live shape. Reading this slot as a bare string returned "" for
+        // every idle moment — parked, pre-departure, cruise, and after every
+        // service completes — which is precisely when it is the only tooltip
+        // source there is.
+        Assert.Equal("Boarding will start shortly",
+            GsxActiveServiceResolver.MessageText(
+                Json("""{"text":"Boarding will start shortly","visible":true}""")));
+    }
+
+    [Fact]
+    public void MessageText_honours_visible_exactly_as_GSXs_own_client_does()
+    {
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(
+            Json("""{"text":"stale banner","visible":false}""")));
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(Json("""{"text":"no flag at all"}""")));
+    }
+
+    [Fact]
+    public void MessageText_matches_the_captured_snapshot_slot()
+    {
+        var snapshot = Fixture("gsx-snapshot.json");
+        Assert.True(snapshot.TryGetProperty("message", out var message));
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, message.ValueKind);   // not a string
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(message));          // visible:false
+    }
+
+    [Fact]
+    public void MessageText_degrades_on_anything_else_rather_than_throwing()
+    {
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(Json("null")));
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(Json("[]")));
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(Json("""{"visible":true}""")));
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(Json("""{"text":42,"visible":true}""")));
+        Assert.Equal("", GsxActiveServiceResolver.MessageText(default));
+        // A bare string is still accepted should GSX ever simplify the slot.
+        Assert.Equal("plain", GsxActiveServiceResolver.MessageText(Json("\"plain\"")));
+    }
+
+    private static System.Text.Json.JsonElement Json(string json)
+        => System.Text.Json.JsonDocument.Parse(json).RootElement.Clone();
+
+    private static System.Text.Json.JsonElement Fixture(string name)
+        => Json(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", name)));
 }

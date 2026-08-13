@@ -32,12 +32,13 @@ public partial class MainForm
             return;
         }
 
-        if (!_gsxService.IsConnected)
-        {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
-            return;
-        }
-
+        // Deliberately NOT gated on IsConnected. That gate refused to open the
+        // window whenever the GSX Remote API was unreachable — which is exactly
+        // the case the window exists to explain: its status box carries
+        // GsxService.UnavailableReason, and F5 speaks it. Refusing to open, with
+        // an announcement blaming the simulator, left a pilot on an older GSX
+        // with no way to find out what was actually wrong. There is no fallback
+        // transport to degrade to, so this explanation IS the mitigation.
         if (_accessGsxForm == null || _accessGsxForm.IsDisposed)
         {
             _accessGsxForm = new Forms.AccessGSXForm(_gsxService, announcer);

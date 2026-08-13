@@ -21,6 +21,8 @@
 // transport is GSX's own first-party protocol, not part of that port.
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows.Forms;
 using Microsoft.FlightSimulator.SimConnect;
@@ -84,8 +86,34 @@ public sealed class GsxService : IDisposable
     /// <summary>True when the Couatl Remote API socket is connected.</summary>
     public bool RemoteApiAvailable => _remote.IsConnected;
 
-    /// <summary>Human-readable reason the Remote API is currently unreachable; empty when connected.</summary>
-    public string UnavailableReason { get; private set; } = string.Empty;
+    // The three reasons GSX data can be unavailable. Each names its OWN cause:
+    // "not connected to the simulator" is accurate ONLY after Stop(), which
+    // MainForm calls from the SimConnect disconnect edge — it used to be the
+    // message for every case, including the one that matters most (a GSX build
+    // with no Remote API at all), where it sent the pilot looking at the wrong
+    // thing entirely. No GSX version is named: the minimum build that ships the
+    // Remote API is not known.
+    internal const string ReasonNoRemoteApi =
+        "GSX's Remote API is not reachable. This needs a recent GSX (Couatl) build.";
+    internal const string ReasonConnectionLost =
+        "Lost the connection to GSX's Remote API. Reconnecting.";
+    internal const string ReasonSimDisconnected =
+        "Not connected to the simulator, so GSX is not being monitored.";
+
+    /// <summary>
+    /// Human-readable reason GSX data is currently unavailable; empty when the
+    /// Remote API is connected. NEVER empty otherwise — callers announce this
+    /// string directly, and a queued announcement of "" is silently dropped, so
+    /// the one message the pilot needs would simply never be spoken. That was
+    /// the live failure: <c>_unavailableReason</c> stayed "" because
+    /// <c>GsxRemoteConnection.SetConnected</c> early-returns on an unchanged
+    /// value, so a connect that NEVER succeeds never raises
+    /// <c>ConnectedChanged(false)</c> and nothing ever assigned a reason.
+    /// </summary>
+    public string UnavailableReason =>
+        RemoteApiAvailable
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(_unavailableReason) ? ReasonNoRemoteApi : _unavailableReason;
 
     public bool CouatlStarted => _state.GsxRunning;
     public string StatusText => _statusText;
@@ -179,12 +207,14 @@ public sealed class GsxService : IDisposable
     public event EventHandler? StateChanged;
     public event EventHandler? MenuChanged;
     public event EventHandler? MenuHidden;
-    // Never raised under the Remote API transport (kept for compile
-    // compatibility — GsxMenuAutomation.WaitForNextMenuAsync callers still
-    // subscribe to it). GSX's Remote API has no observed "menu timed out"
-    // frame/topic; WaitForNextMenuAsync's own local await-timeout (a plain
-    // TimeoutException) is the only timeout signal left. See task-10-report.md.
-    public event EventHandler? MenuTimedOut;
+    // NOTE: there is deliberately no MenuTimedOut event. The OLD SimConnect
+    // transport had a menu-timeout signal; the Remote API publishes no
+    // equivalent frame or topic, so the event carried over from the migration
+    // could never be raised (a live CS0067) and its whole UI path —
+    // AccessGSXForm.OnMenuTimedOutUi and its prompt — was dead with it.
+    // WaitForNextMenuAsync's own await-timeout (a plain TimeoutException) is
+    // the only timeout signal there is. Do not re-add the event without a real
+    // frame to raise it from.
     public event EventHandler? TooltipChanged;
     // Fires once per phrase Update()/receipt handling decided is worth
     // speaking; LastAnnouncementText holds that phrase at the moment this
@@ -192,9 +222,9 @@ public sealed class GsxService : IDisposable
     // itself (queued, via the injected ScreenReaderAnnouncer) when
     // AnnounceWhenFormHidden is set.
     public event EventHandler? AnnouncementReady;
-    // Fires whenever the services list changes. ActiveServiceNames itself is
-    // inert (see above) — kept so AccessGSXForm's existing subscription
-    // still compiles.
+    // Fires when the SET of active (State == "performing") services changes —
+    // not on every services patch, so AccessGSXForm's combo doesn't rebuild
+    // (and disturb screen-reader focus) on every progress tick.
     public event EventHandler? ActiveServicesChanged;
     public event EventHandler? SettingsChanged;
 
@@ -214,9 +244,14 @@ public sealed class GsxService : IDisposable
     private string _menuTitle = "GSX Menu";
     private string _lastTooltip = string.Empty;
     private string _statusText = "Status: Disconnected";
+    // Seeded with the sim-disconnected reason: until MainForm calls Start() off
+    // the SimConnect connect edge, that is exactly the situation.
+    private string _unavailableReason = ReasonSimDisconnected;
     private readonly List<MenuOption> _menuOptions = new();
     private IReadOnlyList<string> _activeServiceNames = Array.Empty<string>();
     private string? _selectedActiveService;
+    // Digests of every invoice already spoken this GSX session — see ApplyReceipt.
+    private readonly HashSet<string> _announcedReceipts = new(StringComparer.Ordinal);
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -283,10 +318,20 @@ public sealed class GsxService : IDisposable
         if (!_remoteStarted)
         {
             _remoteStarted = true;
+            // Seed the reason BEFORE the first connection attempt resolves. A
+            // connect that never succeeds produces no ConnectedChanged at all
+            // (SetConnected early-returns on an unchanged value, and _connected
+            // starts false), so nothing downstream would ever set one — leaving
+            // Alt+G / Ctrl+G / F5 to announce an empty string, i.e. nothing.
+            // This message IS the whole mitigation for a GSX build that predates
+            // the Remote API: there is no fallback transport to degrade to.
+            _unavailableReason = ReasonNoRemoteApi;
+            UpdateStatusText();
             _remote.FrameReceived += OnFrame;
             _remote.ConnectedChanged += OnRemoteConnectedChanged;
             _remote.Start();
             Log.Debug("Gsx", "Remote API client starting.");
+            RaiseStateChanged();
         }
     }
 
@@ -326,12 +371,17 @@ public sealed class GsxService : IDisposable
         Settings = GsxSettingsSchema.Empty;
         Billing = GsxBilling.Empty;
         Receipt = null;
+        _announcedReceipts.Clear();
         LastAnnouncementText = string.Empty;
-        _lastTooltip = string.Empty;
         _activeServiceNames = Array.Empty<string>();
         _selectedActiveService = null;
-        UnavailableReason = string.Empty;
-        _statusText = "Status: Disconnected";
+        _unavailableReason = ReasonSimDisconnected;
+        // Clear the tooltip through the event-raising path, not by assignment:
+        // AccessGSXForm refreshes its Tooltip box on TooltipChanged and on
+        // nothing else, so a bare assignment leaves the last live tooltip on
+        // screen looking current after the integration has been torn down.
+        ClearTooltip();
+        UpdateStatusText();
         RaiseStateChanged();
     }
 
@@ -420,17 +470,16 @@ public sealed class GsxService : IDisposable
     /// <summary>
     /// Returns a <see cref="Task{T}"/> that completes with the next
     /// <see cref="MenuOptions"/> snapshot when <see cref="MenuChanged"/>
-    /// fires, or faults if the menu is hidden/times out before a new menu
-    /// arrives, or if <paramref name="timeout"/> elapses.
+    /// fires, or faults with a <see cref="TimeoutException"/> when
+    /// <paramref name="timeout"/> elapses first.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Thread safety: <see cref="MenuChanged"/>, <see cref="MenuHidden"/>,
-    /// and <see cref="MenuTimedOut"/> now fire from <see cref="OnFrame"/>
-    /// after it has reposted onto the UI thread (see EnsureUiThread) — so
-    /// this still resumes on the UI thread precisely as it always did.
-    /// Callers that await this on the UI thread can touch UI controls
-    /// directly on resume.
+    /// Thread safety: <see cref="MenuChanged"/> and <see cref="MenuHidden"/>
+    /// fire from <see cref="OnFrame"/> after it has reposted onto the UI
+    /// thread (see EnsureUiThread) — so this still resumes on the UI thread
+    /// precisely as it always did. Callers that await this on the UI thread
+    /// can touch UI controls directly on resume.
     /// </para>
     /// <para>
     /// Call this BEFORE triggering the menu action (OpenMenu / Choose) so
@@ -449,25 +498,16 @@ public sealed class GsxService : IDisposable
         // MenuChanged, or the timeout, which correctly covers a terminal
         // action that opens no submenu.
         EventHandler? onMenuChanged = null;
-        EventHandler? onMenuTimedOut = null;
 
         void Unsubscribe()
         {
-            MenuChanged  -= onMenuChanged;
-            MenuTimedOut -= onMenuTimedOut;
+            MenuChanged -= onMenuChanged;
             cts.Dispose();
         }
 
         onMenuChanged = (_, _) =>
         {
             if (tcs.TrySetResult(_menuOptions.ToList()))
-                Unsubscribe();
-        };
-
-        onMenuTimedOut = (_, _) =>
-        {
-            if (tcs.TrySetException(
-                    new InvalidOperationException("GSX menu timed out before a new menu arrived.")))
                 Unsubscribe();
         };
 
@@ -480,8 +520,7 @@ public sealed class GsxService : IDisposable
                 Unsubscribe();
         });
 
-        MenuChanged  += onMenuChanged;
-        MenuTimedOut += onMenuTimedOut;
+        MenuChanged += onMenuChanged;
 
         return tcs.Task;
     }
@@ -504,6 +543,14 @@ public sealed class GsxService : IDisposable
 
         _remote.Send("menu.pick", new { index = idx });
     }
+
+    /// <summary>
+    /// Runs one of GSX's own system commands — the Remote API's <c>command.run</c>
+    /// verb. See <see cref="GsxSystemCommands"/> for the four AccessGSXForm binds
+    /// to A/B/D/E. Fire-and-forget, like every other command here: GSX either
+    /// acts or it does not, and RESTART_COUATL drops the socket by design.
+    /// </summary>
+    public void RunCommand(string command) => _remote.Send("command.run", new { command });
 
     public void SetSettingNumber(string key, double value) =>
         _remote.Send("settings.set", new { key, value });
@@ -548,6 +595,11 @@ public sealed class GsxService : IDisposable
             // ClearProgressTrackingState).
             _serviceAnnouncer.Reset();
             LastAnnouncementText = string.Empty;
+            // A new Couatl session issues new invoices; the previous session's
+            // digests must not silence them. Same lifetime the pre-Remote-API
+            // _announcedInvoiceKeys set had (cleared in ClearProgressTrackingState,
+            // which the COUATL_STARTED 1->0 edge drove).
+            _announcedReceipts.Clear();
         }
 
         switch (f.Type)
@@ -717,14 +769,49 @@ public sealed class GsxService : IDisposable
         Billing = _state.TryGet("billing", out var v) ? GsxBilling.Parse(v) : GsxBilling.Empty;
     }
 
+    /// <summary>
+    /// Reparses the invoice and announces it AT MOST ONCE.
+    ///
+    /// The dedup is load-bearing, not tidiness: this runs on every <c>receipt</c>
+    /// patch AND on every reconnect snapshot, and GSX restarts its engine
+    /// routinely — without it a pilot hears the same invoice again on every
+    /// reconnect, in a queue that never interrupts and therefore only grows.
+    /// Mirrors the pre-Remote-API <c>_announcedInvoiceKeys</c> set, including
+    /// its lifetime: cleared on a Couatl shutdown (OnFrame) and on Stop(),
+    /// never on a mere socket drop.
+    ///
+    /// The key is a digest of the raw receipt payload rather than the operator
+    /// name, so a second, genuinely different invoice from the SAME handler in
+    /// one session still announces.
+    /// </summary>
     private void ApplyReceipt()
     {
-        Receipt = _state.TryGet("receipt", out var v) ? GsxReceipt.Parse(v) : null;
+        if (!_state.TryGet("receipt", out var v))
+        {
+            Receipt = null;
+            return;
+        }
+
+        Receipt = GsxReceipt.Parse(v);
         if (Receipt is not { } receipt) return;
 
-        Announce(FormatReceiptAnnouncement(receipt));
+        if (!_announcedReceipts.Add(ReceiptKey(v))) return;
+
+        Announce(FormatReceiptAnnouncement(receipt, Billing));
         // Tell GSX we've displayed the invoice so it clears its in-game banner.
         _remote.Send("invoice.seen");
+    }
+
+    /// <summary>
+    /// Identity of one invoice: a digest of GSX's own raw payload. Hashed rather
+    /// than stored verbatim because the payload embeds the rendered invoice HTML
+    /// and its logo — never held, never logged (docs/gsx.md: "never log a raw
+    /// frame"; receipts carry operator and financial data).
+    /// </summary>
+    private static string ReceiptKey(JsonElement receipt)
+    {
+        byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(receipt.GetRawText()));
+        return Convert.ToHexString(digest);
     }
 
     /// <summary>
@@ -748,17 +835,36 @@ public sealed class GsxService : IDisposable
         TooltipChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private string RawMessageText() =>
-        _state.TryGet("message", out var v) && v.ValueKind == JsonValueKind.String
-            ? v.GetString() ?? string.Empty
-            : string.Empty;
-
-    private static string FormatReceiptAnnouncement(GsxReceipt receipt)
+    /// <summary>Blanks the tooltip and tells the form, when there was one to blank.</summary>
+    private void ClearTooltip()
     {
-        string total = receipt.Total.ToString("0.00", CultureInfo.InvariantCulture);
-        return string.IsNullOrWhiteSpace(receipt.Operator)
-            ? $"Invoice available. Total {total}."
-            : $"Invoice available from {receipt.Operator}. Total {total}.";
+        if (_lastTooltip.Length == 0) return;
+        _lastTooltip = string.Empty;
+        TooltipChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string RawMessageText() =>
+        _state.TryGet("message", out var v) ? GsxActiveServiceResolver.MessageText(v) : string.Empty;
+
+    /// <summary>
+    /// The spoken invoice line. GSX's <c>/receipt</c> frame publishes NO figure
+    /// at all (canPrint/html/logo/operator/printPreview/printer), so the total is
+    /// sourced from <c>/billing</c>'s own pre-totalled builders — the only place
+    /// GSX states money. When billing has published no builders yet, the phrase
+    /// states no figure rather than inventing one: reading an authoritative-
+    /// sounding "Total 0.00" over a real 1761.42 charge is worse than saying
+    /// nothing about the amount.
+    /// </summary>
+    internal static string FormatReceiptAnnouncement(GsxReceipt receipt, GsxBilling billing)
+    {
+        string lead = string.IsNullOrWhiteSpace(receipt.Operator)
+            ? "Invoice available."
+            : $"Invoice available from {receipt.Operator}.";
+
+        if (billing is not { HasBuilders: true }) return lead;
+
+        string total = billing.BuildersTotal.ToString("0.00", CultureInfo.InvariantCulture);
+        return $"{lead} Total {total}.";
     }
 
     /// <summary>
@@ -789,7 +895,7 @@ public sealed class GsxService : IDisposable
 
         if (up)
         {
-            UnavailableReason = string.Empty;
+            _unavailableReason = string.Empty;
             UpdateStatusText();
             RaiseStateChanged();
             return;
@@ -810,7 +916,15 @@ public sealed class GsxService : IDisposable
         Receipt = null;
         _activeServiceNames = Array.Empty<string>();
         _selectedActiveService = null;
-        UnavailableReason = "GSX Remote API not reachable.";
+        // Reached only after a connection that HAD succeeded (SetConnected
+        // early-returns on an unchanged value), so this is a genuine drop —
+        // routine during a RESTART_COUATL — not "your GSX has no Remote API".
+        _unavailableReason = ReasonConnectionLost;
+        // _state was cleared above, so this recomputes to empty and raises
+        // TooltipChanged — without it the Tooltip box kept showing the last
+        // live text as if it were current, while Stop() cleared it. The two
+        // teardown paths must agree.
+        RecomputeTooltip();
         UpdateStatusText();
         RaiseStateChanged();
     }
@@ -1003,9 +1117,10 @@ public sealed class GsxService : IDisposable
 }
 
 /// <summary>
-/// Derives the "active" (State == "performing") service set from GSX's
-/// services list, and resolves which one — if any — should govern
-/// LastTooltip. Pure and stateless; kept internal + covered directly by
+/// Everything that decides the TOOLTIP TEXT: which service (if any) governs it,
+/// how that service's row reads, and what GSX's own idle "message" slot says
+/// when no service is running. Pure and stateless; kept internal + covered
+/// directly by
 /// GsxActiveServiceResolverTests via InternalsVisibleTo, the same pattern
 /// GsxSettingsForm.cs uses for GsxRangeBoundsResolver — GsxService itself
 /// needs a window handle and cannot be constructed in a unit test.
@@ -1043,12 +1158,71 @@ internal static class GsxActiveServiceResolver
 
     /// <summary>
     /// The tooltip text for one active service: its own GSX-stated StateText
-    /// (falling back to its name when GSX left StateText blank), with a
-    /// parenthesized ProgressText suffix when GSX published one.
+    /// (falling back to its name when GSX left StateText blank), suffixed with
+    /// the row's detail in parentheses when GSX published any.
+    ///
+    /// The detail's precedence is deliberate. GSX's own <c>statusText</c> wins:
+    /// on the captured deboarding it reads "bus in position / pax 181/186 /
+    /// bags 100%", the true picture. <c>progressText</c> on that SAME row reads
+    /// "181/181" — GSX's progress bar is current-out-of-current — and rendering
+    /// it bare told the pilot deboarding had finished with five passengers still
+    /// aboard. So the typed pax/bags detail is preferred over progressText too,
+    /// and progressText is used only when GSX published no typed detail at all
+    /// (e.g. a fuel row's "8823/13001 kg", where there is no contradicting
+    /// source and the units make it self-describing).
     /// </summary>
     public static string ComposeTooltip(GsxServiceState service)
     {
         string text = string.IsNullOrWhiteSpace(service.StateText) ? NameOf(service) : service.StateText;
-        return string.IsNullOrWhiteSpace(service.ProgressText) ? text : $"{text} ({service.ProgressText})";
+        string detail = ComposeDetail(service);
+        return detail.Length == 0 ? text : $"{text} ({detail})";
+    }
+
+    /// <summary>
+    /// GSX's own tooltip slot, the fallback whenever no service is performing —
+    /// i.e. parked, before departure, in the cruise, and after every service
+    /// finishes.
+    ///
+    /// The published shape is an OBJECT: <c>{"text":"…","visible":false}</c>.
+    /// GSX's own client renders <c>m.text</c> gated on <c>m.visible</c>, and so
+    /// does this. Reading the slot as a bare STRING (which it never is) made the
+    /// fallback return "" always, so LastTooltip was permanently empty across
+    /// that whole idle case — the Tooltip box blank and Ctrl+G answering "No GSX
+    /// tooltip yet." A bare string is still accepted, harmlessly, should a
+    /// future GSX simplify the slot.
+    /// </summary>
+    public static string MessageText(JsonElement message)
+    {
+        if (message.ValueKind == JsonValueKind.String)
+            return message.GetString() ?? string.Empty;
+
+        if (message.ValueKind != JsonValueKind.Object) return string.Empty;
+
+        if (!message.TryGetProperty("visible", out var visible) || visible.ValueKind != JsonValueKind.True)
+            return string.Empty;
+
+        return message.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String
+            ? text.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static string ComposeDetail(GsxServiceState service)
+    {
+        if (!string.IsNullOrWhiteSpace(service.StatusText))
+            // GSX writes statusText as separate lines; the tooltip box is one
+            // field and Ctrl+G speaks it as one utterance, so join with commas.
+            return string.Join(", ", service.StatusText
+                .ReplaceLineEndings("\n")
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var parts = new List<string>();
+        if (service.PaxDone is { } done)
+            parts.Add(service.PaxTotal is { } total ? $"pax {done}/{total}" : $"pax {done}");
+        if (service.BagsPercent is { } bags)
+            parts.Add($"bags {bags}%");
+        if (parts.Count > 0)
+            return string.Join(", ", parts);
+
+        return string.IsNullOrWhiteSpace(service.ProgressText) ? string.Empty : service.ProgressText;
     }
 }

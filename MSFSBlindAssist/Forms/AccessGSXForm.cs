@@ -24,7 +24,6 @@ public sealed class AccessGSXForm : Form
     // useful in it — never blank — and the user gets reopen instructions
     // without us having to spell them out in an AccessibleDescription.
     private const string MENU_HIDDEN_PROMPT = "GSX Menu hidden. Press F5 to open it.";
-    private const string MENU_TIMEOUT_PROMPT = "[GSX Menu] Timeout. Press F5 to re-open.";
 
     private TextBox _statusTextBox = null!;
     private DisplayListBox _menuList = null!;
@@ -34,9 +33,18 @@ public sealed class AccessGSXForm : Form
     private bool _suppressActiveServicesSelectionEvent;
     private GsxSettingsForm? _settingsForm;
 
-    // The menu snapshot last rendered/announced by RepopulateMenu. Keypress
-    // resolution (SelectMenuEntry) reads THIS, never the live GsxService.Menu
-    // — see SelectMenuEntry's remarks for why.
+    // The menu snapshot last rendered/announced by RepopulateMenu. What this
+    // genuinely buys is the menu-CLOSED case: DispatchPatch's "menuShown" clears
+    // _menuOptions but never reassigns GsxService.Menu, so a stray digit after
+    // the menu goes away would otherwise still resolve against the live model.
+    // OnMenuHiddenUi resets this instead. It is NOT protection against a menu
+    // changing mid-read: GsxService reposts to the UI thread before touching
+    // fields, and every Menu reassignment synchronously fires MenuChanged ->
+    // RepopulateMenu -> _renderedMenu = menu, so the snapshot and the live menu
+    // move in lockstep. Freezing until acted on would need "frozen" semantics in
+    // GsxMenuModel/GsxService and carries the opposite risk (silently refusing
+    // legitimate presses after a normal menu change) — a design decision, not a
+    // mechanical fix.
     private GsxMenuModel _renderedMenu = GsxMenuModel.Empty;
 
     public AccessGSXForm(GsxService gsxService, ScreenReaderAnnouncer announcer)
@@ -199,7 +207,6 @@ public sealed class AccessGSXForm : Form
         _gsxService.StateChanged += OnStateChanged;
         _gsxService.MenuChanged += OnMenuChanged;
         _gsxService.MenuHidden += OnMenuHidden;
-        _gsxService.MenuTimedOut += OnMenuTimedOut;
         _gsxService.TooltipChanged += OnTooltipChanged;
         _gsxService.AnnouncementReady += OnAnnouncementReady;
         _gsxService.ActiveServicesChanged += OnActiveServicesChanged;
@@ -287,11 +294,9 @@ public sealed class AccessGSXForm : Form
     /// F5's action: ask GSX to (re)open its menu — or, when the Remote API
     /// isn't reachable, announce why instead of silently sending nothing (a
     /// pilot pressing F5 into dead air has no way to tell "not connected"
-    /// apart from "the keystroke never arrived". Factored into its own
-    /// method and called from both ProcessCmdKey (the path that actually
-    /// runs for this key) and AccessGSXForm_KeyDown (a defensive mirror —
-    /// the same belt-and-suspenders shape GsxSettingsForm.SettingsSlider
-    /// uses for its own ProcessCmdKey/OnKeyDown pair), so the two can never
+    /// apart from "the keystroke never arrived"). Factored into its own method
+    /// and called from both ProcessCmdKey (the path that actually runs for this
+    /// key) and AccessGSXForm_KeyDown (a defensive mirror), so the two can never
     /// silently drift apart.
     /// </summary>
     private void HandleF5()
@@ -302,11 +307,7 @@ public sealed class AccessGSXForm : Form
             return;
         }
 
-        try { _announcer.Announce(_gsxService.UnavailableReason); }
-        catch (Exception ex)
-        {
-            Log.Debug("Forms", $"unavailable announce failed: {ex.Message}");
-        }
+        AnnounceUnavailable();
     }
 
     private void AccessGSXForm_KeyDown(object? sender, KeyEventArgs e)
@@ -331,11 +332,26 @@ public sealed class AccessGSXForm : Form
             return;
         }
 
-        // 0..9 (top row or numpad) and A..E are the menu-choice shortcuts —
-        // reserved keys in this form, so they're always swallowed here, even
-        // when the resolved index has no current entry, so a stray keystroke
-        // never leaks into a focused read-only TextBox (which beeps on
-        // unhandled input).
+        // A..E are GSX's own system block, NOT menu indices — see
+        // GsxSystemCommands. No modifiers: every textbox in this form is
+        // read-only, so a bare letter is unambiguously a command here. 'C'
+        // normally never reaches this handler (ProcessCmdKey intercepts it to
+        // open Settings while a menu is available); when no menu is available
+        // it lands here, finds a null Command, and is a deliberate silent
+        // no-op rather than leaking into a control.
+        if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.E && !e.Control && !e.Alt && !e.Shift)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            RunSystemCommand(((char)('A' + (e.KeyCode - Keys.A))).ToString());
+            return;
+        }
+
+        // 0..9 (top row or numpad) are the menu-choice shortcuts — reserved
+        // keys in this form, so they're always swallowed here, even when the
+        // resolved index has no current entry, so a stray keystroke never
+        // leaks into a focused read-only TextBox (which beeps on unhandled
+        // input).
         int paintedIndex = -1;
         if (e.KeyCode >= Keys.D0 && e.KeyCode <= Keys.D9)
         {
@@ -347,18 +363,6 @@ public sealed class AccessGSXForm : Form
         {
             int number = e.KeyCode - Keys.NumPad0;
             paintedIndex = number == 0 ? 9 : number - 1;
-        }
-        else if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.E)
-        {
-            // No modifiers — typing into the tooltip textbox is read-only, so
-            // a bare letter is unambiguously a menu choice here. 'C' (inside
-            // this A..E range) never reaches here while a menu is open —
-            // ProcessCmdKey intercepts it first to open Settings; with no
-            // menu open it resolves to an out-of-range index in
-            // SelectMenuEntry below and is a silent no-op, same as any other
-            // out-of-range letter.
-            if (!e.Control && !e.Alt && !e.Shift)
-                paintedIndex = (e.KeyCode - Keys.A) + 10;
         }
 
         if (paintedIndex < 0)
@@ -374,13 +378,51 @@ public sealed class AccessGSXForm : Form
     }
 
     /// <summary>
+    /// Runs the GSX system command bound to <paramref name="shortcut"/>, or
+    /// explains why it cannot. Silent on success — like every other key in this
+    /// form, this is a direct user interaction, and what the command does
+    /// announces itself (a Customize entry opens a GSX menu; Restart GSX moves
+    /// the status line). Unlike the menu keys it is NOT gated on a menu being
+    /// open: "Restart GSX" is the recovery for a wedged Couatl, which is exactly
+    /// when no menu will open.
+    /// </summary>
+    private void RunSystemCommand(string shortcut)
+    {
+        if (GsxSystemCommands.ByShortcut(shortcut) is not { Command: { } command })
+            return;   // 'C' — Settings, handled in ProcessCmdKey, not by GSX.
+
+        if (!_gsxService.RemoteApiAvailable)
+        {
+            AnnounceUnavailable();
+            return;
+        }
+
+        _gsxService.RunCommand(command);
+    }
+
+    /// <summary>
+    /// Speaks why GSX cannot be reached. <see cref="GsxService.UnavailableReason"/>
+    /// is guaranteed non-empty while disconnected — an empty string handed to the
+    /// queued announcer is silently dropped, and this message is the ONLY thing
+    /// telling a pilot on an older GSX why nothing responds.
+    /// </summary>
+    private void AnnounceUnavailable()
+    {
+        try { _announcer.Announce(_gsxService.UnavailableReason); }
+        catch (Exception ex)
+        {
+            Log.Debug("Forms", $"unavailable announce failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Re-resolves <paramref name="paintedIndex"/> against <see cref="_renderedMenu"/>
     /// — the menu snapshot this form last rendered and announced — rather than the
-    /// live <see cref="GsxService.Menu"/>. <see cref="GsxMenuModel.ResolveIndex"/>'s
-    /// whole purpose is verifying a label still matches what the pilot was actually
-    /// told; reading the label fresh from the live service here would compare the
-    /// current menu against itself and could never catch a real change that happened
-    /// in the seconds between the announcement and the keypress.
+    /// live <see cref="GsxService.Menu"/>. Reading the label fresh from the live
+    /// service would compare the current menu against itself, an always-true check
+    /// that can never refuse anything; the snapshot is what makes this a real gate
+    /// at all, and it covers the menu-CLOSED case in particular (see the
+    /// <c>_renderedMenu</c> field comment for the limits of that protection).
     ///
     /// Silently does nothing when the index has no entry (menu closed, hidden, or
     /// simply fewer options than the key implies). Announces "unavailable" and
@@ -474,29 +516,6 @@ public sealed class AccessGSXForm : Form
         // local reset is the one place guaranteed to run exactly when the
         // form is told the menu is gone.)
         _renderedMenu = GsxMenuModel.Empty;
-    }
-
-    private void OnMenuTimedOut(object? sender, EventArgs e)
-    {
-        if (!IsHandleCreated || IsDisposed) return;
-        if (InvokeRequired) { BeginInvoke(new Action(OnMenuTimedOutUi)); return; }
-        OnMenuTimedOutUi();
-    }
-
-    private void OnMenuTimedOutUi()
-    {
-        // MenuHidden fires first and writes the regular hide prompt; overwrite
-        // with the timeout-specific version so the user sees they need to
-        // re-open rather than that GSX closed the menu on demand.
-        _menuList.SetText(MENU_TIMEOUT_PROMPT);
-        // Same reasoning as OnMenuHiddenUi — nothing should still be pickable
-        // once the menu is known gone.
-        _renderedMenu = GsxMenuModel.Empty;
-        try { _announcer.Announce("GSX menu timeout"); }
-        catch (Exception ex)
-        {
-            Log.Debug("Forms", $"timeout announce failed: {ex.Message}");
-        }
     }
 
     private void OnTooltipChanged(object? sender, EventArgs e)
@@ -711,6 +730,16 @@ public sealed class AccessGSXForm : Form
 
             sb.AppendLine();
         }
+
+        // GSX's always-available system block, below the numbered options —
+        // exactly where the in-sim menu and every previous AccessGSX build put
+        // it. These are not menu entries (see GsxSystemCommands): they are
+        // command.run verbs plus the local Settings window, so they are
+        // rendered here rather than injected into GsxService.Menu, which stays
+        // GSX's own data for the gate selector to walk.
+        foreach (var command in GsxSystemCommands.All)
+            sb.Append(command.Shortcut).Append(". ").AppendLine(command.Label);
+
         string text = sb.ToString();
         // Trim the trailing AppendLine newline before handing to the list —
         // otherwise the reconcile would show a spurious blank last row (the
@@ -734,7 +763,6 @@ public sealed class AccessGSXForm : Form
             _gsxService.StateChanged -= OnStateChanged;
             _gsxService.MenuChanged -= OnMenuChanged;
             _gsxService.MenuHidden -= OnMenuHidden;
-            _gsxService.MenuTimedOut -= OnMenuTimedOut;
             _gsxService.TooltipChanged -= OnTooltipChanged;
             _gsxService.AnnouncementReady -= OnAnnouncementReady;
             _gsxService.ActiveServicesChanged -= OnActiveServicesChanged;
