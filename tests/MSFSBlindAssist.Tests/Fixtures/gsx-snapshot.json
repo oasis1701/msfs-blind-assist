@@ -204,7 +204,7 @@
   },
   "simbrief": {
     "status": "error",
-    "error": "The loaded flight plan from KBNA doesn't match the one on SimBrief, from KDEN to KBOS",
+    "error": "The loaded flight plan from AAAA doesn't match the one on SimBrief, from BBBB to CCCC",
     "gen": 0
   },
   "message": {
