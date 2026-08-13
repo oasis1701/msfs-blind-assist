@@ -587,6 +587,23 @@ public sealed class GsxService : IDisposable
                 RaiseStateChanged();
                 break;
 
+            case GsxFrameType.Event when f.Topic == "engine":
+                // "engine" is a SYNTHETIC signal from GsxRemoteState.Apply,
+                // never a real state key — do not TryGet("engine", …). The
+                // Couatl-restart baseline reset above already reacted to the
+                // GsxRunning transition; what's still missing is the status
+                // refresh. UpdateStatusText/RaiseStateChanged are otherwise
+                // only reachable via Snapshot/Hello or a Patch keyed
+                // statusHtml/parking/airport — an in-place Couatl restart
+                // keeps the WebSocket open, so none of those necessarily
+                // follow. Without this, StatusText (screen-reader-reachable
+                // in AccessGSXForm) can keep reporting "Couatl started" after
+                // Couatl has actually stopped, until an unrelated frame
+                // happens to refresh it.
+                UpdateStatusText();
+                RaiseStateChanged();
+                break;
+
             case GsxFrameType.Patch when !string.IsNullOrEmpty(f.Key):
                 DispatchPatch(f.Key!);
                 break;
