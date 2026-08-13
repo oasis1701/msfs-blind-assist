@@ -52,7 +52,16 @@ public sealed class GsxRemoteConnection : IDisposable
         // and both call FailAll, corrupting whichever connection wins the race. Refusing
         // to start while the previous loop is still completing is the safe direction: the
         // caller can retry, whereas a second live loop cannot be un-started.
-        if (_disposed || (_loop != null && !_loop.IsCompleted)) return;
+        if (_disposed) return;
+        if (_loop != null && !_loop.IsCompleted)
+        {
+            // Reachable on a sim disconnect->reconnect cycle, where GsxService
+            // has ALREADY logged "Remote API client starting." — without this
+            // line the log claims a start that never happened, and the socket
+            // stays down until the next reconnect with nothing to say why.
+            Log.Debug("Gsx", "Remote API start refused: the previous receive loop is still unwinding.");
+            return;
+        }
 
         try { _cts?.Dispose(); } catch { /* already disposed */ }
         _cts = new CancellationTokenSource();

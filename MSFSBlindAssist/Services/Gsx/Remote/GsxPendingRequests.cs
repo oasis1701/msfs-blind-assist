@@ -17,9 +17,17 @@ public sealed class GsxPendingRequests
 {
     private readonly ConcurrentDictionary<string, TaskCompletionSource<GsxResult>> _pending =
         new(StringComparer.Ordinal);
+    // Register and FailAll share ONE lock, and THAT is what stops a registration
+    // landing mid-sweep from leaking (never removed, never completed, its caller's
+    // task pending forever). Nothing else here closes that race: an earlier version
+    // also carried a "sweep in progress" flag, which read as the load-bearing part
+    // but was unreachable once the lock existed. Do not drop the lock.
+    //
+    // The store must also stay fully usable AFTER FailAll returns — it is NOT
+    // per-connection. GsxRemoteConnection holds one instance for its lifetime and
+    // calls FailAll on every disconnect, and GSX drops its connection routinely.
     private readonly object _gate = new();
     private int _nextId;
-    private string? _failReason;
 
     public int PendingCount => _pending.Count;
 
@@ -29,15 +37,6 @@ public sealed class GsxPendingRequests
 
         lock (_gate)
         {
-            if (_failReason != null)
-            {
-                // A sweep is currently in progress. Return an already-completed failed task
-                // to prevent this registration from leaking in the dictionary.
-                var failedTcs = new TaskCompletionSource<GsxResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-                failedTcs.TrySetResult(GsxResult.Fail(_failReason));
-                return (id, failedTcs.Task);
-            }
-
             // RunContinuationsAsynchronously: never run a caller's continuation on the
             // socket receive loop.
             var tcs = new TaskCompletionSource<GsxResult>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -59,11 +58,11 @@ public sealed class GsxPendingRequests
     {
         lock (_gate)
         {
-            _failReason = reason;
+            // Under the shared lock the snapshot->sweep span is atomic with
+            // respect to Register, so no insert can slip in behind the sweep.
             foreach (var key in _pending.Keys.ToArray())
                 if (_pending.TryRemove(key, out var tcs))
                     tcs.TrySetResult(GsxResult.Fail(reason));
-            _failReason = null;
         }
     }
 }

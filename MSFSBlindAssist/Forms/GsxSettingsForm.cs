@@ -36,7 +36,21 @@ public sealed class GsxSettingsForm : Form
     // never fires. Both places that dispose these controls -- FormClosing
     // AND a live RefreshSchema rebuild -- flush through FlushPendingTextEdits
     // so an in-progress edit is never silently lost either way.
-    private readonly List<(TextBox Box, string Key)> _pendingTextCommits = new();
+    //
+    // LastCommitted is what makes that flush safe. Seeded with the value GSX
+    // itself published, it marks a box the pilot never touched as clean, so the
+    // flush writes only genuine edits. Without it the flush wrote EVERY tracked
+    // box -- and since it runs BEFORE _schema is reassigned, a value GSX had
+    // just changed would be overwritten with the stale text still on screen,
+    // silently undoing GSX's own change.
+    private sealed class TextCommit(TextBox box, string key, string committed)
+    {
+        public TextBox Box { get; } = box;
+        public string Key { get; } = key;
+        public string LastCommitted { get; set; } = committed;
+    }
+
+    private readonly List<TextCommit> _pendingTextCommits = new();
 
     // Defensive re-entrancy guard for RefreshSchema -- see its remarks.
     private bool _isRefreshingSchema;
@@ -145,8 +159,24 @@ public sealed class GsxSettingsForm : Form
     // have made, just triggered a moment early by the control going away.
     private void FlushPendingTextEdits()
     {
-        foreach ((TextBox box, string key) in _pendingTextCommits)
-            _gsxService.SetSettingText(key, box.Text);
+        foreach (var commit in _pendingTextCommits)
+            CommitText(commit);
+    }
+
+    /// <summary>
+    /// Sends one text field to GSX, but only when it actually differs from what
+    /// was last sent (or from what GSX published, for a box the pilot never
+    /// edited). The single write path for all three triggers -- Leave, Enter,
+    /// and the flush -- so "duplicate writes suppressed" is one rule, not three.
+    /// Never announces: a text edit is a direct UI interaction.
+    /// </summary>
+    private void CommitText(TextCommit commit)
+    {
+        if (string.Equals(commit.Box.Text, commit.LastCommitted, StringComparison.Ordinal))
+            return;
+
+        commit.LastCommitted = commit.Box.Text;
+        _gsxService.SetSettingText(commit.Key, commit.Box.Text);
     }
 
     // Record equality won't help here: every field type carries
@@ -570,19 +600,21 @@ public sealed class GsxSettingsForm : Form
             AccessibleDescription = field.Tooltip
         };
 
-        textBox.Leave += (_, _) => _gsxService.SetSettingText(key, textBox.Text);
+        var commit = new TextCommit(textBox, key, textBox.Text);
+
+        textBox.Leave += (_, _) => CommitText(commit);
         textBox.KeyDown += (_, e) =>
         {
             // Commit on Enter too, without waiting for the field to lose
             // focus -- and suppress it so the control doesn't also emit the
             // default "invalid input" system beep.
             if (e.KeyCode != Keys.Enter) return;
-            _gsxService.SetSettingText(key, textBox.Text);
+            CommitText(commit);
             e.Handled = true;
             e.SuppressKeyPress = true;
         };
 
-        _pendingTextCommits.Add((textBox, key));
+        _pendingTextCommits.Add(commit);
         return textBox;
     }
 
