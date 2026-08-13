@@ -32,10 +32,14 @@ public sealed class GsxSettingsForm : Form
 
     // CheckBox/ComboBox/NumericUpDown commit live, the instant the control
     // changes. A TextBox only commits on Leave (or Enter) -- if the pilot is
-    // still focused in one when the window closes (Escape, the Close
-    // button, Alt+F4), Leave never fires. FormClosing flushes these so an
-    // in-progress edit is never silently lost.
+    // still focused in one when its control is about to be disposed, Leave
+    // never fires. Both places that dispose these controls -- FormClosing
+    // AND a live RefreshSchema rebuild -- flush through FlushPendingTextEdits
+    // so an in-progress edit is never silently lost either way.
     private readonly List<(TextBox Box, string Key)> _pendingTextCommits = new();
+
+    // Defensive re-entrancy guard for RefreshSchema -- see its remarks.
+    private bool _isRefreshingSchema;
 
     public GsxSettingsForm(
         GsxService gsxService,
@@ -81,24 +85,68 @@ public sealed class GsxSettingsForm : Form
     /// place instead of recreating the window keeps screen-reader focus and
     /// avoids re-announcing the whole dialog. Returns true when the UI was
     /// rebuilt.
+    ///
+    /// Re-entrancy: FlushPendingTextEdits below calls GsxService.SetSettingText,
+    /// which is a fire-and-forget GsxRemoteConnection.Send -- it returns after
+    /// writing the outgoing frame and never itself processes a reply.
+    /// Any GSX response arrives later on the WebSocket receive loop
+    /// (GsxRemoteConnection.ReceiveLoopAsync, a background Task), which
+    /// reposts to the UI thread via Control.BeginInvoke (GsxService.
+    /// EnsureUiThread) rather than calling back in-line -- so a settings
+    /// patch that SetSettingText's write eventually provokes can only
+    /// re-enter here on a LATER, separate message-loop turn, never on this
+    /// call stack. _isRefreshingSchema guards it anyway: if that reasoning
+    /// is ever invalidated by a future transport change, a same-stack
+    /// re-entry must skip rebuilding rather than flush/dispose the very
+    /// controls this call is still in the middle of tearing down.
     /// </summary>
     public bool RefreshSchema(GsxSettingsSchema? schema)
     {
+        if (_isRefreshingSchema)
+            return false;
+
         schema ??= GsxSettingsSchema.Empty;
         if (BuildSchemaSignature(schema) == BuildSchemaSignature(_schema))
             return false;
 
-        // A live republish while the pilot is on (say) the Diagnostic tab
-        // shouldn't yank them back to the first one -- restore the same
-        // index if it's still in range. PopulateSettings still selects 0 on
-        // the very first build (restoreTabIndex's default), which is the
-        // only time there's nothing sensible to restore.
-        int previousTabIndex = _tabSelector.SelectedIndex;
+        _isRefreshingSchema = true;
+        try
+        {
+            // A live republish is about to dispose every field control,
+            // including any TextBox the pilot is still typing in -- flush
+            // it first, the same as FormClosing, or those keystrokes vanish
+            // with no error and nothing to show it happened.
+            FlushPendingTextEdits();
 
-        _schema = schema;
-        PopulateSettings(previousTabIndex);
-        SelectSectionList();
-        return true;
+            // A live republish while the pilot is on (say) the Diagnostic
+            // tab shouldn't yank them back to the first one -- restore the
+            // same index if it's still in range. PopulateSettings still
+            // selects 0 on the very first build (restoreTabIndex's
+            // default), which is the only time there's nothing sensible to
+            // restore.
+            int previousTabIndex = _tabSelector.SelectedIndex;
+
+            _schema = schema;
+            PopulateSettings(previousTabIndex);
+            SelectSectionList();
+            return true;
+        }
+        finally
+        {
+            _isRefreshingSchema = false;
+        }
+    }
+
+    // Shared by FormClosing and RefreshSchema -- both dispose the live
+    // TextBox controls (FormClosing by tearing down the whole window,
+    // RefreshSchema by rebuilding the page panels) and must flush the same
+    // way, or one of the two paths silently drops an in-progress edit. Never
+    // announces anything -- these are the same commits a Leave/Enter would
+    // have made, just triggered a moment early by the control going away.
+    private void FlushPendingTextEdits()
+    {
+        foreach ((TextBox box, string key) in _pendingTextCommits)
+            _gsxService.SetSettingText(key, box.Text);
     }
 
     // Record equality won't help here: every field type carries
@@ -182,11 +230,7 @@ public sealed class GsxSettingsForm : Form
         Controls.Add(_tabSelector);
         Controls.Add(bottomPanel);
 
-        FormClosing += (_, _) =>
-        {
-            foreach ((TextBox box, string key) in _pendingTextCommits)
-                _gsxService.SetSettingText(key, box.Text);
-        };
+        FormClosing += (_, _) => FlushPendingTextEdits();
     }
 
     private void PopulateSettings(int restoreTabIndex = 0)
