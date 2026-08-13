@@ -246,10 +246,14 @@ public sealed class AccessGSXForm : Form
         if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
         {
             _gsxService.OpenSettings();
-            // OpenSettings publishes synchronously on the UI thread, so the
-            // form exists by now. The refresh-in-place path deliberately
-            // never steals focus on background republishes — refocus only
-            // here, on the explicit user keypress.
+            // OpenSettings is a fire-and-forget Remote API send — the
+            // "settings" response (and therefore SettingsChanged /
+            // OnSettingsChangedUi, which creates or shows _settingsForm)
+            // arrives asynchronously on a later WebSocket frame, not
+            // synchronously here. This only refocuses a window that is
+            // ALREADY open from an earlier press; the refresh-in-place path
+            // deliberately never steals focus on its own for a background
+            // republish.
             if (_settingsForm is { IsDisposed: false })
                 _settingsForm.ShowForm();
             return true;
@@ -613,20 +617,18 @@ public sealed class AccessGSXForm : Form
     {
         if (_settingsForm is { IsDisposed: false })
         {
-            // The service re-publishes ~1 s after opening (GSX writes the
-            // real settings.html asynchronously; the first parse only sees
-            // the Python stub). Refresh the open window in place —
-            // recreating it would yank screen-reader focus, re-announce the
-            // window, and fire the old form's FormClosed/HideMenu side
-            // effects.
-            // hadItems is false on the first publish because the settings.html
-            // stub parses to zero items.
-            bool hadItems = _settingsForm.HasItems;
-            bool rebuilt = _settingsForm.RefreshItems(_gsxService.SettingsItems);
-            if (rebuilt && !hadItems && _settingsForm.HasItems)
+            // GSX can republish the whole settings tree more than once per
+            // session (e.g. a reconnect resends it as part of a full
+            // snapshot). Refresh the open window in place — recreating it
+            // would yank screen-reader focus, re-announce the window, and
+            // fire the old form's FormClosed/HideMenu side effects.
+            bool hadItems = _settingsForm.HasFields;
+            bool rebuilt = _settingsForm.RefreshSchema(_gsxService.Settings);
+            if (rebuilt && !hadItems && _settingsForm.HasFields)
             {
-                // Background state change (not user-triggered): the stub
-                // placeholder was silently replaced by the real settings.
+                // Background state change (not user-triggered): the window
+                // was showing "No GSX settings were available." and GSX has
+                // now published real content for it.
                 try { _announcer.Announce("GSX settings loaded."); }
                 catch (Exception ex)
                 {
@@ -636,7 +638,7 @@ public sealed class AccessGSXForm : Form
             return;
         }
 
-        _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.SettingsItems);
+        _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.Settings);
         _settingsForm.FormClosed += (_, _) =>
         {
             _settingsForm = null;

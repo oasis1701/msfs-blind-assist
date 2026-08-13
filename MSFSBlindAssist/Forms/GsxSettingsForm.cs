@@ -1,30 +1,58 @@
+// GsxSettingsForm — accessible editor for GSX's own settings page.
+//
+// Renders MSFSBlindAssist.Services.Gsx.Remote.GsxSettingsSchema, the typed
+// settings model GSX's Couatl Remote API publishes (replaces the old
+// settings.html scrape). GSX owns persistence now (settings.set / settings.action
+// over the Remote API) -- this form never writes GSX's own config file.
+//
+// Tab shapes: GSX publishes a tab's fields in TWO shapes. Some tabs (e.g.
+// "simulation") carry nothing directly and split their fields across
+// subtabs; others (timings, audio, network, diagnostic) have no subtabs at
+// all and put every field straight on the tab. BuildPages renders both --
+// see its remarks.
 using System.Globalization;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Gsx.Remote;
 
 namespace MSFSBlindAssist.Forms;
 
 public sealed class GsxSettingsForm : Form
 {
+    // Visual column width shared by every field row (labels + controls) --
+    // FlowLayoutPanel doesn't stretch children to fill available width the
+    // way Dock does, so each child needs an explicit size.
+    private const int RowWidth = 660;
+    private const int FieldSpacing = 12;
+
     private readonly GsxService _gsxService;
-    private IReadOnlyList<GsxService.GsxSettingItem> _items;
+    private GsxSettingsSchema _schema;
     private readonly ListBox _tabSelector = new();
     private readonly Panel _settingsHost = new();
-    private readonly Dictionary<string, FlowLayoutPanel> _tabPages = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<Action> _closeCommitters = new();
-    private readonly Dictionary<string, string> _lastCommittedValues = new(StringComparer.OrdinalIgnoreCase);
+
+    // CheckBox/ComboBox/NumericUpDown commit live, the instant the control
+    // changes. A TextBox only commits on Leave (or Enter) -- if the pilot is
+    // still focused in one when the window closes (Escape, the Close
+    // button, Alt+F4), Leave never fires. FormClosing flushes these so an
+    // in-progress edit is never silently lost.
+    private readonly List<(TextBox Box, string Key)> _pendingTextCommits = new();
 
     public GsxSettingsForm(
         GsxService gsxService,
         ScreenReaderAnnouncer announcer,
-        IReadOnlyList<GsxService.GsxSettingItem> items)
+        GsxSettingsSchema schema)
     {
         _gsxService = gsxService ?? throw new ArgumentNullException(nameof(gsxService));
+        // Validated but not used directly: every control here commits
+        // silently (screen readers already announce the user's own
+        // CheckedChanged/SelectedIndexChanged/ValueChanged interaction --
+        // see BuildToggle/BuildChoice/BuildRange below), and the one
+        // background announcement this feature makes ("GSX settings
+        // loaded.") is owned by AccessGSXForm, which drives this form's
+        // lifetime. Kept for constructor parity with the rest of the GSX UI
+        // and in case a future background announcement needs it.
         _ = announcer ?? throw new ArgumentNullException(nameof(announcer));
-        // Snapshot: GsxService.SettingsItems returns its internal list, which it
-        // mutates in place (Clear + AddRange) before raising SettingsChanged.
-        // Holding a copy here means BuildItemsSignature can detect what changed.
-        _items = items?.ToArray() ?? Array.Empty<GsxService.GsxSettingItem>();
+        _schema = schema ?? GsxSettingsSchema.Empty;
 
         BuildUi();
         PopulateSettings();
@@ -40,48 +68,61 @@ public sealed class GsxSettingsForm : Form
         SelectSectionList();
     }
 
-    public bool HasItems => _items.Count > 0;
+    // Reuses BuildPages -- the exact traversal PopulateSettings renders
+    // from -- rather than a separate _schema.AllFields() check, so "has
+    // fields" can never drift from "would actually show something".
+    public bool HasFields => BuildPages(_schema).Count > 0;
 
     /// <summary>
-    /// Replace the displayed settings with a fresh parse, rebuilding the UI
-    /// only when the content actually changed. GSX writes settings.html
-    /// asynchronously (the parse right after pressing C usually sees only
-    /// the Python stub), so the service re-publishes ~1 s later — refreshing
-    /// in place keeps screen-reader focus instead of recreating the window.
-    /// Returns true when the UI was rebuilt.
+    /// Replace the displayed settings with a freshly published schema,
+    /// rebuilding the UI only when the content actually changed. GSX can
+    /// republish the whole settings tree more than once per session (a
+    /// reconnect resends it as part of a full snapshot) -- rebuilding in
+    /// place instead of recreating the window keeps screen-reader focus and
+    /// avoids re-announcing the whole dialog. Returns true when the UI was
+    /// rebuilt.
     /// </summary>
-    public bool RefreshItems(IReadOnlyList<GsxService.GsxSettingItem>? items)
+    public bool RefreshSchema(GsxSettingsSchema? schema)
     {
-        items ??= Array.Empty<GsxService.GsxSettingItem>();
-        if (BuildItemsSignature(items) == BuildItemsSignature(_items))
+        schema ??= GsxSettingsSchema.Empty;
+        if (BuildSchemaSignature(schema) == BuildSchemaSignature(_schema))
             return false;
 
-        // Flush pending edits against the OLD seed table before the rebuild
-        // disposes the controls — same semantics as closing the window.
-        CommitAllSettings();
+        // A live republish while the pilot is on (say) the Diagnostic tab
+        // shouldn't yank them back to the first one -- restore the same
+        // index if it's still in range. PopulateSettings still selects 0 on
+        // the very first build (restoreTabIndex's default), which is the
+        // only time there's nothing sensible to restore.
+        int previousTabIndex = _tabSelector.SelectedIndex;
 
-        _items = items.ToArray();
-        PopulateSettings();
+        _schema = schema;
+        PopulateSettings(previousTabIndex);
         SelectSectionList();
         return true;
     }
 
-    // Record equality won't work here: GsxSettingItem.Choices is an
-    // IReadOnlyList property, which records compare by reference.
-    // Use ASCII control characters as separators so free-text fields
-    // (Label, Tip, Value, etc.) that may contain '|', ';', or ':' can
-    // never collide across field boundaries.
-    private static string BuildItemsSignature(IReadOnlyList<GsxService.GsxSettingItem> items) =>
-        string.Join("\x1e", items.Select(i =>
-            string.Join("",
-                i.Key, i.Type, i.Label, i.Value, i.Category, i.Tip,
-                i.InfoValue, i.ButtonText,
-                i.Min?.ToString(CultureInfo.InvariantCulture) ?? "",
-                i.Max?.ToString(CultureInfo.InvariantCulture) ?? "",
-                i.Step?.ToString(CultureInfo.InvariantCulture) ?? "",
-                i.Unit,
-                string.Join("", i.Choices.Select(c =>
-                    c.Value.ToString(CultureInfo.InvariantCulture) + "" + c.Label)))));
+    // Record equality won't help here: every field type carries
+    // IReadOnlyList properties (Choices, Buttons) that records compare by
+    // reference. Built from the SAME BuildPages a real rebuild renders, so
+    // "the signature changed" and "the rendered content changed" can never
+    // drift apart. ASCII control characters separate every piece so free
+    // text (Label, Tooltip, Placeholder, ...) can never collide across a
+    // field boundary.
+    private static string BuildSchemaSignature(GsxSettingsSchema schema) =>
+        string.Join("\x1e", BuildPages(schema).SelectMany(page =>
+            page.Fields.Select(f => page.Title + "\x1f" + FieldSignature(f))));
+
+    private static string FieldSignature(GsxSettingsField f) =>
+        string.Join("\x1f",
+            f.Key, f.Type.ToString(), f.Label, f.Tooltip,
+            f.NumericValue?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.TextValue ?? "",
+            f.Min?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Max?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Step?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Unit, f.IsFloat.ToString(), f.MaxLength.ToString(CultureInfo.InvariantCulture), f.Placeholder,
+            string.Join("\x1f", f.Choices.Select(c => c.Value.ToString(CultureInfo.InvariantCulture) + "\x1f" + c.Label)),
+            string.Join("\x1f", f.Buttons.Select(b => b.Key + "\x1f" + b.Label + "\x1f" + b.Disabled)));
 
     private void BuildUi()
     {
@@ -96,6 +137,7 @@ public sealed class GsxSettingsForm : Form
         _tabSelector.Height = 64;
         _tabSelector.IntegralHeight = false;
         _tabSelector.AccessibleRole = AccessibleRole.PageTab;
+        _tabSelector.AccessibleName = "Settings sections";
         _tabSelector.TabStop = true;
         _tabSelector.TabIndex = 0;
         _tabSelector.SelectedIndexChanged += (_, _) => ShowSelectedTab();
@@ -140,20 +182,30 @@ public sealed class GsxSettingsForm : Form
         Controls.Add(_tabSelector);
         Controls.Add(bottomPanel);
 
-        FormClosing += (_, _) => CommitAllSettings();
+        FormClosing += (_, _) =>
+        {
+            foreach ((TextBox box, string key) in _pendingTextCommits)
+                _gsxService.SetSettingText(key, box.Text);
+        };
     }
 
-    private void PopulateSettings()
+    private void PopulateSettings(int restoreTabIndex = 0)
     {
+        // Controls.Clear()/Items.Clear() below only drop the parent-child
+        // reference -- they don't Dispose. A page can be rebuilt many times
+        // over a long session (every live GSX settings republish), so
+        // explicitly dispose the outgoing pages (which cascades to every
+        // field control they hold) or their window/GDI handles accumulate.
+        foreach (TabPageItem entry in _tabSelector.Items.OfType<TabPageItem>())
+            entry.Panel.Dispose();
+
         _tabSelector.Items.Clear();
         _settingsHost.Controls.Clear();
-        foreach (var page in _tabPages.Values)
-            page.Dispose();
-        _tabPages.Clear();
-        _closeCommitters.Clear();
-        _lastCommittedValues.Clear();
+        _pendingTextCommits.Clear();
 
-        if (_items.Count == 0)
+        List<SettingsPage> pages = BuildPages(_schema);
+
+        if (pages.Count == 0)
         {
             var panel = new FlowLayoutPanel
             {
@@ -164,65 +216,330 @@ public sealed class GsxSettingsForm : Form
                 Padding = new Padding(12)
             };
 
-            panel.Controls.Add(new Label
+            // Read-only TextBox, not a Label -- a Label has no tab stop, so
+            // a screen-reader user could never reach this message at all.
+            panel.Controls.Add(new TextBox
             {
-                AutoSize = true,
                 Text = "No GSX settings were available.",
-                AccessibleName = "No GSX settings available"
+                ReadOnly = true,
+                Width = RowWidth,
+                AccessibleName = "GSX settings status"
             });
-            _tabPages["Settings"] = panel;
-            _tabSelector.Items.Add("Settings");
+
+            _tabSelector.Items.Add(new TabPageItem("Settings", panel));
             _tabSelector.SelectedIndex = 0;
             return;
         }
 
-        foreach (var group in _items.GroupBy(i => string.IsNullOrWhiteSpace(i.Category) ? "General" : i.Category))
+        foreach (SettingsPage page in pages)
+            _tabSelector.Items.Add(new TabPageItem(page.Title, BuildPagePanel(page.Fields)));
+
+        _tabSelector.SelectedIndex = restoreTabIndex >= 0 && restoreTabIndex < _tabSelector.Items.Count
+            ? restoreTabIndex
+            : 0;
+    }
+
+    private sealed record SettingsPage(string Title, IReadOnlyList<GsxSettingsField> Fields);
+
+    /// <summary>
+    /// Flattens the schema's tab/subtab tree into one page per navigable
+    /// section, rendering BOTH shapes GSX publishes. A live capture has 5
+    /// top-level tabs: "simulation" carries no fields of its own and splits
+    /// 42 across 4 subtabs (Services/Pushback/Parking/UI); "timings",
+    /// "audio", "network" and "diagnostic" have no subtabs and carry their
+    /// 39 fields directly on the tab. An earlier version of this reader
+    /// walked subtabs only and silently dropped those 39 fields -- four
+    /// whole tabs worth of settings never shown.
+    ///
+    /// A subtab/tab contributes a page only when it has at least one field
+    /// AppendField will actually render a control for -- Separator and
+    /// Unknown fields render nothing (AppendField skips both), so a
+    /// section holding only those would otherwise become a tab the pilot
+    /// can select but that shows nothing once they arrow into it. Not
+    /// reachable with a live capture today (every observed section mixes
+    /// separators in among real controls), but cheap to rule out.
+    /// </summary>
+    private static List<SettingsPage> BuildPages(GsxSettingsSchema schema)
+    {
+        var pages = new List<SettingsPage>();
+        foreach (GsxSettingsTab tab in schema.Tabs)
         {
-            var panel = new FlowLayoutPanel
+            foreach (GsxSettingsSubtab subtab in tab.Subtabs)
             {
-                Dock = DockStyle.Fill,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                AutoScroll = true,
-                Padding = new Padding(12)
-            };
-
-            foreach (var item in group)
-            {
-                Control? control = CreateControlForItem(item);
-                if (control == null)
-                    continue;
-
-                var row = new Panel
-                {
-                    Width = 700,
-                    Height = Math.Max(58, control.Height + 22),
-                    Margin = new Padding(0, 0, 0, 8)
-                };
-
-                var label = new Label
-                {
-                    Text = item.Label,
-                    Dock = DockStyle.Top,
-                    Height = 22,
-                    AutoEllipsis = true
-                };
-
-                if (!string.IsNullOrWhiteSpace(item.Tip))
-                    control.AccessibleDescription = item.Tip;
-
-                control.Dock = DockStyle.Top;
-                row.Controls.Add(control);
-                row.Controls.Add(label);
-                panel.Controls.Add(row);
+                if (!subtab.Fields.Any(IsRenderable)) continue;
+                pages.Add(new SettingsPage($"{tab.Label} - {subtab.Label}", subtab.Fields));
             }
 
-            _tabPages[group.Key] = panel;
-            _tabSelector.Items.Add(group.Key);
+            // Not observed in a live capture (every subtabbed tab today
+            // carries no fields of its own), but the schema doesn't forbid
+            // it -- give a tab's own fields a page instead of silently
+            // dropping them if GSX ever publishes both at once.
+            if (tab.Fields.Any(IsRenderable))
+                pages.Add(new SettingsPage(tab.Label, tab.Fields));
+        }
+        return pages;
+    }
+
+    private static bool IsRenderable(GsxSettingsField f) =>
+        f.Type is not (GsxFieldType.Separator or GsxFieldType.Unknown);
+
+    private FlowLayoutPanel BuildPagePanel(IReadOnlyList<GsxSettingsField> fields)
+    {
+        var panel = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Padding = new Padding(12)
+        };
+
+        foreach (GsxSettingsField field in fields)
+            AppendField(panel, field);
+
+        return panel;
+    }
+
+    private void AppendField(FlowLayoutPanel panel, GsxSettingsField field)
+    {
+        switch (field.Type)
+        {
+            case GsxFieldType.Separator:
+                AppendSeparator(panel, field);
+                break;
+
+            case GsxFieldType.Info:
+            case GsxFieldType.Action:
+                // Action's single button is synthesized into the same
+                // Buttons list Info uses (GsxSettingsSchema.ParseFields) --
+                // one render path covers both.
+                AppendInfoOrAction(panel, field);
+                break;
+
+            case GsxFieldType.Toggle:
+                AppendControlField(panel, field, BuildToggle(field));
+                break;
+
+            case GsxFieldType.Choice:
+                AppendControlField(panel, field, BuildChoice(field));
+                break;
+
+            case GsxFieldType.Range:
+                AppendControlField(panel, field, BuildRange(field));
+                break;
+
+            case GsxFieldType.Text:
+                AppendControlField(panel, field, BuildText(field));
+                break;
+
+            default:
+                // Unknown -- GSX published a field type this build doesn't
+                // recognize yet. Nothing sensible to render; skip it rather
+                // than guess.
+                break;
+        }
+    }
+
+    private void AppendSeparator(FlowLayoutPanel panel, GsxSettingsField field)
+    {
+        if (string.IsNullOrWhiteSpace(field.Label))
+            return; // Pure spacing -- the surrounding fields' own margins already separate groups.
+
+        panel.Controls.Add(new Label
+        {
+            Text = field.Label,
+            Width = RowWidth,
+            Height = 22,
+            Font = new Font(Font, FontStyle.Bold),
+            Margin = new Padding(3, 14, 3, 4)
+        });
+    }
+
+    private static void AppendControlField(FlowLayoutPanel panel, GsxSettingsField field, Control control)
+    {
+        panel.Controls.Add(new Label
+        {
+            Text = field.Label,
+            Width = RowWidth,
+            Height = 20,
+            AutoEllipsis = true,
+            Margin = new Padding(3, 6, 3, 0)
+        });
+
+        control.Width = RowWidth;
+        control.Margin = new Padding(3, 0, 3, FieldSpacing);
+        panel.Controls.Add(control);
+    }
+
+    private void AppendInfoOrAction(FlowLayoutPanel panel, GsxSettingsField field)
+    {
+        panel.Controls.Add(new Label
+        {
+            Text = field.Label,
+            Width = RowWidth,
+            Height = 20,
+            AutoEllipsis = true,
+            Margin = new Padding(3, 6, 3, 0)
+        });
+
+        TextBox valueBox = BuildReadOnlyValueBox(field);
+        valueBox.Width = RowWidth;
+        valueBox.Margin = new Padding(3, 0, 3, field.Buttons.Count > 0 ? 2 : FieldSpacing);
+        panel.Controls.Add(valueBox);
+
+        if (field.Buttons.Count == 0)
+            return;
+
+        var buttonsRow = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Width = RowWidth,
+            Margin = new Padding(3, 0, 3, FieldSpacing)
+        };
+
+        foreach (GsxSettingsButton button in field.Buttons)
+        {
+            string buttonKey = button.Key;
+            var btn = new Button
+            {
+                Text = button.Label,
+                Enabled = !button.Disabled,
+                AutoSize = true,
+                // The button's own label (e.g. "Open Log") is what makes it
+                // distinguishable from any sibling buttons on the same
+                // field -- field.Label ("Diagnostic log") names the group,
+                // not the individual action.
+                AccessibleName = button.Label,
+                AccessibleDescription = field.Tooltip,
+                Margin = new Padding(0, 0, 8, 4)
+            };
+            btn.Click += (_, _) => _gsxService.PulseSettingAction(buttonKey);
+            buttonsRow.Controls.Add(btn);
         }
 
-        if (_tabSelector.Items.Count > 0)
-            _tabSelector.SelectedIndex = 0;
+        panel.Controls.Add(buttonsRow);
+    }
+
+    private static TextBox BuildReadOnlyValueBox(GsxSettingsField field) => new()
+    {
+        // Action fields carry no "value" on the wire (there's nothing to
+        // show but the label + button), so this reads back empty for them
+        // -- expected, not a bug.
+        Text = field.TextValue ?? field.NumericValue?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+        ReadOnly = true,
+        AccessibleName = field.Label,
+        AccessibleDescription = field.Tooltip
+    };
+
+    private Control BuildToggle(GsxSettingsField field)
+    {
+        string key = field.Key;
+        var checkBox = new CheckBox
+        {
+            Text = string.Empty,
+            // NumericValue is nullable; a missing value defaults to
+            // unchecked rather than (NumericValue != 0 with null on the
+            // left) reading a genuinely-absent value as checked.
+            Checked = (field.NumericValue ?? 0) != 0,
+            AccessibleName = field.Label,
+            AccessibleDescription = field.Tooltip
+        };
+        // Wiring the handler AFTER the initializer means the initial
+        // Checked assignment above can never fire it -- no seed/dedup
+        // bookkeeping needed to stop an "echo" write back to GSX on open.
+        checkBox.CheckedChanged += (_, _) => _gsxService.SetSettingNumber(key, checkBox.Checked ? 1 : 0);
+        return checkBox;
+    }
+
+    private Control BuildChoice(GsxSettingsField field)
+    {
+        if (field.Choices.Count == 0)
+            return BuildReadOnlyValueBox(field); // Nothing to pick from -- never render an empty combo.
+
+        string key = field.Key;
+        var combo = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            DisplayMember = nameof(GsxSettingsChoice.Label),
+            AccessibleName = field.Label,
+            AccessibleDescription = field.Tooltip
+        };
+
+        foreach (GsxSettingsChoice choice in field.Choices)
+            combo.Items.Add(choice);
+
+        double current = field.NumericValue ?? double.NaN;
+        for (int i = 0; i < field.Choices.Count; i++)
+        {
+            if (Math.Abs(field.Choices[i].Value - current) < 0.000001)
+            {
+                combo.SelectedIndex = i;
+                break;
+            }
+        }
+
+        combo.SelectedIndexChanged += (_, _) =>
+        {
+            if (combo.SelectedItem is GsxSettingsChoice choice)
+                _gsxService.SetSettingNumber(key, choice.Value);
+        };
+        return combo;
+    }
+
+    private Control BuildRange(GsxSettingsField field)
+    {
+        string key = field.Key;
+        NumericRangeBounds bounds = GsxRangeBoundsResolver.Resolve(
+            field.Min, field.Max, field.Step, field.NumericValue ?? 0, field.IsFloat);
+
+        var numeric = new NumericUpDown
+        {
+            // Minimum/Maximum before Value: NumericUpDown.Value throws if
+            // assigned outside the CURRENT [Minimum, Maximum] at the time
+            // of assignment (Minimum/Maximum themselves self-adjust to stay
+            // consistent with each other regardless of order).
+            Minimum = bounds.Minimum,
+            Maximum = bounds.Maximum,
+            Increment = bounds.Increment,
+            DecimalPlaces = bounds.DecimalPlaces,
+            Value = bounds.Value,
+            AccessibleName = string.IsNullOrWhiteSpace(field.Unit) ? field.Label : $"{field.Label} ({field.Unit})",
+            AccessibleDescription = field.Tooltip
+        };
+
+        numeric.ValueChanged += (_, _) => _gsxService.SetSettingNumber(key, (double)numeric.Value);
+        return numeric;
+    }
+
+    private Control BuildText(GsxSettingsField field)
+    {
+        string key = field.Key;
+        var textBox = new TextBox
+        {
+            Text = field.TextValue ?? string.Empty,
+            MaxLength = field.MaxLength, // 0 when GSX doesn't publish one -- WinForms treats 0 as "no limit".
+            PlaceholderText = field.Placeholder,
+            AccessibleName = field.Label,
+            AccessibleDescription = field.Tooltip
+        };
+
+        textBox.Leave += (_, _) => _gsxService.SetSettingText(key, textBox.Text);
+        textBox.KeyDown += (_, e) =>
+        {
+            // Commit on Enter too, without waiting for the field to lose
+            // focus -- and suppress it so the control doesn't also emit the
+            // default "invalid input" system beep.
+            if (e.KeyCode != Keys.Enter) return;
+            _gsxService.SetSettingText(key, textBox.Text);
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        };
+
+        _pendingTextCommits.Add((textBox, key));
+        return textBox;
     }
 
     private void MoveSelectedTab(int delta)
@@ -241,246 +558,13 @@ public sealed class GsxSettingsForm : Form
 
     private void ShowSelectedTab()
     {
-        if (_tabSelector.SelectedItem is not string selected
-            || !_tabPages.TryGetValue(selected, out FlowLayoutPanel? panel))
+        if (_tabSelector.SelectedItem is not TabPageItem entry)
             return;
 
         _settingsHost.SuspendLayout();
         _settingsHost.Controls.Clear();
-        _settingsHost.Controls.Add(panel);
+        _settingsHost.Controls.Add(entry.Panel);
         _settingsHost.ResumeLayout();
-    }
-
-    private Control? CreateControlForItem(GsxService.GsxSettingItem item)
-    {
-        string type = item.Type.ToLowerInvariant();
-        return type switch
-        {
-            "toggle" => CreateToggle(item),
-            "choice" => CreateChoice(item),
-            "range" => CreateRange(item),
-            "text" => CreateText(item),
-            "action" => CreateAction(item),
-            "info" => CreateInfo(item),
-            _ => null
-        };
-    }
-
-    private Control CreateToggle(GsxService.GsxSettingItem item)
-    {
-        var checkBox = new CheckBox
-        {
-            Text = string.Empty,
-            Checked = ParseDouble(item.Value) != 0,
-            Height = 28,
-            AccessibleName = item.Label
-        };
-        SeedCommitted(item, ((double)(checkBox.Checked ? 1 : 0)).ToString(CultureInfo.InvariantCulture));
-        checkBox.CheckedChanged += (_, _) =>
-        {
-            CommitNumber(item, checkBox.Checked ? 1 : 0);
-        };
-        _closeCommitters.Add(() => CommitNumber(item, checkBox.Checked ? 1 : 0));
-        return checkBox;
-    }
-
-    private Control CreateChoice(GsxService.GsxSettingItem item)
-    {
-        var combo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Height = 28,
-            AccessibleName = item.Label
-        };
-
-        foreach (var choice in item.Choices)
-            combo.Items.Add(new ChoiceItem(choice));
-
-        double current = ParseDouble(item.Value);
-        for (int i = 0; i < combo.Items.Count; i++)
-        {
-            if (combo.Items[i] is ChoiceItem choiceItem && Math.Abs(choiceItem.Value - current) < 0.000001)
-            {
-                combo.SelectedIndex = i;
-                break;
-            }
-        }
-
-        if (combo.SelectedItem is ChoiceItem initialChoice)
-            SeedCommitted(item, initialChoice.Value.ToString(CultureInfo.InvariantCulture));
-        combo.SelectedIndexChanged += (_, _) =>
-        {
-            if (combo.SelectedItem is not ChoiceItem choice) return;
-            CommitNumber(item, choice.Value);
-        };
-        _closeCommitters.Add(() =>
-        {
-            if (combo.SelectedItem is ChoiceItem choice)
-                CommitNumber(item, choice.Value);
-        });
-
-        return combo;
-    }
-
-    private Control CreateRange(GsxService.GsxSettingItem item)
-    {
-        if (IsSliderRange(item))
-            return CreateSliderRange(item);
-
-        var numeric = new NumericUpDown
-        {
-            Minimum = (decimal)(item.Min ?? 0),
-            Maximum = (decimal)(item.Max ?? 100),
-            Increment = (decimal)(item.Step ?? 1),
-            Value = Clamp((decimal)ParseDouble(item.Value), (decimal)(item.Min ?? 0), (decimal)(item.Max ?? 100)),
-            DecimalPlaces = DecimalPlaces(item.Step ?? 1),
-            Height = 28,
-            AccessibleName = item.Label
-        };
-
-        SeedCommitted(item, ((double)numeric.Value).ToString(CultureInfo.InvariantCulture));
-        numeric.ValueChanged += (_, _) =>
-        {
-            CommitNumber(item, (double)numeric.Value);
-        };
-        _closeCommitters.Add(() => CommitNumber(item, (double)numeric.Value));
-
-        return numeric;
-    }
-
-    private Control CreateSliderRange(GsxService.GsxSettingItem item)
-    {
-        double min = item.Min ?? 0;
-        double max = item.Max ?? 100;
-        double step = item.Step ?? 1;
-        if (step <= 0)
-            step = 1;
-
-        int minimum = (int)Math.Round(min);
-        int maximum = (int)Math.Round(max);
-        int value = (int)Math.Round(ParseDouble(item.Value));
-        int smallChange = Math.Max(1, (int)Math.Round(step));
-        int largeChange = Math.Max(smallChange, Math.Min(10, Math.Max(1, maximum - minimum)));
-
-        var trackBar = new SettingsSlider
-        {
-            Minimum = minimum,
-            Maximum = Math.Max(minimum, maximum),
-            TickFrequency = smallChange,
-            SmallChange = smallChange,
-            LargeChange = largeChange,
-            Value = Math.Clamp(value, minimum, Math.Max(minimum, maximum)),
-            Height = 44,
-            AccessibleName = item.Label
-        };
-
-        SeedCommitted(item, ((double)trackBar.Value).ToString(CultureInfo.InvariantCulture));
-        trackBar.ValueChanged += (_, _) => CommitNumber(item, trackBar.Value);
-        _closeCommitters.Add(() => CommitNumber(item, trackBar.Value));
-
-        return trackBar;
-    }
-
-    private static bool IsSliderRange(GsxService.GsxSettingItem item) =>
-        string.Equals(item.Unit, "%", StringComparison.OrdinalIgnoreCase)
-        || item.Key.Contains("volume", StringComparison.OrdinalIgnoreCase);
-
-    private Control CreateText(GsxService.GsxSettingItem item)
-    {
-        var textBox = new TextBox
-        {
-            Text = item.Value,
-            Height = 28,
-            AccessibleName = item.Label
-        };
-
-        SeedCommitted(item, textBox.Text);
-        textBox.Leave += (_, _) => CommitText(item, textBox.Text);
-        textBox.KeyDown += (_, e) =>
-        {
-            if (e.KeyCode != Keys.Enter) return;
-            CommitText(item, textBox.Text);
-            e.Handled = true;
-            e.SuppressKeyPress = true;
-        };
-        _closeCommitters.Add(() => CommitText(item, textBox.Text));
-
-        return textBox;
-    }
-
-    private Control CreateAction(GsxService.GsxSettingItem item)
-    {
-        var button = new Button
-        {
-            Text = string.IsNullOrWhiteSpace(item.ButtonText) ? item.Label : item.ButtonText,
-            Height = 32,
-            AccessibleName = item.Label
-        };
-        button.Click += (_, _) =>
-        {
-            _gsxService.PulseSettingAction(item.Key);
-        };
-        return button;
-    }
-
-    private static Control CreateInfo(GsxService.GsxSettingItem item) =>
-        new TextBox
-        {
-            Text = item.InfoValue,
-            ReadOnly = true,
-            Height = 28,
-            AccessibleName = item.Label
-        };
-
-    private void CommitAllSettings()
-    {
-        foreach (var commit in _closeCommitters.ToList())
-            commit();
-    }
-
-    private void CommitNumber(GsxService.GsxSettingItem item, double value)
-    {
-        string textValue = value.ToString(CultureInfo.InvariantCulture);
-        if (!ShouldCommit(item, textValue))
-            return;
-
-        _gsxService.SetSettingNumber(item.Key, value);
-        _gsxService.PersistSettingValue(item, textValue);
-    }
-
-    private void CommitText(GsxService.GsxSettingItem item, string value)
-    {
-        if (!ShouldCommit(item, value))
-            return;
-
-        _gsxService.SetSettingText(item.Key, value);
-        _gsxService.PersistSettingValue(item, value);
-    }
-
-    private bool ShouldCommit(GsxService.GsxSettingItem item, string value)
-    {
-        if (string.IsNullOrWhiteSpace(item.Key))
-            return false;
-
-        if (_lastCommittedValues.TryGetValue(item.Key, out string? lastValue)
-            && string.Equals(lastValue, value, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        _lastCommittedValues[item.Key] = value;
-        return true;
-    }
-
-    // Record a control's INITIAL value as already-committed so the
-    // FormClosing CommitAllSettings pass only writes values the user
-    // actually changed. Without this, ShouldCommit treats every never-
-    // touched key as new and closing the window rewrites the whole GSX
-    // config through lossy UI<->INI round-trips.
-    private void SeedCommitted(GsxService.GsxSettingItem item, string value)
-    {
-        if (!string.IsNullOrWhiteSpace(item.Key))
-            _lastCommittedValues[item.Key] = value;
     }
 
     private void SelectSectionList()
@@ -504,104 +588,58 @@ public sealed class GsxSettingsForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private static decimal Clamp(decimal value, decimal min, decimal max) =>
-        Math.Min(Math.Max(value, min), max);
-
-    private static int DecimalPlaces(double step)
+    private sealed class TabPageItem
     {
-        string text = step.ToString(CultureInfo.InvariantCulture);
-        int dot = text.IndexOf('.');
-        return dot < 0 ? 0 : Math.Min(3, text.Length - dot - 1);
-    }
+        public string Title { get; }
+        public FlowLayoutPanel Panel { get; }
 
-    private static double ParseDouble(string value) =>
-        TryParseBooleanLike(value, out double booleanValue)
-            ? booleanValue
-            :
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
-            ? parsed
-            : 0;
-
-    private static bool TryParseBooleanLike(string value, out double parsed)
-    {
-        parsed = 0;
-        if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "on", StringComparison.OrdinalIgnoreCase))
+        public TabPageItem(string title, FlowLayoutPanel panel)
         {
-            parsed = 1;
-            return true;
+            Title = title;
+            Panel = panel;
         }
 
-        if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "no", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "off", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private sealed class ChoiceItem
-    {
-        public double Value { get; }
-        public string Text { get; }
-
-        public ChoiceItem(GsxService.GsxSettingChoice choice)
-        {
-            Value = choice.Value;
-            Text = choice.Label;
-        }
-
-        public override string ToString() => Text;
-    }
-
-    private sealed class SettingsSlider : TrackBar
-    {
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            if (ApplyKey(keyData & Keys.KeyCode))
-                return true;
-
-            return base.ProcessCmdKey(ref msg, keyData);
-        }
-
-        protected override void OnKeyDown(KeyEventArgs e)
-        {
-            if (ApplyKey(e.KeyCode))
-            {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                return;
-            }
-
-            base.OnKeyDown(e);
-        }
-
-        private bool ApplyKey(Keys keyCode)
-        {
-            int next = keyCode switch
-            {
-                Keys.Left or Keys.Down => Value - SmallChange,
-                Keys.Right or Keys.Up => Value + SmallChange,
-                Keys.PageDown => Value - LargeChange,
-                Keys.PageUp => Value + LargeChange,
-                Keys.Home => Minimum,
-                Keys.End => Maximum,
-                _ => int.MinValue
-            };
-
-            if (next == int.MinValue)
-                return false;
-
-            int clamped = Math.Clamp(next, Minimum, Maximum);
-            if (Value != clamped)
-            {
-                Value = clamped;
-            }
-
-            return true;
-        }
+        // ListBox displays each item via ToString() by default.
+        public override string ToString() => Title;
     }
 }
+
+/// <summary>
+/// Resolves a NumericUpDown's Minimum/Maximum/Increment/starting Value from
+/// GSX's Min/Max/Step, which are nullable -- GSX can genuinely omit a bound
+/// (distinct from publishing 0). A naive `?? 0` fallback would collapse a
+/// missing bound into an unusable 0..0 range; this widens to a generous
+/// fallback span instead, and widens that further if needed so the field's
+/// own current value is never clamped out of range on first show. Every
+/// real field in a live GSX capture publishes all three, so this path is
+/// defensive rather than commonly exercised -- kept internal + covered
+/// directly by GsxRangeBoundsResolverTests via InternalsVisibleTo.
+/// </summary>
+internal static class GsxRangeBoundsResolver
+{
+    // Wide enough to be practically unlimited for any real GSX setting
+    // while staying comfortably inside decimal's range.
+    private const decimal FallbackFloor = -1_000_000m;
+    private const decimal FallbackCeiling = 1_000_000m;
+
+    public static NumericRangeBounds Resolve(double? min, double? max, double? step, double currentValue, bool isFloat)
+    {
+        decimal current = ToDecimal(currentValue);
+        decimal lo = min.HasValue ? ToDecimal(min.Value) : Math.Min(FallbackFloor, current);
+        decimal hi = max.HasValue ? ToDecimal(max.Value) : Math.Max(FallbackCeiling, current);
+        if (lo >= hi)
+            hi = lo + 1m; // Never publish an inverted or zero-width range.
+
+        decimal increment = step.HasValue && step.Value > 0 ? ToDecimal(step.Value) : 1m;
+        int decimalPlaces = isFloat ? 3 : 0;
+        decimal value = Math.Clamp(current, lo, hi);
+
+        return new NumericRangeBounds(lo, hi, increment, decimalPlaces, value);
+    }
+
+    private static decimal ToDecimal(double value) =>
+        (decimal)Math.Clamp(value, (double)decimal.MinValue, (double)decimal.MaxValue);
+}
+
+internal readonly record struct NumericRangeBounds(
+    decimal Minimum, decimal Maximum, decimal Increment, int DecimalPlaces, decimal Value);

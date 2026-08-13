@@ -21,9 +21,7 @@
 // transport is GSX's own first-party protocol, not part of that port.
 using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Microsoft.FlightSimulator.SimConnect;
 using MSFSBlindAssist.Accessibility;
@@ -48,8 +46,6 @@ public sealed class GsxService : IDisposable
 
     private const string CouatlConfigFolderName = "Virtuali";
     private const string CouatlConfigFileName = "CouatlAddons.ini";
-    private const string GsxConfigSectionName = "gsx";
-    private const string CommonConfigSectionName = "common";
 
     // SimConnect identifiers — SetGate_* confirmation reads only. Every other
     // definition/request the OLD file registered (menu open/choice, remote
@@ -75,23 +71,6 @@ public sealed class GsxService : IDisposable
     }
 
     public sealed record MenuOption(string Key, string Text, int Choice);
-    public sealed record GsxSettingChoice(double Value, string Label);
-    public sealed record GsxSettingItem(
-        string Key,
-        string Label,
-        string Category,
-        string Type,
-        string Value,
-        string Tip,
-        double? Min,
-        double? Max,
-        double? Step,
-        string Unit,
-        IReadOnlyList<GsxSettingChoice> Choices,
-        string InfoValue,
-        string ButtonText);
-
-    private sealed record IniTarget(string Section, string Key);
 
     // ─────────────────────────────────────────────────────────────────────
     // Public surface — used by AccessGSXForm, GsxSettingsForm and MainForm.
@@ -120,18 +99,20 @@ public sealed class GsxService : IDisposable
     public string LastAnnouncementText { get; private set; } = string.Empty;
 
     // ── Legacy tooltip-scrape-era members, kept for compile compatibility ──
-    // AccessGSXForm's active-service selector combo and GsxSettingsForm's
-    // settings editor both read these directly and are NOT part of this
-    // change (see the transport plan's Task 11/12) — they still compile and
-    // degrade gracefully (GsxSettingsForm already has a "No GSX settings were
-    // available." fallback for an empty list; the active-service combo just
-    // stays hidden). Re-deriving them from Services/Settings belongs to
-    // those forms' own rewrite, not this facade swap.
+    // AccessGSXForm's active-service selector combo still reads these
+    // directly and is NOT part of this change (see the transport plan's
+    // Task 11/12 notes) — it still compiles and degrades gracefully (the
+    // combo just stays hidden). Re-deriving it from Services belongs to
+    // that selector's own rewrite, not this facade swap. GsxSettingsForm
+    // was the other reader of this era's members (LastSettingsText,
+    // SettingsItems, GsxSettingItem/GsxSettingChoice, PersistSettingValue,
+    // the CouatlAddons.ini writer below StripUtf8BomIfPresent) — Task 12
+    // rewired it onto the typed Settings/GsxSettingsSchema below and
+    // removed all of them; GSX owns settings persistence via settings.set
+    // now.
     public IReadOnlyList<string> ActiveServiceNames => Array.Empty<string>();
     public string? DefaultActiveServiceName => null;
     public string? SelectedActiveService { get; set; }
-    public string LastSettingsText => string.Empty;
-    public IReadOnlyList<GsxSettingItem> SettingsItems => Array.Empty<GsxSettingItem>();
 
     // ── SetGate_* read-only L-vars (GSX confirmation of selected gate) ──
     // Default -1 until GSX sets a gate. Updated via VISUAL_FRAME polling on
@@ -217,10 +198,11 @@ public sealed class GsxService : IDisposable
 
         // Couatl can't parse a UTF-8 BOM at the start of CouatlAddons.ini —
         // it errors with "invalid line '<BOM>[gsx]'" and drops the rest of
-        // the section. Earlier MSFSBA builds wrote the file with .NET's
-        // Encoding.UTF8 (BOM-emitting), so any user who hit SaveGsxSettingToIni
-        // has a corrupt config. Strip the BOM at startup so Couatl gets a
-        // clean read when it loads with the sim.
+        // the section. Earlier MSFSBA builds wrote the file themselves with
+        // .NET's Encoding.UTF8 (BOM-emitting), so a user who ran one of
+        // those old builds can still have a poisoned config today. Strip
+        // the BOM at startup so Couatl gets a clean read when it loads with
+        // the sim (see StripUtf8BomIfPresent below for more).
         try
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -502,32 +484,6 @@ public sealed class GsxService : IDisposable
 
     public void SetSettingText(string key, string value) =>
         _remote.Send("settings.set", new { key, value });
-
-    /// <summary>
-    /// Persists a settings value to MSFSBA's own shadow copy of GSX's Couatl
-    /// config (CouatlAddons.ini) — independent of the live settings.set write
-    /// above. Still called directly by GsxSettingsForm on every commit.
-    /// </summary>
-    public void PersistSettingValue(GsxSettingItem item, string value)
-    {
-        if (string.IsNullOrWhiteSpace(item.Key))
-            return;
-
-        if (string.Equals(item.Type, "action", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(item.Type, "info", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        try
-        {
-            SaveGsxSettingToIni(item, value);
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Gsx", $"Failed to persist setting {item.Key}: {ex.Message}");
-        }
-    }
 
     // ─────────────────────────────────────────────────────────────────────
     // Remote API frame handling.
@@ -901,20 +857,18 @@ public sealed class GsxService : IDisposable
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // Settings-INI persistence (MSFSBA's shadow copy of CouatlAddons.ini).
-    // Independent of the Remote API's own settings.set write — PersistSettingValue
-    // is still called directly by GsxSettingsForm on every commit.
+    // Couatl config BOM migration.
     // ─────────────────────────────────────────────────────────────────────
 
-    // Couatl's INI parser doesn't tolerate a UTF-8 BOM at the start of the
-    // file — it treats the three BOM bytes as part of "[gsx]" and reports
-    // an invalid-line error, dropping the rest of the section. .NET's
-    // Encoding.UTF8 instance emits a BOM by default on write, so any
-    // SaveGsxSettingToIni call would corrupt the file. Use a BOM-less
-    // UTF-8 encoding everywhere we write, and run a one-shot strip in the
-    // constructor to clean files that previous builds already poisoned.
-    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-
+    // Couatl's INI parser doesn't tolerate a UTF-8 BOM at the start of
+    // CouatlAddons.ini — it treats the three BOM bytes as part of "[gsx]"
+    // and reports an invalid-line error, dropping the rest of the section.
+    // Earlier MSFSBA builds wrote this file themselves with .NET's
+    // Encoding.UTF8 (BOM-emitting) instances, so a user who ran one of
+    // those old builds can still have a poisoned file today even though
+    // MSFSBA no longer writes it at all (GSX owns settings persistence via
+    // the Remote API's settings.set/settings.action). Run a one-shot strip
+    // in the constructor (see above) so Couatl still gets a clean read.
     private static void StripUtf8BomIfPresent(string path)
     {
         try
@@ -943,209 +897,6 @@ public sealed class GsxService : IDisposable
             Log.Debug("Gsx", $"BOM strip failed for {path}: {ex.Message}");
         }
     }
-
-    private static void SaveGsxSettingToIni(GsxSettingItem item, string value)
-    {
-        string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrWhiteSpace(appData))
-            return;
-
-        string configPath = Path.Combine(appData, CouatlConfigFolderName, CouatlConfigFileName);
-        string configFolder = Path.GetDirectoryName(configPath) ?? appData;
-        Directory.CreateDirectory(configFolder);
-
-        if (File.Exists(configPath))
-            StripUtf8BomIfPresent(configPath);
-
-        var target = GetIniTarget(item);
-        string iniValue = FormatSettingValueForIni(item, value);
-        var lines = File.Exists(configPath)
-            ? File.ReadAllLines(configPath, Encoding.UTF8).ToList()
-            : new List<string>();
-
-        int sectionStart = FindIniSectionStart(lines, target.Section);
-        if (sectionStart < 0)
-        {
-            if (lines.Count > 0 && lines[^1].Length > 0)
-                lines.Add(string.Empty);
-
-            lines.Add($"[{target.Section}]");
-            lines.Add($"{target.Key} = {iniValue}");
-            File.WriteAllLines(configPath, lines, Utf8NoBom);
-            return;
-        }
-
-        int sectionEnd = FindIniSectionEnd(lines, sectionStart);
-        for (int i = sectionStart + 1; i < sectionEnd; i++)
-        {
-            string line = lines[i].Trim();
-            if (line.Length == 0 || line.StartsWith(';') || line.StartsWith('#'))
-                continue;
-
-            int equals = line.IndexOf('=');
-            if (equals <= 0)
-                continue;
-
-            string key = line[..equals].Trim();
-            if (!string.Equals(key, target.Key, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            string prefix = lines[i][..(lines[i].IndexOf('=') + 1)];
-            string spacing = prefix.EndsWith(" ", StringComparison.Ordinal) ? string.Empty : " ";
-            lines[i] = $"{prefix}{spacing}{iniValue}";
-            File.WriteAllLines(configPath, lines, Utf8NoBom);
-            return;
-        }
-
-        lines.Insert(sectionEnd, $"{target.Key} = {iniValue}");
-        File.WriteAllLines(configPath, lines, Utf8NoBom);
-    }
-
-    private static int FindIniSectionStart(IReadOnlyList<string> lines, string sectionName)
-    {
-        for (int i = 0; i < lines.Count; i++)
-        {
-            string line = lines[i].Trim();
-            if (!line.StartsWith('[') || !line.EndsWith(']'))
-                continue;
-
-            string current = line[1..^1].Trim();
-            if (string.Equals(current, sectionName, StringComparison.OrdinalIgnoreCase))
-                return i;
-        }
-
-        return -1;
-    }
-
-    private static int FindIniSectionEnd(IReadOnlyList<string> lines, int sectionStart)
-    {
-        for (int i = sectionStart + 1; i < lines.Count; i++)
-        {
-            string line = lines[i].Trim();
-            if (line.StartsWith('[') && line.EndsWith(']'))
-                return i;
-        }
-
-        return lines.Count;
-    }
-
-    private static IniTarget GetIniTarget(GsxSettingItem item)
-    {
-        string key = item.Key;
-        if (key.StartsWith("audioVolume", StringComparison.OrdinalIgnoreCase))
-        {
-            return new IniTarget(
-                CommonConfigSectionName,
-                key.Equals("audioVolume", StringComparison.OrdinalIgnoreCase)
-                    ? "audiovolume"
-                    : "audiovolume_" + key["audioVolume_".Length..].ToLowerInvariant());
-        }
-
-        if (key.StartsWith("audioDevice_", StringComparison.OrdinalIgnoreCase))
-        {
-            return new IniTarget(
-                CommonConfigSectionName,
-                "audiodevice_" + key["audioDevice_".Length..].ToLowerInvariant());
-        }
-
-        return new IniTarget(GsxConfigSectionName, key);
-    }
-
-    private static string FormatSettingValueForIni(GsxSettingItem item, string value)
-    {
-        if (IsPercentStoredAsUnitInterval(item))
-        {
-            double scaled = ParseDouble(value) / 100;
-            return scaled.ToString("0.00", CultureInfo.InvariantCulture);
-        }
-
-        if (string.Equals(item.Key, "ui_volume", StringComparison.OrdinalIgnoreCase))
-        {
-            double scaled = ParseDouble(value) / 10;
-            return FormatInvariantNumber(scaled);
-        }
-
-        if (item.Key.StartsWith("audioDevice_", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase))
-        {
-            double current = ParseDouble(value);
-            string label = item.Choices.FirstOrDefault(choice => Math.Abs(choice.Value - current) < 0.000001)?.Label ?? value;
-            return FormatAudioDeviceIniValue(label);
-        }
-
-        if (string.Equals(item.Type, "range", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(item.Type, "choice", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(item.Type, "toggle", StringComparison.OrdinalIgnoreCase))
-        {
-            return FormatInvariantNumber(ParseDouble(value));
-        }
-
-        return value ?? string.Empty;
-    }
-
-    private static string FormatAudioDeviceIniValue(string label)
-    {
-        string text = NormalizeAudioDeviceName(label);
-        if (text.Contains("no audio", StringComparison.OrdinalIgnoreCase))
-            return string.Empty;
-
-        return text;
-    }
-
-    private static string NormalizeAudioDeviceName(string value)
-    {
-        string text = NormalizeWhitespace(value)
-            .Replace("★", string.Empty)
-            .Replace("â˜…", string.Empty)
-            .Replace("Ã¢Ëœâ€¦", string.Empty)
-            // Mojibake em-dash: normalize the three-char sequence to a real
-            // em-dash BEFORE the prefix strip below — a regex character class
-            // matches a single char, so `[â€”-]` could never match it.
-            .Replace("â€”", "—")
-            .Trim();
-
-        text = Regex.Replace(text, @"^Default\s+[—-]\s+", string.Empty, RegexOptions.IgnoreCase);
-        return text;
-    }
-
-    private static bool IsPercentStoredAsUnitInterval(GsxSettingItem item) =>
-        item.Key.StartsWith("audioVolume", StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(item.Key, "ui_volume", StringComparison.OrdinalIgnoreCase);
-
-    private static string FormatInvariantNumber(double value) =>
-        value.ToString("0.###", CultureInfo.InvariantCulture);
-
-    private static double ParseDouble(string value) =>
-        TryParseBooleanLike(value, out double booleanValue)
-            ? booleanValue
-            :
-        double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed)
-            ? parsed
-            : 0;
-
-    private static bool TryParseBooleanLike(string value, out double parsed)
-    {
-        parsed = 0;
-        if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "on", StringComparison.OrdinalIgnoreCase))
-        {
-            parsed = 1;
-            return true;
-        }
-
-        if (string.Equals(value, "false", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "no", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(value, "off", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
-    }
-
-    private static string NormalizeWhitespace(string value) =>
-        Regex.Replace(value.ReplaceLineEndings(" "), @"\s+", " ").Trim();
 
     // ─────────────────────────────────────────────────────────────────────
     // Status text + event raise helpers.
