@@ -98,21 +98,46 @@ public sealed class GsxService : IDisposable
     /// should say right now.</summary>
     public string LastAnnouncementText { get; private set; } = string.Empty;
 
-    // ── Legacy tooltip-scrape-era members, kept for compile compatibility ──
-    // AccessGSXForm's active-service selector combo still reads these
-    // directly and is NOT part of this change (see the transport plan's
-    // Task 11/12 notes) — it still compiles and degrades gracefully (the
-    // combo just stays hidden). Re-deriving it from Services belongs to
-    // that selector's own rewrite, not this facade swap. GsxSettingsForm
-    // was the other reader of this era's members (LastSettingsText,
-    // SettingsItems, GsxSettingItem/GsxSettingChoice, PersistSettingValue,
-    // the CouatlAddons.ini writer below StripUtf8BomIfPresent) — Task 12
-    // rewired it onto the typed Settings/GsxSettingsSchema below and
-    // removed all of them; GSX owns settings persistence via settings.set
-    // now.
-    public IReadOnlyList<string> ActiveServiceNames => Array.Empty<string>();
-    public string? DefaultActiveServiceName => null;
-    public string? SelectedActiveService { get; set; }
+    // ── Active-service selection ────────────────────────────────────────
+    // AccessGSXForm's Active Services combo (shown only when 2+ services
+    // are simultaneously State == "performing") reads these three to decide
+    // what to list and which row to highlight; docs/gsx.md documents the
+    // combo as choosing "which active row drives the tooltip". The pure
+    // derivation lives in GsxActiveServiceResolver (bottom of this file) so
+    // it can be pinned by GsxActiveServiceResolverTests without needing a
+    // GsxService instance.
+    //
+    // IMPORTANT — this selection governs LastTooltip ONLY, never the
+    // announcement stream: GsxServiceAnnouncer.Update (in ApplyServices,
+    // below) reads Services directly and announces every service's own
+    // transitions regardless of what's selected here. The OLD tooltip-file
+    // transport had exactly one message to show at a time, so its selector
+    // necessarily gated both; the Remote API gives every service's state at
+    // once, and a pilot who selected Boarding should still hear that
+    // refuelling finished.
+    public IReadOnlyList<string> ActiveServiceNames => _activeServiceNames;
+
+    /// <summary>The sensible default when the pilot hasn't chosen: the first active service, or null when none is active.</summary>
+    public string? DefaultActiveServiceName => _activeServiceNames.Count > 0 ? _activeServiceNames[0] : null;
+
+    public string? SelectedActiveService
+    {
+        get => _selectedActiveService;
+        set
+        {
+            string? normalized = string.IsNullOrWhiteSpace(value) ? null : value;
+            if (string.Equals(_selectedActiveService, normalized, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _selectedActiveService = normalized;
+            // Silent by design: this setter is reached only from a direct
+            // combo-selection UI interaction (AccessGSXForm), which the
+            // screen reader already announces on its own. RecomputeTooltip
+            // only raises TooltipChanged (a textbox resync, no speech of its
+            // own) — never AnnouncementReady.
+            RecomputeTooltip();
+        }
+    }
 
     // ── SetGate_* read-only L-vars (GSX confirmation of selected gate) ──
     // Default -1 until GSX sets a gate. Updated via VISUAL_FRAME polling on
@@ -190,6 +215,8 @@ public sealed class GsxService : IDisposable
     private string _lastTooltip = string.Empty;
     private string _statusText = "Status: Disconnected";
     private readonly List<MenuOption> _menuOptions = new();
+    private IReadOnlyList<string> _activeServiceNames = Array.Empty<string>();
+    private string? _selectedActiveService;
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -301,6 +328,8 @@ public sealed class GsxService : IDisposable
         Receipt = null;
         LastAnnouncementText = string.Empty;
         _lastTooltip = string.Empty;
+        _activeServiceNames = Array.Empty<string>();
+        _selectedActiveService = null;
         UnavailableReason = string.Empty;
         _statusText = "Status: Disconnected";
         RaiseStateChanged();
@@ -532,13 +561,15 @@ public sealed class GsxService : IDisposable
                 // so a form already open resyncs instead of going stale.
                 ApplyMenu();
                 MenuChanged?.Invoke(this, EventArgs.Empty);
+                // ApplyServices recomputes LastTooltip itself (see its
+                // remarks) — it reads "message" from _state too, which
+                // _state.Apply(f) already applied above, so a separate
+                // ApplyTooltip/TooltipChanged pair here would be redundant.
                 ApplyServices();
                 ApplySettings();
                 SettingsChanged?.Invoke(this, EventArgs.Empty);
                 ApplyBilling();
                 ApplyReceipt();
-                ApplyTooltip();
-                TooltipChanged?.Invoke(this, EventArgs.Empty);
                 UpdateStatusText();
                 RaiseStateChanged();
                 break;
@@ -611,8 +642,7 @@ public sealed class GsxService : IDisposable
                 break;
 
             case "message":
-                ApplyTooltip();
-                TooltipChanged?.Invoke(this, EventArgs.Empty);
+                RecomputeTooltip();
                 break;
         }
     }
@@ -626,6 +656,13 @@ public sealed class GsxService : IDisposable
             _menuOptions.Add(new MenuOption(i.ToString(CultureInfo.InvariantCulture), Menu.Entries[i], i));
     }
 
+    /// <summary>
+    /// Reparses Services, announces every service's own transitions
+    /// unconditionally (baseline-first, via GsxServiceAnnouncer — this does
+    /// NOT depend on the active-service selection below), then updates the
+    /// active-service set and recomputes LastTooltip from whichever service
+    /// currently governs it.
+    /// </summary>
     private void ApplyServices()
     {
         Services = _state.TryGet("services", out var v)
@@ -634,6 +671,38 @@ public sealed class GsxService : IDisposable
 
         foreach (string phrase in _serviceAnnouncer.Update(Services))
             Announce(phrase);
+
+        UpdateActiveServiceNames();
+        RecomputeTooltip();
+    }
+
+    /// <summary>
+    /// Recomputes ActiveServiceNames from the current Services list and
+    /// raises ActiveServicesChanged only when the SET of names actually
+    /// differs from last time — not on every services patch, or
+    /// AccessGSXForm would rebuild its combo (and disturb screen-reader
+    /// focus) on every progress tick even though nothing a pilot would
+    /// call "active" changed. Order doesn't gate the comparison (GSX's own
+    /// array order is used either way), only membership.
+    /// </summary>
+    private void UpdateActiveServiceNames()
+    {
+        var active = GsxActiveServiceResolver.ActiveNames(Services);
+
+        bool changed = active.Count != _activeServiceNames.Count
+            || !new HashSet<string>(active, StringComparer.OrdinalIgnoreCase).SetEquals(_activeServiceNames);
+        if (!changed) return;
+
+        _activeServiceNames = active;
+
+        // The pilot's selection stopped being active — clear it so the
+        // readout falls back to the default (first active service) rather
+        // than being permanently stranded on a service that finished.
+        if (_selectedActiveService != null
+            && !_activeServiceNames.Any(n => string.Equals(n, _selectedActiveService, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedActiveService = null;
+        }
 
         ActiveServicesChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -658,12 +727,31 @@ public sealed class GsxService : IDisposable
         _remote.Send("invoice.seen");
     }
 
-    private void ApplyTooltip()
+    /// <summary>
+    /// Recomputes LastTooltip and raises TooltipChanged only when the text
+    /// actually changes. When a service is currently active, the pilot's
+    /// SelectedActiveService (if it's still active) or else the first
+    /// active service governs the text (GsxActiveServiceResolver); with
+    /// nothing active, falls back to GSX's own raw "message" state — the
+    /// only content GSX itself publishes for the idle/cruise case.
+    /// </summary>
+    private void RecomputeTooltip()
     {
-        _lastTooltip = _state.TryGet("message", out var v) && v.ValueKind == JsonValueKind.String
+        string text = GsxActiveServiceResolver.ResolveGoverning(Services, _selectedActiveService) is { } governing
+            ? GsxActiveServiceResolver.ComposeTooltip(governing)
+            : RawMessageText();
+
+        if (string.Equals(text, _lastTooltip, StringComparison.Ordinal))
+            return;
+
+        _lastTooltip = text;
+        TooltipChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string RawMessageText() =>
+        _state.TryGet("message", out var v) && v.ValueKind == JsonValueKind.String
             ? v.GetString() ?? string.Empty
             : string.Empty;
-    }
 
     private static string FormatReceiptAnnouncement(GsxReceipt receipt)
     {
@@ -720,6 +808,8 @@ public sealed class GsxService : IDisposable
         Settings = GsxSettingsSchema.Empty;
         Billing = GsxBilling.Empty;
         Receipt = null;
+        _activeServiceNames = Array.Empty<string>();
+        _selectedActiveService = null;
         UnavailableReason = "GSX Remote API not reachable.";
         UpdateStatusText();
         RaiseStateChanged();
@@ -910,4 +1000,55 @@ public sealed class GsxService : IDisposable
     }
 
     private void RaiseStateChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>
+/// Derives the "active" (State == "performing") service set from GSX's
+/// services list, and resolves which one — if any — should govern
+/// LastTooltip. Pure and stateless; kept internal + covered directly by
+/// GsxActiveServiceResolverTests via InternalsVisibleTo, the same pattern
+/// GsxSettingsForm.cs uses for GsxRangeBoundsResolver — GsxService itself
+/// needs a window handle and cannot be constructed in a unit test.
+/// </summary>
+internal static class GsxActiveServiceResolver
+{
+    /// <summary>The speakable name for a service: its GSX-published
+    /// DisplayName, falling back to the bare Id when GSX left it blank.</summary>
+    public static string NameOf(GsxServiceState service) =>
+        string.IsNullOrEmpty(service.DisplayName) ? service.Id : service.DisplayName;
+
+    public static bool IsActive(GsxServiceState service) =>
+        string.Equals(service.State, "performing", StringComparison.Ordinal);
+
+    /// <summary>Names of every currently-active service, in Services' own (GSX-published) order.</summary>
+    public static IReadOnlyList<string> ActiveNames(IReadOnlyList<GsxServiceState> services) =>
+        services.Where(IsActive).Select(NameOf).ToList();
+
+    /// <summary>
+    /// The service that should govern LastTooltip: <paramref name="selected"/>
+    /// when it names a currently-active service, else the first active
+    /// service (GSX's own order), else null when nothing is active at all.
+    /// </summary>
+    public static GsxServiceState? ResolveGoverning(IReadOnlyList<GsxServiceState> services, string? selected)
+    {
+        if (selected != null)
+        {
+            var match = services.FirstOrDefault(s =>
+                IsActive(s) && string.Equals(NameOf(s), selected, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+        }
+
+        return services.FirstOrDefault(IsActive);
+    }
+
+    /// <summary>
+    /// The tooltip text for one active service: its own GSX-stated StateText
+    /// (falling back to its name when GSX left StateText blank), with a
+    /// parenthesized ProgressText suffix when GSX published one.
+    /// </summary>
+    public static string ComposeTooltip(GsxServiceState service)
+    {
+        string text = string.IsNullOrWhiteSpace(service.StateText) ? NameOf(service) : service.StateText;
+        return string.IsNullOrWhiteSpace(service.ProgressText) ? text : $"{text} ({service.ProgressText})";
+    }
 }
