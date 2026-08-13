@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 
 namespace MSFSBlindAssist.Services.Gsx.Remote;
@@ -104,6 +105,23 @@ public sealed class GsxMenuModel
             _ => null,
         };
     }
+
+    /// <summary>
+    /// The literal keyboard key AccessGSXForm binds to entry <paramref name="index"/>
+    /// (0-based): <c>1</c>-<c>9</c> for entries 0-8, <c>0</c> for entry 9, then
+    /// <c>A</c>-<c>E</c> for entries 10-14 — every GSX menu observed so far pages at
+    /// 10 entries, so this covers a full page. An index beyond 14 has no working
+    /// keyboard shortcut; it renders its 1-based position instead so it still reaches
+    /// a screen reader stepping through the list, even though no single keypress can
+    /// choose it directly.
+    /// </summary>
+    public static string Shortcut(int index) => index switch
+    {
+        >= 0 and <= 8 => (index + 1).ToString(CultureInfo.InvariantCulture),
+        9 => "0",
+        >= 10 and <= 14 => ((char)('A' + (index - 10))).ToString(),
+        _ => (index + 1).ToString(CultureInfo.InvariantCulture),
+    };
 
     private static string? Str(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

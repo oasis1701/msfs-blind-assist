@@ -9,6 +9,7 @@
 // background tooltip announcements. Dispose unsubscribes the service events.
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Gsx.Remote;
 using MSFSBlindAssist.Utils.Logging;
 using System.Text;
 
@@ -32,6 +33,11 @@ public sealed class AccessGSXForm : Form
     private Label _activeServicesLabel = null!;
     private bool _suppressActiveServicesSelectionEvent;
     private GsxSettingsForm? _settingsForm;
+
+    // The menu snapshot last rendered/announced by RepopulateMenu. Keypress
+    // resolution (SelectMenuEntry) reads THIS, never the live GsxService.Menu
+    // — see SelectMenuEntry's remarks for why.
+    private GsxMenuModel _renderedMenu = GsxMenuModel.Empty;
 
     public AccessGSXForm(GsxService gsxService, ScreenReaderAnnouncer announcer)
     {
@@ -251,7 +257,12 @@ public sealed class AccessGSXForm : Form
 
         if (keyCode == Keys.F5)
         {
-            _gsxService.OpenMenu();
+            // F5 is a plain accelerator key with no competing control-level
+            // meaning anywhere in this form, so ProcessCmdKey — which runs
+            // before any KeyDown event, regardless of which control has
+            // focus — is the path that actually executes. See HandleF5's
+            // remarks for why AccessGSXForm_KeyDown also mirrors this call.
+            HandleF5();
             return true;
         }
 
@@ -268,12 +279,40 @@ public sealed class AccessGSXForm : Form
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    private void AccessGSXForm_KeyDown(object? sender, KeyEventArgs e)
+    /// <summary>
+    /// F5's action: ask GSX to (re)open its menu — or, when the Remote API
+    /// isn't reachable, announce why instead of silently sending nothing (a
+    /// pilot pressing F5 into dead air has no way to tell "not connected"
+    /// apart from "the keystroke never arrived". Factored into its own
+    /// method and called from both ProcessCmdKey (the path that actually
+    /// runs for this key) and AccessGSXForm_KeyDown (a defensive mirror —
+    /// the same belt-and-suspenders shape GsxSettingsForm.SettingsSlider
+    /// uses for its own ProcessCmdKey/OnKeyDown pair), so the two can never
+    /// silently drift apart.
+    /// </summary>
+    private void HandleF5()
     {
-        // F5: ask GSX to open / reopen its menu.
-        if (e.KeyCode == Keys.F5)
+        if (_gsxService.RemoteApiAvailable)
         {
             _gsxService.OpenMenu();
+            return;
+        }
+
+        try { _announcer.Announce(_gsxService.UnavailableReason); }
+        catch (Exception ex)
+        {
+            Log.Debug("Forms", $"unavailable announce failed: {ex.Message}");
+        }
+    }
+
+    private void AccessGSXForm_KeyDown(object? sender, KeyEventArgs e)
+    {
+        // F5: see HandleF5. In practice ProcessCmdKey always resolves F5
+        // first (see its comment), so this branch is a defensive mirror,
+        // not the live path.
+        if (e.KeyCode == Keys.F5)
+        {
+            HandleF5();
             e.Handled = true;
             e.SuppressKeyPress = true;
             return;
@@ -288,43 +327,87 @@ public sealed class AccessGSXForm : Form
             return;
         }
 
-        // 0..9 (top row or numpad) and A..E choose menu options. Only fire
-        // when there's a menu open — otherwise the keystrokes are no-ops so
-        // the user doesn't accidentally choose a stale option.
-        if (_gsxService.MenuOptions.Count == 0)
-        {
-            return;
-        }
-
-        int choice = -1;
+        // 0..9 (top row or numpad) and A..E are the menu-choice shortcuts —
+        // reserved keys in this form, so they're always swallowed here, even
+        // when the resolved index has no current entry, so a stray keystroke
+        // never leaks into a focused read-only TextBox (which beeps on
+        // unhandled input).
+        int paintedIndex = -1;
         if (e.KeyCode >= Keys.D0 && e.KeyCode <= Keys.D9)
         {
             int number = e.KeyCode - Keys.D0;
-            // GSX numbering: 1..9 → choice 0..8; 0 → choice 9.
-            choice = number == 0 ? 9 : number - 1;
+            // GSX numbering: 1..9 → index 0..8; 0 → index 9.
+            paintedIndex = number == 0 ? 9 : number - 1;
         }
         else if (e.KeyCode >= Keys.NumPad0 && e.KeyCode <= Keys.NumPad9)
         {
             int number = e.KeyCode - Keys.NumPad0;
-            choice = number == 0 ? 9 : number - 1;
+            paintedIndex = number == 0 ? 9 : number - 1;
         }
         else if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.E)
         {
             // No modifiers — typing into the tooltip textbox is read-only, so
-            // a bare letter is unambiguously a menu choice here.
+            // a bare letter is unambiguously a menu choice here. 'C' (inside
+            // this A..E range) never reaches here while a menu is open —
+            // ProcessCmdKey intercepts it first to open Settings; with no
+            // menu open it resolves to an out-of-range index in
+            // SelectMenuEntry below and is a silent no-op, same as any other
+            // out-of-range letter.
             if (!e.Control && !e.Alt && !e.Shift)
-                choice = (e.KeyCode - Keys.A) + 10;
+                paintedIndex = (e.KeyCode - Keys.A) + 10;
         }
 
-        if (choice >= 0)
+        if (paintedIndex < 0)
+            return;
+
+        e.Handled = true;
+        // Suppress the keystroke so a read-only TextBox doesn't beep
+        // (system-beep on disallowed input is the default for read-only
+        // TextBoxes when a typeable character arrives) — regardless of
+        // whether the index resolves to a real, enabled menu entry.
+        e.SuppressKeyPress = true;
+        SelectMenuEntry(paintedIndex);
+    }
+
+    /// <summary>
+    /// Re-resolves <paramref name="paintedIndex"/> against <see cref="_renderedMenu"/>
+    /// — the menu snapshot this form last rendered and announced — rather than the
+    /// live <see cref="GsxService.Menu"/>. <see cref="GsxMenuModel.ResolveIndex"/>'s
+    /// whole purpose is verifying a label still matches what the pilot was actually
+    /// told; reading the label fresh from the live service here would compare the
+    /// current menu against itself and could never catch a real change that happened
+    /// in the seconds between the announcement and the keypress.
+    ///
+    /// Silently does nothing when the index has no entry (menu closed, hidden, or
+    /// simply fewer options than the key implies). Announces "unavailable" and
+    /// refuses when the entry was presented but disabled. Otherwise hands off to
+    /// <see cref="GsxService.PickMenuEntry"/>, which performs its OWN re-resolution
+    /// against the LIVE menu before sending anything — so an entry that moved,
+    /// vanished, or the whole menu having changed underneath a slow reader is
+    /// refused there too, silently. Never announces a successful pick — the
+    /// resulting MenuChanged event speaks the new menu, and announcing the pick
+    /// itself here would double up on a direct UI interaction, which this project's
+    /// screen-reader rule forbids.
+    /// </summary>
+    private void SelectMenuEntry(int paintedIndex)
+    {
+        string label = paintedIndex >= 0 && paintedIndex < _renderedMenu.Count
+            ? _renderedMenu.Entries[paintedIndex]
+            : "";
+        if (string.IsNullOrEmpty(label))
+            return;
+
+        if (!_renderedMenu.IsSelectable(paintedIndex))
         {
-            _gsxService.Choose(choice);
-            e.Handled = true;
-            // Suppress the keystroke so the read-only TextBox doesn't beep
-            // (system-beep on disallowed input is the default for read-only
-            // TextBoxes when a typeable character arrives).
-            e.SuppressKeyPress = true;
+            try { _announcer.Announce("That option is unavailable."); }
+            catch (Exception ex)
+            {
+                Log.Debug("Forms", $"unavailable announce failed: {ex.Message}");
+            }
+            return;
         }
+
+        _gsxService.PickMenuEntry(paintedIndex, label);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -379,6 +462,14 @@ public sealed class AccessGSXForm : Form
         // Keeps the textbox useful instead of blank, and obviates a
         // separate AccessibleDescription hint.
         _menuList.SetText(MENU_HIDDEN_PROMPT);
+        // Clear the remembered "what was announced" snapshot too, so a
+        // leftover digit/letter keypress after the menu closes can't resolve
+        // against stale entries and reach PickMenuEntry — see
+        // SelectMenuEntry's remarks. (GsxService.Menu itself is refreshed
+        // only by a "menu" patch, not by menuShown flipping false, so this
+        // local reset is the one place guaranteed to run exactly when the
+        // form is told the menu is gone.)
+        _renderedMenu = GsxMenuModel.Empty;
     }
 
     private void OnMenuTimedOut(object? sender, EventArgs e)
@@ -394,6 +485,9 @@ public sealed class AccessGSXForm : Form
         // with the timeout-specific version so the user sees they need to
         // re-open rather than that GSX closed the menu on demand.
         _menuList.SetText(MENU_TIMEOUT_PROMPT);
+        // Same reasoning as OnMenuHiddenUi — nothing should still be pickable
+        // once the menu is known gone.
+        _renderedMenu = GsxMenuModel.Empty;
         try { _announcer.Announce("GSX menu timeout"); }
         catch (Exception ex)
         {
@@ -572,25 +666,48 @@ public sealed class AccessGSXForm : Form
     /// content.</summary>
     private string RepopulateMenu()
     {
+        GsxMenuModel menu = _gsxService.Menu;
+        // Snapshot what we're about to render/announce — SelectMenuEntry
+        // resolves a keypress against this remembered snapshot rather than
+        // re-reading _gsxService.Menu fresh, so a keypress is checked
+        // against what the pilot actually heard, not against whatever
+        // happens to be live right now (see SelectMenuEntry's remarks).
+        _renderedMenu = menu;
+
         // No options means we're in the hidden/initial state. Show the
         // reopen prompt instead of an empty textbox so the user always sees
         // (and the screen reader always reads) something useful.
-        if (_gsxService.MenuOptions.Count == 0)
+        if (menu.Count == 0)
         {
             _menuList.SetText(MENU_HIDDEN_PROMPT);
             return MENU_HIDDEN_PROMPT;
         }
+
         // Render menu as plain multi-line text — same layout as AccessGSX:
-        // title on its own line, then each option as "key - text". The
-        // screen reader reads the whole block on Announce.
+        // title on its own line, then each option as "<shortcut>. <text>".
+        // The shortcut prefix is the ACTUAL key that selects that option
+        // (1-9, 0, then A-E for entries 10-14 — GsxMenuModel.Shortcut),
+        // never the raw 0-based array index, so what's read out is exactly
+        // what the pilot should press. GSX's own state cue and disabled
+        // flag are spelled out in words too — the sighted client renders
+        // them as an icon tint, which has no screen-reader equivalent
+        // unless we say it here.
         var sb = new StringBuilder();
-        if (!string.IsNullOrWhiteSpace(_gsxService.MenuTitle))
+        if (!string.IsNullOrWhiteSpace(menu.Title))
         {
-            sb.AppendLine(_gsxService.MenuTitle);
+            sb.AppendLine(menu.Title);
         }
-        foreach (var option in _gsxService.MenuOptions)
+        for (int i = 0; i < menu.Count; i++)
         {
-            sb.Append(option.Key.PadLeft(2)).Append(" - ").AppendLine(option.Text);
+            sb.Append(GsxMenuModel.Shortcut(i)).Append(". ").Append(menu.Entries[i]);
+
+            string? suffix = menu.StateSuffix(i);
+            if (suffix != null)
+                sb.Append(" — ").Append(suffix);
+            if (menu.Disabled[i])
+                sb.Append(" — unavailable");
+
+            sb.AppendLine();
         }
         string text = sb.ToString();
         // Trim the trailing AppendLine newline before handing to the list —

@@ -113,4 +113,23 @@ public class GsxMenuModelTests
         // Single match at index 1, painted index was 0 (stale) — relocate to 1.
         Assert.Equal(1, m.ResolveIndex(0, "Request Boarding"));
     }
+
+    [Theory]
+    [InlineData(0, "1")]
+    [InlineData(1, "2")]
+    [InlineData(8, "9")]
+    [InlineData(9, "0")]
+    [InlineData(10, "A")]
+    [InlineData(14, "E")]
+    public void Shortcut_matches_the_accessgsx_keyboard_convention(int index, string expected)
+        => Assert.Equal(expected, GsxMenuModel.Shortcut(index));
+
+    [Fact]
+    public void Shortcut_beyond_the_lettered_range_still_renders_something()
+    {
+        // No GSX menu observed so far exceeds 10 entries, but the display must
+        // never throw or go blank for a hypothetical longer page.
+        string shortcut = GsxMenuModel.Shortcut(20);
+        Assert.False(string.IsNullOrEmpty(shortcut));
+    }
 }
