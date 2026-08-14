@@ -12,6 +12,7 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.Gsx.Remote;
 using MSFSBlindAssist.Utils.Logging;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -477,15 +478,23 @@ public sealed class AccessGSXForm : Form
 
     private void OnMenuChangedUi()
     {
+        // GSX republishes the WHOLE /menu object on every state tick — live at
+        // EDDF, roughly 3 times a second while a service runs, because one
+        // entry embeds a live counter ("113/143 passengers boarded" -> "114" ->
+        // "115", nothing else different). Snapshot what was last ANNOUNCED
+        // before RepopulateMenu overwrites _renderedMenu with the fresh one, so
+        // GsxMenuAnnounceResolver can tell a real change from a counter tick.
+        GsxMenuModel previouslyAnnounced = _renderedMenu;
+
         // RepopulateMenu returns exactly what it just wrote into _menuList
         // (a DisplayListBox — its own .Text property reflects the selected
         // item, not the joined content, so we can't read it back from the
-        // control). Speak the rendered menu in one pass — matches the
-        // upstream AccessGSX "speak menu" behavior: title + every option, so
-        // a single Announce gives the user the full picture without having
-        // to navigate line-by-line.
+        // control). The list itself is ALWAYS repopulated — a silently-ticked
+        // counter must still be readable on demand by arrowing through it —
+        // only the SPOKEN announcement is gated below.
         string menuText = RepopulateMenu();
-        if (!string.IsNullOrWhiteSpace(menuText))
+        bool shouldAnnounce = GsxMenuAnnounceResolver.ShouldAnnounce(previouslyAnnounced, _renderedMenu);
+        if (shouldAnnounce && !string.IsNullOrWhiteSpace(menuText))
         {
             try { _announcer.Announce(menuText); }
             catch (Exception ex)
@@ -778,5 +787,88 @@ public sealed class AccessGSXForm : Form
                 MSFSBlindAssist.Settings.SettingsManager.Current.GsxBackgroundMonitoring;
         }
         base.Dispose(disposing);
+    }
+}
+
+/// <summary>
+/// Decides whether a freshly-parsed <see cref="GsxMenuModel"/> differs from the one last
+/// ANNOUNCED enough to justify re-speaking the whole menu. GSX republishes the entire
+/// <c>/menu</c> object on every state tick — live at EDDF, roughly 3 times a second while
+/// a service runs, because one entry embeds a live counter: three consecutive captured
+/// payloads differed only in "113/143 passengers boarded" -> "114/143" -> "115/143",
+/// every other entry byte-identical. <see cref="AccessGSXForm"/>'s announcer is QUEUED
+/// and never interrupts, so speaking the full menu on every one of those doesn't just
+/// repeat — it backlogs, burying every other callout in the app behind an unbounded
+/// queue. The menu ListBox itself is always repopulated regardless of this verdict (see
+/// <see cref="AccessGSXForm.RepopulateMenu"/>) — only the SPOKEN announcement is gated,
+/// so a silently-ticked count is still readable on demand.
+///
+/// Announces on: first appearance (<paramref name="previous"/> was empty — covers both a
+/// genuinely new menu and a reopen after <c>OnMenuHiddenUi</c> reset the snapshot), a
+/// title change, an entry-count change, or any entry changing by more than a run of
+/// digits (e.g. "Request Boarding" -> "Boarding no longer possible", "Customize this
+/// Parking position" -> "Reset position" — both real availability transitions observed
+/// live, neither one GSX flagged via the <c>disabled</c> array).
+///
+/// GUARD: GSX paginates its own menus at 10 entries, and a "Next Page ▶" entry appears
+/// as an ordinary entry (confirmed live at EDDF) — so a paged stand list can plausibly
+/// change EVERY entry by digits alone (Gate A11..A14 -> Gate A21..A24). Silently
+/// swallowing that would make a page-turn keypress look like it did nothing. So when
+/// MORE THAN HALF the entries changed at all, this announces even if every one of those
+/// changes is digit-only — a counter tick touches one entry, a page turn touches all of
+/// them. Internal, reached by GsxMenuAnnounceResolverTests via InternalsVisibleTo
+/// (Properties/InternalsVisibleTo.cs) — same pattern as GsxRangeBoundsResolver in
+/// GsxSettingsForm.cs and GsxActiveServiceResolver in GsxService.cs.
+/// </summary>
+internal static class GsxMenuAnnounceResolver
+{
+    private static readonly Regex DigitRun = new(@"\d+", RegexOptions.Compiled);
+
+    public static bool ShouldAnnounce(GsxMenuModel previous, GsxMenuModel current)
+    {
+        if (previous.Count == 0) return true;
+        if (!string.Equals(previous.Title, current.Title, StringComparison.Ordinal)) return true;
+        if (previous.Count != current.Count) return true;
+
+        int changedCount = 0;
+        bool nonDigitChange = false;
+        for (int i = 0; i < current.Count; i++)
+        {
+            string before = previous.Entries[i];
+            string after = current.Entries[i];
+            if (string.Equals(before, after, StringComparison.Ordinal)) continue;
+
+            changedCount++;
+            if (!IsDigitOnlyChange(before, after))
+                nonDigitChange = true;
+        }
+
+        // Page-turn guard: more than half the entries changed at all -- announce
+        // regardless of whether every individual change happens to be digit-only.
+        if (changedCount * 2 > current.Count) return true;
+
+        return nonDigitChange;
+    }
+
+    /// <summary>
+    /// True when <paramref name="before"/> and <paramref name="after"/> are identical
+    /// once every run of digits is stripped out — i.e. they differ only in the numbers
+    /// embedded in the text, never in the surrounding words. Splitting on digit runs
+    /// (rather than comparing digit-count) also tolerates a run changing LENGTH, not
+    /// just value — "9/143 passengers boarded" -> "10/143 passengers boarded" is still
+    /// purely a counter tick.
+    /// </summary>
+    private static bool IsDigitOnlyChange(string before, string after)
+    {
+        string[] beforeParts = DigitRun.Split(before);
+        string[] afterParts = DigitRun.Split(after);
+        if (beforeParts.Length != afterParts.Length) return false;
+
+        for (int i = 0; i < beforeParts.Length; i++)
+        {
+            if (!string.Equals(beforeParts[i], afterParts[i], StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 }
