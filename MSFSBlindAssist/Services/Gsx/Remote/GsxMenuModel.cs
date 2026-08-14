@@ -106,6 +106,11 @@ public sealed class GsxMenuModel
             // session, but costs nothing and we cannot prove no GSX build emits it.
             "gsx-state-performed" => "In progress",
             "gsx-state-performing" => "In progress",
+            // Confirmed live at EDDF on "Deboarding requested" right after
+            // requesting deboarding. The entry text already says "requested" --
+            // this suffix isn't recovering lost information, just keeping the
+            // cue consistent with the other two live-observed states above.
+            "gsx-state-requested" => "Requested",
             "gsx-state-unavailable" => "Unavailable",
             _ => null,
         };

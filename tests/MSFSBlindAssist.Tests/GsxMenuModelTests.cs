@@ -159,6 +159,20 @@ public class GsxMenuModelTests
     }
 
     [Fact]
+    public void StateSuffix_maps_the_live_requested_value_to_requested()
+    {
+        // Live at EDDF: requesting deboarding produced "Deboarding requested"
+        // with stateClass 'gsx-state-requested' -- the third and last stateClass
+        // value observed across the whole session, alongside -performed and
+        // -completed. The information isn't currently LOST (the entry text
+        // already says "requested"), but the suffix should stay consistent with
+        // the other two mapped states rather than silently returning null here.
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["Deboarding requested"],"stateClass":["gsx-state-requested"]}""").RootElement);
+        Assert.Equal("Requested", m.StateSuffix(0));
+    }
+
+    [Fact]
     public void StateSuffix_still_maps_the_never_observed_performing_spelling()
     {
         // "-performing" was never once seen across the whole EDDF session that
