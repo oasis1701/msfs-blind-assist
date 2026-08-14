@@ -85,11 +85,17 @@ public sealed class GateDataSource
     }
 
     /// <summary>
-    /// Which source <see cref="GetGates"/> would use for <paramref name="icao"/> right now, so
-    /// the UI can say so. Three answers, in the SAME priority order <see cref="GetGates"/> itself
-    /// applies: <see cref="GateSource.GsxRemote"/> (the current airport, served from the Remote
-    /// API), <see cref="GateSource.Gsx"/> (a matching <c>.ini</c> profile), or
+    /// Which source <see cref="GetGates"/> would REACH FOR first for <paramref name="icao"/> right
+    /// now, so the UI can say so. Three answers, in the SAME priority order <see cref="GetGates"/>
+    /// itself applies: <see cref="GateSource.GsxRemote"/> (the current airport, served from the
+    /// Remote API), <see cref="GateSource.Gsx"/> (a matching <c>.ini</c> profile), or
     /// <see cref="GateSource.Navdata"/> (neither).
+    /// <para>
+    /// "Would reach for", not "did use": each of the first two can still fall through to the next
+    /// — the API attempt when it yields no usable stands, the <c>.ini</c> when its profile parses
+    /// empty or throws — and this method makes neither attempt. See
+    /// <see cref="TryGetCurrentAirportHandlerData"/> for the full statement of that asymmetry.
+    /// </para>
     /// </summary>
     public GateSource GetActiveSource(string icao)
     {
@@ -161,10 +167,24 @@ public sealed class GateDataSource
     /// gate list. Returns an empty list when GSX is unavailable or the airport has no
     /// deice areas defined in its profile.
     /// <para>
-    /// Deliberately stays on the <c>.ini</c> path even for the CURRENT airport — the Remote API
-    /// gives no way to distinguish a deice pad from an ordinary stand (both are just entries in
-    /// <c>handlerData.airport.parkings</c> with no deice marker), so <see cref="GsxProfileParser"/>
-    /// (which reads the <c>.ini</c>'s <c>is_deicearea</c> key) remains the only source.
+    /// Deliberately stays on the <c>.ini</c> path even for the CURRENT airport. Not because the
+    /// Remote API cannot tell a deice pad from a stand — it can, and cleanly: a live 2026-08-14
+    /// read (ENGM) shows deice pads live in their OWN collection,
+    /// <c>handlerData.airport.deIceAreas</c> (9 entries, each with <c>uiName</c>/<c>lat</c>/
+    /// <c>lon</c>/<c>heading</c>/<c>radius</c>/<c>uiType: "DeIce Area"</c>), and the distinct
+    /// <c>uiType</c> values across all 99 live <c>parkings</c> are Fuel, Gate Heavy, Gate Small,
+    /// Ramp Cargo, Ramp GA Large, Ramp GA Medium and Ramp Mil Cargo — no pad among them. This
+    /// stays on the <c>.ini</c> because nothing yet READS <c>deIceAreas</c>, and wiring it is a
+    /// separate change with its own live verification; the <c>.ini</c>'s <c>is_deicearea</c> key
+    /// works today. If that changes, note that <c>deIceAreas</c> publishes no stop position
+    /// either (same as <c>parkings</c>).
+    /// </para>
+    /// <para>
+    /// The reassuring half of the same fact: because pads are never in <c>parkings</c>,
+    /// <see cref="GsxRemoteParkingReader"/> needs NO deice exclusion, and the API-sourced gate
+    /// list cannot leak a pad into the normal gate dropdown the way an unfiltered <c>.ini</c>
+    /// parse would. (The <c>.ini</c> path a few lines up still filters <c>IsDeiceArea</c>
+    /// explicitly, twice, because there they genuinely do share one list.)
     /// </para>
     /// </summary>
     public List<ParkingSpot> GetDeiceAreas(string icao)
@@ -187,11 +207,21 @@ public sealed class GateDataSource
     }
 
     /// <summary>
-    /// True, with <paramref name="airport"/> set, exactly when the Remote API path applies to
+    /// True, with <paramref name="airport"/> set, exactly when the Remote API path is ELIGIBLE for
     /// <paramref name="icao"/> right now: GSX advertises the <c>handlerData</c> capability, it has
     /// published a <c>handlerData.airport</c> object, and that object's own <c>icao</c> equals the
     /// (already-normalized) requested one. Shared by <see cref="GetGates"/> and
-    /// <see cref="GetActiveSource"/> so the two can never disagree about which source applies.
+    /// <see cref="GetActiveSource"/> so they cannot disagree about ELIGIBILITY.
+    /// <para>
+    /// They can still disagree about the source finally USED, and the asymmetry is deliberate:
+    /// <see cref="GetActiveSource"/> answers <see cref="GateSource.GsxRemote"/> as soon as this
+    /// returns true, while <see cref="GetGates"/> goes on to call
+    /// <see cref="TryBuildGatesFromRemoteApi"/> and falls through to the <c>.ini</c>/navdata path
+    /// whenever that returns null (empty <c>parkings</c>, every stand dropped, any exception).
+    /// So <see cref="GetActiveSource"/> reports which source APPLIES, not which one produced the
+    /// list a caller is holding. No user impact today — it has no production caller — but a future
+    /// one that must be exact should read the returned spots' own <see cref="ParkingSpot.Source"/>.
+    /// </para>
     /// Never throws — a misbehaving <see cref="_capabilities"/>/<see cref="_getHandlerDataAirport"/>
     /// provider, or a malformed/disposed <see cref="JsonElement"/>, degrades to "not eligible"
     /// exactly like the capability genuinely being absent.
