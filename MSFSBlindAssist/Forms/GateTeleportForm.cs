@@ -273,10 +273,10 @@ public partial class GateTeleportForm : Form
                 return;
             }
 
-            var parkingSpots = (_gateSource?.GetGates(icao)) ?? _database.GetParkingSpots(icao);
-            // Apply online gate aliases to the GSX-sourced list too (GSX bypasses GetParkingSpots).
-            (_database as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider)
-                ?.AugmentParking(icao, parkingSpots);
+            // GSX's list plus this scenery's online gate aliases — the SAME resolution every
+            // other stand readout uses, so this dialog can never name a stand differently from
+            // the taxi planner or Where-Am-I. See Services/ParkingSpotSource.
+            var parkingSpots = Services.ParkingSpotSource.GetSpots(_database, _gateSource, icao);
             if (parkingSpots.Count == 0)
             {
                 statusLabel.Text = $"No gates or parking found for {icao}";

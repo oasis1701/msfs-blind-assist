@@ -1014,7 +1014,15 @@ public partial class MainForm
         try
         {
             var position = await GetFreshAircraftPositionAsync();
-            var spots = airportDataProvider.GetParkingSpots(icao.ToUpperInvariant());
+            // The stand list under its AUTHORITATIVE names — the same one the taxi dialog, the
+            // gate-teleport list and gate.select use (Services/ParkingSpotSource). With
+            // navdata's names instead, an aircraft parked exactly at KJFK B25 was told
+            // "Aircraft appears near A 25, not assigned gate Terminal 4 Gate B25": navdata's
+            // concourse letter comes from the BGL parking-name enum, which KJFK's scenery fills
+            // GATE_A across a whole concourse, so the comparison below could not match the very
+            // stand SayIntentions had assigned.
+            var spots = Services.ParkingSpotSource.GetSpots(
+                airportDataProvider, BuildGateDataSource(), icao.ToUpperInvariant());
             if (spots == null || spots.Count == 0) return null;
 
             ParkingSpot? nearest = null;

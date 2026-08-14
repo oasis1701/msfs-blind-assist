@@ -784,7 +784,7 @@ public partial class MainForm
 
         landingExitForm = new LandingExitForm(
             airportDataProvider, announcer, landingExitPlanner, presetIcao, presetRunway,
-            simConnectManager);
+            simConnectManager, BuildGateDataSource());
 
         landingExitForm.Show();
         landingExitForm.BringToFront();

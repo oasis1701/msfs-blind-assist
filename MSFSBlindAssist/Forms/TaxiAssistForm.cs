@@ -1715,7 +1715,10 @@ public class TaxiAssistForm : Form
             return;
         }
 
-        var parking = _dataProvider.GetParkingSpots(icao);
+        // The SAME list this form's own destination dropdown is built from (see
+        // PopulateDestinations), so a stand cannot be "Gate B 25" in the combo and "Gate A 25"
+        // when Where-Am-I reads the graph this build produces. See Services/ParkingSpotSource.
+        var parking = Services.ParkingSpotSource.GetSpots(_dataProvider, _gateSource, icao);
         var starts = _dataProvider.GetRunwayStarts(icao);
 
         lblStatus.Text = $"{icao}: building taxi graph…";
@@ -1959,10 +1962,13 @@ public class TaxiAssistForm : Form
             // would see "Parking 21" in the gate teleport dialog but NOT in
             // the taxi guidance form — confusing and route-blocking.
             //
-            // The fix: drive the dropdown directly from
-            // `_dataProvider.GetParkingSpots(icao)` — the same data source
-            // gate teleport uses — and use `ParkingSpot.ToString()` for
-            // identical display labels (e.g. "P 21 - Ramp GA Large (Jetway)").
+            // The fix: drive the dropdown directly from the parking list —
+            // resolved through `Services.ParkingSpotSource`, the one resolution
+            // gate teleport, the graph builds and the SayIntentions
+            // parked-at-the-right-stand check also use, so a stand cannot be
+            // named two different ways in one session — and use
+            // `ParkingSpot.ToString()` for identical display labels
+            // (e.g. "P 21 - Ramp GA Large (Jetway)").
             // Each parking spot's actual lat/lon is the convergence target,
             // matching what TeleportToParkingSpot places you at, so taxi
             // guidance and gate teleport end up at the same physical position.
@@ -1982,13 +1988,10 @@ public class TaxiAssistForm : Form
             if (_cachedGateSpots == null
                 || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
             {
-                var sourceSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
-                // Apply online gate aliases to the GSX-sourced list too (GSX bypasses GetParkingSpots,
-                // but GSX stands carry spot codes that don't match real gate numbers — the online alias
-                // is what lets the pilot pick the ATC gate). No-op for the navdata list (already aliased)
-                // and when augmentation is off/uncached.
-                (_dataProvider as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider)
-                    ?.AugmentParking(_currentIcao, sourceSpots);
+                // GSX's list plus this scenery's online gate aliases — GSX bypasses
+                // GetParkingSpots, but GSX stands carry spot codes that don't match real gate
+                // numbers, and the online alias is what lets the pilot pick the ATC gate.
+                var sourceSpots = Services.ParkingSpotSource.GetSpots(_dataProvider, _gateSource, _currentIcao);
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {

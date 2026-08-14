@@ -609,6 +609,24 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+
+        // Name every parking node of the graphs it builds the way the taxi dialog, the
+        // gate-teleport list and gate.select name them, so Where-Am-I cannot say "Gate A 25"
+        // about the stand every other readout calls "Gate B 25" (Services/ParkingSpotSource).
+        //
+        // The lambda reads `airportDataProvider` and builds its GateDataSource PER CALL rather
+        // than capturing either: the field is reassigned on a database switch (and nulled on
+        // teardown), and a shared GateDataSource instance would be touched from both the UI
+        // thread and the SimConnect position callback that reaches Where-Am-I — its per-ICAO
+        // caches are plain Dictionaries. Affordable because every consumer is a graph build
+        // (once per airport, then cached), never a position update.
+        taxiGuidanceManager.ParkingSpotSupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            return provider == null
+                ? new List<MSFSBlindAssist.Database.Models.ParkingSpot>()
+                : MSFSBlindAssist.Services.ParkingSpotSource.GetSpots(provider, BuildGateDataSource(), icao);
+        };
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager

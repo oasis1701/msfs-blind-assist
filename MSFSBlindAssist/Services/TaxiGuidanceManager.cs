@@ -123,6 +123,65 @@ public partial class TaxiGuidanceManager : IDisposable
     // a plain lock is fine and keeps the position loop responsive.
     private readonly object _stateLock = new object();
 
+    /// <summary>
+    /// Supplies the parking list every <see cref="TaxiGraph.Build"/> call in this class is fed —
+    /// the ONE place a stand's name is decided app-wide (see <see cref="ParkingSpotSource"/>).
+    /// Wired by <c>MainForm</c> to "<c>GateDataSource.GetGates</c> then <c>AugmentParking</c>",
+    /// so Where-Am-I calls a stand what the taxi dialog, the gate-teleport list and
+    /// <c>gate.select</c> call it, instead of navdata's BGL parking-name enum (KJFK Terminal 4:
+    /// "Gate B 25" vs navdata's "Gate A 25").
+    ///
+    /// <para>
+    /// <b>Null is the supported default</b>, and it keeps every caller that does not wire it —
+    /// the xUnit suite, anything constructed outside MainForm — byte-identical to the
+    /// pre-seam behaviour: <see cref="ResolveParkingSpots"/> falls straight back to
+    /// <c>dataProvider.GetParkingSpots</c>. Same backward-compatibility shape as
+    /// <see cref="GateDataSource"/>'s own optional constructor parameters.
+    /// </para>
+    /// <para>
+    /// <b>It runs off the UI thread.</b> Where-Am-I and the takeoff-assist runway probe both
+    /// reach their graph builds from inside a <c>RequestAircraftPositionAsync</c> callback, so
+    /// MainForm's wiring must not hand out a <see cref="GateDataSource"/> instance the UI thread
+    /// is also using — its per-ICAO caches are plain Dictionaries. The wiring builds a fresh one
+    /// per call for exactly that reason; that is affordable ONLY because every call site here is
+    /// a graph build (once per airport, then cached), never a position update.
+    /// </para>
+    /// </summary>
+    public Func<string, List<ParkingSpot>>? ParkingSpotSupplier { get; set; }
+
+    /// <summary>
+    /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
+    /// <paramref name="dataProvider"/>'s own when none is wired.
+    ///
+    /// <para>
+    /// The supplier reaches into GSX (a live socket's published JSON, a profile directory, a
+    /// navdata query), so it gets a try/catch the raw provider call never needed: a graph built
+    /// with navdata's names is a slightly worse readout, while no graph at all is a blind pilot
+    /// with no answer to "where am I". An empty list is a legitimate answer (an airport with no
+    /// modelled stands) and is NOT treated as failure — falling back on empty would just re-ask
+    /// the source <see cref="GateDataSource"/> itself already falls through to.
+    /// </para>
+    /// </summary>
+    private List<ParkingSpot> ResolveParkingSpots(IAirportDataProvider dataProvider, string icao)
+    {
+        var supplier = ParkingSpotSupplier;
+        if (supplier != null)
+        {
+            try
+            {
+                var spots = supplier(icao);
+                if (spots != null) return spots;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Taxi",
+                    $"parking list: supplier failed for {icao}, falling back to navdata names: {ex.Message}");
+            }
+        }
+
+        return dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+    }
+
     // Retained for recalculation
     private IAirportDataProvider? _dataProvider;
     private int _destinationNodeId;
@@ -934,7 +993,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     if (paths == null || paths.Count == 0)
                         return $"No taxi data available for {icao}.";
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
@@ -1090,7 +1149,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     var paths = dataProvider.GetTaxiPaths(icao) ?? new List<TaxiPath>();
                     if (paths.Count == 0) return false;
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
@@ -1099,7 +1158,7 @@ public partial class TaxiGuidanceManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Taxi", 
+                    Log.Debug("Taxi",
                         $"TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
                     return false;
                 }

@@ -99,7 +99,7 @@ public partial class TaxiGuidanceManager
                 if (paths.Count == 0)
                     return "No taxi path data available for this airport.";
 
-                var parking = dataProvider.GetParkingSpots(icao!);
+                var parking = ResolveParkingSpots(dataProvider, icao!);
                 var starts = dataProvider.GetRunwayStarts(icao!);
 
                 _graph = TaxiGraph.Build(paths, parking, starts);
