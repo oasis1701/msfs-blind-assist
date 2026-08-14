@@ -2,7 +2,21 @@ using System.Collections.Concurrent;
 
 namespace MSFSBlindAssist.Services.Gsx.Remote;
 
-public sealed record GsxResult(bool Ok, string? ErrorCode, string? ErrorMessage)
+/// <param name="Ok">Whether the command succeeded.</param>
+/// <param name="ErrorCode">GSX's <c>error.code</c> on failure; null on success.</param>
+/// <param name="ErrorMessage">GSX's <c>error.message</c> on failure, or a locally-synthesized
+/// reason ("not connected", "timed out", "send failed") when the failure never reached GSX.</param>
+/// <param name="Frame">
+/// The full result frame this <see cref="GsxResult"/> was built from — carries
+/// <see cref="GsxFrame.Payload"/> and <see cref="GsxFrame.Error"/> for callers that need more
+/// than the three members above (e.g. <c>GsxGateSelectResult.FromFrame</c> reading
+/// <c>payload.gate</c>/<c>payload.warnings</c>/<c>error.candidates</c>). Null for a
+/// locally-synthesized failure that never had a live frame — <see cref="Fail"/>, and any
+/// <see cref="GsxPendingRequests.FailAll"/> sweep. Added additively: every pre-existing
+/// <see cref="GsxResult"/> member keeps its prior meaning and every pre-existing call site
+/// that builds or reads one still compiles and behaves identically.
+/// </param>
+public sealed record GsxResult(bool Ok, string? ErrorCode, string? ErrorMessage, GsxFrame? Frame = null)
 {
     public static readonly GsxResult Success = new(true, null, null);
     public static GsxResult Fail(string message) => new(false, null, message);
@@ -50,7 +64,7 @@ public sealed class GsxPendingRequests
     {
         if (frame.Type != GsxFrameType.Result || string.IsNullOrEmpty(frame.Id)) return false;
         if (!_pending.TryRemove(frame.Id, out var tcs)) return false;
-        tcs.TrySetResult(new GsxResult(frame.Ok, frame.ErrorCode, frame.ErrorMessage));
+        tcs.TrySetResult(new GsxResult(frame.Ok, frame.ErrorCode, frame.ErrorMessage, frame));
         return true;
     }
 

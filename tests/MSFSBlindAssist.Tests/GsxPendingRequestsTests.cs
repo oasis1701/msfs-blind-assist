@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MSFSBlindAssist.Services.Gsx.Remote;
 
 namespace MSFSBlindAssist.Tests;
@@ -56,6 +57,76 @@ public class GsxPendingRequestsTests
         Assert.False(r.Ok);
         Assert.Equal("unknown_verb", r.ErrorCode);
         Assert.Contains("unknown verb", r.ErrorMessage!);
+    }
+
+    // ── Plumbing: the awaiting caller can reach the whole frame (Task 2, Part A) ──
+    // Task 1 added GsxFrame.Payload/GsxFrame.Error, but Complete() used to discard
+    // everything except Ok/ErrorCode/ErrorMessage when building the GsxResult a
+    // caller awaits — so a typed interpreter like GsxGateSelectResult.FromFrame had
+    // no live frame to parse. These two pin that GsxResult now carries the frame
+    // through, additively (Frame is a new, defaulted member — every existing
+    // GsxResult member keeps its prior meaning).
+
+    [Fact]
+    public async Task Complete_carries_the_whole_frame_through_to_the_awaited_result()
+    {
+        var p = new GsxPendingRequests();
+        var (id, t) = p.Register();
+        // Plain (non-interpolated) raw string + Replace for the one dynamic value:
+        // a $$"""...""" interpolated raw string hits CS9007 on the nested JSON's
+        // consecutive closing braces (same trap GsxRemoteConnection.cs documents).
+        var json = """
+            {"type":"result","ok":true,"id":"ID_PLACEHOLDER",
+             "payload":{"code":"ok","status":"prepared",
+                        "gate":{"uiName":"Gate A12","gate":"A12","number":12,"bglName":"Parking 12"},
+                        "warnings":["too_small"]}}
+            """.Replace("ID_PLACEHOLDER", id);
+
+        p.Complete(GsxFrame.Parse(json));
+        var r = await t;
+
+        Assert.True(r.Ok);
+        Assert.NotNull(r.Frame);
+        Assert.Equal(GsxFrameType.Result, r.Frame!.Type);
+        Assert.Equal(JsonValueKind.Object, r.Frame.Payload.ValueKind);
+        Assert.Equal("Gate A12", r.Frame.Payload.GetProperty("gate").GetProperty("uiName").GetString());
+        Assert.Equal("too_small", r.Frame.Payload.GetProperty("warnings")[0].GetString());
+    }
+
+    [Fact]
+    public async Task Complete_carries_the_error_object_through_too_not_just_code_and_message()
+    {
+        var p = new GsxPendingRequests();
+        var (id, t) = p.Register();
+        var json = """
+            {"type":"result","ok":false,"id":"ID_PLACEHOLDER",
+             "error":{"code":"assigned_to_other",
+                      "gate":{"uiName":"Gate A12","gate":"A12","number":12,"bglName":"Parking 12"}}}
+            """.Replace("ID_PLACEHOLDER", id);
+
+        p.Complete(GsxFrame.Parse(json));
+        var r = await t;
+
+        Assert.False(r.Ok);
+        Assert.Equal("assigned_to_other", r.ErrorCode);
+        Assert.NotNull(r.Frame);
+        Assert.Equal(JsonValueKind.Object, r.Frame!.Error.ValueKind);
+        Assert.Equal("Gate A12", r.Frame.Error.GetProperty("gate").GetProperty("uiName").GetString());
+    }
+
+    [Fact]
+    public async Task FailAll_produces_a_result_with_no_frame_to_parse()
+    {
+        // A locally-synthesized failure (disconnect, timeout, send error) never had
+        // a live GSX frame -- Frame must stay null, never a throw or a fabricated one.
+        var p = new GsxPendingRequests();
+        var (_, t) = p.Register();
+
+        p.FailAll("connection lost");
+        var r = await t;
+
+        Assert.False(r.Ok);
+        Assert.Null(r.Frame);
     }
 
     [Fact]

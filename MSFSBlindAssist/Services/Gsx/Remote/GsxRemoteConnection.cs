@@ -164,6 +164,17 @@ public sealed class GsxRemoteConnection : IDisposable
         }
     }
 
+    /// <summary>
+    /// Sends a command and awaits its correlated <c>result</c> frame. The returned
+    /// <see cref="GsxResult"/> carries the whole matched <see cref="GsxFrame"/> in
+    /// <see cref="GsxResult.Frame"/> (null for a locally-synthesized failure that never
+    /// reached GSX — not connected, send failed, timed out) — so a caller needing more
+    /// than Ok/ErrorCode/ErrorMessage (e.g. a typed interpreter reading
+    /// <c>payload</c>/<c>error.candidates</c>, as <c>GsxGateSelectResult.FromFrame</c>
+    /// does for <c>gate.select</c>) does not have to re-derive it. This method's own
+    /// shape did not need to change to carry that — the enrichment lives in
+    /// <see cref="GsxResult"/> and <see cref="GsxPendingRequests.Complete"/>.
+    /// </summary>
     public async Task<GsxResult> SendAsync(string verb, object? args = null)
     {
         if (!_connected) return GsxResult.Fail("not connected");
