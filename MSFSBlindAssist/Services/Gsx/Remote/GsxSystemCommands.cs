@@ -23,9 +23,11 @@ public sealed record GsxSystemCommand(string Shortcut, string Label, string? Com
 /// recovery when Couatl wedges.
 ///
 /// Deliberately NOT added to <c>GsxService.MenuOptions</c>/<c>Menu</c>: those
-/// stay exactly what GSX published, because <c>GsxGateSelector</c> walks them
-/// and picks by index. Synthetic rows would collide with real entries 10-14 on
-/// a long parking list.
+/// stay exactly what GSX published, and <c>menu.pick</c> takes a raw index into
+/// them. Synthetic rows would collide with real entries 10-14 on a long parking
+/// list. (Gate selection itself no longer walks this menu at all — since Spec
+/// 2, <c>GsxRemoteGateSelector</c> sends the documented <c>gate.select</c> verb
+/// directly, with no menu interaction.)
 /// </summary>
 public static class GsxSystemCommands
 {

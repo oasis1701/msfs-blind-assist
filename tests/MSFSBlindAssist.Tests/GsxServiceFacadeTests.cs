@@ -19,9 +19,7 @@ public class GsxServiceFacadeTests
     [InlineData("LastTooltip")]
     [InlineData("IsMenuActive")]
     [InlineData("AnnounceWhenFormHidden")]
-    [InlineData("SetGateName")]
-    [InlineData("SetGateNumber")]
-    [InlineData("SetGateSuffix")]
+    [InlineData("Capabilities")]
     [InlineData("Menu")]
     [InlineData("Services")]
     [InlineData("Settings")]
@@ -48,6 +46,12 @@ public class GsxServiceFacadeTests
     // these; they were dropped, not migrated, in the transport swap, and
     // "Restart GSX" is the standard recovery when Couatl wedges.
     [InlineData("RunCommand")]
+    // Spec 2 additions: GetHandlerDataAirport()/Capabilities feed
+    // GateDataSource's Remote API gate-list path; SendCommandAsync is the
+    // production wiring behind GsxCommandSender for GsxRemoteGateSelector
+    // (both via MainForm.Dialogs.cs).
+    [InlineData("GetHandlerDataAirport")]
+    [InlineData("SendCommandAsync")]
     public void Public_method_exists(string name) => Assert.NotNull(T.GetMethod(name));
 
     [Fact]
@@ -72,4 +76,24 @@ public class GsxServiceFacadeTests
     [Fact]
     public void ProcessWindowMessage_is_gone()
         => Assert.Null(T.GetMethod("ProcessWindowMessage"));
+
+    [Fact]
+    public void PumpSimConnectMessage_is_gone()
+        // Deleted with the menu-walking GsxGateSelector -- gate.select's own synchronous
+        // result payload replaced the SetGate_* confirmation polling that was this
+        // pump's (and the retained SimConnect client's) only reason to exist. GsxService
+        // no longer touches SimConnect at all.
+        => Assert.Null(T.GetMethod("PumpSimConnectMessage"));
+
+    [Fact]
+    public void SetGate_confirmation_properties_are_gone()
+        // Retired alongside the SimConnect client that populated them (see
+        // PumpSimConnectMessage_is_gone) -- gate.select's payload.gate is the
+        // confirmation now, read synchronously off the command result instead of
+        // polled off a lagging L:var.
+    {
+        Assert.Null(T.GetProperty("SetGateName"));
+        Assert.Null(T.GetProperty("SetGateNumber"));
+        Assert.Null(T.GetProperty("SetGateSuffix"));
+    }
 }

@@ -1,17 +1,18 @@
 // GsxService — facade over the GSX Ground Services Pro accessibility
-// integration. Two independent transports feed it:
+// integration. All of it — menu, tooltip ("message"), services, settings,
+// billing, receipts, and (since Spec 2) gate selection and the live gate
+// list — is fed by ONE transport: the Couatl Remote API (WebSocket JSON,
+// ws://127.0.0.1:8744/) via GsxRemoteConnection/GsxRemoteState in
+// MSFSBlindAssist.Services.Gsx.Remote. IsConnected/RemoteApiAvailable report
+// this transport's reachability.
 //
-//   1. The Couatl Remote API (WebSocket JSON, ws://127.0.0.1:8744/) via
-//      GsxRemoteConnection/GsxRemoteState in MSFSBlindAssist.Services.Gsx.Remote.
-//      This is the PRIMARY transport: menu, tooltip ("message"), services,
-//      settings, billing and receipts all arrive here as structured, typed
-//      data instead of scraped GSX HTML files. IsConnected/RemoteApiAvailable
-//      report THIS transport's reachability.
-//   2. A small, independent SimConnect client (HWND-based, WM_USER 0x0403)
-//      retained ONLY for the read-only FSDT_GSX_SetGate_* confirmation
-//      L-vars that GsxGateSelector (a separate, later gate-selection feature)
-//      depends on. Nothing else in this file touches SimConnect any more —
-//      menu, tooltip, status and settings all moved to the Remote API.
+// This file no longer touches SimConnect at all. It used to retain a small,
+// independent SimConnect client (HWND-based, WM_USER 0x0403) for nothing but
+// the read-only FSDT_GSX_SetGate_* confirmation L-vars the OLD menu-walking
+// GsxGateSelector polled after picking a stand; gate.select's own synchronous
+// result payload replaced that polling entirely (Spec 2), and with the old
+// selector deleted, so is the SimConnect client, WM_USER_GSX_SIMCONNECT, and
+// the PumpSimConnectMessage pump MainForm.WndProc used to route to it.
 //
 // All speech is routed through MSFSBA's existing ScreenReaderAnnouncer; no
 // Tolk is loaded here.
@@ -20,12 +21,10 @@
 // with permission of the author (both projects are GPL v3); the Remote API
 // transport is GSX's own first-party protocol, not part of that port.
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Windows.Forms;
-using Microsoft.FlightSimulator.SimConnect;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Services.Gsx.Remote;
 using MSFSBlindAssist.Utils.Logging;
@@ -34,43 +33,14 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Facade over the GSX Ground Services Pro accessibility integration. Mirrors
-/// GSX's menu/services/settings/billing state from the Couatl Remote API,
-/// retains a small independent SimConnect client for the SetGate_* read-only
-/// confirmation L-vars, and exposes events the UI form (AccessGSXForm) and
-/// MainForm's background hook subscribe to.
+/// GSX's menu/services/settings/billing/gate state from the Couatl Remote
+/// API and exposes events the UI form (AccessGSXForm) and MainForm's
+/// background hook subscribe to.
 /// </summary>
 public sealed class GsxService : IDisposable
 {
-    // Distinct WM_USER message id — the main SimConnect uses 0x0402, this
-    // one uses 0x0403 so both clients' ReceiveMessage calls are dispatched
-    // correctly from MainForm.WndProc.
-    public const int WM_USER_GSX_SIMCONNECT = 0x0403;
-
     private const string CouatlConfigFolderName = "Virtuali";
     private const string CouatlConfigFileName = "CouatlAddons.ini";
-
-    // SimConnect identifiers — SetGate_* confirmation reads only. Every other
-    // definition/request the OLD file registered (menu open/choice, remote
-    // control, Couatl-started) moved to the Remote API and was removed.
-    private enum DataRequestId
-    {
-        RequestSetGateName,
-        RequestSetGateNumber,
-        RequestSetGateSuffix,
-    }
-
-    private enum DataDefineId
-    {
-        SetGateName,
-        SetGateNumber,
-        SetGateSuffix,
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct DoubleValue
-    {
-        public double Value;
-    }
 
     public sealed record MenuOption(string Key, string Text, int Choice);
 
@@ -167,23 +137,9 @@ public sealed class GsxService : IDisposable
         }
     }
 
-    // ── SetGate_* read-only L-vars (GSX confirmation of selected gate) ──
-    // Default -1 until GSX sets a gate. Updated via VISUAL_FRAME polling on
-    // the retained SetGate_*-only SimConnect client.
-
-    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Name</c> (integer enum; -1 until set).</summary>
-    public int SetGateName { get; private set; } = -1;
-
-    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Number</c> (-1 until set).</summary>
-    public int SetGateNumber { get; private set; } = -1;
-
-    /// <summary>Latest value of <c>L:FSDT_GSX_SetGate_Suffix</c> (-1 until set).</summary>
-    public int SetGateSuffix { get; private set; } = -1;
-
     /// <summary>
     /// True while GSX reports its menu is showing (the Remote API's own
-    /// "menuShown" state key). The auto-gate selector uses this to avoid
-    /// driving the menu while the user is already navigating it manually.
+    /// "menuShown" state key).
     /// </summary>
     public bool IsMenuActive =>
         _state.TryGet("menuShown", out var v) && v.ValueKind == JsonValueKind.True;
@@ -281,7 +237,6 @@ public sealed class GsxService : IDisposable
     private readonly GsxRemoteConnection _remote = new();
     private readonly GsxRemoteState _state = new();
     private readonly GsxServiceAnnouncer _serviceAnnouncer = new();
-    private Microsoft.FlightSimulator.SimConnect.SimConnect? _simConnect;
     private bool _remoteStarted;
     private bool _disposed;
 
@@ -289,7 +244,8 @@ public sealed class GsxService : IDisposable
     private string _lastTooltip = string.Empty;
     private string _statusText = "Status: Disconnected";
     // Seeded with the sim-disconnected reason: until MainForm calls Start() off
-    // the SimConnect connect edge, that is exactly the situation.
+    // the SimConnect connect edge, that is exactly the situation (Start() itself
+    // no longer touches SimConnect, but MainForm still calls it from that edge).
     private string _unavailableReason = ReasonSimDisconnected;
     private readonly List<MenuOption> _menuOptions = new();
     private IReadOnlyList<string> _activeServiceNames = Array.Empty<string>();
@@ -330,34 +286,15 @@ public sealed class GsxService : IDisposable
     // ─────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Start (or no-op the already-started half of) both transports. Safe to
+    /// Start (or no-op if already started) the Remote API transport. Safe to
     /// call repeatedly — e.g. from a SimConnect ConnectionStatusChanged
-    /// callback on reconnect.
+    /// callback on reconnect (MainForm still gates this on the main
+    /// SimConnect connection even though this class no longer touches
+    /// SimConnect itself — see AircraftSwitch.cs).
     /// </summary>
     public void Start()
     {
         if (_disposed) return;
-
-        if (_simConnect == null)
-        {
-            try
-            {
-                _simConnect = new Microsoft.FlightSimulator.SimConnect.SimConnect(
-                    "MSFSBA_GSX", _windowHandle, WM_USER_GSX_SIMCONNECT, null, 0);
-                HookSimConnectEvents();
-                Log.Debug("Gsx", "SimConnect client created (SetGate_* reads only).");
-            }
-            catch (COMException ex)
-            {
-                _simConnect = null;
-                Log.Debug("Gsx", $"SimConnect unavailable: {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                _simConnect = null;
-                Log.Debug("Gsx", $"SimConnect failed to initialize: {ex.Message}");
-            }
-        }
 
         if (!_remoteStarted)
         {
@@ -380,33 +317,23 @@ public sealed class GsxService : IDisposable
     }
 
     /// <summary>
-    /// Stop both transports. Start() will be called again on the next
-    /// SimConnect reconnect.
+    /// Stop the Remote API transport. Start() will be called again on the
+    /// next SimConnect reconnect.
     /// </summary>
     public void Stop()
     {
-        if (_simConnect == null && !_remoteStarted) return;
+        if (!_remoteStarted) return;
 
-        if (_remoteStarted)
-        {
-            // Unsubscribe BEFORE stopping — GsxRemoteConnection.Stop() itself
-            // flips IsConnected to false and would otherwise re-enter
-            // OnRemoteConnectedChanged(false) while we're already mid-teardown
-            // here. The explicit reset below is this method's own, deliberate
-            // teardown of the same state OnRemoteConnectedChanged(false)
-            // would have reset.
-            _remoteStarted = false;
-            _remote.FrameReceived -= OnFrame;
-            _remote.ConnectedChanged -= OnRemoteConnectedChanged;
-            _remote.Stop();
-        }
-
-        if (_simConnect != null)
-        {
-            try { _simConnect.Dispose(); }
-            catch { /* ignore — we're tearing down */ }
-            _simConnect = null;
-        }
+        // Unsubscribe BEFORE stopping — GsxRemoteConnection.Stop() itself
+        // flips IsConnected to false and would otherwise re-enter
+        // OnRemoteConnectedChanged(false) while we're already mid-teardown
+        // here. The explicit reset below is this method's own, deliberate
+        // teardown of the same state OnRemoteConnectedChanged(false)
+        // would have reset.
+        _remoteStarted = false;
+        _remote.FrameReceived -= OnFrame;
+        _remote.ConnectedChanged -= OnRemoteConnectedChanged;
+        _remote.Stop();
 
         _serviceAnnouncer.Reset();
         Menu = GsxMenuModel.Empty;
@@ -436,57 +363,6 @@ public sealed class GsxService : IDisposable
         _disposed = true;
         Stop();
         _remote.Dispose();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Retained SimConnect message pump (SetGate_* reads only).
-    //
-    // NOTE: deliberately NOT named ProcessWindowMessage — GsxServiceFacadeTests
-    // asserts that name is gone, because the OLD menu/tooltip/settings
-    // SimConnect L:var protocol this method used to ALSO pump is fully
-    // retired in favour of the Couatl Remote API. But the retained SimConnect
-    // client (SetGate_* only, kept for GsxGateSelector) is still an
-    // HWND-based client that needs *some* pump: MainForm.WndProc forwards
-    // every window message here, filtering on our distinct WM_USER id.
-    // Swallowing COM/null exceptions mirrors SimConnectManager.ProcessWindowMessage
-    // to stay robust during simulator teardown.
-    // ─────────────────────────────────────────────────────────────────────
-    public void PumpSimConnectMessage(ref Message m)
-    {
-        if (m.Msg == WM_USER_GSX_SIMCONNECT && _simConnect != null)
-        {
-            // Shared re-entrancy gate with the main SimConnect connection. The managed
-            // SimConnect ReceiveMessage() is not reentrant; a DoEvents() pump (during a main
-            // connection's data-def wait) can dispatch THIS GSX message mid-marshalling, which
-            // corrupts the buffer (0xC0000005 in coreclr.dll / ExecutionEngineException). While
-            // either connection is dispatching, defer — the message stays queued for the next
-            // clean pump. All dispatch is on the UI thread, so a plain flag is enough.
-            if (MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress) return;
-            MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress = true;
-            try
-            {
-                _simConnect.ReceiveMessage();
-            }
-            catch (COMException ex)
-            {
-                Log.Debug("Gsx",
-                    $"ReceiveMessage COM exception (expected during disconnect): {ex.Message}");
-            }
-            catch (NullReferenceException ex)
-            {
-                Log.Debug("Gsx",
-                    $"ReceiveMessage null reference (expected during disconnect): {ex.Message}");
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Gsx",
-                    $"Unexpected exception in PumpSimConnectMessage: {ex}");
-            }
-            finally
-            {
-                MSFSBlindAssist.SimConnect.SimConnectManager.SimConnectDispatchInProgress = false;
-            }
-        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1020,110 +896,6 @@ public sealed class GsxService : IDisposable
         // and "control disposed mid-marshal" (ObjectDisposedException).
         catch (InvalidOperationException) { }
         return false;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // SimConnect callbacks — SetGate_* reads only.
-    // ─────────────────────────────────────────────────────────────────────
-
-    private void HookSimConnectEvents()
-    {
-        if (_simConnect == null) return;
-        _simConnect.OnRecvOpen += OnSimConnectOpen;
-        _simConnect.OnRecvQuit += OnSimConnectQuit;
-        _simConnect.OnRecvException += OnSimConnectException;
-        _simConnect.OnRecvSimobjectData += OnSimConnectSimObjectData;
-    }
-
-    private void OnSimConnectOpen(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_OPEN data)
-    {
-        Log.Debug("Gsx", "SimConnect channel opened.");
-        try
-        {
-            DefineSimVars();
-            RequestSimVars();
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Gsx", $"OnSimConnectOpen failed: {ex.Message}");
-        }
-    }
-
-    private void OnSimConnectQuit(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV data)
-    {
-        Log.Debug("Gsx", "Simulator has closed the connection.");
-        try { _simConnect?.Dispose(); } catch { }
-        _simConnect = null;
-    }
-
-    private void OnSimConnectException(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_EXCEPTION data)
-    {
-        Log.Debug("Gsx", $"SimConnect exception: {data.dwException}");
-    }
-
-    private void OnSimConnectSimObjectData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
-    {
-        switch ((DataRequestId)data.dwRequestID)
-        {
-            case DataRequestId.RequestSetGateName:
-            {
-                var value = (DoubleValue)data.dwData[0];
-                SetGateName = (int)value.Value;
-                Log.Debug("Gsx", $"SetGate_Name = {SetGateName}");
-                break;
-            }
-            case DataRequestId.RequestSetGateNumber:
-            {
-                var value = (DoubleValue)data.dwData[0];
-                SetGateNumber = (int)value.Value;
-                Log.Debug("Gsx", $"SetGate_Number = {SetGateNumber}");
-                break;
-            }
-            case DataRequestId.RequestSetGateSuffix:
-            {
-                var value = (DoubleValue)data.dwData[0];
-                SetGateSuffix = (int)value.Value;
-                Log.Debug("Gsx", $"SetGate_Suffix = {SetGateSuffix}");
-                break;
-            }
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // SimConnect setup — SetGate_* data definitions/requests only.
-    // ─────────────────────────────────────────────────────────────────────
-
-    private void DefineSimVars()
-    {
-        if (_simConnect == null) return;
-
-        // SetGate read-only confirmation L-vars (GSX manual p.94+).
-        _simConnect.AddToDataDefinition(DataDefineId.SetGateName, "L:FSDT_GSX_SetGate_Name", "number",
-            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
-        _simConnect.AddToDataDefinition(DataDefineId.SetGateNumber, "L:FSDT_GSX_SetGate_Number", "number",
-            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
-        _simConnect.AddToDataDefinition(DataDefineId.SetGateSuffix, "L:FSDT_GSX_SetGate_Suffix", "number",
-            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_UNUSED);
-
-        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateName);
-        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateNumber);
-        _simConnect.RegisterDataDefineStruct<DoubleValue>(DataDefineId.SetGateSuffix);
-    }
-
-    private void RequestSimVars()
-    {
-        if (_simConnect == null) return;
-
-        // Poll the read-only SetGate confirmation vars on every changed frame.
-        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateName, DataDefineId.SetGateName,
-            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
-        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateNumber, DataDefineId.SetGateNumber,
-            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
-        _simConnect.RequestDataOnSimObject(DataRequestId.RequestSetGateSuffix, DataDefineId.SetGateSuffix,
-            Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
-            SIMCONNECT_PERIOD.VISUAL_FRAME, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
     }
 
     // ─────────────────────────────────────────────────────────────────────

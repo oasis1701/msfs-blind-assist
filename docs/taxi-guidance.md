@@ -595,49 +595,44 @@ fixed.)
 ### Auto-select gate on Calculate Route
 
 Setting `GsxAutoSelectGateOnRoute` (default on). When Taxi Assist calculates a
-route to a gate and GSX is active, `GsxGateSelector` drives GSX's hierarchical
-parking menu to select that exact stand — structure-agnostic
-(terminal/concourse/flat), text-matching, and **never** chooses a WARP /
-Follow-Me / reposition entry (positive-safe-action-only, abort on uncertainty).
+route to a gate, `GsxRemoteGateSelector` sends GSX's documented `gate.select`
+verb over the Couatl Remote API with the stand's own identifier
+(`ParkingSpot.GsxIdentifier`, taken verbatim from
+`handlerData.airport.parkings` — never a label rebuilt from `Describe()` or
+`Name`/`Number`) — one request, one typed response, no menu interaction of any
+kind. The selector feature-checks the `gate` token in `hello.capabilities`
+first (GSX 4.0.8+); when it's absent, nothing is sent and the pilot still
+routes and taxis the aircraft manually, they just have to select the gate in
+GSX themselves.
 
-The driver (`GsxMenuAutomation` over `GsxService`) is a **backtracking DFS**
-(`GsxGateSelector.TraverseAsync`): at each menu level it matches a gate leaf,
-else drills the best unvisited category (strongest concourse score first) and
-recurses, pressing GSX's "↑ Back" to try the next sibling when a branch misses —
-so it finds stands even when GSX files them under a different apron than their
-letter (e.g. OMDB groups C47–C64 outside "Apron C"). Apron submenus default to a
-filtered view, so the DFS clicks **"Show all positions"** first to reveal stands
-hidden by the size filter. All choices are page-relative and sent only while the
-live menu is on that page. Budget: 600 menu reads / 180 s for very large
-airports. **Changing gates:** when a gate is already selected, the top menu is
-"Change parking or service"; the selector drills its "Change Facility" entry to
-re-open the position selector, then traverses to the new stand.
+GSX's result is interpreted, never guessed. `services_active` (GSX already
+committed at a different gate) retries **exactly once** with
+`revokeServices: true` and is announced, so the pilot knows the previous
+stand's services were torn down. `assigned_to_other` (the stand is AI-occupied)
+is announced and **never** auto-`force`d — overriding it silently would put a
+blind pilot nose-to-nose with an aircraft they cannot see. `ambiguous` (several
+stands matched the identifier) is announced rather than guessed at. A
+`too_small` warning on an otherwise-successful selection is always spoken — it
+is GSX's own verdict on the real airframe, and there is no other route to that
+information. `already_parked`/`already_selected` mean nothing to do and stay
+silent. Every announcement is QUEUED (`Announce`), never immediate, so it can't
+interrupt a taxi callout. See `GsxGateSelectAnnouncer` for exactly which of
+`gate.select`'s outcomes are spoken and why the rest are deliberately silent.
 
-Success is confirmed by GSX's `FSDT_GSX_SetGate_Name/Number/Suffix` L-vars. These
-update with a lag (and briefly hold the previous gate when changing), so after
-choosing the leaf + the safe servicing action ("Show me this spot and activate",
-which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
-they match before announcing success. Tuning lives in one place
-(`GsxMenuClassifier`); the full walk is logged to
-`%APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+**Changing gates:** re-running Calculate to a different stand simply sends a
+new `gate.select`; the reentrancy guard SERIALIZES overlapping calls (so two
+Calculate clicks can't have the second call's `revokeServices` race the
+first's) rather than rejecting the second outright — a pilot who spots a wrong
+pick and immediately corrects it gets GSX ending on their last request, not a
+dropped correction behind a busy message.
 
-**Matching and reentrancy hardening:**
-
-- **Bare-number leaf fallback.** A letterless GSX menu leaf ("Parking 209") now
-  matches a navdata-lettered target ("P 209" — the letter was borrowed by the
-  merger for display) on bare number alone. Exact identity match is always tried
-  first; the fallback is logged as `MATCH-BARENUMBER`. Fixes a guaranteed
-  "not found" at EGLL-style airports.
-- **`SelectGateAsync` reentrancy latch** (`Interlocked`). Two Calculate clicks
-  could interleave two DFS traversals on one live GSX menu — the `IsMenuActive`
-  guard reads false during every menu transition, so it cannot prevent the
-  overlap — pressing arbitrary wrong entries. The second call now fails fast.
-- **Classifier ordering** (`GsxMenuClassifier`): the `"(N suitable parkings)"`
-  count-suffix Category check runs **before** the Back check (a group like
-  "Main Apron (12 suitable parkings)" classified as Back made every stand inside
-  unreachable and desynced `BackOutAsync`), and the "main"/"top" back-patterns
-  are full phrases ("main menu" / "back to top") so apron and terminal names
-  cannot false-positive as Back.
+Confirmation is immediate and synchronous, straight off `gate.select`'s own
+result payload — there is no L:var to poll and no lag. See
+[GSX Integration](gsx.md) for the full verb/result shapes, the two
+retained `.ini`/`.py`-parsing paths (remote-airport gate lists; the docking
+stop position, which the Remote API cannot supply), and
+`gsx-gate-select.log`'s per-attempt line (identifier sent, resolved gate,
+warnings, outcome).
 
 ## VDGS / Marshalling Docking
 
