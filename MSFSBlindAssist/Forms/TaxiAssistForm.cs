@@ -35,12 +35,12 @@ public class TaxiAssistForm : Form
     private readonly Services.GateDataSource? _gateSource;
     // When non-null, OnCalculateClicked fires GSX gate auto-select for gate destinations
     // (if the setting is on and GSX is available). The selector is constructed in MainForm
-    // and is only non-null when GSX is installed. NOTE: the selector itself is always
-    // non-null once assigned — null-checking it tells you whether the feature is available
-    // at all, but the REAL runtime availability gate is _gsxGateSelector.CouatlStarted.
-    // A non-null selector with CouatlStarted == false means GSX is installed but not
-    // running this session; in that case auto-select silently falls through to manual routing.
-    private readonly Services.Gsx.GsxGateSelector? _gsxGateSelector;
+    // and is only non-null when GSX is installed. Unlike the retired menu-walking selector,
+    // there is no separate "CouatlStarted" gate to check here: GsxRemoteGateSelector
+    // feature-checks the 'gate' capability itself, on every call, before ever sending
+    // gate.select -- so a non-null selector against a GSX that isn't running (or is too old)
+    // simply returns Unavailable and falls through to manual routing, with no wasted send.
+    private readonly Services.Gsx.Remote.GsxRemoteGateSelector? _gsxGateSelector;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
     // before computing the route, so the route starts from where the aircraft
@@ -207,7 +207,7 @@ public class TaxiAssistForm : Form
     private Dictionary<string, Runway> _crossRunwayMap = new();
     // Gate mode: maps the display label (same key as _destinationNodeMap) → ParkingSpot.
     // Populated in the gate branch of PopulateDestinations so OnCalculateClicked can pass the
-    // actual ParkingSpot to GsxGateSelector without re-querying the data provider.
+    // actual ParkingSpot to GsxRemoteGateSelector without re-querying the data provider.
     private Dictionary<string, ParkingSpot> _destinationSpotMap = new();
 
     // Gate-branch cache (Fix: per-keystroke gate-list rebuild). PopulateDestinations
@@ -251,7 +251,7 @@ public class TaxiAssistForm : Form
         TcasService? tcasService = null,
         double aircraftWingspan = 0,
         Services.GateDataSource? gateSource = null,
-        Services.Gsx.GsxGateSelector? gsxGateSelector = null,
+        Services.Gsx.Remote.GsxRemoteGateSelector? gsxGateSelector = null,
         Services.DockingGuidanceManager? dockingManager = null,
         Func<Task>? importFromSayIntentions = null)
     {
@@ -3392,31 +3392,50 @@ public class TaxiAssistForm : Form
         // the feature is enabled. Conditions:
         //   - destination is a gate (not runway, not progressive taxi, not deice area)
         //   - setting is on
-        //   - a selector was provided (i.e. GsxService exists in this session)
-        //   - GSX CouatlStarted is confirmed via the selector being non-null
-        //     (the selector is only built by MainForm when _gsxService != null)
-        //     PLUS the CouatlStarted live check here, so we don't drive the
-        //     menu when GSX hasn't started yet this session.
-        // NOTE: deice areas (index 3) are explicitly excluded — SelectGateAsync
-        // drives the GSX parking-gate menu, which has no deice-pad entries.
-        // DockingGuidanceManager handles deice guidance via SetDestinationGate
-        // (spot.IsDeiceArea is true) without any GSX menu interaction.
+        //   - a selector was provided (i.e. GsxService existed in this session when
+        //     MainForm built this form) — no separate live "is GSX running" check is
+        //     needed here any more: GsxRemoteGateSelector.SelectGateAsync feature-checks
+        //     the 'gate' capability itself on every call, before ever sending gate.select,
+        //     and returns Unavailable (silently, from SelectGsxGateAsync's point of view —
+        //     see its own doc comment) when GSX isn't running or is too old.
+        // NOTE: deice areas (index 3) are explicitly excluded — gate.select prepares a
+        // GSX parking stand, which has no deice-pad equivalent. DockingGuidanceManager
+        // handles deice guidance via SetDestinationGate (spot.IsDeiceArea is true)
+        // without any GSX Remote API interaction.
         if (!isRunwayDest
             && cmbDestType.SelectedIndex != 3
             && SettingsManager.Current.GsxAutoSelectGateOnRoute
             && _gsxGateSelector != null
-            && _gsxGateSelector.CouatlStarted
             && _destinationSpotMap.TryGetValue(destName, out var gsxSpot))
         {
-            // The selector itself announces its outcome and never throws.
-            // Do NOT await — route loading must not block on GSX menu navigation.
-            _ = _gsxGateSelector.SelectGateAsync(gsxSpot);
+            // Do NOT await — route loading must not block on the GSX round trip.
+            _ = SelectGsxGateAsync(gsxSpot);
         }
 
         // Form stays open so the user can read the summary box while
         // guidance is active. They close it manually with Escape / window-X
         // or by switching focus elsewhere; Stop Guidance button is also
         // available without re-opening.
+    }
+
+    /// <summary>
+    /// Sends <c>gate.select</c> for <paramref name="spot"/> via <see cref="_gsxGateSelector"/>
+    /// and speaks the outcomes a blind pilot cannot learn any other way — see
+    /// <see cref="Services.Gsx.Remote.GsxGateSelectAnnouncer"/> for exactly which outcomes
+    /// that is and why. Uses the QUEUED announcer (<c>Announce</c>), never
+    /// <c>AnnounceImmediate</c>: this is a background GSX decision arriving some time after
+    /// the Calculate click, not a direct UI interaction, and it must not interrupt whatever
+    /// the pilot is already hearing (the route summary, a taxi callout, …). Never throws —
+    /// <see cref="Services.Gsx.Remote.GsxRemoteGateSelector.SelectGateAsync"/> itself never
+    /// throws, and <see cref="Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe"/> is pure
+    /// string logic over an already-parsed result.
+    /// </summary>
+    private async Task SelectGsxGateAsync(ParkingSpot spot)
+    {
+        var result = await _gsxGateSelector!.SelectGateAsync(spot).ConfigureAwait(true);
+        string? phrase = Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe(result);
+        if (!string.IsNullOrEmpty(phrase))
+            _announcer.Announce(phrase);
     }
 
     private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)

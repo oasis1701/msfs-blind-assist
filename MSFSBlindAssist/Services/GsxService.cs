@@ -204,6 +204,50 @@ public sealed class GsxService : IDisposable
     public GsxBilling Billing { get; private set; } = GsxBilling.Empty;
     public GsxReceipt? Receipt { get; private set; }
 
+    /// <summary>
+    /// GSX's currently-advertised <c>hello.capabilities</c> tokens — refreshed on every
+    /// <c>hello</c> frame (the initial connect and every reconnect) and cleared when the
+    /// Remote API connection drops, so a stale token set can never outlive the socket that
+    /// published it. Feature-gates that depend on a specific verb/data surface (the
+    /// <c>gate</c> token for <c>gate.select</c>, the <c>handlerData</c> token for the live
+    /// parking list) must check this, never a version number — the vendor guide's own
+    /// instruction. Wired to <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> and
+    /// <see cref="Services.GateDataSource"/> from MainForm.Dialogs.cs
+    /// (BuildGsxGateSelector/BuildGateDataSource).
+    /// </summary>
+    public IReadOnlyCollection<string> Capabilities { get; private set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// GSX's current <c>handlerData.airport</c> sub-object — the live parking table for
+    /// whichever airport GSX has loaded (<c>icao</c>, <c>name</c>, <c>parkings</c>; see
+    /// <see cref="Services.Gsx.Remote.GsxRemoteParkingReader"/>) — or null when no
+    /// <c>handlerData</c> patch has arrived yet, or it arrived in an unexpected shape.
+    /// <c>handlerData</c> itself (the flat state store's "handlerData" key) is the ~1.7 MB
+    /// <c>{aircraft, airport, gate, simbrief}</c> blob GSX republishes once per airport or
+    /// aircraft change; only its <c>airport</c> member is read here, and only on demand —
+    /// <see cref="Services.GateDataSource"/> calls this once per airport change (it keeps its
+    /// own cache), never on a hot path. Never throws: a malformed shape degrades to null,
+    /// exactly like the capability genuinely being absent. Thread-safe — reads through
+    /// <see cref="GsxRemoteState.TryGet"/>, which locks internally, so this is safe to call
+    /// from the UI thread regardless of when the WebSocket receive loop last wrote it.
+    /// </summary>
+    public JsonElement? GetHandlerDataAirport()
+    {
+        try
+        {
+            if (!_state.TryGet("handlerData", out var handlerData) || handlerData.ValueKind != JsonValueKind.Object)
+                return null;
+            if (!handlerData.TryGetProperty("airport", out var airport) || airport.ValueKind != JsonValueKind.Object)
+                return null;
+            return airport;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"GetHandlerDataAirport failed: {ex.Message}");
+            return null;
+        }
+    }
+
     public event EventHandler? StateChanged;
     public event EventHandler? MenuChanged;
     public event EventHandler? MenuHidden;
@@ -371,6 +415,7 @@ public sealed class GsxService : IDisposable
         Settings = GsxSettingsSchema.Empty;
         Billing = GsxBilling.Empty;
         Receipt = null;
+        Capabilities = Array.Empty<string>();
         _announcedReceipts.Clear();
         LastAnnouncementText = string.Empty;
         _activeServiceNames = Array.Empty<string>();
@@ -552,6 +597,19 @@ public sealed class GsxService : IDisposable
     /// </summary>
     public void RunCommand(string command) => _remote.Send("command.run", new { command });
 
+    /// <summary>
+    /// Sends a Remote API command and awaits its correlated result — the general-purpose
+    /// escape hatch beneath the specific fire-and-forget commands above (<see cref="Choose"/>,
+    /// <see cref="RunCommand"/>, …), for a caller that needs the typed result rather than a
+    /// send-and-forget. This is the production wiring behind
+    /// <see cref="Services.Gsx.Remote.GsxCommandSender"/> for
+    /// <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> (constructed in
+    /// MainForm.Dialogs.BuildGsxGateSelector) — <c>gate.select</c> is a one-shot
+    /// request/response with no menu state, so it does not fit the fire-and-forget shape
+    /// every other command here uses.
+    /// </summary>
+    public Task<GsxResult> SendCommandAsync(string verb, object? args = null) => _remote.SendAsync(verb, args);
+
     public void SetSettingNumber(string key, double value) =>
         _remote.Send("settings.set", new { key, value });
 
@@ -582,6 +640,13 @@ public sealed class GsxService : IDisposable
     private void OnFrame(GsxFrame f)
     {
         if (!EnsureUiThread(() => OnFrame(f))) return;
+
+        // Only a 'hello' frame carries capabilities (GsxFrame.Parse leaves every other
+        // frame type's Capabilities at its default empty list) -- refresh, never clear,
+        // on anything else, so a later patch/event frame can't wipe out what the last
+        // hello actually advertised.
+        if (f.Type == GsxFrameType.Hello)
+            Capabilities = f.Capabilities;
 
         bool wasCouatlRunning = _state.GsxRunning;
         _state.Apply(f);
@@ -914,6 +979,7 @@ public sealed class GsxService : IDisposable
         Settings = GsxSettingsSchema.Empty;
         Billing = GsxBilling.Empty;
         Receipt = null;
+        Capabilities = Array.Empty<string>();
         _activeServiceNames = Array.Empty<string>();
         _selectedActiveService = null;
         // Reached only after a connection that HAD succeeded (SetConnected

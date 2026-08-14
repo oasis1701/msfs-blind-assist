@@ -252,6 +252,73 @@ public class GsxRemoteGateSelectorTests
         Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
     }
 
+    // ── WasRevokedAndReprepared: the caller's signal to announce a torn-down stand ──
+
+    [Fact]
+    public async Task A_successful_services_active_retry_sets_WasRevokedAndReprepared()
+    {
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                bool revoke = ExtractBool(args, "revokeServices");
+                return Task.FromResult<GsxFrame?>(revoke ? PreparedFrame() : ServicesActiveFrame());
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.True(result.WasRevokedAndReprepared);
+    }
+
+    [Fact]
+    public async Task A_first_try_success_does_not_set_WasRevokedAndReprepared()
+    {
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.False(result.WasRevokedAndReprepared);
+    }
+
+    [Fact]
+    public async Task A_services_active_retry_that_is_still_busy_does_not_set_WasRevokedAndReprepared()
+    {
+        // The retry itself came back services_active again (double-busy) -- not Prepared,
+        // so there is nothing to claim was "reprepared".
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(ServicesActiveFrame()),
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(GsxGateSelectOutcome.ServicesActive, result.Outcome);
+        Assert.False(result.WasRevokedAndReprepared);
+    }
+
+    [Fact]
+    public async Task A_services_active_retry_that_lands_on_an_occupied_stand_does_not_set_WasRevokedAndReprepared()
+    {
+        // The retry succeeded in the sense of getting a definite answer, but that answer
+        // was assigned_to_other, not Prepared -- the revoke happened, but there is no new
+        // stand set up to announce.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                bool revoke = ExtractBool(args, "revokeServices");
+                return Task.FromResult<GsxFrame?>(revoke ? AssignedToOtherFrame() : ServicesActiveFrame());
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(GsxGateSelectOutcome.AssignedToOther, result.Outcome);
+        Assert.False(result.WasRevokedAndReprepared);
+    }
+
     [Fact]
     public async Task Already_there_does_not_trigger_a_retry()
     {

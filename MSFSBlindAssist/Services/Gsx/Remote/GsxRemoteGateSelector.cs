@@ -123,6 +123,16 @@ public sealed class GsxRemoteGateSelector
         {
             result = await SendSelectAsync(identifier, revokeServices: true).ConfigureAwait(false);
             LogAttempt(label, identifier, revokeServices: true, result);
+
+            // Mark the retry's own success so a caller can tell "prepared immediately"
+            // apart from "prepared after tearing down the previous stand's services" --
+            // the pilot needs to hear the latter (spec: "a successful revoke-and-reprepare
+            // ... so the pilot knows the previous stand's setup was torn down"). Only on
+            // Prepared: revokeServices:true already performed the revoke as a side effect
+            // regardless of what the retry itself returns, but Prepared is the one outcome
+            // this flag is defined to mean "and the new stand is now set up too".
+            if (result.Outcome == GsxGateSelectOutcome.Prepared)
+                result.WasRevokedAndReprepared = true;
         }
 
         return result;

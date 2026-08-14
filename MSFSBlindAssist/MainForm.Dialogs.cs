@@ -628,28 +628,52 @@ public partial class MainForm
         });
     }
 
+    /// <summary>
+    /// Wires <see cref="Services.GateDataSource"/> to live GSX data: the pre-existing
+    /// <c>.ini</c>/navdata path (unchanged, gated on <c>CouatlStarted</c> + a matching
+    /// profile), plus the Remote API path added by Spec 2 — GSX's own
+    /// <c>handlerData.airport.parkings</c> for whichever airport GSX currently has loaded.
+    /// The two extra delegates default to "off" when omitted (see
+    /// <see cref="Services.GateDataSource"/>'s own constructor doc), so wiring them here is
+    /// what actually turns the Remote API gate-list path on in the running app — without
+    /// this, <see cref="Services.GateDataSource.GetGates"/> can never take that branch no
+    /// matter what GSX publishes.
+    /// </summary>
     private Services.GateDataSource? BuildGateDataSource()
     {
         if (airportDataProvider == null) return null;
-        // GSX gates only when GSX is running this session (Couatl started) AND a profile matches.
+        // GSX gates (.ini/navdata path) only when GSX is running this session (Couatl
+        // started) AND a profile matches.
         return new Services.GateDataSource(
             airportDataProvider,
-            () => _gsxService != null && _gsxService.CouatlStarted);
+            () => _gsxService != null && _gsxService.CouatlStarted,
+            capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
+            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport());
     }
 
     /// <summary>
-    /// Constructs a <see cref="Services.Gsx.GsxGateSelector"/> when GSX is
-    /// available in this session. Returns <c>null</c> when there is no GSX
-    /// service (GSX not installed / not yet started), so callers can simply
-    /// null-check before using it.
+    /// Constructs a <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> when GSX is
+    /// available in this session. Returns <c>null</c> when there is no GSX service (GSX not
+    /// installed / not yet started), so callers can simply null-check before using it.
+    /// Sends <c>gate.select</c> over the Remote API — one request, one typed response, no
+    /// menu interaction — replacing the retired menu-walking <c>GsxGateSelector</c>. The
+    /// selector itself feature-checks the <c>gate</c> capability before ever sending
+    /// anything (GSX 4.0.8+), so this is safe to construct even against an older GSX or one
+    /// that hasn't sent its <c>hello</c> frame yet.
     /// </summary>
-    private Services.Gsx.GsxGateSelector? BuildGsxGateSelector()
+    private Services.Gsx.Remote.GsxRemoteGateSelector? BuildGsxGateSelector()
     {
-        if (_gsxService == null) return null;
-        return new Services.Gsx.GsxGateSelector(
-            _gsxService,
-            new Services.Gsx.GsxMenuAutomation(_gsxService),
-            announcer);
+        // Captured as a local so the lambdas below close over a specific, narrowed-non-null
+        // GsxService instance rather than the mutable _gsxService field -- flow analysis
+        // cannot trust a field to stay non-null inside a closure that may run long after
+        // this null check (a later aircraft-switch teardown could null the field out), and
+        // a local copy is also the semantically right behavior: this selector should keep
+        // talking to the SAME GsxService instance for its lifetime.
+        var gsxService = _gsxService;
+        if (gsxService == null) return null;
+        return new Services.Gsx.Remote.GsxRemoteGateSelector(
+            async (verb, args) => (await gsxService.SendCommandAsync(verb, args)).Frame,
+            () => gsxService.Capabilities);
     }
 
     /// <summary>

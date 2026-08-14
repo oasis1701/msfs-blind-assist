@@ -91,6 +91,20 @@ public sealed class GsxGateSelectResult
     public string? Message { get; private init; }
 
     /// <summary>
+    /// True when this <see cref="GsxGateSelectOutcome.Prepared"/> result came from
+    /// <see cref="GsxRemoteGateSelector"/>'s automatic <c>services_active</c> retry
+    /// (<c>revokeServices: true</c>) rather than the initial attempt. A single result frame
+    /// carries no way to know it was a retry — <see cref="FromFrame"/> never sets this — so
+    /// <see cref="GsxRemoteGateSelector"/> flips it on the retry's own result after the fact,
+    /// once it knows the retry is what produced it. Additive: defaults to <c>false</c>, so
+    /// nothing about a plain first-try <see cref="FromFrame"/> parse changes. Lets a caller
+    /// announce that the PREVIOUS stand's services were torn down — distinct information
+    /// from an ordinary "prepared", which the spec requires the pilot be told (a
+    /// <c>services_active</c> retry means GSX was already committed at a different gate).
+    /// </summary>
+    public bool WasRevokedAndReprepared { get; internal set; }
+
+    /// <summary>
     /// Builds a result decided LOCALLY by <see cref="GsxRemoteGateSelector"/>, without ever
     /// sending a frame over the wire — the capability gate (no <c>gate</c> token in
     /// <c>hello.capabilities</c>) and a target spot with no identifier to send are the only
