@@ -93,8 +93,8 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// <see cref="ParkingSpot"/> instances it was given (no defensive copy — <see cref="ParkingSpot"/>
 /// has no clone method, and every field this join can touch is documented above); callers should
 /// treat <paramref name="apiSpots"/>'s instances as consumed by the call, matching how
-/// <c>GateDataSource</c>'s single real call site immediately reassigns its own list variable to
-/// this method's result.
+/// <c>GateDataSource.TryBuildGatesFromRemoteApi</c> — the one call site — immediately reassigns
+/// its own <c>spots</c> local to this method's result rather than reading the parameter again.
 /// </para>
 /// </summary>
 public static class GsxStopPositionJoiner

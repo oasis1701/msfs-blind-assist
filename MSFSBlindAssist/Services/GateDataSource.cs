@@ -1,40 +1,128 @@
+using System.Text.Json;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.Gsx;
+using MSFSBlindAssist.Services.Gsx.Remote;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// Returns the gate/parking list for an airport, preferring the GSX profile
-/// (accurate) when GSX is available AND a profile matches the ICAO; otherwise
-/// falls back to the navdata provider unchanged. Parsed profiles are cached per
-/// (path, last-write-time).
+/// Returns the gate/parking list for an airport. Three sources, tried in this order:
+/// <list type="number">
+/// <item>The GSX Remote API's <c>handlerData.airport.parkings</c> — ONLY for the airport GSX
+/// currently has loaded (<c>handlerData.airport.icao</c> must equal the requested ICAO) AND
+/// only when GSX advertises the <c>handlerData</c> capability. This is not a version-gated
+/// fallback: <c>handlerData</c> genuinely has no data for any OTHER airport, so a pilot typing
+/// a remote ICAO (route planning, gate teleport at a different field) always falls through to
+/// the next source. See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
+/// §"The API only knows the CURRENT airport".</item>
+/// <item>The GSX <c>.ini</c> profile (accurate) when GSX is available AND a profile matches the
+/// ICAO — parsed by <see cref="GsxProfileParser"/> and overlaid on navdata by
+/// <see cref="GsxNavdataMerger"/>. Parsed profiles are cached per (path, last-write-time).</item>
+/// <item>The navdata provider, unchanged.</item>
+/// </list>
+/// A stop position (docking's input) is available only via the <c>.ini</c> — the Remote API path
+/// joins it in from the SAME <c>.ini</c> profile when one exists for the airport
+/// (<see cref="GsxStopPositionJoiner"/>); when it doesn't, stop fields stay null exactly like a
+/// navdata-only stand today. The Remote API path's own cache is separate from the <c>.ini</c>
+/// cache (see <see cref="_apiCache"/>) — it cannot use a file's last-write-time, because nothing
+/// about a live GSX airport necessarily touches a file when it changes.
 /// </summary>
 public sealed class GateDataSource
 {
+    private const string HandlerDataCapability = "handlerData";
+
     private readonly IAirportDataProvider _navdata;
     private readonly Func<bool> _isGsxAvailable;
     private readonly GsxProfileLocator _locator;
+    private readonly Func<IReadOnlyCollection<string>> _capabilities;
+    private readonly Func<JsonElement?> _getHandlerDataAirport;
+
     private readonly Dictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
         = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// The Remote API path's OWN cache, deliberately a separate field from <see cref="_cache"/>
+    /// above rather than reusing its (path, last-write-time) shape. <c>handlerData.airport</c>
+    /// changes whenever the aircraft moves to a different airport OR GSX simply reloads/republishes
+    /// the SAME airport (no file write involved either way), so a cache keyed on a file timestamp
+    /// would silently keep serving a stale airport's stands. Keyed on the (already ICAO-normalized)
+    /// requested ICAO, with the CONTENT of <c>handlerData.airport</c> itself — its raw JSON text —
+    /// as the staleness check: identical text means GSX republished the exact same data (a real,
+    /// harmless cache hit), any difference (a different airport, or the same airport's data having
+    /// changed) forces a fresh read. See <see cref="TryBuildGatesFromRemoteApi"/>.
+    /// </summary>
+    private readonly Dictionary<string, (string airportSnapshot, List<ParkingSpot> spots)> _apiCache
+        = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <param name="capabilities">
+    /// Returns GSX's currently-advertised <c>hello.capabilities</c> tokens. Defaults to "none
+    /// advertised" when omitted, so an existing caller that doesn't pass this (there is exactly
+    /// one today, <c>MainForm.Dialogs.BuildGateDataSource</c>) gets EXACTLY today's routing — the
+    /// Remote API path can never activate, and every call falls straight through to the
+    /// <c>.ini</c>/navdata path below, byte-identical to before this constructor gained these
+    /// parameters. Wiring the real capability set from <c>GsxService</c> is later work (Spec 2:
+    /// GsxService does not track <c>hello.capabilities</c> yet).
+    /// </param>
+    /// <param name="getHandlerDataAirport">
+    /// Returns GSX's current <c>handlerData.airport</c> sub-object (NOT the whole <c>handlerData</c>
+    /// frame — the same granularity <see cref="GsxRemoteParkingReader.Read"/> expects), or null
+    /// when none has arrived yet. Defaults to "never available" when omitted, for the same
+    /// backward-compatibility reason as <paramref name="capabilities"/>.
+    /// </param>
     public GateDataSource(IAirportDataProvider navdata, Func<bool> isGsxAvailable,
-                          GsxProfileLocator? locator = null)
+                          GsxProfileLocator? locator = null,
+                          Func<IReadOnlyCollection<string>>? capabilities = null,
+                          Func<JsonElement?>? getHandlerDataAirport = null)
     {
         _navdata = navdata;
         _isGsxAvailable = isGsxAvailable;
         _locator = locator ?? new GsxProfileLocator();
+        _capabilities = capabilities ?? (() => Array.Empty<string>());
+        _getHandlerDataAirport = getHandlerDataAirport ?? (() => null);
     }
 
+    /// <summary>
+    /// Which source <see cref="GetGates"/> would use for <paramref name="icao"/> right now, so
+    /// the UI can say so. Three answers, in the SAME priority order <see cref="GetGates"/> itself
+    /// applies: <see cref="GateSource.GsxRemote"/> (the current airport, served from the Remote
+    /// API), <see cref="GateSource.Gsx"/> (a matching <c>.ini</c> profile), or
+    /// <see cref="GateSource.Navdata"/> (neither).
+    /// </summary>
     public GateSource GetActiveSource(string icao)
-        => (_isGsxAvailable() && _locator.TryFindProfile(NormalizeIcao(icao), out _))
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return GateSource.Navdata;
+        icao = NormalizeIcao(icao);
+
+        if (TryGetCurrentAirportHandlerData(icao, out _))
+            return GateSource.GsxRemote;
+
+        return (_isGsxAvailable() && _locator.TryFindProfile(icao, out _))
             ? GateSource.Gsx : GateSource.Navdata;
+    }
 
     public List<ParkingSpot> GetGates(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return new List<ParkingSpot>();
         icao = NormalizeIcao(icao);
 
+        // Remote API path: ONLY for the airport GSX currently has loaded. Any exception,
+        // anywhere in this attempt, is swallowed inside TryBuildGatesFromRemoteApi/
+        // TryGetCurrentAirportHandlerData -- this call can never throw, and a null result means
+        // "fall through to the existing path below", the exact same signal as "not eligible".
+        if (TryGetCurrentAirportHandlerData(icao, out var handlerDataAirport))
+        {
+            List<ParkingSpot>? apiSpots = TryBuildGatesFromRemoteApi(icao, handlerDataAirport);
+            if (apiSpots != null) return apiSpots;
+        }
+
+        // ── Everything below is the PRE-EXISTING .ini/navdata path, untouched. ──
+        // Reached whenever the Remote API doesn't apply (a different/remote ICAO, no
+        // 'handlerData' capability, no airport data yet) OR the API attempt above failed for
+        // any reason. GsxNavdataMerger lives ONLY here -- see the spec's "constraint 1": the
+        // Remote API path never needs it (its positions are already complete), but a remote
+        // ICAO still has no other source of GSX-accurate data.
         if (_isGsxAvailable() && _locator.TryFindProfile(icao, out string path))
         {
             try
@@ -71,6 +159,12 @@ public sealed class GateDataSource
     /// These are GSX-only: never merged with navdata and never included in the normal
     /// gate list. Returns an empty list when GSX is unavailable or the airport has no
     /// deice areas defined in its profile.
+    /// <para>
+    /// Deliberately stays on the <c>.ini</c> path even for the CURRENT airport — the Remote API
+    /// gives no way to distinguish a deice pad from an ordinary stand (both are just entries in
+    /// <c>handlerData.airport.parkings</c> with no deice marker), so <see cref="GsxProfileParser"/>
+    /// (which reads the <c>.ini</c>'s <c>is_deicearea</c> key) remains the only source.
+    /// </para>
     /// </summary>
     public List<ParkingSpot> GetDeiceAreas(string icao)
     {
@@ -89,6 +183,148 @@ public sealed class GateDataSource
         {
             return new List<ParkingSpot>();
         }
+    }
+
+    /// <summary>
+    /// True, with <paramref name="airport"/> set, exactly when the Remote API path applies to
+    /// <paramref name="icao"/> right now: GSX advertises the <c>handlerData</c> capability, it has
+    /// published a <c>handlerData.airport</c> object, and that object's own <c>icao</c> equals the
+    /// (already-normalized) requested one. Shared by <see cref="GetGates"/> and
+    /// <see cref="GetActiveSource"/> so the two can never disagree about which source applies.
+    /// Never throws — a misbehaving <see cref="_capabilities"/>/<see cref="_getHandlerDataAirport"/>
+    /// provider, or a malformed/disposed <see cref="JsonElement"/>, degrades to "not eligible"
+    /// exactly like the capability genuinely being absent.
+    /// </summary>
+    private bool TryGetCurrentAirportHandlerData(string icao, out JsonElement airport)
+    {
+        airport = default;
+        try
+        {
+            IReadOnlyCollection<string>? caps = _capabilities();
+            if (caps is null || !caps.Contains(HandlerDataCapability, StringComparer.Ordinal))
+                return false;
+
+            JsonElement? handlerDataAirport = _getHandlerDataAirport();
+            if (handlerDataAirport is not { } a || a.ValueKind != JsonValueKind.Object)
+                return false;
+
+            if (!AirportIcaoMatches(a, icao)) return false;
+
+            airport = a;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"gate list: handlerData capability/airport check failed for {icao}: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the gate list for <paramref name="icao"/> from an already-confirmed-current
+    /// <paramref name="airport"/> (<see cref="TryGetCurrentAirportHandlerData"/> has already
+    /// verified the capability and the ICAO match). Returns null — never throws — whenever the
+    /// Remote API path cannot produce a usable list for any reason, which <see cref="GetGates"/>
+    /// treats identically to "not eligible": fall through to the pre-existing path.
+    /// </summary>
+    private List<ParkingSpot>? TryBuildGatesFromRemoteApi(string icao, JsonElement airport)
+    {
+        try
+        {
+            string snapshot = airport.GetRawText();
+            if (_apiCache.TryGetValue(icao, out var cached)
+                && string.Equals(cached.airportSnapshot, snapshot, StringComparison.Ordinal))
+                return cached.spots;
+
+            var spots = GsxRemoteParkingReader.Read(airport, icao);
+
+            if (_locator.TryFindProfile(icao, out string iniPath))
+            {
+                try
+                {
+                    var iniGates = GsxProfileParser.Parse(iniPath);
+                    spots = GsxStopPositionJoiner.Join(spots, iniGates);
+                }
+                catch (Exception ex)
+                {
+                    // A broken/unreadable .ini must not throw away an otherwise-complete and
+                    // correct API-sourced list — it just keeps every spot's stop position null,
+                    // exactly like a navdata-only stand (or an airport with no .ini at all)
+                    // already behaves. Falling all the way back to navdata here would discard a
+                    // couple hundred good GSX stands over one bad file.
+                    Log.Debug("Gsx", $"gate list: .ini join failed for {icao}, stop positions left null: {ex.Message}");
+                }
+            }
+
+            spots = DropUnusableHeadings(spots, icao);
+
+            if (spots.Count == 0)
+            {
+                // Mirrors the pre-existing .ini path's own "empty/garbage profile -> fall
+                // through to navdata" rule a little further down in GetGates. Never cached: an
+                // empty result here is far more likely to mean "GSX hasn't finished publishing
+                // this airport yet" than "this airport genuinely has zero stands", and caching
+                // it would strand the pilot on an empty list for the rest of the session instead
+                // of retrying (and succeeding) on the next call.
+                return null;
+            }
+
+            _apiCache[icao] = (snapshot, spots);
+            return spots;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Gsx", $"gate list: Remote API path failed for {icao} -- falling back to the existing path. {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Drops any spot whose <see cref="ParkingSpot.Heading"/> is still unusable
+    /// (<see cref="GsxRemoteParkingReader.HasUsableHeading"/> false) after the <c>.ini</c> join
+    /// has had its chance to recover one — the last gate before a <see cref="double.NaN"/> could
+    /// reach docking geometry or the UI. Logs ONE line naming every dropped stand (never per-spot
+    /// spam) only when at least one was actually dropped; this is expected to be rare (GSX omits a
+    /// heading for 1/238 real stands in the KJFK capture, and the <c>.ini</c> join recovers most of
+    /// those), so when it does happen it means neither GSX nor the <c>.ini</c> had a heading for
+    /// that stand — worth a line, not worth an exception or a fallback.
+    /// </summary>
+    private static List<ParkingSpot> DropUnusableHeadings(List<ParkingSpot> spots, string icao)
+    {
+        var kept = new List<ParkingSpot>(spots.Count);
+        List<string>? dropped = null;
+
+        foreach (var spot in spots)
+        {
+            if (GsxRemoteParkingReader.HasUsableHeading(spot))
+            {
+                kept.Add(spot);
+            }
+            else
+            {
+                (dropped ??= new List<string>()).Add(spot.GsxIdentifier ?? spot.Name);
+            }
+        }
+
+        if (dropped is { Count: > 0 })
+            Log.Warn("Gsx",
+                $"gate list: dropped {dropped.Count} stand(s) with no usable heading for {icao} " +
+                $"(neither GSX nor the .ini had one): {string.Join(", ", dropped)}");
+
+        return kept;
+    }
+
+    /// <summary>True when <paramref name="airport"/> carries a string <c>icao</c> property equal
+    /// (ordinal, case-insensitive) to the already-normalized <paramref name="icao"/>.</summary>
+    private static bool AirportIcaoMatches(JsonElement airport, string icao)
+    {
+        if (airport.ValueKind != JsonValueKind.Object) return false;
+        if (!airport.TryGetProperty("icao", out var icaoEl) || icaoEl.ValueKind != JsonValueKind.String)
+            return false;
+
+        string? apiIcao = icaoEl.GetString();
+        return !string.IsNullOrWhiteSpace(apiIcao)
+            && string.Equals(apiIcao.Trim(), icao, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeIcao(string icao) => icao.Trim().ToUpperInvariant();
