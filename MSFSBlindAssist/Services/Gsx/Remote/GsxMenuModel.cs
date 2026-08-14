@@ -100,6 +100,11 @@ public sealed class GsxMenuModel
         return StateClass[index] switch
         {
             "gsx-state-completed" => "Completed",
+            // GSX's real wire value is "performed" -- confirmed live at EDDF
+            // (2026-08) on "113/143 passengers boarded" mid-boarding. Keep
+            // "-performing" too: it was never once observed across that whole
+            // session, but costs nothing and we cannot prove no GSX build emits it.
+            "gsx-state-performed" => "In progress",
             "gsx-state-performing" => "In progress",
             "gsx-state-unavailable" => "Unavailable",
             _ => null,

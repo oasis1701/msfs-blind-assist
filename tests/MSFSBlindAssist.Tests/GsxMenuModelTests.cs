@@ -145,4 +145,27 @@ public class GsxMenuModelTests
         string shortcut = GsxMenuModel.Shortcut(20);
         Assert.False(string.IsNullOrEmpty(shortcut));
     }
+
+    [Fact]
+    public void StateSuffix_maps_the_live_performed_value_to_in_progress()
+    {
+        // GSX's real wire value is "gsx-state-performed", not "-performing" --
+        // captured live at EDDF (2026-08) on "113/143 passengers boarded" mid-
+        // boarding. Before this, the switch's default case returned null and the
+        // in-progress cue was silently lost to the screen reader entirely.
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["113/143 passengers boarded"],"stateClass":["gsx-state-performed"]}""").RootElement);
+        Assert.Equal("In progress", m.StateSuffix(0));
+    }
+
+    [Fact]
+    public void StateSuffix_still_maps_the_never_observed_performing_spelling()
+    {
+        // "-performing" was never once seen across the whole EDDF session that
+        // found the "-performed" bug above, but it costs nothing to keep and we
+        // cannot prove no GSX build ever emits it.
+        var m = GsxMenuModel.Parse(JsonDocument.Parse(
+            """{"entries":["x"],"stateClass":["gsx-state-performing"]}""").RootElement);
+        Assert.Equal("In progress", m.StateSuffix(0));
+    }
 }
