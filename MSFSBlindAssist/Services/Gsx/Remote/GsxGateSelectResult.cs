@@ -90,6 +90,17 @@ public sealed class GsxGateSelectResult
     /// <summary>GSX's own error message, when it sent one. Null on success.</summary>
     public string? Message { get; private init; }
 
+    /// <summary>
+    /// Builds a result decided LOCALLY by <see cref="GsxRemoteGateSelector"/>, without ever
+    /// sending a frame over the wire — the capability gate (no <c>gate</c> token in
+    /// <c>hello.capabilities</c>) and a target spot with no identifier to send are the only
+    /// two cases. Internal: both are pre-flight checks the selector makes before it has
+    /// anything from GSX to interpret, so there is no frame for a caller outside this
+    /// assembly to have parsed via <see cref="FromFrame"/> in the first place.
+    /// </summary>
+    internal static GsxGateSelectResult Local(GsxGateSelectOutcome outcome, string? message = null) =>
+        new() { Outcome = outcome, Message = message };
+
     public static GsxGateSelectResult FromFrame(GsxFrame frame)
     {
         if (frame is null || frame.Type != GsxFrameType.Result)

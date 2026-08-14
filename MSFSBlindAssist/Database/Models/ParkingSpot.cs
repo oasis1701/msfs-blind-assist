@@ -34,6 +34,21 @@ public class ParkingSpot
     public double? GateDistanceThreshold { get; set; }
 
     /// <summary>
+    /// GSX's own identifier for this stand — the raw <c>uiGateName</c> value from
+    /// <c>handlerData.airport.parkings</c> (Remote API), carried verbatim by
+    /// <c>GsxRemoteParkingReader</c> alongside the parsed <see cref="Name"/>/<see cref="Number"/>/
+    /// <see cref="Suffix"/>. Null for navdata-only spots and for any GSX spot the reader could
+    /// not resolve one for.
+    /// <para>
+    /// <c>GsxRemoteGateSelector</c> sends THIS value to <c>gate.select</c> verbatim — never a
+    /// label rebuilt from <see cref="Describe"/> or from <see cref="Name"/>/<see cref="Number"/>/
+    /// <see cref="Suffix"/>. A round-trip through our own formatting is exactly how the wrong
+    /// stand gets selected (spec ruling, docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md).
+    /// </para>
+    /// </summary>
+    public string? GsxIdentifier { get; set; }
+
+    /// <summary>
     /// Alternative names for this parking spot discovered from online sources (OSM / X-Plane
     /// apt.dat) when those sources use a different label than the navdata <see cref="Name"/>.
     /// An alias only ever RE-LETTERS the same stand: bare navdata gate "51" picks up the
