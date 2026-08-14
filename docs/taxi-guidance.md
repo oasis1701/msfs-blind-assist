@@ -603,7 +603,11 @@ verb over the Couatl Remote API with the stand's own identifier
 kind. The selector feature-checks the `gate` token in `hello.capabilities`
 first (GSX 4.0.8+); when it's absent, nothing is sent and the pilot still
 routes and taxis the aircraft manually, they just have to select the gate in
-GSX themselves.
+GSX themselves. That last part is SPOKEN, once per dialog session, but only
+when GSX advertised a capability list that simply lacked `gate` — positive
+evidence of a connected 4.0.1-4.0.7 build. An empty list says nothing about
+the version (usually the Remote API isn't connected at all), so it stays
+silent rather than send the pilot after an update they may already have.
 
 GSX's result is interpreted, never guessed. `services_active` (GSX already
 committed at a different gate) retries **exactly once** with

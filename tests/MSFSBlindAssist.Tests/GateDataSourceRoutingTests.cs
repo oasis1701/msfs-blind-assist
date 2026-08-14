@@ -403,15 +403,17 @@ public class GateDataSourceRoutingTests : IDisposable
         Assert.Equal(GateSource.Navdata, source.GetActiveSource(Kjfk));
     }
 
-    // ── 13. Backward compatibility: the one existing production call site ──────────────────
+    // ── 13. The optional parameters default the Remote API path OFF ───────────────────────
 
     [Fact]
-    public void Existing_caller_that_omits_the_new_parameters_behaves_exactly_as_before()
+    public void Caller_that_omits_the_new_parameters_behaves_exactly_as_before()
     {
         var navdataSpots = new List<ParkingSpot> { new() { AirportICAO = Kjfk, Name = "Navdata KJFK", Number = 9 } };
         var navdata = new FakeAirportDataProvider(new(StringComparer.OrdinalIgnoreCase) { [Kjfk] = navdataSpots });
-        // The exact constructor shape MainForm.Dialogs.BuildGateDataSource uses today -- two
-        // positional args, nothing else. The Remote API path must be structurally unreachable.
+        // Omitting both optional parameters must leave the Remote API path structurally
+        // unreachable. (The production call site does pass them -- see BuildGateDataSource;
+        // this pins the DEFAULT, which is what makes "API off" the thing a caller has to
+        // opt out of rather than something each one must remember to arrange.)
         var source = new GateDataSource(navdata, () => false);
 
         var spots = source.GetGates(Kjfk);

@@ -57,13 +57,14 @@ public sealed class GateDataSource
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <param name="capabilities">
-    /// Returns GSX's currently-advertised <c>hello.capabilities</c> tokens. Defaults to "none
-    /// advertised" when omitted, so an existing caller that doesn't pass this (there is exactly
-    /// one today, <c>MainForm.Dialogs.BuildGateDataSource</c>) gets EXACTLY today's routing — the
-    /// Remote API path can never activate, and every call falls straight through to the
-    /// <c>.ini</c>/navdata path below, byte-identical to before this constructor gained these
-    /// parameters. Wiring the real capability set from <c>GsxService</c> is later work (Spec 2:
-    /// GsxService does not track <c>hello.capabilities</c> yet).
+    /// Returns GSX's currently-advertised <c>hello.capabilities</c> tokens. The production call
+    /// site (<c>MainForm.Dialogs.BuildGateDataSource</c>) passes <c>GsxService.Capabilities</c>.
+    /// Defaults to "none advertised" when omitted, so a caller that doesn't pass it — every test
+    /// that isn't specifically exercising the Remote API path — gets the pre-Remote-API routing:
+    /// the API path can never activate, and every call falls straight through to the
+    /// <c>.ini</c>/navdata path below. That default is load-bearing, not vestigial: it is what
+    /// makes "the API path is off" the structural default rather than something each caller has
+    /// to remember to arrange.
     /// </param>
     /// <param name="getHandlerDataAirport">
     /// Returns GSX's current <c>handlerData.airport</c> sub-object (NOT the whole <c>handlerData</c>
