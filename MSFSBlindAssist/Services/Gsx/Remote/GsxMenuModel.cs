@@ -52,8 +52,25 @@ public sealed class GsxMenuModel
         };
     }
 
+    /// <summary>
+    /// True when <paramref name="entry"/> is GSX's own "no option here" padding —
+    /// null, empty, or whitespace-only. GSX's parking-search results are a fixed
+    /// 10-slot menu; unused slots come back as empty strings (confirmed live at
+    /// EDDF: searching "A15" returned one real match at index 0, "Back" at index
+    /// 9, and "" at every slot in between) and GSX does NOT mark them disabled —
+    /// <c>disabled</c> stayed [false x10] across the whole padded response — so a
+    /// blank slot needs its OWN check, entirely separate from <see cref="Disabled"/>.
+    /// </summary>
+    public static bool IsBlank(string? entry) => string.IsNullOrWhiteSpace(entry);
+
+    /// <summary>
+    /// True when <paramref name="index"/> names a real, pickable option: in range,
+    /// not <see cref="Disabled"/>, and not one of GSX's blank padding slots (see
+    /// <see cref="IsBlank"/>) — a blank slot is never disabled on the wire, so
+    /// without this second check it would read back as selectable.
+    /// </summary>
     public bool IsSelectable(int index)
-        => index >= 0 && index < Count && !Disabled[index];
+        => index >= 0 && index < Count && !Disabled[index] && !IsBlank(Entries[index]);
 
     /// <summary>
     /// Re-resolve an index against the CURRENT menu, verifying the label still
@@ -67,7 +84,11 @@ public sealed class GsxMenuModel
     /// </summary>
     public int ResolveIndex(int paintedIndex, string expectedLabel)
     {
-        if (string.IsNullOrEmpty(expectedLabel) || Count == 0) return -1;
+        // A blank expectedLabel can never legitimately identify a real option —
+        // refuse it up front. Without this, a blank expectedLabel could match one
+        // of GSX's own blank padding slots via the equality checks below and
+        // "resolve" to it (see IsBlank).
+        if (IsBlank(expectedLabel) || Count == 0) return -1;
 
         // Fast path: if the painted index still holds the expected label, that is
         // positive evidence — return it even if duplicates exist elsewhere.

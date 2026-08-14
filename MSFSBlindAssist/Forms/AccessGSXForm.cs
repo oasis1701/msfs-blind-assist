@@ -721,24 +721,17 @@ public sealed class AccessGSXForm : Form
         // what the pilot should press. GSX's own state cue and disabled
         // flag are spelled out in words too — the sighted client renders
         // them as an icon tint, which has no screen-reader equivalent
-        // unless we say it here.
+        // unless we say it here. GsxMenuEntryRenderer (bottom of this file)
+        // skips any entry GSX published as blank padding rather than a real
+        // option — see its remarks for why, and GsxMenuModel.IsBlank for the
+        // live evidence.
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(menu.Title))
         {
             sb.AppendLine(menu.Title);
         }
-        for (int i = 0; i < menu.Count; i++)
-        {
-            sb.Append(GsxMenuModel.Shortcut(i)).Append(". ").Append(menu.Entries[i]);
-
-            string? suffix = menu.StateSuffix(i);
-            if (suffix != null)
-                sb.Append(" — ").Append(suffix);
-            if (menu.Disabled[i])
-                sb.Append(" — unavailable");
-
-            sb.AppendLine();
-        }
+        foreach (string line in GsxMenuEntryRenderer.RenderLines(menu))
+            sb.AppendLine(line);
 
         // GSX's always-available system block, below the numbered options —
         // exactly where the in-sim menu and every previous AccessGSX build put
@@ -870,5 +863,57 @@ internal static class GsxMenuAnnounceResolver
                 return false;
         }
         return true;
+    }
+}
+
+/// <summary>
+/// Renders the numbered option lines for a <see cref="GsxMenuModel"/> — one line per
+/// entry as "&lt;shortcut&gt;. &lt;text&gt;[ — &lt;state&gt;][ — unavailable]" — skipping
+/// any entry GSX published as BLANK padding rather than a real option.
+///
+/// GSX's parking-search results are a fixed 10-slot menu; unused slots come back as
+/// empty strings and are NOT marked disabled — confirmed live at EDDF: searching "A15"
+/// returned one real match at index 0, "Back" at index 9, and "" at every slot in
+/// between, with <c>disabled</c> staying [false x10] throughout (see
+/// <see cref="GsxMenuModel.IsBlank"/>). Rendered without this guard, a screen-reader
+/// user tabbing the list hears eight bare numbers with nothing after them ("2. ", "3. "
+/// …) — meaningless rows that cannot be described, so they are skipped outright rather
+/// than rendered.
+///
+/// The shortcut is always computed from the entry's REAL index in <paramref name="menu"/>
+/// — via <see cref="GsxMenuModel.Shortcut"/> — never a compacted position after skipping
+/// blanks. That real index is exactly what <see cref="GsxService.PickMenuEntry"/> sends
+/// as <c>menu.pick</c>'s index, so renumbering the remaining entries compactly would print
+/// a number that picks the WRONG entry — e.g. in the EDDF capture above, the pilot must
+/// still see "1." beside the real gate match and "0." beside "Back" at index 9, with
+/// nothing printed for indices 1-8, not "1." and "2." back to back.
+///
+/// Internal, reached by GsxMenuEntryRendererTests via InternalsVisibleTo
+/// (Properties/InternalsVisibleTo.cs) — same pattern as GsxMenuAnnounceResolver above,
+/// GsxRangeBoundsResolver in GsxSettingsForm.cs, and GsxActiveServiceResolver in
+/// GsxService.cs.
+/// </summary>
+internal static class GsxMenuEntryRenderer
+{
+    public static IReadOnlyList<string> RenderLines(GsxMenuModel menu)
+    {
+        var lines = new List<string>();
+        for (int i = 0; i < menu.Count; i++)
+        {
+            string entry = menu.Entries[i];
+            if (GsxMenuModel.IsBlank(entry))
+                continue;
+
+            string line = GsxMenuModel.Shortcut(i) + ". " + entry;
+
+            string? suffix = menu.StateSuffix(i);
+            if (suffix != null)
+                line += " — " + suffix;
+            if (menu.Disabled[i])
+                line += " — unavailable";
+
+            lines.Add(line);
+        }
+        return lines;
     }
 }

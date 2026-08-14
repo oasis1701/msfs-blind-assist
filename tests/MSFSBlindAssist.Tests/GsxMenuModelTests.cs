@@ -182,4 +182,76 @@ public class GsxMenuModelTests
             """{"entries":["x"],"stateClass":["gsx-state-performing"]}""").RootElement);
         Assert.Equal("In progress", m.StateSuffix(0));
     }
+
+    // ── Blank menu-slot padding (parking search) ────────────────────────────
+    // GSX's parking-search results are a fixed 10-slot menu; unused slots come
+    // back as empty strings and GSX does NOT mark them disabled. Captured live
+    // at EDDF searching "A15": one real match at index 0, "Back" at index 9,
+    // "" at every slot in between, disabled = [false x10] throughout.
+
+    private static GsxMenuModel SearchBlank()
+    {
+        string json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "gsx-menu-search-blank.json"));
+        return GsxMenuModel.Parse(JsonDocument.Parse(json).RootElement.Clone());
+    }
+
+    [Fact]
+    public void Blank_entry_is_not_selectable_even_though_GSX_never_disables_it()
+    {
+        var m = SearchBlank();
+        // Every one of indices 1-8 is "" in the live capture, and disabled is
+        // false for all ten -- IsSelectable must refuse them anyway.
+        for (int i = 1; i <= 8; i++)
+        {
+            Assert.False(m.Disabled[i]);      // GSX genuinely doesn't flag these
+            Assert.False(m.IsSelectable(i));  // but a blank must never be pickable
+        }
+    }
+
+    [Fact]
+    public void Real_entries_either_side_of_the_blank_run_stay_selectable()
+    {
+        var m = SearchBlank();
+        Assert.True(m.IsSelectable(0));  // " Gate A15 with Safedock..."
+        Assert.True(m.IsSelectable(9));  // "Back"
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void IsBlank_recognizes_null_empty_and_whitespace(string? entry)
+        => Assert.True(GsxMenuModel.IsBlank(entry));
+
+    [Fact]
+    public void IsBlank_is_false_for_real_text()
+        => Assert.False(GsxMenuModel.IsBlank("Back"));
+
+    [Fact]
+    public void ResolveIndex_with_an_empty_expectedLabel_never_resolves_to_a_blank_entry()
+    {
+        var m = SearchBlank();
+        // A stray keypress landing on any blank slot must never resolve, no
+        // matter which blank index is painted.
+        for (int i = 1; i <= 8; i++)
+            Assert.Equal(-1, m.ResolveIndex(i, ""));
+    }
+
+    [Fact]
+    public void ResolveIndex_with_a_whitespace_only_expectedLabel_never_resolves()
+    {
+        var m = SearchBlank();
+        Assert.Equal(-1, m.ResolveIndex(3, "   "));
+    }
+
+    [Fact]
+    public void Fully_populated_menu_stays_entirely_selectable_after_the_blank_guard()
+    {
+        // Regression pin: the original 10-real-entry KJFK capture has no blank
+        // slots at all, so every index must remain selectable exactly as
+        // before this fix -- the blank guard must never affect a normal menu.
+        var m = Live();
+        for (int i = 0; i < m.Count; i++)
+            Assert.True(m.IsSelectable(i));
+    }
 }
