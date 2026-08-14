@@ -55,4 +55,36 @@ public class GsxFrameTests
         Assert.Equal(GsxFrameType.Unknown, GsxFrame.Parse("""{"type":"whatever"}""").Type);
         Assert.Equal(GsxFrameType.Unknown, GsxFrame.Parse("not json at all").Type);
     }
+
+    [Fact]
+    public void Successful_result_exposes_its_payload_object_for_downstream_parsers()
+    {
+        // GsxGateSelectResult (and any future verb-result parser) needs the raw
+        // payload — GsxFrame itself does not interpret it.
+        var f = GsxFrame.Parse("""{"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared"}}""");
+        Assert.Equal(JsonValueKind.Object, f.Payload.ValueKind);
+        Assert.Equal("prepared", f.Payload.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void Failing_result_exposes_its_error_object_beyond_code_and_message()
+    {
+        // error.candidates (gate.select's ambiguous case) and similar members
+        // live only on the raw object; ErrorCode/ErrorMessage don't carry them.
+        var f = GsxFrame.Parse("""{"type":"result","id":"g-2","ok":false,"error":{"code":"ambiguous","candidates":[]}}""");
+        Assert.Equal(JsonValueKind.Object, f.Error.ValueKind);
+        Assert.Equal(JsonValueKind.Array, f.Error.GetProperty("candidates").ValueKind);
+    }
+
+    [Fact]
+    public void Payload_and_error_default_to_undefined_when_the_frame_does_not_carry_them()
+    {
+        var patch = GsxFrame.Parse("""{"type":"patch","path":"/services","value":[]}""");
+        Assert.Equal(JsonValueKind.Undefined, patch.Payload.ValueKind);
+        Assert.Equal(JsonValueKind.Undefined, patch.Error.ValueKind);
+
+        // A result frame with ok:true and no payload member at all.
+        var noPayload = GsxFrame.Parse("""{"type":"result","id":"g-3","ok":true}""");
+        Assert.Equal(JsonValueKind.Undefined, noPayload.Payload.ValueKind);
+    }
 }

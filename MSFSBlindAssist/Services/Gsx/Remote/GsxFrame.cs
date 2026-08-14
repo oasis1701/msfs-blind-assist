@@ -33,6 +33,22 @@ public sealed class GsxFrame
     public bool Ok { get; private init; }
     public string? ErrorCode { get; private init; }
     public string? ErrorMessage { get; private init; }
+    /// <summary>
+    /// The raw <c>payload</c> object of a successful result, e.g. <c>gate.select</c>'s
+    /// <c>{"code":"ok","status":"prepared","gate":{...},"warnings":[...]}</c>.
+    /// Undefined (default) when absent, or when the frame isn't a result at all —
+    /// every reader must <c>ValueKind</c>-guard before use, same as every other
+    /// <see cref="JsonElement"/> on this type.
+    /// </summary>
+    public JsonElement Payload { get; private init; }
+    /// <summary>
+    /// The raw <c>error</c> object of a failing result. <see cref="ErrorCode"/> and
+    /// <see cref="ErrorMessage"/> cover <c>code</c>/<c>message</c>; some verbs attach
+    /// further members a caller needs — e.g. <c>gate.select</c>'s <c>error.candidates</c>
+    /// (ambiguous) or <c>error.gate</c> (assigned to another aircraft). Undefined
+    /// (default) when absent.
+    /// </summary>
+    public JsonElement Error { get; private init; }
 
     // snapshot (whole object; the store copies its top-level keys)
     public JsonElement Root { get; private init; }
@@ -83,8 +99,10 @@ public sealed class GsxFrame
                 case "result":
                 {
                     string? code = null, message = null;
+                    JsonElement error = default;
                     if (r.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.Object)
                     {
+                        error = e;
                         code = Str(e, "code");
                         message = Str(e, "message");
                     }
@@ -92,6 +110,8 @@ public sealed class GsxFrame
                     {
                         Type = GsxFrameType.Result, Id = id,
                         Ok = Bool(r, "ok"), ErrorCode = code, ErrorMessage = message,
+                        Payload = r.TryGetProperty("payload", out var p) ? p : default,
+                        Error = error,
                     };
                 }
                 default:
