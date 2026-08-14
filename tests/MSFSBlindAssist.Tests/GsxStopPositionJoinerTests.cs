@@ -214,6 +214,39 @@ public class GsxStopPositionJoinerTests
         Assert.Equal(75.0, joined.StopHeading);
     }
 
+    // ── Ambiguous exact match (2026-08-14 review fix, I2) ────────────────────
+    // Two distinct .ini sections publishing the literal same this_parking_pos -- e.g. a
+    // copy-pasted section with an unedited this_parking_pos but an edited
+    // parkingsystem_stopposition. FindExact used to return the first in list order with no
+    // diagnostic; that is the one path in this file that could attach a genuinely WRONG stop
+    // (from the other, un-picked gate) with nothing to reveal it happened. The fix refuses to
+    // guess: it leaves the stop -- and any recoverable NaN heading -- untouched, the exact same
+    // degrade as no match at all.
+
+    [Fact]
+    public void Ambiguous_exact_match_leaves_stop_and_heading_untouched()
+    {
+        var spot = Spot(10.0, 20.0, heading: double.NaN);
+        var gates = new List<GsxGate>
+        {
+            IniGate(10.0, 20.0, heading: 111.0, stopLat: 11.0, stopLon: 21.0, stopHeading: 31.0, rawSectionName: "gate dup 1"),
+            IniGate(10.0, 20.0, heading: 222.0, stopLat: 12.0, stopLon: 22.0, stopHeading: 32.0, rawSectionName: "gate dup 2"),
+        };
+
+        var joined = Assert.Single(GsxStopPositionJoiner.Join(new List<ParkingSpot> { spot }, gates));
+
+        // Neither candidate's stop is picked -- not "gate dup 1"'s (11.0/21.0/31.0), not
+        // "gate dup 2"'s (12.0/22.0/32.0). Both would be a silent wrong-stand-stop bug.
+        Assert.Null(joined.StopLatitude);
+        Assert.Null(joined.StopLongitude);
+        Assert.Null(joined.StopHeading);
+
+        // Heading recovery is refused too -- "same degrade as no match" means BOTH, not just
+        // the stop. Neither candidate's heading (111.0 / 222.0) may be picked either.
+        Assert.True(double.IsNaN(joined.Heading));
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(joined));
+    }
+
     [Fact]
     public void Tolerance_match_succeeds_when_exact_fails()
     {
@@ -248,6 +281,32 @@ public class GsxStopPositionJoinerTests
         // (repo-wide search turned up zero tests asserting on Log output), so this call is
         // verified by code inspection/self-review, not by an automated assertion here -- the
         // correctness of the JOIN on this path is what the asserts above cover.
+    }
+
+    [Fact]
+    public void Nearest_within_tolerance_wins_over_a_farther_first_listed_candidate()
+    {
+        // (2026-08-14 review fix, I3.) Every OTHER tolerance test has exactly one candidate
+        // inside the box, so a regression from "nearest wins" back to "first candidate within
+        // tolerance wins" -- precisely the mistake FindNearestWithinTolerance's own doc comment
+        // says it avoids -- would still pass every one of them. This is the one test that
+        // cannot: two candidates both fall inside the 1e-6 deg box, the FARTHER one listed
+        // FIRST, each carrying a distinguishable stop.
+        var spot = Spot(10.0, 20.0);
+        var gates = new List<GsxGate>
+        {
+            // Farther (delta ~9e-7 deg on each axis -- inside tolerance, close to the 1e-6
+            // boundary), listed FIRST. A "first within tolerance" bug would pick this one.
+            IniGate(10.0000009, 20.0000009, stopLat: 111.0, stopLon: 211.0, stopHeading: 11.0, rawSectionName: "farther gate"),
+            // Nearer (delta ~2e-7 deg on each axis), listed SECOND -- the correct pick.
+            IniGate(10.0000002, 20.0000002, stopLat: 222.0, stopLon: 222.0, stopHeading: 22.0, rawSectionName: "nearer gate"),
+        };
+
+        var joined = Assert.Single(GsxStopPositionJoiner.Join(new List<ParkingSpot> { spot }, gates));
+
+        Assert.Equal(222.0, joined.StopLatitude);
+        Assert.Equal(222.0, joined.StopLongitude);
+        Assert.Equal(22.0, joined.StopHeading);
     }
 
     [Fact]
