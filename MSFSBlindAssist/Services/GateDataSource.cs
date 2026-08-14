@@ -22,6 +22,12 @@ namespace MSFSBlindAssist.Services;
 /// <see cref="GsxNavdataMerger"/>. Parsed profiles are cached per (path, last-write-time).</item>
 /// <item>The navdata provider, unchanged.</item>
 /// </list>
+/// The Remote API path takes exactly TWO things from outside the API, both narrow and both
+/// documented at their call sites below: the docking STOP POSITION from the GSX <c>.ini</c>
+/// (<see cref="GsxStopPositionJoiner"/>), and the CONCOURSE LETTER from navdata
+/// (<see cref="GsxConcourseLetterFiller"/>, name-only, position-matched). Everything else — the
+/// coordinates, heading, radius, size, jetway/VDGS metadata — comes from the API and stays
+/// authoritative, which is why this path never calls <see cref="GsxNavdataMerger"/> wholesale.
 /// A stop position (docking's input) is available only via the <c>.ini</c> — the Remote API path
 /// joins it in from the SAME <c>.ini</c> profile when one exists for the airport
 /// (<see cref="GsxStopPositionJoiner"/>); when it doesn't, stop fields stay null exactly like a
@@ -268,6 +274,19 @@ public sealed class GateDataSource
                 return cached.spots;
 
             var spots = GsxRemoteParkingReader.Read(airport, icao);
+
+            // Fill in the concourse letter GSX's own uiGateName usually omits ("Gate 25" at
+            // "Terminal 4 - Concourse B" is stand B25). NAME-ONLY -- nothing else is taken from
+            // navdata, which is exactly why this is NOT a GsxNavdataMerger call: the API's
+            // coordinates, heading, radius and metadata are complete and stay authoritative.
+            // Without it every such stand renders as "25" while SayIntentions asks for "B25",
+            // and the assigned-gate lookup falls through its chain to the ARRIVAL RUNWAY.
+            //
+            // The navdata read is a DELEGATE, not a list: GsxConcourseLetterFiller invokes it at
+            // most once and not at all when every stand already has a letter, so an airport that
+            // needs nothing pays nothing for a database query on the UI thread. It is also the
+            // ONE navdata read on this path -- never a per-stand lookup over ~231 stands.
+            spots = GsxConcourseLetterFiller.Fill(spots, () => _navdata.GetParkingSpots(icao));
 
             if (_locator.TryFindProfile(icao, out string iniPath))
             {

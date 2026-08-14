@@ -132,7 +132,12 @@ public class GsxRemoteParkingReaderTests
         // -- and SayIntentions' failure ends at the ARRIVAL RUNWAY.
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Single(s => s.GsxIdentifier == "Gate 20A");
         Assert.Equal("Terminal 4 - Concourse B", spot.TerminalName);
-        Assert.Equal(string.Empty, spot.Name);   // "Gate 20A" carries no concourse letter
+        // "Gate 20A" carries no concourse letter, so THIS READER leaves Name empty — it derives
+        // identity from uiGateName alone and never invents one. At KJFK that is 222 of 231
+        // stands, and leaving it there is what routed SayIntentions arrivals to the runway:
+        // GsxConcourseLetterFiller (run by GateDataSource straight after this reader) is what
+        // completes it, from navdata or from the terminal wording. See its own test suite.
+        Assert.Equal(string.Empty, spot.Name);
         Assert.Equal(20, spot.Number);
         Assert.Equal("A", spot.Suffix);
     }

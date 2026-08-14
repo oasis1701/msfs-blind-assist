@@ -160,6 +160,25 @@ public sealed class GsxGateSelectResult
     /// whether it picked the right stand. An echo we cannot interpret — no resolved gate at all,
     /// or one whose strings are all blank — is NOT a mismatch: say nothing rather than cry wolf.
     /// </para>
+    /// <para>
+    /// <b>It CANNOT detect the collision it was added for, and that is a structural limit of
+    /// GSX's API rather than a flaw here.</b> When two different stands share an IDENTICAL
+    /// <c>uiGateName</c> — the case above, "Gate 2" naming five physically different KJFK stands
+    /// — GSX echoes that same string back whichever one it resolved to, so the echo equals what
+    /// we sent and this property is false, exactly as it would be for a correct resolution.
+    /// Nothing available to us disambiguates them: the four identity fields §8.14 says
+    /// <c>gate.select</c> accepts carry no terminal, and <c>bglName</c>/<c>index</c> are not
+    /// published in <c>handlerData.airport.parkings</c> at all (the committed KJFK capture has
+    /// neither). So no amount of care with this comparison closes the collision problem — only a
+    /// GSX-side identity field we do not have would.
+    /// </para>
+    /// <para>
+    /// The check is still worth having, and must not be removed on the strength of that: it
+    /// catches a resolution to a DIFFERENTLY-named stand, which is the other half of the same
+    /// failure and the half we can actually see. Do not let a future reader conclude from a green
+    /// result here that GSX prepared the stand the pilot picked — it only means GSX did not name
+    /// a different one.
+    /// </para>
     /// </summary>
     public bool ResolvedGateContradictsRequest
     {

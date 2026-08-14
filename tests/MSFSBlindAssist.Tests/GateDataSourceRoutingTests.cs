@@ -2,8 +2,8 @@
 // GSX Remote API (current airport only), the pre-existing GSX .ini/navdata merge, or plain
 // navdata -- GetGates/GetActiveSource choose, and that a failure anywhere in the new Remote API
 // attempt degrades to the pre-existing path rather than propagating. GsxRemoteParkingReader,
-// GsxStopPositionJoiner and GsxNavdataMerger each have their own dedicated test suites (Tasks
-// 3/4, and pre-existing) for what they DO with the data once GateDataSource has decided to call
+// GsxStopPositionJoiner, GsxConcourseLetterFiller and GsxNavdataMerger each have their own
+// dedicated test suites for what they DO with the data once GateDataSource has decided to call
 // them; this file does not re-test their internals, only that GateDataSource calls the right one.
 //
 // See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
@@ -41,8 +41,10 @@ public class GateDataSourceRoutingTests : IDisposable
 
     // ── A minimal, controllable IAirportDataProvider ────────────────────────────────────────
     // No fake implementing this interface exists anywhere in the test project yet. Records
-    // every GetParkingSpots call so a test can assert the Remote API path never touches navdata
-    // (GsxNavdataMerger stays on the remote-airport path only — spec constraint 1).
+    // every GetParkingSpots call so a test can assert exactly WHEN the Remote API path reads
+    // navdata: never for geometry (GsxNavdataMerger stays on the remote-airport path only —
+    // spec constraint 1), and at most ONCE for the concourse letter, skipped entirely when no
+    // stand needs one (GsxConcourseLetterFiller).
     private sealed class FakeAirportDataProvider : IAirportDataProvider
     {
         private readonly Dictionary<string, List<ParkingSpot>> _spotsByIcao;
@@ -163,7 +165,58 @@ public class GateDataSourceRoutingTests : IDisposable
         // share the .ini path's metres-based Radius/MaxWingspanMeters convention) — the NEW
         // third answer is GetActiveSource-only, see the GetActiveSource tests below.
         Assert.Equal(GateSource.Gsx, spot.Source);
-        Assert.Empty(navdata.GetParkingSpotsCalls); // navdata/GsxNavdataMerger never touched
+
+        // Navdata IS consulted on this path now — ONCE, for the concourse letter alone
+        // (GsxConcourseLetterFiller; "Gate 1" carries none, so the lookup is warranted). What
+        // must stay true is that GsxNavdataMerger is never called here and NOTHING geometric is
+        // taken from navdata: every field below is the API's own value, unchanged.
+        Assert.Equal(new[] { Kjfk }, navdata.GetParkingSpotsCalls);
+        Assert.Equal(10.0, spot.Latitude);
+        Assert.Equal(20.0, spot.Longitude);
+        Assert.Equal(90.0, spot.Heading);
+        Assert.Equal(15.0, spot.Radius);              // maxWingspan 30 / 2, in METRES
+        Assert.Equal(25.0, spot.GateDistanceThreshold);
+    }
+
+    [Fact]
+    public void The_remote_api_path_never_reads_navdata_when_every_stand_already_has_a_letter()
+    {
+        // The perf half of the same contract: the letter fill takes a DELEGATE precisely so an
+        // airport that needs nothing pays nothing. This runs on the UI thread while the gate
+        // dropdown is being built, so a query that cannot change the answer must not be made.
+        var navdata = new FakeAirportDataProvider();
+        var airport = AirportJson(Kjfk, Parking("Stand H6", 10.0, 20.0, heading: 90.0));
+        var source = Build(navdata, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spot = Assert.Single(source.GetGates(Kjfk));
+
+        Assert.Equal("H", spot.Name);                  // came from uiGateName, not navdata
+        Assert.Empty(navdata.GetParkingSpotsCalls);
+    }
+
+    [Fact]
+    public void The_remote_api_path_borrows_only_the_letter_from_a_position_matched_navdata_stand()
+    {
+        // End-to-end through GateDataSource: navdata donates "B" to GSX's "Gate 25" because the
+        // two describe the same stand (same number, ~3 m apart), and donates NOTHING else — the
+        // navdata row here deliberately carries wildly different geometry.
+        var navdataSpots = new List<ParkingSpot>
+        {
+            new() { AirportICAO = Kjfk, Name = "B", Number = 25,
+                    Latitude = 40.6421, Longitude = -73.7787, Heading = 123.0, Radius = 250.0 },
+        };
+        var navdata = new FakeAirportDataProvider(new(StringComparer.OrdinalIgnoreCase) { [Kjfk] = navdataSpots });
+        var airport = AirportJson(Kjfk, Parking("Gate 25", 40.64213, -73.77872, heading: 90.0));
+        var source = Build(navdata, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spot = Assert.Single(source.GetGates(Kjfk));
+
+        Assert.Equal("B", spot.Name);
+        Assert.Equal(25, spot.Number);
+        Assert.Equal(40.64213, spot.Latitude);   // the API's coordinate, not navdata's
+        Assert.Equal(-73.77872, spot.Longitude);
+        Assert.Equal(90.0, spot.Heading);        // the API's heading, not navdata's 123
+        Assert.Equal(15.0, spot.Radius);         // the API's maxWingspan/2, not navdata's 250 ft
     }
 
     // ── 2. A DIFFERENT icao -> the existing path, identical to today ───────────────────────

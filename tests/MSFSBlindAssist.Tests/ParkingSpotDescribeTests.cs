@@ -57,6 +57,13 @@ public class ParkingSpotDescribeTests
         // "Terminal 4 - Concourse B 25 - Gate Medium", which normalizes to "TERMINAL4" --
         // the stand number gone entirely -- so MatchDestinationLabel could never match
         // SayIntentions' "B25" and destination resolution ran to the ARRIVAL RUNWAY.
+        //
+        // NOTE, because this test once looked like more coverage than it is: Name is HAND-SET
+        // to "B" here, so this pins Describe()/NormalizeParkingName ONLY. It cannot say
+        // anything about whether the GSX Remote API path actually PRODUCES a "B" -- it did
+        // not, for 91 of KJFK's 231 stands, and that gap reached the arrival runway a second
+        // time. The end-to-end property (real capture -> real reader -> filler -> ToString ->
+        // NormalizeParkingName) lives in GsxConcourseLetterFillerTests.
         var spot = Gate("B", 25, terminal: "Terminal 4 - Concourse B");
 
         Assert.Equal("B25", SayIntentionsClearanceParser.NormalizeParkingName(spot.Describe()));
