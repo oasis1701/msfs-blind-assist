@@ -26,18 +26,42 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// </para>
 ///
 /// <para>
-/// <b>Two sources, in this order, and the order is the point.</b>
+/// <b>Two sources, in this order, and the order is MEASURED — do not flip it back.</b>
 /// <list type="number">
-/// <item><b>Navdata, matched by POSITION.</b> The authority for stand naming everywhere else in
-/// this app (the taxi graph, the SI matcher and the router all run on navdata), so it wins. The
-/// match is positional because the name is exactly what is missing, and because the API's
-/// <c>lat</c>/<c>lon</c> are the one field both sides state independently.</item>
-/// <item><b><c>uiTerminalName</c>'s own "Concourse X" wording</b>, when navdata offered no
-/// letter — no match, no navdata at all, or a matched stand that is itself letterless. It
-/// recovers all 91 KJFK stands with no navdata dependency whatsoever, but it only works at
-/// airports GSX happens to word that way (KJFK's other 140 stands sit under "Terminal 5",
-/// "North Cargo Ramp", …), which is why it is the fallback and not the primary.</item>
+/// <item><b><c>uiTerminalName</c>'s own "Concourse X" wording.</b> GSX authors that string to
+/// describe the terminal layout, and at KJFK it is right.</item>
+/// <item><b>Navdata, matched by POSITION</b>, when the terminal names no concourse. The match is
+/// positional because the name is exactly what is missing, and because the API's <c>lat</c>/
+/// <c>lon</c> are the one field both sides state independently.</item>
 /// </list>
+/// </para>
+///
+/// <para>
+/// <b>Why the terminal leads, against the usual "navdata is authoritative" instinct.</b> The two
+/// sources were resolved for all 222 letterless KJFK stands against the real fs2024 navdata:
+/// 32 agree, <b>46 DISAGREE</b>, 52 are navdata-only, 13 terminal-only, 79 stay letterless. Every
+/// sampled disagreement has GSX right and navdata wrong — navdata calls "Gate 25", "Gate 27",
+/// "Gate 29B" and "Gate 31" at "Terminal 4 - Concourse B" concourse <b>A</b>, while the real
+/// KJFK Terminal 4 is Concourse A (A2-A7) and Concourse B (B20-B41), so gate 25 is <b>B25</b> —
+/// which is what a controller, and SayIntentions, say.
+/// </para>
+/// <para>
+/// The reason is specific, not a general indictment: navdata's letter comes from the BGL parking
+/// NAME ENUM (<c>GATE_A</c>…<c>GATE_Z</c>, which <c>LittleNavMapProvider.MapParkingName</c>
+/// reduces to a bare letter), and that field is whatever the scenery author set — at KJFK
+/// uniformly <c>GATE_A</c> across a whole concourse. So navdata stays authoritative for stand
+/// GEOMETRY (position, heading, radius — nothing here touches any of it) and is demonstrably NOT
+/// authoritative for the concourse LETTER. That is a measured exception to a real principle, not
+/// a contradiction of it. Navdata-FIRST produced the wrong letter for 46 of 222 stands, i.e. it
+/// reproduced a navdata-quality problem instead of fixing it, and the whole purpose of
+/// <see cref="ParkingSpot.Name"/> is to equal what ATC calls the stand.
+/// </para>
+/// <para>
+/// Neither source is dropped: the terminal wording only works at airports GSX words that way
+/// (KJFK's other 140 stands sit under "Terminal 5", "North Cargo Ramp", …), and navdata is the
+/// only source for the 52 stands the terminal says nothing about. A disagreement is LOGGED with
+/// both letters (see <see cref="LogSummary"/>) so "why is this stand called B?" is answerable
+/// from the log without re-deriving any of the above.
 /// </para>
 ///
 /// <para>
@@ -87,10 +111,11 @@ public static class GsxConcourseLetterFiller
     /// <para>
     /// Erring tight is deliberate and the asymmetry is not close. A radius too SMALL costs
     /// nothing worse than a stand keeping <c>Name = ""</c> — today's behaviour, and a supported
-    /// shape. A radius too LARGE hands a stand its neighbour's letter, which is a WRONG STAND
-    /// IDENTITY: it corrupts SayIntentions' assigned-gate match, mints a junk alias in
-    /// <c>GateAliasResolver</c>, and can taxi a blind pilot to the wrong pier with every other
-    /// part of the readout sounding correct.
+    /// shape — and only for the stands whose terminal names no concourse, since the terminal
+    /// wording is tried first and does not depend on this at all. A radius too LARGE hands a
+    /// stand its neighbour's letter, which is a WRONG STAND IDENTITY: it corrupts SayIntentions'
+    /// assigned-gate match, mints a junk alias in <c>GateAliasResolver</c>, and can taxi a blind
+    /// pilot to the wrong pier with every other part of the readout sounding correct.
     /// </para>
     /// </summary>
     internal const double MatchRadiusMetres = 10.0;
@@ -100,12 +125,23 @@ public static class GsxConcourseLetterFiller
     /// by a SINGLE letter standing on its own ("Terminal 4 - Concourse B" -> "B").
     ///
     /// <para>
-    /// Deliberately narrow. This fallback can only ever INVENT a letter where the primary source
-    /// had none, so every widening ("Pier X", "Satellite X", a two-letter concourse) would be a
-    /// guess whose failure mode is a wrong stand identity. "Concourse X" is the one form there is
-    /// real captured evidence for (91 KJFK stands across four terminals). "Terminal 4" cannot
-    /// match — the capture group is a letter, never a digit — and "Concourse BC" cannot either,
-    /// because the trailing <c>\b</c> requires the letter to stand alone.
+    /// Deliberately narrow, and the narrowness is what makes it safe to put FIRST. This source
+    /// can INVENT a letter — it asserts one from prose rather than reading it off a stand — so
+    /// every widening ("Pier X", "Satellite X", a two-letter concourse) would be a guess whose
+    /// failure mode is a wrong stand identity. "Concourse X" is the one form there is real
+    /// captured evidence for (91 KJFK stands across four terminals, and correct on every sampled
+    /// one). "Terminal 4" cannot match — the capture group is a letter, never a digit — and
+    /// "Concourse BC" cannot either, because the trailing <c>\b</c> requires the letter to stand
+    /// alone.
+    /// </para>
+    /// <para>
+    /// The residual risk this leaves, stated rather than hidden: at an airport that letters its
+    /// CONCOURSES but not its GATES, this would render "B 25" while the controller says plain
+    /// "Gate 25" — the same class of failure being fixed here, pointed the other way, and it got
+    /// slightly larger when this source was promoted to first. No such airport appears in any
+    /// capture we hold, GSX wording a terminal "Concourse X" is itself a statement about how its
+    /// stands are named, and every real captured SayIntentions <c>assigned_gate</c> carries the
+    /// letter — but the mitigation is this pattern's strictness, so do not relax it.
     /// </para>
     /// <para>
     /// <c>CultureInvariant</c> is mandatory alongside <c>IgnoreCase</c>: in tr-TR the pattern's
@@ -145,28 +181,40 @@ public static class GsxConcourseLetterFiller
 
         if (needy.Count == 0) return result;   // navdata is never even asked for
 
-        int fromNavdata = 0, ambiguous = 0;
         var donors = LoadDonors(navdata);
+        int fromTerminal = 0, fromNavdata = 0, agreed = 0, ambiguous = 0;
+        List<string>? conflicts = null;
 
-        if (donors.Count > 0)
-        {
-            foreach (var spot in needy)
-            {
-                string letter = BorrowFromNavdata(spot, donors, out bool wasAmbiguous);
-                if (wasAmbiguous) ambiguous++;
-                if (letter.Length > 0) { spot.Name = letter; fromNavdata++; }
-            }
-        }
-
-        int fromTerminal = 0;
         foreach (var spot in needy)
         {
-            if (!NeedsLetter(spot)) continue;  // navdata already answered for this one
-            string letter = ConcourseLetterFromTerminal(spot.TerminalName);
-            if (letter.Length > 0) { spot.Name = letter; fromTerminal++; }
+            string terminalLetter = ConcourseLetterFromTerminal(spot.TerminalName);
+
+            // Navdata is resolved even when the terminal has already answered — not to override
+            // it, but so a DISAGREEMENT can be logged. That is the whole diagnostic trail behind
+            // "why is this stand called B", and it costs nothing extra: the same scan already
+            // ran for every letterless stand when navdata led.
+            bool wasAmbiguous = false;
+            string navdataLetter = donors.Count > 0
+                ? BorrowFromNavdata(spot, donors, out wasAmbiguous)
+                : string.Empty;
+            if (wasAmbiguous) ambiguous++;
+
+            if (terminalLetter.Length > 0 && navdataLetter.Length > 0)
+            {
+                if (string.Equals(terminalLetter, navdataLetter, StringComparison.Ordinal)) agreed++;
+                else (conflicts ??= new List<string>()).Add(
+                    $"\"{spot.GsxIdentifier ?? spot.Name}\" @ \"{spot.TerminalName}\" GSX={terminalLetter} navdata={navdataLetter}");
+            }
+
+            // The terminal WINS outright when it names a concourse — see the type's own doc
+            // comment for the KJFK measurement behind that order (46 of 222 stands disagree, GSX
+            // correct in every sampled case). Navdata still answers for every stand the terminal
+            // says nothing about (52 of 222 at KJFK).
+            if (terminalLetter.Length > 0) { spot.Name = terminalLetter; fromTerminal++; }
+            else if (navdataLetter.Length > 0) { spot.Name = navdataLetter; fromNavdata++; }
         }
 
-        LogSummary(needy.Count, donors.Count, fromNavdata, fromTerminal, ambiguous);
+        LogSummary(needy.Count, donors.Count, fromTerminal, fromNavdata, agreed, conflicts, ambiguous);
         return result;
     }
 
@@ -235,7 +283,10 @@ public static class GsxConcourseLetterFiller
 
     /// <summary>
     /// The letter every in-range, same-numbered navdata stand agrees on — or "" when none is in
-    /// range, or when two of them DISAGREE.
+    /// range, or when two of them DISAGREE. Resolved for EVERY letterless stand, including ones
+    /// the terminal wording has already answered, because <see cref="Fill"/> logs the
+    /// disagreement between the two; it is only USED when the terminal named no concourse
+    /// (52 of KJFK's 222 letterless stands).
     /// <para>
     /// The disagreement refusal is the same guard <c>GateAliasResolver</c> applies for the same
     /// reason ("if two surviving candidates carry DIFFERENT non-empty concourse letters … the
@@ -295,17 +346,29 @@ public static class GsxConcourseLetterFiller
         return c >= 'A' && c <= 'Z';
     }
 
-    /// <summary>One line per <see cref="Fill"/> call, never per stand. A stand left letterless is
-    /// NOT an error (131 of KJFK's 231 genuinely have no letter), so the ordinary line is Debug;
-    /// only an ambiguous navdata match — two concourses within
-    /// <see cref="MatchRadiusMetres"/> of one stand, which real data should never produce — is
-    /// worth a Warn, and it is folded into this same single line so it can never spam.</summary>
-    private static void LogSummary(int needed, int donorCount, int fromNavdata, int fromTerminal, int ambiguous)
+    /// <summary>
+    /// At most TWO lines per <see cref="Fill"/> call, never one per stand: a summary, plus the
+    /// disagreement detail when there is any.
+    /// <para>
+    /// A stand left letterless is NOT an error (131 of KJFK's 231 genuinely have no letter), and
+    /// neither is a disagreement — 46 of 222 at KJFK, which is why the detail line is Debug and
+    /// carries the whole list on ONE line rather than 46 lines or a truncated sample: its entire
+    /// job is to answer "why is this stand called B?" for a stand somebody asks about later, and
+    /// a capped list cannot do that. Only an ambiguous NAVDATA match — two concourses within
+    /// <see cref="MatchRadiusMetres"/> of one stand, which real data should not produce — is
+    /// worth a Warn, and it is folded into the summary line so it can never spam.
+    /// </para>
+    /// </summary>
+    private static void LogSummary(int needed, int donorCount, int fromTerminal, int fromNavdata,
+                                   int agreed, List<string>? conflicts, int ambiguous)
     {
+        int conflicted = conflicts?.Count ?? 0;
         string summary =
-            $"concourse letter: {needed} stand(s) had none; filled {fromNavdata} from navdata " +
-            $"({donorCount} candidate stand(s)) and {fromTerminal} from the GSX terminal name; " +
-            $"{needed - fromNavdata - fromTerminal} left without one (normal - many stands have no letter).";
+            $"concourse letter: {needed} stand(s) had none; filled {fromTerminal} from the GSX terminal name " +
+            $"and {fromNavdata} from navdata ({donorCount} candidate stand(s)); " +
+            $"{needed - fromTerminal - fromNavdata} left without one (normal - many stands have no letter). " +
+            $"Both sources answered for {agreed + conflicted}: {agreed} agreed, {conflicted} disagreed " +
+            "(the GSX terminal name wins - see GsxConcourseLetterFiller for the measurement behind that).";
 
         if (ambiguous > 0)
             Log.Warn("Gsx", summary + $" {ambiguous} stand(s) had TWO different navdata concourse letters " +
@@ -313,5 +376,9 @@ public static class GsxConcourseLetterFiller
                             "check the navigation database for duplicated parking rows.");
         else
             Log.Debug("Gsx", summary);
+
+        if (conflicted > 0)
+            Log.Debug("Gsx", $"concourse letter: {conflicted} stand(s) where GSX and navdata name different " +
+                             $"concourses; GSX won each: {string.Join("; ", conflicts!)}");
     }
 }

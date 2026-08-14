@@ -282,6 +282,12 @@ public sealed class GateDataSource
             // Without it every such stand renders as "25" while SayIntentions asks for "B25",
             // and the assigned-gate lookup falls through its chain to the ARRIVAL RUNWAY.
             //
+            // GSX's own terminal wording is tried BEFORE navdata, which is the opposite of the
+            // usual precedence and is measured rather than assumed: navdata's letter rides in
+            // the BGL parking-name enum that scenery authors fill inconsistently, and at KJFK it
+            // disagrees with GSX on 46 of 222 letterless stands -- GSX right every sampled time.
+            // Navdata stays authoritative for stand GEOMETRY; see GsxConcourseLetterFiller.
+            //
             // The navdata read is a DELEGATE, not a list: GsxConcourseLetterFiller invokes it at
             // most once and not at all when every stand already has a letter, so an airport that
             // needs nothing pays nothing for a database query on the UI thread. It is also the

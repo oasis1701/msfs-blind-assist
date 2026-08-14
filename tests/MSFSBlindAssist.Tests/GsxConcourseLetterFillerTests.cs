@@ -17,6 +17,16 @@ namespace MSFSBlindAssist.Tests;
 /// never sets it. Of the capture's 231 selectable stands, 9 carry the letter in
 /// <c>uiGateName</c>, 91 carry it only in <c>uiTerminalName</c>, and 131 have none anywhere.
 /// </para>
+///
+/// <para>
+/// The source PRIORITY is the other measured thing pinned here, and it is deliberately the
+/// opposite of the usual instinct: GSX's <c>uiTerminalName</c> beats navdata. Resolved for all
+/// 222 letterless KJFK stands against the real fs2024 navdata, the two disagree on <b>46</b>
+/// (32 agree, 52 navdata-only, 13 terminal-only, 79 letterless) — and GSX is right every sampled
+/// time, because navdata's letter rides in the BGL parking-name enum that scenery authors fill
+/// inconsistently. See
+/// <c>The_GSX_terminal_beats_navdata_on_the_real_KJFK_stand_they_actually_disagree_about</c>.
+/// </para>
 /// </summary>
 public class GsxConcourseLetterFillerTests
 {
@@ -59,8 +69,9 @@ public class GsxConcourseLetterFillerTests
         // filler the label normalized to "25" while SI asked for "B25", MatchDestinationLabel
         // failed, and destination resolution ran its whole chain to the ARRIVAL RUNWAY.
         //
-        // Deliberately NO navdata here: with none, the GSX terminal wording alone must still
-        // recover it (all 91 such KJFK stands), which is the point of having the fallback.
+        // Deliberately NO navdata here: the GSX terminal wording alone must recover it (all 91
+        // such KJFK stands), because that is the source this fix leads with and the one that
+        // needs no navigation database at all.
         var spots = GsxConcourseLetterFiller.Fill(ReadKjfk(), () => Array.Empty<ParkingSpot>());
         var spot = spots.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
 
@@ -74,19 +85,45 @@ public class GsxConcourseLetterFillerTests
     }
 
     [Fact]
-    public void Navdata_supplies_the_letter_for_the_same_real_stand_when_it_has_one()
+    public void The_GSX_terminal_beats_navdata_on_the_real_KJFK_stand_they_actually_disagree_about()
     {
-        // The PRIMARY source, driven by the capture's own coordinates for "Gate 25" @
-        // Terminal 4 - Concourse B (40.6418742138229 / -73.7817799802056) rather than
-        // invented ones, with the donor placed a realistic 3 m off.
+        // THE measured conflict, encoded from the committed capture rather than invented. For all
+        // 222 letterless KJFK stands resolved against the real fs2024 navdata: 32 agree, 46
+        // DISAGREE, 52 navdata-only, 13 terminal-only, 79 stay letterless. Every sampled
+        // disagreement looks exactly like this one --
+        //     'Gate 25' @ 'Terminal 4 - Concourse B'   navdata=A   terminal=B
+        // -- and GSX is RIGHT: KJFK Terminal 4 is Concourse A (A2-A7) and Concourse B (B20-B41),
+        // so gate 25 is B25, which is what a controller and SayIntentions say. Navdata's letter
+        // comes from the BGL parking-name enum (GATE_A/GATE_B/…, which MapParkingName strips to
+        // A/B/…), and at KJFK the author set GATE_A across a whole concourse.
+        //
+        // So navdata is authoritative for stand GEOMETRY and demonstrably NOT for the concourse
+        // letter. Navdata-first produced the wrong letter for 46 of 222 stands. Do not flip this
+        // back on general "navdata is authoritative" grounds — this is a measured exception.
         var api = ReadKjfk();
         var target = api.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
-        var donor = Nav("B", 25, LatPlusMetres(target.Latitude, 3.0), target.Longitude);
+        var navdataSaysA = Nav("A", 25, LatPlusMetres(target.Latitude, 3.0), target.Longitude);
 
-        GsxConcourseLetterFiller.Fill(api, () => new[] { donor });
+        GsxConcourseLetterFiller.Fill(api, () => new[] { navdataSaysA });
 
         Assert.Equal("B", target.Name);
         Assert.Equal("B25", SayIntentionsClearanceParser.NormalizeParkingName(target.ToString()));
+    }
+
+    [Fact]
+    public void Navdata_supplies_the_letter_when_the_GSX_terminal_names_no_concourse()
+    {
+        // The other half: "Gate 1" @ "Terminal 5" (real capture, 40.6444781780333 /
+        // -73.7766514464756). GSX's terminal names no concourse there, so navdata decides — this
+        // is the population that keeps the navdata path load-bearing (52 of KJFK's 222).
+        var api = ReadKjfk();
+        var target = api.Single(s => s.GsxIdentifier == "Gate 1" && s.TerminalName == "Terminal 5");
+        var donor = Nav("D", 1, LatPlusMetres(target.Latitude, 3.0), target.Longitude);
+
+        GsxConcourseLetterFiller.Fill(api, () => new[] { donor });
+
+        Assert.Equal("D", target.Name);
+        Assert.Equal("D1", SayIntentionsClearanceParser.NormalizeParkingName(target.ToString()));
     }
 
     [Fact]
@@ -133,12 +170,22 @@ public class GsxConcourseLetterFillerTests
     // ── Source priority ─────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Navdata_wins_over_the_terminal_wording_when_the_two_disagree()
+    public void The_terminal_wording_wins_over_navdata_when_the_two_disagree()
     {
-        // Navdata is the authority for stand naming everywhere else in this app — the taxi
-        // graph, the SI matcher and the router all run on it — so it must win outright, not
-        // merely be tried first for convenience.
+        // The isolated form of the KJFK conflict above. Navdata remains the authority for stand
+        // GEOMETRY — nothing here reads its coordinates — but its concourse letter comes from an
+        // author-filled BGL enum and loses.
         var spot = Api("Gate 25", letter: "", number: 25, lat: 40.0, lon: -73.0, terminal: "Terminal 4 - Concourse B");
+
+        GsxConcourseLetterFiller.Fill(new[] { spot }, () => new[] { Nav("A", 25, 40.0, -73.0) });
+
+        Assert.Equal("B", spot.Name);
+    }
+
+    [Fact]
+    public void Navdata_still_decides_when_navdata_is_all_there_is()
+    {
+        var spot = Api("Gate 25", "", 25, 40.0, -73.0, terminal: "Terminal 5");
 
         GsxConcourseLetterFiller.Fill(new[] { spot }, () => new[] { Nav("A", 25, 40.0, -73.0) });
 
@@ -238,8 +285,10 @@ public class GsxConcourseLetterFillerTests
     }
 
     [Fact]
-    public void A_refused_ambiguous_navdata_match_still_falls_through_to_the_terminal_wording()
+    public void An_ambiguous_navdata_match_never_disturbs_the_terminal_answer()
     {
+        // The terminal already decides this stand, so a navdata ambiguity underneath it must be
+        // absorbed silently rather than blanking the letter.
         var spot = Api("Gate 25", "", 25, 40.0, -73.0, "Terminal 4 - Concourse B");
 
         GsxConcourseLetterFiller.Fill(new[] { spot }, () => new[]
