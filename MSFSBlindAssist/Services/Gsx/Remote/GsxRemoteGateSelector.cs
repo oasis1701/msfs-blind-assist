@@ -91,11 +91,31 @@ public sealed class GsxRemoteGateSelector
             capabilities = null;
         }
 
-        if (capabilities is null || !capabilities.Contains(GateCapability, StringComparer.Ordinal))
+        // Two DIFFERENT no-send cases, and conflating them puts a false statement in
+        // front of a blind pilot. An EMPTY (or unreadable) capability set means nothing
+        // is known about GSX at all -- most often the Remote API simply isn't connected
+        // yet, or GSX isn't running -- so this build's version cannot be inferred from it.
+        // A NON-EMPTY set that lacks 'gate' is positive evidence: GSX said hello, listed
+        // what it can do, and gate.select wasn't on the list. Only the second justifies
+        // telling the pilot to update GSX (TaxiAssistForm speaks that, once per instance);
+        // saying it for the first would tell someone whose GSX merely isn't running to go
+        // and install a version they may already have. Every live hello frame carries
+        // several tokens (the committed gsx-hello.json fixture has nine), and Access GSX's
+        // menu/services/settings work on 4.0.1-4.0.7 builds, so a connected older GSX
+        // always lands in the second case, never the first.
+        if (capabilities is null || capabilities.Count == 0)
         {
-            LogNoSend(label, "no 'gate' capability (GSX 4.0.8+ required)", GsxGateSelectOutcome.Unavailable);
+            LogNoSend(label, "no capabilities known (Remote API not connected?)", GsxGateSelectOutcome.Unavailable);
             return GsxGateSelectResult.Local(
                 GsxGateSelectOutcome.Unavailable,
+                "GSX has not advertised its capabilities yet.");
+        }
+
+        if (!capabilities.Contains(GateCapability, StringComparer.Ordinal))
+        {
+            LogNoSend(label, "no 'gate' capability (GSX 4.0.8+ required)", GsxGateSelectOutcome.GateSelectUnsupported);
+            return GsxGateSelectResult.Local(
+                GsxGateSelectOutcome.GateSelectUnsupported,
                 "GSX does not advertise gate.select (requires GSX 4.0.8 or newer).");
         }
 
@@ -189,10 +209,20 @@ public sealed class GsxRemoteGateSelector
                 ? $"{g.UiName} (gate={g.Gate} number={g.Number?.ToString() ?? "?"} bglName={g.BglName})"
                 : "(none)";
             string warnings = result.Warnings.Count > 0 ? string.Join(",", result.Warnings) : "(none)";
+            // GSX's OWN error text, not ours. It is the single most useful field for
+            // diagnosing not_found / bad_args / no_airport -- the codes that produce a
+            // silent no-op the pilot can only investigate through this log -- and it was
+            // parsed and then discarded until now. Newlines are flattened so one attempt
+            // stays one log line (the log is read by eye, and a multi-line entry breaks
+            // the target=… identifierSent=… scan pattern). Safe to log: it is GSX's own
+            // short diagnostic string, never a raw frame (handlerData carries user data).
+            string message = string.IsNullOrWhiteSpace(result.Message)
+                ? "(none)"
+                : result.Message.Replace("\r", " ").Replace("\n", " ").Trim();
             GateSelectLog.Info(
                 $"target=\"{label}\" identifierSent=\"{identifier}\" revokeServices={revokeServices} " +
                 $"outcome={result.Outcome} resolvedGate={resolved} warnings={warnings} " +
-                $"rawCode={result.RawCode ?? "(none)"}");
+                $"rawCode={result.RawCode ?? "(none)"} message=\"{message}\"");
         }
         catch { /* logging must never break the selector */ }
     }

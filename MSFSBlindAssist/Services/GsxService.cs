@@ -61,10 +61,20 @@ public sealed class GsxService : IDisposable
     // MainForm calls from the SimConnect disconnect edge — it used to be the
     // message for every case, including the one that matters most (a GSX build
     // with no Remote API at all), where it sent the pilot looking at the wrong
-    // thing entirely. No GSX version is named: the minimum build that ships the
-    // Remote API is not known.
+    // thing entirely.
+    //
+    // The version IS now named, and it is 4.0.8 — that number is known from
+    // Virtuali's own "Couatl Remote API v2 — Developer Guide & SDK Reference"
+    // and release notes (embedded in GSX_manual_MSFS.pdf; see docs/gsx.md).
+    // The Remote API itself arrived in 4.0.1, but 4.0.8 is what MSFSBA requires
+    // overall — it is where gate.select and the handler.set write surface
+    // landed — so telling a pilot "4.0.1" would send them to a build where the
+    // Access GSX window works but gate selection silently does nothing. This
+    // message is the ONE place a version number is stated; the code itself
+    // feature-detects on hello.capabilities and never compares versions (the
+    // vendor guide's own instruction).
     internal const string ReasonNoRemoteApi =
-        "GSX's Remote API is not reachable. This needs a recent GSX (Couatl) build.";
+        "GSX's Remote API is not reachable. This needs GSX 4.0.8 or newer.";
     internal const string ReasonConnectionLost =
         "Lost the connection to GSX's Remote API. Reconnecting.";
     internal const string ReasonSimDisconnected =

@@ -30,11 +30,33 @@ public enum GsxGateSelectOutcome
     AssignedToOther,
     NoAirport,
     BadArgs,
-    /// <summary>A result frame carrying an error code this build does not recognise —
-    /// including the generic transport-level codes (<c>gsx_not_running</c>,
-    /// <c>auth_required</c>, <c>unknown_verb</c>, <c>internal</c>). The original string
-    /// survives in <see cref="GsxGateSelectResult.RawCode"/> so a future GSX code is
-    /// diagnosable rather than silently flattened.</summary>
+    /// <summary>GSX's engine is not running (<c>gsx_not_running</c>) — the socket answered,
+    /// Couatl did not. Named separately from <see cref="Unavailable"/> purely so
+    /// <c>gsx-gate-select.log</c> — the documented first stop for "gate not found" — states
+    /// which of three very different things happened instead of flattening all of them into
+    /// one word. Silent to the pilot: GSX being down already has its own surface
+    /// (<c>GsxService.UnavailableReason</c>, spoken on an explicit Access GSX action).</summary>
+    GsxNotRunning,
+    /// <summary>The Remote API demanded authentication (<c>auth_required</c>). Should never
+    /// occur: every captured <c>hello</c> frame carries <c>authRequired: false</c>, and the
+    /// socket is localhost-only. Named anyway so that if it ever DOES happen, whoever reads
+    /// <c>gsx-gate-select.log</c> is told, rather than left guessing behind a generic
+    /// "Unavailable".</summary>
+    AuthRequired,
+    /// <summary>Decided LOCALLY, without sending anything: GSX advertised a capability set
+    /// that does NOT contain <c>gate</c>, i.e. a connected build older than 4.0.8. Distinct
+    /// from <see cref="Unavailable"/> because it is the ONE case where naming a version
+    /// number to the pilot is truthful — everything else under <see cref="Unavailable"/>
+    /// could equally be a 4.0.8 build answering something we don't understand, and telling
+    /// that pilot to upgrade would be a lie. See <c>GsxRemoteGateSelector</c>'s capability
+    /// gate and <c>TaxiAssistForm</c>'s once-per-instance latch.</summary>
+    GateSelectUnsupported,
+    /// <summary>A result frame carrying an error code this build does not recognise (e.g.
+    /// <c>unknown_verb</c>, <c>internal</c>, or a future GSX addition), OR a capability set
+    /// we could not read at all (empty/unavailable — GSX not reachable yet, so nothing is
+    /// known about which build it is). The original string survives in
+    /// <see cref="GsxGateSelectResult.RawCode"/> so a future GSX code is diagnosable rather
+    /// than silently flattened.</summary>
     Unavailable,
     /// <summary>The frame was not a result at all, or was too malformed to interpret —
     /// never thrown, always returned.</summary>
@@ -107,8 +129,9 @@ public sealed class GsxGateSelectResult
     /// <summary>
     /// Builds a result decided LOCALLY by <see cref="GsxRemoteGateSelector"/>, without ever
     /// sending a frame over the wire — the capability gate (no <c>gate</c> token in
-    /// <c>hello.capabilities</c>) and a target spot with no identifier to send are the only
-    /// two cases. Internal: both are pre-flight checks the selector makes before it has
+    /// <c>hello.capabilities</c>, or no capability set to read at all) and a target spot
+    /// with no identifier to send are the only cases. Internal: all are pre-flight checks
+    /// the selector makes before it has
     /// anything from GSX to interpret, so there is no frame for a caller outside this
     /// assembly to have parsed via <see cref="FromFrame"/> in the first place.
     /// </summary>
@@ -195,12 +218,24 @@ public sealed class GsxGateSelectResult
             case "bad_args":
                 return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.BadArgs, RawCode = code, Message = message };
 
+            // The two generic transport-level codes worth telling apart. Neither is
+            // spoken (see GsxGateSelectAnnouncer) and neither is retryable here — they
+            // are named so gsx-gate-select.log says WHICH failure occurred. "GSX is not
+            // running", "GSX wants a password" and "GSX said something this build has
+            // never seen" demand three different next moves from whoever reads that log,
+            // and one shared "Unavailable" gave them no way to tell.
+            case "gsx_not_running":
+                return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.GsxNotRunning, RawCode = code, Message = message };
+
+            case "auth_required":
+                return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.AuthRequired, RawCode = code, Message = message };
+
             default:
-                // Covers both a genuinely unrecognised/future code and the generic
-                // transport-level codes (gsx_not_running, auth_required, unknown_verb,
-                // internal) that carry no dedicated member here. `code` is null when
-                // the frame had no error object (or no code inside it) at all — there
-                // is nothing to preserve in that case, so RawCode stays null too.
+                // Covers a genuinely unrecognised/future code and the remaining generic
+                // transport-level ones (unknown_verb, internal) that carry no dedicated
+                // member here. `code` is null when the frame had no error object (or no
+                // code inside it) at all — there is nothing to preserve in that case, so
+                // RawCode stays null too.
                 return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.Unavailable, RawCode = code, Message = message };
         }
     }

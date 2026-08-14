@@ -245,15 +245,43 @@ public class GsxGateSelectResultTests
     }
 
     [Fact]
-    public void A_generic_transport_level_code_also_maps_to_Unavailable_with_RawCode_preserved()
+    public void The_remaining_generic_transport_codes_still_map_to_Unavailable_with_RawCode_preserved()
     {
-        // gsx_not_running / auth_required / unknown_verb / internal are generic
-        // protocol codes the transport can surface on any verb, not codes this
-        // enum carries a dedicated member for.
-        var frame = Frame("""{"type":"result","id":"g-11","ok":false,"error":{"code":"gsx_not_running"}}""");
+        // unknown_verb / internal are generic protocol codes the transport can surface
+        // on any verb, and nothing distinguishes what a reader should DO about them, so
+        // they stay pooled under Unavailable with the raw string preserved. (gsx_not_running
+        // and auth_required were split out of this pool — see the two tests below.)
+        var frame = Frame("""{"type":"result","id":"g-11","ok":false,"error":{"code":"unknown_verb"}}""");
         var result = GsxGateSelectResult.FromFrame(frame);
         Assert.Equal(GsxGateSelectOutcome.Unavailable, result.Outcome);
+        Assert.Equal("unknown_verb", result.RawCode);
+    }
+
+    // ── The two named transport codes (Task 7 Part C) ────────────────────────
+    // Both were previously pooled into Unavailable. Neither is spoken; they are named
+    // so gsx-gate-select.log — the documented first stop for "gate not found" — says
+    // WHICH of three very different things happened, instead of one word for all.
+
+    [Fact]
+    public void Gsx_not_running_gets_its_own_outcome_and_still_preserves_the_raw_code()
+    {
+        var frame = Frame("""{"type":"result","id":"g-11","ok":false,"error":{"code":"gsx_not_running","message":"Couatl is not running"}}""");
+        var result = GsxGateSelectResult.FromFrame(frame);
+        Assert.Equal(GsxGateSelectOutcome.GsxNotRunning, result.Outcome);
         Assert.Equal("gsx_not_running", result.RawCode);
+        Assert.Equal("Couatl is not running", result.Message);
+    }
+
+    [Fact]
+    public void Auth_required_gets_its_own_outcome_and_still_preserves_the_raw_code()
+    {
+        // Should never occur — authRequired is false on every captured hello and the
+        // socket is localhost-only. Named precisely so that if it ever does, the log
+        // says so rather than leaving the reader to guess behind "Unavailable".
+        var frame = Frame("""{"type":"result","id":"g-12","ok":false,"error":{"code":"auth_required"}}""");
+        var result = GsxGateSelectResult.FromFrame(frame);
+        Assert.Equal(GsxGateSelectOutcome.AuthRequired, result.Outcome);
+        Assert.Equal("auth_required", result.RawCode);
     }
 
     // ── Malformed / non-result frames → TransportFailure, never a throw ─────

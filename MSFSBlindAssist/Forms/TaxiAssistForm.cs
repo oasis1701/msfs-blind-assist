@@ -38,9 +38,15 @@ public class TaxiAssistForm : Form
     // and is only non-null when GSX is installed. Unlike the retired menu-walking selector,
     // there is no separate "CouatlStarted" gate to check here: GsxRemoteGateSelector
     // feature-checks the 'gate' capability itself, on every call, before ever sending
-    // gate.select -- so a non-null selector against a GSX that isn't running (or is too old)
-    // simply returns Unavailable and falls through to manual routing, with no wasted send.
+    // gate.select -- so a non-null selector against a GSX that isn't running returns
+    // Unavailable, and one against a connected build older than 4.0.8 returns
+    // GateSelectUnsupported; either way it falls through to manual routing with no wasted
+    // send. Only the second is spoken (once) -- see SelectGsxGateAsync.
     private readonly Services.Gsx.Remote.GsxRemoteGateSelector? _gsxGateSelector;
+    // Once-per-instance latch for the "gate selection needs GSX 4.0.8" message — see
+    // SelectGsxGateAsync. Instance state, not static: a pilot who updates GSX and reopens
+    // the dialog gets a clean slate, and the message is per-dialog-session by design.
+    private bool _gsxUnsupportedAnnounced;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
     // before computing the route, so the route starts from where the aircraft
@@ -3396,8 +3402,9 @@ public class TaxiAssistForm : Form
         //     MainForm built this form) — no separate live "is GSX running" check is
         //     needed here any more: GsxRemoteGateSelector.SelectGateAsync feature-checks
         //     the 'gate' capability itself on every call, before ever sending gate.select,
-        //     and returns Unavailable (silently, from SelectGsxGateAsync's point of view —
-        //     see its own doc comment) when GSX isn't running or is too old.
+        //     and returns Unavailable (silent) when GSX isn't running, or
+        //     GateSelectUnsupported (spoken once per dialog) on a connected pre-4.0.8
+        //     build — see SelectGsxGateAsync's own doc comment.
         // NOTE: deice areas (index 3) are explicitly excluded — gate.select prepares a
         // GSX parking stand, which has no deice-pad equivalent. DockingGuidanceManager
         // handles deice guidance via SetDestinationGate (spot.IsDeiceArea is true)
@@ -3433,6 +3440,32 @@ public class TaxiAssistForm : Form
     private async Task SelectGsxGateAsync(ParkingSpot spot)
     {
         var result = await _gsxGateSelector!.SelectGateAsync(spot).ConfigureAwait(true);
+
+        // GSX is connected and answering, but its capability list has no 'gate' token —
+        // a 4.0.1-4.0.7 build, where gate.select simply does not exist. Say so ONCE per
+        // dialog instance: the first Calculate is an explicit pilot action that deserves
+        // an answer (silence here means taxiing to a stand believing GSX has prepared it,
+        // and finding no services on arrival), but this path runs on EVERY
+        // gate-destination route calculation, and on an older GSX that is every flight —
+        // repeating it would be noise about something already said and unchanged.
+        // Deliberately NOT routed through GsxGateSelectAnnouncer.Describe: that mapper is
+        // pure and stateless so it stays unit-testable, so the latch belongs here.
+        // Everything else about GSX still works on those builds, so this must never reach
+        // GsxService.UnavailableReason or the Access GSX status text — announcing "GSX is
+        // unavailable" while the GSX window works perfectly would be wrong.
+        if (result.Outcome == Services.Gsx.Remote.GsxGateSelectOutcome.GateSelectUnsupported)
+        {
+            // No lock needed: SelectGsxGateAsync is started from the UI thread and awaits
+            // with ConfigureAwait(true), so the test and the set run in one message-loop
+            // turn — two overlapping Calculates cannot both pass the check.
+            if (!_gsxUnsupportedAnnounced)
+            {
+                _gsxUnsupportedAnnounced = true;
+                _announcer.Announce(Services.Gsx.Remote.GsxGateSelectAnnouncer.GateSelectUnsupportedMessage);
+            }
+            return;
+        }
+
         string? phrase = Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe(result);
         if (!string.IsNullOrEmpty(phrase))
             _announcer.Announce(phrase);

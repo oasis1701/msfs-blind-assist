@@ -200,8 +200,14 @@ public class GsxGateSelectAnnouncerTests
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "bad_args" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "no_airport" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "services_active" } }""")]
-    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "gsx_not_running" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "some_future_code" } }""")]
+    // The two codes Task 7 Part C gave their own outcomes. They were silent when they
+    // pooled into Unavailable and must stay silent now that they don't: neither is a
+    // fact a pilot can act on mid-flight, and "GSX is unreachable" already has its own
+    // surface in GsxService.UnavailableReason. This is the concrete demonstration that
+    // adding an outcome member does NOT accidentally give it a voice.
+    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "gsx_not_running" } }""")]
+    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "auth_required" } }""")]
     public void Every_non_announced_failure_code_says_nothing(string json)
     {
         Assert.Null(GsxGateSelectAnnouncer.Describe(Result(json)));
@@ -211,5 +217,38 @@ public class GsxGateSelectAnnouncerTests
     public void A_transport_failure_says_nothing()
     {
         Assert.Null(GsxGateSelectAnnouncer.Describe(GsxGateSelectResult.FromFrame(GsxFrame.Parse("not json"))));
+    }
+
+    // ── The 4.0.8 message: a constant, deliberately outside Describe ─────────
+
+    [Fact]
+    public void GateSelectUnsupported_says_nothing_through_Describe_the_form_owns_the_latch()
+    {
+        // Describe must stay silent here even though this IS a spoken condition: the
+        // message is once-per-dialog, and a once-only latch cannot live in a stateless
+        // mapper. TaxiAssistForm reads the outcome and speaks the constant itself.
+        // Returning it here would repeat it on every gate-destination Calculate.
+        var result = GsxGateSelectResult.Local(
+            GsxGateSelectOutcome.GateSelectUnsupported, "GSX does not advertise gate.select");
+
+        Assert.Null(GsxGateSelectAnnouncer.Describe(result));
+    }
+
+    [Fact]
+    public void The_unsupported_message_names_4_0_8_and_tells_the_pilot_what_to_do()
+    {
+        string m = GsxGateSelectAnnouncer.GateSelectUnsupportedMessage;
+
+        // 4.0.8, not 4.0.1: the Remote API shipped in 4.0.1 but gate.select did not,
+        // so a pilot sent to 4.0.1 would land on a build where this still does nothing.
+        Assert.Contains("4.0.8", m);
+        Assert.DoesNotContain("4.0.1", m);
+        // The fallback action, or the pilot is left with a version number and no move.
+        Assert.Contains("GSX menu", m);
+        // It must NOT claim GSX is broken or absent -- on this path GSX is running and
+        // answering, and everything else in Access GSX works normally.
+        Assert.DoesNotContain("not running", m, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unavailable", m, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("not reachable", m, StringComparison.OrdinalIgnoreCase);
     }
 }

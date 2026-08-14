@@ -97,12 +97,35 @@ public class GsxRemoteGateSelectorTests
     // ── Capability gate ─────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Capability_absent_returns_Unavailable_and_never_sends_the_verb()
+    public async Task Capability_absent_returns_GateSelectUnsupported_and_never_sends_the_verb()
     {
+        // A NON-EMPTY capability list that lacks 'gate' is positive evidence: GSX said
+        // hello, listed what it can do, and gate.select was not on the list -- i.e. a
+        // connected build older than 4.0.8. That is the ONE case where naming a version
+        // to the pilot is truthful, so it gets its own outcome (TaxiAssistForm speaks it
+        // once per dialog).
         bool sent = false;
         var selector = new GsxRemoteGateSelector(
             (verb, args) => { sent = true; return Task.FromResult<GsxFrame?>(PreparedFrame()); },
             NoGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.False(sent);
+        Assert.Equal(GsxGateSelectOutcome.GateSelectUnsupported, result.Outcome);
+    }
+
+    [Fact]
+    public async Task An_empty_capability_set_is_Unavailable_not_GateSelectUnsupported()
+    {
+        // Knowing NOTHING about GSX (no hello yet / Remote API not connected / GSX not
+        // running) is not the same as knowing GSX is too old, and must never be reported
+        // as such: it would tell a pilot whose GSX merely isn't running to go and install
+        // a version they may already have. Empty stays Unavailable, which is silent.
+        bool sent = false;
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => { sent = true; return Task.FromResult<GsxFrame?>(PreparedFrame()); },
+            () => Array.Empty<string>());
 
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
 
@@ -124,15 +147,17 @@ public class GsxRemoteGateSelectorTests
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
 
         Assert.False(sent);
-        Assert.Equal(GsxGateSelectOutcome.Unavailable, result.Outcome);
+        Assert.Equal(GsxGateSelectOutcome.GateSelectUnsupported, result.Outcome);
     }
 
     [Fact]
-    public async Task A_capabilities_provider_that_throws_is_treated_as_no_capability_not_a_throw()
+    public async Task A_capabilities_provider_that_throws_is_treated_as_nothing_known_not_a_throw()
     {
         // SelectGateAsync's own contract is "never throws" -- that must hold even
         // against a misbehaving caller-supplied capabilities delegate, the same way
-        // it already holds against a misbehaving send delegate.
+        // it already holds against a misbehaving send delegate. A throw tells us
+        // nothing about GSX's version, so it lands with the empty case (Unavailable,
+        // silent) and never claims the build is too old.
         bool sent = false;
         var selector = new GsxRemoteGateSelector(
             (verb, args) => { sent = true; return Task.FromResult<GsxFrame?>(PreparedFrame()); },

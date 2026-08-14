@@ -86,6 +86,23 @@ public class GsxServiceFacadeTests
         => Assert.Null(T.GetMethod("PumpSimConnectMessage"));
 
     [Fact]
+    public void The_no_remote_api_reason_names_GSX_4_0_8()
+    {
+        // This string IS the entire mitigation for a GSX build that predates the Remote
+        // API — there is no fallback transport — so it has to tell the pilot what to
+        // install. It used to say only "a recent GSX (Couatl) build", because the
+        // minimum version genuinely wasn't known; Virtuali's own guide/release notes
+        // settle it. 4.0.8, not 4.0.1: the Remote API shipped in 4.0.1 but gate.select
+        // did not, so 4.0.1 would leave gate selection silently doing nothing.
+        string reason = MSFSBlindAssist.Services.GsxService.ReasonNoRemoteApi;
+
+        Assert.Contains("4.0.8", reason);
+        Assert.DoesNotContain("4.0.1", reason);
+        // A queued announcement of "" is silently dropped, so this can never be empty.
+        Assert.False(string.IsNullOrWhiteSpace(reason));
+    }
+
+    [Fact]
     public void SetGate_confirmation_properties_are_gone()
         // Retired alongside the SimConnect client that populated them (see
         // PumpSimConnectMessage_is_gone) -- gate.select's payload.gate is the
