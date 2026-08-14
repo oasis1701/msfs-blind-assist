@@ -32,9 +32,10 @@ public class GsxRemoteParkingReaderTests
     public void Reads_every_selectable_KJFK_stand()
     {
         var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
-        // 238 total - 6 Vehicle - 1 Fuel - 1 real Gate Heavy stand GSX published with no
-        // heading ("Gate 1A" @ Terminal 8 - Concourse B, dropped -- see the test below) = 230.
-        Assert.Equal(230, spots.Count);
+        // 238 total - 6 Vehicle - 1 Fuel = 231. The one real Gate Heavy stand GSX published
+        // with no heading ("Gate 1A" @ Terminal 8 - Concourse B) is KEPT (Heading=NaN, not
+        // dropped) -- see Gate_missing_heading_is_kept_with_NaN_not_dropped below.
+        Assert.Equal(231, spots.Count);
     }
 
     [Fact]
@@ -58,20 +59,40 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
-    public void Real_gate_with_no_published_heading_is_dropped_not_zeroed()
+    public void Gate_missing_heading_is_kept_with_NaN_not_dropped()
     {
         var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
 
         // GSX's own capture omits the "heading" key entirely for this one otherwise-normal,
-        // otherwise-selectable Gate Heavy stand. Latitude/Longitude/Heading are non-nullable
-        // on ParkingSpot, so there is no "unknown" to store -- fabricating 0 would silently
-        // steer a blind pilot at a wrong heading, so the spot is dropped instead.
-        Assert.DoesNotContain(spots, s => s.GsxIdentifier == "Gate 1A" && s.Name == "Terminal 8 - Concourse B");
+        // otherwise-selectable Gate Heavy stand -- but it is a real, selectable stand, and
+        // dropping it would leave a blind pilot unable to find it with no explanation. It is
+        // KEPT, with Heading=NaN (never a fabricated 0, which would point due north and could
+        // silently steer docking there) so a later stage (the .ini join) has a chance to
+        // recover the real value, and anything still unusable is unmistakably NaN rather than
+        // a plausible-but-wrong bearing.
+        var noHeading = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.Name == "Terminal 8 - Concourse B");
+        Assert.True(double.IsNaN(noHeading.Heading));
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(noHeading));
 
         // The OTHER "Gate 1A" (a different physical stand, Terminal 1) DOES carry a real
         // heading in the capture and must be entirely unaffected by the rule above.
         var kept = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.Name == "Terminal 1");
         Assert.Equal(44.2120719909668, kept.Heading, 6);
+        Assert.True(GsxRemoteParkingReader.HasUsableHeading(kept));
+    }
+
+    [Fact]
+    public void HasUsableHeading_is_true_for_a_normal_stand()
+    {
+        var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
+            .Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+        Assert.True(GsxRemoteParkingReader.HasUsableHeading(spot));
+    }
+
+    [Fact]
+    public void HasUsableHeading_is_false_for_a_null_spot()
+    {
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(null));
     }
 
     [Theory]
@@ -252,6 +273,23 @@ public class GsxRemoteParkingReaderTests
                           "GATE_SMALL":8,"lon":2.0,"heading":3.0}]}
             """;
         Assert.Empty(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+    }
+
+    [Fact]
+    public void Entry_missing_heading_only_is_kept_with_NaN_not_dropped()
+    {
+        // Same shape as the real "Gate 1A" case, isolated from its terminal-name-collision
+        // complexity: lat/lon present, heading absent.
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Small","type":8,
+                          "GATE_SMALL":8,"lat":1.0,"lon":2.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.True(double.IsNaN(spot.Heading));
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(spot));
+        // Position is still stored -- only heading is affected.
+        Assert.Equal(1.0, spot.Latitude);
+        Assert.Equal(2.0, spot.Longitude);
     }
 
     [Fact]

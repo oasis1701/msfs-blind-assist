@@ -80,6 +80,12 @@ public static class GsxRemoteParkingReader
     /// publishes a stop position (verified null on all 238 KJFK stands); joining the
     /// <c>.ini</c>'s <c>parkingsystem_stopposition</c> onto these spots is a separate step.
     /// </para>
+    /// <para>
+    /// A stand missing only <c>lat</c>/<c>lon</c> is dropped (it cannot be placed at all).
+    /// A stand missing only <c>heading</c> is KEPT with <see cref="ParkingSpot.Heading"/> set
+    /// to <see cref="double.NaN"/> rather than dropped or defaulted to 0 — see
+    /// <see cref="HasUsableHeading"/> and the comment in <c>ReadOne</c> for why.
+    /// </para>
     /// Never throws: a non-object input, a missing/non-array <c>parkings</c>, or any
     /// malformed entry all degrade to an empty or partial list.
     /// </summary>
@@ -115,6 +121,19 @@ public static class GsxRemoteParkingReader
         return result;
     }
 
+    /// <summary>
+    /// The one canonical check for "does this spot carry a real, usable heading" — false for
+    /// a spot <see cref="Read"/> emitted with <see cref="double.NaN"/> because GSX's
+    /// <c>handlerData</c> omitted <c>heading</c> for that stand (real, if rare: 1/238 at
+    /// KJFK — "Gate 1A" at Terminal 8 - Concourse B). Later stages should call this instead
+    /// of spelling out <c>double.IsNaN(spot.Heading)</c> themselves: a later join (e.g. the
+    /// GSX <c>.ini</c>'s <c>this_parking_pos</c>) may recover a real heading for a spot this
+    /// returns false for today, and whatever is still unusable after that must never reach
+    /// docking or the UI — dropping that residual case belongs to whichever later stage owns
+    /// that join, not to this reader.
+    /// </summary>
+    public static bool HasUsableHeading(ParkingSpot? spot) => spot is not null && !double.IsNaN(spot.Heading);
+
     private static ParkingSpot? ReadOne(JsonElement p, string icao)
     {
         if (p.ValueKind != JsonValueKind.Object) return null;
@@ -128,15 +147,10 @@ public static class GsxRemoteParkingReader
         if (string.IsNullOrWhiteSpace(uiGateName))
             return null; // nothing to select or label this entry with (never observed at KJFK: 238/238 present)
 
-        // Position and heading both feed docking/taxi guidance downstream, and
-        // ParkingSpot.Latitude/Longitude/Heading are non-nullable doubles -- there is no
-        // "unknown" to store on the spot itself. Fabricating 0 would silently steer a blind
-        // pilot at a wrong position/heading, which is worse than the stand being temporarily
-        // absent from the list -- same "cannot be placed -> drop" rule GsxNavdataMerger.Merge
-        // already applies. Real KJFK capture: lat/lon are 238/238 (never observed missing);
-        // heading is 231/238 -- one real, otherwise-selectable Gate Heavy stand ("Gate 1A" at
-        // Terminal 8 - Concourse B; a DIFFERENT "Gate 1A" at Terminal 1 does carry a heading
-        // and is unaffected) is dropped by this rule.
+        // Position is not just missing orientation -- with no lat/lon the stand cannot be
+        // PLACED at all, and ParkingSpot.Latitude/Longitude are non-nullable doubles with no
+        // "unknown" to store. Same "cannot be placed -> drop" rule GsxNavdataMerger.Merge
+        // already applies elsewhere. Never observed missing at KJFK (238/238 present).
         double? lat = Double(p, "lat");
         double? lon = Double(p, "lon");
         if (!lat.HasValue || !lon.HasValue)
@@ -145,12 +159,26 @@ public static class GsxRemoteParkingReader
             return null;
         }
 
+        // Heading is different: GSX omits it on 7/238 KJFK stands -- 5 Vehicle + 1 Fuel
+        // (already excluded above) AND 1 real, otherwise-selectable Gate Heavy stand,
+        // "Gate 1A" at Terminal 8 - Concourse B (a DIFFERENT, unrelated "Gate 1A" at
+        // Terminal 1 DOES carry a real heading and is unaffected by any of this).
+        // Dropping a real, otherwise-normal stand just because GSX omitted one field would
+        // leave a blind pilot unable to find it with no explanation -- worse than the
+        // fabricated-0-heading failure this originally avoided, not better. And the data is
+        // often recoverable: the .ini's this_parking_pos ("lat lon heading") can supply
+        // exactly this value, via the same coordinate join GsxStopPositionJoiner (Task 4)
+        // already performs for the stop position. So a missing heading emits double.NaN
+        // rather than dropping the stand -- NaN can never be mistaken for a real bearing
+        // (unlike 0, which points due north and would silently steer docking there), and any
+        // geometry computed on it produces a visible NaN instead of a plausible-but-wrong
+        // turn. Use HasUsableHeading(spot) rather than testing double.IsNaN(spot.Heading)
+        // directly. Whatever is STILL NaN after Task 4's join must never reach the UI or
+        // docking -- dropping that residual case is a later stage's job, not this reader's.
         double? heading = Double(p, "heading");
+        double effectiveHeading = heading ?? double.NaN;
         if (!heading.HasValue)
-        {
-            Log.Warn("Gsx", $"parking reader: dropping \"{uiGateName}\" ({icao}) - GSX published no heading for a selectable stand.");
-            return null;
-        }
+            Log.Warn("Gsx", $"parking reader: \"{uiGateName}\" ({icao}) has no published heading from GSX -- emitting with Heading=NaN instead of dropping it; the .ini join may recover a real value.");
 
         double? maxWingspan = Double(p, "maxWingspan");
         string? vdgs = Str(p, "parkingSystem");
@@ -174,7 +202,7 @@ public static class GsxRemoteParkingReader
 
             Latitude = lat.Value,
             Longitude = lon.Value,
-            Heading = heading.Value,
+            Heading = effectiveHeading,   // may be double.NaN -- see HasUsableHeading
 
             // GSX-sourced Radius is METRES (maxwingspan/2) -- NEVER feet. ParkingSpot.FitsAircraft
             // and SayIntentions' gate-position matching both branch on Source to pick the right
