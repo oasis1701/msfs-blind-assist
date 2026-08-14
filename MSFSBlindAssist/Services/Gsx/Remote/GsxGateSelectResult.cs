@@ -13,7 +13,12 @@ public enum GsxGateSelectOutcome
     /// a <c>too_small</c> warning still lands here; GSX prepares the stand anyway.</summary>
     Prepared,
     /// <summary>Maps BOTH <c>already_parked</c> and <c>already_selected</c> — the guide
-    /// says "nothing to do" for either, so the caller must not have to tell them apart.</summary>
+    /// says "nothing to do" for either, so the caller must not have to tell them apart.
+    /// "Nothing to do" means no retry is needed, not that nothing useful came back:
+    /// <see cref="GsxGateSelectResult.ResolvedGate"/> is still populated from
+    /// <c>error.gate</c>, which matters for <c>already_selected</c> — it can fire when
+    /// the pilot asked for a DIFFERENT stand from the one already prepared, and
+    /// <c>error.gate</c> is the only way to tell them which stand that actually is.</summary>
     AlreadyThere,
     NotFound,
     /// <summary>Several parkings matched the sent identifier; see <see cref="GsxGateSelectResult.Candidates"/>.</summary>
@@ -58,9 +63,11 @@ public sealed class GsxGateSelectResult
     public GsxGateSelectOutcome Outcome { get; private init; }
 
     /// <summary>The stand GSX actually resolved the identifier to — echoed on a
-    /// <see cref="GsxGateSelectOutcome.Prepared"/> success (<c>payload.gate</c>) or an
-    /// <see cref="GsxGateSelectOutcome.AssignedToOther"/> failure (<c>error.gate</c>).
-    /// Null for every other outcome.</summary>
+    /// <see cref="GsxGateSelectOutcome.Prepared"/> success (<c>payload.gate</c>), and on
+    /// an <see cref="GsxGateSelectOutcome.AssignedToOther"/> or
+    /// <see cref="GsxGateSelectOutcome.AlreadyThere"/> failure (both read <c>error.gate</c>).
+    /// Null for every other outcome, and null whenever GSX's response omitted or
+    /// malformed the field, even for those three.</summary>
     public GsxGateSelectCandidate? ResolvedGate { get; private init; }
 
     /// <summary>Best-effort, non-fatal warnings GSX prepared the stand under regardless —
@@ -119,7 +126,19 @@ public sealed class GsxGateSelectResult
         {
             case "already_parked":
             case "already_selected":
-                return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.AlreadyThere, RawCode = code, Message = message };
+                // "Nothing to do" (no retry needed) does not mean nothing useful is in
+                // the payload: the guide's own assignGate example reads error.gate for
+                // both these codes, same as assigned_to_other. already_selected in
+                // particular can fire when the pilot asked for a DIFFERENT stand from
+                // the one already prepared, and error.gate is the only way to tell them
+                // which stand that actually is.
+                return new GsxGateSelectResult
+                {
+                    Outcome = GsxGateSelectOutcome.AlreadyThere,
+                    ResolvedGate = ParseCandidateField(error, "gate"),
+                    RawCode = code,
+                    Message = message,
+                };
 
             case "not_found":
                 return new GsxGateSelectResult { Outcome = GsxGateSelectOutcome.NotFound, RawCode = code, Message = message };

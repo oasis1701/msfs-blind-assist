@@ -139,6 +139,7 @@ public class GsxGateSelectResultTests
         var result = GsxGateSelectResult.FromFrame(frame);
         Assert.Equal(GsxGateSelectOutcome.NotFound, result.Outcome);
         Assert.Equal("no parking matched \"ZZZ\"", result.Message);
+        Assert.Equal("not_found", result.RawCode);
     }
 
     [Fact]
@@ -158,10 +159,45 @@ public class GsxGateSelectResultTests
     }
 
     [Fact]
+    public void Already_there_still_echoes_the_gate_when_the_wire_sends_one()
+    {
+        // "Nothing to do" (no retry needed) is not the same as "nothing useful in
+        // the payload" — the guide's own assignGate example reads error.gate for
+        // already_parked/already_selected too, same as assigned_to_other.
+        // already_selected in particular can fire when the pilot asked for a
+        // DIFFERENT stand from the one already prepared, and error.gate is the
+        // only way to tell them which stand that actually is.
+        var frame = Frame("""
+            { "type": "result", "id": "g-4", "ok": false,
+              "error": { "code": "already_selected",
+                         "gate": { "uiName": "Gate A12", "gate": "A12", "number": 12, "bglName": "Parking 12" } } }
+            """);
+
+        var result = GsxGateSelectResult.FromFrame(frame);
+
+        Assert.Equal(GsxGateSelectOutcome.AlreadyThere, result.Outcome);
+        Assert.NotNull(result.ResolvedGate);
+        Assert.Equal("Gate A12", result.ResolvedGate!.UiName);
+    }
+
+    [Fact]
+    public void Already_there_leaves_ResolvedGate_null_when_the_wire_sends_no_gate()
+    {
+        var frame = Frame("""{"type":"result","id":"g-4","ok":false,"error":{"code":"already_parked"}}""");
+
+        var result = GsxGateSelectResult.FromFrame(frame);
+
+        Assert.Equal(GsxGateSelectOutcome.AlreadyThere, result.Outcome);
+        Assert.Null(result.ResolvedGate);
+    }
+
+    [Fact]
     public void Services_active_maps_to_ServicesActive()
     {
         var frame = Frame("""{"type":"result","id":"g-6","ok":false,"error":{"code":"services_active"}}""");
-        Assert.Equal(GsxGateSelectOutcome.ServicesActive, GsxGateSelectResult.FromFrame(frame).Outcome);
+        var result = GsxGateSelectResult.FromFrame(frame);
+        Assert.Equal(GsxGateSelectOutcome.ServicesActive, result.Outcome);
+        Assert.Equal("services_active", result.RawCode);
     }
 
     [Fact]
