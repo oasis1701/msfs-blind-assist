@@ -126,11 +126,21 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// Supplies the parking list every <see cref="TaxiGraph.Build"/> call in this class is fed —
     /// the ONE place a stand's name is decided app-wide (see <see cref="ParkingSpotSource"/>).
-    /// Wired by <c>MainForm</c> to "<c>GateDataSource.GetGates</c> then <c>AugmentParking</c>",
-    /// so Where-Am-I calls a stand what the taxi dialog, the gate-teleport list and
-    /// <c>gate.select</c> call it, instead of navdata's BGL parking-name enum (KJFK Terminal 4:
-    /// "Gate B 25" vs navdata's "Gate A 25").
+    /// Wired by <c>MainForm</c> to <see cref="ParkingSpotSource.GetNamedSpots"/>, so Where-Am-I
+    /// calls a stand what the taxi dialog, the gate-teleport list and <c>gate.select</c> call it,
+    /// instead of navdata's BGL parking-name enum (KJFK Terminal 4: "Gate B 25" vs navdata's
+    /// "Gate A 25").
     ///
+    /// <para>
+    /// <b>It must return navdata's own spot SET, with names corrected in place</b> — same spots,
+    /// same count, same coordinates, same order. Never a different list. <c>TaxiGraph.Build</c>'s
+    /// parking pass writes <c>node.Type = TaxiNodeType.Parking</c> as well as the name, and
+    /// <c>Type</c> is read by <c>NamedHoldingPointResolver</c> (which SKIPS parking nodes when
+    /// snapping a named holding point), <c>HoldShortNodeResolver</c>, and the route truncation in
+    /// <c>TaxiGuidanceManager.Routing</c>. A supplier that returned a different SET would move a
+    /// hold-short and would strip the Where-Am-I label off any stand it omitted. Naming a stand and
+    /// deciding which nodes are parking are different jobs, and only the first may change.
+    /// </para>
     /// <para>
     /// <b>Null is the supported default</b>, and it keeps every caller that does not wire it —
     /// the xUnit suite, anything constructed outside MainForm — byte-identical to the

@@ -91,34 +91,13 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 public static class GsxConcourseLetterFiller
 {
     /// <summary>
-    /// How near a navdata stand must be to an API stand before its letter may be borrowed.
-    ///
-    /// <para>
-    /// <b>Chosen from measured stand geometry, not from feel.</b> Across the 231 selectable
-    /// stands of the committed KJFK capture, the two CLOSEST stands of any kind are 21.2 m apart
-    /// (median nearest-neighbour separation 53.4 m; nothing at all under 15 m). 10 m is therefore
-    /// under half the tightest real stand spacing measured at a dense major airport: the
-    /// acceptance ball around one stand cannot reach the centre of another.
-    /// </para>
-    /// <para>
-    /// The margin against the failure that actually matters — borrowing a letter from a stand on
-    /// a DIFFERENT concourse — is far larger still, because <see cref="Fill"/> also requires the
-    /// stand NUMBER to agree. In the same capture the closest pair sharing a number while
-    /// differing in concourse letter is <b>227.4 m</b> apart ("Stand H12" @ Terminal 5 - Remote
-    /// vs "Gate 12" @ Terminal 4 - Concourse A), so the guard has a ~22x margin on the case it
-    /// exists for.
-    /// </para>
-    /// <para>
-    /// Erring tight is deliberate and the asymmetry is not close. A radius too SMALL costs
-    /// nothing worse than a stand keeping <c>Name = ""</c> — today's behaviour, and a supported
-    /// shape — and only for the stands whose terminal names no concourse, since the terminal
-    /// wording is tried first and does not depend on this at all. A radius too LARGE hands a
-    /// stand its neighbour's letter, which is a WRONG STAND IDENTITY: it corrupts SayIntentions'
-    /// assigned-gate match, mints a junk alias in <c>GateAliasResolver</c>, and can taxi a blind
-    /// pilot to the wrong pier with every other part of the readout sounding correct.
-    /// </para>
+    /// How near a navdata stand must be to an API stand before its letter may be borrowed — and
+    /// the SAME radius <see cref="GsxStandNameOverlay"/> uses in the opposite direction. Both the
+    /// value and the measurement behind it live on <see cref="GsxStandLetterMatch"/>; read that
+    /// before touching it. Kept here as a forwarding alias because this class's own doc comments
+    /// and log lines reference it.
     /// </summary>
-    internal const double MatchRadiusMetres = 10.0;
+    internal const double MatchRadiusMetres = GsxStandLetterMatch.MatchRadiusMetres;
 
     /// <summary>
     /// The one wording accepted from <c>uiTerminalName</c>: the literal word "Concourse" followed
@@ -230,29 +209,13 @@ public static class GsxConcourseLetterFiller
         => string.IsNullOrWhiteSpace(spot.Name) && spot.Number > 0;
 
     /// <summary>
-    /// The navdata spots that are eligible to DONATE a letter, read once. Everything that cannot
-    /// possibly donate is filtered out here rather than re-tested per stand.
-    /// <para>
-    /// A donor must carry a real stand number, a real coordinate, and a <see cref="ParkingSpot.Name"/>
-    /// that is a SINGLE A-Z letter. That last filter is what structurally prevents this borrow
-    /// from reintroducing the very defect it exists to fix (terminal prose landing in
-    /// <c>Name</c>), and it composes exactly with what navdata actually holds:
-    /// <c>LittleNavMapProvider.MapParkingName</c> has already turned the MSFS <c>GATE_A</c>…
-    /// <c>GATE_Z</c> enum into a bare letter ("GA" -> "A"), while every NON-concourse parking
-    /// name it can produce is a WORD ("Parking", "North", "Southwest", "Dock") and is rejected
-    /// here — a stand category is not a concourse and must never enter the identity slot.
-    /// </para>
-    /// <para>
-    /// (0,0) is rejected outright: null island is a real coordinate to a distance test, and a
-    /// navdata row with no position would otherwise sit 10 m from any API stand that also lacked
-    /// one. NaN coordinates are rejected for the same reason (every comparison against NaN is
-    /// false, so they can never match, but excluding them keeps the donor count honest).
-    /// </para>
+    /// The navdata spots that are eligible to DONATE a letter, read once. The eligibility rule
+    /// itself lives on <see cref="GsxStandLetterMatch.EligibleDonors"/> (shared with the reverse
+    /// direction); all this adds is reading the delegate safely.
     /// </summary>
     private static List<ParkingSpot> LoadDonors(Func<IReadOnlyList<ParkingSpot>?>? navdata)
     {
-        var donors = new List<ParkingSpot>();
-        if (navdata == null) return donors;
+        if (navdata == null) return new List<ParkingSpot>();
 
         IReadOnlyList<ParkingSpot>? spots;
         try
@@ -265,66 +228,22 @@ public static class GsxConcourseLetterFiller
             // list — the same rule the .ini stop join follows in GateDataSource. Every stand
             // simply keeps whatever letter it already had.
             Log.Debug("Gsx", $"concourse letter: navdata lookup failed, no letters borrowed: {ex.Message}");
-            return donors;
+            return new List<ParkingSpot>();
         }
 
-        if (spots == null) return donors;
-
-        foreach (var s in spots)
-        {
-            if (s == null || s.Number <= 0) continue;
-            if (!IsSingleLetter(s.Name)) continue;
-            if (double.IsNaN(s.Latitude) || double.IsNaN(s.Longitude)) continue;
-            if (s.Latitude == 0.0 && s.Longitude == 0.0) continue;
-            donors.Add(s);
-        }
-        return donors;
+        return GsxStandLetterMatch.EligibleDonors(spots);
     }
 
     /// <summary>
     /// The letter every in-range, same-numbered navdata stand agrees on — or "" when none is in
-    /// range, or when two of them DISAGREE. Resolved for EVERY letterless stand, including ones
-    /// the terminal wording has already answered, because <see cref="Fill"/> logs the
-    /// disagreement between the two; it is only USED when the terminal named no concourse
-    /// (52 of KJFK's 222 letterless stands).
-    /// <para>
-    /// The disagreement refusal is the same guard <c>GateAliasResolver</c> applies for the same
-    /// reason ("if two surviving candidates carry DIFFERENT non-empty concourse letters … the
-    /// gate's real concourse is unknown, so adopting either would let the pilot 'find' gate 51 by
-    /// the wrong concourse"), and it is why this returns an agreed letter rather than the nearest
-    /// stand's: two navdata rows describing one physical stand (a duplicated row, a MARS pair
-    /// "232N"/"232S") both name the same concourse, so agreement is the property that matters,
-    /// not proximity ranking. Refusing rather than picking mirrors
-    /// <see cref="GsxStopPositionJoiner"/>'s ambiguity rule.
-    /// </para>
+    /// range, or when two of them DISAGREE (<see cref="GsxStandLetterMatch.AgreedLetter"/>, the
+    /// rule shared with the reverse direction; its doc carries the reasoning). Resolved for EVERY
+    /// letterless stand, including ones the terminal wording has already answered, because
+    /// <see cref="Fill"/> logs the disagreement between the two; it is only USED when the terminal
+    /// named no concourse (52 of KJFK's 222 letterless stands).
     /// </summary>
     private static string BorrowFromNavdata(ParkingSpot spot, List<ParkingSpot> donors, out bool wasAmbiguous)
-    {
-        wasAmbiguous = false;
-        string agreed = string.Empty;
-
-        foreach (var donor in donors)
-        {
-            // Number agreement is a SECOND, independent axis of evidence beside position, and it
-            // is what lets the radius stay tight without losing real matches: two datasets
-            // agreeing both on where a stand is and on what it is numbered is what makes it the
-            // same stand. It is also how GsxNavdataMerger's own borrow has always been
-            // constrained — its FindNavMatch buckets navdata by number before anything else.
-            if (donor.Number != spot.Number) continue;
-            if (TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude,
-                                        donor.Latitude, donor.Longitude) > MatchRadiusMetres) continue;
-
-            string letter = donor.Name.Trim().ToUpperInvariant();
-            if (agreed.Length == 0) { agreed = letter; continue; }
-            if (!string.Equals(agreed, letter, StringComparison.Ordinal))
-            {
-                wasAmbiguous = true;
-                return string.Empty;   // two concourses in range: refuse, never arbitrate
-            }
-        }
-
-        return agreed;
-    }
+        => GsxStandLetterMatch.AgreedLetter(spot, donors, out wasAmbiguous);
 
     /// <summary>The single letter GSX's own <c>uiTerminalName</c> names as the concourse, or ""
     /// when it names none. See <see cref="ConcourseWording"/> for why the pattern is this narrow.</summary>
@@ -333,17 +252,6 @@ public static class GsxConcourseLetterFiller
         if (string.IsNullOrWhiteSpace(terminalName)) return string.Empty;
         var m = ConcourseWording.Match(terminalName);
         return m.Success ? m.Groups[1].Value.ToUpperInvariant() : string.Empty;
-    }
-
-    /// <summary>ASCII A-Z, exactly one character — never <c>char.IsLetter</c>, which would admit
-    /// a non-ASCII letter that no stand-id consumer in this app can compare.</summary>
-    private static bool IsSingleLetter(string? value)
-    {
-        if (value == null) return false;
-        string v = value.Trim();
-        if (v.Length != 1) return false;
-        char c = char.ToUpperInvariant(v[0]);
-        return c >= 'A' && c <= 'Z';
     }
 
     /// <summary>

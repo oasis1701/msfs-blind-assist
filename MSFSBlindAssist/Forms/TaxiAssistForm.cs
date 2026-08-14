@@ -1715,10 +1715,12 @@ public class TaxiAssistForm : Form
             return;
         }
 
-        // The SAME list this form's own destination dropdown is built from (see
-        // PopulateDestinations), so a stand cannot be "Gate B 25" in the combo and "Gate A 25"
-        // when Where-Am-I reads the graph this build produces. See Services/ParkingSpotSource.
-        var parking = Services.ParkingSpotSource.GetSpots(_dataProvider, _gateSource, icao);
+        // Navdata's own spot SET — unchanged in count, coordinates and order — carrying the SAME
+        // stand names this form's destination dropdown shows, so a stand cannot be "Gate B 25" in
+        // the combo and "Gate A 25" when Where-Am-I reads the graph this build produces. The set
+        // must stay navdata's: TaxiGraph.Build's parking pass also marks node TYPES, which the
+        // hold-short and named-holding-point resolvers read. See Services/ParkingSpotSource.
+        var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
         var starts = _dataProvider.GetRunwayStarts(icao);
 
         lblStatus.Text = $"{icao}: building taxi graph…";
@@ -1988,10 +1990,13 @@ public class TaxiAssistForm : Form
             if (_cachedGateSpots == null
                 || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
             {
-                // GSX's list plus this scenery's online gate aliases — GSX bypasses
-                // GetParkingSpots, but GSX stands carry spot codes that don't match real gate
-                // numbers, and the online alias is what lets the pilot pick the ATC gate.
-                var sourceSpots = Services.ParkingSpotSource.GetSpots(_dataProvider, _gateSource, _currentIcao);
+                // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
+                // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
+                // needs GsxIdentifier, and TerminalName is what tells two identically-named stands
+                // apart. Plus this scenery's online gate aliases (GSX bypasses GetParkingSpots, but
+                // GSX stands carry spot codes that don't match real gate numbers, and the alias is
+                // what lets the pilot pick the ATC gate).
+                var sourceSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {

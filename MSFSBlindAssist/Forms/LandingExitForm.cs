@@ -300,7 +300,7 @@ public class LandingExitForm : Form
         Navigation.TaxiGraph? builtGraph = null;
         try
         {
-            var parking = Services.ParkingSpotSource.GetSpots(_dataProvider, _gateSource, icao);
+            var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
             var starts = _dataProvider.GetRunwayStarts(icao);
             builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts);
         }

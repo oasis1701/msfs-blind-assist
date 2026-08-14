@@ -1014,14 +1014,16 @@ public partial class MainForm
         try
         {
             var position = await GetFreshAircraftPositionAsync();
-            // The stand list under its AUTHORITATIVE names — the same one the taxi dialog, the
-            // gate-teleport list and gate.select use (Services/ParkingSpotSource). With
-            // navdata's names instead, an aircraft parked exactly at KJFK B25 was told
-            // "Aircraft appears near A 25, not assigned gate Terminal 4 Gate B25": navdata's
-            // concourse letter comes from the BGL parking-name enum, which KJFK's scenery fills
-            // GATE_A across a whole concourse, so the comparison below could not match the very
-            // stand SayIntentions had assigned.
-            var spots = Services.ParkingSpotSource.GetSpots(
+            // Every stand this airport has, each under its AUTHORITATIVE name — the same name the
+            // taxi dialog, the gate-teleport list and gate.select use (Services/ParkingSpotSource).
+            // With navdata's own names, an aircraft parked exactly at KJFK B25 was told "Aircraft
+            // appears near A 25, not assigned gate Terminal 4 Gate B25": navdata's concourse letter
+            // comes from the BGL parking-name enum, which KJFK's scenery fills GATE_A across a
+            // whole concourse, so the comparison below could not match the very stand SayIntentions
+            // had assigned. Navdata's full SET matters here as much as the names — the nearest
+            // stand has to be the nearest ACTUAL stand, and GSX's list omits Vehicle/Fuel stands,
+            // so searching it could name a further stand as "nearest" from the one you are on.
+            var spots = Services.ParkingSpotSource.GetNamedSpots(
                 airportDataProvider, BuildGateDataSource(), icao.ToUpperInvariant());
             if (spots == null || spots.Count == 0) return null;
 

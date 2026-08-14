@@ -613,6 +613,9 @@ public partial class MainForm : Form
         // Name every parking node of the graphs it builds the way the taxi dialog, the
         // gate-teleport list and gate.select name them, so Where-Am-I cannot say "Gate A 25"
         // about the stand every other readout calls "Gate B 25" (Services/ParkingSpotSource).
+        // GetNamedSpots, NOT GetSelectableGates: this is navdata's own spot SET with its names
+        // corrected in place, so the same nodes are marked Parking as before and the hold-short
+        // and named-holding-point resolvers see an identical graph.
         //
         // The lambda reads `airportDataProvider` and builds its GateDataSource PER CALL rather
         // than capturing either: the field is reassigned on a database switch (and nulled on
@@ -625,7 +628,7 @@ public partial class MainForm : Form
             var provider = airportDataProvider;
             return provider == null
                 ? new List<MSFSBlindAssist.Database.Models.ParkingSpot>()
-                : MSFSBlindAssist.Services.ParkingSpotSource.GetSpots(provider, BuildGateDataSource(), icao);
+                : MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, BuildGateDataSource(), icao);
         };
         sayIntentionsService = new SayIntentionsService();
 

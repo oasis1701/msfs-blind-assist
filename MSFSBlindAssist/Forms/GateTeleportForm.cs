@@ -276,7 +276,7 @@ public partial class GateTeleportForm : Form
             // GSX's list plus this scenery's online gate aliases — the SAME resolution every
             // other stand readout uses, so this dialog can never name a stand differently from
             // the taxi planner or Where-Am-I. See Services/ParkingSpotSource.
-            var parkingSpots = Services.ParkingSpotSource.GetSpots(_database, _gateSource, icao);
+            var parkingSpots = Services.ParkingSpotSource.GetSelectableGates(_database, _gateSource, icao);
             if (parkingSpots.Count == 0)
             {
                 statusLabel.Text = $"No gates or parking found for {icao}";
