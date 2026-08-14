@@ -49,6 +49,30 @@ public class ParkingSpot
     public string? GsxIdentifier { get; set; }
 
     /// <summary>
+    /// The terminal/concourse this stand belongs to, as GSX's Remote API publishes it
+    /// (<c>uiTerminalName</c> — e.g. "Terminal 4 - Concourse B"). Null/empty for navdata and
+    /// <c>.ini</c>-sourced spots, which carry no such field.
+    /// <para>
+    /// It exists because GSX's <c>uiGateName</c> ALONE collides across terminals at a real
+    /// airport — at KJFK "Gate 2" names five physically different stands across five terminals
+    /// — while <c>(uiTerminalName, uiGateName)</c> pairs never do. Without it the dropdown
+    /// would offer one entry where five stands exist (labels are de-duplicated by text), so a
+    /// blind pilot could not reach four of them at all.
+    /// </para>
+    /// <para>
+    /// It is a SEPARATE field, and must never be folded back into <see cref="Name"/>: every
+    /// stand-identity consumer in the app reads <see cref="Name"/> as the concourse LETTER
+    /// (<c>GateAliasResolver</c> parses it with <c>StandId.Parse</c>;
+    /// <c>SayIntentionsClearanceParser.NormalizeParkingName</c> compares it against a
+    /// controller's "B25"). Terminal prose there matches no stand-id shape, so aliases stop
+    /// resolving and SayIntentions' assigned-gate lookup falls through its whole chain to the
+    /// ARRIVAL RUNWAY. <see cref="Describe"/> renders it AFTER the first spaced dash, which is
+    /// exactly the part those two consumers discard.
+    /// </para>
+    /// </summary>
+    public string? TerminalName { get; set; }
+
+    /// <summary>
     /// Alternative names for this parking spot discovered from online sources (OSM / X-Plane
     /// apt.dat) when those sources use a different label than the navdata <see cref="Name"/>.
     /// An alias only ever RE-LETTERS the same stand: bare navdata gate "51" picks up the
@@ -191,6 +215,19 @@ public class ParkingSpot
                 : $"Spot {numberPart} - {GetParkingType()}";
         else
             baseDescription = $"Parking - {GetParkingType()}";
+
+        // The terminal goes HERE — after the type, before the equipment notes — and both
+        // halves of that placement are deliberate.
+        //   AFTER the first spaced dash (the " - " above), because that is the boundary
+        //   SayIntentionsClearanceParser.NormalizeParkingName cuts at: everything from it
+        //   onward is discarded before a stand id is compared, so the terminal can never
+        //   corrupt gate matching the way putting it in Name did.
+        //   BEFORE "(Jetway)"/"[VDGS]", because at a colliding stand name the terminal is
+        //   the ONLY thing telling two entries apart, and a screen reader speaks a combo
+        //   item from the start: KJFK's "Gate 2" at Terminal 4 - Concourse A and at
+        //   Terminal 8 - Concourse B are otherwise identical for ~40 characters.
+        if (!string.IsNullOrWhiteSpace(TerminalName))
+            baseDescription += $", {TerminalName.Trim()}";
 
         if (HasJetway)
             baseDescription += " (Jetway)";

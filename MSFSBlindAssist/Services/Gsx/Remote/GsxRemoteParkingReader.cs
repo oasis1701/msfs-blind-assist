@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -60,13 +58,6 @@ public static class GsxRemoteParkingReader
             ["DOCK_GA"] = 11,
         };
 
-    // "Gate 20A" -> number 20, trailing suffix "A" (the common shape — 229/238 KJFK stands).
-    private static readonly Regex TrailingSuffix = new(@"^(\d+)([A-Za-z]*)$", RegexOptions.Compiled);
-
-    // "Stand H6" -> leading letter "H", number 6 (9/238 KJFK remote GA hardstands). See
-    // ParseNumberAndSuffix for the known display-only quirk this shape produces.
-    private static readonly Regex LeadingPrefix = new(@"^([A-Za-z]+)(\d+)$", RegexOptions.Compiled);
-
     /// <summary>
     /// Maps every entry of <c>handlerDataAirport.parkings</c> to a <see cref="ParkingSpot"/>.
     /// <paramref name="handlerDataAirport"/> is the <c>handlerData.airport</c> sub-object
@@ -84,7 +75,10 @@ public static class GsxRemoteParkingReader
     /// A stand missing only <c>lat</c>/<c>lon</c> is dropped (it cannot be placed at all).
     /// A stand missing only <c>heading</c> is KEPT with <see cref="ParkingSpot.Heading"/> set
     /// to <see cref="double.NaN"/> rather than dropped or defaulted to 0 — see
-    /// <see cref="HasUsableHeading"/> and the comment in <c>ReadOne</c> for why.
+    /// <see cref="HasUsableHeading"/> and the comment in <c>ReadOne</c> for why. A heading
+    /// GSX DID publish is normalized to 0-360 (<c>GsxProfileParser.NormalizeHeading</c>, the
+    /// same helper the <c>.ini</c> path uses) — GSX publishes signed headings and this one is
+    /// spoken to the pilot.
     /// </para>
     /// Never throws: a non-object input, a missing/non-array <c>parkings</c>, or any
     /// malformed entry all degrade to an empty or partial list.
@@ -175,28 +169,51 @@ public static class GsxRemoteParkingReader
         // turn. Use HasUsableHeading(spot) rather than testing double.IsNaN(spot.Heading)
         // directly. Whatever is STILL NaN after Task 4's join must never reach the UI or
         // docking -- dropping that residual case is a later stage's job, not this reader's.
+        //
+        // The published value is also SIGNED -- 122 of the 231 headings in the KJFK capture
+        // are negative, and 37 of 68 on a live ENGM read. It is normalized to 0-360 through
+        // GsxProfileParser.NormalizeHeading, the SAME helper the .ini path has always applied
+        // to this_parking_pos, because it is the same GSX data and must not read differently
+        // for having arrived over a different transport. Steering and docking geometry are
+        // wrap-safe either way, but the number is SPOKEN ("Align with {stand}, heading -90"),
+        // and a heading a pilot cannot find on their heading indicator is worse than useless.
+        // NormalizeHeading passes NaN through unchanged, which is what keeps the sentinel
+        // above intact -- see its own doc comment.
         double? heading = Double(p, "heading");
-        double effectiveHeading = heading ?? double.NaN;
+        double effectiveHeading = heading.HasValue
+            ? GsxProfileParser.NormalizeHeading(heading.Value)
+            : double.NaN;
         if (!heading.HasValue)
             Log.Warn("Gsx", $"parking reader: \"{uiGateName}\" ({icao}) has no published heading from GSX -- emitting with Heading=NaN instead of dropping it; the .ini join may recover a real value.");
 
         double? maxWingspan = Double(p, "maxWingspan");
         string? vdgs = Str(p, "parkingSystem");
-        var (number, suffix) = ParseNumberAndSuffix(uiGateName);
+        var (name, number, suffix) = ParseStandIdentity(uiGateName);
 
         return new ParkingSpot
         {
             AirportICAO = icao ?? string.Empty,
+
+            // Name/Number/Suffix follow the app-wide stand-identity convention -- the same one
+            // GsxGateMapper.ToParkingSpot uses on the .ini path: Name is the CONCOURSE LETTER
+            // ("B"), Number the stand number, Suffix the trailing letter. Three subsystems read
+            // Name expecting exactly that shape (GateAliasResolver via StandId.Parse,
+            // SayIntentions' NormalizeParkingName gate matching, and MainForm's parked-at-the-
+            // assigned-gate check), and all three break on anything else -- see ParkingSpot.
+            // TerminalName's doc comment for what putting terminal prose here cost.
+            Name = name,
+            Number = number,
+            Suffix = suffix,
 
             // uiGateName ALONE collides constantly across terminals at a real airport --
             // verified at KJFK: "Gate 2" alone names 5 physically different stands across 5
             // terminals (48 distinct uiGateName values collide at least once, out of 238).
             // uiTerminalName never repeats a shared uiGateName (0 collisions across all 238
             // (uiTerminalName, uiGateName) pairs), so it is what actually keeps the dropdown
-            // distinguishable -- this is why it is used here, not merely descriptive colour.
-            Name = TerminalNameOrEmpty(p),
-            Number = number,
-            Suffix = suffix,
+            // distinguishable -- not merely descriptive colour. It rides in its OWN field,
+            // which ParkingSpot.Describe() renders after the first spaced dash (i.e. in the
+            // part every stand-id consumer already discards).
+            TerminalName = TerminalNameOrEmpty(p),
 
             Type = ResolveNavdataType(p, Int(p, "type")),
 
@@ -237,39 +254,29 @@ public static class GsxRemoteParkingReader
     private static string TerminalNameOrEmpty(JsonElement p) => Str(p, "uiTerminalName")?.Trim() ?? string.Empty;
 
     /// <summary>
-    /// Extracts (Number, Suffix) from the tail of a GSX <c>uiGateName</c> such as
-    /// "Gate 20A" or "Stand H6". The leading category word ("Gate"/"Stand"/"Parking"/
-    /// "Ramp"/…) is discarded — <see cref="ParkingSpot.Name"/> carries
-    /// <c>uiTerminalName</c> instead (see <see cref="ReadOne"/> for why).
+    /// Splits a GSX <c>uiGateName</c> ("Gate 20A", "Stand H6", "Ramp 51") into the app-wide
+    /// (Name, Number, Suffix) stand identity, via the ONE canonical parse
+    /// <see cref="Services.StandId.Parse"/> — the same function <c>GateAliasResolver</c> and
+    /// <c>GateSearchFilter</c> use. Sharing it is the point: this reader and the alias
+    /// resolver agree on what a stand is called by construction rather than by two
+    /// hand-written regexes that can drift. It also drops the leading category word
+    /// ("Gate"/"Stand"/"Ramp"/…) for free, and handles the "Gate A12A" shape (letter, number
+    /// AND trailing suffix) that the two regexes this replaced both fell through.
+    /// <para>
+    /// A name carrying NO number at all ("Helipad") has no stand identity to split, so the
+    /// whole trimmed <c>uiGateName</c> becomes <see cref="ParkingSpot.Name"/> — better a
+    /// readable label than a blank one, and <c>GateAliasResolver</c> ignores a spot with no
+    /// number anyway. <see cref="ParkingSpot.GsxIdentifier"/> keeps the untouched original
+    /// string regardless: nothing here ever reaches <c>gate.select</c>.
+    /// </para>
     /// </summary>
-    private static (int Number, string Suffix) ParseNumberAndSuffix(string uiGateName)
+    private static (string Name, int Number, string Suffix) ParseStandIdentity(string uiGateName)
     {
-        string[] tokens = uiGateName.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        if (tokens.Length == 0) return (0, string.Empty);
-        string tail = tokens[^1];
-
-        var trailing = TrailingSuffix.Match(tail);
-        if (trailing.Success && trailing.Groups[1].Value.Length > 0)
-            return (SafeParseInt(trailing.Groups[1].Value), trailing.Groups[2].Value.ToUpperInvariant());
-
-        // "Stand H6"/"Stand H12" (KJFK's Terminal 5 - Remote GA hardstands, 9/238) glue the
-        // letter BEFORE the digits instead of after. Still mapped to (Number, Suffix) --
-        // there is nowhere else on ParkingSpot to put a lone extra letter, and
-        // ParkingSpot.Describe()'s fixed "{Number}{Suffix}" template is explicitly untouched
-        // by this reader (spec: "Describe()/ToString() are untouched, so every dropdown
-        // reads identically") -- so this shape renders reordered as "6H" rather than the
-        // source "H6". GsxIdentifier (what is actually SENT to gate.select) always carries
-        // the untouched original string regardless, so this is a display-only quirk, not a
-        // selection-safety issue.
-        var leading = LeadingPrefix.Match(tail);
-        if (leading.Success)
-            return (SafeParseInt(leading.Groups[2].Value), leading.Groups[1].Value.ToUpperInvariant());
-
-        return (0, string.Empty);
+        var id = Services.StandId.Parse(uiGateName);
+        return id.HasNumber
+            ? (id.Letter, id.Number, id.Suffix)
+            : (uiGateName.Trim(), 0, string.Empty);
     }
-
-    private static int SafeParseInt(string s)
-        => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) ? n : 0;
 
     /// <summary>
     /// Resolves this parking's navdata-numbered <see cref="ParkingSpot.Type"/> from its

@@ -66,7 +66,7 @@ public class GsxStopPositionJoinerTests
     public void Golden_KJFK_gate_a_6_joins_the_real_stop_position_not_lat_lon()
     {
         var apiSpot = GsxRemoteParkingReader.Read(KjfkFixture(), "KJFK")
-            .Single(s => s.GsxIdentifier == "Gate 6" && s.Name == "Terminal 4 - Concourse A");
+            .Single(s => s.GsxIdentifier == "Gate 6" && s.TerminalName == "Terminal 4 - Concourse A");
 
         // Sanity: confirm the committed fixture really is the real, documented KJFK capture
         // before trusting anything else this test does.

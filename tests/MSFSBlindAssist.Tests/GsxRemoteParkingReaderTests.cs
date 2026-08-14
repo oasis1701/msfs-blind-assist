@@ -2,6 +2,7 @@ using System.Text.Json;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.Gsx;
 using MSFSBlindAssist.Services.Gsx.Remote;
+using MSFSBlindAssist.Services.SayIntentions;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -52,7 +53,7 @@ public class GsxRemoteParkingReaderTests
     public void Radius_is_metres_half_maxWingspan_for_a_gsx_spot()
     {
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
-            .Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+            .Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
         Assert.Equal(GateSource.Gsx, spot.Source);
         Assert.Equal(50.0, spot.MaxWingspanMeters);
         Assert.Equal(25.0, spot.Radius);   // METRES, never feet -- half of maxWingspan verbatim
@@ -70,13 +71,13 @@ public class GsxRemoteParkingReaderTests
         // silently steer docking there) so a later stage (the .ini join) has a chance to
         // recover the real value, and anything still unusable is unmistakably NaN rather than
         // a plausible-but-wrong bearing.
-        var noHeading = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.Name == "Terminal 8 - Concourse B");
+        var noHeading = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.TerminalName == "Terminal 8 - Concourse B");
         Assert.True(double.IsNaN(noHeading.Heading));
         Assert.False(GsxRemoteParkingReader.HasUsableHeading(noHeading));
 
         // The OTHER "Gate 1A" (a different physical stand, Terminal 1) DOES carry a real
         // heading in the capture and must be entirely unaffected by the rule above.
-        var kept = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.Name == "Terminal 1");
+        var kept = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.TerminalName == "Terminal 1");
         Assert.Equal(44.2120719909668, kept.Heading, 6);
         Assert.True(GsxRemoteParkingReader.HasUsableHeading(kept));
     }
@@ -85,7 +86,7 @@ public class GsxRemoteParkingReaderTests
     public void HasUsableHeading_is_true_for_a_normal_stand()
     {
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
-            .Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+            .Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
         Assert.True(GsxRemoteParkingReader.HasUsableHeading(spot));
     }
 
@@ -102,7 +103,7 @@ public class GsxRemoteParkingReaderTests
     public void Type_resolves_via_the_published_enum_constants(string gateName, string terminal, int expectedNavdataType)
     {
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
-            .Single(s => s.GsxIdentifier == gateName && s.Name == terminal);
+            .Single(s => s.GsxIdentifier == gateName && s.TerminalName == terminal);
         Assert.Equal(expectedNavdataType, spot.Type);
     }
 
@@ -116,15 +117,77 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
-    public void Name_carries_the_terminal_context_not_a_bare_category_word()
+    public void The_terminal_rides_in_TerminalName_never_in_Name()
     {
         // uiGateName ALONE collides across terminals at KJFK -- "Gate 2" alone names 5
         // physically different stands across 5 terminals in this capture. uiTerminalName
         // never repeats a shared uiGateName (verified: 0 collisions across all 238
         // (uiTerminalName, uiGateName) pairs), which is what actually keeps a pilot's
-        // dropdown distinguishable, so it is used for ParkingSpot.Name here.
+        // dropdown distinguishable -- so it is kept, in its OWN field.
+        //
+        // It must NEVER be ParkingSpot.Name. Name is the CONCOURSE LETTER app-wide, and
+        // three subsystems parse it as one: GateAliasResolver (StandId.Parse), SayIntentions'
+        // assigned-gate resolution (NormalizeParkingName) and MainForm's parked-at-the-right-
+        // stand check. Terminal prose matches no stand-id shape, so all three failed silently
+        // -- and SayIntentions' failure ends at the ARRIVAL RUNWAY.
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Single(s => s.GsxIdentifier == "Gate 20A");
-        Assert.Equal("Terminal 4 - Concourse B", spot.Name);
+        Assert.Equal("Terminal 4 - Concourse B", spot.TerminalName);
+        Assert.Equal(string.Empty, spot.Name);   // "Gate 20A" carries no concourse letter
+        Assert.Equal(20, spot.Number);
+        Assert.Equal("A", spot.Suffix);
+    }
+
+    [Fact]
+    public void A_stand_label_matches_what_SayIntentions_would_ask_for()
+    {
+        // The end-to-end shape of the C2 fix, on real captured data: the label the destination
+        // combo carries must still normalize to the bare stand id, because that is what
+        // MatchDestinationLabel compares a controller's/SayIntentions' gate against.
+        // "Terminal 4 - Concourse B 20A - Gate Heavy" normalized to "TERMINAL4" -- the stand
+        // number gone entirely -- and matched nothing.
+        var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Single(s => s.GsxIdentifier == "Stand H6");
+
+        Assert.Equal("H6", SayIntentionsClearanceParser.NormalizeParkingName(spot.ToString()));
+
+        // ...and the terminal is still IN the label, after the first spaced dash, so the
+        // dropdown can still tell colliding stands apart.
+        Assert.Contains("Terminal 5 - Remote", spot.ToString());
+    }
+
+    [Fact]
+    public void Every_selectable_KJFK_stand_gets_a_distinct_label()
+    {
+        // The dropdown de-duplicates by label text (TaxiAssistForm:
+        // `if (_destinationNodeMap.ContainsKey(label)) continue;`), so two stands sharing a
+        // label means one of them is UNREACHABLE for a blind pilot -- there is no other way
+        // into the list. 48 distinct uiGateName values collide at least once here, which is
+        // exactly why the terminal has to survive somewhere in the label.
+        var labels = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Select(s => s.ToString()).ToList();
+        Assert.Equal(231, labels.Count);
+        Assert.Equal(labels.Count, labels.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void A_headings_sign_is_normalized_into_0_to_360()
+    {
+        // GSX publishes SIGNED headings -- 122 of the 231 selectable stands in this capture
+        // are negative. The value is SPOKEN ("Align with {stand}, heading -90"), and a pilot
+        // cannot find -90 on a heading indicator. The .ini path has always normalized; the
+        // same data must not read differently for having arrived over the Remote API.
+        var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
+
+        Assert.All(spots, s => Assert.True(double.IsNaN(s.Heading) || (s.Heading >= 0.0 && s.Heading < 360.0),
+            $"{s.GsxIdentifier} has heading {s.Heading}"));
+
+        // A specific stand whose raw wire value is negative, checked against the fold rather
+        // than merely "in range" -- so a bug that clamped instead of wrapping would fail.
+        // Wire value: -89.8518591308594.
+        var wrapped = spots.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
+        Assert.Equal(360.0 - 89.8518591308594, wrapped.Heading, 6);
+
+        // ...and a positive one is left exactly as published (wire value: 61.0564002990723).
+        var untouched = spots.Single(s => s.GsxIdentifier == "Gate 20A");
+        Assert.Equal(61.0564002990723, untouched.Heading, 6);
     }
 
     [Fact]
@@ -140,22 +203,63 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
-    public void Letter_prefixed_stand_number_still_parses_a_number_and_suffix()
+    public void Letter_prefixed_stand_number_parses_the_letter_as_the_concourse()
     {
         // "Stand H6" glues the letter BEFORE the digits (9/238 KJFK remote GA hardstands).
+        // Sharing StandId.Parse with GateAliasResolver puts the letter in Name, where every
+        // stand-identity consumer expects it -- and incidentally retires the old display-only
+        // quirk that rendered this stand "6H".
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Single(s => s.GsxIdentifier == "Stand H6");
+        Assert.Equal("H", spot.Name);
         Assert.Equal(6, spot.Number);
-        Assert.Equal("H", spot.Suffix);
-        // GsxIdentifier (what actually gets SENT to gate.select) is untouched by the parse
-        // above regardless -- this is a display-only quirk, never a selection-safety issue.
+        Assert.Equal(string.Empty, spot.Suffix);
+        // GsxIdentifier (what actually gets SENT to gate.select) is untouched by the parse.
         Assert.Equal("Stand H6", spot.GsxIdentifier);
+    }
+
+    [Theory]
+    // The shape that matters most and that the retired pair of regexes could not read at all:
+    // a concourse letter AND a trailing MARS suffix on the same stand. Neither old regex
+    // matched it, so BOTH the number and the letter were silently lost (0, "").
+    [InlineData("Gate A12A", "A", 12, "A")]
+    [InlineData("Gate B25", "B", 25, "")]
+    [InlineData("Gate 20A", "", 20, "A")]
+    [InlineData("Stand H6", "H", 6, "")]
+    // The category word is dropped wherever it appears, by the same shared parse.
+    [InlineData("Ramp 51", "", 51, "")]
+    public void Stand_identity_is_split_by_the_shared_StandId_parse(
+        string uiGateName, string expectedName, int expectedNumber, string expectedSuffix)
+    {
+        string json = $$"""
+            {"parkings":[{"uiGateName":"{{uiGateName}}","uiTerminalName":"T1","uiType":"Gate Small",
+                          "type":8,"GATE_SMALL":8,"lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(expectedName, spot.Name);
+        Assert.Equal(expectedNumber, spot.Number);
+        Assert.Equal(expectedSuffix, spot.Suffix);
+    }
+
+    [Fact]
+    public void A_stand_name_with_no_number_keeps_its_whole_label_as_the_Name()
+    {
+        // Nothing to split, so the label survives whole rather than becoming blank. Not
+        // observed at KJFK (every stand there carries a number); this pins the degrade.
+        const string json = """
+            {"parkings":[{"uiGateName":"Helipad","uiTerminalName":"T1","uiType":"Gate Small",
+                          "type":8,"GATE_SMALL":8,"lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal("Helipad", spot.Name);
+        Assert.Equal(0, spot.Number);
+        Assert.Equal("Helipad", spot.GsxIdentifier);
     }
 
     [Fact]
     public void Airline_codes_are_comma_joined()
     {
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
-            .Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+            .Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
         Assert.Equal("DAL, AMX", spot.AirlineCodes);
     }
 
@@ -171,7 +275,7 @@ public class GsxRemoteParkingReaderTests
     public void HasJetway_true_and_false_both_read_from_the_integer_wire_value()
     {
         var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
-        var withJetway = spots.Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+        var withJetway = spots.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
         var withoutJetway = spots.Single(s => s.GsxIdentifier == "Stand H6");
         Assert.True(withJetway.HasJetway);   // wire hasJetway: 1
         Assert.False(withoutJetway.HasJetway); // wire hasJetway: 0
@@ -183,7 +287,7 @@ public class GsxRemoteParkingReaderTests
         // FriendlyVdgs() (ParkingSpot.Describe()) does the "SafeDockTS42LSupport" -> "SafeDock"
         // shortening at DISPLAY time -- the reader must store the raw value untouched.
         var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk)
-            .Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B");
+            .Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
         Assert.Equal("SafeDockTS42LSupport", spot.VdgsType);
     }
 
@@ -191,7 +295,7 @@ public class GsxRemoteParkingReaderTests
     public void Gate_distance_threshold_carries_both_real_observed_values()
     {
         var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
-        Assert.Equal(25.0, spots.Single(s => s.GsxIdentifier == "Gate 25" && s.Name == "Terminal 4 - Concourse B").GateDistanceThreshold);
+        Assert.Equal(25.0, spots.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B").GateDistanceThreshold);
         Assert.Equal(15.0, spots.Single(s => s.GsxIdentifier == "Stand H6").GateDistanceThreshold);
     }
 
