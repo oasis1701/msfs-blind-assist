@@ -127,6 +127,57 @@ public sealed class GsxGateSelectResult
     public bool WasRevokedAndReprepared { get; internal set; }
 
     /// <summary>
+    /// The identifier <see cref="GsxRemoteGateSelector"/> actually put in <c>gate.select</c>'s
+    /// <c>gate</c> argument — <see cref="Database.Models.ParkingSpot.GsxIdentifier"/>, verbatim.
+    /// A result frame does not echo the request, so <see cref="FromFrame"/> never sets this; the
+    /// selector stamps it after the fact. Null for a locally-decided result (nothing was sent)
+    /// and for any frame parsed without the selector's involvement.
+    /// <para>
+    /// It exists so <see cref="ResolvedGateContradictsRequest"/> can compare what GSX says it
+    /// selected against what we asked for — see there.
+    /// </para>
+    /// </summary>
+    public string? RequestedIdentifier { get; internal set; }
+
+    /// <summary>
+    /// True when GSX named a stand that answers to NEITHER of the identifiers it echoes for
+    /// what we sent — i.e. GSX resolved our identifier to a DIFFERENT stand than the pilot
+    /// picked.
+    /// <para>
+    /// This is reachable in normal operation, not a paranoia check. <c>uiGateName</c> — the
+    /// only identity field GSX actually publishes per parking — is unique at some airports and
+    /// not others: 98/98 distinct on a live ENGM read, but at KJFK 128 of 231 selectable stands
+    /// share one with another stand ("Gate 2" names five physically different stands across five
+    /// terminals). When GSX can pick between them it either answers <c>ambiguous</c> (surfaced)
+    /// or resolves to one of the matches — and in that second case the pilot taxis to a stand
+    /// GSX did not prepare.
+    /// </para>
+    /// <para>
+    /// Deliberately CONSERVATIVE, because a false alarm here teaches the pilot to ignore a real
+    /// one. Both echoed strings are compared (trimmed, ordinal-ignore-case) and matching EITHER
+    /// clears it: the guide's own shape pairs a full <c>uiName</c> ("Gate A12") with a bare
+    /// <c>gate</c> ("A12"), so which one equals what we sent depends on GSX's spelling, not on
+    /// whether it picked the right stand. An echo we cannot interpret — no resolved gate at all,
+    /// or one whose strings are all blank — is NOT a mismatch: say nothing rather than cry wolf.
+    /// </para>
+    /// </summary>
+    public bool ResolvedGateContradictsRequest
+    {
+        get
+        {
+            string requested = RequestedIdentifier?.Trim() ?? string.Empty;
+            if (requested.Length == 0 || ResolvedGate is not { } echoed) return false;
+
+            string uiName = echoed.UiName?.Trim() ?? string.Empty;
+            string gate = echoed.Gate?.Trim() ?? string.Empty;
+            if (uiName.Length == 0 && gate.Length == 0) return false; // nothing interpretable
+
+            return !uiName.Equals(requested, StringComparison.OrdinalIgnoreCase)
+                && !gate.Equals(requested, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>
     /// Builds a result decided LOCALLY by <see cref="GsxRemoteGateSelector"/>, without ever
     /// sending a frame over the wire — the capability gate (no <c>gate</c> token in
     /// <c>hello.capabilities</c>, or no capability set to read at all) and a target spot

@@ -277,6 +277,61 @@ public class GsxRemoteGateSelectorTests
         Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
     }
 
+    // ── RequestedIdentifier: what makes a wrong resolution detectable at all ──
+
+    [Fact]
+    public async Task The_identifier_sent_is_stamped_on_the_result()
+    {
+        // A result frame does not echo the request, so without this stamp nothing downstream
+        // can compare the stand GSX named against the stand the pilot picked -- and GSX's
+        // uiGateName collides at real airports (128 of 231 KJFK stands share one).
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate B7"));
+
+        Assert.Equal("Gate B7", result.RequestedIdentifier);
+        // PreparedFrame() resolves to "Gate A12"/"A12" -- neither answers to "Gate B7", so
+        // this is the silent wrong-stand case the check exists for.
+        Assert.True(result.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public async Task The_identifier_is_stamped_on_the_retry_result_too()
+    {
+        // The retry builds a SECOND result; the stamp has to be on whichever one is returned,
+        // or a revoke-and-reprepare would silently lose the comparison.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                bool revoke = ExtractBool(args, "revokeServices");
+                return Task.FromResult<GsxFrame?>(revoke ? PreparedFrame() : ServicesActiveFrame());
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal("Gate A12", result.RequestedIdentifier);
+        Assert.False(result.ResolvedGateContradictsRequest); // uiName echo answers to it
+    }
+
+    [Fact]
+    public async Task A_locally_refused_request_carries_no_requested_identifier()
+    {
+        // Nothing was sent, so there is no request to compare anything against. The
+        // announcer's fallbacks depend on being able to tell that apart from a real send.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            NoGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(GsxGateSelectOutcome.GateSelectUnsupported, result.Outcome);
+        Assert.Null(result.RequestedIdentifier);
+        Assert.False(result.ResolvedGateContradictsRequest);
+    }
+
     // ── WasRevokedAndReprepared: the caller's signal to announce a torn-down stand ──
 
     [Fact]

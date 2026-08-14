@@ -185,7 +185,15 @@ public sealed class GsxRemoteGateSelector
         // FromFrame's parameter isn't annotated nullable, but it explicitly handles a
         // null frame (-> TransportFailure) -- same null-forgiving idiom Task 1's own
         // tests use (GsxGateSelectResultTests.A_null_frame_reference_maps_to...).
-        return GsxGateSelectResult.FromFrame(frame!);
+        var result = GsxGateSelectResult.FromFrame(frame!);
+
+        // A result frame does not echo the request, so nothing downstream could otherwise
+        // tell whether the stand GSX named is the one we asked for. Stamping it here is
+        // what lets GsxGateSelectResult.ResolvedGateContradictsRequest catch GSX resolving
+        // a colliding uiGateName to a DIFFERENT stand -- which at KJFK is 128 of 231 stands'
+        // worth of opportunity, and used to be completely silent.
+        result.RequestedIdentifier = identifier;
+        return result;
     }
 
     private static string DescribeForLog(ParkingSpot? target)
@@ -219,10 +227,14 @@ public sealed class GsxRemoteGateSelector
             string message = string.IsNullOrWhiteSpace(result.Message)
                 ? "(none)"
                 : result.Message.Replace("\r", " ").Replace("\n", " ").Trim();
+            // Appended ONLY when true, so an ordinary line keeps the exact
+            // target=… identifierSent=… shape this log is scanned by eye for, while the one
+            // anomaly worth grepping ("GSX prepared a stand I did not ask for") has a token.
+            string mismatch = result.ResolvedGateContradictsRequest ? " resolvedMismatch=true" : "";
             GateSelectLog.Info(
                 $"target=\"{label}\" identifierSent=\"{identifier}\" revokeServices={revokeServices} " +
                 $"outcome={result.Outcome} resolvedGate={resolved} warnings={warnings} " +
-                $"rawCode={result.RawCode ?? "(none)"} message=\"{message}\"");
+                $"rawCode={result.RawCode ?? "(none)"} message=\"{message}\"{mismatch}");
         }
         catch { /* logging must never break the selector */ }
     }

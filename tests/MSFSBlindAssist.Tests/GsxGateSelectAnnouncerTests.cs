@@ -10,14 +10,26 @@ namespace MSFSBlindAssist.Tests;
 /// through <see cref="GsxFrame.Parse"/> and <see cref="GsxGateSelectResult.FromFrame"/>, so
 /// this file never has to reach into GsxGateSelectResult's private construction.
 ///
-/// See the Spec 2 wiring task: exactly four situations must be announced (too_small,
-/// assigned_to_other, ambiguous, a successful revoke-and-reprepare) and everything else must
-/// stay silent.
+/// Every outcome that ENDS the request speaks (prepared, already-there, not-found, bad-args,
+/// occupied, ambiguous), plus the two cross-cutting facts (a revoke-and-reprepare, a resolved
+/// stand that is not the one requested). The rest — no-airport, a double services_active, an
+/// unrecognised code, a transport failure, and the 4.0.8 message the form latches itself —
+/// stay silent, and the tests at the bottom pin that.
 /// </summary>
 public class GsxGateSelectAnnouncerTests
 {
     private static GsxGateSelectResult Result(string json) =>
         GsxGateSelectResult.FromFrame(GsxFrame.Parse(json));
+
+    /// <summary>A result as the SELECTOR hands it over: parsed from a frame, then stamped with
+    /// the identifier that was actually sent. Nothing else in the app builds one this way, so
+    /// tests that care about the requested-vs-resolved comparison must do the same.</summary>
+    private static GsxGateSelectResult ResultFor(string json, string requestedIdentifier)
+    {
+        var result = Result(json);
+        result.RequestedIdentifier = requestedIdentifier;
+        return result;
+    }
 
     private const string PreparedNoWarnings = """
         { "type": "result", "id": "g-1", "ok": true,
@@ -76,7 +88,99 @@ public class GsxGateSelectAnnouncerTests
         { "type": "result", "id": "g-1", "ok": false, "error": { "code": "already_parked" } }
         """;
 
-    // ── The four announced outcomes ─────────────────────────────────────────
+    private const string AlreadySelectedElsewhere = """
+        { "type": "result", "id": "g-1", "ok": false,
+          "error": { "code": "already_selected",
+                     "gate": { "uiName": "Gate A12", "gate": "A12", "number": 12, "bglName": "Parking 12" } } }
+        """;
+
+    // ── The positive confirmation ───────────────────────────────────────────
+
+    [Fact]
+    public void A_successful_selection_is_confirmed_by_name()
+    {
+        // Before this integration the old menu-walking selector said "GSX: A 6 selected."
+        // Losing it made "GSX prepared your stand" acoustically identical to "GSX is not
+        // running" and to "the request timed out" -- and a blind pilot's first evidence
+        // either way is the absence of services on arrival.
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(PreparedNoWarnings, "Gate A12"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("prepared", phrase, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Gate A12", phrase);
+    }
+
+    [Fact]
+    public void A_successful_selection_with_no_gate_echo_still_names_what_was_asked_for()
+    {
+        string? phrase = GsxGateSelectAnnouncer.Describe(
+            ResultFor("""{ "type": "result", "id": "g-1", "ok": true, "payload": { "status": "prepared" } }""",
+                      "Stand H6"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Stand H6", phrase);
+    }
+
+    // ── The requested-vs-resolved mismatch (C1) ─────────────────────────────
+
+    [Fact]
+    public void A_stand_GSX_resolved_elsewhere_is_called_out_by_both_names()
+    {
+        // GSX's uiGateName -- the only identity field it publishes per parking -- is unique
+        // at some airports and not others (98/98 distinct at ENGM; 128 of 231 KJFK stands
+        // share one). When GSX can pick between them it either says `ambiguous` or resolves
+        // to ONE of them, and in that second case the pilot taxis to a stand GSX did not
+        // prepare -- previously in complete silence.
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(PreparedNoWarnings, "Gate B7"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Gate B7", phrase);    // what the pilot picked
+        Assert.Contains("Gate A12", phrase);   // what GSX actually prepared
+    }
+
+    [Theory]
+    // GSX's own documented shape pairs a full uiName with a bare gate id, so which of the two
+    // equals the identifier we sent depends on GSX's spelling, not on whether it picked the
+    // right stand. Matching EITHER has to clear the check.
+    [InlineData("Gate A12")]
+    [InlineData("A12")]
+    // Trimmed and case-insensitive, for the same reason: a spelling difference is not a
+    // different stand.
+    [InlineData("  gate a12  ")]
+    public void An_echo_that_answers_to_what_was_sent_is_not_a_mismatch(string requested)
+    {
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(PreparedNoWarnings, requested));
+
+        Assert.NotNull(phrase);
+        Assert.DoesNotContain("Careful", phrase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    // An echo we cannot interpret is NOT a mismatch -- a false alarm here teaches the pilot to
+    // ignore the real one. No gate object at all...
+    [InlineData("""{ "type": "result", "id": "g-1", "ok": true, "payload": { "status": "prepared" } }""")]
+    // ...and one whose identity strings are both blank.
+    [InlineData("""
+        { "type": "result", "id": "g-1", "ok": true,
+          "payload": { "status": "prepared", "gate": { "uiName": "", "gate": "", "number": 12 } } }
+        """)]
+    public void An_uninterpretable_echo_never_cries_wolf(string json)
+    {
+        var result = ResultFor(json, "Gate B7");
+
+        Assert.False(result.ResolvedGateContradictsRequest);
+        Assert.DoesNotContain("Careful", GsxGateSelectAnnouncer.Describe(result)!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_result_that_never_reached_the_selector_is_never_a_mismatch()
+    {
+        // FromFrame alone cannot know what was requested -- only the selector stamps that --
+        // so an unstamped result must compare as "nothing to say", not as a contradiction.
+        Assert.False(Result(PreparedNoWarnings).ResolvedGateContradictsRequest);
+    }
+
+    // ── The remaining announced outcomes ────────────────────────────────────
 
     [Fact]
     public void Too_small_warning_is_spoken_with_the_resolved_gate_name()
@@ -181,23 +285,71 @@ public class GsxGateSelectAnnouncerTests
         Assert.Contains("too small", phrase, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Already_there_is_spoken_rather_than_left_acoustically_blank()
+    {
+        // The guide's "nothing to do" is about not RETRYING. The pilot still pressed
+        // Calculate, and this is one of the four ways that ends.
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(AlreadyThere, "Gate A12"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("already", phrase, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Gate A12", phrase);
+    }
+
+    [Fact]
+    public void Already_selected_at_a_DIFFERENT_stand_names_both()
+    {
+        // already_selected fires when the pilot asked for a stand GSX is NOT set up at, and
+        // error.gate is the only thing naming the one it means. Silent, this is the same
+        // failure as C1 by another route: the pilot taxis to their pick while GSX is
+        // committed elsewhere. The phrase must never imply GSX moved to their pick.
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(AlreadySelectedElsewhere, "Gate B7"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Gate B7", phrase);
+        Assert.Contains("Gate A12", phrase);
+        Assert.DoesNotContain("prepared", phrase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Not_found_says_so_and_names_the_stand_that_was_asked_for()
+    {
+        string? phrase = GsxGateSelectAnnouncer.Describe(
+            ResultFor("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "not_found" } }""",
+                      "Gate B7"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Gate B7", phrase);
+        Assert.Contains("no stand was prepared", phrase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Bad_args_says_no_stand_was_prepared()
+    {
+        string? phrase = GsxGateSelectAnnouncer.Describe(
+            Result("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "bad_args" } }"""));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("could not prepare", phrase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void The_locally_decided_bad_args_speaks_too()
+    {
+        // Reached without sending anything, when the chosen spot has no GsxIdentifier -- i.e.
+        // whenever the gate list came from the .ini/navdata fallback instead of the Remote
+        // API. It is still "GSX prepared nothing", which is the half the pilot must hear.
+        string? phrase = GsxGateSelectAnnouncer.Describe(
+            GsxGateSelectResult.Local(GsxGateSelectOutcome.BadArgs, "No GSX identifier is available for this spot."));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("could not prepare", phrase, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ── Everything else stays silent ────────────────────────────────────────
 
-    [Fact]
-    public void A_plain_first_try_prepare_with_no_warnings_says_nothing()
-    {
-        Assert.Null(GsxGateSelectAnnouncer.Describe(Result(PreparedNoWarnings)));
-    }
-
-    [Fact]
-    public void Already_there_says_nothing()
-    {
-        Assert.Null(GsxGateSelectAnnouncer.Describe(Result(AlreadyThere)));
-    }
-
     [Theory]
-    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "not_found" } }""")]
-    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "bad_args" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "no_airport" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "services_active" } }""")]
     [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "some_future_code" } }""")]

@@ -44,8 +44,13 @@ public class TaxiAssistForm : Form
     // send. Only the second is spoken (once) -- see SelectGsxGateAsync.
     private readonly Services.Gsx.Remote.GsxRemoteGateSelector? _gsxGateSelector;
     // Once-per-instance latch for the "gate selection needs GSX 4.0.8" message — see
-    // SelectGsxGateAsync. Instance state, not static: a pilot who updates GSX and reopens
-    // the dialog gets a clean slate, and the message is per-dialog-session by design.
+    // SelectGsxGateAsync. In practice that means once per APP session, not once per time
+    // the dialog is opened: MainForm caches this form (GetOrCreateTaxiAssistForm) and
+    // OnFormClosing cancels a user close and Hide()s instead, so the instance — and this
+    // latch with it — survives closing and reopening the dialog. That is the right amount
+    // of speech either way: the fact does not change until the pilot updates GSX, which
+    // needs a sim restart anyway, and this path runs on EVERY gate-destination Calculate.
+    // Instance state rather than static so it cannot outlive the form it describes.
     private bool _gsxUnsupportedAnnounced;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
@@ -3443,9 +3448,11 @@ public class TaxiAssistForm : Form
 
         // GSX is connected and answering, but its capability list has no 'gate' token —
         // a 4.0.1-4.0.7 build, where gate.select simply does not exist. Say so ONCE per
-        // dialog instance: the first Calculate is an explicit pilot action that deserves
-        // an answer (silence here means taxiing to a stand believing GSX has prepared it,
-        // and finding no services on arrival), but this path runs on EVERY
+        // form instance (see the latch field for why that is per app session): the first
+        // Calculate is an explicit pilot action that deserves an answer (silence here means
+        // taxiing to a stand believing GSX has prepared it, and finding no services on
+        // arrival — the same reasoning that gives Prepared/NotFound/BadArgs their own
+        // phrases in GsxGateSelectAnnouncer), but this path runs on EVERY
         // gate-destination route calculation, and on an older GSX that is every flight —
         // repeating it would be noise about something already said and unchanged.
         // Deliberately NOT routed through GsxGateSelectAnnouncer.Describe: that mapper is
