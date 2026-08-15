@@ -436,7 +436,11 @@ public static class EWDMessageLookup
         ["340004812"] = "\x1b<4m IR 1+2+3 IN ALIGN",
         ["340010001"] = "\x1b<4m\x1b4mNAV\x1bm BARO REF DISCREPANCY",
         ["340010002"] = "\x1b<5m -BARO REF.......X CHECK",
-        ["340010501"] = "\x1b<4m\x1b4mNAV\x1bm ALTI DISCREPANCY",
+        // BARO VALUE DISAGREE — added by FBW #10717 (2026-07), same PR that renamed
+        // ALTI DISCREPANCY to ALT DISCREPANCY below.
+        ["340010101"] = "\x1b<4m\x1b4mNAV\x1bm BARO VALUE DISAGREE",
+        ["340010102"] = "\x1b<5m -BARO REF VALUE.X CHECK",
+        ["340010501"] = "\x1b<4m\x1b4mNAV\x1bm ALT DISCREPANCY",
         ["340010502"] = "\x1b<5m -ALT............X CHECK",
         ["340010503"] = "\x1b<5m -AIR DATA SWTG..AS REQD",
         ["340014001"] = "\x1b<4m\x1b4mNAV\x1bm RA 1 FAULT",
