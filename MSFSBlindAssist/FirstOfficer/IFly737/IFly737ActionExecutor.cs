@@ -89,21 +89,50 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <summary>Both altimeters to STANDARD, guarded per side and readback-verified.</summary>
     public const string KeyBaroStdBoth = "BARO_STD_BOTH";
 
-    /// <summary>Every pseudo-key this executor handles. NOTE there is deliberately no
-    /// WXR_TEST: the iFly SDK exposes no weather-radar TEST command (only the WXR mode
-    /// selectors and the EFIS overlay click), so a WXR test is a Captain reminder, not an
-    /// automated action.</summary>
-    public static readonly IReadOnlyList<string> PseudoKeys = new[]
-    {
-        KeyFireTest, KeyStallTest1, KeyStallTest2, KeyOverspeedTest1, KeyOverspeedTest2,
-        KeyTcasTest, KeyGpwsTest, KeyApuStart, KeyBaroStdBoth,
-    };
+    /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
+    /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
+    /// spelled out separately, closing the gap a review found: PseudoKeys used to be a
+    /// hand-maintained list sitting next to a hand-maintained switch inside
+    /// DispatchCoreAsync, and a key added to one without the other would fall through the
+    /// switch's default arm to the ordinary write path, resolve as an unregistered SDK
+    /// field, and return false — while PseudoKeys_AreDeclared kept passing, because it only
+    /// checks the list, never that a handler exists. With PseudoKeys now read off this
+    /// dictionary, that divergence can't happen. Each handler takes the executor instance
+    /// explicitly (`this` at the call site in DispatchCoreAsync) so the delegates can still
+    /// reach the private held/sequenced *CoreAsync methods and ApplySilent.</summary>
+    private static readonly IReadOnlyDictionary<string, Func<IFly737ActionExecutor, Task<bool>>> PseudoKeyHandlers =
+        new Dictionary<string, Func<IFly737ActionExecutor, Task<bool>>>(StringComparer.Ordinal)
+        {
+            [KeyFireTest] = e => e.FireTestCoreAsync(),
+            [KeyStallTest1] = e => e.ClickAndSettleCoreAsync("BTN_STALL_WARNING_TEST_1", StallTestHoldMs),
+            [KeyStallTest2] = e => e.ClickAndSettleCoreAsync("BTN_STALL_WARNING_TEST_2", StallTestHoldMs),
+            [KeyOverspeedTest1] = e => e.ClickAndSettleCoreAsync("BTN_MACH_AIRSPEED_TEST_1", OverspeedTestHoldMs),
+            [KeyOverspeedTest2] = e => e.ClickAndSettleCoreAsync("BTN_MACH_AIRSPEED_TEST_2", OverspeedTestHoldMs),
+            [KeyTcasTest] = e => Task.FromResult(e.ApplySilent("BTN_XPDR_TEST", 1)),
+            [KeyGpwsTest] = e => Task.FromResult(e.ApplySilent("BTN_GPWS_SYS_TEST", 1)),
+            [KeyApuStart] = e => e.StartApuCoreAsync(),
+            [KeyBaroStdBoth] = e => e.SetAltimetersStandardCoreAsync(),
+        };
+
+    /// <summary>Every pseudo-key this executor handles — the keys of <see cref="PseudoKeyHandlers"/>.
+    /// NOTE there is deliberately no WXR_TEST: the iFly SDK exposes no weather-radar TEST
+    /// command (only the WXR mode selectors and the EFIS overlay click), so a WXR test is a
+    /// Captain reminder, not an automated action.</summary>
+    public static readonly IReadOnlyList<string> PseudoKeys = PseudoKeyHandlers.Keys.ToList();
 
     private static readonly HashSet<string> PseudoKeySet = new(PseudoKeys, StringComparer.Ordinal);
 
     /// <summary>True for a step key handled by this executor's own sequenced/held paths
     /// rather than resolved against the aircraft definition's registered controls.</summary>
     public static bool IsPseudoKey(string key) => PseudoKeySet.Contains(key);
+
+    /// <summary>True when <paramref name="key"/> is both a declared pseudo-key AND has a
+    /// handler wired for it. With <see cref="PseudoKeys"/> now derived FROM
+    /// <see cref="PseudoKeyHandlers"/>'s keys this can never legitimately be false for a
+    /// member of PseudoKeys — that is the point: the two can no longer drift apart. Exposed
+    /// so a totality test (and Task 6's flow/checklist step-key totality check, which treats
+    /// PseudoKeys as the source of truth) can assert the invariant instead of assuming it.</summary>
+    public static bool HasPseudoKeyHandler(string key) => PseudoKeyHandlers.ContainsKey(key);
 
     // -----------------------------------------------------------------------
     // Wiring
@@ -218,19 +247,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         }
 
         await PaceAsync();
-        bool ok = name switch
-        {
-            KeyFireTest        => await FireTestCoreAsync(),
-            KeyStallTest1      => await ClickAndSettleCoreAsync("BTN_STALL_WARNING_TEST_1", StallTestHoldMs),
-            KeyStallTest2      => await ClickAndSettleCoreAsync("BTN_STALL_WARNING_TEST_2", StallTestHoldMs),
-            KeyOverspeedTest1  => await ClickAndSettleCoreAsync("BTN_MACH_AIRSPEED_TEST_1", OverspeedTestHoldMs),
-            KeyOverspeedTest2  => await ClickAndSettleCoreAsync("BTN_MACH_AIRSPEED_TEST_2", OverspeedTestHoldMs),
-            KeyTcasTest        => ApplySilent("BTN_XPDR_TEST", 1),
-            KeyGpwsTest        => ApplySilent("BTN_GPWS_SYS_TEST", 1),
-            KeyApuStart        => await StartApuCoreAsync(),
-            KeyBaroStdBoth     => await SetAltimetersStandardCoreAsync(),
-            _                  => ApplySilent(name, target ?? 1),
-        };
+        bool ok = PseudoKeyHandlers.TryGetValue(name, out var handler)
+            ? await handler(this)
+            : ApplySilent(name, target ?? 1);
         _lastWriteUtc = DateTime.UtcNow;
         return ok;
     }
@@ -247,12 +266,46 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         return double.IsNaN(qty) ? 0.0 : qty;
     }
 
+    /// <summary>True when <paramref name="value"/> is one of <paramref name="varKey"/>'s
+    /// declared combo positions on the wired definition — i.e. a key of its
+    /// <see cref="SimConnect.SimVarDefinition.ValueDescriptions"/> dictionary, the same
+    /// declared-position table the Sw/SwD/SwPerValue/McpMode/Annun registration helpers in
+    /// IFly737MAXDefinition build (IFly737MAXDefinition.cs:151-297). Closes the hazard a
+    /// review found: this aircraft's gear lever has only two positions (0 Up / 1 Down, no
+    /// OFF detent — the sibling PMDG 737 has three), so a later author writing
+    /// SetGearLever(2) would have sent an undefined Value2 to the SDK instead of being
+    /// refused. A key with NO declared positions (a plain momentary Btn, a NumSet numeric-
+    /// entry field, or a Disp display-only field all register with an EMPTY
+    /// ValueDescriptions) has nothing to validate and returns true, same as an
+    /// unrecognised key — ApplyUIVariable's own "key not registered" branch is what
+    /// reports that case, this method's job is narrowly range-checking a real combo write.
+    /// Public and decoupled from <see cref="IsAvailable"/> (only needs
+    /// <see cref="SetDefinition"/> to have been called) so a test can pin the reject/accept
+    /// boundary without a live SimConnect/announcer — see the class doc on why this
+    /// executor can't be put in the IsAvailable=true state in a unit test.</summary>
+    public bool IsDeclaredPosition(string varKey, double value)
+    {
+        if (_def == null) return true;
+        if (!_def.GetVariables().TryGetValue(varKey, out var def)) return true;
+        if (def.ValueDescriptions.Count == 0) return true;
+        return def.ValueDescriptions.ContainsKey(value);
+    }
+
     /// <summary>ApplyUIVariable under a Suppressed wrap: the def's internal Announce() calls
     /// are dropped and the prior Suppressed state is restored (never clobber the startup
     /// grace period). NO SetLVar fallback — see the class doc: false here means the key is
-    /// not a registered iFly control, i.e. a mapping bug, and it is logged as one.</summary>
+    /// not a registered iFly control, i.e. a mapping bug, and it is logged as one. A value
+    /// outside the key's declared position set (see <see cref="IsDeclaredPosition"/>) is
+    /// refused the same way, BEFORE anything reaches the SDK.</summary>
     private bool ApplySilent(string varKey, double value)
     {
+        if (!IsDeclaredPosition(varKey, value))
+        {
+            Log.Warn("ifly_fo", $"refused write: {value} is not a declared position for '{varKey}' — " +
+                                 "flow/checklist mapping bug (wrong-aircraft numbering?); nothing was written");
+            return false;
+        }
+
         bool prior = _announcer!.Suppressed;
         _announcer.Suppressed = true;
         try
@@ -450,7 +503,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         bool wroteAny = false;
         for (int side = 0; side < 2; side++)
         {
-            if (IsBaroStd(side)) continue;
+            // A side already CONFIRMED standard (true) is left alone. Unreadable (null) is
+            // treated the same as "not confirmed standard" here and pressed anyway — the
+            // documented safe direction (see IsBaroStd/ClassifyBaroStd): pressing into an
+            // unreadable side can only turn an honest post-write failure into a report,
+            // never a false "set" claim.
+            if (IsBaroStd(side) == true) continue;
             if (side > 0 && wroteAny) await PaceAsync();
             ApplySilent(side == 0 ? "BTN_EFIS_CAPT_BARO_STD" : "BTN_EFIS_FO_BARO_STD", 1);
             _lastWriteUtc = DateTime.UtcNow;
@@ -459,16 +517,41 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         if (!wroteAny) return true; // both already standard — a silent, correct no-op
 
         await Task.Delay(BaroStdVerifyMs);
-        if (IsBaroStd(0) && IsBaroStd(1)) return true;
+        bool? capt = IsBaroStd(0);
+        bool? fo = IsBaroStd(1);
+        if (capt == true && fo == true) return true;
 
-        Log.Warn("ifly_fo", $"altimeters to standard failed (capt STD={IsBaroStd(0)}, FO STD={IsBaroStd(1)})");
+        if (capt == null || fo == null)
+        {
+            // UNREADABLE, not a confirmed failure — say so rather than claiming the set
+            // itself failed. This is the bug this fix closes: NaN used to collapse to the
+            // same "not standard" bool as a genuine QNH reading, so a side that merely went
+            // unreadable right as the verify ran got the same "did not set" wording as a
+            // side that truly stayed on QNH — an honest-sounding announcement describing
+            // the WRONG failure.
+            Log.Warn("ifly_fo", $"altimeters to standard: readback unreadable after set (capt={capt}, FO={fo})");
+            AnnounceOnUi("Could not read the altimeter state after setting standard.");
+            return false;
+        }
+
+        Log.Warn("ifly_fo", $"altimeters to standard failed (capt STD={capt}, FO STD={fo})");
         AnnounceOnUi("Altimeter standard did not set.");
         return false;
     }
 
-    /// <summary>Per-side baro STANDARD readback. NaN (SDK not ready / field unreadable)
-    /// reads as NOT standard — the safe direction here, because it can only cause the
-    /// verify to report an honest failure, never a false success.
+    /// <summary>Pure classifier for a raw BARO_STD_Status reading: NaN (SDK not ready / field
+    /// unreadable) becomes null — INDETERMINATE, distinct from a genuine QNH reading (false)
+    /// — else the usual &gt;0.5 threshold. Extracted from <see cref="IsBaroStd"/> so the
+    /// NaN-vs-QNH distinction is unit-testable without a live SDK readback.</summary>
+    public static bool? ClassifyBaroStd(double raw) => double.IsNaN(raw) ? null : raw > 0.5;
+
+    /// <summary>Per-side baro STANDARD readback: true = confirmed on STD, false = confirmed
+    /// on QNH, null = UNREADABLE. The two non-true outcomes used to collapse to the same
+    /// "not standard" bool (via IsOn's NaN-compares-false behaviour), so an unreadable side
+    /// and a genuinely-QNH side were indistinguishable at the point the failure is announced.
+    /// Callers deciding whether to PRESS a side treat null the same as false (see the
+    /// pre-write loop above — NaN is still the safe direction to press into); callers
+    /// reporting the RESULT of a press must tell the two apart.
     ///
     /// ⚠ LIVE-VERIFY (in-sim test plan): BARO_STD_Status[2] is read here as a LATCHED
     /// "this side is on STD" indication, which is how the shipped Ctrl+B altimeter dialog
@@ -478,7 +561,8 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// an already-STD side would read 0, get pressed, and go back to QNH, and the verify
     /// would announce a false failure on every run. Test: set STD on both sides by hand,
     /// then run the flow step — a correct latched field makes it a silent no-op.</summary>
-    private bool IsBaroStd(int side) => _state?.IsOn($"BARO_STD_Status_{side}") ?? false;
+    private bool? IsBaroStd(int side) =>
+        _state == null ? null : ClassifyBaroStd(_state.GetValue($"BARO_STD_Status_{side}"));
 
     // -----------------------------------------------------------------------
     // Pressurization altitudes — the ONE sanctioned bypass of ApplyUIVariable
@@ -555,11 +639,37 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// registration.</summary>
     public Task<bool> PressGroundPower(bool on) => Set(on ? "BTN_GRD_PWR_ON" : "BTN_GRD_PWR_OFF", 1);
 
-    /// <summary>Engine generator n (1 or 2) — momentary click pair (Overhead.cs:78-81).</summary>
-    public Task<bool> PressGenerator(int n, bool on) => Set($"BTN_GEN_{n}_{(on ? "ON" : "OFF")}", 1);
+    /// <summary>True for a valid engine/APU-generator index — the only two the definition
+    /// registers a click-command pair for (Overhead.cs:78-85). Public so a test can pin the
+    /// reject/accept boundary directly.</summary>
+    public static bool IsValidGeneratorIndex(int n) => n is 1 or 2;
 
-    /// <summary>APU generator n (1 or 2) — momentary click pair (Overhead.cs:82-85).</summary>
-    public Task<bool> PressApuGenerator(int n, bool on) => Set($"BTN_APU_GEN_{n}_{(on ? "ON" : "OFF")}", 1);
+    /// <summary>Engine generator n (1 or 2) — momentary click pair (Overhead.cs:78-81). An
+    /// out-of-range n used to interpolate straight into a synthesized key
+    /// ("BTN_GEN_3_ON") that fails safe (ApplySilent logs "no registered iFly control") but
+    /// names the wrong thing — the synthesized key, not the caller's bad argument. Validated
+    /// up front instead so the log names the actual mistake and nothing is dispatched.</summary>
+    public Task<bool> PressGenerator(int n, bool on)
+    {
+        if (!IsValidGeneratorIndex(n))
+        {
+            Log.Warn("ifly_fo", $"PressGenerator: engine index {n} is invalid (must be 1 or 2) — not dispatched");
+            return Task.FromResult(false);
+        }
+        return Set($"BTN_GEN_{n}_{(on ? "ON" : "OFF")}", 1);
+    }
+
+    /// <summary>APU generator n (1 or 2) — momentary click pair (Overhead.cs:82-85). Same
+    /// argument-validation reasoning as <see cref="PressGenerator"/>.</summary>
+    public Task<bool> PressApuGenerator(int n, bool on)
+    {
+        if (!IsValidGeneratorIndex(n))
+        {
+            Log.Warn("ifly_fo", $"PressApuGenerator: APU generator index {n} is invalid (must be 1 or 2) — not dispatched");
+            return Task.FromResult(false);
+        }
+        return Set($"BTN_APU_GEN_{n}_{(on ? "ON" : "OFF")}", 1);
+    }
 
     /// <summary>APU selector (RegisterEnginesApu, Overhead.cs:550 — 0 Off / 1 On / 2 Start).
     /// START is spring-loaded and snaps back to ON. For a start use

@@ -137,4 +137,114 @@ public class IFly737ExecutorTests
         Assert.False(await exec.SetPressurizationAltitudesAsync(new IFly737StateEvaluator()));
         Assert.False(await exec.CabinCall());
     }
+
+    // -----------------------------------------------------------------------
+    // Fix pass 1 (post-review hardening) — see .superpowers/sdd/task-4-report.md,
+    // "## Fix pass 1" for the write-up.
+    // -----------------------------------------------------------------------
+
+    // Fix 1: a combo write must be range-checked against the DEFINITION's own declared
+    // positions for that key before it can reach the SDK. The gear lever is the concrete
+    // hazard the review named: this airframe registers only two positions (0 Up / 1 Down,
+    // no OFF detent — the sibling PMDG 737 has three), so a later author writing
+    // SetGearLever(2) (a plausible copy of the PMDG's numbering) must be refused rather
+    // than sending an undefined Value2 to the SDK. IsDeclaredPosition only needs
+    // SetDefinition to have been called — not the full IsAvailable=true state a unit test
+    // can't reach (ScreenReaderAnnouncer has no parameterless ctor) — so this exercises the
+    // exact guard ApplySilent runs, with no live SDK involved.
+    [Fact]
+    public void IsDeclaredPosition_RejectsOutOfRangeGearPosition()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new MSFSBlindAssist.Aircraft.IFly737MAXDefinition());
+
+        // Every legal position (Gear_Lever_Status declares exactly {0, 1} — ForwardPedestal.cs:24).
+        Assert.True(exec.IsDeclaredPosition("Gear_Lever_Status", 0));
+        Assert.True(exec.IsDeclaredPosition("Gear_Lever_Status", 1));
+
+        // 2 = the PMDG's OFF detent, which this airframe does not have — must be refused.
+        Assert.False(exec.IsDeclaredPosition("Gear_Lever_Status", 2));
+        Assert.False(exec.IsDeclaredPosition("Gear_Lever_Status", -1));
+    }
+
+    // A key with NO declared positions (a plain momentary button — ValueDescriptions is an
+    // empty dictionary) must never be refused by the range check; there is nothing to
+    // range-check, and the momentary-button/NumSet/display paths must stay exactly as
+    // permissive as before this fix.
+    [Fact]
+    public void IsDeclaredPosition_NoDeclaredPositions_AlwaysAccepts()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new MSFSBlindAssist.Aircraft.IFly737MAXDefinition());
+
+        Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 1));
+        Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 42)); // still nothing to check against
+    }
+
+    // An unrecognised key is also accepted by the range check itself — ApplyUIVariable's
+    // own "key not registered" branch is what refuses that case, not this guard.
+    [Fact]
+    public void IsDeclaredPosition_UnknownKey_Accepts()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new MSFSBlindAssist.Aircraft.IFly737MAXDefinition());
+        Assert.True(exec.IsDeclaredPosition("NO_SUCH_KEY", 999));
+    }
+
+    // Fix 2: PseudoKeys is now DERIVED from the handler map, so every declared pseudo-key
+    // must resolve to a handler — the gap the review found (a key declared without a
+    // matching switch arm would silently fall through to the ordinary write path and
+    // return false, while PseudoKeys_AreDeclared kept passing) can no longer exist by
+    // construction, and this pins that invariant rather than assuming it.
+    [Fact]
+    public void EveryDeclaredPseudoKey_HasHandler()
+    {
+        foreach (string key in Expected)
+            Assert.True(IFly737ActionExecutor.HasPseudoKeyHandler(key), key);
+        // And the converse holds too: nothing claims to be a pseudo-key without also being
+        // in the declared list (they are now the same set by construction).
+        Assert.Equal(IFly737ActionExecutor.PseudoKeys.Count,
+            IFly737ActionExecutor.PseudoKeys.Count(IFly737ActionExecutor.HasPseudoKeyHandler));
+    }
+
+    // Fix 3: IsBaroStd used to collapse "unreadable" (NaN) and "genuinely on QNH" (false)
+    // into the same bool, so a side that merely went unreadable right as the post-write
+    // verify ran got the same "did not set" wording as a side that truly stayed on QNH.
+    // ClassifyBaroStd is the extracted pure classifier that tells the two apart.
+    [Fact]
+    public void ClassifyBaroStd_DistinguishesUnreadableFromQnhFromStd()
+    {
+        Assert.Null(IFly737ActionExecutor.ClassifyBaroStd(double.NaN));   // unreadable — indeterminate
+        Assert.False(IFly737ActionExecutor.ClassifyBaroStd(0));          // genuine QNH reading
+        Assert.True(IFly737ActionExecutor.ClassifyBaroStd(1));           // genuine STD reading
+    }
+
+    // Fix 4: PressGenerator / PressApuGenerator used to interpolate an unchecked index
+    // straight into a synthesized key ("BTN_GEN_3_ON") — it failed safe (ApplySilent's
+    // "not registered" branch) but the log named the synthesized key, not the caller's
+    // actual mistake. IsValidGeneratorIndex is the extracted boundary both methods now
+    // check before building that key at all.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void IsValidGeneratorIndex_AcceptsTheTwoRealEngines(int n) =>
+        Assert.True(IFly737ActionExecutor.IsValidGeneratorIndex(n));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    [InlineData(-1)]
+    public void IsValidGeneratorIndex_RejectsAnythingElse(int n) =>
+        Assert.False(IFly737ActionExecutor.IsValidGeneratorIndex(n));
+
+    // End-to-end on an unavailable executor: an invalid index must still refuse (same
+    // outward contract as every other typed method on this executor), and must not throw
+    // building the bogus key string.
+    [Fact]
+    public async Task PressGenerator_InvalidIndex_ReturnsFalseWithoutThrowing()
+    {
+        var exec = new IFly737ActionExecutor();
+        Assert.False(await exec.PressGenerator(3, true));
+        Assert.False(await exec.PressApuGenerator(0, false));
+    }
 }
