@@ -260,8 +260,15 @@ public sealed class GsxService : IDisposable
     private readonly GsxRemoteConnection _remote = new();
     private readonly GsxRemoteState _state = new();
     private readonly GsxServiceAnnouncer _serviceAnnouncer = new();
+    private readonly GsxBillingTimerAnnouncer _timerAnnouncer = new();
     private bool _remoteStarted;
     private bool _disposed;
+    // Bumped by Stop(). OnFrame/OnRemoteConnectedChanged capture it on the socket
+    // thread and re-check it after marshalling onto the UI thread, so a frame that
+    // was posted a moment BEFORE Stop() tore the models down cannot re-run AFTER
+    // it and repopulate them (or, worse, re-announce a receipt into a dedup set
+    // Stop() just emptied). Written on the UI thread only; read volatile.
+    private int _lifecycleGeneration;
 
     private string _menuTitle = "GSX Menu";
     private string _lastTooltip = string.Empty;
@@ -275,6 +282,13 @@ public sealed class GsxService : IDisposable
     private string? _selectedActiveService;
     // Digests of every invoice already spoken this GSX session — see ApplyReceipt.
     private readonly HashSet<string> _announcedReceipts = new(StringComparer.Ordinal);
+    // False until the first full snapshot of a session has been read; while false,
+    // ApplyReceipt RECORDS a receipt's digest without speaking it — see ApplyReceipt.
+    private bool _receiptsBaselined;
+    // The GSX "message" slot text last SPOKEN (not last seen) — see AnnounceMessageIfChanged.
+    private string _lastAnnouncedMessage = string.Empty;
+    // False until the first snapshot has seeded _lastAnnouncedMessage — see AnnounceMessageIfChanged.
+    private bool _messageBaselined;
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -350,27 +364,70 @@ public sealed class GsxService : IDisposable
         // Unsubscribe BEFORE stopping — GsxRemoteConnection.Stop() itself
         // flips IsConnected to false and would otherwise re-enter
         // OnRemoteConnectedChanged(false) while we're already mid-teardown
-        // here. The explicit reset below is this method's own, deliberate
-        // teardown of the same state OnRemoteConnectedChanged(false)
-        // would have reset.
+        // here. That is also why the reset below must be COMPLETE on its own:
+        // nothing OnRemoteConnectedChanged(false) does will run on this path.
+        // Bumping the generation first retires any frame the socket thread has
+        // already posted at us (see _lifecycleGeneration).
+        _lifecycleGeneration++;
         _remoteStarted = false;
         _remote.FrameReceived -= OnFrame;
         _remote.ConnectedChanged -= OnRemoteConnectedChanged;
         _remote.Stop();
 
+        ResetSessionModels(ReasonSimDisconnected, clearReceiptDigests: true);
+    }
+
+    /// <summary>
+    /// The one teardown of every per-session model, shared by <see cref="Stop"/> and
+    /// <see cref="OnRemoteConnectedChanged"/>(false) so the two paths cannot drift.
+    /// They used to be two hand-maintained blocks that a comment asked to keep in
+    /// agreement, and they had drifted: Stop() never cleared <see cref="_state"/>, so
+    /// after a sim disconnect the facade kept answering CouatlStarted / IsMenuActive /
+    /// GetHandlerDataAirport() from a dead session, and the next Start()'s hello frame
+    /// (which carries NO state keys) re-derived Menu/Services/Receipt from that stale
+    /// store — re-announcing the previous session's invoice into a dedup set Stop() had
+    /// just emptied, and baselining the service announcer on stale rows so the real
+    /// snapshot that followed announced stale→real "transitions".
+    /// </summary>
+    /// <param name="clearReceiptDigests">
+    /// True on Stop() (a NEW session follows; its invoices are new). False on a plain
+    /// socket drop — GSX is still running, the same receipt will be in the reconnect
+    /// snapshot, and the digest set is what keeps it from being spoken again.
+    /// </param>
+    private void ResetSessionModels(string unavailableReason, bool clearReceiptDigests)
+    {
+        bool hadMenu = Menu.Count > 0 || _menuOptions.Count > 0;
+
+        _state.Clear();
         _serviceAnnouncer.Reset();
+        _timerAnnouncer.Reset();
+        LastAnnouncementText = string.Empty;
         Menu = GsxMenuModel.Empty;
+        _menuTitle = "GSX Menu";
         _menuOptions.Clear();
         Services = Array.Empty<GsxServiceState>();
         Settings = GsxSettingsSchema.Empty;
         Billing = GsxBilling.Empty;
         Receipt = null;
         Capabilities = Array.Empty<string>();
-        _announcedReceipts.Clear();
-        LastAnnouncementText = string.Empty;
         _activeServiceNames = Array.Empty<string>();
         _selectedActiveService = null;
-        _unavailableReason = ReasonSimDisconnected;
+        _receiptsBaselined = false;
+        _messageBaselined = false;
+        _lastAnnouncedMessage = string.Empty;
+        if (clearReceiptDigests)
+            _announcedReceipts.Clear();
+        _unavailableReason = unavailableReason;
+
+        // The menu the form is showing no longer exists — say so through the same
+        // event a menuShown=false patch would raise, so AccessGSXForm swaps its list
+        // for the reopen prompt and drops its keypress snapshot. Without this a
+        // pilot kept reading a live-looking menu after RESTART_COUATL dropped the
+        // socket, and every digit pressed on it resolved against an empty live Menu
+        // and silently did nothing. Silent by design, like every menu-hide.
+        if (hadMenu)
+            MenuHidden?.Invoke(this, EventArgs.Empty);
+
         // Clear the tooltip through the event-raising path, not by assignment:
         // AccessGSXForm refreshes its Tooltip box on TooltipChanged and on
         // nothing else, so a bare assignment leaves the last live tooltip on
@@ -536,9 +593,14 @@ public sealed class GsxService : IDisposable
     // exception back into GsxRemoteConnection's receive loop.
     // ─────────────────────────────────────────────────────────────────────
 
-    private void OnFrame(GsxFrame f)
+    private void OnFrame(GsxFrame f) => OnFrame(f, Volatile.Read(ref _lifecycleGeneration));
+
+    private void OnFrame(GsxFrame f, int generation)
     {
-        if (!EnsureUiThread(() => OnFrame(f))) return;
+        if (!EnsureUiThread(() => OnFrame(f, generation))) return;
+        // A frame the socket thread posted just before Stop() must not run
+        // after it — see _lifecycleGeneration.
+        if (generation != _lifecycleGeneration) return;
 
         // Only a 'hello' frame carries capabilities (GsxFrame.Parse leaves every other
         // frame type's Capabilities at its default empty list) -- refresh, never clear,
@@ -558,11 +620,15 @@ public sealed class GsxService : IDisposable
             // COUATL_STARTED 1->0 handling (ClearLastTooltip /
             // ClearProgressTrackingState).
             _serviceAnnouncer.Reset();
+            _timerAnnouncer.Reset();
             LastAnnouncementText = string.Empty;
             // A new Couatl session issues new invoices; the previous session's
             // digests must not silence them. Same lifetime the pre-Remote-API
             // _announcedInvoiceKeys set had (cleared in ClearProgressTrackingState,
-            // which the COUATL_STARTED 1->0 edge drove).
+            // which the COUATL_STARTED 1->0 edge drove). The restart drops the
+            // socket by design, so the reconnect's first snapshot re-BASELINES
+            // (ResetSessionModels clears _receiptsBaselined) — a receipt that
+            // survived the restart is recorded silently there, not re-spoken.
             _announcedReceipts.Clear();
         }
 
@@ -587,6 +653,18 @@ public sealed class GsxService : IDisposable
                 SettingsChanged?.Invoke(this, EventArgs.Empty);
                 ApplyBilling();
                 ApplyReceipt();
+                AnnounceMessageIfChanged();
+                if (f.Type == GsxFrameType.Snapshot)
+                {
+                    // The snapshot is the FULL state of a session we have just
+                    // joined. Everything it carries has been baselined above
+                    // (recorded, not spoken); from here on, changes announce.
+                    // A hello carries no state keys, so it cannot baseline
+                    // anything — the snapshot that follows it does.
+                    AnnounceTimers();
+                    _receiptsBaselined = true;
+                    _messageBaselined = true;
+                }
                 UpdateStatusText();
                 RaiseStateChanged();
                 break;
@@ -641,10 +719,8 @@ public sealed class GsxService : IDisposable
                 break;
 
             case "billing":
-                // Exposed for future persistent-connection (GPU/jetway
-                // timer) callouts; this facade swap does not itself add any
-                // new spoken behaviour for billing changes.
                 ApplyBilling();
+                AnnounceTimers();
                 break;
 
             case "receipt":
@@ -660,6 +736,7 @@ public sealed class GsxService : IDisposable
 
             case "message":
                 RecomputeTooltip();
+                AnnounceMessageIfChanged();
                 break;
 
             case "handlerData":
@@ -735,13 +812,38 @@ public sealed class GsxService : IDisposable
         Settings = _state.TryGet("settings", out var v) ? GsxSettingsSchema.Parse(v) : GsxSettingsSchema.Empty;
     }
 
+    /// <summary>
+    /// Reparses billing and speaks what the persistent-connection timers
+    /// (jetway, GPU, …) are doing — started, still running (every 15 minutes),
+    /// stopped — via <see cref="GsxBillingTimerAnnouncer"/>. Baseline-first like
+    /// every other announcer here: a timer already running at connect is
+    /// recorded silently and first spoken at its next 15-minute mark. The
+    /// cadence is inherited from the pre-Remote-API transport's
+    /// GroundConnectionTimerAnnouncementInterval; the reminders were lost in
+    /// the migration and a pilot's first notice of an hour-old metered jetway
+    /// became the invoice.
+    /// </summary>
     private void ApplyBilling()
     {
         Billing = _state.TryGet("billing", out var v) ? GsxBilling.Parse(v) : GsxBilling.Empty;
     }
 
     /// <summary>
-    /// Reparses the invoice and announces it AT MOST ONCE.
+    /// Feeds the CURRENT <see cref="Billing"/> to the timer announcer. Called for a
+    /// snapshot and for every <c>billing</c> patch — never for a bare hello: a hello
+    /// carries no state keys, so an Update there would baseline the announcer on an
+    /// EMPTY timer list and the real snapshot a moment later would read every
+    /// already-running jetway as having just started.
+    /// </summary>
+    private void AnnounceTimers()
+    {
+        foreach (string phrase in _timerAnnouncer.Update(Billing, DateTime.UtcNow))
+            Announce(phrase);
+    }
+
+    /// <summary>
+    /// Reparses the invoice and announces it AT MOST ONCE — and never one that was
+    /// already sitting in GSX's state when this session joined.
     ///
     /// The dedup is load-bearing, not tidiness: this runs on every <c>receipt</c>
     /// patch AND on every reconnect snapshot, and GSX restarts its engine
@@ -750,6 +852,13 @@ public sealed class GsxService : IDisposable
     /// Mirrors the pre-Remote-API <c>_announcedInvoiceKeys</c> set, including
     /// its lifetime: cleared on a Couatl shutdown (OnFrame) and on Stop(),
     /// never on a mere socket drop.
+    ///
+    /// BASELINE-FIRST (<see cref="_receiptsBaselined"/>): until the first full
+    /// snapshot of a session has been read, a receipt's digest is RECORDED but
+    /// not spoken — the same rule every other MSFSBA monitor follows. Without it,
+    /// starting the app (or restarting Couatl, which clears the digests) with an
+    /// hours-old, long-dealt-with invoice still in GSX's state announced
+    /// "Invoice available…" as though it had just arrived.
     ///
     /// The key is a digest of the raw receipt payload rather than the operator
     /// name, so a second, genuinely different invoice from the SAME handler in
@@ -767,10 +876,38 @@ public sealed class GsxService : IDisposable
         if (Receipt is not { } receipt) return;
 
         if (!_announcedReceipts.Add(ReceiptKey(v))) return;
+        if (!_receiptsBaselined) return;
 
         Announce(FormatReceiptAnnouncement(receipt, Billing));
         // Tell GSX we've displayed the invoice so it clears its in-game banner.
         _remote.Send("invoice.seen");
+    }
+
+    /// <summary>
+    /// Speaks GSX's own "message" slot — the text GSX itself publishes when no
+    /// typed service row says anything (follow-me/marshaller/positioning banners,
+    /// the idle and cruise text) — whenever it changes by more than a run of
+    /// digits. This was the pre-Remote-API transport's primary announcement
+    /// stream (every tooltip-text change, delta-trimmed) and it went missing in
+    /// the migration: a "message" patch only ever refreshed the Tooltip box.
+    ///
+    /// Policy, mirroring the old PublishLiveServiceText: baseline-first (the
+    /// text present at the first snapshot is recorded, not spoken); an empty or
+    /// invisible slot says nothing and does NOT reset the last-spoken text, so
+    /// the same banner flickering off and on is not re-read; a change that is
+    /// digit-only (a countdown, a counter) is a tick, not news. Both channels
+    /// as every other announcement here (visible form / background monitoring).
+    /// The decision itself is pure — <see cref="GsxMessageAnnounceGate"/>.
+    /// </summary>
+    private void AnnounceMessageIfChanged()
+    {
+        string text = RawMessageText();
+        if (!GsxMessageAnnounceGate.ShouldAnnounce(_lastAnnouncedMessage, text))
+            return;
+
+        _lastAnnouncedMessage = text;
+        if (!_messageBaselined) return; // recorded, not spoken — see summary
+        Announce(text);
     }
 
     /// <summary>
@@ -860,9 +997,13 @@ public sealed class GsxService : IDisposable
         }
     }
 
-    private void OnRemoteConnectedChanged(bool up)
+    private void OnRemoteConnectedChanged(bool up) =>
+        OnRemoteConnectedChanged(up, Volatile.Read(ref _lifecycleGeneration));
+
+    private void OnRemoteConnectedChanged(bool up, int generation)
     {
-        if (!EnsureUiThread(() => OnRemoteConnectedChanged(up))) return;
+        if (!EnsureUiThread(() => OnRemoteConnectedChanged(up, generation))) return;
+        if (generation != _lifecycleGeneration) return; // Stop() ran while this was in flight
 
         if (up)
         {
@@ -876,29 +1017,12 @@ public sealed class GsxService : IDisposable
         // no longer vouch for, and the announcer's baseline is stale the
         // moment we reconnect (a service that quietly finished while we were
         // offline must not be reported as a fresh transition on reconnect).
-        _state.Clear();
-        _serviceAnnouncer.Reset();
-        LastAnnouncementText = string.Empty;
-        Menu = GsxMenuModel.Empty;
-        _menuOptions.Clear();
-        Services = Array.Empty<GsxServiceState>();
-        Settings = GsxSettingsSchema.Empty;
-        Billing = GsxBilling.Empty;
-        Receipt = null;
-        Capabilities = Array.Empty<string>();
-        _activeServiceNames = Array.Empty<string>();
-        _selectedActiveService = null;
         // Reached only after a connection that HAD succeeded (SetConnected
         // early-returns on an unchanged value), so this is a genuine drop —
         // routine during a RESTART_COUATL — not "your GSX has no Remote API".
-        _unavailableReason = ReasonConnectionLost;
-        // _state was cleared above, so this recomputes to empty and raises
-        // TooltipChanged — without it the Tooltip box kept showing the last
-        // live text as if it were current, while Stop() cleared it. The two
-        // teardown paths must agree.
-        RecomputeTooltip();
-        UpdateStatusText();
-        RaiseStateChanged();
+        // The receipt digests deliberately SURVIVE a drop: GSX is still
+        // running and the reconnect snapshot re-carries the same receipt.
+        ResetSessionModels(ReasonConnectionLost, clearReceiptDigests: false);
     }
 
     /// <summary>
@@ -1092,5 +1216,45 @@ internal static class GsxActiveServiceResolver
             return string.Join(", ", parts);
 
         return string.IsNullOrWhiteSpace(service.ProgressText) ? string.Empty : service.ProgressText;
+    }
+}
+
+/// <summary>
+/// Whether a change to GSX's own "message" slot is worth speaking. Pure and
+/// stateless (the caller keeps the last-SPOKEN text); internal + covered directly
+/// by GsxMessageAnnounceGateTests via InternalsVisibleTo, like
+/// <see cref="GsxActiveServiceResolver"/> above.
+///
+/// Mirrors the pre-Remote-API PublishLiveServiceText policy: an empty/whitespace
+/// slot says nothing (and the caller does not reset on it, so a banner that
+/// flickers off and on is not re-read); an exact repeat is silent; a change that
+/// is ONLY in runs of digits ("Pushback in 5 seconds" -> "… 4 seconds") is a
+/// countdown or counter tick, not news — the same rule
+/// <c>GsxMenuAnnounceResolver</c> applies to menu entries. Anything else speaks.
+/// </summary>
+internal static class GsxMessageAnnounceGate
+{
+    private static readonly System.Text.RegularExpressions.Regex DigitRun =
+        new(@"\d+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public static bool ShouldAnnounce(string lastSpoken, string current)
+    {
+        if (string.IsNullOrWhiteSpace(current)) return false;
+        if (string.Equals(lastSpoken, current, StringComparison.Ordinal)) return false;
+        if (string.IsNullOrWhiteSpace(lastSpoken)) return true;
+        return !IsDigitOnlyChange(lastSpoken, current);
+    }
+
+    private static bool IsDigitOnlyChange(string before, string after)
+    {
+        string[] beforeParts = DigitRun.Split(before);
+        string[] afterParts = DigitRun.Split(after);
+        if (beforeParts.Length != afterParts.Length) return false;
+        for (int i = 0; i < beforeParts.Length; i++)
+        {
+            if (!string.Equals(beforeParts[i], afterParts[i], StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 }

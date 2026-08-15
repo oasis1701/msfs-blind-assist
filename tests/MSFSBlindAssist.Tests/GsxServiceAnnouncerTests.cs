@@ -262,4 +262,90 @@ public class GsxServiceAnnouncerTests
     [InlineData(100, 10, false)] // …and is never repeated
     public void A_later_bag_percentage_announces_on_a_bucket_change(int percent, int lastSpoken, bool expected)
         => Assert.Equal(expected, GsxServiceAnnouncer.ShouldAnnounceBags(percent, lastSpoken));
+
+    // ── Operator attribution (restored — the pre-Remote-API transport spoke it) ──────────
+
+    private static GsxServiceState WithOperator(string id, string state, string? op) =>
+        new() { Id = id, DisplayName = id, State = state, Operator = op, StateText = $"{id} is {state}" };
+
+    [Fact]
+    public void Available_names_the_operator_when_gsx_publishes_one()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { WithOperator("Refuel", "performing", "United Ground Express") });
+        var said = a.Update(new[] { WithOperator("Refuel", "available", "United Ground Express") });
+        Assert.Single(said);
+        Assert.Equal("Refuel available from United Ground Express.", said[0]);
+    }
+
+    [Fact]
+    public void Available_without_an_operator_stays_the_plain_phrase()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { WithOperator("Catering", "performing", null) });
+        var said = a.Update(new[] { WithOperator("Catering", "available", null) });
+        Assert.Equal("Catering available.", Assert.Single(said));
+    }
+
+    // ── Generic (non-pax) progress — refuel kg — time-throttled at 30 s ────────────────
+
+    private static GsxServiceState Fuel(int current, int total, string unit = "kg") => new()
+    {
+        Id = "Refueling", DisplayName = "Refuel", State = "performing",
+        ProgressCurrent = current, ProgressTotal = total, ProgressUnit = unit,
+        StateText = "Refueling service is being performed",
+    };
+
+    [Fact]
+    public void Fuel_progress_speaks_current_of_total_with_unit()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 13001) }, t0);
+        var said = a.Update(new[] { Fuel(820, 13001) }, t0.AddSeconds(2));
+        Assert.Equal("Refuel 820 of 13001 kg.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Fuel_progress_is_throttled_to_the_announcement_interval()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 13001) }, t0);
+        Assert.Single(a.Update(new[] { Fuel(820, 13001) }, t0.AddSeconds(2)));
+
+        // Inside the window: every tick is swallowed, however far the number moves.
+        Assert.Empty(a.Update(new[] { Fuel(1500, 13001) }, t0.AddSeconds(10)));
+        Assert.Empty(a.Update(new[] { Fuel(4000, 13001) }, t0.AddSeconds(31)));
+
+        // At/after the interval since the LAST SPOKEN one: speaks again.
+        var later = a.Update(new[] { Fuel(4800, 13001) },
+            t0.AddSeconds(2) + GsxServiceAnnouncer.ProgressAnnouncementInterval);
+        Assert.Equal("Refuel 4800 of 13001 kg.", Assert.Single(later));
+    }
+
+    [Fact]
+    public void Fuel_progress_that_did_not_move_is_silent_even_after_the_interval()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 13001) }, t0);
+        a.Update(new[] { Fuel(820, 13001) }, t0.AddSeconds(2));
+        Assert.Empty(a.Update(new[] { Fuel(820, 13001) }, t0.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void Pax_unit_progress_never_uses_the_generic_phrase()
+    {
+        // The pax milestone gate owns passenger counts; the generic branch must not
+        // second-guess it with "181 of 181 pax" (GSX clamps progress.total to current).
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        var row0 = new GsxServiceState { Id = "Deboarding", DisplayName = "Deboard", State = "performing",
+            PaxDone = 100, PaxTotal = 186, ProgressCurrent = 100, ProgressTotal = 100, ProgressUnit = "pax" };
+        var row1 = new GsxServiceState { Id = "Deboarding", DisplayName = "Deboard", State = "performing",
+            PaxDone = 103, PaxTotal = 186, ProgressCurrent = 103, ProgressTotal = 103, ProgressUnit = "pax" };
+        a.Update(new[] { row0 }, t0);
+        Assert.Empty(a.Update(new[] { row1 }, t0.AddSeconds(5))); // 103 is mid-decade: pax gate silent, generic must be too
+    }
 }

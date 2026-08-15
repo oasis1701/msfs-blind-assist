@@ -45,32 +45,41 @@ public sealed class GsxRemoteConnection : IDisposable
 
     public void Start()
     {
-        // Guard on IsCompleted, not just non-null: Stop() only cancels and does not
-        // (and must not) block waiting for RunAsync to unwind, so a Stop() immediately
-        // followed by a Start() can otherwise land while the old loop is still mid-flight
-        // — two RunAsync instances would then both write the shared _ws/_connected fields
-        // and both call FailAll, corrupting whichever connection wins the race. Refusing
-        // to start while the previous loop is still completing is the safe direction: the
-        // caller can retry, whereas a second live loop cannot be un-started.
         if (_disposed) return;
-        if (_loop != null && !_loop.IsCompleted)
+
+        // Stop() only cancels and does not (and must not) block waiting for RunAsync to
+        // unwind, so a Stop() immediately followed by a Start() — a SimConnect
+        // disconnect->reconnect flap, an aircraft switch — routinely lands while the old
+        // loop is still mid-flight. Two RunAsync instances must never overlap (both would
+        // write the shared _ws/_connected fields and both call FailAll, corrupting
+        // whichever connection wins the race), so the new loop is CHAINED to begin only
+        // once the previous one has fully unwound. It used to be REFUSED instead, and the
+        // one caller (GsxService.Start) had already latched itself started and never
+        // retried, so the whole GSX integration stayed down until the next full
+        // disconnect/reconnect cycle while announcing a misleading "needs GSX 4.0.8"
+        // reason. Chaining keeps the no-overlap guarantee without asking anyone to retry.
+        try { _cts?.Dispose(); } catch { /* already disposed */ }
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+
+        Task? previous = _loop;
+        if (previous != null && !previous.IsCompleted)
         {
-            // Reachable on a sim disconnect->reconnect cycle, where GsxService
-            // has ALREADY logged "Remote API client starting." — without this
-            // line the log claims a start that never happened, and the socket
-            // stays down until the next reconnect with nothing to say why.
-            Log.Debug("Gsx", "Remote API start refused: the previous receive loop is still unwinding.");
-            return;
+            Log.Debug("Gsx", "Remote API start deferred until the previous receive loop unwinds.");
+            // ContinueWith runs regardless of how the old loop ended (its own faults are
+            // already observed below), then Unwrap so _loop tracks the NEW loop's lifetime.
+            _loop = previous.ContinueWith(_ => RunAsync(cts.Token), TaskScheduler.Default).Unwrap();
+        }
+        else
+        {
+            _loop = Task.Run(() => RunAsync(cts.Token));
         }
 
-        try { _cts?.Dispose(); } catch { /* already disposed */ }
-        _cts = new CancellationTokenSource();
-        _loop = Task.Run(() => RunAsync(_cts.Token));
         // RunAsync catches everything it knows how to handle and only exits by falling
         // off the end (cancellation) — a Faulted task here means something truly
         // unexpected escaped it. Observe it so it is logged instead of silently vanishing
         // as an unobserved task exception, and so IsCompleted still flips (letting a
-        // future Start() recover).
+        // future Start() chain onto it).
         _loop.ContinueWith(
             t => Log.Error("Gsx", $"Remote API loop exited unexpectedly: {t.Exception?.GetBaseException().Message}"),
             TaskContinuationOptions.OnlyOnFaulted);

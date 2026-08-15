@@ -27,6 +27,17 @@ public sealed class GsxServiceAnnouncer
     /// <summary>Announce a bag percentage every time it crosses a multiple of this.</summary>
     internal const int BagsAnnouncementStepPercent = 10;
 
+    /// <summary>
+    /// Minimum gap between two spoken readings of a service's GENERIC progress —
+    /// the refuel row's "8823 of 13001 kg" — which GSX ticks about once a second.
+    /// Time-throttled rather than milestone-gated because the quantity has no
+    /// natural bucket size (litres, kg, lbs, percent all arrive on this one row).
+    /// The 30 s is the pre-Remote-API FuelingProgressAnnouncementInterval; the
+    /// spoken fuel quantity went missing in the migration and a blind pilot timing
+    /// a departure had nothing between "Refuel in progress." and "Refuel complete."
+    /// </summary>
+    internal static readonly TimeSpan ProgressAnnouncementInterval = TimeSpan.FromSeconds(30);
+
     private readonly Dictionary<string, Snapshot> _previous = new(StringComparer.Ordinal);
     // Last milestone ACTUALLY SPOKEN per service — not the last observed value.
     // The two differ by design: samples routinely skip the round numbers (48 ->
@@ -36,9 +47,10 @@ public sealed class GsxServiceAnnouncer
     private bool _baselined;
 
     private readonly record struct Snapshot(string State, int? PaxDone, int? PaxTotal,
-                                            int? BagsPercent, string? BusPhase);
+                                            int? BagsPercent, string? BusPhase,
+                                            int? ProgressCurrent, int? ProgressTotal, string? ProgressUnit);
 
-    private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone);
+    private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc);
 
     public void Reset()
     {
@@ -47,14 +59,20 @@ public sealed class GsxServiceAnnouncer
         _baselined = false;
     }
 
-    public IReadOnlyList<string> Update(IReadOnlyList<GsxServiceState> current)
+    public IReadOnlyList<string> Update(IReadOnlyList<GsxServiceState> current) =>
+        Update(current, DateTime.UtcNow);
+
+    /// <param name="nowUtc">The clock for the time-throttled generic progress gate —
+    /// a parameter so the cadence is testable without waiting 30 s.</param>
+    public IReadOnlyList<string> Update(IReadOnlyList<GsxServiceState> current, DateTime nowUtc)
     {
         var said = new List<string>();
 
         foreach (var s in current)
         {
             if (string.IsNullOrEmpty(s.Id)) continue;
-            var now = new Snapshot(s.State, s.PaxDone, s.PaxTotal, s.BagsPercent, s.BusPhase);
+            var now = new Snapshot(s.State, s.PaxDone, s.PaxTotal, s.BagsPercent, s.BusPhase,
+                                   s.ProgressCurrent, s.ProgressTotal, s.ProgressUnit);
 
             if (_previous.TryGetValue(s.Id, out var was) && _baselined)
             {
@@ -71,7 +89,7 @@ public sealed class GsxServiceAnnouncer
                 {
                     said.Add($"{Name(s)} bus {now.BusPhase}.");
                 }
-                else if (ProgressPhrase(s, was, now) is { Length: > 0 } p)
+                else if (ProgressPhrase(s, was, now, nowUtc) is { Length: > 0 } p)
                 {
                     said.Add(p);
                 }
@@ -84,14 +102,23 @@ public sealed class GsxServiceAnnouncer
         return said;
     }
 
-    private static string Name(GsxServiceState s) =>
-        string.IsNullOrEmpty(s.DisplayName) ? s.Id : s.DisplayName;
+    private static string Name(GsxServiceState s) => GsxActiveServiceResolver.NameOf(s);
 
+    /// <summary>
+    /// The phrase for a state transition. "available" names the handling company
+    /// when GSX published one ("Refuel available from United Ground Express.") —
+    /// the pre-Remote-API transport spoke that attribution and it was dropped in
+    /// the migration; <c>operator</c> is a real wire field (fixture: OneJet,
+    /// United Ground Express) that otherwise reached the pilot only if an invoice
+    /// happened to follow.
+    /// </summary>
     private static string StatePhrase(GsxServiceState s) => s.State switch
     {
         "performing" => $"{Name(s)} in progress.",
         "completed"  => $"{Name(s)} complete.",
-        "available"  => $"{Name(s)} available.",
+        "available"  => string.IsNullOrWhiteSpace(s.Operator)
+                            ? $"{Name(s)} available."
+                            : $"{Name(s)} available from {s.Operator.Trim()}.",
         _            => string.IsNullOrEmpty(s.StateText) ? $"{Name(s)}: {s.State}." : s.StateText + ".",
     };
 
@@ -101,9 +128,11 @@ public sealed class GsxServiceAnnouncer
     /// Passengers are checked FIRST so a tick where both moved speaks the pax
     /// phrase rather than a stale one (the Task 4 fix). A pax tick the milestone
     /// gate swallows still falls through to bags — a different quantity, on its
-    /// own gate.
+    /// own gate. Generic progress (fuel kg) comes last and only for rows that carry
+    /// no pax detail and no pax unit — the pax gate owns passenger counts, and
+    /// GSX's progress.total on a pax row is clamped to the current count.
     /// </summary>
-    private string ProgressPhrase(GsxServiceState s, Snapshot was, Snapshot now)
+    private string ProgressPhrase(GsxServiceState s, Snapshot was, Snapshot now, DateTime nowUtc)
     {
         _spoken.TryGetValue(s.Id, out var spoken);
 
@@ -132,8 +161,28 @@ public sealed class GsxServiceAnnouncer
             return $"{Name(s)} bags {bags} percent.";
         }
 
+        // Generic progress — the refuel row's "8823 of 13001 kg". Guarded off any
+        // row that carries pax detail or a pax unit (those belong to the milestone
+        // gate above), spoken only when the reading MOVED, and no more than once
+        // per ProgressAnnouncementInterval per service.
+        bool progressMoved = was.ProgressCurrent != now.ProgressCurrent || was.ProgressTotal != now.ProgressTotal;
+        if (progressMoved
+            && now.PaxDone is null
+            && now.ProgressCurrent is { } cur && now.ProgressTotal is { } tot && tot > 0
+            && !string.Equals(now.ProgressUnit, "pax", StringComparison.OrdinalIgnoreCase)
+            && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+        {
+            _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
+            string unit = string.IsNullOrWhiteSpace(now.ProgressUnit) ? string.Empty : " " + now.ProgressUnit.Trim();
+            return $"{Name(s)} {cur} of {tot}{unit}.";
+        }
+
         return string.Empty;
     }
+
+    /// <summary>First reading always speaks; later ones only once the interval has elapsed since the last SPOKEN one.</summary>
+    internal static bool ShouldAnnounceProgress(DateTime nowUtc, DateTime? lastSpokenUtc) =>
+        lastSpokenUtc is null || nowUtc - lastSpokenUtc.Value >= ProgressAnnouncementInterval;
 
     // ── Milestone gates (pure — pinned by GsxServiceAnnouncerTests) ──────────
 
