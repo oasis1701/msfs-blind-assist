@@ -279,11 +279,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// ValueDescriptions) has nothing to validate and returns true, same as an
     /// unrecognised key — ApplyUIVariable's own "key not registered" branch is what
     /// reports that case, this method's job is narrowly range-checking a real combo write.
-    /// Public and decoupled from <see cref="IsAvailable"/> (only needs
+    /// Internal and decoupled from <see cref="IsAvailable"/> (only needs
     /// <see cref="SetDefinition"/> to have been called) so a test can pin the reject/accept
     /// boundary without a live SimConnect/announcer — see the class doc on why this
     /// executor can't be put in the IsAvailable=true state in a unit test.</summary>
-    public bool IsDeclaredPosition(string varKey, double value)
+    internal bool IsDeclaredPosition(string varKey, double value)
     {
         if (_def == null) return true;
         if (!_def.GetVariables().TryGetValue(varKey, out var def)) return true;
@@ -543,7 +543,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// unreadable) becomes null — INDETERMINATE, distinct from a genuine QNH reading (false)
     /// — else the usual &gt;0.5 threshold. Extracted from <see cref="IsBaroStd"/> so the
     /// NaN-vs-QNH distinction is unit-testable without a live SDK readback.</summary>
-    public static bool? ClassifyBaroStd(double raw) => double.IsNaN(raw) ? null : raw > 0.5;
+    internal static bool? ClassifyBaroStd(double raw) => double.IsNaN(raw) ? null : raw > 0.5;
 
     /// <summary>Per-side baro STANDARD readback: true = confirmed on STD, false = confirmed
     /// on QNH, null = UNREADABLE. The two non-true outcomes used to collapse to the same
@@ -640,9 +640,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public Task<bool> PressGroundPower(bool on) => Set(on ? "BTN_GRD_PWR_ON" : "BTN_GRD_PWR_OFF", 1);
 
     /// <summary>True for a valid engine/APU-generator index — the only two the definition
-    /// registers a click-command pair for (Overhead.cs:78-85). Public so a test can pin the
+    /// registers a click-command pair for (Overhead.cs:78-85). Internal so a test can pin the
     /// reject/accept boundary directly.</summary>
-    public static bool IsValidGeneratorIndex(int n) => n is 1 or 2;
+    internal static bool IsValidGeneratorIndex(int n) => n is 1 or 2;
 
     /// <summary>Engine generator n (1 or 2) — momentary click pair (Overhead.cs:78-81). An
     /// out-of-range n used to interpolate straight into a synthesized key
