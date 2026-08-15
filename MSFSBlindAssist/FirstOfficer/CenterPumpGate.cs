@@ -9,8 +9,13 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// </summary>
 public static class CenterPumpGate
 {
+    /// <summary>The centre-pump keys of every aircraft that shares this gate. The first two
+    /// are the PMDG 737/777 SDK event names; the second two are the iFly 737 MAX8 SDK field
+    /// names its executor dispatches by (the iFly write path is keyed on the definition's
+    /// varKey, not on an event id). One list, because ONE gate covers all three aircraft.</summary>
     public static bool IsCenterOnEvent(string eventName) =>
-        eventName == "EVT_OH_FUEL_PUMP_L_CENTER" || eventName == "EVT_OH_FUEL_PUMP_R_CENTER";
+        eventName == "EVT_OH_FUEL_PUMP_L_CENTER" || eventName == "EVT_OH_FUEL_PUMP_R_CENTER" ||
+        eventName == "Fuel_CENTER_L_Switch_Status" || eventName == "Fuel_CENTER_R_Switch_Status";
 
     /// <param name="isOn">The resolved ON test for this executor (777: targetValue == 1;
     /// 737: (target ?? 1) == 1).</param>

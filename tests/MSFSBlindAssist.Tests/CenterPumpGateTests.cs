@@ -25,4 +25,20 @@ public class CenterPumpGateTests
 
     // A non-center event is never gated.
     [Fact] public void OtherEvent_NeverGated()         => Assert.False(CenterPumpGate.ShouldSuppressCenterOn(Other, isOn: true, centerQty: 0));
+
+    // ---- iFly 737 MAX8 (task 4): the SAME gate, keyed on the iFly SDK field names. The
+    // iFly executor's DispatchCoreAsync passes the def varKey it is about to write, so the
+    // gate must recognise those two keys as well as the PMDG event names above.
+    private const string IFlyL = "Fuel_CENTER_L_Switch_Status";
+    private const string IFlyR = "Fuel_CENTER_R_Switch_Status";
+
+    [Fact] public void IFlyCenterOnEvent_Recognised()  { Assert.True(CenterPumpGate.IsCenterOnEvent(IFlyL)); Assert.True(CenterPumpGate.IsCenterOnEvent(IFlyR)); }
+    // ON below threshold → suppress (the dry-run hazard the gate exists for).
+    [Fact] public void IFly_SuppressCenterOn_LowQty_True() => Assert.True(CenterPumpGate.ShouldSuppressCenterOn(IFlyL, isOn: true, centerQty: 300));
+    // OFF is NEVER gated, on either aircraft's key spelling.
+    [Fact] public void IFly_SuppressCenterOff_NeverGated() => Assert.False(CenterPumpGate.ShouldSuppressCenterOn(IFlyL, isOn: false, centerQty: 300));
+    // ON with fuel present → do NOT suppress.
+    [Fact] public void IFly_SuppressCenterOn_FuelPresent_False() => Assert.False(CenterPumpGate.ShouldSuppressCenterOn(IFlyR, isOn: true, centerQty: Thr + 1));
+    // A wing pump on the iFly key spelling is never gated.
+    [Fact] public void IFly_WingPump_NeverGated()      => Assert.False(CenterPumpGate.ShouldSuppressCenterOn("Fuel_L_FWD_Switch_Status", isOn: true, centerQty: 0));
 }
