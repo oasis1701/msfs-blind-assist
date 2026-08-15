@@ -163,6 +163,16 @@ public sealed class GsxServiceAnnouncer
     /// own gate. Generic progress (fuel kg) comes last and only for rows that carry
     /// no pax detail and no pax unit — the pax gate owns passenger counts, and
     /// GSX's progress.total on a pax row is clamped to the current count.
+    ///
+    /// PROGRESS phrases carry NO service-name prefix ("pax 17 of 154.", "bags 40
+    /// percent.", "fuel 2221 kg loaded, aircraft 5252 kg.") — their content noun
+    /// (pax / bags / fuel, GSX's own words) already names the service, and the
+    /// prefix on a once-every-few-seconds readout was verbose. State transitions
+    /// and the bus phase KEEP the prefix (StatePhrase, BusPhrase): "complete." is
+    /// ambiguous when services overlap, and "Board bus" vs "Deboard bus" says
+    /// whether passengers are arriving or leaving. The GENERIC branch below keeps
+    /// it too — a metered row with no known content noun ("Water 120 of 400 l.")
+    /// has nothing else to name it.
     /// </summary>
     private string ProgressPhrase(GsxServiceState s, Snapshot was, Snapshot now, DateTime nowUtc)
     {
@@ -180,7 +190,7 @@ public sealed class GsxServiceAnnouncer
             if (totalRevised || ShouldAnnouncePassengers(done, spoken.PaxMilestone))
             {
                 _spoken[s.Id] = spoken with { PaxMilestone = PassengerMilestone(done) };
-                return $"{Name(s)} {done} of {total} passengers.";
+                return $"pax {done} of {total}.";
             }
         }
 
@@ -190,7 +200,7 @@ public sealed class GsxServiceAnnouncer
             && ShouldAnnounceBags(bags, spoken.BagsMilestone))
         {
             _spoken[s.Id] = spoken with { BagsMilestone = BagsMilestone(bags) };
-            return $"{Name(s)} bags {bags} percent.";
+            return $"bags {bags} percent.";
         }
 
         // Fuel quantity — the refuel row's detail.fuel: "Refuel 2221 kg loaded,
@@ -210,8 +220,8 @@ public sealed class GsxServiceAnnouncer
             _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
             string unit = UnitSuffix(now.FuelUnit);
             return now.FuelAircraftTotal is { } aircraftTotal
-                ? $"{Name(s)} {Quantity(fuelCur)}{unit} loaded, aircraft {Quantity(aircraftTotal)}{unit}."
-                : $"{Name(s)} {Quantity(fuelCur)}{unit} loaded.";
+                ? $"fuel {Quantity(fuelCur)}{unit} loaded, aircraft {Quantity(aircraftTotal)}{unit}."
+                : $"fuel {Quantity(fuelCur)}{unit} loaded.";
         }
 
         // Generic progress — any other metered row that publishes progress

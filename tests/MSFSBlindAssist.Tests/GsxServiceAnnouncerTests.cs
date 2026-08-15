@@ -97,7 +97,7 @@ public class GsxServiceAnnouncerTests
             Assert.Single(a.Update(new[] { Svc("Boarding", "performing", paxDone: 2, paxTotal: 155, busPhase: "on the way, ETA 14 secs") })));
         // Next tick: ETA 14 -> 13 is digit-only (suppressed) while pax crosses 10 (a milestone).
         var said = a.Update(new[] { Svc("Boarding", "performing", paxDone: 10, paxTotal: 155, busPhase: "on the way, ETA 13 secs") });
-        Assert.Equal("Boarding 10 of 155 passengers.", Assert.Single(said));
+        Assert.Equal("pax 10 of 155.", Assert.Single(said));
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class GsxServiceAnnouncerTests
 
         // 1, then every tenth up to 180 — 19 phrases, not 186.
         Assert.Equal(19, said.Count);
-        Assert.All(said, p => Assert.Contains("passengers", p, StringComparison.Ordinal));
+        Assert.All(said, p => Assert.Contains("pax ", p, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -164,10 +164,10 @@ public class GsxServiceAnnouncerTests
 
         Assert.Equal(new[]
         {
-            "Deboarding 1 of 35 passengers.",
-            "Deboarding 10 of 35 passengers.",
-            "Deboarding 20 of 35 passengers.",
-            "Deboarding 30 of 35 passengers.",
+            "pax 1 of 35.",
+            "pax 10 of 35.",
+            "pax 20 of 35.",
+            "pax 30 of 35.",
         }, said);
     }
 
@@ -178,7 +178,7 @@ public class GsxServiceAnnouncerTests
         a.Update(new[] { Svc("Deboarding", "performing") });          // baseline, no pax yet
         var said = a.Update(new[] { Svc("Deboarding", "performing", 0, 186) });
 
-        Assert.Equal("Deboarding 0 of 186 passengers.", Assert.Single(said));
+        Assert.Equal("pax 0 of 186.", Assert.Single(said));
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class GsxServiceAnnouncerTests
         Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", 48, 180) }));   // same bucket
 
         var said = a.Update(new[] { Svc("Boarding", "performing", 53, 180) });
-        Assert.Equal("Boarding 53 of 180 passengers.", Assert.Single(said));
+        Assert.Equal("pax 53 of 180.", Assert.Single(said));
     }
 
     [Fact]
@@ -217,7 +217,7 @@ public class GsxServiceAnnouncerTests
         a.Update(new[] { Svc("Boarding", "performing", 153, 190) });
         var said = a.Update(new[] { Svc("Boarding", "performing", 153, 186) });
 
-        Assert.Equal("Boarding 153 of 186 passengers.", Assert.Single(said));
+        Assert.Equal("pax 153 of 186.", Assert.Single(said));
     }
 
     [Fact]
@@ -233,8 +233,8 @@ public class GsxServiceAnnouncerTests
         // 10, 20, … 100 — ten phrases out of a hundred ticks, and 100 % is
         // always among them.
         Assert.Equal(10, said.Count);
-        Assert.Equal("Boarding bags 10 percent.", said[0]);
-        Assert.Equal("Boarding bags 100 percent.", said[^1]);
+        Assert.Equal("bags 10 percent.", said[0]);
+        Assert.Equal("bags 100 percent.", said[^1]);
     }
 
     [Fact]
@@ -349,7 +349,7 @@ public class GsxServiceAnnouncerTests
         var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
         a.Update(new[] { Fuel(0, 8, "kg", 3004) }, t0);
         var said = a.Update(new[] { Fuel(2221, 2231, "kg", 5252) }, t0.AddSeconds(2));
-        Assert.Equal("Refuel 2221 kg loaded, aircraft 5252 kg.", Assert.Single(said));
+        Assert.Equal("fuel 2221 kg loaded, aircraft 5252 kg.", Assert.Single(said));
     }
 
     [Fact]
@@ -358,7 +358,7 @@ public class GsxServiceAnnouncerTests
         var a = new GsxServiceAnnouncer();
         var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
         a.Update(new[] { Fuel(0, 5914) }, t0);
-        Assert.Equal("Refuel 820 lb loaded.", Assert.Single(a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2))));
+        Assert.Equal("fuel 820 lb loaded.", Assert.Single(a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2))));
     }
 
     [Fact]
@@ -392,7 +392,7 @@ public class GsxServiceAnnouncerTests
         var a = new GsxServiceAnnouncer();
         var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
         a.Update(new[] { Fuel(0, 5914, "lb", 5549) }, t0);
-        Assert.Equal("Refuel 1235 lb loaded, aircraft 6784 lb.", Assert.Single(a.Update(rows, t0.AddSeconds(2))));
+        Assert.Equal("fuel 1235 lb loaded, aircraft 6784 lb.", Assert.Single(a.Update(rows, t0.AddSeconds(2))));
     }
 
     [Fact]
@@ -452,7 +452,7 @@ public class GsxServiceAnnouncerTests
         // At/after the interval since the LAST SPOKEN one: speaks again.
         var later = a.Update(new[] { Fuel(4800, 5914) },
             t0.AddSeconds(2) + GsxServiceAnnouncer.ProgressAnnouncementInterval);
-        Assert.Equal("Refuel 4800 lb loaded.", Assert.Single(later));
+        Assert.Equal("fuel 4800 lb loaded.", Assert.Single(later));
     }
 
     [Fact]
