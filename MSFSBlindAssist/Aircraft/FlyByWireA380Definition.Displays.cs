@@ -148,18 +148,12 @@ public partial class FlyByWireA380Definition
             displayText = value < 0.05 ? "Retracted" : value > 0.95 ? "Full" : $"{(int)Math.Round(value * 100)} percent";
             return true;
         }
-        // Cockpit flood / ambient dimmers (FBW #10813). Read as a percentage. Straight
-        // through once anything has written the L:var — but a pristine one still holds the
-        // 0..1 RATIO it was initialised with (0.85 = 85 %), so scale that case up rather
-        // than announcing "0.85 percent" before the pilot first touches the knob. 1.0 is
-        // deliberately treated as the ratio's top end, not 1 %: a dimmer sitting at exactly
-        // 1 % is not a state worth protecting, full brightness is.
-        if (varKey == "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB" || varKey == "A380X_PED_LIGHTING_AMBIENT_LT_KNOB")
-        {
-            double pct = value <= 1.0 ? value * 100.0 : value;
-            displayText = $"{Math.Round(pct)} percent";
-            return true;
-        }
+        // (No display override for the cockpit flood/ambient dimmers: they render as
+        // RenderAsSlider TrackBars, and MainForm's slider paths — PanelBuilder's initial
+        // position and Announcers' sim-side refresh — both map the raw value with
+        // (value - SliderMin) / span * 100 and never consult TryGetDisplayOverride. An
+        // override here would be dead code. See the registration in the main def for the
+        // pristine-0..1-ratio caveat that follows from that.)
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
         if (varKey == "A32NX_NOSE_WHEEL_POSITION")
         {

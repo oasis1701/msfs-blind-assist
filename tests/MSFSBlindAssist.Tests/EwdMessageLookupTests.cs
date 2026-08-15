@@ -101,11 +101,12 @@ public class EwdMessageLookupTests
         // NOTE: the source's "\x1b4m" literal is itself C#'s greedy \x hex-escape eating the
         // trailing "4" (\x1b4 = U+01B4 "ƴ"), not a SimConnect runtime corruption as the
         // production doc comment claims -- this is why Pass 2 of CleanANSICodes specifically
-        // matches "ƴm". The leftover bare "m" (from "\x1bm" -> ESC + literal 'm', ESC then
-        // stripped by Pass 5) also survives as visible residue: pinning actual output below.
+        // matches "ƴm". The group-end reset ("\x1bm" -> ESC + literal 'm') used to leave a bare
+        // "m" here, which the screen reader SPOKE ("T.O m AUTO BRK"); Pass 4b now strips the
+        // ESC+'m' pair before the control-character pass can orphan the letter.
         string raw = "\x1b<3m\x1b4mT.O\x1bm AUTO BRK\x1b<5m.....MAX";
 
-        Assert.Equal("T.O m AUTO BRK .....MAX", EWDMessageLookup.CleanANSICodes(raw));
+        Assert.Equal("T.O AUTO BRK .....MAX", EWDMessageLookup.CleanANSICodes(raw));
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public class EwdMessageLookupTests
         // Raw dictionary value for code 213122104 (emergency-descent condition line).
         string raw = "\x1b<7m     .\x1b4mEMER DESCENT\x1bm:";
 
-        Assert.Equal(".EMER DESCENT m:", EWDMessageLookup.CleanANSICodes(raw));
+        Assert.Equal(".EMER DESCENT:", EWDMessageLookup.CleanANSICodes(raw));
     }
 
     [Fact]
@@ -171,9 +172,9 @@ public class EwdMessageLookupTests
         // The stray "m" is the SAME pre-existing residue the BRAKES/T.O cases above pin
         // (C#'s greedy \x1b4 escape + the bare 'm' left by "\x1bm"), not something the
         // 2026-08 sync introduced. Pinned so a future cleanup fixes all groups together.
-        Assert.Equal("C/B m TRIPPED REAR PNL J-M",
+        Assert.Equal("C/B TRIPPED REAR PNL J-M",
             EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(310011001L)));
-        Assert.Equal("NAV m BARO VALUE DISAGREE",
+        Assert.Equal("NAV BARO VALUE DISAGREE",
             EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(340010101L)));
     }
 

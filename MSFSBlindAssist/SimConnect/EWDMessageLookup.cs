@@ -644,6 +644,14 @@ public static class EWDMessageLookup
         // Pass 4: Remove )m pattern (from reset codes like \x1b)m)
         cleaned = Regex.Replace(cleaned, @"\)m", "");
 
+        // Pass 4b: the GROUP-END RESET, ESC followed by 'm' (the "\x1bm" that closes every
+        // "\x1b4m<GROUP>\x1bm" title). Pass 5 below turns the ESC into a space and leaves the
+        // 'm' stranded as its own word, which the screen reader then SPEAKS: a real A320 caution
+        // came out as "C/B m TRIPPED ON OVHD PNL, Amber" (observed live 2026-08-16), and every
+        // grouped message had the same stray letter. Must run BEFORE Pass 5, while the ESC is
+        // still attached to identify the 'm' as ANSI residue rather than real text.
+        cleaned = Regex.Replace(cleaned, @"\x1bm", "");
+
         // Pass 5: Clean any remaining non-printable control characters
         cleaned = Regex.Replace(cleaned, @"[\x00-\x1F]", " ");
 
