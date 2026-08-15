@@ -34,6 +34,29 @@ public sealed class AccessGSXForm : Form
     private bool _suppressActiveServicesSelectionEvent;
     private GsxSettingsForm? _settingsForm;
 
+    // When the pilot last pressed 'C' (Settings) — the ONLY thing allowed to
+    // CREATE the settings window. Under the Remote API, GsxService raises
+    // SettingsChanged on every Hello and Snapshot frame (every connect and
+    // reconnect — including after the 'D' Restart GSX command, which drops
+    // and re-establishes the socket) and on every unprompted /settings patch,
+    // not just in answer to OpenSettings(). The old transport raised it only
+    // from the pilot's explicit settings.get flow, which is why the create+show
+    // path never needed a "did the pilot ask?" gate. Without one, any reconnect
+    // after Access GSX has been opened once (hide-not-close keeps these
+    // subscriptions alive) pops the settings window open uninvited, its
+    // Activate() steals screen-reader focus mid-flight, and dismissing it
+    // fires FormClosed -> HideMenu as a side effect. Null when no request is
+    // outstanding; consumed (nulled) by the frame that opens the window.
+    private DateTime? _settingsRequestedUtc;
+
+    // How long a 'C' press stays a valid reason to open the window when the
+    // "settings" response arrives. GSX answers settings.get within a frame
+    // or two on a local socket; 10 s is generous cover for a slow Couatl
+    // without letting a press from minutes ago be claimed by an unrelated
+    // reconnect. (TimeSpan cannot be a C# const — static readonly is the
+    // closest equivalent.)
+    private static readonly TimeSpan SettingsRequestWindow = TimeSpan.FromSeconds(10);
+
     // The menu snapshot last rendered/announced by RepopulateMenu. What this
     // genuinely buys is the menu-CLOSED case: DispatchPatch's "menuShown" clears
     // _menuOptions but never reassigns GsxService.Menu, so a stray digit after
@@ -253,6 +276,24 @@ public sealed class AccessGSXForm : Form
 
         if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
         {
+            // Same shape as HandleF5: with the Remote API unreachable there
+            // is nothing to send, and a silent no-op is indistinguishable
+            // from a lost keystroke — say why instead. The request stamp is
+            // NOT set here: nothing was asked for, so no later frame may
+            // claim to be the answer.
+            if (!_gsxService.RemoteApiAvailable)
+            {
+                AnnounceUnavailable();
+                return true;
+            }
+
+            // Stamp the request BEFORE sending: the "settings" response can
+            // only arrive on a later message-loop turn (GsxService reposts
+            // every frame via BeginInvoke), but stamping first costs nothing
+            // and leaves no ordering to reason about. OnSettingsChangedUi
+            // opens the window only while this stamp is fresh — see the
+            // _settingsRequestedUtc field comment.
+            _settingsRequestedUtc = DateTime.UtcNow;
             _gsxService.OpenSettings();
             // OpenSettings is a fire-and-forget Remote API send — the
             // "settings" response (and therefore SettingsChanged /
@@ -375,6 +416,20 @@ public sealed class AccessGSXForm : Form
         // TextBoxes when a typeable character arrives) — regardless of
         // whether the index resolves to a real, enabled menu entry.
         e.SuppressKeyPress = true;
+
+        // Same gate F5 and the A..E commands carry: a digit pressed after
+        // the socket dropped must not be dead air. Checked here, before
+        // SelectMenuEntry, because that method's own "no entry at this
+        // index" exit is deliberately SILENT (a stray digit is not worth
+        // speech) — and after a drop the rendered menu is typically still
+        // populated, so the pick would otherwise be handed to a service that
+        // can no longer send it, with nothing telling the pilot why.
+        if (!_gsxService.RemoteApiAvailable)
+        {
+            AnnounceUnavailable();
+            return;
+        }
+
         SelectMenuEntry(paintedIndex);
     }
 
@@ -481,9 +536,13 @@ public sealed class AccessGSXForm : Form
         // GSX republishes the WHOLE /menu object on every state tick — live at
         // EDDF, roughly 3 times a second while a service runs, because one
         // entry embeds a live counter ("113/143 passengers boarded" -> "114" ->
-        // "115", nothing else different). Snapshot what was last ANNOUNCED
-        // before RepopulateMenu overwrites _renderedMenu with the fresh one, so
+        // "115", nothing else different). Snapshot what was last RENDERED (and,
+        // while the form was visible, announced) before RepopulateMenu
+        // overwrites _renderedMenu with the fresh one, so
         // GsxMenuAnnounceResolver can tell a real change from a counter tick.
+        // Across a hidden stretch this is "last rendered" only — the list the
+        // pilot finds on re-show is current, so a later change is judged
+        // against exactly what they can read there.
         GsxMenuModel previouslyAnnounced = _renderedMenu;
 
         // RepopulateMenu returns exactly what it just wrote into _menuList
@@ -492,7 +551,26 @@ public sealed class AccessGSXForm : Form
         // control). The list itself is ALWAYS repopulated — a silently-ticked
         // counter must still be readable on demand by arrowing through it —
         // only the SPOKEN announcement is gated below.
+        //
+        // The list AND the _renderedMenu snapshot are refreshed even while the
+        // form is HIDDEN: SelectMenuEntry resolves keypresses against the
+        // snapshot, and the hidden form must come back showing the current
+        // menu the instant it is shown again (there is deliberately NO
+        // re-render in VisibleChanged — a RepopulateMenu on show would
+        // re-snapshot the LIVE GsxService.Menu, which is exactly the stale
+        // model OnMenuHiddenUi's Empty reset exists to keep out of reach after
+        // the menu closes; see the _renderedMenu field comment).
         string menuText = RepopulateMenu();
+
+        // Speech is form-VISIBLE only, the same gate OnAnnouncementReadyUi
+        // applies: a hidden window is not the surface the pilot is reading,
+        // and every connect/reconnect fires MenuChanged twice (Hello +
+        // Snapshot), so a hidden form speaking each one is exactly the
+        // back-to-back double-speak that gate exists to prevent. Showing the
+        // window puts the current list under screen-reader focus, which reads
+        // it itself — nothing is lost, only unsolicited speech.
+        if (!Visible) return;
+
         bool shouldAnnounce = GsxMenuAnnounceResolver.ShouldAnnounce(previouslyAnnounced, _renderedMenu);
         if (shouldAnnounce && !string.IsNullOrWhiteSpace(menuText))
         {
@@ -645,6 +723,12 @@ public sealed class AccessGSXForm : Form
     {
         if (_settingsForm is { IsDisposed: false })
         {
+            // Whatever prompted this frame, the open window absorbs it — a
+            // 'C' press made while the window was already up must not leave
+            // a live stamp behind for a later reconnect to claim after the
+            // pilot has closed it.
+            _settingsRequestedUtc = null;
+
             // GSX can republish the whole settings tree more than once per
             // session (e.g. a reconnect resends it as part of a full
             // snapshot). Refresh the open window in place — recreating it
@@ -665,6 +749,22 @@ public sealed class AccessGSXForm : Form
             }
             return;
         }
+
+        // No window open. Only a RECENT explicit 'C' press may create one:
+        // under the Remote API this event also fires on every Hello and
+        // Snapshot frame (every connect/reconnect, e.g. after 'D' Restart
+        // GSX) and on every unprompted /settings patch — none of which the
+        // pilot asked for, and a window created here Activate()s itself,
+        // stealing screen-reader focus mid-flight (see the
+        // _settingsRequestedUtc field comment). An unclaimed republish is
+        // simply absorbed: the schema is already held in _gsxService.Settings,
+        // and the next 'C' press shows it. A stale stamp is dropped rather
+        // than left lying around for a later, unrelated frame to claim.
+        if (_settingsRequestedUtc is not { } requestedUtc)
+            return;
+        _settingsRequestedUtc = null;
+        if (DateTime.UtcNow - requestedUtc > SettingsRequestWindow)
+            return;
 
         _settingsForm = new GsxSettingsForm(_gsxService, _announcer, _gsxService.Settings);
         _settingsForm.FormClosed += (_, _) =>
@@ -796,12 +896,21 @@ public sealed class AccessGSXForm : Form
 /// <see cref="AccessGSXForm.RepopulateMenu"/>) — only the SPOKEN announcement is gated,
 /// so a silently-ticked count is still readable on demand.
 ///
-/// Announces on: first appearance (<paramref name="previous"/> was empty — covers both a
-/// genuinely new menu and a reopen after <c>OnMenuHiddenUi</c> reset the snapshot), a
-/// title change, an entry-count change, or any entry changing by more than a run of
-/// digits (e.g. "Request Boarding" -> "Boarding no longer possible", "Customize this
-/// Parking position" -> "Reset position" — both real availability transitions observed
-/// live, neither one GSX flagged via the <c>disabled</c> array).
+/// Never announces an EMPTY <paramref name="current"/>: <c>GsxService</c> fires
+/// <c>MenuChanged</c> on both the Hello and the Snapshot frame of every connect/reconnect
+/// (and after every 'D' Restart GSX, which drops and re-establishes the socket), the menu
+/// is normally CLOSED at that moment, and <c>RepopulateMenu</c> renders the "GSX Menu
+/// hidden. Press F5 to open it." prompt for an empty model — treating each of those as a
+/// "first appearance" spoke that prompt twice back-to-back on every connect. Menu-hide is
+/// silent by design (<c>OnMenuHiddenUi</c> never speaks); the prompt is there to be READ
+/// from the list, and an empty menu has nothing to announce.
+///
+/// Otherwise announces on: first appearance of a NON-empty menu (<paramref name="previous"/>
+/// was empty — covers both a genuinely new menu and a reopen after <c>OnMenuHiddenUi</c>
+/// reset the snapshot), a title change, an entry-count change, or any entry changing by
+/// more than a run of digits (e.g. "Request Boarding" -> "Boarding no longer possible",
+/// "Customize this Parking position" -> "Reset position" — both real availability
+/// transitions observed live, neither one GSX flagged via the <c>disabled</c> array).
 ///
 /// GUARD: GSX paginates its own menus at 10 entries, and a "Next Page ▶" entry appears
 /// as an ordinary entry (confirmed live at EDDF) — so a paged stand list can plausibly
@@ -819,6 +928,11 @@ internal static class GsxMenuAnnounceResolver
 
     public static bool ShouldAnnounce(GsxMenuModel previous, GsxMenuModel current)
     {
+        // Empty -> empty (every connect/reconnect) and non-empty -> empty (the
+        // menu closing) are both silent -- see the class remarks. Checked BEFORE
+        // the first-appearance rule, or an empty "first appearance" speaks the
+        // hidden prompt.
+        if (current.Count == 0) return false;
         if (previous.Count == 0) return true;
         if (!string.Equals(previous.Title, current.Title, StringComparison.Ordinal)) return true;
         if (previous.Count != current.Count) return true;

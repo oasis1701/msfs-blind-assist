@@ -159,4 +159,36 @@ public class GsxMenuAnnounceResolverTests
         Assert.Equal(0, previous.Count);
         Assert.True(GsxMenuAnnounceResolver.ShouldAnnounce(previous, current));
     }
+
+    [Fact]
+    public void Empty_to_empty_does_not_announce()
+    {
+        // GsxService fires MenuChanged on BOTH the Hello and the Snapshot frame of
+        // every connect/reconnect (and after every 'D' Restart GSX, which drops
+        // and re-establishes the socket). The menu is normally CLOSED at that
+        // moment, so both events carry an empty model, and RepopulateMenu renders
+        // the "GSX Menu hidden. Press F5 to open it." prompt for each -- announcing
+        // "first appearance" here spoke that prompt twice back-to-back on every
+        // connect. Menu-hide is silent by design (OnMenuHiddenUi never speaks);
+        // an empty menu never has anything to announce.
+        Assert.False(GsxMenuAnnounceResolver.ShouldAnnounce(GsxMenuModel.Empty, GsxMenuModel.Empty));
+
+        // Same verdict for a parsed-but-entryless payload, which is what a live
+        // "menu" key with no entries produces rather than the Empty singleton.
+        var parsedEmpty = GsxMenuModel.Parse(JsonDocument.Parse("{}").RootElement);
+        Assert.Equal(0, parsedEmpty.Count);
+        Assert.False(GsxMenuAnnounceResolver.ShouldAnnounce(parsedEmpty, GsxMenuModel.Empty));
+        Assert.False(GsxMenuAnnounceResolver.ShouldAnnounce(GsxMenuModel.Empty, parsedEmpty));
+    }
+
+    [Fact]
+    public void Non_empty_to_empty_does_not_announce()
+    {
+        // The menu going away is the same silent transition OnMenuHiddenUi
+        // performs -- the hidden prompt is there to be READ from the list, not
+        // spoken over whatever the pilot is doing.
+        var previous = Menu("Activate Services at EDDF/Frankfurt", "Request Deboarding", "Request Boarding");
+
+        Assert.False(GsxMenuAnnounceResolver.ShouldAnnounce(previous, GsxMenuModel.Empty));
+    }
 }

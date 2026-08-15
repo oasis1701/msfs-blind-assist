@@ -8,8 +8,11 @@
 // Tab shapes: GSX publishes a tab's fields in TWO shapes. Some tabs (e.g.
 // "simulation") carry nothing directly and split their fields across
 // subtabs; others (timings, audio, network, diagnostic) have no subtabs at
-// all and put every field straight on the tab. BuildPages renders both --
-// see its remarks.
+// all and put every field straight on the tab.
+// GsxSettingsSchemaSignature.BuildPages (bottom of this file) renders both --
+// see its remarks. The same helper owns the STRUCTURAL signature RefreshSchema
+// uses to tell "GSX echoed a value I just set" (apply in place, keep focus)
+// from "the settings tree itself changed" (rebuild the pages).
 using System.Globalization;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Services;
@@ -27,8 +30,37 @@ public sealed class GsxSettingsForm : Form
 
     private readonly GsxService _gsxService;
     private GsxSettingsSchema _schema;
+
+    // Cached alongside _schema, and ONLY ever assigned together with it (see
+    // SetSchema): the flattened pages PopulateSettings renders from, and the
+    // structural signature RefreshSchema compares an incoming schema against.
+    // HasFields used to recompute BuildPages on every read and RefreshSchema
+    // compared two freshly built signatures, so one republish walked the whole
+    // schema up to five times (HasFields x2 in AccessGSXForm.OnSettingsChangedUi,
+    // signature x2, PopulateSettings x1). Now an incoming schema is walked once.
+    private IReadOnlyList<GsxSettingsPage> _pages;
+    private string _structuralSignature;
+
     private readonly ListBox _tabSelector = new();
     private readonly Panel _settingsHost = new();
+
+    // One slot per field of _pages, in BuildPages traversal order (null for a
+    // field that renders no updatable control -- Separator, Unknown, a Choice
+    // with no choices renders a read-only box which IS updatable). Built by
+    // PopulateSettings; consumed by ApplyValuesInPlace when a republished
+    // schema is structurally identical, so its new values can be pushed into
+    // the EXISTING controls without disposing them or moving focus. Positional
+    // rather than keyed on GsxSettingsField.Key because Info fields carry no
+    // key at all (four in the live capture) and would all collide on "".
+    // Same structural signature => same page count, same field count per
+    // page, same field types in the same order, so lockstep is exact.
+    private readonly List<Action<GsxSettingsField>?> _valueAppliers = new();
+
+    // True while ApplyValuesInPlace is writing GSX's own values into the
+    // controls. Every commit handler (CheckedChanged / SelectedIndexChanged /
+    // ValueChanged) checks it, so a value that CAME from GSX is never echoed
+    // back to GSX as a settings.set -- that would round-trip forever.
+    private bool _applyingRemoteValues;
 
     // CheckBox/ComboBox/NumericUpDown commit live, the instant the control
     // changes. A TextBox only commits on Leave (or Enter) -- if the pilot is
@@ -70,7 +102,7 @@ public sealed class GsxSettingsForm : Form
         // lifetime. Kept for constructor parity with the rest of the GSX UI
         // and in case a future background announcement needs it.
         _ = announcer ?? throw new ArgumentNullException(nameof(announcer));
-        _schema = schema ?? GsxSettingsSchema.Empty;
+        SetSchema(schema ?? GsxSettingsSchema.Empty);
 
         BuildUi();
         PopulateSettings();
@@ -86,19 +118,55 @@ public sealed class GsxSettingsForm : Form
         SelectSectionList();
     }
 
-    // Reuses BuildPages -- the exact traversal PopulateSettings renders
-    // from -- rather than a separate _schema.AllFields() check, so "has
+    // Reads the pages cached from the SAME BuildPages traversal PopulateSettings
+    // renders from -- never a separate _schema.AllFields() check -- so "has
     // fields" can never drift from "would actually show something".
-    public bool HasFields => BuildPages(_schema).Count > 0;
+    public bool HasFields => _pages.Count > 0;
 
     /// <summary>
-    /// Replace the displayed settings with a freshly published schema,
-    /// rebuilding the UI only when the content actually changed. GSX can
-    /// republish the whole settings tree more than once per session (a
-    /// reconnect resends it as part of a full snapshot) -- rebuilding in
-    /// place instead of recreating the window keeps screen-reader focus and
-    /// avoids re-announcing the whole dialog. Returns true when the UI was
-    /// rebuilt.
+    /// The one place <see cref="_schema"/> is assigned, so its two derived
+    /// caches can never be observed out of step with it. Walks the schema
+    /// exactly once (BuildPages), and the signature is built from those same
+    /// pages -- see <see cref="GsxSettingsSchemaSignature"/>.
+    /// </summary>
+    [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(_schema), nameof(_pages), nameof(_structuralSignature))]
+    private void SetSchema(GsxSettingsSchema schema)
+    {
+        IReadOnlyList<GsxSettingsPage> pages = GsxSettingsSchemaSignature.BuildPages(schema);
+        SetSchema(schema, pages, GsxSettingsSchemaSignature.Structural(pages));
+    }
+
+    /// <summary>Overload for a caller (RefreshSchema) that has already walked the schema once and must not walk it again.</summary>
+    [System.Diagnostics.CodeAnalysis.MemberNotNull(nameof(_schema), nameof(_pages), nameof(_structuralSignature))]
+    private void SetSchema(GsxSettingsSchema schema, IReadOnlyList<GsxSettingsPage> pages, string structuralSignature)
+    {
+        _schema = schema;
+        _pages = pages;
+        _structuralSignature = structuralSignature;
+    }
+
+    /// <summary>
+    /// Replace the displayed settings with a freshly published schema. Two
+    /// outcomes, decided by the STRUCTURAL signature (everything but the live
+    /// values -- <see cref="GsxSettingsSchemaSignature"/>):
+    ///
+    /// Structure unchanged: the new values are written into the EXISTING
+    /// controls in place (<see cref="ApplyValuesInPlace"/>) -- nothing is
+    /// disposed, focus does not move, and this returns false. This is by far
+    /// the common case, because GSX ECHOES every settings.set back as a
+    /// /settings patch: a checkbox tick, a combo pick, and EACH arrow-step of
+    /// a NumericUpDown (ValueChanged sends per tick, no debounce) all come
+    /// straight back as a republished schema. When the live values were part
+    /// of the signature, every one of those rebuilt the whole window and
+    /// SelectSectionList() yanked screen-reader focus off the very field the
+    /// pilot was still adjusting -- range controls were effectively unusable.
+    ///
+    /// Structure changed (a field/tab/choice/button/bound appeared, vanished
+    /// or was relabelled -- including the empty -> populated transition
+    /// AccessGSXForm announces as "GSX settings loaded."): the pages are
+    /// rebuilt, which genuinely disposes controls, so the previous tab is
+    /// restored and focus is put on the sections list. Returns true ONLY in
+    /// this case -- AccessGSXForm reads the return as "a rebuild happened".
     ///
     /// Re-entrancy: FlushPendingTextEdits below calls GsxService.SetSettingText,
     /// which is a fire-and-forget GsxRemoteConnection.Send -- it returns after
@@ -120,12 +188,24 @@ public sealed class GsxSettingsForm : Form
             return false;
 
         schema ??= GsxSettingsSchema.Empty;
-        if (BuildSchemaSignature(schema) == BuildSchemaSignature(_schema))
-            return false;
+        // One BuildPages for the incoming schema, zero for the current one
+        // (its signature is cached by SetSchema).
+        IReadOnlyList<GsxSettingsPage> incomingPages = GsxSettingsSchemaSignature.BuildPages(schema);
+        string incomingSignature = GsxSettingsSchemaSignature.Structural(incomingPages);
 
         _isRefreshingSchema = true;
         try
         {
+            if (string.Equals(incomingSignature, _structuralSignature, StringComparison.Ordinal)
+                && ApplyValuesInPlace(incomingPages))
+            {
+                // Same structure: the caches are refreshed WITHOUT re-walking
+                // (the pages were just built and the signature is identical),
+                // so a later comparison is against the latest values.
+                SetSchema(schema, incomingPages, incomingSignature);
+                return false;
+            }
+
             // A live republish is about to dispose every field control,
             // including any TextBox the pilot is still typing in -- flush
             // it first, the same as FormClosing, or those keystrokes vanish
@@ -140,7 +220,7 @@ public sealed class GsxSettingsForm : Form
             // restore.
             int previousTabIndex = _tabSelector.SelectedIndex;
 
-            _schema = schema;
+            SetSchema(schema, incomingPages, incomingSignature);
             PopulateSettings(previousTabIndex);
             SelectSectionList();
             return true;
@@ -149,6 +229,58 @@ public sealed class GsxSettingsForm : Form
         {
             _isRefreshingSchema = false;
         }
+    }
+
+    /// <summary>
+    /// Writes the values of a structurally identical schema into the controls
+    /// already on screen, walking <see cref="_valueAppliers"/> in lockstep
+    /// with the incoming pages' fields. Returns false -- meaning "fall back
+    /// to a rebuild" -- only if the two somehow disagree in length, which an
+    /// equal structural signature rules out; the check is a belt-and-braces
+    /// guard, not an expected path.
+    ///
+    /// Rules, per control (each applier is built beside its control):
+    /// a control the pilot is CURRENTLY IN (ContainsFocus -- NumericUpDown is
+    /// a container whose inner edit box holds the focus, so plain Focused
+    /// would miss it) is never written to. The pilot's own input is the truth
+    /// there and GSX's echo only confirms it; writing the echo back would
+    /// clobber a half-typed number or text, and -- because a fast run of
+    /// arrow-presses outruns the echoes -- would set the control BACK to an
+    /// already-passed value between two presses, so holding Up would fight
+    /// the pilot's own hand. The next patch after focus has moved on (GSX
+    /// echoes every settings.set of every field) reconciles it. A TextBox is
+    /// additionally left alone while it holds an uncommitted edit (Text !=
+    /// LastCommitted) even unfocused, and moving LastCommitted with the
+    /// applied text keeps FlushPendingTextEdits from later re-sending GSX's
+    /// own value back. Read-only value boxes (Info/Action, and a Choice with
+    /// no choices) always take the new text -- there is no in-progress edit
+    /// to protect. Choice: matching choice or leave the selection. Range:
+    /// clamped to the control's current bounds (structurally the same bounds
+    /// GSX published), then set.
+    /// </summary>
+    private bool ApplyValuesInPlace(IReadOnlyList<GsxSettingsPage> pages)
+    {
+        int slot = 0;
+        foreach (GsxSettingsPage page in pages)
+            slot += page.Fields.Count;
+        if (slot != _valueAppliers.Count)
+            return false;
+
+        _applyingRemoteValues = true;
+        try
+        {
+            slot = 0;
+            foreach (GsxSettingsPage page in pages)
+            {
+                foreach (GsxSettingsField field in page.Fields)
+                    _valueAppliers[slot++]?.Invoke(field);
+            }
+        }
+        finally
+        {
+            _applyingRemoteValues = false;
+        }
+        return true;
     }
 
     // Shared by FormClosing and RefreshSchema -- both dispose the live
@@ -178,29 +310,6 @@ public sealed class GsxSettingsForm : Form
         commit.LastCommitted = commit.Box.Text;
         _gsxService.SetSettingText(commit.Key, commit.Box.Text);
     }
-
-    // Record equality won't help here: every field type carries
-    // IReadOnlyList properties (Choices, Buttons) that records compare by
-    // reference. Built from the SAME BuildPages a real rebuild renders, so
-    // "the signature changed" and "the rendered content changed" can never
-    // drift apart. ASCII control characters separate every piece so free
-    // text (Label, Tooltip, Placeholder, ...) can never collide across a
-    // field boundary.
-    private static string BuildSchemaSignature(GsxSettingsSchema schema) =>
-        string.Join("\x1e", BuildPages(schema).SelectMany(page =>
-            page.Fields.Select(f => page.Title + "\x1f" + FieldSignature(f))));
-
-    private static string FieldSignature(GsxSettingsField f) =>
-        string.Join("\x1f",
-            f.Key, f.Type.ToString(), f.Label, f.Tooltip,
-            f.NumericValue?.ToString(CultureInfo.InvariantCulture) ?? "",
-            f.TextValue ?? "",
-            f.Min?.ToString(CultureInfo.InvariantCulture) ?? "",
-            f.Max?.ToString(CultureInfo.InvariantCulture) ?? "",
-            f.Step?.ToString(CultureInfo.InvariantCulture) ?? "",
-            f.Unit, f.IsFloat.ToString(), f.MaxLength.ToString(CultureInfo.InvariantCulture), f.Placeholder,
-            string.Join("\x1f", f.Choices.Select(c => c.Value.ToString(CultureInfo.InvariantCulture) + "\x1f" + c.Label)),
-            string.Join("\x1f", f.Buttons.Select(b => b.Key + "\x1f" + b.Label + "\x1f" + b.Disabled)));
 
     private void BuildUi()
     {
@@ -276,8 +385,9 @@ public sealed class GsxSettingsForm : Form
         _tabSelector.Items.Clear();
         _settingsHost.Controls.Clear();
         _pendingTextCommits.Clear();
+        _valueAppliers.Clear();
 
-        List<SettingsPage> pages = BuildPages(_schema);
+        IReadOnlyList<GsxSettingsPage> pages = _pages;
 
         if (pages.Count == 0)
         {
@@ -305,7 +415,7 @@ public sealed class GsxSettingsForm : Form
             return;
         }
 
-        foreach (SettingsPage page in pages)
+        foreach (GsxSettingsPage page in pages)
             _tabSelector.Items.Add(new TabPageItem(page.Title, BuildPagePanel(page.Fields)));
 
         _tabSelector.SelectedIndex = restoreTabIndex >= 0 && restoreTabIndex < _tabSelector.Items.Count
@@ -313,49 +423,10 @@ public sealed class GsxSettingsForm : Form
             : 0;
     }
 
-    private sealed record SettingsPage(string Title, IReadOnlyList<GsxSettingsField> Fields);
-
-    /// <summary>
-    /// Flattens the schema's tab/subtab tree into one page per navigable
-    /// section, rendering BOTH shapes GSX publishes. A live capture has 5
-    /// top-level tabs: "simulation" carries no fields of its own and splits
-    /// 42 across 4 subtabs (Services/Pushback/Parking/UI); "timings",
-    /// "audio", "network" and "diagnostic" have no subtabs and carry their
-    /// 39 fields directly on the tab. An earlier version of this reader
-    /// walked subtabs only and silently dropped those 39 fields -- four
-    /// whole tabs worth of settings never shown.
-    ///
-    /// A subtab/tab contributes a page only when it has at least one field
-    /// AppendField will actually render a control for -- Separator and
-    /// Unknown fields render nothing (AppendField skips both), so a
-    /// section holding only those would otherwise become a tab the pilot
-    /// can select but that shows nothing once they arrow into it. Not
-    /// reachable with a live capture today (every observed section mixes
-    /// separators in among real controls), but cheap to rule out.
-    /// </summary>
-    private static List<SettingsPage> BuildPages(GsxSettingsSchema schema)
-    {
-        var pages = new List<SettingsPage>();
-        foreach (GsxSettingsTab tab in schema.Tabs)
-        {
-            foreach (GsxSettingsSubtab subtab in tab.Subtabs)
-            {
-                if (!subtab.Fields.Any(IsRenderable)) continue;
-                pages.Add(new SettingsPage($"{tab.Label} - {subtab.Label}", subtab.Fields));
-            }
-
-            // Not observed in a live capture (every subtabbed tab today
-            // carries no fields of its own), but the schema doesn't forbid
-            // it -- give a tab's own fields a page instead of silently
-            // dropping them if GSX ever publishes both at once.
-            if (tab.Fields.Any(IsRenderable))
-                pages.Add(new SettingsPage(tab.Label, tab.Fields));
-        }
-        return pages;
-    }
-
-    private static bool IsRenderable(GsxSettingsField f) =>
-        f.Type is not (GsxFieldType.Separator or GsxFieldType.Unknown);
+    // A rendered field control plus the action that pushes a later
+    // republished value of the SAME field into it in place (null when the
+    // field renders nothing updatable). See ApplyValuesInPlace for the rules.
+    private sealed record FieldControl(Control Control, Action<GsxSettingsField>? ApplyRemoteValue);
 
     private FlowLayoutPanel BuildPagePanel(IReadOnlyList<GsxSettingsField> fields)
     {
@@ -368,49 +439,50 @@ public sealed class GsxSettingsForm : Form
             Padding = new Padding(12)
         };
 
+        // Exactly one _valueAppliers slot per field, renderable or not, so
+        // the list stays in lockstep with BuildPages' field order (which is
+        // what ApplyValuesInPlace walks).
         foreach (GsxSettingsField field in fields)
-            AppendField(panel, field);
+            _valueAppliers.Add(AppendField(panel, field));
 
         return panel;
     }
 
-    private void AppendField(FlowLayoutPanel panel, GsxSettingsField field)
+    /// <summary>Renders one field into <paramref name="panel"/> and returns its
+    /// in-place value applier, or null when the field renders no updatable
+    /// control (Separator, Unknown).</summary>
+    private Action<GsxSettingsField>? AppendField(FlowLayoutPanel panel, GsxSettingsField field)
     {
         switch (field.Type)
         {
             case GsxFieldType.Separator:
                 AppendSeparator(panel, field);
-                break;
+                return null;
 
             case GsxFieldType.Info:
             case GsxFieldType.Action:
                 // Action's single button is synthesized into the same
                 // Buttons list Info uses (GsxSettingsSchema.ParseFields) --
                 // one render path covers both.
-                AppendInfoOrAction(panel, field);
-                break;
+                return AppendInfoOrAction(panel, field);
 
             case GsxFieldType.Toggle:
-                AppendControlField(panel, field, BuildToggle(field));
-                break;
+                return AppendControlField(panel, field, BuildToggle(field));
 
             case GsxFieldType.Choice:
-                AppendControlField(panel, field, BuildChoice(field));
-                break;
+                return AppendControlField(panel, field, BuildChoice(field));
 
             case GsxFieldType.Range:
-                AppendControlField(panel, field, BuildRange(field));
-                break;
+                return AppendControlField(panel, field, BuildRange(field));
 
             case GsxFieldType.Text:
-                AppendControlField(panel, field, BuildText(field));
-                break;
+                return AppendControlField(panel, field, BuildText(field));
 
             default:
                 // Unknown -- GSX published a field type this build doesn't
                 // recognize yet. Nothing sensible to render; skip it rather
                 // than guess.
-                break;
+                return null;
         }
     }
 
@@ -429,7 +501,7 @@ public sealed class GsxSettingsForm : Form
         });
     }
 
-    private static void AppendControlField(FlowLayoutPanel panel, GsxSettingsField field, Control control)
+    private static Action<GsxSettingsField>? AppendControlField(FlowLayoutPanel panel, GsxSettingsField field, FieldControl built)
     {
         panel.Controls.Add(new Label
         {
@@ -440,12 +512,14 @@ public sealed class GsxSettingsForm : Form
             Margin = new Padding(3, 6, 3, 0)
         });
 
+        Control control = built.Control;
         control.Width = RowWidth;
         control.Margin = new Padding(3, 0, 3, FieldSpacing);
         panel.Controls.Add(control);
+        return built.ApplyRemoteValue;
     }
 
-    private void AppendInfoOrAction(FlowLayoutPanel panel, GsxSettingsField field)
+    private Action<GsxSettingsField> AppendInfoOrAction(FlowLayoutPanel panel, GsxSettingsField field)
     {
         panel.Controls.Add(new Label
         {
@@ -456,13 +530,19 @@ public sealed class GsxSettingsForm : Form
             Margin = new Padding(3, 6, 3, 0)
         });
 
-        TextBox valueBox = BuildReadOnlyValueBox(field);
+        FieldControl built = BuildReadOnlyValueBox(field);
+        Control valueBox = built.Control;
         valueBox.Width = RowWidth;
         valueBox.Margin = new Padding(3, 0, 3, field.Buttons.Count > 0 ? 2 : FieldSpacing);
         panel.Controls.Add(valueBox);
 
+        // Button.Enabled comes from Buttons[i].Disabled, which is part of the
+        // STRUCTURAL signature -- a change there rebuilds the page, so the
+        // applier only ever needs to refresh the value box.
+        Action<GsxSettingsField> apply = built.ApplyRemoteValue!;
+
         if (field.Buttons.Count == 0)
-            return;
+            return apply;
 
         var buttonsRow = new FlowLayoutPanel
         {
@@ -495,20 +575,32 @@ public sealed class GsxSettingsForm : Form
         }
 
         panel.Controls.Add(buttonsRow);
+        return apply;
     }
 
-    private static TextBox BuildReadOnlyValueBox(GsxSettingsField field) => new()
-    {
+    private static string ReadOnlyValueText(GsxSettingsField field) =>
         // Action fields carry no "value" on the wire (there's nothing to
         // show but the label + button), so this reads back empty for them
         // -- expected, not a bug.
-        Text = field.TextValue ?? field.NumericValue?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-        ReadOnly = true,
-        AccessibleName = field.Label,
-        AccessibleDescription = field.Tooltip
-    };
+        field.TextValue ?? field.NumericValue?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
 
-    private Control BuildToggle(GsxSettingsField field)
+    private static FieldControl BuildReadOnlyValueBox(GsxSettingsField field)
+    {
+        var box = new TextBox
+        {
+            Text = ReadOnlyValueText(field),
+            ReadOnly = true,
+            AccessibleName = field.Label,
+            AccessibleDescription = field.Tooltip
+        };
+        // Read-only: no in-progress edit to protect, so the new text is
+        // always taken -- e.g. toggling "diagnostic log" makes GSX republish
+        // "Log file location" with a real path, which the pilot expects to
+        // find updated when they arrow to it.
+        return new FieldControl(box, f => box.Text = ReadOnlyValueText(f));
+    }
+
+    private FieldControl BuildToggle(GsxSettingsField field)
     {
         string key = field.Key;
         var checkBox = new CheckBox
@@ -524,11 +616,21 @@ public sealed class GsxSettingsForm : Form
         // Wiring the handler AFTER the initializer means the initial
         // Checked assignment above can never fire it -- no seed/dedup
         // bookkeeping needed to stop an "echo" write back to GSX on open.
-        checkBox.CheckedChanged += (_, _) => _gsxService.SetSettingNumber(key, checkBox.Checked ? 1 : 0);
-        return checkBox;
+        // _applyingRemoteValues covers the OTHER programmatic write, an
+        // in-place apply of GSX's own value (ApplyValuesInPlace).
+        checkBox.CheckedChanged += (_, _) =>
+        {
+            if (_applyingRemoteValues) return;
+            _gsxService.SetSettingNumber(key, checkBox.Checked ? 1 : 0);
+        };
+        return new FieldControl(checkBox, f =>
+        {
+            if (checkBox.ContainsFocus) return;
+            checkBox.Checked = (f.NumericValue ?? 0) != 0;
+        });
     }
 
-    private Control BuildChoice(GsxSettingsField field)
+    private FieldControl BuildChoice(GsxSettingsField field)
     {
         if (field.Choices.Count == 0)
             return BuildReadOnlyValueBox(field); // Nothing to pick from -- never render an empty combo.
@@ -545,25 +647,40 @@ public sealed class GsxSettingsForm : Form
         foreach (GsxSettingsChoice choice in field.Choices)
             combo.Items.Add(choice);
 
-        double current = field.NumericValue ?? double.NaN;
-        for (int i = 0; i < field.Choices.Count; i++)
-        {
-            if (Math.Abs(field.Choices[i].Value - current) < 0.000001)
-            {
-                combo.SelectedIndex = i;
-                break;
-            }
-        }
+        int initial = FindChoiceIndex(field.Choices, field.NumericValue);
+        if (initial >= 0)
+            combo.SelectedIndex = initial;
 
         combo.SelectedIndexChanged += (_, _) =>
         {
+            if (_applyingRemoteValues) return;
             if (combo.SelectedItem is GsxSettingsChoice choice)
                 _gsxService.SetSettingNumber(key, choice.Value);
         };
-        return combo;
+        return new FieldControl(combo, f =>
+        {
+            if (combo.ContainsFocus) return;
+            // Choices are structural, so f.Choices is the same list the
+            // combo was built from; a value matching no choice leaves the
+            // current selection alone rather than blanking it.
+            int index = FindChoiceIndex(f.Choices, f.NumericValue);
+            if (index >= 0 && index < combo.Items.Count)
+                combo.SelectedIndex = index;
+        });
     }
 
-    private Control BuildRange(GsxSettingsField field)
+    private static int FindChoiceIndex(IReadOnlyList<GsxSettingsChoice> choices, double? value)
+    {
+        double current = value ?? double.NaN;
+        for (int i = 0; i < choices.Count; i++)
+        {
+            if (Math.Abs(choices[i].Value - current) < 0.000001)
+                return i;
+        }
+        return -1;
+    }
+
+    private FieldControl BuildRange(GsxSettingsField field)
     {
         string key = field.Key;
         NumericRangeBounds bounds = GsxRangeBoundsResolver.Resolve(
@@ -584,11 +701,26 @@ public sealed class GsxSettingsForm : Form
             AccessibleDescription = field.Tooltip
         };
 
-        numeric.ValueChanged += (_, _) => _gsxService.SetSettingNumber(key, (double)numeric.Value);
-        return numeric;
+        numeric.ValueChanged += (_, _) =>
+        {
+            if (_applyingRemoteValues) return;
+            _gsxService.SetSettingNumber(key, (double)numeric.Value);
+        };
+        return new FieldControl(numeric, f =>
+        {
+            // ContainsFocus, not Focused: the pilot's caret sits in the
+            // NumericUpDown's INNER edit box, so the container itself never
+            // reads Focused while they are typing/arrowing in it.
+            if (numeric.ContainsFocus) return;
+            // Clamp to the CURRENT bounds before assigning -- Value throws
+            // outside [Minimum, Maximum], and Min/Max are structural so they
+            // are the same bounds GSX published for this field.
+            numeric.Value = Math.Clamp(
+                GsxRangeBoundsResolver.ToDecimal(f.NumericValue ?? 0), numeric.Minimum, numeric.Maximum);
+        });
     }
 
-    private Control BuildText(GsxSettingsField field)
+    private FieldControl BuildText(GsxSettingsField field)
     {
         string key = field.Key;
         var textBox = new TextBox
@@ -615,7 +747,20 @@ public sealed class GsxSettingsForm : Form
         };
 
         _pendingTextCommits.Add(commit);
-        return textBox;
+        return new FieldControl(textBox, f =>
+        {
+            // Never clobber an in-progress edit: skip while the pilot is in
+            // the box, and skip while it holds text that has not been
+            // committed yet (Text != LastCommitted). Otherwise take GSX's
+            // value AND move LastCommitted with it, so the box reads as clean
+            // -- or FlushPendingTextEdits/Leave would later send GSX's own
+            // value straight back to it as an "edit".
+            if (textBox.ContainsFocus) return;
+            if (!string.Equals(textBox.Text, commit.LastCommitted, StringComparison.Ordinal)) return;
+            string text = f.TextValue ?? string.Empty;
+            textBox.Text = text;
+            commit.LastCommitted = text;
+        });
     }
 
     private void MoveSelectedTab(int delta)
@@ -713,9 +858,103 @@ internal static class GsxRangeBoundsResolver
         return new NumericRangeBounds(lo, hi, increment, decimalPlaces, value);
     }
 
-    private static decimal ToDecimal(double value) =>
+    /// <summary>Double -> decimal without an OverflowException at the extremes.
+    /// Shared with GsxSettingsForm's in-place range apply, so a republished
+    /// value goes through the same conversion the first render used.</summary>
+    internal static decimal ToDecimal(double value) =>
         (decimal)Math.Clamp(value, (double)decimal.MinValue, (double)decimal.MaxValue);
 }
 
 internal readonly record struct NumericRangeBounds(
     decimal Minimum, decimal Maximum, decimal Increment, int DecimalPlaces, decimal Value);
+
+/// <summary>One navigable section of the GSX settings window: the tab (or
+/// tab - subtab) title and the fields rendered on it, in wire order.</summary>
+internal sealed record GsxSettingsPage(string Title, IReadOnlyList<GsxSettingsField> Fields);
+
+/// <summary>
+/// The page traversal GsxSettingsForm renders from, and the STRUCTURAL
+/// signature RefreshSchema uses to decide between "apply the new values into
+/// the existing controls" and "dispose everything and rebuild". Both live
+/// here, on the same page list, so "the signature changed" and "the rendered
+/// content changed" can never drift apart. Record equality would not do:
+/// every field type carries IReadOnlyList properties (Choices, Buttons) that
+/// records compare by reference.
+///
+/// STRUCTURAL means everything that shapes a control at build time -- key,
+/// type, label, tooltip, bounds, step, unit, float-ness, max length,
+/// placeholder, the choice list, the button list including each button's
+/// Disabled (rendered as Button.Enabled) -- and page title. It deliberately
+/// EXCLUDES the live NumericValue/TextValue: GSX echoes every settings.set
+/// back as a /settings patch, so with the values folded in every checkbox
+/// tick, combo pick and NumericUpDown arrow-step read as a changed schema,
+/// rebuilt the window and moved screen-reader focus off the field the pilot
+/// was adjusting. Value changes are applied in place instead
+/// (GsxSettingsForm.ApplyValuesInPlace).
+///
+/// ASCII control characters separate every piece so free text (Label,
+/// Tooltip, Placeholder, ...) can never collide across a field boundary.
+/// Internal, reached by GsxSettingsSchemaSignatureTests via
+/// InternalsVisibleTo (Properties/InternalsVisibleTo.cs) -- same pattern as
+/// GsxRangeBoundsResolver above.
+/// </summary>
+internal static class GsxSettingsSchemaSignature
+{
+    /// <summary>
+    /// Flattens the schema's tab/subtab tree into one page per navigable
+    /// section, rendering BOTH shapes GSX publishes. A live capture has 5
+    /// top-level tabs: "simulation" carries no fields of its own and splits
+    /// 42 across 4 subtabs (Services/Pushback/Parking/UI); "timings",
+    /// "audio", "network" and "diagnostic" have no subtabs and carry their
+    /// 39 fields directly on the tab. An earlier version of this reader
+    /// walked subtabs only and silently dropped those 39 fields -- four
+    /// whole tabs worth of settings never shown.
+    ///
+    /// A subtab/tab contributes a page only when it has at least one field
+    /// AppendField will actually render a control for -- Separator and
+    /// Unknown fields render nothing (AppendField skips both), so a
+    /// section holding only those would otherwise become a tab the pilot
+    /// can select but that shows nothing once they arrow into it. Not
+    /// reachable with a live capture today (every observed section mixes
+    /// separators in among real controls), but cheap to rule out.
+    /// </summary>
+    public static IReadOnlyList<GsxSettingsPage> BuildPages(GsxSettingsSchema schema)
+    {
+        var pages = new List<GsxSettingsPage>();
+        foreach (GsxSettingsTab tab in schema.Tabs)
+        {
+            foreach (GsxSettingsSubtab subtab in tab.Subtabs)
+            {
+                if (!subtab.Fields.Any(IsRenderable)) continue;
+                pages.Add(new GsxSettingsPage($"{tab.Label} - {subtab.Label}", subtab.Fields));
+            }
+
+            // Not observed in a live capture (every subtabbed tab today
+            // carries no fields of its own), but the schema doesn't forbid
+            // it -- give a tab's own fields a page instead of silently
+            // dropping them if GSX ever publishes both at once.
+            if (tab.Fields.Any(IsRenderable))
+                pages.Add(new GsxSettingsPage(tab.Label, tab.Fields));
+        }
+        return pages;
+    }
+
+    private static bool IsRenderable(GsxSettingsField f) =>
+        f.Type is not (GsxFieldType.Separator or GsxFieldType.Unknown);
+
+    public static string Structural(GsxSettingsSchema schema) => Structural(BuildPages(schema));
+
+    public static string Structural(IReadOnlyList<GsxSettingsPage> pages) =>
+        string.Join("\x1e", pages.SelectMany(page =>
+            page.Fields.Select(f => page.Title + "\x1f" + StructuralField(f))));
+
+    private static string StructuralField(GsxSettingsField f) =>
+        string.Join("\x1f",
+            f.Key, f.Type.ToString(), f.Label, f.Tooltip,
+            f.Min?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Max?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Step?.ToString(CultureInfo.InvariantCulture) ?? "",
+            f.Unit, f.IsFloat.ToString(), f.MaxLength.ToString(CultureInfo.InvariantCulture), f.Placeholder,
+            string.Join("\x1f", f.Choices.Select(c => c.Value.ToString(CultureInfo.InvariantCulture) + "\x1f" + c.Label)),
+            string.Join("\x1f", f.Buttons.Select(b => b.Key + "\x1f" + b.Label + "\x1f" + b.Disabled)));
+}
