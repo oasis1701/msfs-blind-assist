@@ -660,7 +660,10 @@ public partial class MainForm
             () => (_gsxService != null && _gsxService.CouatlStarted)
                   || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar),
             capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
-            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport());
+            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport(),
+            // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a
+            // per-ICAO gate cache can notice GSX (re)publishing this airport per keystroke.
+            handlerDataVersion: () => _gsxService?.HandlerDataVersion ?? 0);
     }
 
     /// <summary>
