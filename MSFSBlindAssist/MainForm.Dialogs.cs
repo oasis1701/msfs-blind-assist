@@ -643,10 +643,17 @@ public partial class MainForm
     {
         if (airportDataProvider == null) return null;
         // GSX gates (.ini/navdata path) only when GSX is running this session (Couatl
-        // started) AND a profile matches.
+        // started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
+        // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main
+        // SimConnect connection. The L:var is what every GSX build publishes, Remote API or
+        // not — the .ini overlay, deice pads and profile stop positions are local-file
+        // features that never needed the WebSocket, and gating them on the Remote flag
+        // alone silently switched them off for any GSX build older than 4.0.1 (docs/gsx.md:
+        // "neither is a version floor").
         return new Services.GateDataSource(
             airportDataProvider,
-            () => _gsxService != null && _gsxService.CouatlStarted,
+            () => (_gsxService != null && _gsxService.CouatlStarted)
+                  || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar),
             capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
             getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport());
     }

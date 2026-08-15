@@ -62,6 +62,32 @@ public partial class SimConnectManager
         Log.Debug("SimConnect", $"Registered {HotkeyReadoutDefinitions.Length} fixed hotkey readout data definitions");
     }
 
+    /// <summary>
+    /// Registers <c>L:FSDT_GSX_COUATL_STARTED</c> as a permanent single-value definition
+    /// and asks for it once per second, delivered only when it changes. Same L:var
+    /// registration shape as every other L:var here (<c>"L:{name}"</c>, "number",
+    /// FLOAT64). Never throws — see the call site.
+    /// </summary>
+    private void RegisterGsxCouatlStartedDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED,
+                "L:FSDT_GSX_COUATL_STARTED", "number",
+                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>(DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED,
+                DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered GSX COUATL_STARTED definition (periodic, on change)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"GSX COUATL_STARTED registration failed (GSX-dependent features fall back to the Remote API flag alone): {ex.Message}");
+        }
+    }
+
     private void SetupDataDefinitions()
     {
         var sc = simConnect!; // Local reference for cleaner null-safety
@@ -243,6 +269,14 @@ public partial class SimConnectManager
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
         RegisterHotkeyReadoutDefinitions();
+
+        // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second on
+        // change (never per frame). Universal, not aircraft-specific, so it registers here
+        // with the fixed defs. It is the pre-Remote-API "is GSX running" signal that every
+        // GSX build publishes; see GsxCouatlStartedLVar for what depends on it. Its own
+        // try/catch: GSX absent means the L:var never delivers (harmless), and a
+        // registration failure must not take the bulk registration below down with it.
+        RegisterGsxCouatlStartedDefinition();
 
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is

@@ -303,6 +303,12 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED:
+                // Delivered on change only (SECOND + CHANGED); no event, no
+                // announcement — MainForm's gate-list predicate polls the property.
+                GsxCouatlStartedLVar = ((SingleValue)data.dwData[0]).value != 0;
+                break;
+
             case DATA_REQUESTS.REQUEST_SQUAWK_CODE:
                 SingleValue squawkData = (SingleValue)data.dwData[0];
                 int bcd = (int)squawkData.value;
