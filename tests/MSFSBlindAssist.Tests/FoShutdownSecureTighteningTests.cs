@@ -18,7 +18,8 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// Guardrail tests for the 2026-07-13 FO shutdown/secure tightening (Tasks 1-5 of the
 /// plan): transponder→standby deferred to the Shutdown flow, Airbus LS pushbuttons off
-/// at Shutdown, and Secure/Parking powering down ground power + APU. Each fact asserts
+/// at Shutdown, and Secure powering down ground power + APU (the A380's moved from
+/// Parking to Secure on 2026-08-15). Each fact asserts
 /// the exact step ids from the corresponding task's "Produces" block, walking the same
 /// public <c>Build()</c> accessors the app itself enumerates. Pure-logic only — no
 /// SimConnect, no executor invocation.
@@ -131,20 +132,36 @@ public class FoShutdownSecureTighteningTests
     }
 
     // -- Task 5: FBW A380 -------------------------------------------------
+    // SUPERSEDED 2026-08-15. The original fact pinned PK_EXTPWR_OFF / PK_APU_OFF *in*
+    // PARKING, because at the time the A380 had no Secure flow and Parking was the only
+    // place a power-down could live. It now has one, so the power-down moved there and
+    // Parking leaves the aircraft powered at the gate (it selects the APU generators and
+    // APU bleed ON — killing external power and the APU master two steps later left the
+    // jet on batteries). This asserts the move, not a relaxation.
 
     [Fact]
-    public void A380_AfterLandingTcasDropped_ParkingPowersDown()
+    public void A380_AfterLandingTcasDropped_SecurePowersDown_ParkingDoesNot()
     {
         var flows = A380Flows.Build();
         Assert.DoesNotContain("AL_TCAS", FlowStepIds(flows, "AFTER_LANDING"));
+
         var pk = FlowStepIds(flows, "PARKING").ToList();
-        Assert.Contains("PK_EXTPWR_OFF", pk);
-        Assert.Contains("PK_APU_OFF", pk);
+        Assert.DoesNotContain("PK_EXTPWR_OFF", pk);
+        Assert.DoesNotContain("PK_APU_OFF", pk);
+
+        var sec = FlowStepIds(flows, "SECURE").ToList();
+        Assert.Contains("SC_EXTPWR_OFF", sec);
+        Assert.Contains("SC_APU_OFF", sec);
 
         var groups = A380Checklist.Build();
         Assert.DoesNotContain("AL_TCAS", ChecklistItemIds(groups, "AFTER_LANDING"));
+
         var pkItems = ChecklistItemIds(groups, "PARKING").ToList();
-        Assert.Contains("PK_EXTPWR_OFF", pkItems);
-        Assert.Contains("PK_APU_OFF", pkItems);
+        Assert.DoesNotContain("PK_EXTPWR_OFF", pkItems);
+        Assert.DoesNotContain("PK_APU_OFF", pkItems);
+
+        var secItems = ChecklistItemIds(groups, "SECURE").ToList();
+        Assert.Contains("SC_EXTPWR_OFF", secItems);
+        Assert.Contains("SC_APU_OFF", secItems);
     }
 }
