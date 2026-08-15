@@ -8,8 +8,12 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// The ONE place the app decides what a stand is CALLED. Every readout a pilot can hear a stand
 /// named in — the taxi dialog's destination combo, the gate-teleport list, <c>gate.select</c>,
-/// Where-Am-I, and SayIntentions' "are you at your assigned gate" check — gets its stand names
-/// from here, so a stand cannot be called two different things in one session.
+/// Where-Am-I, SayIntentions' "are you at your assigned gate" check, and the TCAS ground-traffic
+/// list's "at Gate …" label (<see cref="GateResolver"/>) — gets its stand names from here, so a
+/// stand cannot be called two different things in one session. A consumer that reads
+/// <see cref="IAirportDataProvider.GetParkingSpots"/> directly for a name is a defect, not a
+/// shortcut: the TCAS list did exactly that and said "A 25" for the KJFK stand every other
+/// readout called "B 25".
 ///
 /// <para>
 /// <b>The defect this exists to prevent.</b> Before this seam, the dialogs went through
