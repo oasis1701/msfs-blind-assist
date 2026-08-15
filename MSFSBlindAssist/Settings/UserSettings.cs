@@ -47,6 +47,26 @@ public class UserSettings
         /// </summary>
         public bool AnnounceTimeWithSeconds { get; set; } = false;
 
+        // ── VATSIM (vPilot) announcements ────────────────────────────────────
+        // Master switch is OFF by default: turning it on is what installs the plugin
+        // into vPilot's Plugins folder, so it must be a deliberate act.
+        public bool VatsimAnnouncementsEnabled { get; set; } = false;
+        public bool VatsimAnnounceConnect { get; set; } = true;
+        public bool VatsimAnnounceDisconnect { get; set; } = true;
+        public bool VatsimAnnouncePrivateMessages { get; set; } = true;
+        public bool VatsimAnnounceRadioMessages { get; set; } = true;
+        public bool VatsimAnnounceSelcal { get; set; } = true;
+
+        // ── Updates ──────────────────────────────────────────────────────────
+        // Release by default: preview builds carry the newest changes but have had far
+        // less flying time, so opting in is a deliberate act guarded by a confirmation in
+        // the Updates settings tab.
+        public UpdateChannel UpdateChannel { get; set; } = UpdateChannel.Release;
+
+        // On by default. The check is one HTTP call fired after the main window is shown;
+        // it never blocks startup and stays completely silent on any failure.
+        public bool CheckForUpdatesOnStartup { get; set; } = true;
+
         // Hand Fly Settings
         // Default is Both (tone + spoken pitch/bank): spoken pitch is safety-relevant
         // whenever Hand Fly engages — the auto-handoff at rotation AND a manual

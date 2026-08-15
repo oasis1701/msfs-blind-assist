@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net48 because vPilot is a .NET Framework application and loads this DLL
+         in-process. This is not a choice we get to make. -->
+    <TargetFramework>net48</TargetFramework>
+    <Platforms>AnyCPU</Platforms>
+    <OutputType>Library</OutputType>
+    <AssemblyName>MSFSBlindAssist.VPilotPlugin</AssemblyName>
+    <RootNamespace>MSFSBlindAssist.VPilotPlugin</RootNamespace>
+    <AssemblyTitle>MSFS Blind Assist vPilot Plugin</AssemblyTitle>
+    <Product>MSFS Blind Assist</Product>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Version>0.0.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Lets `dotnet build` target net48 on a machine (and on the CI runner) with no
+         .NET Framework 4.8 developer pack installed. Reference assemblies only —
+         nothing from this package ships. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- vPilot supplies this at runtime; Private=false keeps it out of our output so it
+         can never be copied into the Plugins folder and shadow vPilot's own copy. -->
+    <Reference Include="RossCarlson.Vatsim.Vpilot.Plugins">
+      <HintPath>lib\RossCarlson.Vatsim.Vpilot.Plugins.dll</HintPath>
+      <SpecificVersion>False</SpecificVersion>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -22,9 +22,10 @@ public partial class AboutForm : Form
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        // Get version info from assembly
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        var versionString = version != null ? $"v{version.Major}.{version.Minor}.{version.Build}" : "v0.0.0"; // Format as v0.2.3
+        // AppVersion reads AssemblyInformationalVersion, so a preview build reports
+        // "8.0.1-pre.42 (build 4f7e7ba)" rather than the AssemblyVersion "8.0.1" — which is
+        // identical for every preview of that version and useless in a bug report.
+        var versionString = $"v{Services.AppVersion.DisplayString}";
         var copyright = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyCopyrightAttribute>()?.Copyright ?? "Copyright © 2025";
 

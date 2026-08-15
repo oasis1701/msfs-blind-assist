@@ -199,6 +199,8 @@ public partial class MainForm : Form
     // (silent fallback), so users without AS see/hear no change.
     private MSFSBlindAssist.Services.ActiveSkyWeatherMonitor? activeSkyWeatherMonitor;
 
+    private MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService? vatsimService;
+
     private Forms.WeatherRadarForm? weatherRadarForm;
 
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
@@ -460,6 +462,11 @@ public partial class MainForm : Form
 
         // Set up form after load
         this.Load += MainForm_Load;
+
+        // The update check runs off Shown, not Load: the window is already up, so the
+        // dialog has a parent and the message pump is running for the queued announcer.
+        // It never blocks startup — the HTTP call is awaited after the form is visible.
+        this.Shown += MainForm_Shown;
     }
 
     private void MainForm_Load(object? sender, EventArgs e)
@@ -510,6 +517,39 @@ public partial class MainForm : Form
         StartIFlySdkBridge();
 
         // Don't set focus - let default tab order handle it for proper menu accessibility
+    }
+
+    /// <summary>
+    /// Fires once, the first time the window is displayed. The bool is belt and braces:
+    /// Shown is documented as first-display only, and a second update check would be
+    /// harmless but pointless.
+    /// </summary>
+    private bool _startupUpdateCheckDone;
+
+    private void MainForm_Shown(object? sender, EventArgs e)
+    {
+        if (_startupUpdateCheckDone) return;
+        _startupUpdateCheckDone = true;
+
+        if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
+
+        // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
+        // -p:Version), which loses to every published tag, so without this every
+        // developer launch would open the update dialog. The MANUAL check still offers
+        // the update, which is the documented behaviour for a dev build.
+        var current = Services.AppVersion.Current;
+        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0))
+        {
+            // Logged because RunUpdateCheckAsync never runs here, so without this line the
+            // skip is indistinguishable in debug.log from a check that silently failed.
+            Log.Debug("Updates",
+                $"Startup update check skipped: dev build (version {Services.AppVersion.DisplayString}).");
+            return;
+        }
+
+        // Deliberately not awaited: startup must not wait on a network round-trip.
+        // RunUpdateCheckAsync swallows everything when userInitiated is false.
+        _ = RunUpdateCheckAsync(userInitiated: false);
     }
 
     private void InitializeManagers()
@@ -715,6 +755,21 @@ public partial class MainForm : Form
         activeSkyWeatherMonitor.Enabled = MSFSBlindAssist.Services.ActiveSkyWeatherMonitor
             .ShouldRun(MSFSBlindAssist.Settings.SettingsManager.Current);
 
+        // VATSIM announcements from vPilot. Constructed always so the settings dialog can
+        // start it live via ApplyRuntimeSettings; ApplySettings is what installs the
+        // plugin and starts the pipe server, and it does nothing at all while the master
+        // switch is off (which is the default).
+        vatsimService = new MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService(announcer, this);
+        var vatsimStartupInstall = vatsimService.ApplySettings(MSFSBlindAssist.Settings.SettingsManager.Current);
+        if (vatsimStartupInstall != null)
+        {
+            // atStartup: only the outcomes the pilot could not otherwise notice. Dropping
+            // the result here entirely — as this line used to — meant an app update that
+            // shipped a new plugin while vPilot happened to be running went through as
+            // Locked in total silence, and the pilot flew the whole leg on the old plugin.
+            AnnounceVatsimInstallOutcome(vatsimStartupInstall, atStartup: true);
+        }
+
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
         eventBatchTimer = new System.Windows.Forms.Timer();
@@ -879,6 +934,9 @@ public partial class MainForm : Form
 
         // Clean up ActiveSky weather-update monitor
         activeSkyWeatherMonitor?.Dispose();
+
+        // Clean up the VATSIM pipe server (owns a background listener thread)
+        vatsimService?.Dispose();
 
         // Clean up A380X Coherent clients
         coherentClient?.Dispose();

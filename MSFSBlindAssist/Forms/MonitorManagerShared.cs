@@ -1,39 +1,10 @@
 namespace MSFSBlindAssist.Forms;
 
-/// <summary>Shared plumbing for the per-aircraft monitor-manager forms (Fenix,
-/// A32NX, A380, HS787, iFly; the PMDG form keeps its own filtered populate but
-/// shares the close gate).</summary>
+/// <summary>Shared plumbing for the per-aircraft monitor-manager forms. The list itself is
+/// built and populated by <see cref="MonitorManagerFormBase"/>; what remains here is the
+/// close gate, which is not the base form's concern to define.</summary>
 internal static class MonitorManagerShared
 {
-    /// <summary>Repopulates a monitor-manager CheckedListBox from the CURRENT
-    /// persisted disabled set. The guard flag suppresses the ItemCheck handler
-    /// while SetItemChecked runs — without it every populate fires a (no-op but
-    /// file-writing) Save per row.</summary>
-    public static void Populate(CheckedListBox listBox, IReadOnlyList<string> labels,
-        IReadOnlyList<string> keys, ICollection<string> disabledVars, ref bool populating)
-    {
-        populating = true;
-        try
-        {
-            listBox.BeginUpdate();
-            listBox.Items.Clear();
-            for (int i = 0; i < labels.Count; i++)
-            {
-                listBox.Items.Add(labels[i]);
-                // disabledVars is the live backing List (not the rebuilt-on-Save HashSet
-                // sidecar) on purpose: the List is the source of truth, the sidecar can
-                // lag between mutation and Save, and this runs once per form open over a
-                // few dozen rows — correctness beats an O(1) lookup here.
-                listBox.SetItemChecked(i, !disabledVars.Contains(keys[i])); // checked = announcing
-            }
-            listBox.EndUpdate();
-        }
-        finally
-        {
-            populating = false;
-        }
-    }
-
     /// <summary>Hide-on-close wiring that still lets the app EXIT: Application.Exit
     /// raises FormClosing on every OpenForms member (hidden forms included) and
     /// ABORTS the whole exit if any form cancels — an unconditional cancel left

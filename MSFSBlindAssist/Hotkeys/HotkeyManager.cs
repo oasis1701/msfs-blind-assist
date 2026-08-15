@@ -55,6 +55,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_LANDING_PEAK_G = 9241;   // Ctrl+Shift+G (last landing g-force) — output mode
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
+        private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
 
         // FCU push/pull hotkey IDs
@@ -421,6 +422,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TOGGLE_ECAM_MONITORING:
                             TriggerHotkey(HotkeyAction.ToggleECAMMonitoring);
                             break;
+                        case HOTKEY_VATSIM_MUTE:
+                            TriggerHotkey(HotkeyAction.ToggleVatsimAnnouncements);
+                            break;
                         case HOTKEY_SHOW_OANS:
                             TriggerHotkey(HotkeyAction.ShowOANS);
                             break;
@@ -755,6 +759,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
+            RegisterHotKey(windowHandle, HOTKEY_VATSIM_MUTE, MOD_ALT, 0x56); // Alt+V (Toggle VATSIM announcements)
             RegisterHotKey(windowHandle, HOTKEY_SHOW_OANS, MOD_CONTROL | MOD_SHIFT, 0x42);  // Ctrl+Shift+B (A380 OANS / BTV)
             RegisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER, MOD_CONTROL, 0x4D); // Ctrl+M (Monitor Manager - per-aircraft)
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
@@ -868,6 +873,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
+            UnregisterHotKey(windowHandle, HOTKEY_VATSIM_MUTE);
             UnregisterHotKey(windowHandle, HOTKEY_SHOW_OANS);
             UnregisterHotKey(windowHandle, HOTKEY_MONITOR_MANAGER);
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
@@ -1332,6 +1338,7 @@ public class HotkeyManager : IDisposable
         ReadNDWaypoint,   // Ctrl+W (output) — FBW ND TO-waypoint name/distance/bearing
         ToggleTakeoffAssist,
         ToggleECAMMonitoring,
+        ToggleVatsimAnnouncements,
         MonitorManager,
         ToggleHandFlyMode,
         ToggleVisualGuidance,

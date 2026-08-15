@@ -21,7 +21,7 @@ dotnet build MSFSBlindAssist.sln -c Release
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains four projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all four. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
+The solution contains five projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), and `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all five. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution.
 
 ## Testing
 
@@ -36,6 +36,57 @@ speculative tests for sim-driven paths.
 ## Git Workflow
 
 The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main.
+
+### Release notes — every PR adds a changelog fragment
+
+**After opening the PR, add `changelog.d/<pr>-<slug>.<category>.md`** describing the
+change in user-facing terms — `<pr>` is this PR's own number, so the file cannot be
+named, let alone added, until the PR exists. Do not try to pre-create it before opening
+the PR. A required CI check fails without it. Full convention:
+[changelog.d/README.md](changelog.d/README.md).
+
+**The procedure — the number is READ, never guessed:**
+
+1. Commit the code changes and push the branch.
+2. Open the PR (`gh pr create …`). It prints the PR URL; the trailing number IS `<pr>`.
+3. Add `changelog.d/<pr>-<slug>.<category>.md`, commit, push.
+
+**NEVER infer the next number.** GitHub draws issue and PR numbers from ONE shared
+sequence — in this repo issue #172 sits between PRs #171 and #173, issue #169 between
+#168 and #170 — so anyone filing an *issue* between your guess and `gh pr create` shifts
+it, as does a second PR opened in that window (four people contribute here). A fragment
+carrying the WRONG number is worse than one carrying none: it looks authoritative, so
+nobody re-checks it, and the archive quietly attributes a change to a PR that never made
+it. Step 2 costs nothing and cannot be wrong. If a number does end up wrong or missing,
+CI prints the exact `git mv` — that is the backstop, not the detection mechanism.
+
+- `<pr>` — this pull request's own number, no leading zero. Traces every fragment to the
+  PR that added it and stops two PRs on the same area from colliding on a file name. CI
+  checks this against the real PR number and, if it's wrong or missing, fails with the
+  exact `git mv` to fix it.
+- `<slug>` — lower-case letters/digits/dashes, starting with a letter or digit, short and
+  descriptive, unique within the PR.
+- `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
+  (existing capability made better), `fix`, or `internal` (validated, never published —
+  for refactors/CI/tests).
+- Content — markdown prose, no heading, becomes a bullet. **Write for a pilot, not a
+  reviewer**: say what is different when they fly, not which code path moved. Compare
+  "Docking no longer says complete when you are parked askew — it tells you to back up
+  and try again" against "fix(docking): require squareness before completion".
+
+Nothing user-facing? Add an `internal` fragment, or apply the `skip-changelog` label.
+Prefer the fragment — it needs no repository permissions.
+
+**Fragments are never deleted.** A release is defined by the fragments *added* between
+two tags (`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a permanent
+per-change archive. Two consequences that are easy to get wrong: never tidy old
+fragments away, and never add a fragment for something already released — it would
+appear in the next release's notes.
+
+At tag time `.github/workflows/release.yml` renders the fragments with
+`tools/ChangelogBuilder` and passes them as `body_path`, which the release action
+prepends to GitHub's generated PR list. Preview any time from Actions → Changelog →
+Run workflow; it publishes nothing.
 
 ## CRITICAL Rules (Always Follow)
 
@@ -147,12 +198,37 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
 
+### Updates & release channels (→ [updates.md](docs/updates.md))
+
+- The rolling preview tag must NEVER begin with `v` — `release.yml` triggers on `tags: ['v*']`, so a `v…-pre.N` tag fires the release workflow and publishes a duplicate full release. → [updates.md](docs/updates.md)
+- Every `git describe --tags --abbrev=0` in a workflow must carry `--match 'v*'` — the `preview` tag lives on `main`, and an unscoped lookup returns IT instead of the previous release (verified: a tag planted between v7.0.0 and v8.0.0 made `git describe --tags --abbrev=0 v8.0.0^` return the planted tag), silently truncating the release's written notes. → [updates.md](docs/updates.md)
+- `generate_release_notes` must stay FALSE in `preview.yml` — GitHub's generated list compares against the previous tag, which after the force-push is `preview` itself. → [updates.md](docs/updates.md)
+- Version comparison and display must read `AssemblyInformationalVersion` (via `Services/AppVersion.cs`), NEVER `AssemblyVersion` — the latter cannot carry a pre-release identifier, so `8.0.1-pre.42` and `8.0.1-pre.7` both present as `8.0.1.0` and no preview channel can work. → [updates.md](docs/updates.md)
+- Pre-release identifiers compare NUMERICALLY, not lexically (`pre.10 > pre.9`), and a release outranks a pre-release of the same version (`8.0.1 > 8.0.1-pre.42`) — the second rule is what lets a real release supersede every preview, so the preview channel needs no special case for "a release came out". → [updates.md](docs/updates.md)
+- The preview channel must stay a SUPERSET (highest of pre-releases AND releases) — never narrow it to pre-releases only, or a pilot is stranded with nothing offered in the window between a release being cut and the next merge. → [updates.md](docs/updates.md)
+- The automatic startup check must stay SILENT on failure and when up to date — only the menu item reports those. → [updates.md](docs/updates.md)
+- The rolling preview's version travels in the release NAME (`Preview build <version>`), never the tag — the tag is the fixed string `preview` so the release can be updated in place, and a fixed tag cannot carry a changing version. `UpdateCandidateSelector.ResolveVersion` falls back from tag to name; reading only the tag made every preview an unparseable candidate and left the Preview channel permanently reporting "you are running the latest version". → [updates.md](docs/updates.md)
+
 ### Screen-reader announcements (→ CLAUDE.md — stays as full prose in the lean core)
 
 - NEVER announce button presses, combo/dropdown value changes, or any direct UI interaction in panel controls — screen readers already announce them; ONLY announce numeric input confirmations, validation errors, and background (non-user-triggered) state changes. → CLAUDE.md
 - Combo double-announce suppression must be GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window — gating the wrap to one aircraft (the old HS787-only gate) causes double-announces on every other def that self-announces from inside `ProcessSimVarUpdate`. → CLAUDE.md
 - The echo-window suppression must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. → CLAUDE.md
 - Never blanket-suppress value-0 resting-state button labels in MainForm — use the opt-in `SuppressRestingButtonState` flag only; some 0-state labels (PMDG 777 "LNAV: Off", HS787 "Baro STD: QNH") are meaningful and must be spoken. → CLAUDE.md
+
+### Monitor Manager dialogs (Ctrl+M)
+
+- All six per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage.
+- The list rebuilds on exactly THREE events — form open, search text changed, Show filter changed — and NEVER from `ItemCheck`: re-filtering on a tick drops the row out from under the caret in Muted view, slides the next variable into its place, and makes a second Space press mute a variable the pilot never selected.
+- `_suppressItemCheck` must wrap every rebuild. `SetItemChecked` raises `ItemCheck` per row, so without it one filter keystroke on the 400-row PMDG list fires ~400 `SettingsManager.Save()` disk writes on the UI thread.
+- The list's `AccessibleName` names the ACTIVE FILTER and carries the count ("Muted variables, 12 of 300"), never a `Label` and never spoken — it is the only channel by which either reaches the pilot, read when focus lands on the list, with no app-generated speech over their typing. Compose it via `MonitorVariableFilter.DescribeList`; a fixed prefix made changing the Show filter completely inaudible (live report), so the three modes must never render the same leading phrase.
+- `ItemCheck` maps `e.Index` through the VISIBLE rows, never the full row list — the two diverge the moment a filter is applied.
+- Every rebuild must end by selecting row 0 when the list came back with no selection. `Items.Clear()` drops `SelectedIndex` to -1 and NOTHING restores it — not adding items, not the list receiving focus (measured, not assumed) — and at -1 the screen reader announces the list with no current item and the first Space press does nothing, because a `CheckedListBox` toggles the item at `SelectedIndex`. It is the same -1 the first-open path had to fix, and it applies to every search keystroke and every Show change.
+- That write reaches `_lastIndexByForm` through `SelectedIndexChanged`, so `ShowForm` must read the remembered row BEFORE it calls `ApplyFilter` — read it after and it is always 0, and the pilot's last position is silently lost on every open.
+- The dialog opens clean every time (search empty, Show on All): a remembered filter would open showing a fraction of the list for a reason the pilot cannot see. Do not add persistence. Both resets are made under `_suppressFilter` so the open rebuilds the list ONCE, not once per control.
+- The A380 E/WD fold lives in `MonitorRowBuilder.BuildWithFold`, not on the form — a private static on a `Form` is unreachable from the test project. Its synthetic row is appended AFTER the sort (so it lands last) and only when a folded variable would otherwise have been listed: a fold row over a family that is entirely unannounced is a checkbox that silences nothing.
+- `FBWA380MonitorManagerForm.EcamMemosKey` must stay public with that exact name — `MainForm.AircraftSwitch.cs` gates the Coherent E/WD scrape and the FWS failure client on it, so the one row mutes three independent speech sources.
+- `MonitorVariableFilter` must use `OrdinalIgnoreCase`, never `ToLower()`/`ToLowerInvariant()` — tr-TR folds "I" to dotless "ı" and the search silently stops matching.
 
 ### Core SimConnect / framework (→ [architecture.md](docs/architecture.md))
 
@@ -376,6 +452,22 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - A ground-track route accepted with NO clearance behind it (`ChooseTaxiwaySource` rule 2) must SAY so — "No cleared taxiways to check it against, so this is SayIntentions' own plan, not ATC's." — and must never discard `GetLastTaxiClearanceAsync`'s `Error`. flight.json carries no clearance text, so every import rides a 5 s `getCommsHistory` round-trip; before the pilot requests taxi, `taxi_path` holds SI's OWN plan (a live LSZH capture: 12 legs across the airfield), and taken silently that announced a confident route no controller gave. The clause is ground-track-only (a shortest path is this app's, not SI's) and a clearance that WAS read adds no words. → [sayintentions.md](docs/sayintentions.md)
 - `BuildTaxiRouteFromSayIntentionsAsync` is dispatched as a discarded Task, so EVERY statement must sit inside its top-level try — the DB-provider guard and `ValidateDatabaseSimulatorMatch()` (which reads SimConnect state and can open a modal dialog) once ran ahead of it, and anything they threw was captured into the discarded Task: no announcement, no log line. → [sayintentions.md](docs/sayintentions.md)
 - `current_airport` holds the controlling ARTCC's ident in the cruise (live log: KZLC → KZOA mid-flight, real airport restored on the ground) — the import's airport chain validates every candidate against the navigation database and falls through, and the info window labels a `KZ[A-Z][A-Z]`-shaped UNKNOWN ident "Controlling facility"; never filter on the KZ prefix alone (KZPH and KZZV are real airports), and never let an unvalidated current_airport dead-end the import. → [sayintentions.md](docs/sayintentions.md)
+
+### VATSIM / vPilot announcements (→ [vatsim.md](docs/vatsim.md))
+
+- The pipe name `MSFSBlindAssist.vPilot` must NEVER be changed back to the legacy `vPilot-to-TTS` — `NamedPipeServerStream` defaults to ONE server instance per name, so if a user still runs the old standalone tray app it owns that name and MSFSBA's server cannot start at all. → [vatsim.md](docs/vatsim.md)
+- The plugin's `Send` must never block vPilot's event thread — it enqueues and returns; a background sender owns the pipe and backs off. The original's `pipe.Connect(500)` on the event thread cost vPilot 500 ms per event whenever nothing was listening, and it is what makes leaving the plugin installed with the feature off free. → [vatsim.md](docs/vatsim.md)
+- VATSIM text always goes through `AnnounceWithQueue`, NEVER `AnnounceImmediate` — chatter must not interrupt a landing callout or a taxi instruction. This is also why the `announcer.Suppressed` grace window silently dropping VATSIM messages for a few seconds after an aircraft detect is ACCEPTED, not a bug to "fix" by switching to `AnnounceImmediate`. → [vatsim.md](docs/vatsim.md)
+- VATSIM chatter shares `ScreenReaderAnnouncer`'s speech queue with ECAM messages and must never head-of-line-block one — `VatsimAnnouncementService.OnMessageReceived` drops (never queues) a message once `QueuedAnnouncementCount` reaches `MaxSharedQueueDepth` (5, ~4.5 s of backlog). That depth read must stay INSIDE the `BeginInvoke` marshal, on the UI thread that does the enqueue — never back on the pipe listener thread: `BeginInvoke` only posts, so a burst arriving while the UI thread is busy has every message read a depth that has not yet absorbed its predecessors, all pass the gate, and all enqueue together — the exact block the cap exists to prevent. The fix for that blocking is capping the queue depth, NEVER switching VATSIM to `AnnounceImmediate` — that would violate the invariant above. → [vatsim.md](docs/vatsim.md)
+- `VPilotWireFormat.cs` is compiled into BOTH the app and the net48 plugin from ONE source via a linked `<Compile>` (never a copy) — the two ends of the wire cannot be allowed to drift. Message newlines and tabs are escaped; the line protocol depends on it. → [vatsim.md](docs/vatsim.md)
+- The plugin's own log (`%APPDATA%\MSFSBlindAssist\logs\vpilot-plugin.log`) is the ONE exception to "every log write goes through `Utils/Logging/Log`" — it runs in vPilot's process on .NET Framework and cannot reference the app's logger. It still resolves into the canonical logs folder. → [vatsim.md](docs/vatsim.md)
+- `VPilotPluginInstaller` writes outside MSFSBA's own tree, so every method is best-effort and must NEVER throw — a failed install degrades to a status the settings dialog explains, and `VatsimPanel.Validate` never fails. → [vatsim.md](docs/vatsim.md)
+- `Locked` applies ONLY to updating a DLL vPilot has already loaded; a FIRST install succeeds even with vPilot running (nothing holds a file that does not exist yet). Never collapse the two messages — they ask the pilot to do different things. → [vatsim.md](docs/vatsim.md)
+- There is NO vPilot folder Browse button and NO `VPilotPluginsFolderOverride` setting, and adding one back is a regression, not a feature — vPilot has no portable install mode, always installs under `%LOCALAPPDATA%\vPilot` and always writes `HKCU\Software\vPilot\Install_Dir`, and the standalone vPilot-to-TTS ran for years on that one key across dozens of users with no reported location problem. A user-chosen path can only point somewhere vPilot isn't: it buys a way to mis-install plus a setting with no way to clear it. For the same reason `ResolvePluginsFolder` must NOT regain the branch that accepted any folder merely NAMED `Plugins` — that existed only so Browse could take either folder. → [vatsim.md](docs/vatsim.md)
+- The startup install check announces `Locked`, `Failed`, a first-install `Installed` (`VPilotInstallResult.PluginWasAbsent`), and the one-shot `LegacyRemoved` notice (via the queued announcer, whose timer cannot tick until the message pump runs, so it lands after the form is up) — all four are otherwise invisible or unrepeatable, and the first three mean the pilot is about to fly on a plugin that is not the one shipped, or not loaded at all. An update-refresh `Installed`, `AlreadyCurrent`, and `VPilotNotFound` stay settings-only: the same check runs on every launch, so announcing those would narrate every app update for no action on the pilot's part. → [vatsim.md](docs/vatsim.md)
+- Turning the master switch off leaves the plugin DLL in place by design — removal fails while vPilot is running, so "off" would become a close-vPilot chore that silently no-ops. → [vatsim.md](docs/vatsim.md)
+- `HotkeyAction.ToggleVatsimAnnouncements` must stay in `MainForm.OnHotkeyTriggered`'s `offlineActions` set — muting VATSIM chatter has nothing to do with SimConnect, and without it the pilot hears "Not connected to simulator, please wait". → [vatsim.md](docs/vatsim.md)
+- Status/diagnostic text in a settings panel is a read-only `TextBox`, NEVER a `Label` — a `Label` is not in the tab order, so with a screen reader it has to be hunted for with the review cursor instead of tabbed to. Applies to any new status readout, not just the VATSIM one. → [vatsim.md](docs/vatsim.md)
 
 ### Visual landing guidance (dual-tone) (→ [visual-guidance.md](docs/visual-guidance.md))
 
@@ -667,6 +759,8 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
 - **Working on the SayIntentions integration (clearance parsing, transmission readouts, taxi route import)** → [SayIntentions](docs/sayintentions.md)
+- **Working on the VATSIM integration (vPilot plugin, pipe server, announcement settings)** → [VATSIM](docs/vatsim.md)
+- **Working on the update system (release/preview channels, the updater, CI release workflows)** → [Updates](docs/updates.md)
 - **Working on PMDG 737-800 panels, CDU, NG3 data struct** → [PMDG 737-800](docs/pmdg-737.md)
 - **Working on the iFly 737 MAX8 (official SDK shared memory, WM_COPYDATA writes, synthetic `SYN_*` fields)** → [iFly 737 MAX8](docs/ifly-737.md)
 - **Working on the PMDG 777 (CDA switches, CDU array indexing, System Display synoptic pages)** → [PMDG 777](docs/pmdg-777.md)
@@ -692,6 +786,8 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
+- **[VATSIM](docs/vatsim.md)** - vPilot plugin install, named-pipe transport, per-event announcement settings
+- **[Updates](docs/updates.md)** - Release and preview channels, the rolling preview workflow, version derivation, and the route back to a release
 - **[PMDG 737-800](docs/pmdg-737.md)** - NG3 SDK patterns, two-CDU convention, FIRE_HandlePos ordering, EFB gating
 - **[iFly 737 MAX8](docs/ifly-737.md)** - official iFly SDK transport (shared memory + WM_COPYDATA), generated offsets, synthetic `SYN_*` fields, command-encoding traps
 - **[PMDG 777](docs/pmdg-777.md)** - CDA switch patterns, fuel-lever/ground-power exceptions, CDU crew-index convention, System Display
