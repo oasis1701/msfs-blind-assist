@@ -47,6 +47,7 @@ public static class FbwA380FlowDefinitions
         BuildLanding(),
         BuildAfterLanding(),
         BuildParking(),
+        BuildSecure(),
     };
 
     // -----------------------------------------------------------------------
@@ -504,6 +505,65 @@ public static class FbwA380FlowDefinitions
             Skip(SW("PK_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 13. Securing
+    // -----------------------------------------------------------------------
+    // The power-down phase. PARKING deliberately leaves the aircraft POWERED (it selects
+    // the APU generators and APU bleed on for the gate); this is where the jet actually
+    // goes cold and dark. Content and order come from the aircraft's own shipped reference
+    // text, Checklists/FBW_A380_Checklist.txt "[Securing the Aircraft]".
+    private static Flow BuildSecure() => new()
+    {
+        Id = "SECURE", Name = "Securing",
+        Description = "Oxygen, ADIRS, signs, exterior lights, APU bleed, ground power, APU master, batteries.",
+        RelatedChecklistGroupIds = new[] { "SECURING_CL" },
+        Steps = new()
+        {
+            // Crew oxygen is INVERTED: 0 = Auto/on, 1 = Off. Cockpit Prep's CP_OXY writes 0.
+            Skip(SW("SC_OXY", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW", 1),
+                s => s.IsPosition("PUSH_OVHD_OXYGEN_CREW", 1)),
+            Captain("SC_EFB", "EFB tablets and flyPad: stowed"),
+            Skip(Multi("SC_ADIRS", "IRS 1, 2 and 3: OFF",
+                    ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0),
+                    ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0),
+                    ("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0)),
+                s => s.IsPosition("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0)
+                  && s.IsPosition("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0)
+                  && s.IsPosition("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0)),
+            // Both sign switches are 3-position 0=On / 1=Auto|Arm / 2=Off. Cockpit Prep
+            // writes 1 (Auto / Arm); securing writes 2 (Off).
+            Skip(SW("SC_EMEREXIT", "Emergency exit lighting: OFF",
+                    "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 2),
+                s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 2)),
+            Skip(SW("SC_NOSMOKE", "No smoking signs: OFF",
+                    "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2),
+                s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2)),
+            // Only nav + logo are still burning by now: beacon / wing / nose went off in
+            // PARKING, landing + strobe in AFTER_LANDING.
+            Skip(Multi("SC_EXTLT_OFF", "Exterior lights: OFF", ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0)),
+                s => s.IsPosition("LIGHT_NAV", 0) && s.IsPosition("LIGHT_LOGO", 0)),
+            Skip(SW("SC_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
+                s => !s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")),
+            Skip(Multi("SC_EXTPWR_OFF", "External power: OFF",
+                    ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
+                    ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
+                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON")
+                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON")),
+            Skip(SW("SC_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
+                s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
+            // Batteries LAST — the final power source, and the step that makes the jet dark.
+            Skip(Multi("SC_BAT_OFF", "Batteries: OFF",
+                    ("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0), ("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
+                    ("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 0), ("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 0)),
+                s => s.IsPosition("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 0)),
         }
     };
 

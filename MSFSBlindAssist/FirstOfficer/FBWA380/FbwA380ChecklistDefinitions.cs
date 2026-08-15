@@ -43,6 +43,8 @@ public static class FbwA380ChecklistDefinitions
         BuildAfterLandingCL(),
         BuildParking(),
         BuildParkingCL(),
+        BuildSecure(),
+        BuildSecuringCL(),
     };
 
     // -----------------------------------------------------------------------
@@ -766,6 +768,102 @@ public static class FbwA380ChecklistDefinitions
                 v => v < 0.5, action: null),
             Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN",
                 v => v < 0.5, action: null),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 13. Securing — 1:1 mirror of FbwA380FlowDefinitions.BuildSecure().
+    // -----------------------------------------------------------------------
+    private static Group BuildSecure() => new()
+    {
+        Id = "SECURE", Name = "Securing",
+        Items = new()
+        {
+            // Crew oxygen OFF = 1 (inverted; see the flow's SC_OXY).
+            Auto("SC_OXY", "SECURE", "Crew oxygen supply: OFF", "PUSH_OVHD_OXYGEN_CREW",
+                v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("PUSH_OVHD_OXYGEN_CREW", 1)),
+            Reminder("SC_EFB", "SECURE", "EFB tablets and flyPad: stowed"),
+            Multi("SC_ADIRS", "SECURE", "IRS 1, 2 and 3: OFF",
+                "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", v => v < 0.5,
+                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0);
+                    await e.Set("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0);
+                    await e.Set("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0);
+                }),
+            Auto("SC_EMEREXIT", "SECURE", "Emergency exit lighting: OFF",
+                "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", v => Math.Abs(v - 2) < 0.5,
+                (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 2)),
+            Auto("SC_NOSMOKE", "SECURE", "No smoking signs: OFF",
+                "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", v => Math.Abs(v - 2) < 0.5,
+                (e, _) => e.Set("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2)),
+            Multi("SC_EXTLT_OFF", "SECURE", "Exterior lights: OFF", "LIGHT_NAV", v => v < 0.5,
+                new[] { "LIGHT_LOGO" },
+                async (e, _) => { await e.Set("LIGHT_NAV", 0); await e.Set("LIGHT_LOGO", 0); }),
+            Auto("SC_APUBLEED_OFF", "SECURE", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
+            Multi("SC_EXTPWR_OFF", "SECURE", "External power: OFF",
+                "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
+                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0);
+                    await e.Set("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0);
+                }),
+            Auto("SC_APU_OFF", "SECURE", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
+            Multi("SC_BAT_OFF", "SECURE", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",
+                        "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO" },
+                async (e, _) =>
+                {
+                    await e.Set("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0);
+                    await e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0);
+                    await e.Set("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 0);
+                    await e.Set("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 0);
+                }),
+        }
+    };
+
+    // 13a. Securing the Aircraft Checklist — readback group: action-free (see the hard
+    // invariant on this section).
+    private static Group BuildSecuringCL() => new()
+    {
+        Id = "SECURING_CL", Name = "Securing the Aircraft Checklist",
+        Items = new()
+        {
+            Auto("SCC_ADIRS", "SECURING_CL", "ADIRS: OFF", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
+                action: null),
+            Auto("SCC_OXY", "SECURING_CL", "Oxygen: OFF", "PUSH_OVHD_OXYGEN_CREW",
+                v => Math.Abs(v - 1) < 0.5, action: null),
+            // Not in the aircraft's [Securing the Aircraft] source text (the parking brake is
+            // a [Parking] item) — kept as a readback because confirming the brake before the
+            // crew leaves is exactly what this checklist is for. Detect-only, actuates nothing.
+            Auto("SCC_PARK", "SECURING_CL", "Parking brake: SET", "A32NX_PARK_BRAKE_LEVER_POS",
+                v => v > 0.5, action: null),
+            Auto("SCC_APU", "SECURING_CL", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
+                v => v < 0.5, action: null),
+            Auto("SCC_EXTPWR", "SECURING_CL", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
+                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
+                action: null),
+            Auto("SCC_BAT", "SECURING_CL", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
+                v => v < 0.5,
+                new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",
+                        "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO" },
+                action: null),
+            // Closing line from the source text ("Aircraft is now cold and dark"). Info is a
+            // non-tickable separator, so it can never inflate CompletedCount — same role as
+            // BSC_LINE in the Before Start checklist.
+            Info("SCC_DARK", "SECURING_CL", "Aircraft is now cold and dark"),
         }
     };
 
