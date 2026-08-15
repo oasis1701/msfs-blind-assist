@@ -303,13 +303,17 @@ public class GsxServiceAnnouncerTests
         new() { Id = id, DisplayName = id, State = state, Operator = op, StateText = $"{id} is {state}" };
 
     [Fact]
-    public void Available_names_the_operator_when_gsx_publishes_one()
+    public void A_service_returning_to_available_is_silent()
     {
+        // GSX flips a finished service back to the requestable "available" state.
+        // That return must NOT be spoken: "Refuel available from United Ground
+        // Express." collides almost verbatim with the invoice announcement
+        // ("Invoice available from United Ground Express.") and is menu info, not
+        // an event. The operator was already carried by "in progress by X".
         var a = new GsxServiceAnnouncer();
         a.Update(new[] { WithOperator("Refuel", "performing", "United Ground Express") });
         var said = a.Update(new[] { WithOperator("Refuel", "available", "United Ground Express") });
-        Assert.Single(said);
-        Assert.Equal("Refuel available from United Ground Express.", said[0]);
+        Assert.Empty(said);
     }
 
     [Fact]
@@ -322,12 +326,12 @@ public class GsxServiceAnnouncerTests
     }
 
     [Fact]
-    public void Available_without_an_operator_stays_the_plain_phrase()
+    public void A_service_returning_to_available_without_an_operator_is_also_silent()
     {
         var a = new GsxServiceAnnouncer();
         a.Update(new[] { WithOperator("Catering", "performing", null) });
         var said = a.Update(new[] { WithOperator("Catering", "available", null) });
-        Assert.Equal("Catering available.", Assert.Single(said));
+        Assert.Empty(said);
     }
 
     // ── Fuel quantity — the live wire's detail.fuel {current,target,unit,aircraftTotal} — 30 s throttle ──

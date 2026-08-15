@@ -82,11 +82,14 @@ public sealed class GsxServiceAnnouncer
             {
                 if (was.State != now.State)
                 {
-                    said.Add(StatePhrase(s));
                     // A service that changed state starts its counters over
                     // (available -> performing on a turnaround replays 0..N),
                     // so the previous run's high-water milestone must not
-                    // silence the new run up to its own mark.
+                    // silence the new run up to its own mark. The reset runs even
+                    // when StatePhrase is silent (a return to "available"), so the
+                    // next performing run still replays from zero.
+                    if (StatePhrase(s) is { Length: > 0 } statePhrase)
+                        said.Add(statePhrase);
                     _spoken.Remove(s.Id);
                 }
                 else if (BusPhrase(s, was, now) is { Length: > 0 } busPhrase)
@@ -109,15 +112,27 @@ public sealed class GsxServiceAnnouncer
     private static string Name(GsxServiceState s) => GsxActiveServiceResolver.NameOf(s);
 
     /// <summary>
-    /// The phrase for a state transition. "available" and "performing" name the
-    /// handling company when GSX published one ("Refuel available from United
-    /// Ground Express.", "Deboard in progress by OneJet.") — the pre-Remote-API
-    /// transport spoke that attribution and it was dropped in the migration;
-    /// <c>operator</c> is a real wire field (fixture: OneJet, United Ground
-    /// Express) that otherwise reached the pilot only if an invoice happened to
-    /// follow. "performing" carries it too because in a session that connects at
-    /// the gate every service is ALREADY available at the first snapshot, so the
-    /// "available" transition — and its operator — never fires.
+    /// The phrase for a state transition — empty for a transition that stays silent.
+    ///
+    /// "performing" names the handling company when GSX published one ("Deboard in
+    /// progress by OneJet.") — <c>operator</c> is a real wire field (fixture: OneJet,
+    /// United Ground Express) the migration had dropped, and this is where it reaches
+    /// the pilot for every service they actually use. "completed" is the plain "done"
+    /// cue ("Refuel complete.").
+    ///
+    /// A transition INTO "available" is SILENT. GSX returns a finished service to the
+    /// requestable "available" state (you can request fuel again), and once past the
+    /// baseline that return was being spoken as "Refuel available from United Ground
+    /// Express." — three ways wrong: (1) becoming requestable is menu information, not
+    /// a spoken event — the pre-Remote-API transport never announced it, and in fact
+    /// used those exact words ("X available from Y") as its COMPLETION phrase, so the
+    /// migration re-pointed old wording at the wrong event; (2) it collides almost
+    /// verbatim with the invoice announcement "Invoice available from United Ground
+    /// Express." (GsxService.FormatReceiptAnnouncement) — a blind pilot cannot tell the
+    /// two apart, which is exactly what was reported; (3) it fired as a burst when
+    /// cancelling pushback flipped eight bypassed services back to available at once.
+    /// Operator attribution is not lost: "performing" carries it, and a service that
+    /// never performs is one the pilot never requested. (Pilot decision, 2026-08.)
     /// </summary>
     private static string StatePhrase(GsxServiceState s) => s.State switch
     {
@@ -125,9 +140,7 @@ public sealed class GsxServiceAnnouncer
                             ? $"{Name(s)} in progress."
                             : $"{Name(s)} in progress by {s.Operator.Trim()}.",
         "completed"  => $"{Name(s)} complete.",
-        "available"  => string.IsNullOrWhiteSpace(s.Operator)
-                            ? $"{Name(s)} available."
-                            : $"{Name(s)} available from {s.Operator.Trim()}.",
+        "available"  => string.Empty,
         _            => string.IsNullOrEmpty(s.StateText) ? $"{Name(s)}: {s.State}." : s.StateText + ".",
     };
 

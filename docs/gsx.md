@@ -37,7 +37,7 @@ The automatic announcement stream is independent of this selector: every service
 
 Access GSX speaks meaningful changes from the tooltip/status feed instead of every small text refresh. It handles:
 
-- Service state changes — started, complete, available — for every service GSX publishes. "Available" names the handling company when GSX has assigned one ("Refuel available from United Ground Express.").
+- Service state changes — started and complete — for every service GSX publishes. The start names the handling company when GSX has assigned one ("Deboard in progress by OneJet.", "Refuel in progress by United Ground Express."). A service returning to a requestable state after it finishes is deliberately silent: GSX flips a completed service back to "available" (you can request it again), and reading that out ("Refuel available from …") both duplicated menu information and collided almost word-for-word with the invoice announcement ("Invoice available from …"). You still hear the completion and, separately, the invoice.
 - Boarding and deboarding progress at milestones, not per passenger: "pax 0 of 155.", "pax 1 of 155.", then every tenth, plus "bags 40 percent." every ten percent. A revised passenger total is always announced.
 - Refuelling as "fuel 2221 kg loaded, aircraft 5252 kg." — at most once every 30 seconds while the loaded figure moves (never a "target": GSX's target figure rolls with the current one during a progressive fill).
 - Bus arrival phases (approaching, on the way, in position, leaving). GSX embeds a live countdown in this text ("on the way, ETA 15 secs"); the phase is spoken once and the seconds ticking down do not re-announce it.
