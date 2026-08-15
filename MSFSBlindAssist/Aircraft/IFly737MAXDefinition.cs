@@ -888,6 +888,23 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return false;
     }
 
+    // =========================================================================
+    // First Officer / universal-automation write path
+    // =========================================================================
+
+    /// <summary>Verified write path for the FO executor (approach B): resolves the
+    /// registered SimVarDefinition, suppresses the poll-echo announce of our own
+    /// write (NoteWindowWrite), and dispatches through HandleUIVariableSet — the
+    /// single place every iFly encoding trap lives. False = key not registered.</summary>
+    public bool ApplyUIVariable(string varKey, double value,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        EnsureRegistered();
+        if (!_vars.TryGetValue(varKey, out var def)) return false;
+        NoteWindowWrite(varKey);
+        return HandleUIVariableSet(varKey, value, def, simConnect, announcer);
+    }
+
     /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll
     /// refresh), if the check still fails against the live snapshot, speaks the
     /// hint on the UI thread (Tolk thread affinity — the A380 RMP lesson).</summary>
@@ -1576,6 +1593,49 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // 2500 lost the race about half the time (PR #163 review).
     internal bool WindowEchoActive(string field) =>
         _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 4000;
+
+    // =========================================================================
+    // Closed-loop auto-AP engage (universal First Officer / auto-engage service)
+    // =========================================================================
+
+    /// <summary>NG AFDS inhibits CMD engagement below 400 ft RA after takeoff — the
+    /// same airframe rule as the PMDG 737 (docs/first-officer.md). Do not lower.</summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 400;
+
+    /// <summary>Null (indeterminate) until the first SDK snapshot — a guessed false
+    /// would let the universal service's retry click disengage an engaged AP.
+    /// Engaged = CMD A or CMD B lit (0-5 switch+light encoding, mod 3 &gt; 0).</summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        if (!Sdk.IsReady || Sdk.Snapshot is not { } snap) return null;
+        return snap.ByteAt(IFlySdkOffsets.CMD_A_Switch_Status) % 3 > 0
+            || snap.ByteAt(IFlySdkOffsets.CMD_B_Switch_Status) % 3 > 0;
+    }
+
+    /// <summary>Universal auto-AP-engage entry point. No-ops if CMD is already
+    /// engaged so a toggle-style press can't disconnect it.</summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) == true) return; // never blind-click an engaged AP
+        _ = EngageCmdAAsync(simConnect);
+    }
+
+    /// <summary>The autopilot window's verified CMD A engage mechanism (SDK click →
+    /// ~700 ms verify → cockpit-clickspot trigger replay fallback, press 7 / release 8
+    /// on L:VC_Automatic_Flight_trigger_VAL — from iFly737Max_INTERIOR.xml). The
+    /// window keeps its own richer two-way EngageClick (disengage + UI refresh);
+    /// this is the engage-only half for the FO/universal service.</summary>
+    internal async Task EngageCmdAAsync(SimConnect.SimConnectManager? simConnect)
+    {
+        bool Lit() => Sdk.Snapshot is { } s
+            && s.ByteAt(IFlySdkOffsets.CMD_A_Switch_Status) % 3 > 0;
+        if (!Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_CMD_A)) return;
+        await Task.Delay(700);
+        if (Lit() || simConnect == null) return;
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 7);
+        await Task.Delay(150);
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 8);
+    }
 
     // Flattened SDK field-name -> (byte offset, Kind) map, built once from
     // IFlySdkFields.All using the SAME flattening IFlySdkClient.RaiseFieldEvents uses
