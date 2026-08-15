@@ -49,7 +49,7 @@ public sealed class GsxServiceAnnouncer
 
     private readonly record struct Snapshot(string State, int? PaxDone, int? PaxTotal,
                                             int? BagsPercent, string? BusPhase,
-                                            double? FuelCurrent, double? FuelTarget, string? FuelUnit,
+                                            double? FuelCurrent, double? FuelAircraftTotal, string? FuelUnit,
                                             int? ProgressCurrent, int? ProgressTotal, string? ProgressUnit);
 
     private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc);
@@ -74,7 +74,7 @@ public sealed class GsxServiceAnnouncer
         {
             if (string.IsNullOrEmpty(s.Id)) continue;
             var now = new Snapshot(s.State, s.PaxDone, s.PaxTotal, s.BagsPercent, s.BusPhase,
-                                   s.FuelCurrent, s.FuelTarget, s.FuelUnit,
+                                   s.FuelCurrent, s.FuelAircraftTotal, s.FuelUnit,
                                    s.ProgressCurrent, s.ProgressTotal, s.ProgressUnit);
 
             if (_previous.TryGetValue(s.Id, out var was) && _baselined)
@@ -169,25 +169,25 @@ public sealed class GsxServiceAnnouncer
             return $"{Name(s)} bags {bags} percent.";
         }
 
-        // Fuel quantity — the refuel row's detail.fuel ("Refuel 5914 of 11464 lb").
-        // This is where a live Refueling row carries its numbers (never the
-        // generic progress object — see GsxServiceState.FuelCurrent). Spoken only
-        // when the reading MOVED, and no more than once per
-        // ProgressAnnouncementInterval per service.
-        bool fuelMoved = was.FuelCurrent != now.FuelCurrent || was.FuelTarget != now.FuelTarget;
-        // A REVISED target is always worth saying, even inside the interval — the
-        // same rule the pax branch applies to a revised total: on the live EDDF run
-        // GSX published target 4239 (the aircraft's own fuel system still ramping)
-        // and corrected it to 5914 one second later; under GSX's default
-        // non-progressive fill (~11 s) the interval would otherwise let the pilot
-        // hear only the withdrawn figure. First sight of a target is not a revision.
-        bool fuelTargetRevised = was.FuelTarget is not null && was.FuelTarget != now.FuelTarget;
+        // Fuel quantity — the refuel row's detail.fuel: "Refuel 2221 kg loaded,
+        // aircraft 5252 kg." This is where a live Refueling row carries its numbers
+        // (never the generic progress object — see GsxServiceState.FuelCurrent).
+        // Spoken only when the LOADED figure moved, and no more than once per
+        // ProgressAnnouncementInterval per service — with NO revision bypass of any
+        // kind: detail.fuel.target is a rolling figure in progressive mode (moves on
+        // every 1 Hz patch), and a "revised target speaks now" rule read the row
+        // aloud once a second on a live refuel. Nothing here is worth breaking the
+        // interval for; "Refuel complete." (the state edge) already closes it.
+        bool fuelMoved = was.FuelCurrent != now.FuelCurrent;
         if (fuelMoved
-            && now.FuelCurrent is { } fuelCur && now.FuelTarget is { } fuelTarget && fuelTarget > 0
-            && (fuelTargetRevised || ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc)))
+            && now.FuelCurrent is { } fuelCur
+            && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
         {
             _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
-            return $"{Name(s)} {Quantity(fuelCur)} of {Quantity(fuelTarget)}{UnitSuffix(now.FuelUnit)}.";
+            string unit = UnitSuffix(now.FuelUnit);
+            return now.FuelAircraftTotal is { } aircraftTotal
+                ? $"{Name(s)} {Quantity(fuelCur)}{unit} loaded, aircraft {Quantity(aircraftTotal)}{unit}."
+                : $"{Name(s)} {Quantity(fuelCur)}{unit} loaded.";
         }
 
         // Generic progress — any other metered row that publishes progress
@@ -197,7 +197,7 @@ public sealed class GsxServiceAnnouncer
         bool progressMoved = was.ProgressCurrent != now.ProgressCurrent || was.ProgressTotal != now.ProgressTotal;
         if (progressMoved
             && now.PaxDone is null
-            && now.FuelTarget is null
+            && now.FuelCurrent is null
             && now.ProgressCurrent is { } cur && now.ProgressTotal is { } tot && tot > 0
             && !string.Equals(now.ProgressUnit, "pax", StringComparison.OrdinalIgnoreCase)
             && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))

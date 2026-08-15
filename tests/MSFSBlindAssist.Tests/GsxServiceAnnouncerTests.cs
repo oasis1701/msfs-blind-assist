@@ -296,25 +296,50 @@ public class GsxServiceAnnouncerTests
         Assert.Equal("Catering available.", Assert.Single(said));
     }
 
-    // ── Fuel quantity — the live wire's detail.fuel {current,target,unit} — time-throttled at 30 s ──
+    // ── Fuel quantity — the live wire's detail.fuel {current,target,unit,aircraftTotal} — 30 s throttle ──
 
-    // Shape verified across full 0→100 % refuel runs in the live captures:
-    // {"current":5914,"target":5914,"unit":"lb","startTotal":5549,"aircraftTotal":11464}.
-    private static GsxServiceState Fuel(double current, double target, string unit = "lb") => new()
+    // Shape verified live (progressive refuel, 1 Hz): {"current":2221,"target":2231,"unit":"kg",
+    // "startTotal":3004,"aircraftTotal":5252} — and target ROLLS with current (2231, 2247,
+    // 2263, …), so it is never spoken and never treated as a revision.
+    private static GsxServiceState Fuel(double current, double target, string unit = "lb", double? aircraftTotal = null) => new()
     {
         Id = "Refueling", DisplayName = "Refuel", State = "performing",
-        FuelCurrent = current, FuelTarget = target, FuelUnit = unit,
+        FuelCurrent = current, FuelTarget = target, FuelUnit = unit, FuelAircraftTotal = aircraftTotal,
         StateText = "Refueling service is being performed",
     };
 
     [Fact]
-    public void Fuel_progress_speaks_current_of_target_with_unit()
+    public void Fuel_progress_speaks_loaded_and_aircraft_total_with_unit()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 8, "kg", 3004) }, t0);
+        var said = a.Update(new[] { Fuel(2221, 2231, "kg", 5252) }, t0.AddSeconds(2));
+        Assert.Equal("Refuel 2221 kg loaded, aircraft 5252 kg.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Fuel_progress_without_an_aircraft_total_speaks_the_loaded_figure_alone()
     {
         var a = new GsxServiceAnnouncer();
         var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
         a.Update(new[] { Fuel(0, 5914) }, t0);
-        var said = a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2));
-        Assert.Equal("Refuel 820 of 5914 lb.", Assert.Single(said));
+        Assert.Equal("Refuel 820 lb loaded.", Assert.Single(a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2))));
+    }
+
+    [Fact]
+    public void A_rolling_target_never_breaks_the_interval()
+    {
+        // LIVE (2026-08-15): during a progressive refuel GSX's target tracked current on
+        // every 1 Hz patch (2221/2231, 2239/2247, 2255/2263, …). A "revised target speaks
+        // now" rule read the row aloud once a second — the exact spam this pins against.
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(2205, 2215, "kg", 5236) }, t0);
+        Assert.Single(a.Update(new[] { Fuel(2221, 2231, "kg", 5252) }, t0.AddSeconds(1)));
+        for (int i = 2; i <= 29; i++)
+            Assert.Empty(a.Update(new[] { Fuel(2205 + 16 * i, 2215 + 16 * i, "kg", 5236 + 16 * i) }, t0.AddSeconds(i)));
+        Assert.Single(a.Update(new[] { Fuel(2205 + 16 * 31, 2215 + 16 * 31, "kg", 5236 + 16 * 31) }, t0.AddSeconds(31)));
     }
 
     [Fact]
@@ -327,28 +352,13 @@ public class GsxServiceAnnouncerTests
         var rows = GsxServiceState.ParseList(doc.RootElement.Clone());
         Assert.Equal(1234.6, rows[0].FuelCurrent);
         Assert.Equal(5914, rows[0].FuelTarget);
+        Assert.Equal(6783.6, rows[0].FuelAircraftTotal);
         Assert.Equal("lb", rows[0].FuelUnit);
 
         var a = new GsxServiceAnnouncer();
         var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
-        a.Update(new[] { Fuel(0, 5914) }, t0);
-        Assert.Equal("Refuel 1235 of 5914 lb.", Assert.Single(a.Update(rows, t0.AddSeconds(2))));
-    }
-
-    [Fact]
-    public void A_revised_fuel_target_speaks_even_inside_the_interval()
-    {
-        // Live EDDF: GSX published target 4239 (the aircraft's own fuel system still ramping)
-        // and corrected it to 5914 one second later; under GSX's default non-progressive fill
-        // the whole uplift takes ~11 s, so the interval alone would leave the pilot with only
-        // the withdrawn figure. Mirrors the pax branch's revised-total rule.
-        var a = new GsxServiceAnnouncer();
-        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
-        a.Update(new[] { new GsxServiceState { Id = "Refueling", DisplayName = "Refuel", State = "performing", FuelUnit = "lb" } }, t0);
-        Assert.Equal("Refuel 0 of 4239 lb.", Assert.Single(a.Update(new[] { Fuel(0, 4239) }, t0.AddSeconds(1))));
-        Assert.Equal("Refuel 0 of 5914 lb.", Assert.Single(a.Update(new[] { Fuel(0, 5914) }, t0.AddSeconds(2))));
-        // A moved CURRENT alone stays behind the interval.
-        Assert.Empty(a.Update(new[] { Fuel(1500, 5914) }, t0.AddSeconds(3)));
+        a.Update(new[] { Fuel(0, 5914, "lb", 5549) }, t0);
+        Assert.Equal("Refuel 1235 lb loaded, aircraft 6784 lb.", Assert.Single(a.Update(rows, t0.AddSeconds(2))));
     }
 
     [Fact]
@@ -408,7 +418,7 @@ public class GsxServiceAnnouncerTests
         // At/after the interval since the LAST SPOKEN one: speaks again.
         var later = a.Update(new[] { Fuel(4800, 5914) },
             t0.AddSeconds(2) + GsxServiceAnnouncer.ProgressAnnouncementInterval);
-        Assert.Equal("Refuel 4800 of 5914 lb.", Assert.Single(later));
+        Assert.Equal("Refuel 4800 lb loaded.", Assert.Single(later));
     }
 
     [Fact]

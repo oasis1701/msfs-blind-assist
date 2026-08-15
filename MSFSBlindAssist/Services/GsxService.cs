@@ -971,7 +971,8 @@ public sealed class GsxService : IDisposable
     /// Speaks GSX's own "message" slot — the text GSX itself publishes when no
     /// typed service row says anything (follow-me/marshaller/positioning banners,
     /// the idle and cruise text) — whenever it changes by more than a run of
-    /// digits. This was the pre-Remote-API transport's primary announcement
+    /// digits, and ONLY while no service is performing (see the ticker note in
+    /// the body). This was the pre-Remote-API transport's primary announcement
     /// stream (every tooltip-text change, delta-trimmed) and it went missing in
     /// the migration: a "message" patch only ever refreshed the Tooltip box.
     ///
@@ -986,6 +987,24 @@ public sealed class GsxService : IDisposable
     private void AnnounceMessageIfChanged()
     {
         string text = RawMessageText();
+
+        // While ANY service is performing, the message slot is GSX's rotating
+        // progress TICKER — live, with boarding and refuel running together it
+        // cycled "80/155 passengers boarded" -> "The airplane system is loading
+        // Fuel: 776 USGAL (2360 kg)" -> "Baggage loading progress 83%" -> blank,
+        // every few seconds. Every one of those is already spoken, milestone-
+        // or time-gated, by the typed pax/bags/fuel announcers; read here as
+        // wording changes they became continuous speech. Track the text
+        // silently so the last ticker line is not spoken as news the moment
+        // the service completes; only the idle slot — parked, cruise, follow-me,
+        // marshaller, "the only content GSX publishes for the idle case" — is
+        // ever spoken from here.
+        if (GsxActiveServiceResolver.ResolveGoverning(Services, null) != null)
+        {
+            _lastAnnouncedMessage = string.IsNullOrWhiteSpace(text) ? string.Empty : text;
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(text))
         {
             // The slot cleared: whatever comes next is the start of something

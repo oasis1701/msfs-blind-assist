@@ -26,17 +26,22 @@ public sealed class GsxServiceState
     public int? BagsPercent { get; init; }
 
     /// <summary>
-    /// The refuel row's quantity — <c>detail.fuel.{current,target,unit}</c>. This is
-    /// where a live Refueling row carries its numbers (verified across full 0→100 %
-    /// runs in the EDDF/KJFK captures: e.g. <c>{"current":5914,"target":5914,
-    /// "unit":"lb","startTotal":5549,"aircraftTotal":11464}</c>); it never uses the
-    /// generic <c>progress</c> object. <c>current</c> is fuel LOADED so far and
-    /// <c>target</c> the amount to load, so "5914 of 5914 lb" is a finished uplift.
-    /// Before the hose is on, <c>fuel</c> carries only <c>aircraftTotal</c>+<c>unit</c>
-    /// — then these stay null. Doubles: GSX may publish fractional pounds.
+    /// The refuel row's quantity — <c>detail.fuel.{current,target,unit,aircraftTotal}</c>.
+    /// This is where a live Refueling row carries its numbers (never the generic
+    /// <c>progress</c> object): e.g. <c>{"current":2221,"target":2231,"unit":"kg",
+    /// "startTotal":3004,"aircraftTotal":5252}</c>. <c>current</c> is fuel LOADED so
+    /// far and <c>aircraftTotal</c> the fuel on board now. <c>target</c> is NOT a
+    /// fixed uplift target: in GSX's progressive mode it is a ROLLING figure that
+    /// tracks <c>current</c> (live: target ≈ current + 8 on every 1 Hz patch,
+    /// progressText "100 %" throughout), so it must never be spoken as "of N" nor
+    /// treated as a revision worth announcing — a first version did both and read
+    /// the row aloud once a second. Before the hose is on, <c>fuel</c> carries only
+    /// <c>aircraftTotal</c>+<c>unit</c> — then <c>FuelCurrent</c> stays null. Doubles:
+    /// GSX may publish fractional pounds.
     /// </summary>
     public double? FuelCurrent { get; init; }
     public double? FuelTarget { get; init; }
+    public double? FuelAircraftTotal { get; init; }
     public string? FuelUnit { get; init; }
 
     public int? ProgressCurrent { get; init; }
@@ -83,6 +88,7 @@ public sealed class GsxServiceState
                 BagsPercent = detail.ValueKind == JsonValueKind.Object ? Int(detail, "bagsPercent") : null,
                 FuelCurrent = fuel.ValueKind == JsonValueKind.Object ? Num(fuel, "current") : null,
                 FuelTarget = fuel.ValueKind == JsonValueKind.Object ? Num(fuel, "target") : null,
+                FuelAircraftTotal = fuel.ValueKind == JsonValueKind.Object ? Num(fuel, "aircraftTotal") : null,
                 FuelUnit = fuel.ValueKind == JsonValueKind.Object ? Str(fuel, "unit") : null,
                 ProgressCurrent = prog.ValueKind == JsonValueKind.Object ? Int(prog, "current") : null,
                 ProgressTotal = prog.ValueKind == JsonValueKind.Object ? Int(prog, "total") : null,
