@@ -402,6 +402,18 @@ public static class EWDMessageLookup
         ["308128001"] = "\x1b<4m\x1b4mANTI ICE\x1bm ICE DETECTED",
         ["308128002"] = "\x1b5m -ENG 1 ANTI ICE......ON",
         ["308128003"] = "\x1b5m -ENG 2 ANTI ICE......ON",
+        // Circuit-breaker TRIPPED cautions — FBW #10878 (2026-08) added the A32NX ECAM
+        // control-panel circuit-breaker system. The 38 A32NX_CB_*_TRIPPED_n L:vars behind
+        // these are packed BITMASKS read by the FWC, not pilot switches (a CB is pulled in
+        // the 3-D cockpit), so the blind-accessible surface is these ECAM lines, not a
+        // panel of controls. Group "C/B$1" = the \x1b<4m\x1b4mC/B\x1bm prefix.
+        ["310011001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL J-M",
+        ["310012001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL N-R",
+        ["310013001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL S-V",
+        ["310014001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL W-Z",
+        ["310015001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED ON OVHD PNL",
+        ["310016001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED L ELEC BAY",
+        ["310022001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED R ELEC BAY",
         ["320001001"] = "\x1b<4m\x1b4mBRAKES\x1bm HOT",
         ["320001002"] = "\x1b<7m   .IF PERF PERMITS :",
         ["320001003"] = "\x1b<5m -PARK BRK:PREFER CHOCKS",
