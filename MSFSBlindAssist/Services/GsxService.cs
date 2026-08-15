@@ -491,6 +491,13 @@ public sealed class GsxService : IDisposable
 
     private async Task RequestSettingsAsync()
     {
+        // Capture the lifecycle generation NOW, on the UI thread, before the first
+        // await — the socket path captures it at dispatch, but this reply's
+        // continuation runs on the thread pool after Stop() may already have run
+        // (FailAll misses a request the receive thread has just completed), and
+        // capturing there would read the post-Stop generation and repopulate a
+        // torn-down session's Settings.
+        int generation = Volatile.Read(ref _lifecycleGeneration);
         try
         {
             GsxResult r = await _remote.SendAsync("settings.get").ConfigureAwait(false);
@@ -505,7 +512,7 @@ public sealed class GsxService : IDisposable
             var synthetic = GsxFrame.Parse(
                 "{\"type\":\"patch\",\"path\":\"/settings\",\"value\":" + settings.GetRawText() + "}");
             if (synthetic.Type == GsxFrameType.Patch)
-                OnFrame(synthetic);
+                OnFrame(synthetic, generation);
         }
         catch (Exception ex)
         {
@@ -705,7 +712,15 @@ public sealed class GsxService : IDisposable
                 // spoke "GSX settings loaded." on every reconnect. Left alone
                 // across the hello, the window keeps its schema and the
                 // snapshot's identical structure is applied in place.
-                if (f.Type == GsxFrameType.Snapshot)
+                // …and only when the snapshot actually CARRIES a settings key: a
+                // snapshot taken during a Couatl boot has been seen without
+                // billing, and one without settings would otherwise hand an open
+                // window an empty schema (rebuild) and the /settings patch a
+                // moment later a full one (rebuild again) — the same double the
+                // hello rule above exists to prevent.
+                if (f.Type == GsxFrameType.Snapshot
+                    && _state.TryGet("settings", out var settingsEl)
+                    && settingsEl.ValueKind == JsonValueKind.Object)
                     SettingsChanged?.Invoke(this, EventArgs.Empty);
                 ApplyBilling();
                 ApplyReceipt();
@@ -898,7 +913,10 @@ public sealed class GsxService : IDisposable
         // that absence would make the first /billing patch announce an already-
         // running jetway as freshly started. The announcer baselines only on a
         // reading that GSX actually made.
-        bool billingPublished = _state.TryGet("billing", out _);
+        // An OBJECT-valued key: GSX does publish null-valued snapshot keys
+        // ("prompt": null in the live fixture), and a null billing is no reading.
+        bool billingPublished = _state.TryGet("billing", out var billingEl)
+                                && billingEl.ValueKind == JsonValueKind.Object;
         foreach (string phrase in _timerAnnouncer.Update(Billing, DateTime.UtcNow, billingPublished))
             Announce(phrase);
     }
@@ -911,16 +929,20 @@ public sealed class GsxService : IDisposable
     /// patch AND on every reconnect snapshot, and GSX restarts its engine
     /// routinely — without it a pilot hears the same invoice again on every
     /// reconnect, in a queue that never interrupts and therefore only grows.
-    /// Mirrors the pre-Remote-API <c>_announcedInvoiceKeys</c> set, including
-    /// its lifetime: cleared on a Couatl shutdown (OnFrame) and on Stop(),
-    /// never on a mere socket drop.
+    /// The digest set lives for a SESSION: cleared on Stop() only. It is NOT
+    /// cleared on a Couatl 1→0 edge (the pre-Remote-API set was, but it was
+    /// keyed by operator name; these are payload digests, so a new invoice always
+    /// differs and needs no clearing, while clearing would re-speak a receipt that
+    /// merely survived an in-place engine restart) and NOT on a socket drop.
     ///
-    /// BASELINE-FIRST (<see cref="_receiptsBaselined"/>): until the first full
-    /// snapshot of a session has been read, a receipt's digest is RECORDED but
-    /// not spoken — the same rule every other MSFSBA monitor follows. Without it,
-    /// starting the app (or restarting Couatl, which clears the digests) with an
-    /// hours-old, long-dealt-with invoice still in GSX's state announced
-    /// "Invoice available…" as though it had just arrived.
+    /// BASELINE-FIRST (<see cref="_receiptsBaselined"/>, reset only where the
+    /// digests are — Stop()): until a session's first full snapshot has been read,
+    /// a receipt's digest is RECORDED but not spoken — the same rule every other
+    /// MSFSBA monitor follows. Without it, starting the app with an hours-old,
+    /// long-dealt-with invoice still in GSX's state announced "Invoice available…"
+    /// as though it had just arrived. A plain drop keeps the flag true on purpose:
+    /// the digest set already silences the receipt the reconnect snapshot
+    /// re-carries, and re-baselining would swallow an invoice issued offline.
     ///
     /// The key is a digest of the raw receipt payload rather than the operator
     /// name, so a second, genuinely different invoice from the SAME handler in
@@ -953,13 +975,13 @@ public sealed class GsxService : IDisposable
     /// stream (every tooltip-text change, delta-trimmed) and it went missing in
     /// the migration: a "message" patch only ever refreshed the Tooltip box.
     ///
-    /// Policy, mirroring the old PublishLiveServiceText: baseline-first (the
-    /// text present at the first snapshot is recorded, not spoken); an empty or
-    /// invisible slot says nothing and does NOT reset the last-spoken text, so
-    /// the same banner flickering off and on is not re-read; a change that is
-    /// digit-only (a countdown, a counter) is a tick, not news. Both channels
-    /// as every other announcement here (visible form / background monitoring).
-    /// The decision itself is pure — <see cref="GsxMessageAnnounceGate"/>.
+    /// Policy, mirroring the old PublishLiveServiceText/ClearLastTooltip: baseline-
+    /// first (the text present at the first snapshot is recorded, not spoken); an
+    /// empty or invisible slot says nothing and RESETS the last-spoken text, so a
+    /// banner GSX shows again after a gap is spoken again; a change that is only
+    /// a standalone digit run (a countdown, a counter) is a tick, not news. Both
+    /// channels as every other announcement here (visible form / background
+    /// monitoring). The decision itself is pure — <see cref="GsxMessageAnnounceGate"/>.
     /// </summary>
     private void AnnounceMessageIfChanged()
     {
@@ -1310,9 +1332,13 @@ internal static class GsxMessageAnnounceGate
 {
     // STANDALONE digit runs only — a run glued to a letter is an identifier
     // ("engine 1" is standalone, "B25" is not), and "…to gate B25" -> "…to
-    // gate B27" is a reassignment, not a tick. The pre-Remote-API
-    // NormalizeStatusStableText bucketed only times, durations and prices, so
-    // this stays on the narrow side of that.
+    // gate B27" is a reassignment, not a tick. This is a heuristic and it is
+    // BROADER than the pre-Remote-API NormalizeStatusStableText, which bucketed
+    // only hh:mm times, "N seconds/minutes" durations and prices: a letterless
+    // stand ("…gate 25" -> "…gate 27") or "engine 1" -> "engine 2" is silenced
+    // when one banner directly replaces another (a blank between them resets
+    // and rescues it). Accepted for simplicity over a token grammar; revisit if
+    // a live banner is seen to change by a bare number that matters.
     // Both boundaries exclude digits as well as letters so the run is MAXIMAL: with
     // letters alone the engine happily matched the "5" of "B25" (preceded by "2",
     // not a letter) and "B25"→"B27" collapsed into a tick after all.

@@ -64,7 +64,8 @@ public partial class SimConnectManager
 
     /// <summary>
     /// Registers <c>L:FSDT_GSX_COUATL_STARTED</c> as a permanent single-value definition
-    /// and asks for it once per second, delivered only when it changes. Same L:var
+    /// and asks for it once per second (every second, DEFAULT flag — see the request
+    /// site for why not CHANGED). Same L:var
     /// registration shape as every other L:var here (<c>"L:{name}"</c>, "number",
     /// FLOAT64). Never throws — see the call site.
     /// </summary>
@@ -279,8 +280,8 @@ public partial class SimConnectManager
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
         RegisterHotkeyReadoutDefinitions();
 
-        // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second on
-        // change (never per frame). Universal, not aircraft-specific, so it registers here
+        // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second
+        // (never per frame). Universal, not aircraft-specific, so it registers here
         // with the fixed defs. It is the pre-Remote-API "is GSX running" signal that every
         // GSX build publishes; see GsxCouatlStartedLVar for what depends on it. Its own
         // try/catch: GSX absent means the L:var never delivers (harmless), and a

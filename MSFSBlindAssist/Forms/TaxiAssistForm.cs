@@ -2166,8 +2166,8 @@ public class TaxiAssistForm : Form
     /// </para>
     /// </summary>
     /// <returns>True when a destination was selected before the rebuild and could not be
-    /// restored afterwards (the selection is now on item 0, or empty). False when nothing was
-    /// rebuilt, or the selection survived.</returns>
+    /// restored afterwards (the selection is now cleared — never item 0). False when nothing
+    /// was rebuilt, the selection survived, or nothing was selected to begin with.</returns>
     private bool RefreshDestinationsIfGateSourceChanged()
     {
         if (_graph == null || cmbDestType.SelectedIndex != 1) return false;
@@ -2183,7 +2183,19 @@ public class TaxiAssistForm : Form
         string? previous = cmbDestination.SelectedItem?.ToString();
         PopulateDestinations();
 
-        if (string.IsNullOrEmpty(previous)) return false;
+        if (string.IsNullOrEmpty(previous))
+        {
+            // Nothing was selected before this rebuild — which, on this form, means
+            // an EARLIER rebuild already lost the pilot's stand and cleared the
+            // selection (PopulateDestinations itself always seats item 0). Keep it
+            // cleared: a later same-tier refresh (GSX republishes handlerData on an
+            // arrival-gate assignment; a reconnect snapshot) must not quietly seat
+            // item 0 and let the next Calculate route to it. The pilot was already
+            // told to choose again; nothing new to say.
+            if (cmbDestination.Items.Count > 0)
+                cmbDestination.SelectedIndex = -1;
+            return false;
+        }
         int idx = cmbDestination.Items.IndexOf(previous);
         if (idx >= 0)
         {

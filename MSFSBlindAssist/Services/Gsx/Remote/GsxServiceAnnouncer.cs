@@ -28,10 +28,11 @@ public sealed class GsxServiceAnnouncer
     internal const int BagsAnnouncementStepPercent = 10;
 
     /// <summary>
-    /// Minimum gap between two spoken readings of a service's GENERIC progress —
-    /// the refuel row's "8823 of 13001 kg" — which GSX ticks about once a second.
+    /// Minimum gap between two spoken readings of a service's metered quantity —
+    /// the refuel row's <c>detail.fuel</c> ("820 of 5914 lb"), or any other row's
+    /// generic <c>progress</c> — which GSX ticks about once a second.
     /// Time-throttled rather than milestone-gated because the quantity has no
-    /// natural bucket size (litres, kg, lbs, percent all arrive on this one row).
+    /// natural bucket size (litres, kg, lbs, percent all arrive on such rows).
     /// The 30 s is the pre-Remote-API FuelingProgressAnnouncementInterval; the
     /// spoken fuel quantity went missing in the migration and a blind pilot timing
     /// a departure had nothing between "Refuel in progress." and "Refuel complete."
@@ -174,9 +175,16 @@ public sealed class GsxServiceAnnouncer
         // when the reading MOVED, and no more than once per
         // ProgressAnnouncementInterval per service.
         bool fuelMoved = was.FuelCurrent != now.FuelCurrent || was.FuelTarget != now.FuelTarget;
+        // A REVISED target is always worth saying, even inside the interval — the
+        // same rule the pax branch applies to a revised total: on the live EDDF run
+        // GSX published target 4239 (the aircraft's own fuel system still ramping)
+        // and corrected it to 5914 one second later; under GSX's default
+        // non-progressive fill (~11 s) the interval would otherwise let the pilot
+        // hear only the withdrawn figure. First sight of a target is not a revision.
+        bool fuelTargetRevised = was.FuelTarget is not null && was.FuelTarget != now.FuelTarget;
         if (fuelMoved
             && now.FuelCurrent is { } fuelCur && now.FuelTarget is { } fuelTarget && fuelTarget > 0
-            && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+            && (fuelTargetRevised || ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc)))
         {
             _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
             return $"{Name(s)} {Quantity(fuelCur)} of {Quantity(fuelTarget)}{UnitSuffix(now.FuelUnit)}.";

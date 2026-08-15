@@ -36,10 +36,10 @@ public sealed class AccessGSXForm : Form
 
     // When the pilot last pressed 'C' (Settings) — the ONLY thing allowed to
     // CREATE the settings window. Under the Remote API, GsxService raises
-    // SettingsChanged on every Hello and Snapshot frame (every connect and
-    // reconnect — including after the 'D' Restart GSX command, which drops
-    // and re-establishes the socket) and on every unprompted /settings patch,
-    // not just in answer to OpenSettings(). The old transport raised it only
+    // SettingsChanged on every Snapshot frame (every connect and reconnect —
+    // including after the 'D' Restart GSX command, which drops and
+    // re-establishes the socket) and on every /settings patch, not just in
+    // answer to OpenSettings(). The old transport raised it only
     // from the pilot's explicit settings.get flow, which is why the create+show
     // path never needed a "did the pilot ask?" gate. Without one, any reconnect
     // after Access GSX has been opened once (hide-not-close keeps these
@@ -771,9 +771,9 @@ public sealed class AccessGSXForm : Form
         }
 
         // No window open. Only a RECENT explicit 'C' press may create one:
-        // under the Remote API this event also fires on every Hello and
-        // Snapshot frame (every connect/reconnect, e.g. after 'D' Restart
-        // GSX) and on every unprompted /settings patch — none of which the
+        // under the Remote API this event also fires on every Snapshot frame
+        // (every connect/reconnect, e.g. after 'D' Restart GSX) and on every
+        // unprompted /settings patch — none of which the
         // pilot asked for, and a window created here Activate()s itself,
         // stealing screen-reader focus mid-flight (see the
         // _settingsRequestedUtc field comment). An unclaimed republish is

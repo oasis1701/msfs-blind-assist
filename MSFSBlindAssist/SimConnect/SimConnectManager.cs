@@ -109,7 +109,8 @@ public partial class SimConnectManager
 
     /// <summary>
     /// GSX's own <c>L:FSDT_GSX_COUATL_STARTED</c>, read over the main SimConnect
-    /// connection (DEF_GSX_COUATL_STARTED, once per second on change). This is the
+    /// connection (DEF_GSX_COUATL_STARTED, once per second — DEFAULT flag, not
+    /// CHANGED, see RegisterGsxCouatlStartedDefinition). This is the
     /// signal every GSX build publishes — Remote API or not — and it is what gates the
     /// GSX <c>.ini</c> gate overlay, the deice pads and the profile stop positions:
     /// local-file features that never needed GSX's WebSocket. Before the Remote API
@@ -374,7 +375,7 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
-        // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, on change) — see GsxCouatlStartedLVar.
+        // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
         REQUEST_GSX_COUATL_STARTED = 340,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.

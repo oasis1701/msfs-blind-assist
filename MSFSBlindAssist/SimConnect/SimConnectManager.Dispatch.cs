@@ -304,7 +304,8 @@ public partial class SimConnectManager
                 break;
 
             case DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED:
-                // Delivered on change only (SECOND + CHANGED); no event, no
+                // Delivered every second (SECOND + DEFAULT — a CHANGED delivery could
+                // be drained before SetupEvents attached this handler); no event, no
                 // announcement — MainForm's gate-list predicate polls the property.
                 GsxCouatlStartedLVar = ((SingleValue)data.dwData[0]).value != 0;
                 break;

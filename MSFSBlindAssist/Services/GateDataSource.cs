@@ -134,6 +134,29 @@ public sealed class GateDataSource
     /// <see cref="TryGetCurrentAirportHandlerData"/> — "not eligible".
     /// </para>
     /// </summary>
+    public string GetGateListVersion(string icao)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return "navdata";
+        icao = NormalizeIcao(icao);
+
+        if (TryGetCurrentAirportHandlerData(icao, out _))
+        {
+            long version;
+            try { version = _handlerDataVersion(); }
+            catch (Exception ex)
+            {
+                Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
+                version = 0;
+            }
+            return "api:" + version.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        bool gsxAvailable;
+        try { gsxAvailable = _isGsxAvailable(); }
+        catch { gsxAvailable = false; }
+        return gsxAvailable ? "ini" : "navdata";
+    }
+
     /// <summary>
     /// Whether a per-ICAO gate-list cache built under <paramref name="cachedToken"/> should be
     /// REBUILT now that <see cref="GetGateListVersion"/> answers <paramref name="currentToken"/>.
@@ -157,29 +180,6 @@ public sealed class GateDataSource
         token.StartsWith("api:", StringComparison.Ordinal) ? 2
         : string.Equals(token, "ini", StringComparison.Ordinal) ? 1
         : 0;
-
-    public string GetGateListVersion(string icao)
-    {
-        if (string.IsNullOrWhiteSpace(icao)) return "navdata";
-        icao = NormalizeIcao(icao);
-
-        if (TryGetCurrentAirportHandlerData(icao, out _))
-        {
-            long version;
-            try { version = _handlerDataVersion(); }
-            catch (Exception ex)
-            {
-                Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
-                version = 0;
-            }
-            return "api:" + version.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        bool gsxAvailable;
-        try { gsxAvailable = _isGsxAvailable(); }
-        catch { gsxAvailable = false; }
-        return gsxAvailable ? "ini" : "navdata";
-    }
 
     /// <summary>
     /// Which source <see cref="GetGates"/> would REACH FOR first for <paramref name="icao"/> right

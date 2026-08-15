@@ -336,6 +336,22 @@ public class GsxServiceAnnouncerTests
     }
 
     [Fact]
+    public void A_revised_fuel_target_speaks_even_inside_the_interval()
+    {
+        // Live EDDF: GSX published target 4239 (the aircraft's own fuel system still ramping)
+        // and corrected it to 5914 one second later; under GSX's default non-progressive fill
+        // the whole uplift takes ~11 s, so the interval alone would leave the pilot with only
+        // the withdrawn figure. Mirrors the pax branch's revised-total rule.
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { new GsxServiceState { Id = "Refueling", DisplayName = "Refuel", State = "performing", FuelUnit = "lb" } }, t0);
+        Assert.Equal("Refuel 0 of 4239 lb.", Assert.Single(a.Update(new[] { Fuel(0, 4239) }, t0.AddSeconds(1))));
+        Assert.Equal("Refuel 0 of 5914 lb.", Assert.Single(a.Update(new[] { Fuel(0, 5914) }, t0.AddSeconds(2))));
+        // A moved CURRENT alone stays behind the interval.
+        Assert.Empty(a.Update(new[] { Fuel(1500, 5914) }, t0.AddSeconds(3)));
+    }
+
+    [Fact]
     public void Pre_hose_fuel_row_with_no_current_or_target_is_silent()
     {
         var a = new GsxServiceAnnouncer();
