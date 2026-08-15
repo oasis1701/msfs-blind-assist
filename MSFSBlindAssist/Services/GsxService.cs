@@ -184,6 +184,19 @@ public sealed class GsxService : IDisposable
     public IReadOnlyCollection<string> Capabilities { get; private set; } = Array.Empty<string>();
 
     /// <summary>
+    /// Monotonic counter of how many times GSX's <c>handlerData</c> key has been (re)published
+    /// this process — bumped on every <c>handlerData</c> patch and on every snapshot (which
+    /// replaces the whole store, <c>handlerData</c> included). It is a cheap STALENESS TOKEN, not
+    /// data: <see cref="Services.GateDataSource.GetGateListVersion"/> folds it into the token a
+    /// per-ICAO gate-list cache compares on every use, so a list bound from the <c>.ini</c>/navdata
+    /// fallback BEFORE GSX published the airport is rebuilt from the Remote API the moment it
+    /// does, instead of being served (identifier-less, so un-selectable) for the rest of the
+    /// session. Reading it costs a field load, which is what makes it safe to check per keystroke
+    /// where re-reading <c>handlerData</c> itself (~1.7 MB) would not be.
+    /// </summary>
+    public long HandlerDataVersion { get; private set; }
+
+    /// <summary>
     /// GSX's current <c>handlerData.airport</c> sub-object — the live parking table for
     /// whichever airport GSX has loaded (<c>icao</c>, <c>name</c>, <c>parkings</c>; see
     /// <see cref="Services.Gsx.Remote.GsxRemoteParkingReader"/>) — or null when no
@@ -562,6 +575,7 @@ public sealed class GsxService : IDisposable
                 // all) — re-derive every cached model and fire the same
                 // events an equivalent set of individual patches would have,
                 // so a form already open resyncs instead of going stale.
+                HandlerDataVersion++;
                 ApplyMenu();
                 MenuChanged?.Invoke(this, EventArgs.Empty);
                 // ApplyServices recomputes LastTooltip itself (see its
@@ -646,6 +660,12 @@ public sealed class GsxService : IDisposable
 
             case "message":
                 RecomputeTooltip();
+                break;
+
+            case "handlerData":
+                // Not parsed here — GateDataSource reads it on demand via
+                // GetHandlerDataAirport(). Only the staleness token moves.
+                HandlerDataVersion++;
                 break;
         }
     }
