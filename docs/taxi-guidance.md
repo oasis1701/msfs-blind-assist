@@ -262,7 +262,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
-**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built from `Services/ParkingSpotSource.GetSpots(...)` — the same one-line resolution the gate-teleport dialog, the graph builds and the SayIntentions parked-at-the-right-stand check all use (see "One name for a stand" below) — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
+**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built from `Services/ParkingSpotSource.GetSelectableGates(...)` — the same resolution the gate-teleport dialog uses, and the SELECTABLE half of the seam whose NAMING half (`GetNamedSpots`) feeds the graph builds and the SayIntentions parked-at-the-right-stand check; the two shapes deliberately return different lists but agree on every stand's name (see "One name for a stand" below) — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
 
 ### Taxiway connectivity in the route form
 
@@ -631,9 +631,12 @@ blind pilot nose-to-nose with an aircraft they cannot see. `ambiguous` (several
 stands matched the identifier) is announced rather than guessed at. A
 `too_small` warning on an otherwise-successful selection is always spoken — it
 is GSX's own verdict on the real airframe, and there is no other route to that
-information. `already_parked`/`already_selected` mean nothing to do and stay
-silent. Every announcement is QUEUED (`Announce`), never immediate, so it can't
-interrupt a taxi callout. See `GsxGateSelectAnnouncer` for exactly which of
+information. `already_parked`/`already_selected` — GSX had already prepared (or
+you are already parked at) that stand — are SPOKEN too ("GSX is already set up at
+Gate A12."): the vendor guide's "nothing to do" is about not retrying, not about
+not telling the pilot, and silence there is the wrong-stand failure by another
+route (see the invariant in CLAUDE.md and [gsx.md](gsx.md)). Every announcement
+is QUEUED (`Announce`), never immediate, so it can't interrupt a taxi callout. See `GsxGateSelectAnnouncer` for exactly which of
 `gate.select`'s outcomes are spoken and why the rest are deliberately silent.
 
 **Changing gates:** re-running Calculate to a different stand simply sends a
