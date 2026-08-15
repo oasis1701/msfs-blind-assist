@@ -1349,39 +1349,9 @@ internal static class GsxActiveServiceResolver
 /// </summary>
 internal static class GsxMessageAnnounceGate
 {
-    // STANDALONE digit runs only — a run glued to a letter is an identifier
-    // ("engine 1" is standalone, "B25" is not), and "…to gate B25" -> "…to
-    // gate B27" is a reassignment, not a tick. This is a heuristic and it is
-    // BROADER than the pre-Remote-API NormalizeStatusStableText, which bucketed
-    // only hh:mm times, "N seconds/minutes" durations and prices: a letterless
-    // stand ("…gate 25" -> "…gate 27") or "engine 1" -> "engine 2" is silenced
-    // when one banner directly replaces another (a blank between them resets
-    // and rescues it). Accepted for simplicity over a token grammar; revisit if
-    // a live banner is seen to change by a bare number that matters.
-    // Both boundaries exclude digits as well as letters so the run is MAXIMAL: with
-    // letters alone the engine happily matched the "5" of "B25" (preceded by "2",
-    // not a letter) and "B25"→"B27" collapsed into a tick after all.
-    private static readonly System.Text.RegularExpressions.Regex DigitRun =
-        new(@"(?<![A-Za-z0-9])\d+(?![A-Za-z0-9])", System.Text.RegularExpressions.RegexOptions.Compiled);
-
-    public static bool ShouldAnnounce(string lastSpoken, string current)
-    {
-        if (string.IsNullOrWhiteSpace(current)) return false;
-        if (string.Equals(lastSpoken, current, StringComparison.Ordinal)) return false;
-        if (string.IsNullOrWhiteSpace(lastSpoken)) return true;
-        return !IsDigitOnlyChange(lastSpoken, current);
-    }
-
-    private static bool IsDigitOnlyChange(string before, string after)
-    {
-        string[] beforeParts = DigitRun.Split(before);
-        string[] afterParts = DigitRun.Split(after);
-        if (beforeParts.Length != afterParts.Length) return false;
-        for (int i = 0; i < beforeParts.Length; i++)
-        {
-            if (!string.Equals(beforeParts[i], afterParts[i], StringComparison.Ordinal))
-                return false;
-        }
-        return true;
-    }
+    // The message slot is one caller of the general countdown/repeat filter — the same
+    // rule the bus-phase announcer uses. See GsxPhraseGate for the whole story of why a
+    // standalone-digit-run change is a tick, not news.
+    public static bool ShouldAnnounce(string lastSpoken, string current) =>
+        GsxPhraseGate.ShouldAnnounce(lastSpoken, current);
 }

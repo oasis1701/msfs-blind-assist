@@ -52,7 +52,8 @@ public sealed class GsxServiceAnnouncer
                                             double? FuelCurrent, double? FuelAircraftTotal, string? FuelUnit,
                                             int? ProgressCurrent, int? ProgressTotal, string? ProgressUnit);
 
-    private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc);
+    private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc,
+                                         string? BusSpoken);
 
     public void Reset()
     {
@@ -88,9 +89,9 @@ public sealed class GsxServiceAnnouncer
                     // silence the new run up to its own mark.
                     _spoken.Remove(s.Id);
                 }
-                else if (was.BusPhase != now.BusPhase && !string.IsNullOrEmpty(now.BusPhase))
+                else if (BusPhrase(s, was, now) is { Length: > 0 } busPhrase)
                 {
-                    said.Add($"{Name(s)} bus {now.BusPhase}.");
+                    said.Add(busPhrase);
                 }
                 else if (ProgressPhrase(s, was, now, nowUtc) is { Length: > 0 } p)
                 {
@@ -129,6 +130,29 @@ public sealed class GsxServiceAnnouncer
                             : $"{Name(s)} available from {s.Operator.Trim()}.",
         _            => string.IsNullOrEmpty(s.StateText) ? $"{Name(s)}: {s.State}." : s.StateText + ".",
     };
+
+    /// <summary>
+    /// The bus-phase phrase for this tick, or empty when nothing is worth saying.
+    ///
+    /// The bus phase is a TEXT field — "approaching", "in position", "leaving", and (the
+    /// spam this guards) "on the way, ETA 15 secs" with the seconds counting down once a
+    /// second. Gated through <see cref="GsxPhraseGate"/> against the phase LAST SPOKEN for
+    /// this service, so the phase words announce once and the ETA countdown riding along
+    /// does not re-fire every tick. Returns empty when the phase is unchanged, absent, or
+    /// only its embedded countdown moved — leaving pax/bags progress free to announce.
+    /// </summary>
+    private string BusPhrase(GsxServiceState s, Snapshot was, Snapshot now)
+    {
+        if (was.BusPhase == now.BusPhase || string.IsNullOrEmpty(now.BusPhase))
+            return string.Empty;
+
+        _spoken.TryGetValue(s.Id, out var spoken);
+        if (!GsxPhraseGate.ShouldAnnounce(spoken.BusSpoken ?? string.Empty, now.BusPhase))
+            return string.Empty;
+
+        _spoken[s.Id] = spoken with { BusSpoken = now.BusPhase };
+        return $"{Name(s)} bus {now.BusPhase}.";
+    }
 
     /// <summary>
     /// The progress phrase for this tick, or empty when nothing is worth saying.

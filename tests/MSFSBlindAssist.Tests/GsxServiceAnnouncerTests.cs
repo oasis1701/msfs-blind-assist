@@ -67,6 +67,40 @@ public class GsxServiceAnnouncerTests
     }
 
     [Fact]
+    public void A_bus_eta_countdown_is_spoken_once_not_every_second()
+    {
+        // LIVE report (2026-08-15): busPhase carries "on the way, ETA 15 secs" and the seconds
+        // count down once a second; each new value used to fire a fresh announcement.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });                               // baseline, no bus yet
+        var first = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 15 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 15 secs.", Assert.Single(first));
+
+        for (int eta = 14; eta >= 1; eta--)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", busPhase: $"on the way, ETA {eta} secs") }));
+
+        // …and the real phase change still speaks.
+        var arrived = a.Update(new[] { Svc("Boarding", "performing", busPhase: "in position") });
+        Assert.Equal("Boarding bus in position.", Assert.Single(arrived));
+    }
+
+    [Fact]
+    public void Passenger_milestones_still_announce_while_the_bus_eta_ticks()
+    {
+        // The countdown gate is applied to the BUS PHASE only; once the phase has been spoken,
+        // a pax milestone landing on the same tick as an ETA tick must still be spoken (the
+        // quantity is the point there).
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", paxDone: 0, paxTotal: 155, busPhase: "on the way, ETA 15 secs") });   // baseline
+        // First real tick: the bus phase is spoken (first appearance), pax at 2 (no milestone).
+        Assert.Equal("Boarding bus on the way, ETA 14 secs.",
+            Assert.Single(a.Update(new[] { Svc("Boarding", "performing", paxDone: 2, paxTotal: 155, busPhase: "on the way, ETA 14 secs") })));
+        // Next tick: ETA 14 -> 13 is digit-only (suppressed) while pax crosses 10 (a milestone).
+        var said = a.Update(new[] { Svc("Boarding", "performing", paxDone: 10, paxTotal: 155, busPhase: "on the way, ETA 13 secs") });
+        Assert.Equal("Boarding 10 of 155 passengers.", Assert.Single(said));
+    }
+
+    [Fact]
     public void Reset_re_baselines_so_next_update_is_silent()
     {
         var a = new GsxServiceAnnouncer();
