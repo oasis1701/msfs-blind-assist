@@ -406,6 +406,13 @@ public sealed class GateDataSource
 
             spots = DropUnusableHeadings(spots, icao);
 
+            // LAST, once the concourse letter and the surviving set are final: decide which
+            // stands must speak their terminal name — only those whose identity another stand
+            // still shares (KJFK's "Gate 2" ×5). Everywhere else the terminal stays DATA and out
+            // of the label: at EHAM it is the profile's section header ("A-Platform =< Medium ")
+            // and reading it on a unique stand said "equals less than" for nothing.
+            GsxTerminalDisambiguator.Mark(spots);
+
             if (spots.Count == 0)
             {
                 // Mirrors the pre-existing .ini path's own "empty/garbage profile -> fall

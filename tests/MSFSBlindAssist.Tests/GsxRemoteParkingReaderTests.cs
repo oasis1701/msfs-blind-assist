@@ -150,13 +150,18 @@ public class GsxRemoteParkingReaderTests
         // MatchDestinationLabel compares a controller's/SayIntentions' gate against.
         // "Terminal 4 - Concourse B 20A - Gate Heavy" normalized to "TERMINAL4" -- the stand
         // number gone entirely -- and matched nothing.
-        var spot = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Single(s => s.GsxIdentifier == "Stand H6");
+        var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
+        GsxTerminalDisambiguator.Mark(spots);   // the pipeline step that decides which stands SPEAK their terminal
+        var spot = spots.Single(s => s.GsxIdentifier == "Stand H6");
 
         Assert.Equal("H6", SayIntentionsClearanceParser.NormalizeParkingName(spot.ToString()));
 
-        // ...and the terminal is still IN the label, after the first spaced dash, so the
-        // dropdown can still tell colliding stands apart.
-        Assert.Contains("Terminal 5 - Remote", spot.ToString());
+        // Stand H6 is a UNIQUE identity (H6 appears once), so its terminal is DATA only and
+        // does not clutter the spoken label — that is the EHAM fix ("A 42 - Gate Small" not
+        // "A 42 - Gate Small, A-Platform =< Medium"). The terminal for a COLLIDING stand is
+        // pinned by Every_selectable_KJFK_stand_gets_a_distinct_label below.
+        Assert.Equal("Terminal 5 - Remote", spot.TerminalName);   // kept as data
+        Assert.DoesNotContain("Terminal 5 - Remote", spot.ToString());   // …not spoken
     }
 
     [Fact]
@@ -167,9 +172,18 @@ public class GsxRemoteParkingReaderTests
         // label means one of them is UNREACHABLE for a blind pilot -- there is no other way
         // into the list. 48 distinct uiGateName values collide at least once here, which is
         // exactly why the terminal has to survive somewhere in the label.
-        var labels = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk).Select(s => s.ToString()).ToList();
+        var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
+        GsxTerminalDisambiguator.Mark(spots);   // colliding stands speak their (distinct) terminal; unique ones stay quiet
+        var labels = spots.Select(s => s.ToString()).ToList();
         Assert.Equal(231, labels.Count);
         Assert.Equal(labels.Count, labels.Distinct(StringComparer.Ordinal).Count());
+
+        // A stand that DOES collide carries its terminal so the two reach the list separately.
+        // (The type text has no comma, so a comma in the label means a terminal was appended;
+        // the terminal itself may read "Terminal 5" or "West Cargo and RON Ramp".)
+        var gate1s = spots.Where(s => s.Number == 1 && string.IsNullOrEmpty(s.Name) && string.IsNullOrEmpty(s.Suffix)).ToList();
+        Assert.True(gate1s.Count > 1, "expected several letterless 'Gate 1' stands at KJFK");
+        Assert.All(gate1s, s => Assert.Contains(", ", s.ToString()));
     }
 
     [Fact]

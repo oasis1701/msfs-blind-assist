@@ -21,6 +21,9 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class ParkingSpotDescribeTests
 {
+    // `terminal` here always DISAMBIGUATES (the flag GateDataSource sets when another stand
+    // shares the identity) — that is the placement rule these tests pin. The "terminal present
+    // but not needed" case has its own tests below.
     private static ParkingSpot Gate(string name, int number, string suffix = "", string? terminal = null) => new()
     {
         Name = name,
@@ -28,6 +31,7 @@ public class ParkingSpotDescribeTests
         Suffix = suffix,
         Type = 10,   // Gate Medium
         TerminalName = terminal,
+        TerminalNameDisambiguates = terminal != null,
     };
 
     [Fact]
@@ -87,7 +91,43 @@ public class ParkingSpotDescribeTests
     {
         // The reader keeps a whole label as Name when there is no number to split out;
         // Describe()'s name-only branch must still carry the terminal through.
-        var spot = new ParkingSpot { Name = "Helipad", Type = 10, TerminalName = "Terminal 1" };
+        var spot = new ParkingSpot { Name = "Helipad", Type = 10, TerminalName = "Terminal 1", TerminalNameDisambiguates = true };
         Assert.Equal("Helipad - Gate Medium, Terminal 1", spot.Describe());
     }
+
+    // ── The terminal is a DISAMBIGUATOR, not a decoration ────────────────────────────────
+
+    [Fact]
+    public void A_terminal_that_does_not_disambiguate_stays_out_of_the_label()
+    {
+        // Live EHAM (2026-08-15): GSX's uiTerminalName is the profile author's SECTION HEADER —
+        // "A-Platform =< Medium ", "D-Pier => Heavy ", "K/M-Platform buffer overflow (TD) N/A " —
+        // and "Gate A42" is unique there. Rendering it gave "A 42 - Gate Small, A-Platform =<
+        // Medium", which a screen reader speaks as "equals less than". The terminal earns its
+        // place in the label only where another stand shares the identity (KJFK's five "Gate 2").
+        var spot = new ParkingSpot { Name = "A", Number = 42, Type = 9, TerminalName = "A-Platform =< Medium " };
+        Assert.Equal("A 42 - Gate Small", spot.Describe());
+        Assert.Equal("A 42 - Gate Small", spot.ToString());
+    }
+
+    [Fact]
+    public void A_disambiguating_terminal_is_spoken_without_gsx_size_hints()
+    {
+        var spot = new ParkingSpot { Name = "", Number = 10, Type = 9, TerminalName = "U-Platform buffer overflow N/A ", TerminalNameDisambiguates = true };
+        Assert.Equal("Gate 10 - Gate Small, U-Platform buffer overflow", spot.Describe());
+    }
+
+    [Theory]
+    [InlineData("Terminal 4 - Concourse B", "Terminal 4 - Concourse B")]
+    [InlineData("A-Platform =< Medium ", "A-Platform")]
+    [InlineData("D-Pier => Heavy ", "D-Pier")]
+    [InlineData("E-Pier <= Medium", "E-Pier")]
+    [InlineData("Gates N/A ", "Gates")]
+    [InlineData("K/M-Platform buffer overflow (TD) N/A ", "K/M-Platform buffer overflow (TD)")]
+    [InlineData("S-Platform ", "S-Platform")]
+    [InlineData("R-Platform P stands ", "R-Platform P stands")]
+    [InlineData("  ", "")]
+    [InlineData(null, "")]
+    public void The_speakable_terminal_drops_only_the_size_hint_and_not_available_tails(string? raw, string expected)
+        => Assert.Equal(expected, ParkingSpot.SpeakableTerminalName(raw));
 }

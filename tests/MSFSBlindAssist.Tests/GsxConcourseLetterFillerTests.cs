@@ -73,15 +73,18 @@ public class GsxConcourseLetterFillerTests
         // such KJFK stands), because that is the source this fix leads with and the one that
         // needs no navigation database at all.
         var spots = GsxConcourseLetterFiller.Fill(ReadKjfk(), () => Array.Empty<ParkingSpot>());
+        GsxTerminalDisambiguator.Mark(spots);
         var spot = spots.Single(s => s.GsxIdentifier == "Gate 25" && s.TerminalName == "Terminal 4 - Concourse B");
 
         Assert.Equal(SayIntentionsClearanceParser.NormalizeParkingName("Terminal 4 Gate B25"),
                      SayIntentionsClearanceParser.NormalizeParkingName(spot.ToString()));
         Assert.Equal("B25", SayIntentionsClearanceParser.NormalizeParkingName(spot.ToString()));
 
-        // ...and the label still reads as a stand id first, with the terminal after the first
-        // spaced dash where NormalizeParkingName discards it.
-        Assert.Equal("B 25 - Gate Medium, Terminal 4 - Concourse B (Jetway) [SafeDock]", spot.ToString());
+        // Once lettered B25 the stand is a UNIQUE identity (the letterless 'Gate 25' collisions
+        // are elsewhere), so the terminal is no longer needed in the label — the letter already
+        // tells it apart, and B25 matches SayIntentions without it.
+        Assert.Equal("B 25 - Gate Medium (Jetway) [SafeDock]", spot.ToString());
+        Assert.Equal("Terminal 4 - Concourse B", spot.TerminalName);   // still kept as data
     }
 
     [Fact]
@@ -133,6 +136,7 @@ public class GsxConcourseLetterFillerTests
         // entry — it makes an UNREACHABLE stand, and the dropdown is a blind pilot's only way
         // in. Adding letters must not merge two stands into one label.
         var spots = GsxConcourseLetterFiller.Fill(ReadKjfk(), () => Array.Empty<ParkingSpot>());
+        GsxTerminalDisambiguator.Mark(spots);
         var labels = spots.Select(s => s.ToString()).ToList();
 
         Assert.Equal(231, labels.Count);

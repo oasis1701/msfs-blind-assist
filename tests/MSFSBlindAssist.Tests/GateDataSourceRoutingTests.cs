@@ -665,6 +665,38 @@ public class GateDataSourceRoutingTests : IDisposable
         Assert.Single(second, s => s.GsxIdentifier == "Gate 1");
     }
 
+    // ── The terminal name reaches the LABEL only where it disambiguates ────────────────
+
+    [Fact]
+    public void Only_stands_sharing_an_identity_carry_their_terminal_in_the_label()
+    {
+        // KJFK's shape: "Gate 2" at two terminals must stay two reachable entries (labels are
+        // de-duplicated by text); EHAM's shape: a unique "Gate A42" must NOT drag its section
+        // header ("A-Platform =< Medium ") into the label.
+        var navdata = new FakeAirportDataProvider();
+        var airport = AirportJson(Kjfk,
+            Parking("Gate 2", 10.0, 20.0, heading: 90.0, uiTerminalName: "Terminal 1"),
+            Parking("Gate 2", 10.1, 20.1, heading: 90.0, uiTerminalName: "Terminal 8"),
+            Parking("Gate A42", 10.2, 20.2, heading: 90.0, uiTerminalName: "A-Platform =< Medium "));
+        var source = Build(navdata, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spots = source.GetGates(Kjfk);
+        Assert.Equal(3, spots.Count);
+
+        // Both 'Gate 2' stay letterless (no "Concourse" in either terminal), so they collide and
+        // each speaks its terminal to reach the dropdown separately.
+        var gate2 = spots.Where(s => s.Number == 2).Select(s => s.Describe()).OrderBy(x => x, StringComparer.Ordinal).ToList();
+        Assert.Equal(2, gate2.Count);
+        Assert.Contains(", Terminal 1", gate2[0]);
+        Assert.Contains(", Terminal 8", gate2[1]);
+        Assert.NotEqual(gate2[0], gate2[1]);
+
+        var a42 = Assert.Single(spots, s => s.Number == 42);
+        Assert.Equal("A-Platform =< Medium", a42.TerminalName);   // data kept (the letter filler reads it)
+        Assert.DoesNotContain("Platform", a42.Describe());          // …but not spoken
+        Assert.DoesNotContain("=<", a42.Describe());
+    }
+
     // ── ShouldRebuildGateList: upgrade or refresh, never a downgrade ────────────────
 
     [Theory]
