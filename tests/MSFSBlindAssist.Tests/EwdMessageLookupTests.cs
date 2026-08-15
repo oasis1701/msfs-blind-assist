@@ -135,6 +135,48 @@ public class EwdMessageLookupTests
         Assert.Equal("", EWDMessageLookup.CleanANSICodes("   "));
     }
 
+    // --- Messages synced from FBW in 2026-08 (#10717 baro, #10878 circuit breakers) ---
+    // These were transcribed from fbw-a32nx EwdMessages.ts, where the group prefix is a
+    // separate field ('NAV$9' / 'C/B$1'). Pinning the codes guards the transcription:
+    // a wrong id makes the aircraft's ECAM line announce as "ECAM message <code>".
+
+    [Theory]
+    [InlineData(340010101L, "\x1b<4m\x1b4mNAV\x1bm BARO VALUE DISAGREE")]
+    [InlineData(340010102L, "\x1b<5m -BARO REF VALUE.X CHECK")]
+    [InlineData(340010501L, "\x1b<4m\x1b4mNAV\x1bm ALT DISCREPANCY")]   // FBW renamed ALTI -> ALT
+    [InlineData(310011001L, "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL J-M")]
+    [InlineData(310015001L, "\x1b<4m\x1b4mC/B\x1bm TRIPPED ON OVHD PNL")]
+    [InlineData(310022001L, "\x1b<4m\x1b4mC/B\x1bm TRIPPED R ELEC BAY")]
+    public void A320_GetRawMessage_returns_the_2026_08_fbw_synced_messages(long code, string expected)
+    {
+        Assert.Equal(expected, EWDMessageLookup.GetRawMessage(code));
+    }
+
+    [Theory]
+    [InlineData(310011001L)]
+    [InlineData(310012001L)]
+    [InlineData(310013001L)]
+    [InlineData(310014001L)]
+    [InlineData(310015001L)]
+    [InlineData(310016001L)]
+    [InlineData(310022001L)]
+    public void A320_circuit_breaker_lines_are_amber_cautions(long code)
+    {
+        Assert.Equal("Amber", EWDMessageLookup.GetMessagePriority(EWDMessageLookup.GetRawMessage(code)));
+    }
+
+    [Fact]
+    public void A320_CleanANSICodes_renders_the_new_grouped_lines_like_every_other_group()
+    {
+        // The stray "m" is the SAME pre-existing residue the BRAKES/T.O cases above pin
+        // (C#'s greedy \x1b4 escape + the bare 'm' left by "\x1bm"), not something the
+        // 2026-08 sync introduced. Pinned so a future cleanup fixes all groups together.
+        Assert.Equal("C/B m TRIPPED REAR PNL J-M",
+            EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(310011001L)));
+        Assert.Equal("NAV m BARO VALUE DISAGREE",
+            EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(340010101L)));
+    }
+
     // ===================== A380 (EWDMessageLookupA380) =====================
 
     // --- GetRawMessage: known codes across categories + unknown-code fallback ---
