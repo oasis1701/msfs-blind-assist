@@ -8,10 +8,28 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// Resolves the parking gate/spot for on-ground traffic by matching
 /// aircraft coordinates against the NavDataReader parking database.
+/// <para>
+/// Stand NAMES come through <see cref="ParkingSpotSource.GetNamedSpots"/> — the one seam every
+/// readout that can name a stand goes through — never the raw provider list. Read raw, the TCAS
+/// window said "at Gate A 25" for the KJFK Terminal 4 stand the taxi dialog, Where-Am-I and
+/// SayIntentions all call "B 25": one stand, two names, in one session. <c>GetNamedSpots</c>
+/// (not <c>GetSelectableGates</c>) because this class NAMES the stand a target is parked at, it
+/// does not act on one — and a navdata stand GSX does not list must still be nameable.
+/// </para>
+/// <para>
+/// UI-thread only (TcasForm; SimConnect dispatch is UI-thread), so the lazily-created
+/// <see cref="GateDataSource"/> and the per-ICAO cache need no locking.
+/// </para>
 /// </summary>
 public class GateResolver
 {
     private readonly IAirportDataProvider? _provider;
+    private readonly Func<GateDataSource?>? _gateSourceFactory;
+
+    /// <summary>ONE lazily-created gate source, reused across every resolve so its own per-ICAO
+    /// caches (the <c>.ini</c> parse, the Remote API list) are not rebuilt per call. Dropped by
+    /// <see cref="ClearCache"/> so a database switch starts clean, and recreated on next use.</summary>
+    private GateDataSource? _gateSource;
 
     /// <summary>
     /// Maximum distance (NM) from a parking spot center to consider a match.
@@ -30,12 +48,27 @@ public class GateResolver
     /// </summary>
     private const double AirportSearchRadiusNm = 3.0;
 
-    // Cache: ICAO → parking spots (null entry = "we tried, no spots found")
-    private readonly Dictionary<string, List<ParkingSpot>?> _parkingCache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// Cache: ICAO → (gate-list source token, parking spots). A null spots entry means "we tried,
+    /// no spots found". The token is <see cref="GateDataSource.GetGateListVersion"/>'s — the
+    /// SOURCE the names came from — so a list named before GSX had published the airport (the
+    /// TCAS window opened at spawn, before the first handlerData frame) is re-named the moment
+    /// GSX catches up, instead of freezing on the first answer for the whole session while every
+    /// other readout has moved on to the corrected letter. Comparing it is O(1) per resolve.
+    /// </summary>
+    private readonly Dictionary<string, (string token, List<ParkingSpot>? spots)> _parkingCache
+        = new(StringComparer.OrdinalIgnoreCase);
 
-    public GateResolver(IAirportDataProvider? provider)
+    /// <param name="gateSourceFactory">
+    /// Builds the app's <see cref="GateDataSource"/> (the production call site passes
+    /// <c>MainForm.BuildGateDataSource</c>); null, or a factory returning null, degrades to the
+    /// plain navdata name — exactly the pre-seam behaviour every existing single-argument caller
+    /// (and test) still gets.
+    /// </param>
+    public GateResolver(IAirportDataProvider? provider, Func<GateDataSource?>? gateSourceFactory = null)
     {
         _provider = provider;
+        _gateSourceFactory = gateSourceFactory;
     }
 
     /// <summary>
@@ -82,9 +115,14 @@ public class GateResolver
     }
 
     /// <summary>
-    /// Clears the parking spot cache. Call when the database changes.
+    /// Clears the parking spot cache AND drops the lazily-created gate source. Call when the
+    /// database changes — the gate source holds the old provider, so it must be rebuilt too.
     /// </summary>
-    public void ClearCache() => _parkingCache.Clear();
+    public void ClearCache()
+    {
+        _parkingCache.Clear();
+        _gateSource = null;
+    }
 
     private List<string> GetCandidateAirports(TcasTraffic traffic)
     {
@@ -108,14 +146,35 @@ public class GateResolver
         return candidates;
     }
 
+    private GateDataSource? ResolveGateSource()
+    {
+        if (_gateSource == null && _gateSourceFactory != null)
+        {
+            try { _gateSource = _gateSourceFactory(); }
+            catch { _gateSource = null; }   // degrade to the plain navdata name, never break the TCAS list
+        }
+        return _gateSource;
+    }
+
     private List<ParkingSpot>? GetParkingSpots(string icao)
     {
-        if (_parkingCache.TryGetValue(icao, out var cached))
-            return cached;
+        // The token is a property read (see GateDataSource.GetGateListVersion) — never a file or
+        // DB query — so checking it on every resolve costs nothing, and it is what keeps this
+        // cache honest across the "GSX published the airport after we first looked" moment.
+        var gateSource = ResolveGateSource();
+        string token = gateSource?.GetGateListVersion(icao) ?? "none";
 
-        var spots = _provider!.GetParkingSpots(icao);
+        if (_parkingCache.TryGetValue(icao, out var cached)
+            && string.Equals(cached.token, token, StringComparison.Ordinal))
+            return cached.spots;
+
+        // NEVER GetSelectableGates, and never the raw provider list any more: the resolver
+        // names stands, it does not act on them, and the navdata SET (with its names corrected
+        // in place) is the only shape under which every stand — Vehicle/Fuel included — keeps a
+        // label. See ParkingSpotSource.
+        var spots = ParkingSpotSource.GetNamedSpots(_provider!, gateSource, icao);
         var result = spots.Count > 0 ? spots : null;
-        _parkingCache[icao] = result;
+        _parkingCache[icao] = (token, result);
         return result;
     }
 

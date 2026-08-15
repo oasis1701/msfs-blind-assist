@@ -44,6 +44,7 @@ public sealed class GateDataSource
     private readonly GsxProfileLocator _locator;
     private readonly Func<IReadOnlyCollection<string>> _capabilities;
     private readonly Func<JsonElement?> _getHandlerDataAirport;
+    private readonly Func<long> _handlerDataVersion;
 
     private readonly Dictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
         = new(StringComparer.OrdinalIgnoreCase);
@@ -78,16 +79,82 @@ public sealed class GateDataSource
     /// when none has arrived yet. Defaults to "never available" when omitted, for the same
     /// backward-compatibility reason as <paramref name="capabilities"/>.
     /// </param>
+    /// <param name="handlerDataVersion">
+    /// Returns GSX's monotonic <c>handlerData</c> publish counter (<c>GsxService.HandlerDataVersion</c>
+    /// at the production call site) — folded into <see cref="GetGateListVersion"/>'s token so a
+    /// caller's own per-ICAO cache notices a republish of the SAME airport. Defaults to a constant
+    /// 0 when omitted: the token then still moves on every eligibility flip (fallback → API, API →
+    /// fallback), which is the load-bearing case, and merely cannot see a same-airport republish.
+    /// Must be O(1) — it is read on every gate-search keystroke.
+    /// </param>
     public GateDataSource(IAirportDataProvider navdata, Func<bool> isGsxAvailable,
                           GsxProfileLocator? locator = null,
                           Func<IReadOnlyCollection<string>>? capabilities = null,
-                          Func<JsonElement?>? getHandlerDataAirport = null)
+                          Func<JsonElement?>? getHandlerDataAirport = null,
+                          Func<long>? handlerDataVersion = null)
     {
         _navdata = navdata;
         _isGsxAvailable = isGsxAvailable;
         _locator = locator ?? new GsxProfileLocator();
         _capabilities = capabilities ?? (() => Array.Empty<string>());
         _getHandlerDataAirport = getHandlerDataAirport ?? (() => null);
+        _handlerDataVersion = handlerDataVersion ?? (() => 0L);
+    }
+
+    /// <summary>
+    /// A CHEAP token describing which source <see cref="GetGates"/> would use for
+    /// <paramref name="icao"/> right now — for callers that hold their OWN per-ICAO cache of the
+    /// gate list (<c>TaxiAssistForm._cachedGateSpots</c>, <c>GateResolver</c>) and need to know
+    /// when to throw it away without paying for <see cref="GetGates"/> to find out.
+    /// <list type="bullet">
+    /// <item><c>"api:{n}"</c> — the Remote API path applies (GSX has THIS airport loaded), where
+    /// <c>n</c> is GSX's <c>handlerData</c> publish counter, so a republish of the same airport
+    /// moves the token too.</item>
+    /// <item><c>"ini"</c> — GSX is available but the API path does not apply (a different/remote
+    /// ICAO, no <c>handlerData</c> yet). Deliberately does NOT ask <see cref="GsxProfileLocator"/>
+    /// whether a profile exists — that is a directory listing, and this token is compared on every
+    /// gate-search keystroke; if no profile exists, "ini" and "navdata" resolve to the same list
+    /// anyway, so the coarser answer costs nothing.</item>
+    /// <item><c>"navdata"</c> — GSX is not available at all.</item>
+    /// </list>
+    /// <para>
+    /// <b>Why it exists.</b> A gate list bound from the <c>.ini</c>/navdata fallback BEFORE GSX
+    /// published the airport — the arrival pre-planned during descent, or the spawn before the
+    /// first <c>handlerData</c> frame — carries no <see cref="ParkingSpot.GsxIdentifier"/>, so a
+    /// cache that only invalidates on an ICAO change serves it all session and every gate
+    /// destination ends in "GSX could not prepare this stand." Comparing this token per use is what
+    /// lets that cache rebuild the moment GSX catches up, at the cost of one property read.
+    /// </para>
+    /// <para>
+    /// <b>Must stay O(1)</b>: a capability lookup, one dictionary read, one string compare, one
+    /// field read. Never a file, never a database, never <see cref="GetGates"/>. And it is NOT a
+    /// substitute for <see cref="GetActiveSource"/> — that answers a human-facing question
+    /// ("which source is in use?"); this is an opaque compare-only token whose exact spelling no
+    /// caller may parse. Never throws: any provider failure degrades exactly like
+    /// <see cref="TryGetCurrentAirportHandlerData"/> — "not eligible".
+    /// </para>
+    /// </summary>
+    public string GetGateListVersion(string icao)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return "navdata";
+        icao = NormalizeIcao(icao);
+
+        if (TryGetCurrentAirportHandlerData(icao, out _))
+        {
+            long version;
+            try { version = _handlerDataVersion(); }
+            catch (Exception ex)
+            {
+                Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
+                version = 0;
+            }
+            return "api:" + version.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        bool gsxAvailable;
+        try { gsxAvailable = _isGsxAvailable(); }
+        catch { gsxAvailable = false; }
+        return gsxAvailable ? "ini" : "navdata";
     }
 
     /// <summary>
@@ -216,8 +283,9 @@ public sealed class GateDataSource
     /// True, with <paramref name="airport"/> set, exactly when the Remote API path is ELIGIBLE for
     /// <paramref name="icao"/> right now: GSX advertises the <c>handlerData</c> capability, it has
     /// published a <c>handlerData.airport</c> object, and that object's own <c>icao</c> equals the
-    /// (already-normalized) requested one. Shared by <see cref="GetGates"/> and
-    /// <see cref="GetActiveSource"/> so they cannot disagree about ELIGIBILITY.
+    /// (already-normalized) requested one. Shared by <see cref="GetGates"/>,
+    /// <see cref="GetActiveSource"/> and <see cref="GetGateListVersion"/> so they cannot disagree
+    /// about ELIGIBILITY.
     /// <para>
     /// They can still disagree about the source finally USED, and the asymmetry is deliberate:
     /// <see cref="GetActiveSource"/> answers <see cref="GateSource.GsxRemote"/> as soon as this

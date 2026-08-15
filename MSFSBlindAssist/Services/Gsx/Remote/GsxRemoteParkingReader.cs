@@ -39,9 +39,13 @@ public static class GsxRemoteParkingReader
     // GSX type-constant NAME -> the numeric input GsxGateMapper.MapGsxTypeToNavdataType has
     // always expected for that category (its own doc comment: "GSX .ini type uses the MSFS
     // SDK parking-type enum"). See ResolveNavdataType for why this indirection exists.
-    // GATE_EXTRA(15)/RAMP_GA_EXTRA(14) are omitted on purpose: GsxGateMapper has no
-    // navdata-side case for either (falls through to its own `_ => 0`), and FUEL(12)/
-    // VEHICLE(13) never reach this stage — those stands are excluded earlier in ReadOne.
+    // RAMP_GA_EXTRA(14)/GATE_EXTRA(15) ARE listed: GSX publishes both constants on every
+    // parking (238/238 at KJFK) and `type` arrives as a plain int, so a profile using
+    // GATE_EXTRA -- the A380-class stands -- emits type 15, and GsxGateMapper maps both (to
+    // navdata's SWAPPED 15/14 -- see its comment). Left out, such a stand read as type 0:
+    // "Spot N - Unknown", not a gate anywhere in the UI. Only FUEL(12)/VEHICLE(13) stay out,
+    // and only because those stands are excluded earlier in ReadOne and never reach this
+    // stage.
     private static readonly IReadOnlyDictionary<string, int> NameToKnownGsxTypeInt =
         new Dictionary<string, int>(StringComparer.Ordinal)
         {
@@ -56,6 +60,8 @@ public static class GsxRemoteParkingReader
             ["GATE_MEDIUM"] = 9,
             ["GATE_HEAVY"] = 10,
             ["DOCK_GA"] = 11,
+            ["RAMP_GA_EXTRA"] = 14,
+            ["GATE_EXTRA"] = 15,
         };
 
     /// <summary>
@@ -293,10 +299,10 @@ public static class GsxRemoteParkingReader
     /// <para>
     /// Degrades to 0 (unknown — <see cref="ParkingSpot.GetFilterCategory"/> already renders
     /// that as "Other") when <paramref name="gsxTypeValue"/> is null, when no published
-    /// constant matches it (a category not in <see cref="NameToKnownGsxTypeInt"/>, e.g.
-    /// GATE_EXTRA/RAMP_GA_EXTRA — not observed at KJFK), or when the constants are absent
-    /// from the payload entirely (best-effort — the guide says these fields are never
-    /// guaranteed).
+    /// constant matches it (a category not in <see cref="NameToKnownGsxTypeInt"/> — today
+    /// only FUEL/VEHICLE, which never get here, or a constant GSX has not invented yet), or
+    /// when the constants are absent from the payload entirely (best-effort — the guide says
+    /// these fields are never guaranteed).
     /// </para>
     /// </summary>
     private static int ResolveNavdataType(JsonElement parking, int? gsxTypeValue)

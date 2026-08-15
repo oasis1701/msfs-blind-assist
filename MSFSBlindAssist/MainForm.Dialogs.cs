@@ -163,7 +163,12 @@ public partial class MainForm
         {
             if (tcasForm == null || tcasForm.IsDisposed)
             {
-                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider());
+                // The gate source is what makes the TCAS "at Gate B 25" label agree with every
+                // other stand readout (taxi dialog, Where-Am-I, SayIntentions) -- see
+                // Services/ParkingSpotSource. Passed as a FACTORY: the resolver creates it lazily
+                // and drops it on ClearCache, so a database switch never leaves it holding the
+                // old provider.
+                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider(), BuildGateDataSource);
                 tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
             }
             tcasForm.ShowForm();

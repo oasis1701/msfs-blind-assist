@@ -127,8 +127,10 @@ public class GateDataSourceRoutingTests : IDisposable
         bool isGsxAvailable = false,
         GsxProfileLocator? locator = null,
         Func<IReadOnlyCollection<string>>? capabilities = null,
-        Func<JsonElement?>? getHandlerDataAirport = null)
-        => new(navdata, () => isGsxAvailable, locator ?? EmptyLocator(), capabilities, getHandlerDataAirport);
+        Func<JsonElement?>? getHandlerDataAirport = null,
+        Func<long>? handlerDataVersion = null)
+        => new(navdata, () => isGsxAvailable, locator ?? EmptyLocator(), capabilities, getHandlerDataAirport,
+               handlerDataVersion);
 
     /// <summary>Points at <see cref="_dir"/> without creating it — GsxProfileLocator.TryFindProfile
     /// short-circuits false on a non-existent directory, so this deterministically means "no .ini
@@ -530,6 +532,106 @@ public class GateDataSourceRoutingTests : IDisposable
         var spot = Assert.Single(spots);
         Assert.Equal(GateSource.Gsx, spot.Source);
         Assert.Equal(50.0, spot.Latitude); // GSX's own this_parking_pos wins over navdata's 1.0
+    }
+
+    // ── 17. GetGateListVersion: the O(1) staleness token for callers holding their own cache ─
+    //
+    // TaxiAssistForm caches its resolved gate list per ICAO and (before this token) rebuilt it
+    // only on an ICAO change — so a list bound from the .ini/navdata fallback BEFORE GSX had
+    // published the airport (arrival pre-planned during descent; spawn before handlerData
+    // arrived) was served all session with GsxIdentifier == null, and every gate Calculate
+    // ended in "GSX could not prepare this stand." The token is what lets a per-ICAO cache
+    // notice the source moved without paying for GetGates on every keystroke.
+
+    [Fact]
+    public void GetGateListVersion_says_navdata_when_nothing_better_applies()
+    {
+        var source = Build(new FakeAirportDataProvider());
+        Assert.Equal("navdata", source.GetGateListVersion(Kjfk));
+    }
+
+    [Fact]
+    public void GetGateListVersion_says_ini_when_gsx_is_available_but_the_api_does_not_apply()
+    {
+        // No .ini is actually consulted here (that is a directory listing, and this token is
+        // compared per keystroke): GSX being available is enough to say the .ini path is what
+        // GetGates would reach for. If no profile exists both "ini" and "navdata" resolve to the
+        // same list anyway, so the token being "ini" costs nothing.
+        var source = Build(new FakeAirportDataProvider(), isGsxAvailable: true);
+        Assert.Equal("ini", source.GetGateListVersion(Kjfk));
+    }
+
+    [Fact]
+    public void GetGateListVersion_carries_the_handlerData_version_on_the_api_path_for_the_current_airport_only()
+    {
+        long version = 7;
+        var airport = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        var source = Build(new FakeAirportDataProvider(), isGsxAvailable: true,
+            capabilities: HasHandlerData, getHandlerDataAirport: () => airport,
+            handlerDataVersion: () => version);
+
+        Assert.Equal("api:7", source.GetGateListVersion(Kjfk));
+        // GSX republishes handlerData -> the token moves, so a cache holding "api:7" rebuilds.
+        version = 8;
+        Assert.Equal("api:8", source.GetGateListVersion(Kjfk));
+        // A DIFFERENT airport is not on the API path at all -- it stays on the .ini token,
+        // whatever the version does.
+        Assert.Equal("ini", source.GetGateListVersion(Eddf));
+    }
+
+    [Fact]
+    public void GetGateListVersion_flips_from_the_fallback_to_the_api_when_gsx_publishes_the_airport()
+    {
+        // THE scenario: the form built its list while handlerData was still null (GSX had not
+        // published the airport yet), then GSX did. The two tokens must differ, or the stale,
+        // identifier-less list is served for the rest of the session.
+        JsonElement? current = null;
+        var source = Build(new FakeAirportDataProvider(), isGsxAvailable: true,
+            capabilities: HasHandlerData, getHandlerDataAirport: () => current,
+            handlerDataVersion: () => 3);
+
+        string before = source.GetGateListVersion(Kjfk);
+        current = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        string after = source.GetGateListVersion(Kjfk);
+
+        Assert.Equal("ini", before);
+        Assert.Equal("api:3", after);
+        Assert.NotEqual(before, after);
+    }
+
+    [Fact]
+    public void GetGateListVersion_with_the_default_version_delegate_still_tracks_eligibility_flips()
+    {
+        // A caller that omits handlerDataVersion (every pre-existing construction) gets a
+        // constant "api:0" while on the API path -- it cannot see a republish, but it still
+        // sees the fallback->api flip, which is the load-bearing one.
+        JsonElement? current = null;
+        var source = Build(new FakeAirportDataProvider(),
+            capabilities: HasHandlerData, getHandlerDataAirport: () => current);
+
+        Assert.Equal("navdata", source.GetGateListVersion(Kjfk));
+        current = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        Assert.Equal("api:0", source.GetGateListVersion(Kjfk));
+    }
+
+    [Fact]
+    public void GetGateListVersion_never_throws_and_never_touches_navdata()
+    {
+        var navdata = new FakeAirportDataProvider();
+        var throwingCaps = Build(navdata, isGsxAvailable: true,
+            capabilities: () => throw new InvalidOperationException("boom"));
+        Assert.Equal("ini", throwingCaps.GetGateListVersion(Kjfk));   // degrades to "not eligible"
+        Assert.Equal("navdata", throwingCaps.GetGateListVersion(""));
+
+        var airport = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        var throwingVersion = Build(navdata, isGsxAvailable: true,
+            capabilities: HasHandlerData, getHandlerDataAirport: () => airport,
+            handlerDataVersion: () => throw new InvalidOperationException("boom"));
+        Assert.StartsWith("api:", throwingVersion.GetGateListVersion(Kjfk), StringComparison.Ordinal);
+
+        // It is a token, not a list: no navdata query is ever made to compute it. That is what
+        // makes it safe to compare on every gate-search keystroke.
+        Assert.Empty(navdata.GetParkingSpotsCalls);
     }
 
     // ── 16. An empty Remote API result falls back, and is never cached ─────────────────────

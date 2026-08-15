@@ -413,6 +413,42 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
+    public void A_GATE_EXTRA_stand_reads_as_navdata_Gate_Extra_and_renders_as_a_gate()
+    {
+        // GSX publishes GATE_EXTRA (15) and RAMP_GA_EXTRA (14) on EVERY parking (238/238 in the
+        // KJFK capture) — they are the two largest size classes, the ones an A380 stand profile
+        // uses. Navdata has a type for both (ParkingSpot: 14 = "Gate Extra", 15 = "Ramp GA
+        // Extra"), so a stand of either kind must resolve to it, not fall through to 0 —
+        // which rendered as "Spot 1 - Unknown", dropped it into "Other" in the teleport
+        // dialog's category filter and out of its gate count. Note the wire<->navdata SWAP:
+        // GSX 15=GATE_EXTRA -> navdata 14; GSX 14=RAMP_GA_EXTRA -> navdata 15.
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Extra","type":15,
+                          "GATE_HEAVY":10,"RAMP_GA_EXTRA":14,"GATE_EXTRA":15,"lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(14, spot.Type);
+        Assert.Equal("Gate Extra", spot.GetParkingType());
+        Assert.Equal("Gate Extra", spot.GetFilterCategory());
+        // No concourse letter on this stand, so Describe() leans on IsGateType() to say "Gate",
+        // never the generic "Spot".
+        Assert.StartsWith("Gate 1 - Gate Extra", spot.Describe(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_RAMP_GA_EXTRA_stand_reads_as_navdata_Ramp_GA_Extra()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Stand 7","uiTerminalName":"Remote","uiType":"Ramp GA Extra","type":14,
+                          "RAMP_GA_LARGE":4,"RAMP_GA_EXTRA":14,"GATE_EXTRA":15,"lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(15, spot.Type);
+        Assert.Equal("Ramp GA Extra", spot.GetParkingType());
+        Assert.Equal("Ramp GA", spot.GetFilterCategory());
+    }
+
+    [Fact]
     public void Type_mapping_survives_a_hypothetical_gsx_renumbering()
     {
         // GATE_MEDIUM is redefined here to 42 instead of GSX's real current value (9), and
