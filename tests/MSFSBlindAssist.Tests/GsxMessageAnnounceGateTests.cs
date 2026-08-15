@@ -37,11 +37,22 @@ public class GsxMessageAnnounceGateTests
         => Assert.True(GsxMessageAnnounceGate.ShouldAnnounce("Follow me car is approaching.", "Follow me car has arrived. Follow it to your parking."));
 
     [Fact]
-    public void Text_returning_after_a_blank_is_not_re_read()
+    public void A_digit_run_glued_to_a_letter_is_an_identifier_and_announces()
     {
-        // The caller does NOT reset the last-spoken text when the slot blanks, so a
-        // banner flickering off and on with the same words is not spoken twice.
+        // "…to gate B25" -> "…to gate B27" is a reassignment, not a counter tick.
+        Assert.True(GsxMessageAnnounceGate.ShouldAnnounce("Follow me to gate B25", "Follow me to gate B27"));
+        Assert.True(GsxMessageAnnounceGate.ShouldAnnounce("Stand A6 assigned", "Stand A7 assigned"));
+    }
+
+    [Fact]
+    public void The_gate_itself_treats_a_blank_as_silent_and_an_exact_repeat_as_silent()
+    {
+        // The CALLER (GsxService.AnnounceMessageIfChanged) resets its last-spoken text when
+        // the slot blanks — the pre-Remote-API ClearLastTooltip policy — so the same banner
+        // shown again after a gap IS spoken again. That reset is the caller's; the pure gate
+        // only ever answers "is this text, against that last-spoken text, worth speaking".
         Assert.False(GsxMessageAnnounceGate.ShouldAnnounce("Set parking brake.", ""));
         Assert.False(GsxMessageAnnounceGate.ShouldAnnounce("Set parking brake.", "Set parking brake."));
+        Assert.True(GsxMessageAnnounceGate.ShouldAnnounce("", "Set parking brake."));
     }
 }

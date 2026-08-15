@@ -61,6 +61,11 @@ public sealed class GsxRemoteConnection : IDisposable
         try { _cts?.Dispose(); } catch { /* already disposed */ }
         var cts = new CancellationTokenSource();
         _cts = cts;
+        // Capture the TOKEN now, not the source: a further Start()/Dispose() before a
+        // deferred loop below has begun disposes this source, and CancellationTokenSource
+        // .Token throws ObjectDisposedException then — the queued loop would fault (a
+        // misleading ERROR log line) instead of simply observing "cancelled" and exiting.
+        CancellationToken token = cts.Token;
 
         Task? previous = _loop;
         if (previous != null && !previous.IsCompleted)
@@ -68,11 +73,11 @@ public sealed class GsxRemoteConnection : IDisposable
             Log.Debug("Gsx", "Remote API start deferred until the previous receive loop unwinds.");
             // ContinueWith runs regardless of how the old loop ended (its own faults are
             // already observed below), then Unwrap so _loop tracks the NEW loop's lifetime.
-            _loop = previous.ContinueWith(_ => RunAsync(cts.Token), TaskScheduler.Default).Unwrap();
+            _loop = previous.ContinueWith(_ => RunAsync(token), TaskScheduler.Default).Unwrap();
         }
         else
         {
-            _loop = Task.Run(() => RunAsync(cts.Token));
+            _loop = Task.Run(() => RunAsync(token));
         }
 
         // RunAsync catches everything it knows how to handle and only exits by falling

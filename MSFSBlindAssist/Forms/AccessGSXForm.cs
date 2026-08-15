@@ -274,37 +274,53 @@ public sealed class AccessGSXForm : Form
         bool alt = (keyData & Keys.Alt) == Keys.Alt;
         bool shift = (keyData & Keys.Shift) == Keys.Shift;
 
-        if (keyCode == Keys.C && !control && !alt && !shift && _gsxService.MenuOptions.Count > 0)
+        if (keyCode == Keys.C && !control && !alt && !shift)
         {
-            // Same shape as HandleF5: with the Remote API unreachable there
-            // is nothing to send, and a silent no-op is indistinguishable
-            // from a lost keystroke — say why instead. The request stamp is
-            // NOT set here: nothing was asked for, so no later frame may
-            // claim to be the answer.
+            // Same shape as HandleF5, and checked AHEAD of the menu gate below:
+            // the same drop that makes the API unreachable also empties
+            // MenuOptions (ResetSessionModels), so a check inside that gate could
+            // never run — 'C' was the one key in this window that answered a
+            // dropped socket with dead air. The request stamp is NOT set here:
+            // nothing was asked for, so no later frame may claim to be the answer.
             if (!_gsxService.RemoteApiAvailable)
             {
                 AnnounceUnavailable();
                 return true;
             }
 
-            // Stamp the request BEFORE sending: the "settings" response can
-            // only arrive on a later message-loop turn (GsxService reposts
-            // every frame via BeginInvoke), but stamping first costs nothing
-            // and leaves no ordering to reason about. OnSettingsChangedUi
-            // opens the window only while this stamp is fresh — see the
-            // _settingsRequestedUtc field comment.
+            // Settings are reachable only while a GSX menu is up (the documented
+            // "open the menu with F5, then press C" flow) — with the API up and no
+            // menu, 'C' falls through to the base handler as before.
+            if (_gsxService.MenuOptions.Count == 0)
+                return base.ProcessCmdKey(ref msg, keyData);
+
+            // Stamp the request BEFORE anything else: OnSettingsChangedUi opens a
+            // window only while this stamp is fresh — see the _settingsRequestedUtc
+            // field comment.
             _settingsRequestedUtc = DateTime.UtcNow;
+
+            // Ask GSX for a fresh schema. GsxService.OpenSettings awaits the reply
+            // and feeds payload.settings through the frame path, so SettingsChanged
+            // WILL follow — refreshing an open window in place, or (if the schema
+            // was empty until now) opening one via the stamp above.
             _gsxService.OpenSettings();
-            // OpenSettings is a fire-and-forget Remote API send — the
-            // "settings" response (and therefore SettingsChanged /
-            // OnSettingsChangedUi, which creates or shows _settingsForm)
-            // arrives asynchronously on a later WebSocket frame, not
-            // synchronously here. This only refocuses a window that is
-            // ALREADY open from an earlier press; the refresh-in-place path
-            // deliberately never steals focus on its own for a background
-            // republish.
+
             if (_settingsForm is { IsDisposed: false })
+            {
+                // Already open from an earlier press: just refocus it. The
+                // refresh-in-place path never steals focus on its own.
                 _settingsForm.ShowForm();
+                return true;
+            }
+
+            // Not open, and GSX has already published a schema (every snapshot
+            // carries one): open it NOW, from what is held, rather than making the
+            // pilot wait on the reply. This is a direct answer to a keypress, so
+            // no announcement — the screen reader reads the new window itself.
+            // The reply then lands as an in-place refresh. Only when nothing has
+            // been published yet does the window wait for the reply, on the stamp.
+            if (_gsxService.Settings.AllFields().Any())
+                OnSettingsChangedUi();
             return true;
         }
 
@@ -562,14 +578,18 @@ public sealed class AccessGSXForm : Form
         // the menu closes; see the _renderedMenu field comment).
         string menuText = RepopulateMenu();
 
-        // Speech is form-VISIBLE only, the same gate OnAnnouncementReadyUi
-        // applies: a hidden window is not the surface the pilot is reading,
-        // and every connect/reconnect fires MenuChanged twice (Hello +
-        // Snapshot), so a hidden form speaking each one is exactly the
-        // back-to-back double-speak that gate exists to prevent. Showing the
-        // window puts the current list under screen-reader focus, which reads
-        // it itself — nothing is lost, only unsolicited speech.
-        if (!Visible) return;
+        // Speech while the form is HIDDEN follows the pilot's "Announce GSX
+        // tooltips in background" setting — the same rule every other
+        // background GSX announcement (service transitions, invoices, the
+        // message banner) already obeys through GsxService.AnnounceWhenFormHidden.
+        // A menu GSX opens on its own with the window hidden (an operator
+        // prompt, a pushback confirmation, the not-parked reposition offer) is a
+        // genuine background state change a pilot who opted in must hear; a
+        // pilot who did not opt in gets the current list under screen-reader
+        // focus the moment they show the window. The connect-time double-speak
+        // this used to be blamed on is handled by ShouldAnnounce's empty-current
+        // rule, not by this gate.
+        if (!Visible && !_gsxService.AnnounceWhenFormHidden) return;
 
         bool shouldAnnounce = GsxMenuAnnounceResolver.ShouldAnnounce(previouslyAnnounced, _renderedMenu);
         if (shouldAnnounce && !string.IsNullOrWhiteSpace(menuText))
@@ -770,6 +790,10 @@ public sealed class AccessGSXForm : Form
         _settingsForm.FormClosed += (_, _) =>
         {
             _settingsForm = null;
+            // A 'C' pressed while this window was open left a stamp behind; the
+            // window it would have re-opened has just been closed on purpose, so
+            // no later frame may cash it in.
+            _settingsRequestedUtc = null;
             _gsxService.HideMenu();
             OnMenuHiddenUi();
         };

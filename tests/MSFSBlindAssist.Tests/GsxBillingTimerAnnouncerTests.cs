@@ -90,6 +90,31 @@ public class GsxBillingTimerAnnouncerTests
         Assert.Empty(a.Update(Billing(("Jetway operations", 0.1, true, 0)), T0.AddSeconds(5)));
     }
 
+    [Fact]
+    public void A_snapshot_with_no_billing_key_does_not_baseline_so_the_first_reading_is_silent()
+    {
+        // Observed live: a snapshot taken during a Couatl boot carries no billing key, and
+        // the /billing patch with the already-running jetway arrives a moment later — that
+        // first reading must be the baseline, not a "timer running." announcement.
+        var a = new GsxBillingTimerAnnouncer();
+        Assert.Empty(a.Update(GsxBilling.Empty, T0, billingPublished: false));
+        Assert.Empty(a.Update(Billing(("Jetway operations", 0.1, true, 0)), T0.AddSeconds(1)));
+        // …but a timer that starts AFTER that baseline announces.
+        var said = a.Update(Billing(("Jetway operations", 0.1, true, 0), ("GPU operations", 0, true, 0)), T0.AddSeconds(30));
+        Assert.Equal("GPU operations timer running.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Two_timers_sharing_a_subservice_are_tracked_separately()
+    {
+        var a = new GsxBillingTimerAnnouncer();
+        a.Update(Billing(("Jetway operations", 0.1, true, 0), ("Jetway operations", 0.1, true, 0)), T0);
+        // Second jetway disconnects: exactly one "stopped", then nothing flip-flops.
+        var said = a.Update(Billing(("Jetway operations", 0.2, true, 0), ("Jetway operations", 0.2, false, 12.5)), T0.AddMinutes(6));
+        Assert.Equal("Jetway operations timer stopped, 12 minutes, amount 12.50.", Assert.Single(said));
+        Assert.Empty(a.Update(Billing(("Jetway operations", 0.25, true, 0), ("Jetway operations", 0.2, false, 12.5)), T0.AddMinutes(9)));
+    }
+
     [Theory]
     [InlineData(0.0, "under a minute")]
     [InlineData(0.01, "under a minute")]

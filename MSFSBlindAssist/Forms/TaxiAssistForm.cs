@@ -1000,6 +1000,14 @@ public class TaxiAssistForm : Form
         _aircraftHeading = heading;
         txtAirport.Text = icao.ToUpperInvariant();
         await LoadAirportDataAsync(icao);
+        // Same-ICAO reload early-returns, so an import landing after GSX published
+        // this airport (the descent pre-plan case) would otherwise resolve its
+        // destination against the identifier-less fallback list and only discover
+        // that at Calculate time. Refresh here, before TryResolveExternalDestination
+        // reads the combo; the lost-selection result is irrelevant — the import
+        // seats its own destination next.
+        try { RefreshDestinationsIfGateSourceChanged(); }
+        catch (Exception ex) { _taxiFormLog.Error($"Gate-list refresh before import failed: {ex}"); }
         return _graph?.GetAllTaxiwayNames() ?? new List<string>();
     }
 
@@ -2011,7 +2019,7 @@ public class TaxiAssistForm : Form
             string sourceToken = CurrentGateSourceToken();
             if (_cachedGateSpots == null
                 || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(_cachedGateSpotsSourceToken, sourceToken, StringComparison.Ordinal))
+                || Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, sourceToken))
             {
                 // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
                 // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
@@ -2165,7 +2173,12 @@ public class TaxiAssistForm : Form
         if (_graph == null || cmbDestType.SelectedIndex != 1) return false;
 
         string token = CurrentGateSourceToken();
-        if (string.Equals(token, _cachedGateSpotsSourceToken, StringComparison.Ordinal)) return false;
+        // Upgrade/refresh only — a transient drop downgrades the token and must NOT
+        // rebuild (see GateDataSource.ShouldRebuildGateList); the check inside
+        // PopulateDestinations applies the same rule, so both agree.
+        if (_cachedGateSpots == null
+            || !Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, token))
+            return false;
 
         string? previous = cmbDestination.SelectedItem?.ToString();
         PopulateDestinations();
@@ -2177,6 +2190,11 @@ public class TaxiAssistForm : Form
             cmbDestination.SelectedIndex = idx;
             return false;
         }
+        // The pilot's stand is gone from the rebuilt list. LEAVE NOTHING SELECTED:
+        // PopulateDestinations lands the combo on item 0, and a later Calculate on
+        // that would route (and gate.select) to a stand the pilot never chose —
+        // with -1 it aborts with "Please select a destination." instead.
+        cmbDestination.SelectedIndex = -1;
         _taxiFormLog.Info($"Gate list for {_currentIcao} rebuilt from a new source ({token}); previous destination '{previous}' is no longer listed.");
         return true;
     }

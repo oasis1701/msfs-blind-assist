@@ -47,15 +47,34 @@ public sealed class GsxBillingTimerAnnouncer
         _baselined = false;
     }
 
-    public IReadOnlyList<string> Update(GsxBilling billing, DateTime nowUtc)
+    /// <param name="billingPublished">
+    /// Whether GSX has published a <c>billing</c> key at all. A snapshot taken while
+    /// Couatl is still booting carries none (observed live: the key arrived as a
+    /// <c>/billing</c> patch within the same second), and baselining on that ABSENCE
+    /// would make the first patch announce an already-running jetway as freshly
+    /// started. False = record nothing, baseline nothing; the first published reading
+    /// is the baseline.
+    /// </param>
+    public IReadOnlyList<string> Update(GsxBilling billing, DateTime nowUtc, bool billingPublished = true)
     {
         var said = new List<string>();
+        if (!billingPublished) return said;
+
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        // Occurrence counter per key WITHIN this reading: two live timers can share
+        // a subService (a dual-jetway stand, if GSX bills each jetway separately —
+        // unverified, the fixture has one), and one Memo for both would flip
+        // "running"/"stopped" on every patch once their states diverge. Suffixing
+        // the second occurrence keeps them apart for as long as GSX's order holds.
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
 
         foreach (var t in billing.Timers)
         {
-            string key = KeyOf(t);
-            if (key.Length == 0) continue;
+            string baseKey = KeyOf(t);
+            if (baseKey.Length == 0) continue;
+            int n = occurrences.TryGetValue(baseKey, out int c) ? c + 1 : 1;
+            occurrences[baseKey] = n;
+            string key = n == 1 ? baseKey : baseKey + "#" + n.ToString(System.Globalization.CultureInfo.InvariantCulture);
             seen.Add(key);
 
             if (!_known.TryGetValue(key, out var memo))

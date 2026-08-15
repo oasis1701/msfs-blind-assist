@@ -25,6 +25,20 @@ public sealed class GsxServiceState
     public int? PaxTotal { get; init; }
     public int? BagsPercent { get; init; }
 
+    /// <summary>
+    /// The refuel row's quantity — <c>detail.fuel.{current,target,unit}</c>. This is
+    /// where a live Refueling row carries its numbers (verified across full 0→100 %
+    /// runs in the EDDF/KJFK captures: e.g. <c>{"current":5914,"target":5914,
+    /// "unit":"lb","startTotal":5549,"aircraftTotal":11464}</c>); it never uses the
+    /// generic <c>progress</c> object. <c>current</c> is fuel LOADED so far and
+    /// <c>target</c> the amount to load, so "5914 of 5914 lb" is a finished uplift.
+    /// Before the hose is on, <c>fuel</c> carries only <c>aircraftTotal</c>+<c>unit</c>
+    /// — then these stay null. Doubles: GSX may publish fractional pounds.
+    /// </summary>
+    public double? FuelCurrent { get; init; }
+    public double? FuelTarget { get; init; }
+    public string? FuelUnit { get; init; }
+
     public int? ProgressCurrent { get; init; }
     public int? ProgressTotal { get; init; }
     public string? ProgressUnit { get; init; }
@@ -49,6 +63,7 @@ public sealed class GsxServiceState
             if (e.ValueKind != JsonValueKind.Object) continue;
             JsonElement detail = Obj(e, "detail");
             JsonElement pax = detail.ValueKind == JsonValueKind.Object ? Obj(detail, "pax") : default;
+            JsonElement fuel = detail.ValueKind == JsonValueKind.Object ? Obj(detail, "fuel") : default;
             JsonElement prog = Obj(e, "progress");
 
             list.Add(new GsxServiceState
@@ -66,6 +81,9 @@ public sealed class GsxServiceState
                 PaxDone = pax.ValueKind == JsonValueKind.Object ? Int(pax, "done") : null,
                 PaxTotal = pax.ValueKind == JsonValueKind.Object ? Int(pax, "total") : null,
                 BagsPercent = detail.ValueKind == JsonValueKind.Object ? Int(detail, "bagsPercent") : null,
+                FuelCurrent = fuel.ValueKind == JsonValueKind.Object ? Num(fuel, "current") : null,
+                FuelTarget = fuel.ValueKind == JsonValueKind.Object ? Num(fuel, "target") : null,
+                FuelUnit = fuel.ValueKind == JsonValueKind.Object ? Str(fuel, "unit") : null,
                 ProgressCurrent = prog.ValueKind == JsonValueKind.Object ? Int(prog, "current") : null,
                 ProgressTotal = prog.ValueKind == JsonValueKind.Object ? Int(prog, "total") : null,
                 ProgressUnit = prog.ValueKind == JsonValueKind.Object ? Str(prog, "unit") : null,
@@ -88,4 +106,8 @@ public sealed class GsxServiceState
     private static int? Int(JsonElement e, string name)
         => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)
            ? i : null;
+
+    private static double? Num(JsonElement e, string name)
+        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d)
+           ? d : null;
 }

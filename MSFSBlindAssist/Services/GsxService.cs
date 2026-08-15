@@ -366,12 +366,14 @@ public sealed class GsxService : IDisposable
         // OnRemoteConnectedChanged(false) while we're already mid-teardown
         // here. That is also why the reset below must be COMPLETE on its own:
         // nothing OnRemoteConnectedChanged(false) does will run on this path.
-        // Bumping the generation first retires any frame the socket thread has
-        // already posted at us (see _lifecycleGeneration).
-        _lifecycleGeneration++;
         _remoteStarted = false;
         _remote.FrameReceived -= OnFrame;
         _remote.ConnectedChanged -= OnRemoteConnectedChanged;
+        // Bump AFTER unsubscribing: a frame the socket thread was already
+        // dispatching captures the generation on entry, so bumping first would
+        // leave a few-instruction window in which such a frame reads the NEW
+        // value and survives the check (see _lifecycleGeneration).
+        _lifecycleGeneration++;
         _remote.Stop();
 
         ResetSessionModels(ReasonSimDisconnected, clearReceiptDigests: true);
@@ -412,11 +414,18 @@ public sealed class GsxService : IDisposable
         Capabilities = Array.Empty<string>();
         _activeServiceNames = Array.Empty<string>();
         _selectedActiveService = null;
-        _receiptsBaselined = false;
         _messageBaselined = false;
         _lastAnnouncedMessage = string.Empty;
         if (clearReceiptDigests)
+        {
+            // A NEW session follows: forget its predecessor's invoices, and
+            // baseline-first the receipt the first snapshot carries. On a plain
+            // socket DROP neither happens — the digest set already silences the
+            // receipt the reconnect snapshot re-carries, and re-baselining there
+            // would silently swallow an invoice GSX issued while we were offline.
             _announcedReceipts.Clear();
+            _receiptsBaselined = false;
+        }
         _unavailableReason = unavailableReason;
 
         // The menu the form is showing no longer exists — say so through the same
@@ -465,8 +474,44 @@ public sealed class GsxService : IDisposable
     /// </summary>
     public void RefreshTooltip() { }
 
-    /// <summary>Ask GSX to publish its current settings schema.</summary>
-    public void OpenSettings() => _remote.Send("settings.get");
+    /// <summary>
+    /// Ask GSX for its current settings schema. <c>settings.get</c> answers with a
+    /// RESULT frame carrying <c>payload.settings</c> — the same schema GSX also
+    /// publishes under the <c>settings</c> state key — and a result frame is consumed
+    /// by the pending-request matcher, never by <see cref="OnFrame"/>. So the reply
+    /// is awaited here and fed through the frame path as a synthetic
+    /// <c>/settings</c> patch: it lands under the same key GSX itself patches, on the
+    /// UI thread, behind the lifecycle-generation guard, and raises
+    /// <see cref="SettingsChanged"/> exactly as GSX's own patch would. Without this
+    /// the settings window's request-gated create path (AccessGSXForm) had no
+    /// guaranteed event to open on: the vendor guide describes <c>settings.get</c>
+    /// as reply-only, and only <c>settings.set</c> as pushing a patch.
+    /// </summary>
+    public void OpenSettings() => _ = RequestSettingsAsync();
+
+    private async Task RequestSettingsAsync()
+    {
+        try
+        {
+            GsxResult r = await _remote.SendAsync("settings.get").ConfigureAwait(false);
+            if (!r.Ok || r.Frame is null) return;
+
+            JsonElement payload = r.Frame.Payload;
+            if (payload.ValueKind != JsonValueKind.Object
+                || !payload.TryGetProperty("settings", out var settings)
+                || settings.ValueKind != JsonValueKind.Object)
+                return;
+
+            var synthetic = GsxFrame.Parse(
+                "{\"type\":\"patch\",\"path\":\"/settings\",\"value\":" + settings.GetRawText() + "}");
+            if (synthetic.Type == GsxFrameType.Patch)
+                OnFrame(synthetic);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"settings.get failed: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Returns a <see cref="Task{T}"/> that completes with the next
@@ -622,14 +667,15 @@ public sealed class GsxService : IDisposable
             _serviceAnnouncer.Reset();
             _timerAnnouncer.Reset();
             LastAnnouncementText = string.Empty;
-            // A new Couatl session issues new invoices; the previous session's
-            // digests must not silence them. Same lifetime the pre-Remote-API
-            // _announcedInvoiceKeys set had (cleared in ClearProgressTrackingState,
-            // which the COUATL_STARTED 1->0 edge drove). The restart drops the
-            // socket by design, so the reconnect's first snapshot re-BASELINES
-            // (ResetSessionModels clears _receiptsBaselined) — a receipt that
-            // survived the restart is recorded silently there, not re-spoken.
-            _announcedReceipts.Clear();
+            // The receipt digests are deliberately KEPT here. The pre-Remote-API
+            // set was cleared on this edge because it was keyed by operator name
+            // and a new session's invoice from the same handler had to get
+            // through; these keys are payload digests, so a genuinely new
+            // invoice always differs and needs no clearing — while clearing
+            // would let a receipt that merely SURVIVED the restart (an in-place
+            // engine restart keeps the socket, and the guide says the server
+            // outlives Couatl) be spoken a second time. Stop() is the one place
+            // a session's digests end.
         }
 
         switch (f.Type)
@@ -650,7 +696,17 @@ public sealed class GsxService : IDisposable
                 // ApplyTooltip/TooltipChanged pair here would be redundant.
                 ApplyServices();
                 ApplySettings();
-                SettingsChanged?.Invoke(this, EventArgs.Empty);
+                // SettingsChanged on the SNAPSHOT only. A hello arrives with the
+                // state store empty (a drop clears it), so raising it here handed
+                // an open GsxSettingsForm an EMPTY schema — a structural change,
+                // so it rebuilt to "No GSX settings were available", disposing
+                // the control the pilot was in — and the snapshot a moment
+                // later rebuilt it again, moved focus to the section list and
+                // spoke "GSX settings loaded." on every reconnect. Left alone
+                // across the hello, the window keeps its schema and the
+                // snapshot's identical structure is applied in place.
+                if (f.Type == GsxFrameType.Snapshot)
+                    SettingsChanged?.Invoke(this, EventArgs.Empty);
                 ApplyBilling();
                 ApplyReceipt();
                 AnnounceMessageIfChanged();
@@ -837,7 +893,13 @@ public sealed class GsxService : IDisposable
     /// </summary>
     private void AnnounceTimers()
     {
-        foreach (string phrase in _timerAnnouncer.Update(Billing, DateTime.UtcNow))
+        // Whether GSX has published a billing key at all: a snapshot taken during
+        // a Couatl boot has none (observed live), and baselining the announcer on
+        // that absence would make the first /billing patch announce an already-
+        // running jetway as freshly started. The announcer baselines only on a
+        // reading that GSX actually made.
+        bool billingPublished = _state.TryGet("billing", out _);
+        foreach (string phrase in _timerAnnouncer.Update(Billing, DateTime.UtcNow, billingPublished))
             Announce(phrase);
     }
 
@@ -902,6 +964,16 @@ public sealed class GsxService : IDisposable
     private void AnnounceMessageIfChanged()
     {
         string text = RawMessageText();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            // The slot cleared: whatever comes next is the start of something
+            // new and is spoken in full even if it repeats the last banner — the
+            // pre-Remote-API ClearLastTooltip policy. A GSX reminder shown again
+            // after a gap ("release parking brake") must not be swallowed as a
+            // repeat.
+            _lastAnnouncedMessage = string.Empty;
+            return;
+        }
         if (!GsxMessageAnnounceGate.ShouldAnnounce(_lastAnnouncedMessage, text))
             return;
 
@@ -1226,16 +1298,26 @@ internal static class GsxActiveServiceResolver
 /// <see cref="GsxActiveServiceResolver"/> above.
 ///
 /// Mirrors the pre-Remote-API PublishLiveServiceText policy: an empty/whitespace
-/// slot says nothing (and the caller does not reset on it, so a banner that
-/// flickers off and on is not re-read); an exact repeat is silent; a change that
-/// is ONLY in runs of digits ("Pushback in 5 seconds" -> "… 4 seconds") is a
-/// countdown or counter tick, not news — the same rule
-/// <c>GsxMenuAnnounceResolver</c> applies to menu entries. Anything else speaks.
+/// slot says nothing (the CALLER resets its last-spoken text on it, the old
+/// ClearLastTooltip rule, so a banner shown again after a gap is spoken again);
+/// an exact repeat is silent; a change that is ONLY in STANDALONE runs of digits
+/// ("Pushback in 5 seconds" -> "… 4 seconds") is a countdown or counter tick,
+/// not news — the same rule <c>GsxMenuAnnounceResolver</c> applies to menu
+/// entries — while a digit run glued to a letter ("B25" -> "B27") is an
+/// identifier and does speak. Anything else speaks.
 /// </summary>
 internal static class GsxMessageAnnounceGate
 {
+    // STANDALONE digit runs only — a run glued to a letter is an identifier
+    // ("engine 1" is standalone, "B25" is not), and "…to gate B25" -> "…to
+    // gate B27" is a reassignment, not a tick. The pre-Remote-API
+    // NormalizeStatusStableText bucketed only times, durations and prices, so
+    // this stays on the narrow side of that.
+    // Both boundaries exclude digits as well as letters so the run is MAXIMAL: with
+    // letters alone the engine happily matched the "5" of "B25" (preceded by "2",
+    // not a letter) and "B25"→"B27" collapsed into a tick after all.
     private static readonly System.Text.RegularExpressions.Regex DigitRun =
-        new(@"\d+", System.Text.RegularExpressions.RegexOptions.Compiled);
+        new(@"(?<![A-Za-z0-9])\d+(?![A-Za-z0-9])", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     public static bool ShouldAnnounce(string lastSpoken, string current)
     {

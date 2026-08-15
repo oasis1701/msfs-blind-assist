@@ -664,4 +664,21 @@ public class GateDataSourceRoutingTests : IDisposable
 
         Assert.Single(second, s => s.GsxIdentifier == "Gate 1");
     }
+
+    // ── ShouldRebuildGateList: upgrade or refresh, never a downgrade ────────────────
+
+    [Theory]
+    [InlineData(null, "navdata", true)]        // nothing cached yet
+    [InlineData("", "api:1", true)]
+    [InlineData("navdata", "navdata", false)]  // unchanged
+    [InlineData("navdata", "ini", true)]       // Couatl came up: the .ini overlay is now available
+    [InlineData("ini", "api:1", true)]         // GSX published this airport — THE case the token exists for
+    [InlineData("navdata", "api:7", true)]
+    [InlineData("api:1", "api:2", true)]       // same tier, GSX republished the airport
+    [InlineData("api:3", "ini", false)]        // transient drop: keep the API list, do not force a re-choose
+    [InlineData("api:3", "navdata", false)]
+    [InlineData("ini", "navdata", false)]
+    public void ShouldRebuildGateList_rebuilds_on_an_upgrade_or_refresh_never_a_downgrade(
+        string? cached, string current, bool expected)
+        => Assert.Equal(expected, GateDataSource.ShouldRebuildGateList(cached, current));
 }

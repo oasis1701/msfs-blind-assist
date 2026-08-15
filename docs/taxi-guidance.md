@@ -563,9 +563,12 @@ When **GSX Pro** is running and has a profile for the airport, it becomes the
 **authoritative** source for gates/stands — GSX's metadata (heavy/jetway/VDGS,
 exact positions) is far more accurate than navdata's, so navdata's own
 heavy/jetway classification is never shown when GSX can answer. GSX availability
-for gate sourcing = `GsxService.CouatlStarted` (running this session) AND a
-matching profile exists. When GSX is absent, everything falls back to navdata
-unchanged.
+for gate sourcing = GSX running this session — `GsxService.CouatlStarted` (the
+Remote API's flag) OR `SimConnectManager.GsxCouatlStartedLVar` (GSX's own
+`L:FSDT_GSX_COUATL_STARTED`, which every GSX build publishes, Remote API or not;
+see [gsx.md](gsx.md)) — AND a matching profile exists. Never the Remote flag alone:
+that silently floored these local-file features at GSX 4.0.1. When GSX is absent,
+everything falls back to navdata unchanged.
 
 ### Gate source (GSX-authoritative overlay)
 
@@ -590,10 +593,16 @@ Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
 filtering — works with or without GSX.
 
 **Per-ICAO gate-list cache.** `TaxiAssistForm` caches the airport's gate list as
-(spot, resolved graph node) pairs per ICAO; the search box and the fitting filter
-then filter **in memory** on each keystroke (matching the `GateTeleportForm`
-pattern). Do not reintroduce per-keystroke directory enumeration + navdata query
-+ per-spot nearest-node resolution on the UI thread.
+(spot, resolved graph node) pairs per (ICAO, gate-list SOURCE token —
+`GateDataSource.GetGateListVersion`, an O(1) compare-only token that moves when GSX
+publishes the airport after the list was built); the search box and the fitting
+filter then filter **in memory** on each keystroke (matching the `GateTeleportForm`
+pattern). The token is re-checked on show and at the top of Calculate, rebuilding only
+on an UPGRADE (fallback → API, or a fresh API publish), never on the downgrade a
+transient GSX drop causes; a chosen stand the rebuilt list no longer carries leaves
+NOTHING selected (never item 0) and is announced. Do not reintroduce per-keystroke
+directory enumeration + navdata query + per-spot nearest-node resolution on the UI
+thread — the token check is a property read, nothing more.
 
 ### "Show only fitting stands" filter
 

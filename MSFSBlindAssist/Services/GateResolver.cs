@@ -164,8 +164,10 @@ public class GateResolver
         var gateSource = ResolveGateSource();
         string token = gateSource?.GetGateListVersion(icao) ?? "none";
 
+        // Upgrade/refresh only — a transient drop downgrades the token, and the
+        // names already held stay the best answer through it (GateDataSource.ShouldRebuildGateList).
         if (_parkingCache.TryGetValue(icao, out var cached)
-            && string.Equals(cached.token, token, StringComparison.Ordinal))
+            && !GateDataSource.ShouldRebuildGateList(cached.token, token))
             return cached.spots;
 
         // NEVER GetSelectableGates, and never the raw provider list any more: the resolver

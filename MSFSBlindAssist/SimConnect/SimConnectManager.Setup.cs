@@ -77,10 +77,19 @@ public partial class SimConnectManager
                 "L:FSDT_GSX_COUATL_STARTED", "number",
                 SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
             sc.RegisterDataDefineStruct<SingleValue>(DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED);
+            // DEFAULT (every second), NOT CHANGED: this request is issued inside
+            // SetupDataDefinitions, which runs BEFORE SetupEvents attaches
+            // OnRecvSimobjectData and then pumps Application.DoEvents for hundreds
+            // of ms while clearing continuous batches — a pump that drains the
+            // receive queue with no handler attached. With CHANGED, the one packet
+            // an already-running Couatl produces lands in exactly that window and
+            // is discarded, and nothing re-sends it: the flag stays false all
+            // session for the very pilots (Couatl up before MSFSBA connects) this
+            // read exists for. Eight bytes a second is the price of self-healing.
             sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED,
                 DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
-            Log.Debug("SimConnect", "Registered GSX COUATL_STARTED definition (periodic, on change)");
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered GSX COUATL_STARTED definition (periodic)");
         }
         catch (Exception ex)
         {

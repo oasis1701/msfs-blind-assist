@@ -134,6 +134,30 @@ public sealed class GateDataSource
     /// <see cref="TryGetCurrentAirportHandlerData"/> — "not eligible".
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Whether a per-ICAO gate-list cache built under <paramref name="cachedToken"/> should be
+    /// REBUILT now that <see cref="GetGateListVersion"/> answers <paramref name="currentToken"/>.
+    /// True on an UPGRADE or a REFRESH of the same tier (fallback → API, navdata → .ini, or a
+    /// new API publish <c>api:5</c> → <c>api:6</c>) — never on a DOWNGRADE. The token drops a
+    /// tier on every transient Remote API drop (a RESTART_COUATL, a SimConnect flap: the state
+    /// store is cleared, so the airport is no longer "current"), and rebuilding then would
+    /// throw away a complete API list — identifiers, terminal names, max wingspans — for the
+    /// fallback's, force the pilot to re-choose a stand from a list that names it differently,
+    /// then do it all again on the reconnect. The list already held is the best one available
+    /// through a drop; a downgrade is not news. Pure; pinned by GateDataSourceRoutingTests.
+    /// </summary>
+    public static bool ShouldRebuildGateList(string? cachedToken, string currentToken)
+    {
+        if (string.IsNullOrEmpty(cachedToken)) return true;
+        if (string.Equals(cachedToken, currentToken, StringComparison.Ordinal)) return false;
+        return TokenTier(currentToken) >= TokenTier(cachedToken);
+    }
+
+    private static int TokenTier(string token) =>
+        token.StartsWith("api:", StringComparison.Ordinal) ? 2
+        : string.Equals(token, "ini", StringComparison.Ordinal) ? 1
+        : 0;
+
     public string GetGateListVersion(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return "navdata";
