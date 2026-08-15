@@ -6,8 +6,8 @@ using Flow = Models.FlowDefinition<FbwA380StateEvaluator>;
 using Step = Models.FlowStep<FbwA380StateEvaluator>;
 
 /// <summary>
-/// Data-driven FlyByWire A380 First-Officer flow definitions, covering the 12 automated
-/// phases (Cockpit Preparation through Parking). Flow steps write A380 varKeys via
+/// Data-driven FlyByWire A380 First-Officer flow definitions, covering the 13 automated
+/// phases (Cockpit Preparation through Securing). Flow steps write A380 varKeys via
 /// <see cref="FbwA380ActionExecutor"/>, which delegates most writes to
 /// <see cref="MSFSBlindAssist.Aircraft.FlyByWireA380Definition.ApplyUIVariable"/> — the same
 /// verified panel-write path the FBWA380 panels use — plus a handful of pseudo-keys
@@ -533,15 +533,21 @@ public static class FbwA380FlowDefinitions
             // PARKING, landing + strobe in AFTER_LANDING.
             Skip(Multi("SC_EXTLT_OFF", "Exterior lights: OFF", ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0)),
                 s => s.IsPosition("LIGHT_NAV", 0) && s.IsPosition("LIGHT_LOGO", 0)),
+            // IsPosition(..., 0), not !IsOn(...): both read false on an unread (NaN) variable,
+            // but that means opposite things for a Skip condition on an OFF step — !IsOn(NaN)
+            // is true (skips the write, leaving a switch that was never actually read as OFF
+            // possibly still on), while IsPosition(NaN, 0) is false (the write still happens).
+            // Their siblings SC_APU_OFF/SC_BAT_OFF already use IsPosition for this reason; the
+            // two below matched them.
             Skip(SW("SC_APUBLEED_OFF", "APU bleed: OFF", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
             Skip(Multi("SC_EXTPWR_OFF", "External power: OFF",
                     ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
                     ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
-                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON")
-                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON")
-                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON")
-                  && !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON")),
+                s => s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0)
+                  && s.IsPosition("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0)),
             Skip(SW("SC_APU_OFF", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
             // Batteries LAST — the final power source, and the step that makes the jet dark.

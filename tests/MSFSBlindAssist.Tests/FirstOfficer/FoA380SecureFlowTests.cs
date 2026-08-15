@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MSFSBlindAssist.FirstOfficer.FBWA380;
+using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
@@ -76,5 +78,78 @@ public class FoA380SecureFlowTests
         foreach (var flow in FbwA380FlowDefinitions.Build())
             foreach (var gid in flow.RelatedChecklistGroupIds ?? System.Array.Empty<string>())
                 Assert.Contains(gid, groupIds);
+    }
+
+    // -----------------------------------------------------------------------
+    // Payload pinning — the ten SECURE steps' exact (variable, value) writes. Structural
+    // tests above cover ids/order/mirroring but not a single variable name or target value,
+    // which is exactly where the safety lives: an ordinal, case-sensitive lookup dictionary
+    // means a wrong casing (e.g. "..._POSITION" vs "..._Position") writes a variable nothing
+    // reads and never ticks the checklist — silently in both directions. Values below are
+    // written out literally, transcribed from BuildSecure() by hand, not derived from it.
+    // -----------------------------------------------------------------------
+
+    private static readonly (string Id, FlowStepActionType ActionType, string? EventName, int? TargetValue,
+        (string EventName, int TargetValue)[] MultiActions)[] ExpectedSecurePayloads =
+    {
+        // Crew oxygen is INVERTED: 1 = Off (0 = Auto/on).
+        ("SC_OXY", FlowStepActionType.SetSwitch, "PUSH_OVHD_OXYGEN_CREW", 1, Array.Empty<(string, int)>()),
+
+        // Captain reminder — no automation, writes nothing.
+        ("SC_EFB", FlowStepActionType.CaptainReminder, null, null, Array.Empty<(string, int)>()),
+
+        ("SC_ADIRS", FlowStepActionType.SetSwitchMultiple, null, null, new[]
+        {
+            ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 0),
+            ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 0),
+            ("A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB", 0),
+        }),
+
+        // 3-position sign switch, 2 = Off.
+        ("SC_EMEREXIT", FlowStepActionType.SetSwitch, "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", 2,
+            Array.Empty<(string, int)>()),
+        ("SC_NOSMOKE", FlowStepActionType.SetSwitch, "XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_Position", 2,
+            Array.Empty<(string, int)>()),
+
+        ("SC_EXTLT_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
+        {
+            ("LIGHT_NAV", 0), ("LIGHT_LOGO", 0),
+        }),
+
+        ("SC_APUBLEED_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0,
+            Array.Empty<(string, int)>()),
+
+        ("SC_EXTPWR_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
+        {
+            ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 0),
+            ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 0), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 0),
+        }),
+
+        ("SC_APU_OFF", FlowStepActionType.SetSwitch, "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0,
+            Array.Empty<(string, int)>()),
+
+        ("SC_BAT_OFF", FlowStepActionType.SetSwitchMultiple, null, null, new[]
+        {
+            ("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0), ("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
+            ("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", 0), ("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 0),
+        }),
+    };
+
+    [Fact]
+    public void SecureFlowStepsWriteThePinnedVariablesAndValues()
+    {
+        var steps = FbwA380FlowDefinitions.Build().Single(f => f.Id == "SECURE").Steps
+            .ToDictionary(s => s.Id);
+
+        foreach (var expected in ExpectedSecurePayloads)
+        {
+            var step = steps[expected.Id];
+            Assert.Equal(expected.ActionType, step.ActionType);
+            Assert.Equal(expected.EventName, step.EventName);
+            Assert.Equal(expected.TargetValue, step.TargetValue);
+            Assert.Equal(
+                expected.MultiActions.Select(a => (a.EventName, (int?)a.TargetValue)).ToArray(),
+                step.MultiActions.ToArray());
+        }
     }
 }
