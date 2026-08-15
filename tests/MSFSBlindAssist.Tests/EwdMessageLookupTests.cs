@@ -125,6 +125,17 @@ public class EwdMessageLookupTests
     }
 
     [Fact]
+    public void A320_CleanANSICodes_strips_only_the_escaped_m_never_a_real_letter()
+    {
+        // Guards Pass 4b against being rewritten as a bare "m" pattern: that regex is one
+        // character away from stripping the letter out of every message, and the difference
+        // is invisible in the dictionary's uppercase text until something like "mm" or a
+        // lower-case unit slips through. ESC+'m' must go; every other 'm' must survive.
+        Assert.Equal("TRIM mm HYD", EWDMessageLookup.CleanANSICodes("TRIM\x1bm mm HYD"));
+        Assert.Equal("m", EWDMessageLookup.CleanANSICodes("m"));
+    }
+
+    [Fact]
     public void A320_CleanANSICodes_returns_empty_for_empty_input()
     {
         Assert.Equal("", EWDMessageLookup.CleanANSICodes(""));
