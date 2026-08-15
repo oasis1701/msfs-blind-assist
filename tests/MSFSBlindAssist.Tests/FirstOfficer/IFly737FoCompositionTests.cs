@@ -37,6 +37,8 @@ public class IFly737FoCompositionTests
     [Fact]
     public void AltWindow_BlankCell_IsNaN()
     {
+        // A blank AFTER a digit has already been seen is malformed — a real five-cell
+        // LED counter never renders a blank to the right of a digit.
         var b = Buf();
         b[IFlySdkOffsets.Flight_Altitude_Indicator_10000_Status] = 0;
         b[IFlySdkOffsets.Flight_Altitude_Indicator_1000_Status] = 8;
@@ -51,6 +53,100 @@ public class IFly737FoCompositionTests
             IFlySdkOffsets.Flight_Altitude_Indicator_100_Status,
             IFlySdkOffsets.Flight_Altitude_Indicator_10_Status,
             IFlySdkOffsets.Flight_Altitude_Indicator_1_Status);
+
+        Assert.True(double.IsNaN(result));
+    }
+
+    // A right-aligned five-cell LED counter pads unused high-order digits with blanks —
+    // a LANDING altitude of 450 ft at a low-elevation airport reads [blank][blank][4][5][0],
+    // which must compose to 450, not NaN. Before the fix this made low-elevation landing
+    // altitudes permanently indeterminate (the checklist item could never tick).
+    [Fact]
+    public void AltWindow_LeadingBlanks_ComposesLowValue()
+    {
+        var b = Buf();
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status] = 11; // blank
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status] = 11;  // blank
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_100_Status] = 4;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10_Status] = 5;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1_Status] = 0;
+
+        double result = IFly737FoComposition.ComposeAltWindow(
+            Snap(b),
+            IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_100_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1_Status);
+
+        Assert.Equal(450.0, result);
+    }
+
+    // A below-sea-level LAND ALT (e.g. Amsterdam Schiphol, ~-11 ft) reads with a leading
+    // minus immediately before the first digit: [blank][-][0][1][1] = -11.
+    [Fact]
+    public void AltWindow_LeadingMinus_ComposesNegativeValue()
+    {
+        var b = Buf();
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status] = 11; // blank
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status] = 10;  // minus
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_100_Status] = 0;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10_Status] = 1;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1_Status] = 1;
+
+        double result = IFly737FoComposition.ComposeAltWindow(
+            Snap(b),
+            IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_100_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1_Status);
+
+        Assert.Equal(-11.0, result);
+    }
+
+    // All five cells blank -> NaN. This is the safety-critical direction: an
+    // unpowered/blank display must never read as 0 feet.
+    [Fact]
+    public void AltWindow_AllBlank_IsNaN()
+    {
+        var b = Buf();
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status] = 11;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status] = 11;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_100_Status] = 11;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10_Status] = 11;
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1_Status] = 11;
+
+        double result = IFly737FoComposition.ComposeAltWindow(
+            Snap(b),
+            IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_100_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1_Status);
+
+        Assert.True(double.IsNaN(result));
+    }
+
+    // A blank cell to the RIGHT of a digit is malformed (the LED counter never renders
+    // that shape) and must read as NaN, never as a truncated/garbage value.
+    [Fact]
+    public void AltWindow_BlankAfterDigit_IsNaN()
+    {
+        var b = Buf();
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status] = 11; // blank
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status] = 11;  // blank
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_100_Status] = 4;    // digit
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_10_Status] = 11;    // blank AFTER a digit — malformed
+        b[IFlySdkOffsets.Landing_Altitude_Indicator_1_Status] = 0;
+
+        double result = IFly737FoComposition.ComposeAltWindow(
+            Snap(b),
+            IFlySdkOffsets.Landing_Altitude_Indicator_10000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1000_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_100_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_10_Status,
+            IFlySdkOffsets.Landing_Altitude_Indicator_1_Status);
 
         Assert.True(double.IsNaN(result));
     }

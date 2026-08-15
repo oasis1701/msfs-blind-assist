@@ -20,10 +20,24 @@ public static class IFly737FoComposition
 
     /// <summary>
     /// Composes a five-digit LED altitude window (e.g. the Flight or Landing
-    /// Altitude Indicator) into feet. Each offset is read as a single digit
-    /// cell (0-9); any cell greater than 9 means the window is blanked/unpowered
-    /// (the generated header documents 10:'-' and/or 11:blank depending on the
-    /// field) and the whole reading is indeterminate.
+    /// Altitude Indicator) into feet, cell order 10000s..1s (left to right on
+    /// the physical display). Each cell reads 0-9 (a digit), 10 ('-', a minus
+    /// sign) or 11 (blank) per the generated header.
+    ///
+    /// The window is a right-aligned five-cell LED counter, so a value that
+    /// doesn't need all five digits (e.g. a 450 ft LAND ALT, or any value
+    /// under 10,000 ft) is padded on the LEFT with blanks, and a negative
+    /// value (e.g. a below-sea-level LAND ALT such as Schiphol's -11 ft) is
+    /// padded with blanks then a single leading minus. Composition rule:
+    ///   - Scan cells left to right. Leading cells may be blank (11); the one
+    ///     cell immediately before the first digit may instead be a minus (10).
+    ///   - Once the first digit (0-9) appears, every remaining cell to the
+    ///     right MUST be a digit — a blank or minus at or after that point
+    ///     means the window is malformed and the whole reading is NaN.
+    ///   - All five cells blank -> NaN. An unpowered/blank display must never
+    ///     read as 0 feet (the safety-critical direction: a blank window must
+    ///     never be treated as "reached the target altitude").
+    ///   - A leading minus negates the composed magnitude.
     /// </summary>
     public static double ComposeAltWindow(
         IFlySdkSnapshot snap,
@@ -33,16 +47,54 @@ public static class IFly737FoComposition
         int tensOffset,
         int onesOffset)
     {
-        byte tenThousands = snap.ByteAt(tenThousandsOffset);
-        byte thousands = snap.ByteAt(thousandsOffset);
-        byte hundreds = snap.ByteAt(hundredsOffset);
-        byte tens = snap.ByteAt(tensOffset);
-        byte ones = snap.ByteAt(onesOffset);
+        Span<byte> cells = stackalloc byte[5]
+        {
+            snap.ByteAt(tenThousandsOffset),
+            snap.ByteAt(thousandsOffset),
+            snap.ByteAt(hundredsOffset),
+            snap.ByteAt(tensOffset),
+            snap.ByteAt(onesOffset),
+        };
 
-        if (tenThousands > 9 || thousands > 9 || hundreds > 9 || tens > 9 || ones > 9)
-            return double.NaN;
+        bool negative = false;
+        bool sawMinus = false;
+        bool sawDigit = false;
+        long magnitude = 0;
 
-        return 10000 * tenThousands + 1000 * thousands + 100 * hundreds + 10 * tens + ones;
+        for (int i = 0; i < cells.Length; i++)
+        {
+            byte cell = cells[i];
+            if (cell <= 9)
+            {
+                sawDigit = true;
+                sawMinus = false; // consumed
+                magnitude = magnitude * 10 + cell;
+            }
+            else if (cell == 10) // minus sign
+            {
+                // Only valid as the single cell immediately before the first digit — a digit
+                // already seen, or a minus not immediately followed by a digit, is malformed.
+                if (sawDigit || sawMinus) return double.NaN;
+                negative = true;
+                sawMinus = true;
+            }
+            else if (cell == 11) // blank
+            {
+                // Only valid before the first digit, and never right after a minus (a minus
+                // must sit immediately before the first digit) — either is malformed.
+                if (sawDigit || sawMinus) return double.NaN;
+            }
+            else
+            {
+                return double.NaN; // unrecognized cell value
+            }
+        }
+
+        if (sawMinus) return double.NaN; // trailing minus with no digit after it — malformed
+
+        if (!sawDigit) return double.NaN; // all blank (and/or a lone minus) — nothing to read
+
+        return negative ? -magnitude : magnitude;
     }
 
     /// <summary>

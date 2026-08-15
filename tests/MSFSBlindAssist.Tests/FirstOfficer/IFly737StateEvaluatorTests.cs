@@ -34,7 +34,16 @@ public class IFly737StateEvaluatorTests
     }
 
     // ------------------------------------------------------------------
-    // NaN gate: not ready -> every plain field AND every synthetic is NaN
+    // NaN gate: not ready -> every plain field AND every SDK-derived synthetic is NaN.
+    // FO_ENG1_N2/FO_ENG2_N2 are asserted NaN here too, but that passes VACUOUSLY —
+    // SetEngineN2 is never called in this test, so the cache is simply at its
+    // pre-push default. N2 is deliberately NOT gated on ReadySource(): it comes from
+    // stock SimConnect TURB ENG N2 (pushed independently by the FO background timer
+    // via SetEngineN2), not from the iFly SDK snapshot, so it must stay valid through
+    // an SDK hiccup — see EngineN2_Synthetics for the real not-ready-independent
+    // coverage. Do not "fix" the evaluator to gate N2 on ReadySource(); that would
+    // break engine-start detection during exactly the kind of brief SDK dropout this
+    // independence exists to survive.
     // ------------------------------------------------------------------
     [Fact]
     public void GetValue_NotReady_IsNaN()
@@ -174,6 +183,63 @@ public class IFly737StateEvaluatorTests
     }
 
     // ------------------------------------------------------------------
+    // Tolerance boundary: the match test requires the window to be STRICTLY LESS
+    // than one full knob step away from the plan (FLT 500 ft, LAND 50 ft) — a gap
+    // of exactly one step (or more) must NOT match, even though the old test's
+    // mismatch case (a 1000 ft/two-step gap) would also pass under a looser `<=`,
+    // `< 1000`, or a doubled-step comparison. These cases are chosen specifically
+    // to fail under any of those looser comparisons and only pass under the exact
+    // "< one step" rule.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void FltAltMatches_ExactlyOneStepAway_DoesNotMatch()
+    {
+        var buf = Buf();
+        SetFltWindow(buf, 37500); // plan 37000 + exactly one 500 ft step
+        var eval = Ready(buf);
+        eval.SetPlannedPressurizationAltitudes(37000, null);
+
+        Assert.False(eval.FltAltMatches());
+        Assert.Equal(0.0, eval.GetValue("FO_PRESS_ALTS_MATCH"));
+    }
+
+    [Fact]
+    public void FltAltMatches_LessThanOneStepAway_Matches()
+    {
+        var buf = Buf();
+        SetFltWindow(buf, 37100); // plan 37000 + 100 ft, well under one 500 ft step
+        var eval = Ready(buf);
+        eval.SetPlannedPressurizationAltitudes(37000, null);
+
+        Assert.True(eval.FltAltMatches());
+        Assert.Equal(1.0, eval.GetValue("FO_PRESS_ALTS_MATCH"));
+    }
+
+    [Fact]
+    public void LandAltMatches_ExactlyOneStepAway_DoesNotMatch()
+    {
+        var buf = Buf();
+        SetLandWindow(buf, 500); // plan 450 + exactly one 50 ft step
+        var eval = Ready(buf);
+        eval.SetPlannedPressurizationAltitudes(null, 450);
+
+        Assert.False(eval.LandAltMatches());
+        Assert.Equal(0.0, eval.GetValue("FO_PRESS_LAND_ALT_MATCH"));
+    }
+
+    [Fact]
+    public void LandAltMatches_LessThanOneStepAway_Matches()
+    {
+        var buf = Buf();
+        SetLandWindow(buf, 460); // plan 450 + 10 ft, well under one 50 ft step
+        var eval = Ready(buf);
+        eval.SetPlannedPressurizationAltitudes(null, 450);
+
+        Assert.True(eval.LandAltMatches());
+        Assert.Equal(1.0, eval.GetValue("FO_PRESS_LAND_ALT_MATCH"));
+    }
+
+    // ------------------------------------------------------------------
     // FO_FUEL_PUMPS_BS_OK: wing on + center matches fuel state (reuses FuelSystemLogic)
     // ------------------------------------------------------------------
     private static void SetCenterQty(byte[] b, string digits, byte units = 1)
@@ -220,6 +286,46 @@ public class IFly737StateEvaluatorTests
         SetCenterQty(blankBuf, ""); // all cells blank
         var blank = Ready(blankBuf);
         Assert.True(double.IsNaN(blank.GetValue("FO_FUEL_PUMPS_BS_OK")));
+    }
+
+    // ------------------------------------------------------------------
+    // A disagreeing center-pump pair (one ON, the other OFF) must NEVER auto-tick
+    // "Fuel pumps" — in EITHER fuel state. A bare `l && r` for centerOn collapses a
+    // disagreeing pair to "center off" (false), which against a DRY tank satisfies
+    // FuelSystemLogic.BeforeStartFuelPumpsOk's `centerOn == hasFuel` (false == false)
+    // and false-ticks the checklist while one center pump is running dry-run against
+    // the tank. Both fuel states must return 0, never 1.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void BeforeStartFuelPumps_DisagreeingCenterPumps_DryTank_IsZero()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_L_AFT_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_AFT_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1; // ON
+        buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 0; // OFF — disagreeing pair
+        SetCenterQty(buf, "00000"); // dry tank
+        var eval = Ready(buf);
+
+        Assert.Equal(0.0, eval.GetValue("FO_FUEL_PUMPS_BS_OK"));
+    }
+
+    [Fact]
+    public void BeforeStartFuelPumps_DisagreeingCenterPumps_LoadedTank_IsZero()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_L_AFT_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_AFT_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 0; // OFF — disagreeing pair
+        buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 1; // ON
+        SetCenterQty(buf, "2300"); // loaded tank, above the arm threshold
+        var eval = Ready(buf);
+
+        Assert.Equal(0.0, eval.GetValue("FO_FUEL_PUMPS_BS_OK"));
     }
 
     // ------------------------------------------------------------------

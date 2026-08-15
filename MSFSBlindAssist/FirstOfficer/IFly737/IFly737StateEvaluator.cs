@@ -51,6 +51,12 @@ public class IFly737StateEvaluator : IFoStateEvaluator
 
     public bool IsAvailable => _def != null;
 
+    /// <summary>First SDK snapshot received (public form of the internal ReadySource seam).
+    /// Mirrors <see cref="MSFSBlindAssist.FirstOfficer.PMDG737.AircraftStateEvaluator.IsDataReady"/>
+    /// so a caller (e.g. a later center-fuel-pump adapter) can gate on data readiness without
+    /// reaching for the internal test seam.</summary>
+    public bool IsDataReady => ReadySource();
+
     // Engine N2 cache (percent), pushed from the FO background timer. Written on the UI thread;
     // read on a thread-pool thread by the flow's WaitForCondition loop — Volatile.Read/Write
     // makes the cross-thread handoff explicit (double can't be `volatile`). Initialized to NaN
@@ -91,15 +97,13 @@ public class IFly737StateEvaluator : IFoStateEvaluator
 
     // -----------------------------------------------------------------------
     // Fuel pumps — merged Before-Start "Fuel pumps: ON" detection (§6): wing pumps on AND the
-    // center pumps match the fuel state (on-with-fuel / off-without). ONE synthetic (never a
-    // primary+additional split — a shared condition can't express wing≠center logic).
+    // center pumps match the fuel state (on-with-fuel / off-without), fed into
+    // FuelSystemLogic.BeforeStartFuelPumpsOk. ONE synthetic (never a primary+additional split —
+    // a shared condition can't express wing≠center logic).
     // -----------------------------------------------------------------------
     private bool AreWingFuelPumpsOn() =>
         IsOn("Fuel_L_FWD_Switch_Status") && IsOn("Fuel_L_AFT_Switch_Status") &&
         IsOn("Fuel_R_FWD_Switch_Status") && IsOn("Fuel_R_AFT_Switch_Status");
-
-    private bool AreCenterFuelPumpsOn() =>
-        IsOn("Fuel_CENTER_L_Switch_Status") && IsOn("Fuel_CENTER_R_Switch_Status");
 
     private double FuelPumpsBeforeStartSynthetic()
     {
@@ -108,8 +112,22 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         // NaN quantity -> NaN synthetic (indeterminate, no tick/revert) — never coerce a
         // missing/blank reading to "no fuel", which would false-tick a dry-tank checklist item.
         if (double.IsNaN(qty)) return double.NaN;
+
+        // A disagreeing center-pump pair (one ON, the other OFF) is never a settled Before-Start
+        // state — it must NOT read as "center off" (plain AND) nor "center on" (plain OR), and
+        // this must hold in BOTH fuel states. Folding the pair straight into a bare AND (as
+        // today) makes a disagreeing pair collapse to centerOn=false; against a DRY tank that
+        // satisfies FuelSystemLogic.BeforeStartFuelPumpsOk's `centerOn == hasFuel` (false ==
+        // false) and the checklist auto-ticks "Fuel pumps: ON" while one pump is running dry —
+        // exactly the hazard CenterPumpGate/CenterFuelPumpAutomation exist to prevent. Neither
+        // AND nor OR can express "disagreement is always wrong regardless of hasFuel", so gate
+        // it explicitly before the AND and short-circuit the whole synthetic to 0.
+        bool ctrL = IsOn("Fuel_CENTER_L_Switch_Status");
+        bool ctrR = IsOn("Fuel_CENTER_R_Switch_Status");
+        if (ctrL != ctrR) return 0; // switches disagree: never a settled Before-Start state
+
         bool wingOn = AreWingFuelPumpsOn();
-        bool centerOn = AreCenterFuelPumpsOn();
+        bool centerOn = ctrL && ctrR;
         bool hasFuel = qty > CenterFuelPumpAutomation.ArmThresholdLbs;
         return FuelSystemLogic.BeforeStartFuelPumpsOk(wingOn, centerOn, hasFuel) ? 1 : 0;
     }
