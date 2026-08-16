@@ -55,10 +55,42 @@ public sealed class GsxServiceAnnouncer
     private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc,
                                          string? BusSpoken);
 
+    /// <summary>
+    /// Per-service tally of what this run did with the ~1 Hz stream, flushed as ONE
+    /// <c>ev=summary</c> line when the service changes state (see <see cref="Diagnostic"/>).
+    /// Counters are WRITE-ONLY — nothing here may ever be read back into a decision.
+    /// </summary>
+    private readonly record struct Counters(int Ticks, int Spoke, int Milestone, int Countdown, int Throttle);
+
+    private enum Hush { Milestone, Countdown, Throttle }
+
+    private readonly Dictionary<string, Counters> _counters = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Optional diagnostic sink, wired by <c>GsxService</c> to <c>GsxDiagnosticLog.Write</c>;
+    /// NULL by default, so the announcer stays pure for its tests and so nothing here can
+    /// change what is spoken. It receives already-built <c>ev=…</c> bodies.
+    ///
+    /// <para>
+    /// It is fed STATE TRANSITIONS and per-run SUMMARIES only — never a per-tick line. The
+    /// gates below run at GSX's ~1 Hz republish rate and swallow most of it (the pax
+    /// milestone gate alone discards roughly nine samples in ten), so logging each swallow
+    /// would reproduce in the file exactly the spam the gates exist to prevent, and would
+    /// evict the rotation window long before a post-flight report arrives. Counting is what
+    /// makes "was a gate the reason nothing was spoken?" answerable in one line per run.
+    /// </para>
+    /// </summary>
+    public Action<string>? Diagnostic { get; set; }
+
     public void Reset()
     {
+        // Flush what the interrupted runs had accumulated — a disconnect mid-boarding is
+        // exactly when the tally is worth having — then start the next session clean.
+        foreach (var (id, c) in _counters) EmitSummary(id, "reset", c);
+
         _previous.Clear();
         _spoken.Clear();
+        _counters.Clear();
         _baselined = false;
     }
 
@@ -80,6 +112,8 @@ public sealed class GsxServiceAnnouncer
 
             if (_previous.TryGetValue(s.Id, out var was) && _baselined)
             {
+                Tick(s.Id);
+
                 if (was.State != now.State)
                 {
                     // A service that changed state starts its counters over
@@ -88,17 +122,27 @@ public sealed class GsxServiceAnnouncer
                     // silence the new run up to its own mark. The reset runs even
                     // when StatePhrase is silent (a return to "available"), so the
                     // next performing run still replays from zero.
-                    if (StatePhrase(s) is { Length: > 0 } statePhrase)
+                    string statePhrase = StatePhrase(s);
+                    if (statePhrase.Length > 0)
+                    {
                         said.Add(statePhrase);
+                        Spoke(s.Id);
+                    }
+
+                    EmitStateChange(s, was.State, now.State, statePhrase);
+                    // The run just ended: flush its tally before the gates start over.
+                    FlushSummary(s.Id, now.State);
                     _spoken.Remove(s.Id);
                 }
                 else if (BusPhrase(s, was, now) is { Length: > 0 } busPhrase)
                 {
                     said.Add(busPhrase);
+                    Spoke(s.Id);
                 }
                 else if (ProgressPhrase(s, was, now, nowUtc) is { Length: > 0 } p)
                 {
                     said.Add(p);
+                    Spoke(s.Id);
                 }
             }
 
@@ -110,6 +154,104 @@ public sealed class GsxServiceAnnouncer
     }
 
     private static string Name(GsxServiceState s) => GsxActiveServiceResolver.NameOf(s);
+
+    // ── Diagnostics (write-only; never read back into a decision) ────────────────────────
+
+    private void Tick(string id)
+    {
+        var c = _counters.TryGetValue(id, out var v) ? v : default;
+        _counters[id] = c with { Ticks = c.Ticks + 1 };
+    }
+
+    private void Spoke(string id)
+    {
+        var c = _counters.TryGetValue(id, out var v) ? v : default;
+        _counters[id] = c with { Spoke = c.Spoke + 1 };
+    }
+
+    /// <summary>
+    /// Records ONE REJECTED QUANTITY against the gate that rejected it — not one tick.
+    /// The distinction is load-bearing for reading the summary: a live boarding row carries
+    /// <c>detail.pax</c> AND <c>detail.bagsPercent</c> in the same object, and the pax branch
+    /// deliberately falls through to bags, so a single tick can be charged twice (three times
+    /// with a bus running). The counters therefore CAN exceed the tick count, which is why
+    /// the summary reports <c>silent=</c> separately — see <see cref="EmitSummary"/>.
+    /// Never logs per tick — see <see cref="Diagnostic"/>.
+    /// </summary>
+    private void Hushed(string id, Hush kind)
+    {
+        var c = _counters.TryGetValue(id, out var v) ? v : default;
+        _counters[id] = kind switch
+        {
+            Hush.Milestone => c with { Milestone = c.Milestone + 1 },
+            Hush.Countdown => c with { Countdown = c.Countdown + 1 },
+            _              => c with { Throttle = c.Throttle + 1 },
+        };
+    }
+
+    /// <summary>
+    /// The transition line — the single most useful record in the channel, and the one that
+    /// was missing when a live refuel's state lifecycle had to be reconstructed from vendor
+    /// documentation. <c>spoke=false</c> with a reason is what separates an intended silence
+    /// (a service returning to "available") from a callout that went missing.
+    /// </summary>
+    private void EmitStateChange(GsxServiceState s, string from, string to, string phrase)
+    {
+        if (Diagnostic is null) return;
+
+        string spoken = phrase.Length > 0
+            ? "spoke=true"
+            : $"spoke=false why={GsxDiagnosticLog.Quote(SilenceReason(to))}";
+
+        Diagnostic($"ev=state svc={GsxDiagnosticLog.Quote(s.Id)} name={GsxDiagnosticLog.Quote(s.DisplayName)} " +
+                   $"from={GsxDiagnosticLog.Quote(from)} to={GsxDiagnosticLog.Quote(to)} " +
+                   $"operator={GsxDiagnosticLog.Quote(s.Operator)} {spoken}");
+    }
+
+    private static string SilenceReason(string state) =>
+        string.Equals(state, "available", StringComparison.Ordinal)
+            ? "a service returning to requestable is silent by design"
+            : "state produced no phrase";
+
+    private void FlushSummary(string id, string state)
+    {
+        if (_counters.TryGetValue(id, out var c)) EmitSummary(id, state, c);
+        _counters.Remove(id);
+    }
+
+    /// <summary>
+    /// One line per service run: how much of GSX's stream this service saw, how much was
+    /// spoken, and which gate accounted for the rest — the answer to "it went quiet during
+    /// boarding", at one line instead of the ~600 that logging each swallow costs.
+    ///
+    /// <para>
+    /// TWO DIFFERENT DENOMINATORS, and conflating them makes the line LIE. <c>ticks</c> and
+    /// <c>spoke</c> and <c>silent</c> count TICKS (<c>silent = ticks - spoke</c>, so those
+    /// three always reconcile). The <c>gate*</c> fields count REJECTED QUANTITIES, and one
+    /// tick can be charged to several of them, because a real boarding row publishes pax and
+    /// bags together and the pax branch falls through to bags. So <c>gateMilestone</c> can
+    /// legitimately exceed <c>ticks</c> — a measured 186-passenger deboard produced
+    /// <c>ticks=187 spoke=30 silent=157 gateMilestone=246</c>. An earlier version printed
+    /// those 246 under a name that implied ticks, which read as a milestone gate ~8× more
+    /// aggressive than it is, and would have sent someone to tune a threshold that was
+    /// behaving correctly.
+    /// </para>
+    /// </summary>
+    private void EmitSummary(string id, string state, Counters c)
+    {
+        if (Diagnostic is null) return;
+
+        // Only for a run that actually saw the stream. A service whose sole tick was its own
+        // transition has nothing to explain, and GSX publishes a dozen rows that spend a
+        // turnaround doing exactly that — summarising those is noise in a channel whose
+        // whole value is that the interesting lines are still findable.
+        int rejected = c.Milestone + c.Countdown + c.Throttle;
+        if (c.Ticks <= 1 && rejected == 0) return;
+
+        Diagnostic($"ev=summary svc={GsxDiagnosticLog.Quote(id)} at={GsxDiagnosticLog.Quote(state)} " +
+                   $"ticks={c.Ticks} spoke={c.Spoke} silent={c.Ticks - c.Spoke} " +
+                   $"gateMilestone={c.Milestone} gateCountdown={c.Countdown} gateThrottle={c.Throttle}");
+    }
 
     /// <summary>
     /// The phrase for a state transition — empty for a transition that stays silent.
@@ -161,7 +303,11 @@ public sealed class GsxServiceAnnouncer
 
         _spoken.TryGetValue(s.Id, out var spoken);
         if (!GsxPhraseGate.ShouldAnnounce(spoken.BusSpoken ?? string.Empty, now.BusPhase))
+        {
+            // The ETA counts down once a second for the whole bus run; counted, never logged.
+            Hushed(s.Id, Hush.Countdown);
             return string.Empty;
+        }
 
         _spoken[s.Id] = spoken with { BusSpoken = now.BusPhase };
         return $"{Name(s)} bus {now.BusPhase}.";
@@ -205,15 +351,24 @@ public sealed class GsxServiceAnnouncer
                 _spoken[s.Id] = spoken with { PaxMilestone = PassengerMilestone(done) };
                 return $"pax {done} of {total}.";
             }
+
+            // The milestone gate discards roughly nine samples in ten — counted, never
+            // logged per tick, or the log becomes the spam. Falls through to bags below,
+            // which is a different quantity on its own gate.
+            Hushed(s.Id, Hush.Milestone);
         }
 
         // Reached only when the pax branch above did NOT speak (it returns the
         // moment it writes a milestone), so `spoken` is still current.
-        if (was.BagsPercent != now.BagsPercent && now.BagsPercent is { } bags
-            && ShouldAnnounceBags(bags, spoken.BagsMilestone))
+        if (was.BagsPercent != now.BagsPercent && now.BagsPercent is { } bags)
         {
-            _spoken[s.Id] = spoken with { BagsMilestone = BagsMilestone(bags) };
-            return $"bags {bags} percent.";
+            if (ShouldAnnounceBags(bags, spoken.BagsMilestone))
+            {
+                _spoken[s.Id] = spoken with { BagsMilestone = BagsMilestone(bags) };
+                return $"bags {bags} percent.";
+            }
+
+            Hushed(s.Id, Hush.Milestone);
         }
 
         // Fuel quantity — the refuel row's detail.fuel: "Refuel 2221 kg loaded,
@@ -226,15 +381,19 @@ public sealed class GsxServiceAnnouncer
         // aloud once a second on a live refuel. Nothing here is worth breaking the
         // interval for; "Refuel complete." (the state edge) already closes it.
         bool fuelMoved = was.FuelCurrent != now.FuelCurrent;
-        if (fuelMoved
-            && now.FuelCurrent is { } fuelCur
-            && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+        if (fuelMoved && now.FuelCurrent is { } fuelCur)
         {
-            _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
-            string unit = UnitSuffix(now.FuelUnit);
-            return now.FuelAircraftTotal is { } aircraftTotal
-                ? $"fuel {Quantity(fuelCur)}{unit} loaded, aircraft {Quantity(aircraftTotal)}{unit}."
-                : $"fuel {Quantity(fuelCur)}{unit} loaded.";
+            if (ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+            {
+                _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
+                string unit = UnitSuffix(now.FuelUnit);
+                return now.FuelAircraftTotal is { } aircraftTotal
+                    ? $"fuel {Quantity(fuelCur)}{unit} loaded, aircraft {Quantity(aircraftTotal)}{unit}."
+                    : $"fuel {Quantity(fuelCur)}{unit} loaded.";
+            }
+
+            // The hose ticks ~1 Hz against a 30 s throttle; counted, never logged per tick.
+            Hushed(s.Id, Hush.Throttle);
         }
 
         // Generic progress — any other metered row that publishes progress
@@ -246,11 +405,15 @@ public sealed class GsxServiceAnnouncer
             && now.PaxDone is null
             && now.FuelCurrent is null
             && now.ProgressCurrent is { } cur && now.ProgressTotal is { } tot && tot > 0
-            && !string.Equals(now.ProgressUnit, "pax", StringComparison.OrdinalIgnoreCase)
-            && ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+            && !string.Equals(now.ProgressUnit, "pax", StringComparison.OrdinalIgnoreCase))
         {
-            _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
-            return $"{Name(s)} {cur} of {tot}{UnitSuffix(now.ProgressUnit)}.";
+            if (ShouldAnnounceProgress(nowUtc, spoken.ProgressSpokenUtc))
+            {
+                _spoken[s.Id] = spoken with { ProgressSpokenUtc = nowUtc };
+                return $"{Name(s)} {cur} of {tot}{UnitSuffix(now.ProgressUnit)}.";
+            }
+
+            Hushed(s.Id, Hush.Throttle);
         }
 
         return string.Empty;

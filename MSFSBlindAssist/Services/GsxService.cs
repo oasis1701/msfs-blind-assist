@@ -227,6 +227,27 @@ public sealed class GsxService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Just the loaded airport's ICAO, for the gsx.log session header — a public scenery
+    /// fact, and the only thing read out of handlerData for the log (never the blob, which
+    /// carries SimBrief data). Null when GSX has not published an airport yet.
+    /// </summary>
+    private string? HandlerDataIcao()
+    {
+        try
+        {
+            return GetHandlerDataAirport() is { } airport
+                   && airport.TryGetProperty("icao", out var icao)
+                   && icao.ValueKind == JsonValueKind.String
+                ? icao.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public event EventHandler? StateChanged;
     public event EventHandler? MenuChanged;
     public event EventHandler? MenuHidden;
@@ -259,7 +280,10 @@ public sealed class GsxService : IDisposable
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly GsxRemoteConnection _remote = new();
     private readonly GsxRemoteState _state = new();
-    private readonly GsxServiceAnnouncer _serviceAnnouncer = new();
+    // Diagnostic sink wired at construction: the announcer emits its state transitions and
+    // per-run suppression tallies into gsx.log. The announcer holds it as null unless set, so
+    // its unit tests stay pure and nothing on this path can alter what is spoken.
+    private readonly GsxServiceAnnouncer _serviceAnnouncer = new() { Diagnostic = GsxDiagnosticLog.Write };
     private readonly GsxBillingTimerAnnouncer _timerAnnouncer = new();
     private bool _remoteStarted;
     private bool _disposed;
@@ -427,6 +451,7 @@ public sealed class GsxService : IDisposable
             _receiptsBaselined = false;
         }
         _unavailableReason = unavailableReason;
+        GsxDiagnosticLog.Reset(unavailableReason, clearReceiptDigests);
 
         // The menu the form is showing no longer exists — say so through the same
         // event a menuShown=false patch would raise, so AccessGSXForm swaps its list
@@ -735,6 +760,12 @@ public sealed class GsxService : IDisposable
                     AnnounceTimers();
                     _receiptsBaselined = true;
                     _messageBaselined = true;
+
+                    // The session header: everything above was recorded rather than spoken,
+                    // and from here on changes announce. A reader splitting gsx.log by
+                    // flight starts at this line, and it is what distinguishes "the pilot
+                    // joined mid-turnaround so silence is correct" from a dead socket.
+                    GsxDiagnosticLog.Session(HandlerDataIcao(), Capabilities, Services.Count);
                 }
                 UpdateStatusText();
                 RaiseStateChanged();
@@ -841,7 +872,7 @@ public sealed class GsxService : IDisposable
             : Array.Empty<GsxServiceState>();
 
         foreach (string phrase in _serviceAnnouncer.Update(Services))
-            Announce(phrase);
+            Announce(phrase, GsxSpeechSource.Service);
 
         UpdateActiveServiceNames();
         RecomputeTooltip();
@@ -918,7 +949,7 @@ public sealed class GsxService : IDisposable
         bool billingPublished = _state.TryGet("billing", out var billingEl)
                                 && billingEl.ValueKind == JsonValueKind.Object;
         foreach (string phrase in _timerAnnouncer.Update(Billing, DateTime.UtcNow, billingPublished))
-            Announce(phrase);
+            Announce(phrase, GsxSpeechSource.BillingTimer);
     }
 
     /// <summary>
@@ -962,7 +993,7 @@ public sealed class GsxService : IDisposable
         if (!_announcedReceipts.Add(ReceiptKey(v))) return;
         if (!_receiptsBaselined) return;
 
-        Announce(FormatReceiptAnnouncement(receipt, Billing));
+        Announce(FormatReceiptAnnouncement(receipt, Billing), GsxSpeechSource.Receipt);
         // Tell GSX we've displayed the invoice so it clears its in-game banner.
         _remote.Send("invoice.seen");
     }
@@ -1019,8 +1050,16 @@ public sealed class GsxService : IDisposable
             return;
 
         _lastAnnouncedMessage = text;
-        if (!_messageBaselined) return; // recorded, not spoken — see summary
-        Announce(text);
+        if (!_messageBaselined)
+        {
+            // Recorded, not spoken — see summary. Low-rate (once per session), so unlike a
+            // gate swallow this one IS worth a line: a pilot who heard nothing at connect
+            // needs to see that the slot was consumed as the baseline rather than lost.
+            GsxDiagnosticLog.Hushed(GsxSpeechSource.Message, text, "baseline",
+                                    "first message of the session is recorded, not spoken");
+            return;
+        }
+        Announce(text, GsxSpeechSource.Message);
     }
 
     /// <summary>
@@ -1095,9 +1134,25 @@ public sealed class GsxService : IDisposable
     /// when the form is hidden and the user has opted into background
     /// monitoring (AnnounceWhenFormHidden).
     /// </summary>
-    private void Announce(string phrase)
+    /// <param name="source">
+    /// Which composer produced <paramref name="phrase"/>. Required, not optional, and it is
+    /// a PRIVACY classification as much as a diagnostic one — <see cref="GsxDiagnosticLog"/>
+    /// decides from it alone whether the text may be written to gsx.log (see
+    /// <see cref="GsxSpeechSource"/>). Making it a parameter of the one choke point means a
+    /// future announcement cannot reach the log unclassified.
+    /// </param>
+    private void Announce(string phrase, GsxSpeechSource source)
     {
         if (string.IsNullOrWhiteSpace(phrase)) return;
+
+        // Record the ROUTE, never "spoke": background monitoring is OFF by default and
+        // AccessGSXForm is built lazily, so a pilot who has never opened Access GSX has
+        // NEITHER route and the whole GSX stream is discarded by configuration. Logging that
+        // as spoken would send an investigator after a speech-engine fault that isn't there.
+        GsxDiagnosticLog.Spoke(source, phrase,
+            AnnounceWhenFormHidden ? SpeechRoute.Background
+            : AnnouncementReady is not null ? SpeechRoute.Window
+            : SpeechRoute.None);
 
         LastAnnouncementText = phrase;
         AnnouncementReady?.Invoke(this, EventArgs.Empty);
@@ -1117,6 +1172,8 @@ public sealed class GsxService : IDisposable
     {
         if (!EnsureUiThread(() => OnRemoteConnectedChanged(up, generation))) return;
         if (generation != _lifecycleGeneration) return; // Stop() ran while this was in flight
+
+        GsxDiagnosticLog.Connection(up, generation);
 
         if (up)
         {

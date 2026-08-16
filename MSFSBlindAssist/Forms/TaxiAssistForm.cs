@@ -3637,7 +3637,24 @@ public class TaxiAssistForm : Form
 
         string? phrase = Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe(result);
         if (!string.IsNullOrEmpty(phrase))
+        {
             _announcer.Announce(phrase);
+            // Window route: this form's own announcer speaks it directly, so unlike the
+            // GsxService path there is no background/no-listener ambiguity to record.
+            Services.Gsx.Remote.GsxDiagnosticLog.Spoke(
+                Services.Gsx.Remote.GsxSpeechSource.GateSelect, phrase, Services.Gsx.Remote.SpeechRoute.Background);
+        }
+        else
+        {
+            // Several outcomes are silent BY DESIGN (no_airport, a repeat services_active,
+            // gsx_not_running/auth_required/Unavailable/TransportFailure). gsx-gate-select.log
+            // records what GSX answered, but only this says we then chose to say nothing —
+            // without it, "I picked a gate and heard nothing" cannot be told apart from a
+            // phrase that was produced and lost. One line per selection, not per tick.
+            Services.Gsx.Remote.GsxDiagnosticLog.Hushed(
+                Services.Gsx.Remote.GsxSpeechSource.GateSelect, string.Empty, "outcome-map",
+                $"outcome {result.Outcome} has no phrase (silent by design)");
+        }
     }
 
     private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)

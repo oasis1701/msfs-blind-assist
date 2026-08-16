@@ -191,7 +191,20 @@ public sealed class GsxRemoteConnection : IDisposable
     /// </summary>
     public async Task<GsxResult> SendAsync(string verb, object? args = null)
     {
-        if (!_connected) return GsxResult.Fail("not connected");
+        // Every outgoing verb passes through here, so this one site gives gsx.log complete
+        // coverage of what was asked of GSX and what came back. NOTE the two refusals below
+        // ("not connected", "timed out") were previously silent AND return early, which is
+        // what made a pilot's "I pressed it and nothing happened" indistinguishable from a
+        // keypress that never reached the code at all. `args` is deliberately NEVER logged:
+        // a settings.set carries the field's value, and one of those values is the pilot's
+        // simbrief_username.
+        long startedTicks = Environment.TickCount64;
+
+        if (!_connected)
+        {
+            GsxDiagnosticLog.Verb(verb, "not-connected", null, null, 0);
+            return GsxResult.Fail("not connected");
+        }
 
         var (id, task) = _pending.Register();
         string json = BuildCommand(verb, args, id);
@@ -216,14 +229,23 @@ public sealed class GsxRemoteConnection : IDisposable
             });
             _pending.Complete(GsxFrame.Parse(syntheticFailure));
             Log.Debug("Gsx", $"Remote command '{verb}' send failed: {ex.Message}");
+            GsxDiagnosticLog.Verb(verb, "send-failed", "send_failed", ex.Message,
+                                  Environment.TickCount64 - startedTicks);
             return GsxResult.Fail("send failed");
         }
 
         var completed = await Task.WhenAny(task, Task.Delay(CommandTimeoutMs)).ConfigureAwait(false);
-        if (completed != task) return GsxResult.Fail("timed out");
+        if (completed != task)
+        {
+            GsxDiagnosticLog.Verb(verb, "timed-out", null, $"no result within {CommandTimeoutMs} ms",
+                                  Environment.TickCount64 - startedTicks);
+            return GsxResult.Fail("timed out");
+        }
 
         var r = await task.ConfigureAwait(false);
         if (!r.Ok) Log.Debug("Gsx", $"Remote command '{verb}' failed: {r.ErrorCode} {r.ErrorMessage}");
+        GsxDiagnosticLog.Verb(verb, r.Ok ? "ok" : "error", r.ErrorCode, r.ErrorMessage,
+                              Environment.TickCount64 - startedTicks);
         return r;
     }
 
