@@ -40,9 +40,12 @@ flaps (FBW A380 and A32NX)." In-sim test plan:
 `FirstOfficer/IFly737/`, is a step-for-step port of the **PMDG 737 NG3** profile — same 13 flow
 phases, same 24-group checklist structure, same procedures, ids and step order — but with a
 different write approach from every profile above it: rather than a second aircraft-specific
-command table, `IFly737ActionExecutor` delegates every write to
+command table, `IFly737ActionExecutor` delegates writes to
 `IFly737MAXDefinition.ApplyUIVariable`, the panels' own already-verified write path (the FBW
-A380/A32NX pattern), under a suppressed-announcer wrap. This aircraft earned that approach more
+A380/A32NX pattern), under a suppressed-announcer wrap — with one sanctioned bypass, the
+pressurization altitudes, sent directly via `SendDirect`/`Sdk.SendCommand` because the def's
+NumSet path fires an unsuppressible `AnnounceImmediate` that would talk over the flow's own step
+narration. This aircraft earned that approach more
 than any other: its official SDK (shared memory reads + WM_COPYDATA writes, see
 [docs/ifly-737.md](docs/ifly-737.md)) has the **fleet's densest set of live-verified
 encoding traps** — inverted start levers, a reversed FO display selector, landing-light command

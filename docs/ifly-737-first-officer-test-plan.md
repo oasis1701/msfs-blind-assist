@@ -2,9 +2,11 @@
 
 The iFly 737 MAX8 is the sixth First Officer profile (PMDG 777, PMDG 737 NG3, Fenix A320,
 FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8). It is a step-for-step port of the **PMDG 737**
-profile — same 13 flow phases, same 24-group checklist structure, same procedures — but every
-write goes through `IFly737MAXDefinition.ApplyUIVariable`, the panels' own verified write path,
-instead of a second PMDG-style CDA command table (see `docs/first-officer.md` for why). There is
+profile — same 13 flow phases, same 24-group checklist structure, same procedures — but writes go
+through `IFly737MAXDefinition.ApplyUIVariable`, the panels' own verified write path, instead of a
+second PMDG-style CDA command table, with one sanctioned bypass (pressurization altitudes, sent
+directly via `SendDirect`/`Sdk.SendCommand` because the def's numeric-entry path would speak over
+the flow's step narration) (see `docs/first-officer.md` for why). There is
 no automated test project for SimConnect/UI behavior, so the repo owner verifies this against a
 live sim (MSFS 2020 or 2024) with the iFly 737 MAX8 loaded.
 
