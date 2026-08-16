@@ -147,15 +147,19 @@ public class CenterFuelPumpAutomationTests
 
     // Invalid quantity (NaN/negative/Infinity) must reset the confirm and never fire OFF on the
     // invalid tick itself — only a fresh run of continuous VALID below-threshold ticks can confirm.
+    // This test verifies NaN RESETS (not merely pauses) the accumulator: if NaN only paused, the
+    // first fresh tick after NaN would find the accumulator nonzero and fire OFF immediately.
     [Fact]
     public void InvalidQuantity_ResetsConfirm_NeverFiresOffOnInvalidTick()
     {
         var a = new CenterFuelPumpAutomation();
-        // rising edge, first below-threshold tick (0 elapsed ms → no accrual yet)
+        // prime: rising edge + one valid below-threshold tick to accrue 1000 ms in the accumulator
         Assert.Equal(Action.None, a.Update(true, true, false, 900, true, true, 0));
-        // an invalid reading must never fire OFF, and must reset the confirm window
+        Assert.Equal(Action.None, a.Update(true, true, false, 900, true, true, 1000)); // accum=1000 ms
+        // an invalid reading must never fire OFF and must reset the accumulator
         Assert.Equal(Action.None, a.Update(true, true, false, double.NaN, true, true, 1000));
         // fresh accrual: one valid below-threshold tick is not yet 2 s of continuous evidence
+        // (if NaN only paused, accum would be 1000 and this tick would fire TurnOff; reset means accum=0)
         Assert.Equal(Action.None, a.Update(true, true, false, 900, true, true, 1000));
         // second consecutive valid below-threshold tick completes the fresh 2 s confirm
         Assert.Equal(Action.TurnOff, a.Update(true, true, false, 900, true, true, 1000));
