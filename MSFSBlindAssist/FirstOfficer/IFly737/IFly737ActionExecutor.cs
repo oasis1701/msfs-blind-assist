@@ -62,8 +62,17 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <summary>Mach/airspeed (overspeed) warning test settle — see OverspeedTestAsync.</summary>
     public const int OverspeedTestHoldMs = 1500;
 
-    /// <summary>Baro STD readback delay: plugin action + the SDK client's 250 ms poll.</summary>
-    public const int BaroStdVerifyMs = 800;
+    /// <summary>Altimeter-standard readback delay after the stock KOHLSMAN_SET: long enough
+    /// for the Continuous ALTIMETER_SETTING batch to refresh (PMDG 737 executor precedent —
+    /// its own baro-knob rotation waits the same ~1.5 s for the 1 Hz batch).</summary>
+    public const int KohlsmanVerifyMs = 1500;
+
+    /// <summary>Standard pressure reference, inches of mercury.</summary>
+    public const double StandardInHg = 29.92;
+
+    /// <summary>Tolerance for "the altimeter is already on standard" — half the 0.01 inHg
+    /// knob step, so only a genuinely different setting fails the compare.</summary>
+    public const double StandardInHgEpsilon = 0.005;
 
     // -----------------------------------------------------------------------
     // Pseudo-keys — flow/checklist step names that are NOT iFly SDK fields. Public so
@@ -86,10 +95,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public const string KeyGpwsTest = "GPWS_TEST";
     /// <summary>APU selector ON → dwell → START.</summary>
     public const string KeyApuStart = "APU_START";
-    /// <summary>Both altimeters to STANDARD, guarded per side and readback-verified.</summary>
+    /// <summary>Both altimeters to STANDARD, set by value via the stock Kohlsman and
+    /// readback-verified (see <see cref="SetAltimetersStandardAsync"/>).</summary>
     public const string KeyBaroStdBoth = "BARO_STD_BOTH";
-    /// <summary>Pressurization FLT ALT + LAND ALT from the stored SimBrief plan — the
-    /// SANCTIONED bypass of the definition's PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET NumSet keys
+    /// <summary>Pressurization FLT ALT + LAND ALT from the stored SimBrief plan — one of the
+    /// two SANCTIONED bypasses of the definition's PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET NumSet keys
     /// (see <see cref="SetPressurizationAltitudesAsync"/>'s doc comment). Fix pass 1
     /// (2026-08): a flow step had been routed through those NumSet keys directly — their
     /// HandleUIVariableSet branch fires an unsuppressible `AnnounceImmediate` numeric-entry
@@ -124,9 +134,17 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         };
 
     /// <summary>Every pseudo-key this executor handles — the keys of <see cref="PseudoKeyHandlers"/>.
-    /// NOTE there is deliberately no WXR_TEST: the iFly SDK exposes no weather-radar TEST
-    /// command (only the WXR mode selectors and the EFIS overlay click), so a WXR test is a
-    /// Captain reminder, not an automated action.</summary>
+    /// NOTE there is deliberately no WXR_TEST — but NOT because the command is missing (an
+    /// earlier grep looked for a WXR test CLICK and wrongly concluded none existed). The v1.5
+    /// key_command.h documents <c>KEY_COMMAND_FMS_WXR_SYS_CTRL_SET</c> ("WXR, System Control
+    /// Switch - Set … Value2: 0:switch TEST; 1:switch NORM", already generated as
+    /// <c>IFlyKeyCommand.FMS_WXR_SYS_CTRL_SET</c>), with a readable status field
+    /// <c>Weather_Radar_System_Control_Switch_Status</c> (0 TEST / 1 NORM). It is left
+    /// DELIBERATELY UNWIRED pending in-sim verification that the TEST position is modelled at
+    /// all: this aircraft has a documented class of test switches that accept commands and do
+    /// nothing (the A/P and A/T disengage-light TEST switches, live-tested 2026-07-23), and
+    /// driving TEST blind risks latching an unmodelled or un-releasing TEST mode. Until then a
+    /// WXR test stays a Captain reminder.</summary>
     public static readonly IReadOnlyList<string> PseudoKeys = PseudoKeyHandlers.Keys.ToList();
 
     private static readonly HashSet<string> PseudoKeySet = new(PseudoKeys, StringComparer.Ordinal);
@@ -487,18 +505,41 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     }
 
     // -----------------------------------------------------------------------
-    // Altimeters to STANDARD — guarded per side, readback-VERIFIED
+    // Altimeters to STANDARD — set BY VALUE via the stock Kohlsman
+    // (the SECOND sanctioned bypass of ApplyUIVariable — see the doc comment)
     // -----------------------------------------------------------------------
 
     /// <summary>
-    /// Both EFIS baro references to STANDARD. The STD control is a momentary TOGGLE
-    /// (INSTRUMENT_EFIS_{L,R}_BARO_STD — RegisterEfisSide,
-    /// IFly737MAXDefinition.ForwardPedestal.cs:266), so a side already on STD must NOT be
-    /// pressed: that would take it back to QNH. Unlike the PMDG 737 the iFly HAS a per-side
-    /// readback (BARO_STD_Status_{0,1}), so this reads first, writes only the sides that need
-    /// it, then RE-READS and announces honestly if a side did not take. Announcing
-    /// "altimeters set to standard" when nothing was set is a bug this project already
-    /// shipped once on the PMDG and had reported by a blind user.
+    /// Both altimeters to STANDARD (29.92 inHg / 1013 hPa), set BY VALUE through the stock
+    /// <c>KOHLSMAN_SET</c> event rather than by pressing the EFIS STD buttons.
+    ///
+    /// DELIBERATE BYPASS #2 of ApplyUIVariable (after
+    /// <see cref="SetPressurizationAltitudesAsync"/>), and the reason is the aircraft's own
+    /// SDK: <c>BARO_STD_Status[2]</c> is MOMENTARY, not latched. The v1.5 SDK_Defines.h
+    /// documents it as "0:switch released / 1:switch pressed" — the same phrasing iFly uses
+    /// for its genuinely momentary press-buttons (MINS_RST, CTR, TFC) — the cockpit STD
+    /// button is a momentary press/release clickspot with NO persistent STD-mode variable
+    /// anywhere in iFly737Max_INTERIOR.xml, and the SDK command
+    /// <c>INSTRUMENT_EFIS_{L,R}_BARO_STD</c> is a toggle CLICK with no <c>_SET</c> variant
+    /// and no Value2. So the field reads 0 essentially always, and the old "press only the
+    /// sides not already standard" guard degraded to pressing BOTH sides on EVERY push —
+    /// which, against a toggle, takes an already-standard side back to QNH — and then the
+    /// readback saw 0 again and announced "Altimeter standard did not set" on every SUCCESS.
+    ///
+    /// The fix is the sibling PMDG 737's house solution for this exact problem class (its
+    /// own STD toggle was unreliable and its FO likewise sets standard by value): write the
+    /// pressure itself, using the mechanism this aircraft's Ctrl+B altimeter dialog already
+    /// uses and has live-verified — <c>simConnect.SendEvent("KOHLSMAN_SET", mb * 16)</c>
+    /// with NO altimeter index (the iFly appears to track ONE Kohlsman for both sides; that
+    /// remains a LIVE-VERIFY, see IFly737MAXDefinition.ShowBaroDialog). A value-set is
+    /// idempotent, so unlike a toggle it is safe to repeat.
+    ///
+    /// No success announcement: the definition's monitored Continuous <c>ALTIMETER_SETTING</c>
+    /// var announces the confirmed value with dedup once SimConnect reads it back — the same
+    /// reason Ctrl+B itself announces nothing. Only a definitively non-standard readback
+    /// speaks, and it speaks honestly (announcing "altimeters set to standard" when nothing
+    /// was set is a bug this project already shipped once on the PMDG and had reported by a
+    /// blind user).
     /// </summary>
     public async Task<bool> SetAltimetersStandardAsync()
     {
@@ -514,81 +555,52 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     private async Task<bool> SetAltimetersStandardCoreAsync()
     {
-        // Without a live readback the guarded toggle is unsafe (a blind press could take an
-        // already-STD side back to QNH), so refuse rather than guess.
-        if (_state is not { IsDataReady: true })
+        // Skip-if-already-standard. An UNREADABLE cache (null) falls through and sends
+        // anyway — a value-set is idempotent, so there is no unsafe direction here (that is
+        // the whole point of moving off the toggle).
+        if (IsStandardInHg(_sc!.GetCachedVariableValue("ALTIMETER_SETTING")))
+            return true; // already standard — a silent, correct no-op
+
+        _sc.SendEvent("KOHLSMAN_SET", StandardKohlsmanParameter);
+        _lastWriteUtc = DateTime.UtcNow;
+
+        // Let the Continuous ALTIMETER_SETTING batch refresh before judging the result.
+        await Task.Delay(KohlsmanVerifyMs);
+        double? after = _sc.GetCachedVariableValue("ALTIMETER_SETTING");
+        if (after == null)
         {
-            Log.Warn("ifly_fo", "altimeters to standard refused: no live SDK readback");
-            AnnounceOnUi("Altimeter standard did not set.");
-            return false;
+            // Unreadable is NOT a confirmed failure — stay silent rather than claim one.
+            // The monitored var still announces the real value whenever it next arrives.
+            Log.Warn("ifly_fo", "altimeters to standard: ALTIMETER_SETTING unreadable after KOHLSMAN_SET");
+            return true;
         }
+        if (IsStandardInHg(after)) return true;
 
-        bool wroteAny = false;
-        for (int side = 0; side < 2; side++)
-        {
-            // A side already CONFIRMED standard (true) is left alone. Unreadable (null) is
-            // treated the same as "not confirmed standard" here and pressed anyway — the
-            // documented safe direction (see IsBaroStd/ClassifyBaroStd): pressing into an
-            // unreadable side can only turn an honest post-write failure into a report,
-            // never a false "set" claim.
-            if (IsBaroStd(side) == true) continue;
-            if (side > 0 && wroteAny) await PaceAsync();
-            ApplySilent(side == 0 ? "BTN_EFIS_CAPT_BARO_STD" : "BTN_EFIS_FO_BARO_STD", 1);
-            _lastWriteUtc = DateTime.UtcNow;
-            wroteAny = true;
-        }
-        if (!wroteAny) return true; // both already standard — a silent, correct no-op
-
-        await Task.Delay(BaroStdVerifyMs);
-        bool? capt = IsBaroStd(0);
-        bool? fo = IsBaroStd(1);
-        if (capt == true && fo == true) return true;
-
-        if (capt == null || fo == null)
-        {
-            // UNREADABLE, not a confirmed failure — say so rather than claiming the set
-            // itself failed. This is the bug this fix closes: NaN used to collapse to the
-            // same "not standard" bool as a genuine QNH reading, so a side that merely went
-            // unreadable right as the verify ran got the same "did not set" wording as a
-            // side that truly stayed on QNH — an honest-sounding announcement describing
-            // the WRONG failure.
-            Log.Warn("ifly_fo", $"altimeters to standard: readback unreadable after set (capt={capt}, FO={fo})");
-            AnnounceOnUi("Could not read the altimeter state after setting standard.");
-            return false;
-        }
-
-        Log.Warn("ifly_fo", $"altimeters to standard failed (capt STD={capt}, FO STD={fo})");
+        Log.Warn("ifly_fo", $"altimeters to standard failed (ALTIMETER_SETTING={after.Value:F2} inHg " +
+                            $"after KOHLSMAN_SET {StandardKohlsmanParameter})");
         AnnounceOnUi("Altimeter standard did not set.");
         return false;
     }
 
-    /// <summary>Pure classifier for a raw BARO_STD_Status reading: NaN (SDK not ready / field
-    /// unreadable) becomes null — INDETERMINATE, distinct from a genuine QNH reading (false)
-    /// — else the usual &gt;0.5 threshold. Extracted from <see cref="IsBaroStd"/> so the
-    /// NaN-vs-QNH distinction is unit-testable without a live SDK readback.</summary>
-    internal static bool? ClassifyBaroStd(double raw) => double.IsNaN(raw) ? null : raw > 0.5;
+    /// <summary>The KOHLSMAN_SET parameter for standard pressure, computed exactly the way
+    /// the Ctrl+B altimeter dialog computes it (inches → millibars → ×16, rounded):
+    /// 29.92 × 33.8639 = 1013.208 mb → 16211.</summary>
+    internal static uint StandardKohlsmanParameter => KohlsmanParameterFor(StandardInHg);
 
-    /// <summary>Per-side baro STANDARD readback: true = confirmed on STD, false = confirmed
-    /// on QNH, null = UNREADABLE. The two non-true outcomes used to collapse to the same
-    /// "not standard" bool (via IsOn's NaN-compares-false behaviour), so an unreadable side
-    /// and a genuinely-QNH side were indistinguishable at the point the failure is announced.
-    /// Callers deciding whether to PRESS a side treat null the same as false (see the
-    /// pre-write loop above — NaN is still the safe direction to press into); callers
-    /// reporting the RESULT of a press must tell the two apart.
-    ///
-    /// ⚠ LIVE-VERIFY (in-sim test plan): BARO_STD_Status[2] is read here as a LATCHED
-    /// "this side is on STD" indication, which is how the shipped Ctrl+B altimeter dialog
-    /// already reads it (IFly737MAXDefinition.ShowBaroDialog — "STD" vs "QNH"). The
-    /// generated SDK header comments it as the generic "0:switch released 1:switch pressed"
-    /// boilerplate. If it turns out to be MOMENTARY, this method's whole guard collapses:
-    /// an already-STD side would read 0, get pressed, and go back to QNH, and the verify
-    /// would announce a false failure on every run. Test: set STD on both sides by hand,
-    /// then run the flow step — a correct latched field makes it a silent no-op.</summary>
-    private bool? IsBaroStd(int side) =>
-        _state == null ? null : ClassifyBaroStd(_state.GetValue($"BARO_STD_Status_{side}"));
+    /// <summary>Ctrl+B's parameter math, extracted so it is unit-testable and so the two
+    /// call sites cannot drift (IFly737MAXDefinition.ShowBaroDialog).</summary>
+    internal static uint KohlsmanParameterFor(double inHg) =>
+        (uint)Math.Round(inHg * 33.8639 * 16);
+
+    /// <summary>Is this cached ALTIMETER_SETTING (inches of mercury) already standard? A null
+    /// or NaN reading is NOT standard — it is unreadable, and the caller sends anyway rather
+    /// than guessing (a value-set is idempotent).</summary>
+    internal static bool IsStandardInHg(double? inHg) =>
+        inHg is { } v && !double.IsNaN(v) && Math.Abs(v - StandardInHg) <= StandardInHgEpsilon;
 
     // -----------------------------------------------------------------------
-    // Pressurization altitudes — the ONE sanctioned bypass of ApplyUIVariable
+    // Pressurization altitudes — the FIRST sanctioned bypass of ApplyUIVariable
+    // (the second is SetAltimetersStandardAsync, above)
     // -----------------------------------------------------------------------
 
     /// <summary>
@@ -603,7 +615,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// the flow's own step narration mid-flow. The commands themselves
     /// (AIRSYSTEM_FLT_ALT_SET / AIRSYSTEM_LDG_ALT_SET, RegisterPressurization —
     /// IFly737MAXDefinition.Overhead.cs:337-340) are sent directly instead. This is the only
-    /// place in this executor that talks to the SDK client rather than the definition.
+    /// place in this executor that talks to the iFly SDK CLIENT rather than the definition;
+    /// <see cref="SetAltimetersStandardAsync"/> is the other sanctioned bypass and goes to
+    /// stock SimConnect (KOHLSMAN_SET) instead, for its own separate reason.
     /// </summary>
     public async Task<bool> SetPressurizationAltitudesAsync(IFly737StateEvaluator state)
     {

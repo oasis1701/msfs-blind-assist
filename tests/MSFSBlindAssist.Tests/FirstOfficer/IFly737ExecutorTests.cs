@@ -207,16 +207,41 @@ public class IFly737ExecutorTests
             IFly737ActionExecutor.PseudoKeys.Count(IFly737ActionExecutor.HasPseudoKeyHandler));
     }
 
-    // Fix 3: IsBaroStd used to collapse "unreadable" (NaN) and "genuinely on QNH" (false)
-    // into the same bool, so a side that merely went unreadable right as the post-write
-    // verify ran got the same "did not set" wording as a side that truly stayed on QNH.
-    // ClassifyBaroStd is the extracted pure classifier that tells the two apart.
+    // Fix pass 2 (2026-08): the BARO_STD_Status guard (and its pure classifier
+    // ClassifyBaroStd, which these tests used to pin) is GONE. The field is MOMENTARY —
+    // v1.5 SDK_Defines.h "0:switch released / 1:switch pressed", the cockpit STD button is a
+    // momentary clickspot, and no persistent STD-mode variable exists in the model XML — so
+    // it reads 0 essentially always: the guard pressed BOTH toggles on every push (taking an
+    // already-standard side back to QNH) and then announced a false failure on every success.
+    // Standard is now set BY VALUE through the stock Kohlsman, the same mechanism the Ctrl+B
+    // altimeter dialog uses and has live-verified. The pure halves of that are pinned below.
+
+    // The KOHLSMAN_SET parameter must be computed exactly the way Ctrl+B computes it:
+    // inches → millibars (×33.8639) → ×16, rounded. 29.92 inHg = 1013.2079 mb → 16211.
     [Fact]
-    public void ClassifyBaroStd_DistinguishesUnreadableFromQnhFromStd()
+    public void StandardKohlsmanParameter_MatchesTheCtrlBDialogMath()
     {
-        Assert.Null(IFly737ActionExecutor.ClassifyBaroStd(double.NaN));   // unreadable — indeterminate
-        Assert.False(IFly737ActionExecutor.ClassifyBaroStd(0));          // genuine QNH reading
-        Assert.True(IFly737ActionExecutor.ClassifyBaroStd(1));           // genuine STD reading
+        Assert.Equal(16211u, IFly737ActionExecutor.StandardKohlsmanParameter);
+        Assert.Equal(16211u, IFly737ActionExecutor.KohlsmanParameterFor(29.92));
+        // A hPa-side sanity check: 1013 mb is one whole millibar below standard, so it must
+        // land on a DIFFERENT parameter — the ×16 scale is what makes the two distinguishable.
+        Assert.NotEqual(IFly737ActionExecutor.StandardKohlsmanParameter,
+                        (uint)Math.Round(1013.0 * 16));
+    }
+
+    // The skip-if-already-standard compare. An unreadable cache (null/NaN) is NOT standard —
+    // the caller sends anyway, which is safe precisely because a value-set is idempotent.
+    [Fact]
+    public void IsStandardInHg_AcceptsOnlyStandardWithinTheKnobStep()
+    {
+        Assert.True(IFly737ActionExecutor.IsStandardInHg(29.92));
+        Assert.True(IFly737ActionExecutor.IsStandardInHg(29.9245));  // inside half a 0.01 step
+        Assert.True(IFly737ActionExecutor.IsStandardInHg(29.9155));
+        Assert.False(IFly737ActionExecutor.IsStandardInHg(29.91));   // one full knob step off
+        Assert.False(IFly737ActionExecutor.IsStandardInHg(29.93));
+        Assert.False(IFly737ActionExecutor.IsStandardInHg(30.12));   // an ordinary local QNH
+        Assert.False(IFly737ActionExecutor.IsStandardInHg(null));    // unreadable — not standard
+        Assert.False(IFly737ActionExecutor.IsStandardInHg(double.NaN));
     }
 
     // Fix 4: PressGenerator / PressApuGenerator used to interpolate an unchecked index
@@ -273,13 +298,19 @@ public class IFly737ExecutorTests
     // surface rather than a hand-picked diff against the flow test.
     private static readonly string[] ExecutorWriteKeys =
     {
-        // Pseudo-key handler bodies (FireTestCoreAsync, ClickAndSettleCoreAsync,
-        // SetAltimetersStandardCoreAsync, and the two ApplySilent-only TCAS/GPWS handlers).
+        // Pseudo-key handler bodies (FireTestCoreAsync, ClickAndSettleCoreAsync, and the two
+        // ApplySilent-only TCAS/GPWS handlers).
+        //
+        // BTN_EFIS_CAPT_BARO_STD / BTN_EFIS_FO_BARO_STD were here until fix pass 2 (2026-08).
+        // SetAltimetersStandardCoreAsync no longer presses them: BARO_STD_Status is momentary
+        // and the command is a toggle, so standard is now set by VALUE via the stock
+        // KOHLSMAN_SET (not an ApplyUIVariable key at all, hence nothing to pin here). The
+        // definition still registers both buttons as the pilot's own manual STD controls —
+        // they are simply no longer part of this executor's write surface.
         "BTN_FIRE_TEST_OVHT", "BTN_FIRE_TEST_RELEASE",
         "BTN_STALL_WARNING_TEST_1", "BTN_STALL_WARNING_TEST_2",
         "BTN_MACH_AIRSPEED_TEST_1", "BTN_MACH_AIRSPEED_TEST_2",
         "BTN_XPDR_TEST", "BTN_GPWS_SYS_TEST",
-        "BTN_EFIS_CAPT_BARO_STD", "BTN_EFIS_FO_BARO_STD",
 
         // Typed public methods.
         "Battery_Switch_Mode",

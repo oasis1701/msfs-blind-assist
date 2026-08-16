@@ -4,9 +4,12 @@ The iFly 737 MAX8 is the sixth First Officer profile (PMDG 777, PMDG 737 NG3, Fe
 FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8). It is a step-for-step port of the **PMDG 737**
 profile — same 13 flow phases, same 24-group checklist structure, same procedures — but writes go
 through `IFly737MAXDefinition.ApplyUIVariable`, the panels' own verified write path, instead of a
-second PMDG-style CDA command table, with one sanctioned bypass (pressurization altitudes, sent
-directly via `SendDirect`/`Sdk.SendCommand` because the def's numeric-entry path would speak over
-the flow's step narration) (see `docs/first-officer.md` for why). There is
+second PMDG-style CDA command table, with **two** sanctioned bypasses: the pressurization
+altitudes (sent directly via `SendDirect`/`Sdk.SendCommand` because the def's numeric-entry path
+would speak over the flow's step narration) and **altimeters to standard** (set by VALUE via the
+stock `KOHLSMAN_SET` event — the Ctrl+B altimeter dialog's own live-verified mechanism — because
+`BARO_STD_Status` is momentary and the EFIS STD command is a toggle, so no closed loop through
+the STD button is possible) (see `docs/first-officer.md` for why). There is
 no automated test project for SimConnect/UI behavior, so the repo owner verifies this against a
 live sim (MSFS 2020 or 2024) with the iFly 737 MAX8 loaded.
 
@@ -20,6 +23,38 @@ them separately from the walkthrough. Nothing else in the app depends on them be
 day one — a wrong assumption fails safely (a refused write, a Captain reminder, or a false "did
 not set" announcement), but each is worth 30 seconds to confirm because a silently-wrong one
 would mislead a blind pilot who cannot see the switch it claims to have moved.
+
+---
+
+## Settled statically — do NOT re-run these in the sim (2026-08 vendor-SDK investigation)
+
+A read-only sweep of the v1.5 vendor package (`737MAX_SDK\sdk\SDK_Defines.h`, `key_command.h`)
+and the installed cockpit model (`iFly737Max_INTERIOR.xml`) settled the following. Each was
+previously a LIVE-VERIFY item somewhere in this plan; they are listed here so the tester skips
+them rather than re-running them.
+
+| Item | Verdict | Evidence |
+|---|---|---|
+| Gear lever positions | Exactly two, 0 UP / 1 DN — **no OFF detent** | vendor-documented Value2 on the gear SET command; matches the def's `new[] { "Up", "Down" }` |
+| Fire/OVHT test encoding | 0 FAULT / 1 Neutral / 2 OVHT, and the model has **no release callback** — so our hold-then-write-neutral is mandatory, not a nicety | `key_command.h` Value2 column; `iFly737Max_INTERIOR.xml` clickspot has press-only |
+| Stall / overspeed / GPWS / TCAS tests | Click-only — **no documented hold semantics** | `key_command.h` (no hold/release Value2 pairs) |
+| Autobrake | 0..5 | vendor Value2 range |
+| Transponder mode | 0..3, **ALT OFF first** | vendor Value2 + the status field's own labels |
+| Belts / no-smoking | 0 / 1 / 2 | vendor Value2 |
+| Flight director / autothrottle | 0 / 1 | vendor Value2 |
+| FLT ALT / LDG ALT | literal feet, within the vendor's documented ranges | `key_command.h` |
+| Speedbrake write-vs-read scale mismatch | **Confirmed real** — write `0~254` (detents 0/34/180/254) vs read `0~225` (detents 0/35/149/224) | `key_command.h` vs `SDK_Defines.h` — the read-only stance is vendor-justified, see B7 |
+| MCP CMD A / B / CWS A / CWS B | CMD A press 7 / release 8; CMD B 9/10; CWS A 37/38; CWS B 39/40 | `iFly737Max_INTERIOR.xml` clickspot triggers |
+| Attendant call | a genuine momentary chime press | model XML |
+| ND range | **0..10** — the struct's `0~2` comment is a stale vendor doc bug; the command doc is authoritative | `key_command.h` vs `SDK_Defines.h` |
+| Starter-valve field | **Does not exist** — exhaustive header search | `SDK_Defines.h` |
+| APU EGT field | **Does not exist** — exhaustive header search | `SDK_Defines.h` |
+| `BARO_STD_Status` latched vs momentary | **MOMENTARY** — triple-corroborated (see below) | `SDK_Defines.h:560` "0:switch released / 1:switch pressed" (iFly's momentary-button phrasing, cf. MINS_RST/CTR/TFC); model XML momentary clickspot (triggers 35/36 captain, 37/38 F/O) with **no persistent STD-mode variable anywhere**; `INSTRUMENT_EFIS_{L,R}_BARO_STD` is a toggle CLICK with no `_SET` and no Value2 |
+
+**The BARO_STD finding superseded the old "latched vs momentary" test item.** The FO no longer
+touches the EFIS STD buttons at all — it sets 29.92 inHg by value through the stock
+`KOHLSMAN_SET`, which is idempotent (safe to repeat, silent when already standard). What is
+still open is whether that one write reaches BOTH altimeters — see D4.
 
 ---
 
@@ -46,7 +81,7 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | Flow | Expected (spot-check the overhead/MCP) |
 |------|----------------------------------------|
 | Electrical Power Up | Battery ON (guarded write); Standby power AUTO; Ground power ON (momentary press — see B1 note); IRS selectors → NAV, no pause (alignment runs in background) |
-| Preflight | Walk-around pause; fire/stall/overspeed warning tests (held/click, aural result); TCAS/WXR/GPWS-equivalent self-tests where available (**no WXR test exists on this SDK — see B2 below**); yaw damper ON; window heat ON; wing/engine anti-ice OFF; packs AUTO; isolation OPEN; engine bleeds ON; both FDs ON; autobrake RTO; transponder **ALT OFF** (not STBY — see B3); EFIS MAP/40; pressurization altitudes set from SimBrief if loaded (see B5); emergency exit lights **ARMED** (see B4); captain reminders for the rest |
+| Preflight | Walk-around pause; fire/stall/overspeed warning tests (held/click, aural result); TCAS/WXR/GPWS-equivalent self-tests where available (**the WXR test is a reminder by choice, not by absence — see B2 below**); yaw damper ON; window heat ON; wing/engine anti-ice OFF; packs AUTO; isolation OPEN; engine bleeds ON; both FDs ON; autobrake RTO; transponder **ALT OFF** (not STBY — see B3); EFIS MAP/40; pressurization altitudes set from SimBrief if loaded (see B5); emergency exit lights **ARMED** (see B4); captain reminders for the rest |
 | Before Start | Captain MCP reminder; **APU selector → ON → (2 s) → START, then waits for the APU generator to come on line** (see B6 — this is the flow's biggest deviation from the PMDG port); fuel pumps ON (center gated on quantity — see Part E); electric hydraulic pumps ON; APU bleed ON; anti-collision ON; transponder TA/RA |
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE at N2 ≥ 20%, then ENG 1 the same (no start-valve wait — this SDK has no start-valve field, see the flow's header comment) |
 | Before Taxi | After-start power transfer (generators ON, APU bleed OFF, APU OFF), then probe heat **ON** (only Auto/On exist — see B3); packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU item is a Captain reminder (no lower-DU field on this SDK); captain reminders for anti-ice and takeoff flaps |
@@ -69,24 +104,41 @@ same reason), this SDK exposes no ground-power-availability field at all. The fl
 power: ON" step presses unconditionally with no follow-on wait — confirm it presses once per
 run with no error, whether or not a GPU is actually connected at the stand.
 
-### B2. No weather-radar self-test
+### B2. Weather-radar self-test — reminder BY CHOICE, and an OPTIONAL probe
 Preflight has no `WXR_TEST` step — the item is a Captain reminder. Confirm the checklist item
 reads as a reminder (tick holds, no aural test result expected) and that no flow step tries to
-fire one. This is a permanent limitation of the iFly SDK, not a bug.
+fire one.
 
-### B3. Switch-position wording — **LIVE-VERIFY**
+**Correction (2026-08):** this is *not*, as previously written here, a missing-command
+limitation of the SDK. `KEY_COMMAND_FMS_WXR_SYS_CTRL_SET` is documented in v1.5
+`key_command.h` — "WXR, System Control Switch - Set … Value2: 0:switch TEST; 1:switch NORM" —
+is already generated as `IFlyKeyCommand.FMS_WXR_SYS_CTRL_SET`, and has a readable status field
+`Weather_Radar_System_Control_Switch_Status` (0 TEST / 1 NORM). The earlier grep looked for a
+test *click* command and drew the wrong conclusion. It is left unwired deliberately: this
+airframe has a documented class of test switches that accept commands and do nothing (the A/P
+and A/T disengage-light TEST switches, live-tested 2026-07-23 and found unmodelled), so
+selecting TEST blind risks latching an unmodelled or un-releasing TEST mode.
+
+**Optional probe (not required for this pass):** by hand, send `FMS_WXR_SYS_CTRL_SET` with
+Value2 = 0, watch `Weather_Radar_System_Control_Switch_Status` and listen/look for a radar test
+pattern, then send Value2 = 1 and confirm it returns to NORM.
+**If the TEST position is modelled and self-contained** (it enters, it is observable, and NORM
+releases it cleanly), say so — the Captain reminder can then be upgraded to a real automated
+test like the PMDG jets have.
+
+### B3. Switch-position wording — **LIVE-VERIFY (reduced scope)**
 Three labels were deliberately changed from the PMDG-737-ported wording because this airframe's
-switches don't have the position the PMDG text names:
-- **"Transponder: ALT OFF"** (Preflight, Shutdown) — the resting/ground position on this
-  transponder mode selector, per its own registered labels.
-- **"Gear lever: UP"** (After Takeoff) — this gear lever has only Up/Down, no OFF detent.
-- **"Probe heat: AUTO"** (Preflight, After Landing) — this probe-heat switch has only Auto/On,
-  no OFF detent.
+switches don't have the position the PMDG text names. Two are now settled statically (see the
+table above) and need no in-sim check:
+- ~~**"Transponder: ALT OFF"**~~ — settled: the vendor documents mode 0..3 with **ALT OFF first**.
+- ~~**"Gear lever: UP"**~~ — settled: the vendor documents exactly two positions, 0 UP / 1 DN.
 
-**Observation:** read the real cockpit switch/label at each of these three points as the flow
-sets it.
-**Expected:** the physical switch shows exactly the wording above (ALT OFF / UP / AUTO), matching
-what the FO announces.
+Still worth 30 seconds:
+- **"Probe heat: AUTO"** (Preflight, After Landing) — this probe-heat switch is registered with
+  only Auto/On, no OFF detent.
+
+**Observation:** read the real cockpit probe-heat placard as the flow sets it.
+**Expected:** the physical switch shows exactly **AUTO**, matching what the FO announces.
 **If different:** the definition's registered `ValueDescriptions` strings (cited in the code
 comments next to each item) don't match the real placard — tell me the real wording and the
 label gets corrected; this is cosmetic (spoken label only), not a functional defect.
@@ -101,6 +153,9 @@ future write logic.
 spawns), does the Preflight checklist's "Emergency exit lights: ARMED" item auto-tick, and does
 the flow announce it as already armed (no write) rather than trying to move a guarded switch?
 **Expected:** yes to both — a guard-closed switch reads as armed, no write attempted.
+**Still open after the 2026-08 model sweep:** the cockpit XML's guard is **animation only** —
+the actual guard/position logic lives inside the WASM plugin, so the model cannot tell us
+whether ARMED is reachable with the guard down. This item stays live for exactly that reason.
 **If different:** if the real switch needs the guard OPENED before ARMED is reachable (the
 PMDG 777's emergency-exit-light guard needed exactly this fix once), tell me and the write path
 gets a guard-open step added — this switch currently has no write wired at all (only detection),
@@ -129,11 +184,23 @@ its cell-order assumption corrected — tell me what you see digit-by-digit.
 Before Start commands the APU ON → (2 s dwell) → START, then waits on
 `APU_GEN_OFF_BUS_Light_Status` reading **lit** as "the APU generator is available" before
 pressing the generator-transfer buttons and dropping ground power. This is the one signal this
-SDK exposes for APU-generator availability (there is no EGT field to fall back on, unlike the
-PMDG NG3, which uses EGT).
+SDK exposes for APU-generator availability (the absence of an EGT field, which the PMDG NG3 uses
+instead, is now **settled statically** — an exhaustive `SDK_Defines.h` search found none).
+
+Two things the 2026-08 header sweep pinned down and one it could not:
+- `APU_GEN_OFF_BUS_Light_Status` is a **SCALAR** field, not a per-side array — do not expect
+  (or look for) separate left/right readings.
+- The vendor documents its values only as **OFF / DIM / BRI**, i.e. brightness, not semantics.
+  Nothing in the header says lit means "available" — that mapping is still an assumption, which
+  is exactly what this item tests.
+- **The APU knob wrinkle:** the cockpit XML models the APU selector as a plain 2-position rotary
+  with **no spring-loaded START detent visible at all**. The `ENGAPU_APU_SET 2` START-latch
+  behaviour is therefore WASM-internal and unobservable from the model — so the ON → 2 s → START
+  sequence below still has to be confirmed by watching the APU actually spool.
 
 **Observation:** run Before Start from cold-and-dark. Confirm the sequence: APU selector ON,
-2 seconds later START, the flow then announces waiting on the APU generator, and only once the
+2 seconds later START, the APU actually spools up, the flow then announces waiting on the APU
+generator, and only once the
 blue APU GEN OFF BUS light actually illuminates does it announce the generator transfer and drop
 ground power.
 **Expected:** the transfer and ground-power drop happen only after the light is lit — no bus
@@ -142,12 +209,23 @@ power loss at any point.
 transfer immediately on a cold APU and this needs to be flipped — tell me what the light state
 actually was at the moment the flow proceeded.
 
-### B7. Speedbrake — Captain reminder by design
+### B7. Speedbrake — Captain reminder by design (mismatch now CONFIRMED)
 Landing's "Speedbrake: ARM" step is a Captain reminder, not an automated write — the lever's
-write command has a documented but **unverified scale mismatch** against its own status
-readback (0-254 command range vs 0-225/0-224 observed status range, different detent numbers).
-This is deliberate, not a gap to test — confirm the reminder is spoken and no lever movement is
+write command has a scale mismatch against its own status readback. The 2026-08 header sweep
+**confirmed** it: the write is `0~254` with detents 0 / 34 / 180 / 254, the read is `0~225` with
+detents 0 / 35 / 149 / 224. The read-only stance is vendor-justified, not merely cautious. This
+is deliberate, not a gap to test — confirm the reminder is spoken and no lever movement is
 attempted.
+
+### B8. Engine start — GRD auto-release — **LIVE-VERIFY (still open)**
+Engine start gates on the start switch springing back from GRD plus N2 (there is no starter-valve
+field — settled statically). Confirm the switch does return from GRD on its own at the expected
+N2, and that the flow's gate sees it.
+
+### B9. Ground-power click direction — **LIVE-VERIFY (still open)**
+GRD PWR / generator connect is "Move DOWN = ON, Move UP = OFF". That direction is corroborated
+by the vendor's UP/DOWN ↔ Value2 convention **only** — nothing in the model XML confirms it.
+Confirm a DOWN click actually connects (watch `ENG_TRANSFER_BUS_OFF` / `APU_GEN_OFF_BUS`).
 
 ---
 
@@ -196,7 +274,12 @@ VNAV engaged."), nothing announced if both were already armed.
 **LNAV_Switch_Status value 3 — LIVE-VERIFY.** This switch/light is a 0-5 composite; the lit
 test (`value % 3 > 0`) classifies value **3 as UNLIT**. If the real switch can ever read exactly
 3 while the LNAV light is actually ON, the FO would press an already-armed LNAV button (a
-toggle) and disarm it instead of confirming it. **Observation:** at the moment the 400 ft AGL
+toggle) and disarm it instead of confirming it. **This item got STRONGER, not weaker, in the
+2026-08 model sweep:** `iFly737Max_INTERIOR.xml` tracks the button's press-state and its lamp in
+**separate** L:vars, so "pressed with the light off" and "pressed with the light on" are both
+representable states of the composite — value 3 with the light lit is not structurally
+impossible, it simply has not been observed. Please look for it deliberately.
+**Observation:** at the moment the 400 ft AGL
 push fires, if you can read the raw `LNAV_Switch_Status` value (via the SDK probe tool or a
 watch), note whether it was ever 3 with the light lit. **Expected:** value 3 does not occur with
 the light lit (the composite pattern intends 3 = "pressed, light off" as a real distinct state).
@@ -206,30 +289,35 @@ the light lit (the composite pattern intends 3 = "pressed, light off" as a real 
 Climb through 10,300 ft → "Above ten thousand. Landing lights off." (both lights, plain 0/1
 status on this airframe, no retractable/fixed split). Descend through 9,700 ft → "Below ten
 thousand. Landing lights on." With SimBrief loaded, climb through the transition altitude →
-"Transition altitude. Altimeters set to standard." — confirm both EFIS baro knobs actually read
-STD (see D4 below). Descend through the transition level → announce-only "set local altimeter
-pressure now" — the FO cannot set QNH itself here; use Ctrl+B.
+"Transition altitude. Altimeters set to standard." — confirm the altimeters actually go to
+standard (see D4 below). Descend through the transition level → announce-only "set local
+altimeter pressure now" — the FO cannot set QNH itself here; use Ctrl+B.
 
-### D4. Altimeter STANDARD — BARO_STD latch semantics — **LIVE-VERIFY**
-The transition-altitude push (and the `BARO_STD_BOTH` pseudo-key generally) reads
-`BARO_STD_Status_{0,1}` as a **latched** "this side is currently on STD" indicator before
-deciding which side(s) to press — a side already confirmed STD is left alone. The generated SDK
-header describes the underlying field only with the generic boilerplate "0: switch released /
-1: switch pressed", which is ambiguous between a real latch and a momentary press flag. The
-shipped Ctrl+B altimeter dialog already reads this field the same (latched) way, which
-corroborates but does not prove it.
+### D4. Altimeter STANDARD via `KOHLSMAN_SET` — **LIVE-VERIFY (new)**
+This item REPLACES the old "BARO_STD latch semantics" test, which is superseded: `BARO_STD_Status`
+is settled MOMENTARY (see the table at the top), so the guarded-toggle push it tested no longer
+exists. The transition-altitude push (and the `BARO_STD_BOTH` pseudo-key generally) now sets
+**29.92 inHg by value** through the stock `KOHLSMAN_SET` event with **no altimeter index** —
+the same mechanism the app's Ctrl+B altimeter dialog already uses and has live-verified. It
+skips when the cached `ALTIMETER_SETTING` already reads standard, and it is idempotent, so
+re-running it is harmless.
 
-**Observation:** set both sides to STANDARD by hand (or via a prior successful FO push), then
-independently trigger the "set standard" action again (re-run Preflight, or climb through the
-transition altitude a second time in a scenario where you can force it).
-**Expected:** a **silent no-op** — nothing is pressed, no announcement, because both sides
-already read STD.
-**If different:** if instead the FO presses one or both knobs and then announces a failure (or
-worse, silently flips an already-STD side back to QNH), the field is momentary, not latched —
-the whole guard in `IFly737ActionExecutor.SetAltimetersStandardCoreAsync`/`IsBaroStd` needs
-rethinking (it can no longer trust a "true" reading to mean "leave it alone"). Also worth
-checking: does turning the Captain's baro knob to STD by hand actually move
-`BARO_STD_Status_0` to a value this code reads as true?
+**What is still open:** whether that one indexless write reaches **both** altimeters. The iFly
+*appears* to track ONE Kohlsman for both sides (the Ctrl+B dialog's own "applies to both
+altimeters" claim), but nothing has confirmed it.
+
+**Observation:** with SimBrief loaded, climb through the transition altitude. Read the Captain's
+PFD baro readout **and** the First Officer's.
+**Expected:** the announcement "Transition altitude. Altimeters set to standard.", **both** PFDs
+showing STD (or 29.92 / 1013), and the monitored altimeter value announced once by the app (the
+FO itself says nothing extra on success — that is by design; the `ALTIMETER_SETTING` monitor is
+the confirmation channel, exactly as it is for Ctrl+B).
+**If different:** if only the Captain's side goes to standard, the indexless `KOHLSMAN_SET`
+assumption is wrong and both the FO push and the Ctrl+B dialog need an indexed second write —
+tell me which side moved. If **neither** moved, you should hear "Altimeter standard did not set."
+about 1.5 s later; if you hear that while the PFD *did* go to standard, the readback timing needs
+lengthening. Hearing that phrase on a run that visibly worked was the exact bug this change
+fixed, so it is worth listening for specifically.
 
 ### D5. Before Start re-run — **LIVE-VERIFY, expected-to-be-broken today**
 The APU-availability wait (B6) uses a **Stop-on-timeout** failure policy — a timeout aborts the
@@ -251,18 +339,6 @@ position after a successful transfer), but it is deliberately **not wired** yet 
 live confirmation of what it reads (and whether it's reliable) before it's trusted the way the
 PMDG NG3's `APU_annunAPU_GEN_OFF_BUS`-based skip is trusted. Don't wire it without first checking
 what value it holds cold, mid-transfer, and after a successful transfer.
-
-### D6. ND range scale — **LIVE-VERIFY**
-`SetEFISRangeCapt`/the checklist's EFIS-range items use a 0..10 index (0.5/1/2/5/10/20/40/80/
-160/320/640 nm), following the SDK command documentation. The generated struct's own field
-comment for `ND_Range_Status` instead says "0~2", which the code treats as wrong/stale.
-
-**Observation:** run Preflight (sets EFIS range to index 6 = 40 nm) and read the Captain's ND
-range readout.
-**Expected:** the display shows **40 nm**.
-**If different:** note what range actually shows at index 6 — if it's a small number (0, 1, or
-2), the struct comment was right and the command-doc-based 0..10 scale is wrong; tell me the
-actual displayed range and the index-to-range table gets corrected.
 
 ---
 
@@ -299,16 +375,21 @@ aircraft).
 
 ## Known limitations (by design, not defects to test for)
 
-- **No weather-radar self-test command exists in this SDK** — Preflight's WXR-test item is a
-  permanent Captain reminder (see B2).
+- **The weather-radar self-test is a Captain reminder BY CHOICE, not because the command is
+  missing** (corrected 2026-08) — `FMS_WXR_SYS_CTRL_SET` (Value2 0 TEST / 1 NORM) exists and is
+  readable back, but is left unwired pending in-sim proof that the TEST position is modelled at
+  all (see B2, which carries an optional probe).
 - **No lower-DU/EICAS synoptic-page-select field exists** — the Before Taxi lower-DU item is a
   permanent Captain reminder.
-- **Speedbrake ARM is a permanent Captain reminder** — the lever write's scale mismatch is
-  unverified and deliberately not wired (see B7).
+- **Speedbrake ARM is a permanent Captain reminder** — the lever write's scale mismatch against
+  its own status readback is now CONFIRMED from the vendor headers (write 0~254, read 0~225), so
+  the write stays deliberately unwired (see B7).
 - **Ground power has no availability readback at all** (worse than the PMDG NG3, which at least
   has an unreliable one) — every ground-power checklist/flow item is a stateless press.
-- **No engine start-valve field** — engine-start gating relies on the start switch springing
-  back plus N2 only; there is no separate "starter valve open" confirmation step like the PMDG.
+- **No engine start-valve field, and no APU EGT field** — both confirmed absent by an
+  exhaustive 2026-08 search of `SDK_Defines.h`. Engine-start gating relies on the start switch
+  springing back plus N2 only (there is no "starter valve open" confirmation step like the
+  PMDG), and APU availability comes from the `APU_GEN_OFF_BUS` annunciator instead of EGT.
 - **Takeoff flaps / landing autobrake / speedbrake are Captain items on every aircraft** in this
   fleet, not just this one — unchanged fleet-wide policy.
 

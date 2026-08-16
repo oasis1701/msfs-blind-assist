@@ -42,10 +42,22 @@ phases, same 24-group checklist structure, same procedures, ids and step order �
 different write approach from every profile above it: rather than a second aircraft-specific
 command table, `IFly737ActionExecutor` delegates writes to
 `IFly737MAXDefinition.ApplyUIVariable`, the panels' own already-verified write path (the FBW
-A380/A32NX pattern), under a suppressed-announcer wrap — with one sanctioned bypass, the
-pressurization altitudes, sent directly via `SendDirect`/`Sdk.SendCommand` because the def's
-NumSet path fires an unsuppressible `AnnounceImmediate` that would talk over the flow's own step
-narration. This aircraft earned that approach more
+A380/A32NX pattern), under a suppressed-announcer wrap — with **two** sanctioned bypasses. The
+first is the pressurization altitudes, sent directly via `SendDirect`/`Sdk.SendCommand` because
+the def's NumSet path fires an unsuppressible `AnnounceImmediate` that would talk over the flow's
+own step narration. The second (added 2026-08) is **altimeters to standard**, set by VALUE
+through the stock `KOHLSMAN_SET` event — the mechanism the aircraft's own Ctrl+B altimeter
+dialog already uses and has live-verified — because the EFIS STD control cannot be driven
+closed-loop at all: `BARO_STD_Status` is **momentary**, not latched (v1.5 `SDK_Defines.h`
+documents it as "0:switch released / 1:switch pressed", the same phrasing iFly uses for its
+genuinely momentary press-buttons; the cockpit STD button is a momentary clickspot with no
+persistent STD-mode variable anywhere in the model XML; and the SDK command is a toggle click
+with no `_SET` variant). Read as a latch it made the FO press BOTH sides on every push — which,
+against a toggle, takes an already-standard side back to QNH — and then announce "Altimeter
+standard did not set" on every success. A value-set is idempotent, so it skips when already
+standard, retries safely, and stays silent on success (the def's monitored `ALTIMETER_SETTING`
+var announces the confirmed value with dedup, exactly as it does for Ctrl+B). This aircraft
+earned that approach more
 than any other: its official SDK (shared memory reads + WM_COPYDATA writes, see
 [docs/ifly-737.md](docs/ifly-737.md)) has the **fleet's densest set of live-verified
 encoding traps** — inverted start levers, a reversed FO display selector, landing-light command
@@ -69,9 +81,14 @@ worded "Gear lever: UP", never "OFF"); **emergency exit lights are a four-positi
 just at one call site; **speedbrake ARM and landing autobrake stay Captain reminders** — the
 speedbrake lever's write command has a documented but unverified scale mismatch against its own
 status readback, so the executor deliberately exposes no write for it (autobrake is a Captain
-item fleet-wide already); **no weather-radar test command exists in this SDK at all** (confirmed
-by grepping the full command enum), so unlike every other jet in the fleet the WXR-test checklist
-item is a permanent reminder, not a "this aircraft doesn't have the button yet" gap; **engine
+item fleet-wide already); **the weather-radar test is a reminder by choice, not by absence**
+— an earlier grep hunted for a WXR test *click* and wrongly concluded the SDK had none, but
+`FMS_WXR_SYS_CTRL_SET` ("Value2: 0:switch TEST; 1:switch NORM") is documented in v1.5
+`key_command.h` and readable back via `Weather_Radar_System_Control_Switch_Status`; it is left
+unwired because this airframe has a documented class of test switches that accept commands and
+do nothing (the A/P and A/T disengage-light TEST switches, live-tested), so driving TEST blind
+risks latching an unmodelled or un-releasing mode — an in-sim probe could upgrade it later;
+**engine
 start gates on the start switch springing back plus N2 only** — there is no starter-valve field
 to wait on between GRD and the N2 gate, the one intermediate confirmation every other Boeing
 profile has; and **APU availability comes from the `APU_GEN_OFF_BUS_Light_Status` annunciator,
@@ -79,7 +96,7 @@ because there is no EGT field** to fall back on the way the PMDG NG3's
 `AircraftStateEvaluator.ApuRunningEgt` does. In-sim test plan:
 [docs/ifly-737-first-officer-test-plan.md](docs/ifly-737-first-officer-test-plan.md) — it also
 carries several LIVE-VERIFY items a code review flagged but could not settle statically
-(BARO_STD latch-vs-momentary semantics, the APU-generator-light polarity, a Before-Start re-run
+(the APU-generator-light polarity, a Before-Start re-run
 that is expected to time out and abort today, the pressurization LED-window blank/minus padding,
 the ND range 0..10 scale, and the LNAV switch's value-3 composite edge case).
 

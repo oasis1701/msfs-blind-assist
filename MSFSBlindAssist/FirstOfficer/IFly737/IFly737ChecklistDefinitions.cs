@@ -34,9 +34,12 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///    read-only. Its Landing Checklist twin (LDC_SPDBRK) auto-detects on
 ///    SPEED_BRAKE_ARMED_Light_Status instead of staying a reminder, since the iFly DOES expose
 ///    that readback (the PMDG NG3 struct has none at all).
-///  - Weather radar test (PF_WXR_TEST) is a Captain reminder, not an action — the iFly SDK has
-///    no WXR TEST command (confirmed by grepping IFlyKeyCommand.cs for WXR/RADAR/TEST; the only
-///    matches are mode/gain/altitude/brightness controls).
+///  - Weather radar test (PF_WXR_TEST) is a Captain reminder, not an action. NOT because no
+///    command exists — an earlier grep looked for a WXR test CLICK and wrongly concluded that.
+///    `FMS_WXR_SYS_CTRL_SET` (v1.5 key_command.h: "Value2: 0:switch TEST; 1:switch NORM") is
+///    in the generated enum, and `Weather_Radar_System_Control_Switch_Status` (0 TEST/1 NORM)
+///    reads it back. It is deliberately UNWIRED pending in-sim verification that the TEST
+///    position is modelled at all — see the same note on IFly737ActionExecutor.PseudoKeys.
 ///  - Gear lever has only Up(0)/Down(1) — no OFF detent (RegisterLandingGear,
 ///    IFly737MAXDefinition.ForwardPedestal.cs:24-25 — `new[] { "Up", "Down" }`). ATKO_GEAR_OFF
 ///    and its After Takeoff Checklist twin ATC_GEAR command/detect GearUp only and are labelled
@@ -58,10 +61,12 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///    (IFly737MAXDefinition.LightsMisc.cs / ForwardPedestal.cs), so the generic path the
 ///    executor's own doc comment reserves for exactly this case is used instead of inventing a
 ///    parallel wrapper.
-///  - Baro STD: a Before Takeoff Checklist readback (BTOC_BARO, confirms QNH — not standard —
+///  - Baro STD: a Before Takeoff Checklist item (BTOC_BARO, confirms QNH — not standard —
 ///    before departure) was ADDED — the PMDG 737 template has no baro-STD checklist item
-///    anywhere. This is action-free (a pure readback), so it carries no risk of commanding the
-///    wrong pressure reference.
+///    anywhere. It is action-free either way, so it carries no risk of commanding the wrong
+///    pressure reference. Fix pass 2 (2026-08) DOWNGRADED it from Auto to a Captain reminder:
+///    its detection field BARO_STD_Status is MOMENTARY, so it read 0 (= "QNH") always and the
+///    item ticked itself regardless of the real reference — see the inline note.
 ///  - Fix pass 1 (2026-08) REMOVED a Descent state item (DSA_BARO) that had actioned
 ///    SetAltimetersStandardAsync() — i.e. it commanded STANDARD pressure DURING THE DESCENT,
 ///    which is backwards: standard is set climbing through the transition altitude, and local
@@ -227,9 +232,10 @@ public static class IFly737ChecklistDefinitions
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "ND_Range_Status_0", v => v > 5.5 && v < 6.5,
                 (e, _) => e.SetEFISRangeCapt(IFly737ActionExecutor.NdRange40Nm)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
-            // No WXR TEST command exists in the iFly SDK (grepped IFlyKeyCommand.cs for
-            // WXR/RADAR/TEST — only mode/gain/altitude/brightness controls found) — reminder,
-            // not an action.
+            // A WXR TEST command DOES exist (FMS_WXR_SYS_CTRL_SET, Value2 0 TEST/1 NORM) and
+            // is readable back (Weather_Radar_System_Control_Switch_Status) — it is left
+            // unwired pending in-sim verification that the TEST position is modelled at all
+            // (see the class doc), so this stays a reminder, not an action.
             Reminder("PF_WXR_TEST", "PREFLIGHT", "Weather radar test"),
             ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
                 (e, _) => e.GpwsTestAsync()),
@@ -628,8 +634,17 @@ public static class IFly737ChecklistDefinitions
             Reminder("BTOC_TRIM", "BEFORE_TAKEOFF_CL", "Stabilizer trim: units checked"),
             // ADDED (no PMDG 737 precedent — see class doc): confirms altimeters are still on
             // QNH (not standard) immediately before takeoff.
-            Auto("BTOC_BARO", "BEFORE_TAKEOFF_CL", "Baro STD: QNH", "BARO_STD_Status_0", v => v < 0.5,
-                new[] { "BARO_STD_Status_1" }, action: null),
+            //
+            // Was an Auto detecting BARO_STD_Status_{0,1} < 0.5. That detection is WORTHLESS:
+            // BARO_STD_Status is MOMENTARY ("0:switch released / 1:switch pressed" in v1.5
+            // SDK_Defines.h, matching iFly's other momentary press-buttons; no persistent
+            // STD-mode variable exists in the model XML) — so it reads 0 essentially always
+            // and this item auto-ticked "Baro STD: QNH" whether or not the altimeters were on
+            // standard. A confirmation that is always true is worse than none for a blind
+            // pilot. There is no substitute readback (the stock ALTIMETER_SETTING keeps
+            // reporting the underlying QNH while STD is displayed), so it becomes a reminder
+            // the pilot answers from the altimeter readout (Ctrl+B).
+            Reminder("BTOC_BARO", "BEFORE_TAKEOFF_CL", "Baro reference: QNH set, not standard"),
         }
     };
 

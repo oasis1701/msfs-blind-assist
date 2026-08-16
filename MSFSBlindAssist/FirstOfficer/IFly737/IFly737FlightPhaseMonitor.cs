@@ -20,10 +20,10 @@ namespace MSFSBlindAssist.FirstOfficer.IFly737;
 ///
 /// Transition altitude / level altimeter handling — climb commands standard, descent NEVER
 /// does:
-///   Set standard — climbing through transitionAltitude (+ hysteresis); rotates both EFIS baro
-///              knobs to standard via SetAltimetersStandardAsync (per-side guarded and
-///              readback-verified on this airframe — a deterministic no-op when already
-///              standard).
+///   Set standard — climbing through transitionAltitude (+ hysteresis); sets 29.92 inHg by
+///              VALUE via SetAltimetersStandardAsync (stock KOHLSMAN_SET, readback-verified —
+///              idempotent, and a silent no-op when already standard). NOT the EFIS STD
+///              buttons: BARO_STD_Status is momentary, so a guarded toggle cannot work here.
 ///   Leave standard — descending through transitionLevel (− hysteresis); announce-only ("set
 ///              local pressure now" — the pilot sets QNH via the app's Ctrl+B dialog). The
 ///              local QNH is unknowable here, so the app must NEVER command standard pressure
@@ -40,8 +40,8 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
     private readonly IFly737ActionExecutor _executor;
     // _state is retained for potential future use (e.g. other evaluator queries), matching the
     // PMDG737 template. Transition/10k crossings here track their own latches rather than
-    // querying the evaluator for baro-STD readback (that lives on the executor's per-side
-    // BARO_STD_Status guard instead).
+    // querying the evaluator for baro-STD readback (there is none to query — BARO_STD_Status
+    // is momentary; the executor sets standard by value and verifies against ALTIMETER_SETTING).
     private readonly IFly737StateEvaluator _state;
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SeatbeltAutomation _seatbelt;
@@ -233,8 +233,8 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         switch (_trans.Update(alt, climbing, descending))
         {
             case TransitionCrossingDetector.Crossing.ClimbToStd:
-                // Climbing through transition altitude — rotate both EFIS baro knobs to
-                // standard (fire-and-forget; the executor sequences the two sides itself).
+                // Climbing through transition altitude — set standard pressure by value
+                // (fire-and-forget; the executor guards, sends and verifies).
                 _ = _executor.SetAltimetersStandardAsync();
                 _announcer.AnnounceImmediate("Transition altitude. Altimeters set to standard.");
                 break;

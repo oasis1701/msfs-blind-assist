@@ -82,9 +82,11 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    read-only (Disp, ForwardPedestal.cs:822: "raw position (int 0-225) ... nearest-detent
 ///    decode" — no write command exists at all) and the executor deliberately exposes no write
 ///    for it (unverified scale mismatch).
-///  - Weather radar test (PF_WXR_TEST) is a Captain reminder — no WXR TEST command exists in
-///    IFlyKeyCommand (confirmed by grep for WXR/RADAR/TEST — only mode/gain/altitude/
-///    brightness controls).
+///  - Weather radar test (PF_WXR_TEST) is a Captain reminder. A WXR TEST command DOES exist
+///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, with the readable
+///    `Weather_Radar_System_Control_Switch_Status`) — an earlier grep looked for a test CLICK
+///    and wrongly concluded otherwise. It is deliberately unwired pending in-sim verification
+///    that the TEST position is modelled at all (see IFly737ActionExecutor.PseudoKeys).
 ///  - Lower display unit (BT_LOWERDU) is a Captain reminder — no lower-DU/EICAS synoptic-page-
 ///    select field exists in IFlySdkFields.cs.
 ///  - Labels changed to match this airframe's own switch wording (Fix-pass-1 convention
@@ -269,8 +271,8 @@ public static class IFly737FlowDefinitions
             // ND_Range_Status_0: 0..10 = 0.5/1/2/5/10/20/40/80/160/320/640 nm; 40 nm = index 6.
             SW("PF_EFIS_RANGE", "EFIS range: 40", "ND_Range_Status_0", IFly737ActionExecutor.NdRange40Nm),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
-            // No WXR TEST command exists in the iFly SDK (grepped IFlyKeyCommand.cs for
-            // WXR/RADAR/TEST — only mode/gain/altitude/brightness controls found).
+            // FMS_WXR_SYS_CTRL_SET (0 TEST/1 NORM) exists but is deliberately unwired pending
+            // in-sim verification that the TEST position is modelled — see the class doc.
             Captain("PF_WXR_TEST", "Weather radar test"),
             // GPWS test goes LAST — its self-test callouts trail for several seconds after the
             // step completes, so nothing must follow it (PMDG 737 parity).
