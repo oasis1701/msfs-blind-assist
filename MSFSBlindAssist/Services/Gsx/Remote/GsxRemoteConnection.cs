@@ -207,10 +207,16 @@ public sealed class GsxRemoteConnection : IDisposable
         }
 
         var (id, task) = _pending.Register();
-        string json = BuildCommand(verb, args, id);
 
         try
         {
+            // BuildCommand is INSIDE the try. It calls JsonSerializer.Serialize(args), and a
+            // throw there used to escape SendAsync entirely — past the registration on the
+            // line above, so the id leaked, and past every GsxDiagnosticLog.Verb call, so
+            // nothing was written to gsx.log or debug.log. Via the fire-and-forget Send()
+            // below (which discards the Task) that produced exactly the silent
+            // "I pressed it and nothing happened" this method's logging exists to remove.
+            string json = BuildCommand(verb, args, id);
             await SendRawAsync(json, _cts?.Token ?? CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -234,24 +240,44 @@ public sealed class GsxRemoteConnection : IDisposable
             return GsxResult.Fail("send failed");
         }
 
-        var completed = await Task.WhenAny(task, Task.Delay(CommandTimeoutMs)).ConfigureAwait(false);
-        if (completed != task)
+        GsxResult r;
+        try
         {
+            // WaitAsync, not WhenAny(task, Task.Delay(...)). The old form armed a real 5 s
+            // timer on EVERY command and never cancelled it on the (overwhelmingly common)
+            // success path, so an undebounced sender — GsxSettingsForm's NumericUpDown
+            // ValueChanged fires one settings.set per arrow tick, by its own comment — left
+            // dozens of live timer registrations per second, each outliving its command by
+            // the full timeout. WaitAsync cancels its timer when the task wins.
+            r = await task.WaitAsync(TimeSpan.FromMilliseconds(CommandTimeoutMs)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Release the registration. This was the leak: the timeout branch returned
+            // without ever removing the id, and the store's only other exits are a matching
+            // result frame or the FailAll a socket drop triggers — which on a stable socket
+            // never comes. A GSX that stops acking one verb grew _pending unboundedly.
+            _pending.Abandon(id, "timed out");
             GsxDiagnosticLog.Verb(verb, "timed-out", null, $"no result within {CommandTimeoutMs} ms",
                                   Environment.TickCount64 - startedTicks);
             return GsxResult.Fail("timed out");
         }
 
-        var r = await task.ConfigureAwait(false);
         if (!r.Ok) Log.Debug("Gsx", $"Remote command '{verb}' failed: {r.ErrorCode} {r.ErrorMessage}");
         GsxDiagnosticLog.Verb(verb, r.Ok ? "ok" : "error", r.ErrorCode, r.ErrorMessage,
                               Environment.TickCount64 - startedTicks);
         return r;
     }
 
-    /// <summary>Fire-and-forget: for commands whose ack we do not need.</summary>
+    /// <summary>
+    /// Fire-and-forget: for commands whose ack we do not need. The fault continuation is not
+    /// decoration — without it anything escaping <see cref="SendAsync"/> becomes an unobserved
+    /// task exception, i.e. a keypress that vanishes with no line in any log.
+    /// </summary>
     public void Send(string verb, object? args = null)
-        => _ = SendAsync(verb, args);
+        => SendAsync(verb, args).ContinueWith(
+            t => Log.Error("Gsx", $"Remote command '{verb}' faulted: {t.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
 
     private static string BuildCommand(string verb, object? args, string id)
     {

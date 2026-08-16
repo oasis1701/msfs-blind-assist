@@ -112,9 +112,22 @@ public enum SpeechRoute
 /// gsx-gate-select.log's convention, because a GSX turnaround is a stream of events to grep
 /// rather than an algorithm trace to read top-to-bottom. Free text is quoted and flattened
 /// to one line; an absent value is <c>(none)</c>, never an empty field. The first field is
-/// always <c>ev=</c> so one search partitions the file: <c>ev=session</c>, <c>ev=state</c>,
-/// <c>ev=spoke</c>, <c>ev=hushed</c>, <c>ev=summary</c>, <c>ev=verb</c>, <c>ev=reset</c>.
-/// Never hand-stamp a timestamp, level or category — <c>LogFormatter</c> adds all three.
+/// always <c>ev=</c> so one search partitions the file: <c>ev=session</c>, <c>ev=connection</c>,
+/// <c>ev=state</c>, <c>ev=publish</c>, <c>ev=hushed</c>, <c>ev=summary</c>, <c>ev=verb</c>,
+/// <c>ev=reset</c>. Never hand-stamp a timestamp, level or category — <c>LogFormatter</c>
+/// adds all three.
+///
+/// <para>
+/// Two things this list has been wrong about before, both of which defeat the one-search
+/// premise. It said <c>ev=spoke</c> while the code emitted <c>ev=publish</c> — and
+/// <c>ev=spoke</c> is not a typo but the RETIRED spelling, dropped precisely because it
+/// asserted a phrase was heard; <c>grep ev=spoke</c> returns nothing, so an investigator
+/// following the contract concluded nothing was ever published. And <c>ev=session</c> was
+/// emitted for two structurally different records — the per-flight header
+/// (<see cref="FormatSession"/>) and every socket up/down flap (<see cref="Connection"/>) —
+/// so filtering for one returned the other interleaved. The flap is <c>ev=connection</c>.
+/// A new record type gets a NEW tag and a line here; it never borrows an existing one.
+/// </para>
 /// </para>
 ///
 /// <para>
@@ -197,9 +210,13 @@ public static class GsxDiagnosticLog
     public static void Reset(string reason, bool clearedReceiptDigests) =>
         Channel.Info($"ev=reset reason={Quote(reason)} clearedReceiptDigests={Lower(clearedReceiptDigests)}");
 
-    /// <summary>The socket came up or went down.</summary>
+    /// <summary>
+    /// The socket came up or went down. Its OWN tag: this used to be <c>ev=session</c>, which
+    /// the per-flight header already owns with a completely different field set, so filtering
+    /// for either returned both.
+    /// </summary>
     public static void Connection(bool up, int generation) =>
-        Channel.Info($"ev=session state={(up ? "connected" : "disconnected")} generation={generation}");
+        Channel.Info(FormatConnection(up, generation));
 
     // ── Pure formatting (unit-tested; no I/O) ────────────────────────────────────────────
 
@@ -211,11 +228,14 @@ public static class GsxDiagnosticLog
         return $"ev=session icao={OrNone(icao)} capabilities={caps} services={serviceCount}";
     }
 
+    internal static string FormatConnection(bool up, int generation) =>
+        $"ev=connection state={(up ? "connected" : "disconnected")} generation={generation}";
+
     internal static string FormatSpoke(GsxSpeechSource source, string phrase, SpeechRoute route) =>
-        $"ev=publish src={Name(source)} {DescribePhrase(source, phrase)} route={Name(route)}";
+        $"ev=publish src={Name(source)} {DescribePhrase(phrase)} route={Name(route)}";
 
     internal static string FormatHushed(GsxSpeechSource source, string phrase, string gate, string why) =>
-        $"ev=hushed src={Name(source)} {DescribePhrase(source, phrase)} gate={OrNone(gate)} why={Quote(why)}";
+        $"ev=hushed src={Name(source)} {DescribePhrase(phrase)} gate={OrNone(gate)} why={Quote(why)}";
 
     internal static string FormatVerb(string verb, string result, string? code, string? message, long elapsedMs) =>
         $"ev=verb verb={OrNone(verb)} result={OrNone(result)} code={OrNone(code)} " +
@@ -227,9 +247,8 @@ public static class GsxDiagnosticLog
     /// see <see cref="GsxSpeechSource"/> for why an earlier redaction tier was removed.
     /// <see cref="MaxPhraseChars"/> is a line-length sanity bound, not a privacy device.
     /// </summary>
-    internal static string DescribePhrase(GsxSpeechSource source, string phrase)
+    internal static string DescribePhrase(string phrase)
     {
-        _ = source;
         string flat = Flatten(phrase);
         string shown = flat.Length > MaxPhraseChars ? flat[..MaxPhraseChars] + "…" : flat;
         return $"phrase={Quote(shown)}";
@@ -259,11 +278,17 @@ public static class GsxDiagnosticLog
         return sb.ToString().Trim();
     }
 
+    // BARE tokens. These used to carry a parenthetical gloss ("window(heard only while Access
+    // GSX is open)"), which put spaces and parentheses inside a value in a file whose stated
+    // shape is space-separated key=value: `grep -o 'route=[^ ]*'` returned `route=window(heard`
+    // and a splitter read "only", "while", "Access", "GSX", "is", "open)" as keys -- on the one
+    // field that answers "did anybody hear this?". The meaning belongs to SpeechRoute's own doc
+    // comment, which is where a reader looks it up once, not to every line of the log.
     private static string Name(SpeechRoute route) => route switch
     {
         SpeechRoute.Background => "background",
-        SpeechRoute.Window     => "window(heard only while Access GSX is open)",
-        _                      => "none(nobody heard this)",
+        SpeechRoute.Window     => "window",
+        _                      => "none",
     };
 
     private static string Name(GsxSpeechSource source) => source switch

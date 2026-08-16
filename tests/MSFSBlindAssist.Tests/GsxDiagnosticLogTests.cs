@@ -102,10 +102,14 @@ public class GsxDiagnosticLogTests
         // default-configured pilot has neither route and the whole GSX stream is discarded
         // by configuration. Logging that as "spoke" would send an investigator hunting a
         // speech-engine fault that does not exist.
+        // The token is BARE. It used to carry an explanatory gloss ("none(nobody heard this)"),
+        // which put spaces and parentheses inside a value in a strict key=value file and broke
+        // `grep -o 'route=[^ ]*'` on the one field that answers "did anybody hear this?".
+        // The meaning is documented once, on SpeechRoute itself — see
+        // The_route_token_is_bare_and_never_carries_a_gloss.
         string line = GsxDiagnosticLog.FormatSpoke(GsxSpeechSource.Service, "Refuel complete.", SpeechRoute.None);
 
-        Assert.Contains("route=none", line, StringComparison.Ordinal);
-        Assert.Contains("nobody heard", line, StringComparison.Ordinal);
+        Assert.EndsWith("route=none", line, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -113,10 +117,13 @@ public class GsxDiagnosticLogTests
     {
         // A subscriber exists, but a HIDDEN Access GSX window drops the phrase, and this
         // layer cannot see the form's visibility — so it must not assert one way or another.
+        // What it must NOT say is "spoke"/"heard"; the distinct token is the whole mechanism,
+        // and Window must stay distinguishable from Background.
         string line = GsxDiagnosticLog.FormatSpoke(GsxSpeechSource.Service, "Refuel complete.", SpeechRoute.Window);
 
-        Assert.Contains("route=window", line, StringComparison.Ordinal);
-        Assert.Contains("only while Access GSX is open", line, StringComparison.Ordinal);
+        Assert.EndsWith("route=window", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("spoke", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("heard", line, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -198,5 +205,78 @@ public class GsxDiagnosticLogTests
                           StringComparison.Ordinal);
         Assert.StartsWith("ev=session ", GsxDiagnosticLog.FormatSession("ENGM", null, 0),
                           StringComparison.Ordinal);
+        Assert.StartsWith("ev=connection ", GsxDiagnosticLog.FormatConnection(true, 3),
+                          StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The socket flap and the per-flight header are different records and must not share a tag,
+    /// or filtering for either returns both interleaved — they have disjoint field sets, so a
+    /// key=value scan over the merged result reads half of them as missing fields.
+    /// </summary>
+    [Fact]
+    public void The_socket_flap_does_not_share_the_session_headers_tag()
+    {
+        string flap = GsxDiagnosticLog.FormatConnection(false, 7);
+
+        Assert.Contains("ev=connection", flap, StringComparison.Ordinal);
+        Assert.DoesNotContain("ev=session", flap, StringComparison.Ordinal);
+        Assert.Contains("state=disconnected", flap, StringComparison.Ordinal);
+        Assert.Contains("generation=7", flap, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every value is a bare token or a quoted string — no unquoted value may contain a space.
+    /// `route=` used to render as "window(heard only while Access GSX is open)", so
+    /// `grep -o 'route=[^ ]*'` returned `route=window(heard` and a key=value splitter read
+    /// "only", "while", "Access", "GSX", "is", "open)" as bogus keys — on the one field that
+    /// answers "did anybody hear this?". What each token means belongs to SpeechRoute's own doc
+    /// comment, read once, not to every line of the log.
+    /// </summary>
+    [Theory]
+    [InlineData(SpeechRoute.Background, "route=background")]
+    [InlineData(SpeechRoute.Window, "route=window")]
+    [InlineData(SpeechRoute.None, "route=none")]
+    public void The_route_token_is_bare_and_never_carries_a_gloss(SpeechRoute route, string expected)
+    {
+        string line = GsxDiagnosticLog.FormatSpoke(GsxSpeechSource.Service, "Boarding complete.", route);
+
+        Assert.EndsWith(expected, line, StringComparison.Ordinal);
+        Assert.DoesNotContain("(", line, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The shape rule itself, over every formatter: split on spaces outside quotes and each
+    /// field must be a single key=value pair. This is what the channel is read by, and it is
+    /// cheaper to pin than to rediscover from a log that will not parse.
+    /// </summary>
+    [Fact]
+    public void No_unquoted_value_contains_a_space()
+    {
+        string[] lines =
+        [
+            GsxDiagnosticLog.FormatSpoke(GsxSpeechSource.Menu, "Activate Services at EDDF", SpeechRoute.Window),
+            GsxDiagnosticLog.FormatHushed(GsxSpeechSource.Message, "Set parking brake.", "baseline", "first of session"),
+            GsxDiagnosticLog.FormatVerb("gate.select", "error", "not_found", "no such gate", 12),
+            GsxDiagnosticLog.FormatSession("ENGM", new[] { "menu", "gate" }, 4),
+            GsxDiagnosticLog.FormatConnection(true, 1),
+        ];
+
+        foreach (string line in lines)
+        {
+            bool inQuotes = false;
+            var field = new System.Text.StringBuilder();
+            var fields = new List<string>();
+            foreach (char c in line)
+            {
+                if (c == '"') inQuotes = !inQuotes;
+                if (c == ' ' && !inQuotes) { fields.Add(field.ToString()); field.Clear(); }
+                else field.Append(c);
+            }
+            fields.Add(field.ToString());
+
+            foreach (string f in fields)
+                Assert.True(f.Contains('='), $"'{f}' is not a key=value pair in: {line}");
+        }
     }
 }

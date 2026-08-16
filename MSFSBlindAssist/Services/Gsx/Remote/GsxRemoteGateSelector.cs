@@ -113,10 +113,17 @@ public sealed class GsxRemoteGateSelector
 
         if (!capabilities.Contains(GateCapability, StringComparer.Ordinal))
         {
-            LogNoSend(label, "no 'gate' capability (GSX 4.0.8+ required)", GsxGateSelectOutcome.GateSelectUnsupported);
+            // Names the CAPABILITY, never a version number. CLAUDE.md and docs/gsx.md both hold
+            // that 4.0.8 appears in exactly two user-facing strings and nowhere else in code
+            // (GsxService.ReasonNoRemoteApi and GsxGateSelectAnnouncer.GateSelectUnsupportedMessage)
+            // so that a future floor change is a two-site edit rather than a hunt -- and those two
+            // are the ones pinned by tests. These are diagnostic strings, so they carried no
+            // benefit to offset being extra places the number has to be found and changed.
+            LogNoSend(label, "hello.capabilities does not include 'gate'",
+                      GsxGateSelectOutcome.GateSelectUnsupported);
             return GsxGateSelectResult.Local(
                 GsxGateSelectOutcome.GateSelectUnsupported,
-                "GSX does not advertise gate.select (requires GSX 4.0.8 or newer).");
+                "GSX does not advertise the 'gate' capability, so gate.select is unavailable.");
         }
 
         // GSX's OWN identifier, verbatim — never a label rebuilt from Describe() or
@@ -205,7 +212,11 @@ public sealed class GsxRemoteGateSelector
 
     private static void LogNoSend(string label, string reason, GsxGateSelectOutcome outcome)
     {
-        try { GateSelectLog.Info($"target=\"{label}\" identifierSent=(none) outcome={outcome} noSendReason=\"{reason}\""); }
+        try
+        {
+            GateSelectLog.Info($"target={GsxDiagnosticLog.Quote(label)} identifierSent=(none) " +
+                               $"outcome={outcome} noSendReason={GsxDiagnosticLog.Quote(reason)}");
+        }
         catch { /* logging must never break the selector */ }
     }
 
@@ -220,21 +231,27 @@ public sealed class GsxRemoteGateSelector
             // GSX's OWN error text, not ours. It is the single most useful field for
             // diagnosing not_found / bad_args / no_airport -- the codes that produce a
             // silent no-op the pilot can only investigate through this log -- and it was
-            // parsed and then discarded until now. Newlines are flattened so one attempt
-            // stays one log line (the log is read by eye, and a multi-line entry breaks
-            // the target=… identifierSent=… scan pattern). Safe to log: it is GSX's own
-            // short diagnostic string, never a raw frame (handlerData carries user data).
-            string message = string.IsNullOrWhiteSpace(result.Message)
-                ? "(none)"
-                : result.Message.Replace("\r", " ").Replace("\n", " ").Trim();
+            // parsed and then discarded until now. Safe to log: it is GSX's own short
+            // diagnostic string, never a raw frame (handlerData carries user data).
+            //
+            // Quoted through GsxDiagnosticLog.Quote, the sibling channel's formatter, rather
+            // than by hand. The hand-rolled version mapped \r and \n but not \t, did not
+            // collapse whitespace runs, and -- the one that matters -- did NOT escape embedded
+            // double quotes. This field is vendor free text, so a GSX message containing a "
+            // closed the field early and broke the target=… identifierSent=… scan this log is
+            // read by eye for: unparseable exactly on the malformed input that prompted the
+            // report. Quote() also renders an empty value as (none), which is what the manual
+            // IsNullOrWhiteSpace branch was doing.
+            string message = GsxDiagnosticLog.Quote(result.Message);
             // Appended ONLY when true, so an ordinary line keeps the exact
             // target=… identifierSent=… shape this log is scanned by eye for, while the one
             // anomaly worth grepping ("GSX prepared a stand I did not ask for") has a token.
             string mismatch = result.ResolvedGateContradictsRequest ? " resolvedMismatch=true" : "";
             GateSelectLog.Info(
-                $"target=\"{label}\" identifierSent=\"{identifier}\" revokeServices={revokeServices} " +
+                $"target={GsxDiagnosticLog.Quote(label)} identifierSent={GsxDiagnosticLog.Quote(identifier)} " +
+                $"revokeServices={revokeServices} " +
                 $"outcome={result.Outcome} resolvedGate={resolved} warnings={warnings} " +
-                $"rawCode={result.RawCode ?? "(none)"} message=\"{message}\"{mismatch}");
+                $"rawCode={result.RawCode ?? "(none)"} message={message}{mismatch}");
         }
         catch { /* logging must never break the selector */ }
     }

@@ -192,6 +192,50 @@ public class GsxPendingRequestsTests
         Assert.Equal(0, p.PendingCount);
     }
 
+    /// <summary>
+    /// The timeout path's exit. Before Abandon existed the store had none: Complete needs a
+    /// matching result frame and FailAll is a whole-store sweep run only on a socket drop, so a
+    /// command that timed out left its entry and its TaskCompletionSource in place for the life
+    /// of a stable connection and PendingCount grew monotonically.
+    /// </summary>
+    [Fact]
+    public async Task Abandon_releases_the_registration_and_completes_its_task()
+    {
+        var p = new GsxPendingRequests();
+        var (id, task) = p.Register();
+        Assert.Equal(1, p.PendingCount);
+
+        Assert.True(p.Abandon(id, "timed out"));
+        Assert.Equal(0, p.PendingCount);
+
+        // Set, not merely dropped: a second awaiter must be released rather than left on a task
+        // nothing will ever complete.
+        var result = await task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(result.Ok);
+        Assert.Equal("timed out", result.ErrorMessage);
+
+        // Idempotent, and a stale/unknown id is not an error — a late result frame for the same
+        // id simply finds nothing to complete.
+        Assert.False(p.Abandon(id, "timed out"));
+        Assert.False(p.Abandon("", "timed out"));
+    }
+
+    /// <summary>
+    /// An abandoned id must not resurrect: the late result frame GSX may still send finds
+    /// nothing to complete, so Complete reports "not mine" and the connection hands the frame
+    /// on rather than swallowing it as a command ack.
+    /// </summary>
+    [Fact]
+    public void A_late_result_for_an_abandoned_id_matches_nothing()
+    {
+        var p = new GsxPendingRequests();
+        var (id, _) = p.Register();
+        p.Abandon(id, "timed out");
+
+        var late = GsxFrame.Parse($$"""{"type":"result","ok":true,"id":"{{id}}"}""");
+        Assert.False(p.Complete(late));
+    }
+
     [Fact]
     public async Task Concurrent_FailAll_and_Register_do_not_deadlock()
     {
@@ -212,18 +256,82 @@ public class GsxPendingRequestsTests
             })));
         }
 
-        // This should complete without deadlock or timeout
-        var timeout = Task.Delay(TimeSpan.FromSeconds(5));
-        var allTasks = Task.WhenAll(tasks);
-        var completed = await Task.WhenAny(allTasks, timeout);
-
-        // If we got the timeout task, we deadlocked
-        Assert.Same(allTasks, completed);
+        // WaitAsync, not WhenAny(allTasks, Task.Delay(...)): WhenAny does not rethrow, so a
+        // FAULTED allTasks completed immediately and Assert.Same passed while every exception
+        // from the 33 background tasks was discarded. Awaiting allTasks is what surfaces them.
+        await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
 
         // Final FailAll to clean up any remaining registrations
         p.FailAll("final cleanup");
 
         // PendingCount should now be 0
         Assert.Equal(0, p.PendingCount);
+    }
+
+    /// <summary>
+    /// Concurrent Register/FailAll never throws, never deadlocks, and never strands a task a
+    /// later sweep cannot reach: after the workers finish, one final <c>FailAll</c> empties the
+    /// store and EVERY task handed out is completed. Repeated because a lost race is
+    /// probabilistic.
+    ///
+    /// <para>
+    /// <b>What this does NOT cover, stated so nobody assumes otherwise.</b> It does not defend
+    /// the <c>_gate</c> lock. That lock's stated purpose is to stop a registration landing
+    /// MID-SWEEP from surviving it, and this test was MEASURED against a build with mutual
+    /// exclusion removed (<c>lock (_gate)</c> → <c>lock (new object())</c>) and still passed —
+    /// as did every other test in this class. The reason is structural rather than a gap in the
+    /// assertions: a registration that survives one sweep is picked up by the next, the closing
+    /// <c>FailAll</c> here IS that next sweep, and a registration arriving after a sweep is
+    /// legitimately still pending, so "survived a sweep" and "arrived after it" are not
+    /// distinguishable from outside the class. Pinning the lock would need instrumentation
+    /// inside <c>FailAll</c> (a hook between the snapshot and the removals), which is a
+    /// production-code change made solely for a test.
+    /// </para>
+    ///
+    /// <para>
+    /// So the lock stays justified by its own reasoning and by the comment on <c>_gate</c>, not
+    /// by this test. Do not read a green run here as evidence it is safe to remove — and do not
+    /// "strengthen" this test by adding assertions that pass either way, which is exactly the
+    /// defect the whole exercise started from.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Concurrent_registrations_and_sweeps_never_strand_a_task()
+    {
+        for (int attempt = 0; attempt < 25; attempt++)
+        {
+            var p = new GsxPendingRequests();
+            var handedOut = new System.Collections.Concurrent.ConcurrentBag<Task<GsxResult>>();
+
+            // Registrations and sweeps interleaved on the thread pool, started together so the
+            // registrations really do land while a sweep is walking the store.
+            using var start = new ManualResetEventSlim(false);
+            var workers = new List<Task>();
+            for (int i = 0; i < 8; i++)
+            {
+                workers.Add(Task.Run(() =>
+                {
+                    start.Wait();
+                    for (int n = 0; n < 25; n++) handedOut.Add(p.Register().task);
+                }));
+                workers.Add(Task.Run(() =>
+                {
+                    start.Wait();
+                    for (int n = 0; n < 25; n++) p.FailAll("sweep");
+                }));
+            }
+
+            start.Set();
+            await Task.WhenAll(workers).WaitAsync(TimeSpan.FromSeconds(10));
+
+            // Anything a sweep missed must still be reachable by the next one.
+            p.FailAll("final cleanup");
+            Assert.Equal(0, p.PendingCount);
+
+            // And every task handed out is now completed — none left pending on a store that
+            // reports itself empty. (This is the property that DOES hold either way; see the
+            // remarks above for why it cannot stand in for a test of the lock.)
+            await Task.WhenAll(handedOut).WaitAsync(TimeSpan.FromSeconds(10));
+        }
     }
 }

@@ -68,6 +68,33 @@ public sealed class GsxPendingRequests
         return true;
     }
 
+    /// <summary>
+    /// Drops ONE registration whose caller has stopped waiting — the timeout path.
+    /// Returns true when an entry was actually removed.
+    ///
+    /// <para>
+    /// Without this the store had no per-request exit at all: <see cref="Complete"/> needs a
+    /// matching result frame and <see cref="FailAll"/> is a whole-store sweep run only on a
+    /// socket drop. A command that timed out therefore left its entry and its
+    /// <see cref="TaskCompletionSource"/> in place indefinitely — and on a stable socket the
+    /// sweep never comes, so <see cref="PendingCount"/> (the very property the tests assert
+    /// on to prove nothing leaks) grew for the life of the connection.
+    /// </para>
+    ///
+    /// <para>
+    /// No lock: this removes one known key rather than sweeping, so it cannot race a
+    /// <see cref="Register"/> the way <see cref="FailAll"/> can — the id is unique and
+    /// already issued. The result is still SET, not just dropped, so any second awaiter is
+    /// released rather than left hanging on a task nothing will ever complete.
+    /// </para>
+    /// </summary>
+    public bool Abandon(string id, string reason)
+    {
+        if (string.IsNullOrEmpty(id) || !_pending.TryRemove(id, out var tcs)) return false;
+        tcs.TrySetResult(GsxResult.Fail(reason));
+        return true;
+    }
+
     public void FailAll(string reason)
     {
         lock (_gate)
