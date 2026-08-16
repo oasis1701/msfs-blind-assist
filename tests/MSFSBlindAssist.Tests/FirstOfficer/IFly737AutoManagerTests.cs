@@ -234,4 +234,141 @@ public class IFly737AutoManagerTests
         Assert.True(typeof(IFoAutoManager).IsAssignableFrom(typeof(IFly737FOAutoManager)));
         Assert.True(typeof(IFoPhaseMonitor).IsAssignableFrom(typeof(IFly737FlightPhaseMonitor)));
     }
+
+    // ------------------------------------------------------------------
+    // ShouldBurnLnavVnavLatch (fix pass 1): the one-shot must only be spent when the tick's
+    // decision was actually informed. Pins the three cases the review named plus the mixed
+    // (one known / one unknown, no push) case that must also NOT burn.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void LnavVnavLatch_BothUnknown_DoesNotBurn() =>
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: double.NaN, vnavRead: double.NaN));
+
+    [Fact]
+    public void LnavVnavLatch_BothAlreadyLit_Burns() =>
+        // Known reads, both lit (e.g. raw value 1) -> ShouldPushMcpMode is false for both, no
+        // push fires, but both reads are genuinely known -> the tick was informed.
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: 1.0, vnavRead: 1.0));
+
+    [Fact]
+    public void LnavVnavLatch_AFiredPush_Burns()
+    {
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: true, pushedVnav: false, lnavRead: 0.0, vnavRead: 1.0));
+        Assert.True(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: true, lnavRead: 1.0, vnavRead: 0.0));
+    }
+
+    // Mixed: one side known (and already lit, so no push), the other still unreadable. The
+    // decision is only PARTIALLY informed -> must not burn, so the unresolved side gets another
+    // chance next tick.
+    [Fact]
+    public void LnavVnavLatch_OneKnownOneUnknown_DoesNotBurn()
+    {
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: 1.0, vnavRead: double.NaN));
+        Assert.False(IFly737FOAutoManager.ShouldBurnLnavVnavLatch(
+            pushedLnav: false, pushedVnav: false, lnavRead: double.NaN, vnavRead: 1.0));
+    }
+
+    // ------------------------------------------------------------------
+    // IFly737FlightPhaseMonitor.Evaluate10kCrossing (fix pass 1): the 10,000 ft landing-light
+    // crossing's action + new-latch decision, extracted as a pure function so it's testable
+    // without constructing the monitor (same ScreenReaderAnnouncer construction obstacle as the
+    // FOAutoManager). Uses the class's real thresholds — nowAbove = alt > 10,300, nowBelow =
+    // alt < 9,700 — via the internal static seam directly, so no magic numbers are duplicated
+    // here beyond the two probe altitudes.
+    // ------------------------------------------------------------------
+    private const double Above = 10_400; // > 10,300 -> nowAbove
+    private const double Below = 9_600;  // < 9,700   -> nowBelow
+    private const double Band = 10_000;  // inside the hysteresis band -> neither
+
+    [Fact]
+    public void Evaluate10kCrossing_ClimbingThroughUpperBand_TurnsOffAndLatchesAbove()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOff, action);
+        Assert.True(newLatch);
+    }
+
+    [Fact]
+    public void Evaluate10kCrossing_DescendingThroughLowerBand_TurnsOnAndLatchesBelow()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Below, climbing: false, descending: true, prevAbove10k: true, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOn, action);
+        Assert.False(newLatch);
+    }
+
+    // The invariant the brief singles out: the crossing latch keeps tracking real altitude
+    // while the setting is disabled, so a stale crossing can't fire the instant it's
+    // re-enabled. Disabled while climbing through the upper band -> no action, but the latch
+    // still flips to "above".
+    [Fact]
+    public void Evaluate10kCrossing_DisabledWhileClimbing_NoActionButLatchStillTracksAbove()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: false);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+        Assert.True(newLatch);
+    }
+
+    // Re-enabling AFTER the disabled climb-through must not resurrect a stale "turn lights off"
+    // — the latch is already "above" from the disabled tick above, so the next (enabled) tick
+    // at the same altitude sees prevAbove10k == true and takes no action.
+    [Fact]
+    public void Evaluate10kCrossing_ReEnabledAfterDisabledCrossing_DoesNotFireStaleAction()
+    {
+        var (_, latchAfterDisabledClimb) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: false, autoLightsEnabled: false);
+
+        var (action, _) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: true, descending: false, prevAbove10k: latchAfterDisabledClimb, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+    }
+
+    // Inside the hysteresis band: neither nowAbove nor nowBelow -> no action, latch holds its
+    // previous value unchanged (not overwritten to null or flipped).
+    [Fact]
+    public void Evaluate10kCrossing_InsideBand_LatchHoldsPreviousValue()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Band, climbing: true, descending: false, prevAbove10k: true, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+        Assert.True(newLatch);
+    }
+
+    // Direction-tolerant gate: the TurnOff branch only requires !descending, not climbing —
+    // a VS lull (neither climbing nor descending) on the crossing tick must NOT block the
+    // action from firing (same tolerance the transition-altitude crossing uses). Only the
+    // OPPOSITE direction (actually descending through the upper band) blocks it.
+    [Fact]
+    public void Evaluate10kCrossing_VsLull_DoesNotBlockAction()
+    {
+        var (action, newLatch) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: false, descending: false, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.TurnOff, action);
+        Assert.True(newLatch);
+    }
+
+    // The opposite direction genuinely blocks: descending through the upper band must not
+    // command lights off (that would be backwards — descending through 10,300 while heading
+    // down is not a climb-through crossing).
+    [Fact]
+    public void Evaluate10kCrossing_ActuallyDescendingThroughUpperBand_NoAction()
+    {
+        var (action, _) = IFly737FlightPhaseMonitor.Evaluate10kCrossing(
+            Above, climbing: false, descending: true, prevAbove10k: false, autoLightsEnabled: true);
+
+        Assert.Equal(IFly737FlightPhaseMonitor.LandingLightAction.None, action);
+    }
 }

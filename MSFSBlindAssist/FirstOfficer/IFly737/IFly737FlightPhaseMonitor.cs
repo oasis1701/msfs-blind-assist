@@ -161,32 +161,65 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
     /// <inheritdoc/>
     public bool AutoLights10kEnabled { get; set; } = true;
 
+    /// <summary>What <see cref="Check10kCrossing"/> should do this tick: no light action, turn
+    /// the landing lights off (climbing through 10,300), or turn them on (descending through
+    /// 9,700).</summary>
+    internal enum LandingLightAction { None, TurnOff, TurnOn }
+
     private void Check10kCrossing(double alt, bool climbing, bool descending)
+    {
+        var (action, newLatch) = Evaluate10kCrossing(alt, climbing, descending, _prevAbove10k, AutoLights10kEnabled);
+
+        switch (action)
+        {
+            case LandingLightAction.TurnOff:
+                _ = _executor.SetLandingLights(0);  // STATUS 0 = Off (both landing lights)
+                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
+                break;
+            case LandingLightAction.TurnOn:
+                _ = _executor.SetLandingLights(1);  // STATUS 1 = On
+                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
+                break;
+        }
+
+        _prevAbove10k = newLatch;
+    }
+
+    /// <summary>Pure decision behind the 10,000 ft landing-light crossing: given the current
+    /// altitude, direction (climbing/descending, same VS-threshold gates as the transition
+    /// crossing — a VS lull on the crossing tick must not fire without a real direction), the
+    /// PREVIOUS above/below-10k latch, and whether the lights feature is enabled, returns the
+    /// light action to take (if any) and the NEW latch value.
+    ///
+    /// The latch update is computed and returned UNCONDITIONALLY on whether outside the
+    /// hysteresis band — never gated on <paramref name="autoLightsEnabled"/> — so the crossing
+    /// latch keeps tracking real altitude while the setting is off; re-enabling it mid-flight
+    /// must never fire a stale crossing for ground already covered while disabled. Internal and
+    /// static so <c>IFly737AutoManagerTests</c> can pin both the action and the latch-tracking
+    /// invariant without constructing this class (same construction obstacle as the FOAutoManager
+    /// seams: <see cref="ScreenReaderAnnouncer"/> has no parameterless constructor).</summary>
+    internal static (LandingLightAction action, bool? newLatch) Evaluate10kCrossing(
+        double alt, bool climbing, bool descending, bool? prevAbove10k, bool autoLightsEnabled)
     {
         bool nowAbove = alt > LandingLightThresholdFt + HysteresisFt;  // above 10,300
         bool nowBelow = alt < LandingLightThresholdFt - HysteresisFt;  // below  9,700
 
-        // Same direction-tolerant gates as the transition crossing (a VS lull on the
-        // crossing tick must not burn the latch without firing).
-        if (AutoLights10kEnabled)
+        LandingLightAction action = LandingLightAction.None;
+        if (autoLightsEnabled)
         {
-            if (!descending && nowAbove && _prevAbove10k == false)
-            {
-                _ = _executor.SetLandingLights(0);  // STATUS 0 = Off (both landing lights)
-                _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
-            }
-            else if (!climbing && nowBelow && _prevAbove10k == true)
-            {
-                _ = _executor.SetLandingLights(1);  // STATUS 1 = On
-                _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
-            }
+            if (!descending && nowAbove && prevAbove10k == false)
+                action = LandingLightAction.TurnOff;
+            else if (!climbing && nowBelow && prevAbove10k == true)
+                action = LandingLightAction.TurnOn;
         }
 
-        // Update latch only when outside the hysteresis band. Runs even while the
-        // lights setting is off so re-enabling mid-flight can't fire a stale crossing.
-        if (nowAbove)       _prevAbove10k = true;
-        else if (nowBelow)  _prevAbove10k = false;
-        // Inside the band: latch holds its previous value
+        // Update latch only when outside the hysteresis band; inside the band it holds its
+        // previous value. Unconditional on autoLightsEnabled — see summary above.
+        bool? newLatch = prevAbove10k;
+        if (nowAbove)      newLatch = true;
+        else if (nowBelow) newLatch = false;
+
+        return (action, newLatch);
     }
 
     // -----------------------------------------------------------------------

@@ -101,7 +101,12 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     // FuelSystemLogic.BeforeStartFuelPumpsOk. ONE synthetic (never a primary+additional split —
     // a shared condition can't express wing≠center logic).
     // -----------------------------------------------------------------------
-    private bool AreWingFuelPumpsOn() =>
+    // Internal (not private): IFly737FOAutoManager.ReadCenterPumpInputs calls this directly
+    // instead of re-deriving the same "all four wing pumps on" predicate from its own IsOn()
+    // reads — one definition of the predicate, matching the PMDG737 AircraftStateEvaluator
+    // pattern (its AreWingFuelPumpsOn() is public and called the same way by the PMDG
+    // FOAutoManager).
+    internal bool AreWingFuelPumpsOn() =>
         IsOn("Fuel_L_FWD_Switch_Status") && IsOn("Fuel_L_AFT_Switch_Status") &&
         IsOn("Fuel_R_FWD_Switch_Status") && IsOn("Fuel_R_AFT_Switch_Status");
 

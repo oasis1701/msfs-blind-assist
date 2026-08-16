@@ -89,8 +89,10 @@ public class IFly737FOAutoManager : IFoAutoManager
         if (double.IsNaN(agl)) return;   // no AGL response yet — NaN < 400 is false, but state this positively
         if (_lnavVnavEngagedThisLeg || !climbing || agl < 400) return;
 
-        bool pushLnav = ShouldPushMcpMode(_state.GetValue("LNAV_Switch_Status"));
-        bool pushVnav = ShouldPushMcpMode(_state.GetValue("VNAV_Switch_Status"));
+        double lnavRead = _state.GetValue("LNAV_Switch_Status");
+        double vnavRead = _state.GetValue("VNAV_Switch_Status");
+        bool pushLnav = ShouldPushMcpMode(lnavRead);
+        bool pushVnav = ShouldPushMcpMode(vnavRead);
 
         if (pushLnav) _ = _executor.PushLNAV();
         if (pushVnav) _ = _executor.PushVNAV();
@@ -102,8 +104,24 @@ public class IFly737FOAutoManager : IFoAutoManager
                          :                        "VNAV";
             _announcer.AnnounceImmediate($"400 feet. {modes} engaged.");
         }
-        _lnavVnavEngagedThisLeg = true;
+
+        // Only spend the one-shot when the decision was actually informed — an unreadable
+        // snapshot (both reads NaN) must never burn the leg's only chance at LNAV/VNAV with no
+        // announcement telling the pilot why. See ShouldBurnLnavVnavLatch.
+        if (ShouldBurnLnavVnavLatch(pushLnav, pushVnav, lnavRead, vnavRead))
+            _lnavVnavEngagedThisLeg = true;
     }
+
+    /// <summary>Pure latch-burn guard for the LNAV/VNAV one-shot: burn the leg's single 400 ft
+    /// AGL attempt only when this tick's decision was actually informed — either a push fired
+    /// (definitively unlit, now pressed), or BOTH annunciators came back genuinely known (never
+    /// NaN) and were simply already lit, so there was nothing left to do this leg. If EITHER
+    /// read is still unknown and no push fired, the tick decided nothing — leave the latch
+    /// unset so the next tick can retry once the snapshot becomes readable. Internal and static
+    /// for the same construction reason as <see cref="ShouldPushMcpMode"/> — pure function of
+    /// the tick's already-computed values, no instance needed.</summary>
+    internal static bool ShouldBurnLnavVnavLatch(bool pushedLnav, bool pushedVnav, double lnavRead, double vnavRead) =>
+        pushedLnav || pushedVnav || (!double.IsNaN(lnavRead) && !double.IsNaN(vnavRead));
 
     /// <summary>Pure MCP-mode push guard: press only when the annunciator reads DEFINITIVELY
     /// unlit. NaN (no SDK snapshot yet / field unreadable) must SKIP the push, never be treated
@@ -190,7 +208,11 @@ public class IFly737FOAutoManager : IFoAutoManager
             rFwd, state.IsOn("LOW_PRESSURE_R_FWD_Light_Status"),
             lAft, state.IsOn("LOW_PRESSURE_L_AFT_Light_Status"),
             rAft, state.IsOn("LOW_PRESSURE_R_AFT_Light_Status"));
-        bool wingOn = lFwd && rFwd && lAft && rAft;
+        // Delegate to the evaluator's own predicate (widened to internal for this call) rather
+        // than re-deriving "all four wing pumps on" here — one definition of the predicate,
+        // matching the PMDG737 adapter's FOAutoManager, which calls AircraftStateEvaluator's
+        // public AreWingFuelPumpsOn() the same way.
+        bool wingOn = state.AreWingFuelPumpsOn();
 
         return (qty, pumpsOn, dry, credible, wingOn);
     }
