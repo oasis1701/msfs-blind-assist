@@ -699,6 +699,25 @@ public sealed class GsxService : IDisposable
             _serviceAnnouncer.Reset();
             _timerAnnouncer.Reset();
             LastAnnouncementText = string.Empty;
+
+            // The message slot's last-spoken text must go too, or the mirror of
+            // ClearLastTooltip is only half done. An in-place engine restart KEEPS the
+            // socket, so ResetSessionModels -- the only other place _lastAnnouncedMessage
+            // is cleared -- never runs. Leaving it set meant GSX coming back and
+            // republishing the same banner ("release parking brake") was compared against
+            // the DEAD session's value, seen as an exact repeat, and silently swallowed:
+            // precisely the case the ClearLastTooltip policy exists to rescue, as the
+            // comment on the blank-slot branch of AnnounceMessageIfChanged spells out.
+            // _messageBaselined is deliberately NOT reset -- the session continues, and
+            // re-baselining would record-not-speak the restarted engine's first message.
+            _lastAnnouncedMessage = string.Empty;
+
+            // Same reasoning for the tooltip, and through the event-raising path for the
+            // same reason ResetSessionModels uses it: AccessGSXForm refreshes its Tooltip
+            // box on TooltipChanged and on nothing else, so the dead session's tooltip sat
+            // there looking current until some unrelated patch happened to recompute it.
+            ClearTooltip();
+
             // The receipt digests are deliberately KEPT here. The pre-Remote-API
             // set was cleared on this edge because it was keyed by operator name
             // and a new session's invoice from the same handler had to get
@@ -1019,18 +1038,26 @@ public sealed class GsxService : IDisposable
     {
         string text = RawMessageText();
 
-        // While ANY service is performing, the message slot is GSX's rotating
-        // progress TICKER — live, with boarding and refuel running together it
-        // cycled "80/155 passengers boarded" -> "The airplane system is loading
-        // Fuel: 776 USGAL (2360 kg)" -> "Baggage loading progress 83%" -> blank,
-        // every few seconds. Every one of those is already spoken, milestone-
-        // or time-gated, by the typed pax/bags/fuel announcers; read here as
-        // wording changes they became continuous speech. Track the text
-        // silently so the last ticker line is not spoken as news the moment
-        // the service completes; only the idle slot — parked, cruise, follow-me,
-        // marshaller, "the only content GSX publishes for the idle case" — is
-        // ever spoken from here.
-        if (GsxActiveServiceResolver.ResolveGoverning(Services, null) != null)
+        // While a service that publishes a QUANTITY is performing, the message slot is GSX's
+        // rotating progress TICKER — live, with boarding and refuel running together it
+        // cycled "80/155 passengers boarded" -> "The airplane system is loading Fuel: 776
+        // USGAL (2360 kg)" -> "Baggage loading progress 83%" -> blank, every few seconds.
+        // Every one of those is already spoken, milestone- or time-gated, by the typed
+        // pax/bags/fuel announcers; read here as wording changes they became continuous
+        // speech. Track the text silently so the last ticker line is not spoken as news the
+        // moment the service completes.
+        //
+        // The test is PER-SERVICE (GsxServiceState.PublishesTypedProgress), not "is anything
+        // performing". A blanket gate silenced the slot for pushback and de-icing too, and
+        // those publish no pax, no bags, no fuel and no progress pair — so the slot is the
+        // ONLY channel carrying "set the parking brake" / "release the parking brake", and
+        // nothing else was speaking or even showing them: RecomputeTooltip is gated the same
+        // way, so Ctrl+G could not retrieve them either, and detail.phase has no consumer.
+        // A pilot got "Pushback in progress" and then silence through the whole manoeuvre.
+        // The blanket gate's own justification was "the typed announcers already carry those
+        // figures" — sound for the boarding+refuel capture it was written from, and false for
+        // a service with no figures at all.
+        if (Services.Any(s => GsxActiveServiceResolver.IsActive(s) && s.PublishesTypedProgress))
         {
             _lastAnnouncedMessage = string.IsNullOrWhiteSpace(text) ? string.Empty : text;
             return;

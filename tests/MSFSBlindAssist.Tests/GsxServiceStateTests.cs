@@ -54,4 +54,44 @@ public class GsxServiceStateTests
         Assert.Empty(GsxServiceState.ParseList(JsonDocument.Parse("[{}]").RootElement)
                                     .Where(s => !string.IsNullOrEmpty(s.Id)));
     }
+
+    /// <summary>
+    /// PublishesTypedProgress decides whether GSX's message slot is this service's rotating
+    /// progress TICKER (stay silent — the typed announcers already speak those figures) or is
+    /// carrying prose the pilot has to act on. Getting it wrong in the "silent" direction is how
+    /// the pushback parking-brake prompts went unspoken: a blanket "any service is performing"
+    /// gate silenced the slot for services that publish no figures at all.
+    /// </summary>
+    [Fact]
+    public void A_service_carrying_a_quantity_publishes_typed_progress()
+    {
+        var list = GsxServiceState.ParseList(Fixture());
+
+        // Deboarding carries detail.pax in the live capture.
+        var deboarding = Assert.Single(list.Where(s => s.Id == "Deboarding"));
+        Assert.True(deboarding.PublishesTypedProgress);
+    }
+
+    [Theory]
+    // Pushback and de-icing: no pax, no bags, no fuel, no progress pair. The message slot is the
+    // ONLY channel carrying their prompts, so it must not be gated shut for them.
+    [InlineData("""{"id":"Departure","state":"performing","detail":{"phase":"connecting"}}""")]
+    [InlineData("""{"id":"DeIce","state":"performing"}""")]
+    [InlineData("""{"id":"Departure","state":"performing","detail":{}}""")]
+    public void A_service_carrying_no_quantity_does_not(string rowJson)
+    {
+        var row = Assert.Single(GsxServiceState.ParseList(JsonDocument.Parse($"[{rowJson}]").RootElement));
+        Assert.False(row.PublishesTypedProgress);
+    }
+
+    [Theory]
+    [InlineData("""{"id":"Boarding","state":"performing","detail":{"pax":{"done":10,"total":155}}}""")]
+    [InlineData("""{"id":"Boarding","state":"performing","detail":{"bagsPercent":40}}""")]
+    [InlineData("""{"id":"Refueling","state":"performing","detail":{"fuel":{"current":2221,"unit":"kg"}}}""")]
+    [InlineData("""{"id":"Catering","state":"performing","progress":{"current":3,"total":9}}""")]
+    public void Every_quantity_shape_counts_as_typed_progress(string rowJson)
+    {
+        var row = Assert.Single(GsxServiceState.ParseList(JsonDocument.Parse($"[{rowJson}]").RootElement));
+        Assert.True(row.PublishesTypedProgress);
+    }
 }

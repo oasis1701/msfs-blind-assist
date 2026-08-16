@@ -59,6 +59,34 @@ public sealed class GsxServiceState
     /// </summary>
     public string StatusText { get; init; } = "";
 
+    /// <summary>
+    /// True when this row carries a QUANTITY that <see cref="GsxServiceAnnouncer"/> already
+    /// speaks on its own schedule — passengers, bags, fuel, or the generic progress pair.
+    ///
+    /// <para>
+    /// It exists to answer one question precisely: while this service runs, is GSX's
+    /// <c>message</c> slot its rotating progress ticker, or is it carrying real prose?
+    /// Boarding, deboarding, catering and refuel all publish a quantity, and their ticker
+    /// lines ("80/155 passengers boarded", "Baggage loading progress 83%") are already
+    /// announced milestone- or time-gated, so the slot must stay silent for them.
+    /// <b>Pushback (<c>Departure</c>) and de-icing publish none</b> — no pax, no bags, no
+    /// fuel, no progress pair — and for those the slot is the ONLY channel GSX gives the
+    /// prompts a pilot has to act on ("set the parking brake", "release the parking brake").
+    /// <c>Phase</c> is not a substitute: it is parsed and has no consumer anywhere.
+    /// </para>
+    ///
+    /// <para>
+    /// This replaces a blanket "any service is performing" test, whose own justification was
+    /// "the typed pax/bags/fuel announcers already carry those figures" — true for the
+    /// boarding+refuel capture it was written from, and false for every service that carries
+    /// no figures at all. Typed throughout: no text matching, so a GSX rewording cannot
+    /// change the answer.
+    /// </para>
+    /// </summary>
+    public bool PublishesTypedProgress =>
+        PaxDone.HasValue || PaxTotal.HasValue || BagsPercent.HasValue ||
+        FuelCurrent.HasValue || ProgressCurrent.HasValue || ProgressTotal.HasValue;
+
     public static IReadOnlyList<GsxServiceState> ParseList(JsonElement array)
     {
         if (array.ValueKind != JsonValueKind.Array) return Array.Empty<GsxServiceState>();
@@ -100,20 +128,28 @@ public sealed class GsxServiceState
         return list;
     }
 
+    // ValueKind == Object guarded before TryGetProperty, which throws InvalidOperationException
+    // on anything else. Previously this file was safe only because all 14 of its call sites
+    // hand-write `detail.ValueKind == JsonValueKind.Object ? … : null` first — one nested read
+    // added without that ritual would have thrown out of the /services parse and killed the whole
+    // announcement stream, while the identical-looking call in GsxRemoteParkingReader (which does
+    // guard) returned null. The guard belongs here, once.
     private static JsonElement Obj(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) ? v : default;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) ? v : default;
 
     private static string? Str(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static bool Bool(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.True;
 
     private static int? Int(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)
-           ? i : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : null;
 
     private static double? Num(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d)
-           ? d : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) ? d : null;
 }

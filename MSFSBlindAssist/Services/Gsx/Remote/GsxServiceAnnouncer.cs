@@ -298,8 +298,27 @@ public sealed class GsxServiceAnnouncer
     /// </summary>
     private string BusPhrase(GsxServiceState s, Snapshot was, Snapshot now)
     {
-        if (was.BusPhase == now.BusPhase || string.IsNullOrEmpty(now.BusPhase))
+        if (string.IsNullOrEmpty(now.BusPhase))
+        {
+            // The phase slot CLEARED: forget what was last spoken, so the next bus run is
+            // announced in full even if it repeats the phrase from the previous one. Same
+            // rule, and the same reason, as the blank-slot branch of
+            // GsxService.AnnounceMessageIfChanged -- both feed GsxPhraseGate, and a gap is
+            // exactly what makes a repeat news again.
+            //
+            // Without this, BusSpoken kept the pre-gap text: run 1 ending on "on the way,
+            // ETA 12 secs" and run 2 opening with "on the way, ETA 55 secs" differ only in a
+            // standalone digit run, so the gate read run 2's ONSET as a countdown tick and
+            // hushed it. Nothing else rescued it -- _spoken.Remove(s.Id) fires only on a
+            // STATE change, and a second bus run inside one performing state never crosses
+            // one. (approaching / in position / leaving still announced, so the loss was one
+            // callout rather than the whole run.)
+            if (_spoken.TryGetValue(s.Id, out var cleared) && cleared.BusSpoken != null)
+                _spoken[s.Id] = cleared with { BusSpoken = null };
             return string.Empty;
+        }
+
+        if (was.BusPhase == now.BusPhase) return string.Empty;
 
         _spoken.TryGetValue(s.Id, out var spoken);
         if (!GsxPhraseGate.ShouldAnnounce(spoken.BusSpoken ?? string.Empty, now.BusPhase))

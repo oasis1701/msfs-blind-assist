@@ -85,6 +85,42 @@ public class GsxServiceAnnouncerTests
     }
 
     [Fact]
+    public void A_second_bus_run_after_a_gap_is_announced_even_when_only_its_digits_differ()
+    {
+        // The phase slot going blank must FORGET what was last spoken. Run 1 ending on
+        // "on the way, ETA 12 secs" and run 2 opening with "on the way, ETA 55 secs" differ only
+        // in a standalone digit run, so with the pre-gap text still held the gate read run 2's
+        // ONSET as a countdown tick and hushed it. Nothing else rescued it: _spoken.Remove fires
+        // only on a STATE change, and two bus runs inside one performing state never cross one.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });                                 // baseline
+
+        var run1 = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 12 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 12 secs.", Assert.Single(run1));
+
+        // The bus finishes; GSX stops publishing detail.busPhase for a few ticks. State does
+        // NOT change -- the service is still performing throughout.
+        for (int i = 0; i < 3; i++)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing") }));
+
+        var run2 = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 55 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 55 secs.", Assert.Single(run2));
+    }
+
+    [Fact]
+    public void The_countdown_gate_still_holds_within_one_uninterrupted_bus_run()
+    {
+        // The complement of the test above: clearing on a blank must not weaken the gate while
+        // the phase is continuously published, or the ETA spam it exists to stop comes back.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });
+        a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 15 secs") });
+
+        for (int eta = 14; eta >= 1; eta--)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", busPhase: $"on the way, ETA {eta} secs") }));
+    }
+
+    [Fact]
     public void Passenger_milestones_still_announce_while_the_bus_eta_ticks()
     {
         // The countdown gate is applied to the BUS PHASE only; once the phase has been spoken,
