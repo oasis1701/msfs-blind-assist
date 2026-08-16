@@ -233,6 +233,15 @@ public class IFly737ProfileStructureTests
         foreach (var flow in flows)
             foreach (string gid in flow.RelatedChecklistGroupIds)
                 Assert.Contains(gid, realGroupIds);
+
+        // Fix pass 1 (2026-08), Fix 3: every CompletesChecklistItemId must name a real
+        // checklist ITEM (not just a real group) — a dangling id silently completes nothing
+        // when a flow step runs, and this exact bug (a checklist-item id that doesn't exist)
+        // shipped once on a sibling aircraft in this repo. All 9 current uses are correct;
+        // this is a totality net against a future one drifting or being mistyped.
+        var realItemIds = IFly737ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Id).ToHashSet();
+        foreach (var s in flows.SelectMany(f => f.Steps).Where(s => s.CompletesChecklistItemId != null))
+            Assert.Contains(s.CompletesChecklistItemId!, realItemIds);
     }
 
     [Fact]
@@ -264,6 +273,11 @@ public class IFly737ProfileStructureTests
         Assert.True(e1RunIdx >= 0, "no Engine_Start_Lever_Status_0 step found");
         Assert.True(e1WaitIdx < e1RunIdx, "the engine 1 N2 gate must precede the start-lever step");
         Assert.Equal(FlowStepFailurePolicy.Stop, steps[e1WaitIdx].FailurePolicy);
+        // Fix pass 1 (2026-08), Fix 8: pin the engine 1 Condition boundary too, symmetric
+        // with engine 2 above — only the policy/ordering was checked before.
+        Assert.NotNull(steps[e1WaitIdx].Condition);
+        Assert.True(steps[e1WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2));
+        Assert.False(steps[e1WaitIdx].Condition!(IFly737StateEvaluator.EngStartFuelN2 - 1));
 
         // Engine 2 is started before engine 1 (PMDG 737 convention).
         Assert.True(e2WaitIdx < e1WaitIdx);
@@ -292,18 +306,29 @@ public class IFly737ProfileStructureTests
     /// <summary>
     /// Totality safety net: every SetSwitch/SetSwitchMultiple EventName across all 13 flows
     /// must be either a declared executor pseudo-key, or a variable registered on the
-    /// definition that is actually WRITABLE. Membership alone is not enough — Task 4's review
-    /// found that <see cref="IFly737MAXDefinition.ApplyUIVariable"/> returns true for a
+    /// definition that has a REAL write command. Membership alone is not enough — Task 4's
+    /// review found that <see cref="IFly737MAXDefinition.ApplyUIVariable"/> returns true for a
     /// registered but READ-ONLY key (it speaks "X is a read-only indicator" and re-fires
     /// state), so a flow step targeting e.g. Spoiler_Lever_Status would resolve as "valid"
-    /// and then silently do nothing in the sim. Writability is read off
-    /// <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/> — the flag SwD sets
-    /// to true exactly when a field was registered with a null write command.
+    /// and then silently do nothing in the sim.
+    ///
+    /// Fix pass 1 (2026-08), Fix 2: writability is now read off
+    /// <see cref="IFly737MAXDefinition.HasWriteCommand"/> rather than
+    /// <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/>. The flag is set true
+    /// ONLY by the SwD registration path (a field registered with a null write command) — the
+    /// Disp/Annun/AnnunD paths (display-only fields, e.g. Spoiler_Lever_Status) leave it FALSE
+    /// with no write command at all, so the flag-based check passed a step pointed at one of
+    /// those fields. A mutation probe proved this: pointing a step at Spoiler_Lever_Status (a
+    /// Disp registration — the very key a step was demoted to a Captain reminder to avoid)
+    /// PASSED the old RenderAsReadOnlyStatus-based test. HasWriteCommand checks BOTH write
+    /// dictionaries the definition actually dispatches through (_writes, _perValueWrites), so
+    /// it can't miss a Disp/Annun/AnnunD field the way the flag did.
     /// </summary>
     [Fact]
     public void EverySetSwitchStep_Resolves()
     {
-        var vars = new IFly737MAXDefinition().GetVariables();
+        var def = new IFly737MAXDefinition();
+        var vars = def.GetVariables();
         var flows = IFly737FlowDefinitions.Build();
         Assert.NotEmpty(flows);
 
@@ -322,7 +347,7 @@ public class IFly737ProfileStructureTests
                 {
                     checkedKeys++;
                     bool isPseudoKey = IFly737ActionExecutor.IsPseudoKey(key);
-                    bool isWritableVar = vars.TryGetValue(key, out var def) && !def.RenderAsReadOnlyStatus;
+                    bool isWritableVar = vars.ContainsKey(key) && def.HasWriteCommand(key);
                     Assert.True(isPseudoKey || isWritableVar,
                         $"{flow.Id}.{step.Id}: '{key}' is neither a declared pseudo-key nor a " +
                         "writable registered variable (either unregistered, or registered " +
@@ -330,35 +355,93 @@ public class IFly737ProfileStructureTests
                 }
             }
         }
-        Assert.True(checkedKeys > 0, "no SetSwitch/SetSwitchMultiple steps were found to check");
+        // Fix pass 1 (2026-08), Fix 8: a bare ">0" floor passes even if a refactor silently
+        // stopped enumerating one whole step kind (e.g. dropped the SetSwitchMultiple branch).
+        // The file has ~127 individual keys across its 13 flows' SetSwitch/SetSwitchMultiple
+        // steps; 100 is comfortably below that real count but far above what a partial
+        // enumeration would produce.
+        Assert.True(checkedKeys > 100,
+            $"only {checkedKeys} SetSwitch/SetSwitchMultiple keys were checked — expected " +
+            "well over 100; a step-kind branch may have silently stopped being enumerated");
     }
 
+    /// <summary>
+    /// Fix pass 1 (2026-08), Fix 9: pins every SetSwitch/SetSwitchMultiple step's TargetValue
+    /// as a value the executor's own <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>
+    /// guard accepts for that key — the same range check <c>ApplySilent</c> runs before a
+    /// write reaches the SDK. All current values are valid today; this moves the gear-lever /
+    /// emergency-exit-light class of trap (a plausible-looking literal copied from the PMDG's
+    /// different numbering) from a runtime log line to a build-time test failure. A pseudo-key
+    /// step's TargetValue is not a combo position (IsDeclaredPosition returns true for any
+    /// unregistered key, including a pseudo-key name) so this is a genuine no-op for those,
+    /// not a false pass.
+    /// </summary>
     [Fact]
-    public void PressurizationSteps_UseTargetValueProvider()
+    public void EverySetSwitchStep_TargetValueIsADeclaredPosition()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new IFly737MAXDefinition());
+        var flows = IFly737FlowDefinitions.Build();
+
+        int checkedValues = 0;
+        foreach (var flow in flows)
+        {
+            foreach (var step in flow.Steps)
+            {
+                var pairs = new List<(string Key, int Value)>();
+                if (step.ActionType == FlowStepActionType.SetSwitch
+                    && step.EventName != null && step.TargetValue is int tv)
+                    pairs.Add((step.EventName, tv));
+                else if (step.ActionType == FlowStepActionType.SetSwitchMultiple)
+                    pairs.AddRange(step.MultiActions
+                        .Where(a => a.TargetValue is int)
+                        .Select(a => (a.EventName, a.TargetValue!.Value)));
+
+                foreach (var (key, value) in pairs)
+                {
+                    checkedValues++;
+                    Assert.True(exec.IsDeclaredPosition(key, value),
+                        $"{flow.Id}.{step.Id}: {value} is not a declared position for '{key}' — " +
+                        "this step would send an undefined value to the SDK.");
+                }
+            }
+        }
+        Assert.True(checkedValues > 100,
+            $"only {checkedValues} target values were checked — expected well over 100");
+    }
+
+    /// <summary>
+    /// Fix pass 1 (2026-08), Fix 1: pressurization MUST route through the executor's
+    /// PRESS_ALTS pseudo-key (<see cref="IFly737ActionExecutor.SetPressurizationAltitudesAsync"/>'s
+    /// sanctioned bypass), NEVER the definition's PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET NumSet
+    /// keys directly — those fire an unsuppressible AnnounceImmediate numeric-entry
+    /// confirmation from inside HandleUIVariableSet that talks over this step's own step-label
+    /// narration mid-word. This test replaces PressurizationSteps_UseTargetValueProvider (the
+    /// old two-DynSW-step shape it pinned no longer exists).
+    /// </summary>
+    [Fact]
+    public void PressurizationStep_RoutesThroughSanctionedBypass()
     {
         var steps = IFly737FlowDefinitions.Build().Single(f => f.Id == "PREFLIGHT").Steps;
-        var fltStep = steps.Single(s => s.Id == "PF_FLT_ALT");
-        var landStep = steps.Single(s => s.Id == "PF_LAND_ALT");
+        var pressStep = steps.Single(s => s.Id == "PF_PRESS_ALTS");
         var captainStep = steps.Single(s => s.Id == "PF_PRESS");
 
-        Assert.NotNull(fltStep.TargetValueProvider);
-        Assert.NotNull(landStep.TargetValueProvider);
+        Assert.Equal(FlowStepActionType.SetSwitch, pressStep.ActionType);
+        Assert.Equal(IFly737ActionExecutor.KeyPressAlts, pressStep.EventName);
+        Assert.True(IFly737ActionExecutor.IsPseudoKey(pressStep.EventName!));
+        Assert.True(IFly737ActionExecutor.HasPseudoKeyHandler(pressStep.EventName!));
+        Assert.NotEqual("PRESS_FLT_ALT_SET", pressStep.EventName);
+        Assert.NotEqual("PRESS_LDG_ALT_SET", pressStep.EventName);
+
+        // The Captain fallback survives for a pilot with no SimBrief plan loaded, and is
+        // skipped once a plan exists — unchanged behaviour from before this fix.
         Assert.Equal(FlowStepActionType.CaptainReminder, captainStep.ActionType);
         Assert.NotNull(captainStep.SkipCondition);
 
-        // No SimBrief plan loaded: both providers quietly resolve to null (the flow step
-        // skips with no announcement), and the Captain fallback is NOT skipped — the pilot
-        // still hears something.
         var state = new IFly737StateEvaluator();
-        Assert.Null(fltStep.TargetValueProvider!(state));
-        Assert.Null(landStep.TargetValueProvider!(state));
         Assert.False(captainStep.SkipCondition!(state));
 
-        // Plan loaded: providers resolve to the rounded/clamped planned values, and the
-        // Captain fallback IS skipped away (HasPressurizationPlan).
         state.SetPlannedPressurizationAltitudes(35000, 500);
-        Assert.Equal(35000, fltStep.TargetValueProvider!(state));
-        Assert.Equal(500, landStep.TargetValueProvider!(state));
         Assert.True(captainStep.SkipCondition!(state));
     }
 }

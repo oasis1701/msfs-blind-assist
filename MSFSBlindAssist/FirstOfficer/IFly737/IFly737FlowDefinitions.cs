@@ -20,8 +20,12 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 /// the template. There is no MouseFlag/Momentary-toggle-hazard helper here: this airframe's
 /// flight directors and autothrottle arm are ABSOLUTE SET switches (FD_1/2_Switch_Status,
 /// AT_Switch_Status), so a plain SW write with no skip guard is correct and safe to re-run.
-/// Any genuinely momentary control (a click button, a spring-loaded switch) uses SW's
-/// <c>isMomentary</c> flag instead of a separate helper.
+/// <c>SW</c>'s <c>isMomentary</c> flag is metadata ONLY — <see cref="IFly737ActionExecutor.
+/// ExecuteStepAsync"/> never reads <c>IFlowStepDispatch.IsMomentary</c>, so it has no effect
+/// on dispatch. A genuinely momentary control (a click button, a spring-loaded switch) is
+/// safe to write unconditionally because the DEFINITION's own write path handles the
+/// press/click semantics (a Btn-registered key IS the click; a spring-loaded field's SET
+/// command is a one-shot pulse) — nothing in this flow layer needs to hold or release it.
 ///
 /// Value conventions (see IFly737ActionExecutor's per-method doc comments for the exact
 /// registration line each cites):
@@ -90,20 +94,18 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///  - Flaps UP (AL_FLAPS_UP) writes FLAP_Status directly to position 0 (Up) — a real absolute
 ///    combo position on this airframe (ForwardPedestal.cs:815-817), not a per-detent momentary
 ///    click event like the PMDG's flap lever.
-///  - Pressurization (PF_FLT_ALT/PF_LAND_ALT) target the definition's registered NumSet keys
-///    (PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET) directly via DynSW+TargetValueProvider — the SAME
-///    generic dispatch mechanism every other flow step uses (FlowManager resolves the
-///    provider, then calls ExecuteStepAsync once). This differs from the CHECKLIST's PF_PRESS
-///    auto-detect item, which bypasses those NumSet keys via the executor's
-///    SetPressurizationAltitudesAsync (a direct SDK command, no announce) — that bypass exists
-///    because AutoAsync re-invokes its CheckAction on every checklist re-evaluation tick while
-///    the state doesn't yet match, and the NumSet path's numeric-confirmation announce
-///    (HandleUIVariableSet, deliberately unsuppressible per the screen-reader "numeric input
-///    confirmations" rule) would otherwise repeat every tick. A FLOW step dispatches exactly
-///    ONCE per run, so no repeat-announce hazard exists here; the one-time "Flight Altitude
-///    35000" confirmation is the same informative numeric confirmation every other NumSet
-///    write in this app gives, just possibly landing a beat after the step's own "Flight
-///    altitude: set" narration.
+///  - Pressurization (PF_PRESS_ALTS) routes through the executor's KeyPressAlts pseudo-key
+///    (SetPressurizationAltitudesCoreAsync) — the SAME sanctioned bypass the CHECKLIST's
+///    PF_PRESS auto-detect item uses, NOT the definition's PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET
+///    NumSet keys. Fix pass 1 (2026-08) correction: this flow originally targeted those NumSet
+///    keys directly via a DynSW+TargetValueProvider step (on the premise that a FLOW step
+///    dispatches exactly once, so the checklist's "re-invoked every tick" repeat-announce
+///    hazard doesn't apply here) — but HandleUIVariableSet's NumSet branch fires its numeric-
+///    entry confirmation via announcer.AnnounceImmediate, which is unconditionally
+///    interrupt:true with NO Suppressed check (ScreenReaderAnnouncer.AnnounceImmediate), so it
+///    cuts off the step's OWN "Flight and landing altitudes: set" narration mid-word on every
+///    run regardless of repeat count. The bypass avoids that entirely: it sends
+///    AIRSYSTEM_FLT_ALT_SET/AIRSYSTEM_LDG_ALT_SET straight to the SDK client with no announce.
 /// </summary>
 public static class IFly737FlowDefinitions
 {
@@ -150,8 +152,9 @@ public static class IFly737FlowDefinitions
             Skip(SW("EPU_BAT", "Battery: ON", "Battery_Switch_Mode", 2),
                 s => s.IsPosition("Battery_Switch_Mode", 2)),
             // STANDBY_POWER_Switch_Mode: 1=Battery/2=Off/3=Auto.
-            Skip(SW("EPU_STBY", "Standby power: AUTO", "STANDBY_POWER_Switch_Mode", 3),
-                s => s.IsPosition("STANDBY_POWER_Switch_Mode", 3)),
+            Skip(SW("EPU_STBY", "Standby power: AUTO", "STANDBY_POWER_Switch_Mode",
+                    IFly737ActionExecutor.StandbyPowerAuto),
+                s => s.IsPosition("STANDBY_POWER_Switch_Mode", IFly737ActionExecutor.StandbyPowerAuto)),
             // Ground power ON: momentary click (BTN_GRD_PWR_ON — the _SET command only moves
             // the animation, live-verified dead). Pressed unconditionally like the PMDG
             // template — no reliable "on bus" signal exists to skip on (see class doc).
@@ -233,15 +236,19 @@ public static class IFly737FlowDefinitions
                 IFly737ActionExecutor.IsolationValveOpen),
             Multi("PF_BLEEDS", "Engine bleeds: ON",
                 ("Engine_Bleed_Air_Switch_Status_0", 1), ("Engine_Bleed_Air_Switch_Status_1", 1)),
-            // Pressurization FLT/LAND ALT from the SimBrief plan — see class doc for why these
-            // target the definition's NumSet keys directly rather than the checklist's
-            // SetPressurizationAltitudesAsync bypass. Quietly skipped when no plan is loaded —
-            // the Captain fallback below announces instead. Two separate steps keep the writes
-            // in separate SDK commands.
-            DynSW("PF_FLT_ALT", "Flight altitude: set", "PRESS_FLT_ALT_SET",
-                s => s.PlannedFltAltFt, skipWhen: s => s.FltAltMatches()),
-            DynSW("PF_LAND_ALT", "Landing altitude: set", "PRESS_LDG_ALT_SET",
-                s => s.PlannedLandAltFt, skipWhen: s => s.LandAltMatches()),
+            // Pressurization FLT/LAND ALT from the SimBrief plan — routed through the
+            // executor's PRESS_ALTS pseudo-key (SetPressurizationAltitudesCoreAsync), the SAME
+            // sanctioned bypass the checklist's PF_PRESS auto-detect item uses. Fix pass 1
+            // (2026-08), Fix 1: this used to target the definition's PRESS_FLT_ALT_SET /
+            // PRESS_LDG_ALT_SET NumSet keys directly — those fire an unsuppressible
+            // announcer.AnnounceImmediate numeric-entry confirmation from inside
+            // HandleUIVariableSet (interrupt: true, no Suppressed check), which talks over
+            // this step's own "Flight and landing altitudes: set" narration mid-word every
+            // run. PRESS_ALTS reads the plan straight off the wired state evaluator and sends
+            // AIRSYSTEM_FLT_ALT_SET/AIRSYSTEM_LDG_ALT_SET directly (no announce) — a single
+            // step covers both altitudes; a quiet no-op (no write, no announce) when no plan
+            // is loaded, same as before. The Captain fallback below still covers that case.
+            SW("PF_PRESS_ALTS", "Flight and landing altitudes: set", IFly737ActionExecutor.KeyPressAlts, 1),
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
@@ -290,6 +297,21 @@ public static class IFly737FlowDefinitions
             // Generator availability: APU_GEN_OFF_BUS_Light_Status lit = the APU generator is
             // up and able to take a bus. Stop policy — if the APU never comes on line, abort
             // the flow HERE, before the generator transfer and ground-power drop below.
+            //
+            // Fix pass 1 (2026-08), Fix 4 — documented, NOT fixed: the PMDG 737 template
+            // splits this into a starter-cutout wait (Stop, safe to re-run — the light is
+            // absent on a cold APU too) and a SEPARATE generator-availability wait (Skip, with
+            // a comment explaining "light off" is ambiguous between APU-not-up-yet and
+            // already-transferred-to-the-bus). This port merged the two into the one wait
+            // above and kept it Stop — correct for the cold-start case this flow is written
+            // for, and the mandated behaviour — but that means a RE-RUN of Before Start after
+            // the generator transfer has already completed (APU on the bus, ground power
+            // already dropped) will sit here for the full 120 s timeout reading a light that
+            // may never re-illuminate the way this wait expects, then abort: every later step
+            // in this flow (fuel pumps, hydraulics, anti-collision light, transponder) never
+            // runs. APU_Generator_Switch_Status (IFlySdkFields.cs:341) looks like a candidate
+            // "already on the bus, skip this wait" guard, but it is UNVERIFIED against a live
+            // sim and must not be added without an in-sim test first.
             WaitForField("BS_APU_WAIT", "Waiting for the APU to come on line",
                 "APU_GEN_OFF_BUS_Light_Status", v => v > 0.5, 120,
                 onTimeout: FlowStepFailurePolicy.Stop),
@@ -621,7 +643,6 @@ public static class IFly737FlowDefinitions
     // -----------------------------------------------------------------------
 
     private static Step SW(string id, string label, string eventName, int? target,
-        string? verifyField = null, Func<double, bool>? verifyCond = null,
         string? checklistItemId = null, bool isMomentary = false) => new()
     {
         Id = id, Label = label,
@@ -629,25 +650,7 @@ public static class IFly737FlowDefinitions
         EventName = eventName,
         TargetValue = target,
         IsMomentary = isMomentary || target == null,
-        VerifyFieldName = verifyField,
-        VerifyCondition = verifyCond,
         CompletesChecklistItemId = checklistItemId,
-        PostActionDelayMs = 350,
-        FailurePolicy = FlowStepFailurePolicy.Skip,
-    };
-
-    // SetSwitch whose target resolves at DISPATCH time from evaluator state — for
-    // SimBrief-derived values unknown when these static definitions are built. A null
-    // provider result quietly skips the step (see FlowStep.TargetValueProvider).
-    private static Step DynSW(string id, string label, string eventName,
-        Func<IFly737StateEvaluator, int?> provider,
-        Func<IFly737StateEvaluator, bool>? skipWhen = null) => new()
-    {
-        Id = id, Label = label,
-        ActionType = FlowStepActionType.SetSwitch,
-        EventName = eventName,
-        TargetValueProvider = provider,
-        SkipCondition = skipWhen,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
@@ -659,14 +662,6 @@ public static class IFly737FlowDefinitions
         MultiActions = actions.ToList(),
         PostActionDelayMs = 400,
         FailurePolicy = FlowStepFailurePolicy.Skip,
-    };
-
-    private static Step Wait(string id, string label, int seconds) => new()
-    {
-        Id = id, Label = label,
-        ActionType = FlowStepActionType.WaitSeconds,
-        WaitSeconds = seconds,
-        PostActionDelayMs = 0,
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,

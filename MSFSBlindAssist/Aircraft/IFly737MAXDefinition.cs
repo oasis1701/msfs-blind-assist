@@ -905,6 +905,26 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return HandleUIVariableSet(varKey, value, def, simConnect, announcer);
     }
 
+    /// <summary>True when <paramref name="varKey"/> has a REAL write command registered —
+    /// either <see cref="_writes"/> (Sw/SwD/NumSet/Btn) or <see cref="_perValueWrites"/>
+    /// (SwPerValue) — as opposed to merely being a registered key at all. Closes the hole
+    /// Task 6's review found in the flow totality test: <see cref="ApplyUIVariable"/> (via
+    /// <see cref="HandleUIVariableSet"/>) returns TRUE for a registered but read-only key
+    /// (Annun/AnnunD/Disp — display-only, e.g. Spoiler_Lever_Status) after merely speaking
+    /// "X is a read-only indicator" and re-firing state, so a flow step pointed at one
+    /// resolves as "writable" under a membership-only check and then silently does nothing
+    /// in the sim. <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/> is NOT a
+    /// substitute — that flag is only ever set true by the SwD path (a null `set` command);
+    /// Disp/Annun/AnnunD leave it false with no write command at all, which is exactly the
+    /// gap a mutation probe proved (pointing a step at Spoiler_Lever_Status passed the old
+    /// RenderAsReadOnlyStatus-based test). Internal and decoupled from a live SDK — only
+    /// needs registration, same as <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>.</summary>
+    internal bool HasWriteCommand(string varKey)
+    {
+        EnsureRegistered();
+        return _writes.ContainsKey(varKey) || _perValueWrites.ContainsKey(varKey);
+    }
+
     /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll
     /// refresh), if the check still fails against the live snapshot, speaks the
     /// hint on the UI thread (Tolk thread affinity — the A380 RMP lesson).</summary>

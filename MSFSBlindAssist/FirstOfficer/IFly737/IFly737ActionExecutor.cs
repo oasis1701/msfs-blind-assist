@@ -88,6 +88,14 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public const string KeyApuStart = "APU_START";
     /// <summary>Both altimeters to STANDARD, guarded per side and readback-verified.</summary>
     public const string KeyBaroStdBoth = "BARO_STD_BOTH";
+    /// <summary>Pressurization FLT ALT + LAND ALT from the stored SimBrief plan — the
+    /// SANCTIONED bypass of the definition's PRESS_FLT_ALT_SET/PRESS_LDG_ALT_SET NumSet keys
+    /// (see <see cref="SetPressurizationAltitudesAsync"/>'s doc comment). Fix pass 1
+    /// (2026-08): a flow step had been routed through those NumSet keys directly — their
+    /// HandleUIVariableSet branch fires an unsuppressible `AnnounceImmediate` numeric-entry
+    /// confirmation that talks over the flow's own step narration mid-word, exactly the
+    /// premise this bypass exists to avoid. A flow step now targets THIS pseudo-key instead.</summary>
+    public const string KeyPressAlts = "PRESS_ALTS";
 
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
     /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
@@ -112,6 +120,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
             [KeyGpwsTest] = e => Task.FromResult(e.ApplySilent("BTN_GPWS_SYS_TEST", 1)),
             [KeyApuStart] = e => e.StartApuCoreAsync(),
             [KeyBaroStdBoth] = e => e.SetAltimetersStandardCoreAsync(),
+            [KeyPressAlts] = e => e.SetPressurizationAltitudesCoreAsync(e._state),
         };
 
     /// <summary>Every pseudo-key this executor handles — the keys of <see cref="PseudoKeyHandlers"/>.
@@ -588,22 +597,38 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         try
         {
             if (!IsAvailable) return false;
-            bool ok = true;
-            if (state.PlannedFltAltFt is int flt)
-            {
-                await PaceAsync();
-                ok &= SendDirect(IFlyKeyCommand.AIRSYSTEM_FLT_ALT_SET, flt);
-            }
-            if (state.PlannedLandAltFt is int land)
-            {
-                await PaceAsync();
-                ok &= SendDirect(IFlyKeyCommand.AIRSYSTEM_LDG_ALT_SET, land);
-            }
-            // No plan at all: a no-op success — the checklist item then behaves like the
-            // manual reminder it was before a SimBrief plan existed.
-            return ok;
+            return await SetPressurizationAltitudesCoreAsync(state);
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>Gate-already-held half, shared by the public wrapper above (the checklist's
+    /// PF_PRESS auto-detect bypass) AND the KeyPressAlts pseudo-key handler (a FLOW step,
+    /// dispatched from inside DispatchCoreAsync, which already holds <see cref="_gate"/> —
+    /// calling the public wrapper from there would deadlock on the non-reentrant gate, same
+    /// reasoning as every other *CoreAsync split in this file). <paramref name="state"/> is
+    /// nullable ONLY for the pseudo-key path, which passes the executor's own wired
+    /// evaluator (<see cref="_state"/>) — never wired (no <see cref="SetStateEvaluator"/>
+    /// call yet, or a unit test) is a quiet no-op success, matching the flow's own
+    /// "no plan loaded" quiet-skip contract (see IFly737FlowDefinitions.PF_PRESS_ALTS): no
+    /// write, no announce, the Captain fallback step covers it instead.</summary>
+    private async Task<bool> SetPressurizationAltitudesCoreAsync(IFly737StateEvaluator? state)
+    {
+        if (state == null) return true;
+        bool ok = true;
+        if (state.PlannedFltAltFt is int flt)
+        {
+            await PaceAsync();
+            ok &= SendDirect(IFlyKeyCommand.AIRSYSTEM_FLT_ALT_SET, flt);
+        }
+        if (state.PlannedLandAltFt is int land)
+        {
+            await PaceAsync();
+            ok &= SendDirect(IFlyKeyCommand.AIRSYSTEM_LDG_ALT_SET, land);
+        }
+        // No plan at all: a no-op success — the checklist item then behaves like the
+        // manual reminder it was before a SimBrief plan existed.
+        return ok;
     }
 
     private bool SendDirect(IFlyKeyCommand command, double value2)

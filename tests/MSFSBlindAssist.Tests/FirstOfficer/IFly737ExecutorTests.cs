@@ -31,7 +31,7 @@ public class IFly737ExecutorTests
     private static readonly string[] Expected =
     {
         "FIRE_TEST", "STALL_TEST_1", "STALL_TEST_2", "OVSPD_TEST_1", "OVSPD_TEST_2",
-        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH",
+        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS",
     };
 
     [Fact]
