@@ -150,7 +150,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
 
         autoCenterPumpsCheck = new CheckBox
         {
-            Text = "Auto-manage center fuel pumps (PMDG 737 and 777)",
+            Text = "Auto-manage center fuel pumps (PMDG 737/777 and iFly MAX8)",
             Location = new Point(20, 335),
             AutoSize = true,
             AccessibleName = "Automatic center fuel pump management",

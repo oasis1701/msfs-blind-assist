@@ -21,6 +21,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem fenixFirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fbwA380FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fbwA320FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem ifly737FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -60,6 +61,7 @@ namespace MSFSBlindAssist
             this.fenixFirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fbwA380FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fbwA320FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.ifly737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -96,6 +98,7 @@ namespace MSFSBlindAssist
             this.fbwA380FirstOfficerMenuItem,
             this.fbwA320FirstOfficerMenuItem,
             this.pmdg777FirstOfficerMenuItem,
+            this.ifly737FirstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
@@ -218,6 +221,15 @@ namespace MSFSBlindAssist
             this.pmdg777FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
             this.pmdg777FirstOfficerMenuItem.Text = "PMDG 777 &First Officer";
             this.pmdg777FirstOfficerMenuItem.Click += new System.EventHandler(this.PMDG777FirstOfficerMenuItem_Click);
+            //
+            // ifly737FirstOfficerMenuItem
+            //
+            this.ifly737FirstOfficerMenuItem.AccessibleName = "iFly 737 MAX8 First Officer";
+            this.ifly737FirstOfficerMenuItem.AccessibleDescription = "Open the iFly 737 MAX8 First Officer checklists and flows window";
+            this.ifly737FirstOfficerMenuItem.Name = "ifly737FirstOfficerMenuItem";
+            this.ifly737FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.ifly737FirstOfficerMenuItem.Text = "iFly 737 MAX8 &First Officer";
+            this.ifly737FirstOfficerMenuItem.Click += new System.EventHandler(this.IFly737FirstOfficerMenuItem_Click);
             //
             // aircraftMenuItem
             //

@@ -809,6 +809,7 @@ public partial class MainForm
         fenixFirstOfficerForm?.Dispose(); fenixFirstOfficerForm = null;
         fbwA380FirstOfficerForm?.Dispose(); fbwA380FirstOfficerForm = null;
         fbwA320FirstOfficerForm?.Dispose(); fbwA320FirstOfficerForm = null;
+        ifly737FirstOfficerForm?.Dispose(); ifly737FirstOfficerForm = null;
 
         if (coherentNDClient != null)
         {
@@ -976,6 +977,7 @@ public partial class MainForm
         bool isFbwA380 = currentAircraft?.AircraftCode == "FBW_A380";
         fbwA380FirstOfficerMenuItem.Visible = isFbwA380;
         fbwA320FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "A320";
+        ifly737FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "IFLY_737MAX8";
         // First Officer automation settings now live in the unified Settings dialog
         // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
     }
