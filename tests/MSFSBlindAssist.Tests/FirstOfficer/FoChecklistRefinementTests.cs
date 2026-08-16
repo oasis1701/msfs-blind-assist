@@ -8,6 +8,7 @@ using Fenix = MSFSBlindAssist.FirstOfficer.Fenix;
 using A320 = MSFSBlindAssist.FirstOfficer.FBWA320;
 using A380 = MSFSBlindAssist.FirstOfficer.FBWA380;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
+using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -72,7 +73,8 @@ public class FoChecklistRefinementTests
             && i.Label.Contains("line", StringComparison.OrdinalIgnoreCase));
     }
 
-    // ---- Task 3: uniform Before Start tail on all five jets ----
+    // ---- Task 3: uniform Before Start tail across the fleet (five PMDG/FBW jets +
+    //      the iFly 737 MAX8, added in the iFly First Officer profile task) ----
     [Fact] public void Fenix_BeforeStartTail()
     { AssertBeforeStartTail(Fenix.FenixChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(Fenix.FenixFlowDefinitions.Build()); }
@@ -92,6 +94,10 @@ public class FoChecklistRefinementTests
     [Fact] public void B777_BeforeStartTail()
     { AssertBeforeStartTail(PMDG777ChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(PMDG777FlowDefinitions.Build()); }
+
+    [Fact] public void IFly737_BeforeStartTail()
+    { AssertBeforeStartTail(IFly737.IFly737ChecklistDefinitions.Build());
+      AssertBeforeStartFlowTail(IFly737.IFly737FlowDefinitions.Build()); }
 
     // ---- Task 2: Airbus before/after-the-line separators ----
     [Fact] public void A320_BeforeStartCL_HasLine()
