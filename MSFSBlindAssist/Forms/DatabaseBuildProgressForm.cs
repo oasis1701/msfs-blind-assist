@@ -19,14 +19,24 @@ public partial class DatabaseBuildProgressForm : Form
     private readonly string simulatorVersion;
     private readonly string outputPath;
     private CancellationTokenSource cancellationTokenSource;
+    private readonly ScreenReaderAnnouncer announcer;
 
     private bool buildCompleted;
     private bool buildSucceeded;
+    private string completionMessage = "";
+
+    /// <summary>
+    /// The builder's final message. The dialog is disposed as soon as it closes, so without
+    /// this the failure text died with it — and DatabaseSettingsForm told the pilot to
+    /// "check the error message for details" when no error message existed any more.
+    /// </summary>
+    public string CompletionMessage => completionMessage;
 
     public bool BuildSucceeded => buildSucceeded;
 
     public DatabaseBuildProgressForm(string simulatorVersion, ScreenReaderAnnouncer announcer)
     {
+        this.announcer = announcer;
         this.simulatorVersion = simulatorVersion;
         this.builder = new NavdataReaderBuilder();
         // Always build to the canonical location, even if a legacy DB exists.
@@ -212,6 +222,15 @@ public partial class DatabaseBuildProgressForm : Form
 
         buildCompleted = true;
         buildSucceeded = e.Success;
+        completionMessage = e.Message ?? "";
+
+        // Success is announced by DatabaseSettingsForm once the dialog closes. A failure was
+        // announced nowhere at all, so a blind pilot heard confirmation on the good path and
+        // silence on the bad one.
+        if (!e.Success)
+        {
+            announcer?.AnnounceImmediate(completionMessage);
+        }
 
         if (e.Success)
         {
@@ -240,16 +259,21 @@ public partial class DatabaseBuildProgressForm : Form
         // Update status text (if provided)
         if (status != null)
         {
-            statusTextBox.Text = status;
+            // A full Text assignment throws the screen reader's review cursor back to the
+            // start. During a build this fires several times a second, which made the box
+            // unreadable exactly while it was the only feedback available. There is also
+            // nothing to scroll to — the text is replaced, never appended.
+            DisplayText.SetPreserveCaret(statusTextBox, status);
         }
 
         // Update details text (if provided)
         if (details != null)
         {
-            detailsTextBox.Text = details;
-            // Auto-scroll to bottom for multiline updates
-            detailsTextBox.SelectionStart = detailsTextBox.Text.Length;
-            detailsTextBox.ScrollToCaret();
+            // A full Text assignment throws the screen reader's review cursor back to the
+            // start. During a build this fires several times a second, which made the box
+            // unreadable exactly while it was the only feedback available. There is also
+            // nothing to scroll to — the text is replaced, never appended.
+            DisplayText.SetPreserveCaret(detailsTextBox, details);
         }
     }
 
