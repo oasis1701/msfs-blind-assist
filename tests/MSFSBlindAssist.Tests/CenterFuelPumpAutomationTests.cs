@@ -145,8 +145,9 @@ public class CenterFuelPumpAutomationTests
         Assert.Equal(CenterFuelPumpAutomation.Action.TurnOn, a.Update(true, true, true, 2000, false, true, 1000));
     }
 
-    // Invalid quantity (NaN/negative/Infinity) must reset the confirm and never fire OFF on the
-    // invalid tick itself — only a fresh run of continuous VALID below-threshold ticks can confirm.
+    // An invalid quantity must reset the confirm and never fire OFF on the invalid tick itself —
+    // only a fresh run of continuous VALID below-threshold ticks can confirm. NaN is the exercised
+    // case (the qtyValid guard treats negative/Infinity identically via the same branch).
     // This test verifies NaN RESETS (not merely pauses) the accumulator: if NaN only paused, the
     // first fresh tick after NaN would find the accumulator nonzero and fire OFF immediately.
     [Fact]
