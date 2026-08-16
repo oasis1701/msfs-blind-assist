@@ -8,10 +8,10 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// per FO adapter (PMDG 737 / 777), fed the same inputs the adapter passed to
 /// <see cref="CenterFuelPumpAutomation.Update"/> plus the resulting action.
 ///
-/// WHY THIS EXISTS: the OFF trigger is a debounced composite of two annunciator families and a
-/// credibility gate, and its windows are tune-in-sim consts — but the only thing observable from
-/// the cockpit is whether the announcement happened. When OFF silently became unreachable against a
-/// flickering LOW PRESSURE annunciator (2026-08), there was nothing recorded to say WHICH term was
+/// WHY THIS EXISTS: the OFF trigger is a quantity confirm (a short continuous below-threshold
+/// window) and its windows are tune-in-sim consts — but the only thing observable from the
+/// cockpit is whether the announcement happened. The previous annunciator-based design failed
+/// invisibly TWICE (2026-08, then again 2026-08-16) with nothing recorded to say WHICH term was
 /// failing. This makes the in-sim test plan verifiable instead of listen-and-hope.
 ///
 /// Deliberately CHANGE-TRIGGERED, not per-tick: a line is written only when an action fires or when
@@ -30,13 +30,13 @@ public sealed class CenterPumpDiagnostics
 
     public void Record(
         bool enabled, bool dataReady, bool onGround, double centerQtyLbs,
-        bool centerPumpsOn, bool centerTankDry, bool systemCredible, bool wingPumpsOn,
+        bool centerPumpsOn, bool wingPumpsOn,
         double rawElapsedMs, CenterFuelPumpAutomation.Action action, string diagnostics)
     {
         if (!enabled) { _lastKey = ""; return; }
 
         string key = $"ready={B(dataReady)} gnd={B(onGround)} pumps={B(centerPumpsOn)} "
-                   + $"dry={B(centerTankDry)} cred={B(systemCredible)} wing={B(wingPumpsOn)} {diagnostics}";
+                   + $"wing={B(wingPumpsOn)} {diagnostics}";
         bool acted = action != CenterFuelPumpAutomation.Action.None;
         if (!acted && key == _lastKey) return;
         _lastKey = key;

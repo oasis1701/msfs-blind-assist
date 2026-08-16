@@ -9,7 +9,7 @@
 // this logic runs. So these tests exercise the two INTERNAL, STATIC seams
 // IFly737FOAutoManager exposes for exactly this reason — ShouldPushMcpMode (the annunciator
 // push guard, a pure function of the raw value) and ReadCenterPumpInputs (the center-pump
-// policy's five composed inputs, a pure function of an IFly737StateEvaluator) — the same
+// policy's three composed inputs, a pure function of an IFly737StateEvaluator) — the same
 // pattern IFly737StateEvaluatorTests uses to drive the evaluator sim-less via its internal
 // SnapshotSource/ReadySource seam.
 
@@ -81,131 +81,94 @@ public class IFly737AutoManagerTests
         Assert.Equal(expected, IFly737FOAutoManager.ShouldPushMcpMode(raw));
 
     // ------------------------------------------------------------------
-    // ReadCenterPumpInputs: composite truth mapped through FuelSystemLogic from live SDK field
-    // names (verified against IFlySdkOffsets.cs). Then fed into a real CenterFuelPumpAutomation
-    // policy instance to prove the composition actually drives the shared decision — asserted
-    // via the policy's public Diagnostics after one Update tick, per the brief.
+    // ReadCenterPumpInputs: the three inputs read from live SDK field names (verified against
+    // IFlySdkOffsets.cs). Then fed into a real CenterFuelPumpAutomation policy instance to prove
+    // the composition actually drives the shared decision — asserted via the policy's public
+    // Diagnostics after one Update tick, per the brief.
     // ------------------------------------------------------------------
 
     // Ground-arm scenario: wing pumps on, center switches off, center tank loaded above the
-    // arm threshold, no low-press lights lit -> not dry, credible, wing on. Fed into a fresh
-    // policy this composes into an immediate TurnOn (CenterFuelPumpAutomationTests pins the
-    // policy's own arm rule; this test pins that THIS composition reaches it correctly).
+    // arm threshold. Fed into a fresh policy this composes into an immediate TurnOn
+    // (CenterFuelPumpAutomationTests pins the policy's own arm rule; this test pins that THIS
+    // composition reaches it correctly).
     [Fact]
-    public void CenterPumpInputs_MapThroughFuelSystemLogic()
+    public void CenterPumpInputs_MapThroughToPolicy()
     {
         var buf = Buf();
         SetAllWingPumps(buf, true);
-        SetCenterQty(buf, "2300"); // well above CenterFuelPumpAutomation.ArmThresholdLbs (500)
+        SetCenterQty(buf, "2300"); // well above CenterFuelPumpAutomation.ArmThresholdLbs (1500)
         var eval = Ready(buf);
 
-        var (qty, pumpsOn, dry, credible, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        var (qty, pumpsOn, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.Equal(2300.0, qty);
         Assert.False(pumpsOn);
-        Assert.False(dry);
-        Assert.True(credible);
         Assert.True(wingOn);
 
         var policy = new CenterFuelPumpAutomation();
         Action action = policy.Update(
             enabled: true, dataReady: true, onGround: true,
-            centerQtyLbs: qty, centerPumpsOn: pumpsOn, centerTankDry: dry,
-            systemCredible: credible, wingPumpsOn: wingOn, rawElapsedMs: 1000);
+            centerQtyLbs: qty, centerPumpsOn: pumpsOn,
+            wingPumpsOn: wingOn, rawElapsedMs: 1000);
 
         Assert.Equal(Action.TurnOn, action);
         Assert.Contains("pending=On", policy.Diagnostics);
     }
 
-    // M-2: at least one running center pump reporting low pressure, with NO running pump
-    // reporting pressure OK, is dry. Both switches on, both lights lit.
+    // Both center switches on -> "pumps on" is true regardless of any other field.
     [Fact]
-    public void ReadCenterPumpInputs_BothCenterPumpsRunning_BothLowPressLit_IsDry()
+    public void ReadCenterPumpInputs_BothCenterPumpsRunning_PumpsOnTrue()
     {
         var buf = Buf();
         buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1;
         buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_CENTER_L_Light_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_CENTER_R_Light_Status] = 1;
         var eval = Ready(buf);
 
-        var (_, pumpsOn, dry, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.True(pumpsOn);
-        Assert.True(dry);
     }
 
-    // M-2 negative: a running pump whose light is OUT proves pressure OK -> not dry, even
-    // though its partner (also running) is lit. CenterTankDry requires EVERY running pump to
-    // report low pressure.
+    // A single running center pump also reads pumpsOn true (an "either" test, not "both").
     [Fact]
-    public void ReadCenterPumpInputs_OneRunningPumpLightOut_IsNotDry()
+    public void ReadCenterPumpInputs_OneCenterPumpRunning_PumpsOnTrue()
     {
         var buf = Buf();
         buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1;
-        buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_CENTER_L_Light_Status] = 0; // light OUT: pressure OK
-        buf[IFlySdkOffsets.LOW_PRESSURE_CENTER_R_Light_Status] = 1;
         var eval = Ready(buf);
 
-        var (_, pumpsOn, dry, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.True(pumpsOn);
-        Assert.False(dry);
     }
 
-    // Neither center switch on -> not "pumps on", and CenterTankDry's (sw0||sw1) term is false
-    // regardless of light state -> not dry.
+    // Neither center switch on -> not "pumps on".
     [Fact]
-    public void ReadCenterPumpInputs_BothCenterSwitchesOff_NeverDry()
+    public void ReadCenterPumpInputs_BothCenterSwitchesOff_PumpsOnFalse()
     {
-        var buf = Buf();
-        buf[IFlySdkOffsets.LOW_PRESSURE_CENTER_L_Light_Status] = 1; // stray light, switch still off
-        var eval = Ready(buf);
-
-        var (_, pumpsOn, dry, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        var eval = Ready(Buf());
+        var (_, pumpsOn, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.False(pumpsOn);
-        Assert.False(dry);
     }
 
-    // M-3: the WING annunciator tracks output pressure, not the switch — a single wing pump
-    // running with its low-press light OUT is enough to prove the system credible, regardless
-    // of the other three pumps (all off here).
+    // wingOn requires ALL FOUR wing pumps switched on — one alone is not enough.
     [Fact]
-    public void ReadCenterPumpInputs_OneWingPumpRunningLightOut_IsCredible_ButNotAllWingOn()
+    public void ReadCenterPumpInputs_OneWingPumpOn_WingOnFalse()
     {
         var buf = Buf();
-        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1; // low-press light stays 0 (out)
+        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1;
         var eval = Ready(buf);
 
-        var (_, _, _, credible, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
-        Assert.True(credible);
+        var (_, _, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.False(wingOn); // only 1 of 4 wing pumps on
     }
 
-    // No wing pump running at all -> never credible (F3 poison block relies on this).
     [Fact]
-    public void ReadCenterPumpInputs_NoWingPumpsRunning_NeverCredible()
-    {
-        var eval = Ready(Buf());
-        var (_, _, _, credible, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
-        Assert.False(credible);
-        Assert.False(wingOn);
-    }
-
-    // A wing pump running WITH its low-press light lit does not, by itself, prove credibility —
-    // only a pump reporting pressure OK does (M-3's per-pump AND-not-lit term).
-    [Fact]
-    public void ReadCenterPumpInputs_AllWingPumpsRunningButAllLit_IsNotCredible()
+    public void ReadCenterPumpInputs_AllFourWingPumpsOn_WingOnTrue()
     {
         var buf = Buf();
         SetAllWingPumps(buf, true);
-        buf[IFlySdkOffsets.LOW_PRESSURE_L_FWD_Light_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_R_FWD_Light_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_L_AFT_Light_Status] = 1;
-        buf[IFlySdkOffsets.LOW_PRESSURE_R_AFT_Light_Status] = 1;
         var eval = Ready(buf);
 
-        var (_, _, _, credible, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
-        Assert.False(credible);
-        Assert.True(wingOn); // switches are all on even though every light is lit
+        var (_, _, wingOn) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        Assert.True(wingOn);
     }
 
     // Center quantity delegates to the evaluator's own metric-aware CenterQtyLbs() — pin that
@@ -218,7 +181,7 @@ public class IFly737AutoManagerTests
         SetCenterQty(buf, "1000", units: 0); // metric -> converted to lb
         var eval = Ready(buf);
 
-        var (qty, _, _, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
+        var (qty, _, _) = IFly737FOAutoManager.ReadCenterPumpInputs(eval);
         Assert.Equal(eval.CenterQtyLbs(), qty);
         Assert.Equal(1000.0 * IFly737FoComposition.KgToLb, qty, 3);
     }

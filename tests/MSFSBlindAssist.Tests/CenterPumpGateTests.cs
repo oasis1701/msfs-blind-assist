@@ -8,7 +8,7 @@ public class CenterPumpGateTests
     private const string L = "EVT_OH_FUEL_PUMP_L_CENTER";
     private const string R = "EVT_OH_FUEL_PUMP_R_CENTER";
     private const string Other = "EVT_OH_FUEL_PUMP_1_FORWARD";
-    private const double Thr = CenterFuelPumpAutomation.ArmThresholdLbs; // 500
+    private const double Thr = CenterFuelPumpAutomation.OffThresholdLbs; // 1000
 
     [Fact] public void CenterOnEvent_Recognised()      { Assert.True(CenterPumpGate.IsCenterOnEvent(L)); Assert.True(CenterPumpGate.IsCenterOnEvent(R)); }
     [Fact] public void CenterOnEvent_RejectsOthers()   => Assert.False(CenterPumpGate.IsCenterOnEvent(Other));

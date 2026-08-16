@@ -11,25 +11,12 @@ public class CenterFuelPumpAutomationTests
 
     private static CenterFuelPumpAutomation Make() => new();
 
-    // Args map: (enabled, dataReady, onGround, qty, pumpsOn, dry, credible, wingPumps, elapsedMs).
-    // The test surface renames the old lowPress→dry and adds dataReady/credible with safe defaults.
+    // Args map: (enabled, dataReady, onGround, qty, pumpsOn, wingPumps, elapsedMs) — matches the
+    // new 7-parameter Update signature (the dry/credible annunciator params are gone).
     private static Action Tick(CenterFuelPumpAutomation a, bool onGround, double qty,
-        bool pumpsOn, bool dry, bool wingPumps, bool enabled = true, bool credible = true,
+        bool pumpsOn, bool wingPumps, bool enabled = true,
         bool dataReady = true, double elapsedMs = NominalTickMs)
-        => a.Update(enabled, dataReady, onGround, qty, pumpsOn, dry, credible, wingPumps, elapsedMs);
-
-    // Drain the post-switch-on settle window (pumps already observed on, not dry). Must be
-    // called AFTER a rising-edge tick.
-    private static void DrainSettleWindow(CenterFuelPumpAutomation a, double qty = 100)
-    {
-        double remaining = CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000;
-        while (remaining > 0)
-        {
-            double step = System.Math.Min(remaining, 2000);
-            a.Update(true, true, false, qty, true, false, true, false, step);
-            remaining -= step;
-        }
-    }
+        => a.Update(enabled, dataReady, onGround, qty, pumpsOn, wingPumps, elapsedMs);
 
     // ---- Preserved / signature-updated ----
 
@@ -37,176 +24,42 @@ public class CenterFuelPumpAutomationTests
     public void Disabled_NeverActuates()
     {
         var a = Make();
-        Assert.Equal(Action.None, Tick(a, true, 5000, false, false, true, enabled: false));
+        Assert.Equal(Action.None, Tick(a, true, 5000, false, true, enabled: false));
     }
 
     [Fact]
     public void ArmsOn_WhenGroundFuelPresentWingPumpsOnPumpsOff()
     {
         var a = Make();
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, false, false, true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, false, true));
     }
 
     [Fact]
     public void DoesNotArm_WhenWingPumpsOff()
     {
         var a = Make();
-        Assert.Equal(Action.None, Tick(a, true, 5000, false, false, wingPumps: false));
+        Assert.Equal(Action.None, Tick(a, true, 5000, false, wingPumps: false));
     }
 
     [Fact]
     public void DoesNotArm_WhenAirborne()
     {
         var a = Make();
-        Assert.Equal(Action.None, Tick(a, onGround: false, 5000, false, false, true));
+        Assert.Equal(Action.None, Tick(a, onGround: false, 5000, false, true));
     }
 
     [Fact]
     public void DoesNotArm_WhenNoCenterFuel()
     {
         var a = Make();
-        Assert.Equal(Action.None, Tick(a, true, 100, false, false, true));
+        Assert.Equal(Action.None, Tick(a, true, 100, false, true));
     }
 
     [Fact]
     public void DoesNotArm_WhenPumpsAlreadyOn()
     {
         var a = Make();
-        Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: true, false, true));
-    }
-
-    [Fact]
-    public void TurnsOff_AfterSustainedDryWhilePumpsOn()
-    {
-        var a = Make();
-        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);   // rising edge
-        DrainSettleWindow(a);
-        int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
-        for (int i = 0; i < confirmTicks - 1; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-        Assert.Equal(Action.TurnOff, Tick(a, false, 100, true, true, false));
-    }
-
-    // FIELD DEFECT (2026-08, PMDG 737 + 777): the center LOW PRESSURE annunciator does NOT go
-    // steadily lit as the tank empties — it cycles on for a second or two and back out, and the
-    // policy is sampled at ~1 Hz. Against the old reset-to-zero debounce the accumulator's ceiling
-    // was the light's ON-period (1-2 s < LowPressConfirmSeconds), so OFF was UNREACHABLE — not
-    // merely delayed. Pins the reported pattern (2 ticks lit, 1 tick out) firing exactly once.
-    [Fact]
-    public void IntermittentDryAtDepletion_TurnsOffExactlyOnce()
-    {
-        var a = Make();
-        bool pumpsOn = true;
-        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);   // rising edge
-        DrainSettleWindow(a);
-
-        var actions = new List<Action>();
-        for (int i = 0; i < 30; i++)
-        {
-            bool dry = i % 3 != 2;   // lit, lit, out, lit, lit, out, ...
-            Action r = a.Update(true, true, false, 100, pumpsOn, dry, true, false, NominalTickMs);
-            actions.Add(r);
-            if (r == Action.TurnOff) pumpsOn = false;
-        }
-
-        Assert.Single(actions.FindAll(x => x == Action.TurnOff));
-        Assert.Empty(actions.FindAll(x => x == Action.TurnOn));
-    }
-
-    // The other half of the old FlickeringDry pin, kept: a SINGLE spurious sample is not evidence.
-    // Fails if the clear window is removed (evidence would never be discarded).
-    [Fact]
-    public void IsolatedDryBlip_ThenSustainedClear_DoesNotTurnOff()
-    {
-        var a = Make();
-        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);
-        DrainSettleWindow(a);
-        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-        for (int i = 0; i < 30; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false));
-    }
-
-    // Boundary: the accumulator is slow to forget, but it DOES forget. A clear run longer than
-    // LowPressClearSeconds discards accrued dry evidence, so the count restarts from zero.
-    // Fails if the clear window is made unbounded (dry evidence accruing forever across a leg).
-    [Fact]
-    public void ClearRunBeyondClearWindow_DiscardsAccruedDryEvidence()
-    {
-        var a = Make();
-        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);
-        DrainSettleWindow(a);
-        // Two dry ticks: one short of the confirm threshold.
-        for (int i = 0; i < 2; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-        // A clear run past the clear window wipes them.
-        int clearTicks = (int)(CenterFuelPumpAutomation.LowPressClearSeconds * 1000 / NominalTickMs) + 1;
-        for (int i = 0; i < clearTicks; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false));
-        // Two dry ticks again must now be short of the threshold, not at it.
-        for (int i = 0; i < 2; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-    }
-
-    [Fact]
-    public void SettleWindow_SuppressesImmediateOffAfterArming()
-    {
-        var a = Make();
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, false, false, true));
-        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false)); // rising edge starts settle
-        int settleTicks = (int)(CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000 / NominalTickMs);
-        for (int i = 0; i < settleTicks - 1; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-        Assert.Equal(Action.TurnOff, Tick(a, false, 100, true, true, false));
-    }
-
-    // FIX 1 regression: any observed switch-on gets settle protection, on a FULL tank.
-    [Fact]
-    public void ManualSwitchOn_FullTank_GetsSettleProtection_NeverFalselyTurnsOff()
-    {
-        var a = Make();
-        Assert.Equal(Action.None, Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: false));
-        Assert.Equal(Action.None, Tick(a, true, 8000, pumpsOn: true, dry: true, wingPumps: false)); // rising edge
-        int settleTicks = (int)(CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000 / NominalTickMs);
-        for (int i = 0; i < settleTicks - 1; i++)
-            Assert.Equal(Action.None, Tick(a, true, 8000, pumpsOn: true, dry: true, wingPumps: false));
-    }
-
-    // Bug-#1 pin: sustained dry on the ground must fire OFF exactly once, never oscillate.
-    [Fact]
-    public void SustainedDry_OnGround_DoesNotOscillate()
-    {
-        var a = Make();
-        bool pumpsOn = true;
-        a.Update(true, true, true, 5000, pumpsOn, false, true, true, NominalTickMs);
-        double remaining = CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000;
-        while (remaining > 0)
-        {
-            double step = System.Math.Min(remaining, 2000);
-            a.Update(true, true, true, 5000, pumpsOn, false, true, true, step);
-            remaining -= step;
-        }
-        var actions = new List<Action>();
-        for (int i = 0; i < 60; i++)
-        {
-            Action r = a.Update(true, true, true, 5000, pumpsOn, true, true, true, NominalTickMs);
-            actions.Add(r);
-            if (r == Action.TurnOff) pumpsOn = false;
-            else if (r == Action.TurnOn) pumpsOn = true;
-        }
-        Assert.Single(actions.FindAll(x => x == Action.TurnOff));
-        Assert.Empty(actions.FindAll(x => x == Action.TurnOn));
-    }
-
-    // T-13b (was AbsurdElapsed): now proven via the GAP mechanism (R-M4), not "low-press never
-    // reaches 3000 ms". 60000 ms > ObservationGapMs (5000) → gap → phantom rising edge each spike
-    // → settle re-armed to 10 s → OFF cannot fire.
-    [Fact]
-    public void AbsurdElapsed_GapReArmsSettle_DoesNotInstantlyTurnOff()
-    {
-        var a = Make();
-        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: false, dry: false, wingPumps: false, elapsedMs: 1));
-        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false, elapsedMs: 60000));
-        Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false, elapsedMs: 60000));
+        Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: true, wingPumps: true));
     }
 
     [Fact]
@@ -214,7 +67,7 @@ public class CenterFuelPumpAutomationTests
     {
         var a = Make();
         Assert.Equal(Action.None, Tick(a, true, CenterFuelPumpAutomation.ArmThresholdLbs,
-            pumpsOn: false, dry: false, wingPumps: true));
+            pumpsOn: false, wingPumps: true));
     }
 
     [Fact]
@@ -222,294 +75,323 @@ public class CenterFuelPumpAutomationTests
     {
         var a = Make();
         Assert.Equal(Action.TurnOn, Tick(a, true, CenterFuelPumpAutomation.ArmThresholdLbs + 0.01,
-            pumpsOn: false, dry: false, wingPumps: true));
+            pumpsOn: false, wingPumps: true));
     }
 
-    // ---- Changed: refuel-clear semantics ----
+    // ---- Core new quantity-based OFF cases (verbatim from the design brief) ----
 
-    // T-6 (no-drop): a FROZEN reference (dry-off at 5000, never dropped) must not be vacuously
-    // cleared. 5200 (< 5250) holds the latch; only 6000 (> 5250) clears. Fails against a machine
-    // that clears at qty>threshold.
+    [Fact]
+    public void Off_Fires_After_Continuous_Confirm_Below_Threshold()
+    {
+        var a = new CenterFuelPumpAutomation();
+        // pumps already on, healthy quantity
+        a.Update(true, true, false, 5000, true, true, 0);
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, false, 1200, true, true, 1000));
+        // crosses below 1000: needs 2 s continuous
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, false, 950, true, true, 1000));
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOff, a.Update(true, true, false, 900, true, true, 1000));
+    }
+
+    [Fact]
+    public void Off_Confirm_Resets_When_Quantity_Rises_Back_Above()
+    {
+        var a = new CenterFuelPumpAutomation();
+        a.Update(true, true, false, 5000, true, true, 0);
+        a.Update(true, true, false, 950, true, true, 1000);
+        a.Update(true, true, false, 1100, true, true, 1000);   // back above: reset
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, false, 950, true, true, 1000));
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOff, a.Update(true, true, false, 900, true, true, 1000));
+    }
+
+    [Fact]
+    public void Replays_20260816_Log_Arm_Refused_At_922_And_Depletion_Fires_Off()
+    {
+        var a = new CenterFuelPumpAutomation();
+        // Ground, wing pumps on, 922 lbs — the morning's arm must NOT happen (>1500 required).
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, true, 922, false, true, 0));
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, true, 922, false, true, 1000));
+        // Rich tank arms.
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOn, a.Update(true, true, true, 5000, false, true, 1000));
+        a.Update(true, true, true, 5000, true, true, 1000);    // readback lands
+        // Airborne depletion 922 → 304 → 0 at ~1 Hz: OFF within ~2 s of crossing 1000.
+        a.Update(true, true, false, 922, true, true, 1000);
+        var second = a.Update(true, true, false, 304, true, true, 1000);
+        var third  = a.Update(true, true, false, 0,   true, true, 1000);
+        Assert.True(second == CenterFuelPumpAutomation.Action.TurnOff
+                 || third  == CenterFuelPumpAutomation.Action.TurnOff);
+    }
+
+    [Fact]
+    public void Arm_Requires_Above_ArmThreshold_Not_Merely_OffThreshold()
+    {
+        var a = new CenterFuelPumpAutomation();
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, true, 1400, false, true, 0));
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOn, a.Update(true, true, true, 1600, false, true, 1000));
+    }
+
+    [Fact]
+    public void Off_Not_Retriggered_While_Pending_And_Latch_Suppresses_Rearm()
+    {
+        var a = new CenterFuelPumpAutomation();
+        a.Update(true, true, true, 900, true, true, 0);
+        a.Update(true, true, true, 900, true, true, 1000);
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOff, a.Update(true, true, true, 900, true, true, 1000));
+        // pending Off + readback not yet landed: no reissue
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, true, 900, true, true, 1000));
+        // readback lands (pumps off); dry-off latch suppresses re-arm — IN FLIGHT, because on the
+        // ground 2000 lbs would legitimately clear the latch as a refuel (900 floor + 250 margin).
+        Assert.Equal(CenterFuelPumpAutomation.Action.None, a.Update(true, true, false, 2000, false, true, 1000));
+        // and the ground-refuel clear still works: same reading ON the ground re-arms.
+        Assert.Equal(CenterFuelPumpAutomation.Action.TurnOn, a.Update(true, true, true, 2000, false, true, 1000));
+    }
+
+    // ---- Refuel floor ratchet + margin (manual-off latch path — quantities well above the arm
+    //      threshold so the assertions observe the clear/arm directly, matching the pre-existing
+    //      pinned values). ----
+
     [Fact]
     public void LatchAtFrozenReference_NotClearedWithinMargin()
     {
         var a = Make();
-        DriveToDryOff(a, 5000);
-        Assert.Equal(Action.None, Tick(a, true, 5000, false, false, wingPumps: true));   // unchanged
-        Assert.Equal(Action.None, Tick(a, true, 5200, false, false, wingPumps: true));   // within margin
-        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, false, false, wingPumps: true)); // genuine uplift
+        Tick(a, true, 5000, pumpsOn: true, wingPumps: true);    // rising edge
+        Tick(a, true, 5000, pumpsOn: false, wingPumps: true);   // falling → manualOffLatch, floor=5000
+        Assert.Equal(Action.None, Tick(a, true, 5000, false, wingPumps: true));   // unchanged
+        Assert.Equal(Action.None, Tick(a, true, 5200, false, wingPumps: true));   // within margin
+        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, false, wingPumps: true)); // genuine uplift
     }
 
-    // T-7 (new): the ratchet lowers the refuel reference. Drop to 4000 → floor 4000; 4200 (< 4250)
-    // holds; 4300 (> 4250) clears. Fails if the ratchet is deleted (floor stays 5000; 4300 < 5250).
     [Fact]
     public void RatchetLowersTheRefuelReference()
     {
         var a = Make();
-        DriveToDryOff(a, 5000);
-        Assert.Equal(Action.None, Tick(a, true, 4000, false, false, wingPumps: true));   // ratchet → floor 4000
-        Assert.Equal(Action.None, Tick(a, true, 4200, false, false, wingPumps: true));   // within new margin
-        Assert.Equal(Action.TurnOn, Tick(a, true, 4300, false, false, wingPumps: true)); // > 4250 → clear
+        Tick(a, true, 5000, pumpsOn: true, wingPumps: true);
+        Tick(a, true, 5000, pumpsOn: false, wingPumps: true);   // floor=5000
+        Assert.Equal(Action.None, Tick(a, true, 4000, false, wingPumps: true));   // ratchet → floor 4000
+        Assert.Equal(Action.None, Tick(a, true, 4200, false, wingPumps: true));   // within new margin
+        Assert.Equal(Action.TurnOn, Tick(a, true, 4300, false, wingPumps: true)); // > 4250 → clear
     }
 
     [Fact]
-    public void OnceOff_StaysOffUntilRefuelOnGround()
+    public void RatchetAndClear_AreMutuallyExclusive()
     {
         var a = Make();
-        DriveToDryOff(a, 600);
-        Assert.Equal(Action.None, Tick(a, true, 700, pumpsOn: false, dry: true, wingPumps: true)); // <850, latch holds
-        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true));
+        Tick(a, true, 5000, pumpsOn: true, wingPumps: true);
+        Tick(a, true, 5000, pumpsOn: false, wingPumps: true);   // floor=5000
+        Assert.Equal(Action.None, Tick(a, true, 5000, false, wingPumps: true));   // == floor: neither
+        Assert.Equal(Action.None, Tick(a, true, 5250, false, wingPumps: true));   // == floor+margin: NOT '>'
+        Assert.Equal(Action.TurnOn, Tick(a, true, 5251, false, wingPumps: true)); // strictly greater: clears
     }
 
-    // T-9: Reset() clears the POLICY latch (behavioral). Without Reset, 5100 (< 5250) → None.
+    // Quantity-triggered OFF also seeds the floor correctly (SeedFloor is shared with the manual
+    // path). Must stay under OffThresholdLbs to actually confirm OFF.
     [Fact]
-    public void Reset_ClearsPolicyLatch_ReArmsBelowRefuelMargin()
+    public void OnceOff_StaysOffUntilGenuineRefuelClearsLatchAndArms()
     {
         var a = Make();
-        DriveToDryOff(a, 5000);
+        DriveToDryOff(a, 900);
+        Tick(a, true, 900, pumpsOn: false, wingPumps: true);   // readback lands; floor stays 900
+        Assert.Equal(Action.None, Tick(a, true, 1140, pumpsOn: false, wingPumps: true));  // within margin
+        Assert.Equal(Action.TurnOn, Tick(a, true, 2000, pumpsOn: false, wingPumps: true)); // clears AND arms
+    }
+
+    [Fact]
+    public void Reset_ClearsPolicyLatch_ReArmsWithoutMarginRequirement()
+    {
+        var a = Make();
+        DriveToDryOff(a, 900);
         a.Reset();
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5100, false, false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 1600, pumpsOn: false, wingPumps: true));
     }
 
-    // T-10: Reset() clears the OBSERVATION group too — a fresh rising edge re-arms the full settle,
-    // so a dry run right after Reset is suppressed for the settle window.
-    [Fact]
-    public void Reset_ClearsObservationSettle()
-    {
-        var a = Make();
-        Tick(a, false, 100, pumpsOn: true, dry: false, wingPumps: false);
-        DrainSettleWindow(a);
-        a.Reset();
-        int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
-        for (int i = 0; i < confirmTicks + 1; i++)
-            Assert.Equal(Action.None, Tick(a, false, 100, pumpsOn: true, dry: true, wingPumps: false));
-    }
+    // ---- Pending-command latch ----
 
-    // ---- New discriminating tests (each states the mutation it catches) ----
-
-    // T-1: pending-command latch — TurnOn is not repeated while the readback has not landed.
     [Fact]
     public void TurnOn_NotRepeated_WhilePendingReadback()
     {
         var a = Make();
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, pumpsOn: false, dry: false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, pumpsOn: false, wingPumps: true));
         for (int i = 0; i < 5; i++)   // readback never lands (pumps stay off)
-            Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, dry: false, wingPumps: true));
+            Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-2: pending-command latch — TurnOff is not repeated within the confirm window.
     [Fact]
     public void TurnOff_NotRepeated_WhilePendingReadback()
     {
         var a = Make();
-        DriveToDryOff(a, 5000);
-        // Pumps still read on (write not landed); dry sustained; still within 30 s confirm.
+        DriveToDryOff(a, 900);
+        // Pumps still read on (write not landed); still within 30 s confirm.
         for (int i = 0; i < 10; i++)
-            Assert.Equal(Action.None, Tick(a, false, 5000, pumpsOn: true, dry: true, wingPumps: false));
+            Assert.Equal(Action.None, Tick(a, false, 900, pumpsOn: true, wingPumps: false));
     }
 
-    // T-4: THE TRAP — a confirmed dry-off (latch set) then a MANUAL re-arm must still TurnOff on a
-    // fresh dry run. Fails if OFF is gated on _switchedOffThisLeg or a give-up latch.
+    // THE TRAP — a confirmed dry-off (latch set) then a MANUAL re-arm must still TurnOff on a
+    // fresh confirm. Fails if OFF is gated on _switchedOffThisLeg.
     [Fact]
-    public void ConfirmedOff_ThenManualRearm_StillTurnsOff()
+    public void ConfirmedOff_ThenManualRearm_StillTurnsOffOnFreshConfirm()
     {
         var a = Make();
-        DriveToDryOff(a, 5000);
-        // Readback: pumps go off → clears the pending Off, falling edge attributed to us.
-        Tick(a, false, 5000, pumpsOn: false, dry: false, wingPumps: false);
-        // Manual re-arm: pumps on → rising edge (settle re-armed); _switchedOffThisLeg still set.
-        Tick(a, false, 5000, pumpsOn: true, dry: false, wingPumps: false);
-        DrainSettleWindow(a, qty: 5000);
-        int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
-        for (int i = 0; i < confirmTicks - 1; i++)
-            Assert.Equal(Action.None, Tick(a, false, 5000, pumpsOn: true, dry: true, wingPumps: false));
-        Assert.Equal(Action.TurnOff, Tick(a, false, 5000, pumpsOn: true, dry: true, wingPumps: false));
+        DriveToDryOff(a, 900);                                   // TurnOff; pending Off; switchedOffThisLeg
+        Tick(a, false, 900, pumpsOn: false, wingPumps: false);    // readback lands: falling, our own off
+        Tick(a, false, 900, pumpsOn: true, wingPumps: false);     // manual re-arm: rising edge
+        // The rising tick itself already contributes 1 s below-threshold (qty was already below
+        // OffThresholdLbs at the moment of the edge), so only ONE more tick reaches the 2 s confirm.
+        Assert.Equal(Action.TurnOff, Tick(a, false, 900, pumpsOn: true, wingPumps: false));
     }
 
-    // T-5: credibility gate — dry but NOT credible never turns off (F3 poison block).
-    [Fact]
-    public void SystemNotCredible_NeverTurnsOff()
-    {
-        var a = Make();
-        Tick(a, false, 5000, pumpsOn: true, dry: false, wingPumps: false);
-        DrainSettleWindow(a, qty: 5000);
-        for (int i = 0; i < 60; i++)
-            Assert.Equal(Action.None,
-                a.Update(true, true, false, 5000, true, true, false, false, NominalTickMs)); // credible:false
-    }
+    // ---- Manual-off latch + falling-edge attribution ----
 
-    // T-8a: manual-off with wing pumps on suppresses re-arm.
     [Fact]
     public void ManualOff_WithWingPumpsOn_SuppressesRearm()
     {
         var a = Make();
-        Tick(a, true, 6000, pumpsOn: true, dry: false, wingPumps: true);   // rising edge
-        Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true);  // falling → _manualOffLatch
-        Assert.Equal(Action.None, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true));
+        Tick(a, true, 6000, pumpsOn: true, wingPumps: true);   // rising edge
+        Tick(a, true, 6000, pumpsOn: false, wingPumps: true);  // falling → _manualOffLatch
+        Assert.Equal(Action.None, Tick(a, true, 6000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-8b: manual-off with wing pumps OFF does NOT latch (shutdown vs intent) — turnaround arms.
     [Fact]
     public void ManualOff_WithWingPumpsOff_DoesNotLatch()
     {
         var a = Make();
-        Tick(a, true, 6000, pumpsOn: true, dry: false, wingPumps: false);  // rising edge
-        Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: false); // falling, wing off → no latch
-        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true));
+        Tick(a, true, 6000, pumpsOn: true, wingPumps: false);  // rising edge
+        Tick(a, true, 6000, pumpsOn: false, wingPumps: false); // falling, wing off → no latch
+        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-8c (M3): our own OFF must NOT set the intent latch even after the confirm timeout — a write
-    // landing late still carries _lastCommandedOff. Fails against a time-limited hadOffPending flag.
+    // Our own OFF must NOT set the intent (manual-off) latch even after the pending confirm
+    // times out — a write landing late still carries _lastCommandedOff. Observed via Diagnostics
+    // since a genuine refuel would clear both latches identically.
     [Fact]
     public void OurOwnOff_DoesNotSetIntentLatch_EvenAfterConfirmTimeout()
     {
         var a = Make();
         DriveToDryOff(a, 200);                        // TurnOff; _lastCommandedOff=true; pending Off
-        // Pumps stay on but the tank is no longer dry → no re-OFF; let pending time out (~30 s).
+        // Pumps stay on but quantity is healthy again → no re-OFF; let pending time out (~30 s).
         for (int i = 0; i < 20; i++)
-            a.Update(true, true, true, 200, true, false, true, false, 2000);   // 40 s > CommandConfirmSeconds
+            a.Update(true, true, true, 5000, true, false, 2000);   // 40 s > CommandConfirmSeconds
         // The write finally lands: falling edge, _lastCommandedOff still true → NO _manualOffLatch.
-        a.Update(true, true, true, 200, false, false, true, false, NominalTickMs);
+        a.Update(true, true, true, 5000, false, false, NominalTickMs);
+        Assert.Contains("manualOffLatch=0", a.Diagnostics);
         // A genuine turnaround refuel clears _switchedOffThisLeg and arms — proving no intent latch stuck.
-        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-11: disabled tracks settle + edges; re-enable mid-spin-up must NOT false-OFF on a full tank.
-    // Also fails if the enable edge calls full Reset() (which would wipe _settleMs).
-    [Fact]
-    public void Disabled_TracksSettleAndEdges_ReEnableMidSpinUp_NoFalseOff()
-    {
-        var a = Make();
-        // Disabled: pilot switches pumps on (rising edge tracked), full tank, transient dry.
-        a.Update(false, true, false, 8000, false, false, true, false, NominalTickMs);
-        a.Update(false, true, false, 8000, true, true, true, false, NominalTickMs);   // rising while disabled
-        a.Update(false, true, false, 8000, true, true, true, false, 2000);            // 2 s of settle burned
-        // Re-enable: 8 s of settle remain → sustained dry on a FULL tank must not fire OFF for 7 s.
-        for (int i = 0; i < 7; i++)
-            Assert.Equal(Action.None, a.Update(true, true, false, 8000, true, true, true, false, NominalTickMs));
-    }
+    // ---- Enable-edge interaction with the manual-off latch ----
 
-    // T-12 (adjudicated 2026-07-16): a manual-off latch set WHILE DISABLED is cleared by the
-    // enable-edge (step 1) — "re-enabling is a fresh start" (OQ-2). The falling edge must land
-    // strictly BEFORE the enable tick; step 8 is deliberately NOT enabled-gated (R-9).
-    // Mutation it catches: the enable-edge clear being dropped or moved after the decision gate.
     [Fact]
     public void DisabledManualOff_ClearedByEnableEdge_ArmPossible()
     {
         var a = Make();
-        a.Update(false, true, true, 5000, true, false, true, true, NominalTickMs);   // disabled, pumps ON (rising)
-        a.Update(false, true, true, 5000, false, false, true, true, NominalTickMs);  // disabled, falling → latch may set
-        a.Update(false, true, true, 5000, false, false, true, true, NominalTickMs);  // disabled, no edge
+        a.Update(false, true, true, 5000, true, true, NominalTickMs);   // disabled, pumps ON (rising)
+        a.Update(false, true, true, 5000, false, true, NominalTickMs);  // disabled, falling → latch may set
+        a.Update(false, true, true, 5000, false, true, NominalTickMs);  // disabled, no edge
         // Enable tick, NO edge: step 1 clears all policy latches → arm fires this tick.
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, pumpsOn: false, dry: false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 5000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-12b (adjudicated 2026-07-16): a falling edge ON the enable tick itself is a LIVE manual-off
-    // on an enabled tick and must latch (step 1's clear runs before step 8's set — correct order;
-    // "don't fight the pilot"). Mutation it catches: reordering step 1 after step 8, or gating
-    // step 8 on enabled.
     [Fact]
     public void EnableTickFallingEdge_LatchesManualOff()
     {
         var a = Make();
         for (int i = 0; i < 3; i++)
-            a.Update(false, true, true, 5000, true, false, true, true, NominalTickMs); // disabled, pumps ON
+            a.Update(false, true, true, 5000, true, true, NominalTickMs); // disabled, pumps ON
         // Single tick that is BOTH the enable edge AND the falling edge → latch set post-clear.
-        Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, dry: false, wingPumps: true));
-        // Latch holds: no arm on subsequent enabled ticks despite armable conditions.
+        Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, wingPumps: true));
         for (int i = 0; i < 5; i++)
-            Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, dry: false, wingPumps: true));
+            Assert.Equal(Action.None, Tick(a, true, 5000, pumpsOn: false, wingPumps: true));
         // A genuine ground refuel uplift (> floor 5000 + RefuelMarginLbs) clears the latch → arm.
-        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 6000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-13: dataReady=false touches nothing and forces a fresh settle when data returns.
+    // ---- !dataReady inertness ----
+
     [Fact]
-    public void DataNotReady_TouchesNothing_ThenForcesFreshSettle()
+    public void DataNotReady_TouchesNothing_ThenForcesFreshConfirm()
     {
         var a = Make();
         for (int i = 0; i < 5; i++)
             Assert.Equal(Action.None,
-                a.Update(true, false, false, 5000, true, true, true, false, NominalTickMs)); // dataReady:false
-        // Data returns with pumps on + dry → phantom rising edge → fresh 10 s settle suppresses OFF.
-        int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
-        for (int i = 0; i < confirmTicks + 1; i++)
-            Assert.Equal(Action.None, Tick(a, false, 5000, pumpsOn: true, dry: true, wingPumps: false));
+                a.Update(true, false, false, 900, true, false, NominalTickMs)); // dataReady:false
+        // Data returns with pumps on + low qty → fresh confirm needs 2 continuous ticks.
+        Assert.Equal(Action.None, Tick(a, false, 900, pumpsOn: true, wingPumps: false));
+        Assert.Equal(Action.TurnOff, Tick(a, false, 900, pumpsOn: true, wingPumps: false));
     }
 
-    // T-14: the CI-pinnable constant invariant. NOTE: there is deliberately NO "Settle > Confirm"
-    // assertion (M1: that relation is unsound; SettleSecondsAfterOn=10 < CommandConfirmSeconds=30
-    // and that is correct). Fails if a tuner breaks "any armable quantity also clears".
+    // A data gap must NOT burn the pending-confirm window (I2): _pendingMs is not accrued while
+    // !dataReady.
+    [Fact]
+    public void DataGap_DoesNotBurnPendingConfirmWindow()
+    {
+        var a = Make();
+        DriveToDryOff(a, 900);                        // TurnOff; pending Off
+        for (int i = 0; i < 20; i++)                  // 40 s of gap — would time out the 30 s confirm IF accrued
+            a.Update(true, false, false, 900, true, false, 2000);   // dataReady:false
+        var actions = new List<Action>();
+        for (int i = 0; i < 15; i++)
+            actions.Add(a.Update(true, true, false, 900, true, false, NominalTickMs));
+        Assert.DoesNotContain(Action.TurnOff, actions);
+    }
+
+    // ---- Other invariants ----
+
     [Fact]
     public void ConstantsInvariants()
     {
-        Assert.True(CenterFuelPumpAutomation.ArmThresholdLbs > CenterFuelPumpAutomation.RefuelMarginLbs);
+        Assert.True(CenterFuelPumpAutomation.ArmThresholdLbs > CenterFuelPumpAutomation.OffThresholdLbs);
+        Assert.True(CenterFuelPumpAutomation.OffThresholdLbs > CenterFuelPumpAutomation.RefuelMarginLbs);
     }
 
-    // T-15: in-flight arming is impossible (F1).
     [Fact]
     public void InFlightArming_Impossible()
     {
         var a = Make();
         for (int i = 0; i < 60; i++)
-            Assert.Equal(Action.None, Tick(a, onGround: false, 5000, pumpsOn: false, dry: false, wingPumps: true));
+            Assert.Equal(Action.None, Tick(a, onGround: false, 5000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-16 (C-A): manual-off (no dry-off) then a ground refuel > seed+250 re-arms.
     [Fact]
     public void ManualOff_ThenGroundRefuel_ReArms()
     {
         var a = Make();
-        Tick(a, true, 8000, pumpsOn: true, dry: false, wingPumps: true);   // rising edge
-        Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: true);  // falling → latch, seed 8000
-        Assert.Equal(Action.None, Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: true));
-        Assert.Equal(Action.TurnOn, Tick(a, true, 8300, pumpsOn: false, dry: false, wingPumps: true)); // > 8250
+        Tick(a, true, 8000, pumpsOn: true, wingPumps: true);   // rising edge
+        Tick(a, true, 8000, pumpsOn: false, wingPumps: true);  // falling → latch, seed 8000
+        Assert.Equal(Action.None, Tick(a, true, 8000, pumpsOn: false, wingPumps: true));
+        Assert.Equal(Action.TurnOn, Tick(a, true, 8300, pumpsOn: false, wingPumps: true)); // > 8250
     }
 
-    // T-16b: a lower reading BEFORE the latch is invisible to the latch (seed-at-latch, not
-    // session-min). Catches the running-minimum proposal.
     [Fact]
     public void ManualOff_AfterEarlierLowerReading_DoesNotClearImmediately()
     {
         var a = Make();
-        Tick(a, true, 5000, pumpsOn: true, dry: false, wingPumps: true);   // observe 5000 (no latch)
-        Tick(a, true, 6000, pumpsOn: true, dry: false, wingPumps: true);   // rise to 6000 (no latch)
-        Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true);  // falling → latch, seed 6000
-        Assert.Equal(Action.None, Tick(a, true, 6000, pumpsOn: false, dry: false, wingPumps: true)); // 6000 < 6250
+        Tick(a, true, 5000, pumpsOn: true, wingPumps: true);   // observe 5000 (no latch)
+        Tick(a, true, 6000, pumpsOn: true, wingPumps: true);   // rise to 6000 (no latch)
+        Tick(a, true, 6000, pumpsOn: false, wingPumps: true);  // falling → latch, seed 6000
+        Assert.Equal(Action.None, Tick(a, true, 6000, pumpsOn: false, wingPumps: true)); // 6000 < 6250
     }
 
-    // T-16c (C-A rising-edge clear): manual-off latch, then pumps rise → latch clears → un-latched.
     [Fact]
     public void ManualOff_ThenRisingEdge_ClearsLatch()
     {
         var a = Make();
-        Tick(a, true, 8000, pumpsOn: true, dry: false, wingPumps: true);   // rising edge
-        Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: true);  // falling → latch
-        Tick(a, true, 8000, pumpsOn: true, dry: false, wingPumps: true);   // rising → _manualOffLatch cleared
-        Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: false); // falling, wing off → no NEW latch
-        Assert.Equal(Action.TurnOn, Tick(a, true, 8000, pumpsOn: false, dry: false, wingPumps: true));
+        Tick(a, true, 8000, pumpsOn: true, wingPumps: true);   // rising edge
+        Tick(a, true, 8000, pumpsOn: false, wingPumps: true);  // falling → latch
+        Tick(a, true, 8000, pumpsOn: true, wingPumps: true);   // rising → _manualOffLatch cleared
+        Tick(a, true, 8000, pumpsOn: false, wingPumps: false); // falling, wing off → no NEW latch
+        Assert.Equal(Action.TurnOn, Tick(a, true, 8000, pumpsOn: false, wingPumps: true));
     }
 
-    // T-18 (I1): re-enable mid dry-run emits EXACTLY ONE TurnOff (readback tracks the last action).
-    // Fails against a clear-after-decision ordering (TurnOff→TurnOn→TurnOff over ~13 s).
+    // Re-enabling mid below-threshold confirm must emit exactly one TurnOff — the confirm window
+    // is not gated on `enabled`, only the decision is.
     [Fact]
-    public void ReEnableMidDryRun_EmitsExactlyOneTurnOff()
+    public void ReEnableMidBelowThresholdConfirm_EmitsExactlyOneTurnOff()
     {
         var a = Make();
         bool pumpsOn = true;
-        // Disabled prelude: pumps on, settle drained, tank dry, on ground.
-        a.Update(false, true, true, 5000, pumpsOn, false, true, true, NominalTickMs);
-        double remaining = CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000;
-        while (remaining > 0)
-        {
-            double step = System.Math.Min(remaining, 2000);
-            a.Update(false, true, true, 5000, pumpsOn, false, true, true, step);
-            remaining -= step;
-        }
+        a.Update(false, true, true, 900, pumpsOn, true, NominalTickMs); // disabled, rising edge, 1 s below threshold
         var actions = new List<Action>();
-        for (int i = 0; i < 60; i++)   // now enabled; drive 60 s
+        for (int i = 0; i < 10; i++)
         {
-            Action r = a.Update(true, true, true, 5000, pumpsOn, true, true, true, NominalTickMs);
+            Action r = a.Update(true, true, true, 900, pumpsOn, true, NominalTickMs);
             actions.Add(r);
             if (r == Action.TurnOff) pumpsOn = false;
             else if (r == Action.TurnOn) pumpsOn = true;
@@ -517,62 +399,12 @@ public class CenterFuelPumpAutomationTests
         Assert.Single(actions.FindAll(x => x == Action.TurnOff));
     }
 
-    // T-19 (I2): a data gap must NOT burn the confirm window. Fails if _pendingMs accrues above the
-    // !dataReady return (then pending times out during the gap and a second TurnOff fires on restore).
-    [Fact]
-    public void DataGap_DoesNotBurnConfirmWindow()
-    {
-        var a = Make();
-        DriveToDryOff(a, 5000);                       // TurnOff; pending Off
-        for (int i = 0; i < 20; i++)                  // 40 s of gap — would time out the 30 s confirm IF accrued
-            a.Update(true, false, false, 5000, true, true, true, false, 2000);   // dataReady:false
-        // Restore: pending Off must still suppress (real elapsed ~15 s < 30 s). No 2nd TurnOff.
-        var actions = new List<Action>();
-        for (int i = 0; i < 15; i++)
-            actions.Add(a.Update(true, true, false, 5000, true, true, true, false, NominalTickMs));
-        Assert.DoesNotContain(Action.TurnOff, actions);
-    }
-
-    // T-20 (R-M4 starvation): a sustained slow feed (> MaxElapsedMs, < ObservationGapMs) still turns
-    // off. Fails if the gap test is keyed on MaxElapsedMs (every tick a phantom gap → settle never drains).
-    [Fact]
-    public void SustainedSlowFeed_StillTurnsOff()
-    {
-        var a = Make();
-        a.Update(true, true, false, 5000, true, false, true, false, 2500);   // rising edge, 2500 ms
-        var actions = new List<Action>();
-        for (int i = 0; i < 30; i++)
-            actions.Add(a.Update(true, true, false, 5000, true, true, true, false, 2500));
-        Assert.Contains(Action.TurnOff, actions);
-    }
-
-    // T-21 (R-3b property 4): the refuel clear is strict '>' and the margin is > 0, so ratchet and
-    // clear are mutually exclusive and the clear cannot fire on the boundary. Fails if the clear is '>='.
-    [Fact]
-    public void RatchetAndClear_AreMutuallyExclusive()
-    {
-        var a = Make();
-        DriveToDryOff(a, 5000);   // seed 5000
-        Assert.Equal(Action.None, Tick(a, true, 5000, false, false, wingPumps: true));  // == floor: neither
-        Assert.Equal(Action.None, Tick(a, true, 5250, false, false, wingPumps: true));  // == floor+margin: NOT '>'
-        Assert.Equal(Action.TurnOn, Tick(a, true, 5251, false, false, wingPumps: true));// strictly greater: clears
-    }
-
-    // ---- Helper: drive a full arm-drain-dryoff to a TurnOff at the given quantity ----
+    // ---- Helper: drive a rising edge + two continuous below-threshold ticks to a confirmed TurnOff.
+    //      dryOffQty MUST be < OffThresholdLbs. ----
     private static void DriveToDryOff(CenterFuelPumpAutomation a, double dryOffQty)
     {
-        a.Update(true, true, false, dryOffQty, true, false, true, false, NominalTickMs); // rising edge
-        double remaining = CenterFuelPumpAutomation.SettleSecondsAfterOn * 1000;
-        while (remaining > 0)
-        {
-            double step = System.Math.Min(remaining, 2000);
-            a.Update(true, true, false, dryOffQty, true, false, true, false, step);
-            remaining -= step;
-        }
-        int confirmTicks = (int)(CenterFuelPumpAutomation.LowPressConfirmSeconds * 1000 / NominalTickMs);
-        for (int i = 0; i < confirmTicks - 1; i++)
-            a.Update(true, true, false, dryOffQty, true, true, true, false, NominalTickMs);
-        Action last = a.Update(true, true, false, dryOffQty, true, true, true, false, NominalTickMs);
+        a.Update(true, true, false, dryOffQty, true, false, NominalTickMs); // rising edge; 1st below-threshold tick
+        Action last = a.Update(true, true, false, dryOffQty, true, false, NominalTickMs); // 2nd tick → confirm
         Assert.Equal(Action.TurnOff, last);
     }
 }

@@ -283,7 +283,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         if (CenterPumpGate.ShouldSuppressCenterOn(name, (target ?? 1) > 0.5, CenterQtyForGate()))
         {
             Log.Debug("ifly_fo", $"centre-pump ON suppressed for {name} (tank at or below " +
-                                 $"{CenterFuelPumpAutomation.ArmThresholdLbs} lb)");
+                                 $"{CenterFuelPumpAutomation.OffThresholdLbs} lb)");
             return true;
         }
 

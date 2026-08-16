@@ -45,7 +45,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
             return !CdaReady ? double.NaN
                 : (FuelSystemLogic.BeforeStartFuelPumpsOk(
                        AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
-                       FuelCenterLbs() > CenterFuelPumpAutomation.ArmThresholdLbs) ? 1 : 0);
+                       FuelCenterLbs() > CenterFuelPumpAutomation.OffThresholdLbs) ? 1 : 0);
 
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
@@ -116,20 +116,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AreWingFuelPumpsOn() =>
         IsFuelPump1FwdOn() && IsFuelPump2FwdOn() && IsFuelPump1AftOn() && IsFuelPump2AftOn();
     public bool IsEitherCenterPumpOn() => IsFuelPump1CtrOn() || IsFuelPump2CtrOn();
-
-    /// <summary>Center tank dry: ≥1 center pump running and every running one reports low
-    /// pressure (M-2/M-4; F5). Returns false when !IsDataReady.</summary>
-    public bool IsCenterTankDry() => IsDataReady && FuelSystemLogic.CenterTankDry(
-        IsFuelPump1CtrOn(), IsFuelPump2CtrOn(),
-        IsOn("FUEL_annunLOWPRESS_Ctr_0"), IsOn("FUEL_annunLOWPRESS_Ctr_1"));
-
-    /// <summary>Fuel system credible: ≥1 wing pump switched ON with its light OUT (M-3).
-    /// Returns false when !IsDataReady.</summary>
-    public bool IsFuelSystemCredible() => IsDataReady && FuelSystemLogic.FuelSystemCredible(
-        IsFuelPump1FwdOn(), IsOn("FUEL_annunLOWPRESS_Fwd_0"),
-        IsFuelPump2FwdOn(), IsOn("FUEL_annunLOWPRESS_Fwd_1"),
-        IsFuelPump1AftOn(), IsOn("FUEL_annunLOWPRESS_Aft_0"),
-        IsFuelPump2AftOn(), IsOn("FUEL_annunLOWPRESS_Aft_1"));
 
     // Fuel Control: 0=CUTOFF, 1=RUN in PMDG data
     public bool IsEng1FuelControlRun()    => IsOn("ENG_FuelControl_Sw_RUN_0");

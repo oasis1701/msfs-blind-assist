@@ -136,7 +136,7 @@ public class IFly737StateEvaluator : IFoStateEvaluator
 
         bool wingOn = AreWingFuelPumpsOn();
         bool centerOn = ctrL && ctrR;
-        bool hasFuel = qty > CenterFuelPumpAutomation.ArmThresholdLbs;
+        bool hasFuel = qty > CenterFuelPumpAutomation.OffThresholdLbs;
         return FuelSystemLogic.BeforeStartFuelPumpsOk(wingOn, centerOn, hasFuel) ? 1 : 0;
     }
 

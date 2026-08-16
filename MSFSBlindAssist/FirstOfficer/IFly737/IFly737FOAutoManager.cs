@@ -136,10 +136,8 @@ public class IFly737FOAutoManager : IFoAutoManager
         !double.IsNaN(rawAnnunciatorValue) && !IFly737FoComposition.Lit(rawAnnunciatorValue);
 
     // Boeing SOP center-tank pump management (opt-in). Arms ON during ground setup with center
-    // fuel loaded (wing pumps already on); switches OFF when the center low-press lights latch
-    // dry (M-2/M-3/M-4 — see FuelSystemLogic: the center annunciator is gated on its own switch,
-    // the wing annunciator tracks output pressure, and no reasoning transfers between the two
-    // families).
+    // fuel loaded (wing pumps already on); switches OFF once quantity is confirmed below
+    // CenterFuelPumpAutomation.OffThresholdLbs (quantity-based trigger; see that class's docs).
     private void UpdateCenterPumps(bool onGround)
     {
         double now = _clock.Elapsed.TotalMilliseconds;
@@ -149,7 +147,7 @@ public class IFly737FOAutoManager : IFoAutoManager
 
         bool enabled   = SettingsManager.Current.FOAutoCenterPumpsEnabled;
         bool dataReady = _state.IsDataReady;
-        var (qty, pumpsOn, dry, credible, wingOn) = ReadCenterPumpInputs(_state);
+        var (qty, pumpsOn, wingOn) = ReadCenterPumpInputs(_state);
 
         var action = _centerPumps.Update(
             enabled:       enabled,
@@ -157,12 +155,10 @@ public class IFly737FOAutoManager : IFoAutoManager
             onGround:      onGround,
             centerQtyLbs:  qty,
             centerPumpsOn: pumpsOn,
-            centerTankDry: dry,
-            systemCredible:credible,
             wingPumpsOn:   wingOn,
             rawElapsedMs:  elapsedMs);
 
-        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn, dry, credible,
+        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn,
                               wingOn, elapsedMs, action, _centerPumps.Diagnostics);
 
         switch (action)
@@ -178,16 +174,14 @@ public class IFly737FOAutoManager : IFoAutoManager
         }
     }
 
-    /// <summary>Composes the shared center-pump policy's five inputs from the live evaluator:
-    /// centre quantity (lb), whether either centre pump is switched on, the CenterTankDry
-    /// composite (M-2), the FuelSystemCredible composite (M-3), and whether all four wing pumps
-    /// are on. Field names verified against <c>IFlySdkFields.cs</c> (Fuel_CENTER_L/R_Switch_Status,
-    /// LOW_PRESSURE_CENTER_L/R_Light_Status, Fuel_L/R_FWD/AFT_Switch_Status,
-    /// LOW_PRESSURE_L/R_FWD/AFT_Light_Status). Internal and static (takes the evaluator rather
-    /// than reading <c>this</c>) so <c>IFly737AutoManagerTests</c> can drive it from a
-    /// snapshot-seeded <see cref="IFly737StateEvaluator"/> with no live SDK client and without
-    /// constructing this class.</summary>
-    internal static (double qty, bool pumpsOn, bool dry, bool credible, bool wingOn)
+    /// <summary>Composes the shared center-pump policy's three inputs from the live evaluator:
+    /// centre quantity (lb), whether either centre pump is switched on, and whether all four
+    /// wing pumps are on. Field names verified against <c>IFlySdkFields.cs</c>
+    /// (Fuel_CENTER_L/R_Switch_Status, Fuel_L/R_FWD/AFT_Switch_Status). Internal and static
+    /// (takes the evaluator rather than reading <c>this</c>) so <c>IFly737AutoManagerTests</c>
+    /// can drive it from a snapshot-seeded <see cref="IFly737StateEvaluator"/> with no live SDK
+    /// client and without constructing this class.</summary>
+    internal static (double qty, bool pumpsOn, bool wingOn)
         ReadCenterPumpInputs(IFly737StateEvaluator state)
     {
         double qty = state.CenterQtyLbs();
@@ -195,25 +189,13 @@ public class IFly737FOAutoManager : IFoAutoManager
         bool ctrL = state.IsOn("Fuel_CENTER_L_Switch_Status");
         bool ctrR = state.IsOn("Fuel_CENTER_R_Switch_Status");
         bool pumpsOn = ctrL || ctrR;
-        bool dry = FuelSystemLogic.CenterTankDry(ctrL, ctrR,
-            state.IsOn("LOW_PRESSURE_CENTER_L_Light_Status"),
-            state.IsOn("LOW_PRESSURE_CENTER_R_Light_Status"));
 
-        bool lFwd = state.IsOn("Fuel_L_FWD_Switch_Status");
-        bool rFwd = state.IsOn("Fuel_R_FWD_Switch_Status");
-        bool lAft = state.IsOn("Fuel_L_AFT_Switch_Status");
-        bool rAft = state.IsOn("Fuel_R_AFT_Switch_Status");
-        bool credible = FuelSystemLogic.FuelSystemCredible(
-            lFwd, state.IsOn("LOW_PRESSURE_L_FWD_Light_Status"),
-            rFwd, state.IsOn("LOW_PRESSURE_R_FWD_Light_Status"),
-            lAft, state.IsOn("LOW_PRESSURE_L_AFT_Light_Status"),
-            rAft, state.IsOn("LOW_PRESSURE_R_AFT_Light_Status"));
         // Delegate to the evaluator's own predicate (widened to internal for this call) rather
         // than re-deriving "all four wing pumps on" here — one definition of the predicate,
         // matching the PMDG737 adapter's FOAutoManager, which calls AircraftStateEvaluator's
         // public AreWingFuelPumpsOn() the same way.
         bool wingOn = state.AreWingFuelPumpsOn();
 
-        return (qty, pumpsOn, dry, credible, wingOn);
+        return (qty, pumpsOn, wingOn);
     }
 }

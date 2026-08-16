@@ -57,8 +57,6 @@ public class FOAutoManager : IFoAutoManager
         bool   dataReady = _state.IsDataReady;
         double qty       = _state.FuelCenterLbs();
         bool   pumpsOn   = _state.IsEitherCenterPumpOn();
-        bool   dry       = _state.IsCenterTankDry();
-        bool   credible  = _state.IsFuelSystemCredible();
         bool   wingPumps = _state.AreWingFuelPumpsOn();
 
         var action = _centerPumps.Update(
@@ -67,12 +65,10 @@ public class FOAutoManager : IFoAutoManager
             onGround:      onGround,
             centerQtyLbs:  qty,
             centerPumpsOn: pumpsOn,
-            centerTankDry: dry,
-            systemCredible:credible,
             wingPumpsOn:   wingPumps,
             rawElapsedMs:  elapsedMs);
 
-        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn, dry, credible,
+        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn,
                               wingPumps, elapsedMs, action, _centerPumps.Diagnostics);
 
         switch (action)

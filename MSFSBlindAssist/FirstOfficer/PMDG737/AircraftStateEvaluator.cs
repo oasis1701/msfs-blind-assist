@@ -76,7 +76,7 @@ public class AircraftStateEvaluator : IFoStateEvaluator
             return !CdaReady ? double.NaN
                 : (FuelSystemLogic.BeforeStartFuelPumpsOk(
                        AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
-                       FuelCenterLbs() > CenterFuelPumpAutomation.ArmThresholdLbs) ? 1 : 0);
+                       FuelCenterLbs() > CenterFuelPumpAutomation.OffThresholdLbs) ? 1 : 0);
 
         // CDA fields: INDETERMINATE (NaN) until the first snapshot arrives — GetFieldValue
         // returns 0.0 for EVERY field before then (interface contract), which false-matched
@@ -135,17 +135,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsFuelPumpCtr2On()     => IsOn("FUEL_PumpCtrSw_1");
     public bool IsEitherCenterPumpOn() => IsFuelPumpCtr1On() || IsFuelPumpCtr2On();
 
-    /// <summary>Center tank dry (M-2/M-4; F5). False when !IsDataReady.</summary>
-    public bool IsCenterTankDry() => IsDataReady && FuelSystemLogic.CenterTankDry(
-        IsFuelPumpCtr1On(), IsFuelPumpCtr2On(),
-        IsOn("FUEL_annunLOWPRESS_Ctr_0"), IsOn("FUEL_annunLOWPRESS_Ctr_1"));
-
-    /// <summary>Fuel system credible: ≥1 wing pump ON with light OUT (M-3). False when !IsDataReady.</summary>
-    public bool IsFuelSystemCredible() => IsDataReady && FuelSystemLogic.FuelSystemCredible(
-        IsFuelPumpFwd1On(), IsOn("FUEL_annunLOWPRESS_Fwd_0"),
-        IsFuelPumpFwd2On(), IsOn("FUEL_annunLOWPRESS_Fwd_1"),
-        IsFuelPumpAft1On(), IsOn("FUEL_annunLOWPRESS_Aft_0"),
-        IsFuelPumpAft2On(), IsOn("FUEL_annunLOWPRESS_Aft_1"));
 
     // NaN-safe (F13/M1): the old "// NaN → 0" comment was FALSE — (int)Math.Round(NaN) is
     // int.MinValue on x64. SafeRoundToInt returns 0 pre-snapshot.

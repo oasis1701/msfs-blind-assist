@@ -104,7 +104,8 @@ public class FOAutoManager : IFoAutoManager
     }
 
     // Boeing SOP center-tank pump management (opt-in). Arms ON during ground setup with
-    // center fuel loaded; switches OFF when the center low-press light latches (tank dry).
+    // center fuel loaded; switches OFF once quantity is confirmed below
+    // CenterFuelPumpAutomation.OffThresholdLbs (quantity-based trigger; see that class's docs).
     private void UpdateCenterPumps(bool onGround)
     {
         double now = _clock.Elapsed.TotalMilliseconds;
@@ -116,8 +117,6 @@ public class FOAutoManager : IFoAutoManager
         bool   dataReady = _state.IsDataReady;
         double qty       = _state.FuelCenterLbs();
         bool   pumpsOn   = _state.IsEitherCenterPumpOn();
-        bool   dry       = _state.IsCenterTankDry();
-        bool   credible  = _state.IsFuelSystemCredible();
         bool   wingPumps = _state.AreWingFuelPumpsOn();
 
         var action = _centerPumps.Update(
@@ -126,12 +125,10 @@ public class FOAutoManager : IFoAutoManager
             onGround:      onGround,
             centerQtyLbs:  qty,
             centerPumpsOn: pumpsOn,
-            centerTankDry: dry,
-            systemCredible:credible,
             wingPumpsOn:   wingPumps,
             rawElapsedMs:  elapsedMs);
 
-        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn, dry, credible,
+        _centerPumpLog.Record(enabled, dataReady, onGround, qty, pumpsOn,
                               wingPumps, elapsedMs, action, _centerPumps.Diagnostics);
 
         switch (action)
