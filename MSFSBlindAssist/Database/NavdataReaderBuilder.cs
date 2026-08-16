@@ -32,6 +32,10 @@ public class NavdataReaderBuilder
     public async Task<bool> BuildDatabaseAsync(string simulatorVersion, string outputPath, CancellationToken cancellationToken = default)
     {
         _isCancelled = false;
+        // Hoisted above the try so the outer catch can clean it up too (see below) — it is
+        // set for real once we know outputPath, and stays empty until then so an exception
+        // during the earlier validation steps has nothing to (harmlessly) try to delete.
+        string buildPath = string.Empty;
 
         try
         {
@@ -132,7 +136,7 @@ public class NavdataReaderBuilder
 
             // Build to a temp file and rename on success, so a failed or cancelled build
             // never destroys the database the pilot already has.
-            string buildPath = outputPath + ".building";
+            buildPath = outputPath + ".building";
             TryDeleteQuietly(buildPath);
 
             string? basePath = null;
@@ -227,17 +231,46 @@ public class NavdataReaderBuilder
 
             if (exitCode == 0 && File.Exists(buildPath))
             {
-                try
+                // The lock probe earlier proved nothing about a handle acquired DURING the
+                // build — an FS2024 build runs for minutes over SimConnect, long enough for
+                // the pilot to open the EFB, TCAS or Taxi Assist and put a fresh handle on
+                // outputPath. That kind of lock is usually transient, so retry a few times
+                // before treating it as terminal; only the last failure is reported.
+                const int maxMoveAttempts = 3;
+                const int moveRetryDelayMs = 250;
+                Exception? lastMoveEx = null;
+                bool moved = false;
+
+                for (int attempt = 1; attempt <= maxMoveAttempts && !moved; attempt++)
                 {
-                    File.Move(buildPath, outputPath, overwrite: true);
+                    try
+                    {
+                        File.Move(buildPath, outputPath, overwrite: true);
+                        moved = true;
+                    }
+                    catch (Exception moveEx)
+                    {
+                        lastMoveEx = moveEx;
+                        if (attempt < maxMoveAttempts)
+                            await Task.Delay(moveRetryDelayMs);
+                    }
                 }
-                catch (Exception moveEx)
+
+                if (!moved)
                 {
-                    TryDeleteQuietly(buildPath);
+                    // Keep buildPath rather than deleting it: it is a good, fully-built
+                    // database, just not yet installed over a file that would not let go.
+                    // The pilot's previous database is untouched at outputPath, so nothing is
+                    // lost. TryDeleteQuietly(buildPath) at the top of the NEXT build attempt is
+                    // what eventually cleans this one up (or the pilot can rename it by hand).
                     OnBuildCompleted(false,
-                        $"The database was built but could not replace the existing file.\n\n" +
-                        $"Error: {moveEx.Message}\n\n" +
-                        $"Your previous database has been left in place.");
+                        $"The database was built successfully but could not replace the existing file, " +
+                        $"which is still in use.\n\n" +
+                        $"Error: {lastMoveEx?.Message}\n\n" +
+                        $"Your previous database has been left in place and is still usable. The newly " +
+                        $"built database has been kept at:\n{buildPath}\n\n" +
+                        $"Close MSFS Blind Assist and rename that file to:\n{outputPath}\n" +
+                        $"or simply run the build again.");
                     return false;
                 }
 
@@ -275,6 +308,15 @@ public class NavdataReaderBuilder
         }
         catch (Exception ex)
         {
+            // A throw anywhere between process start and promotion (BeginErrorReadLine, the
+            // ExitCode read, an event handler marshalling onto a destroyed window handle)
+            // would otherwise leave a partial, potentially large temp file behind forever.
+            // Guarded so an empty buildPath (an exception before Step 3 ever set it) is never
+            // handed to TryDeleteQuietly — though File.Exists("") is itself a safe no-op, this
+            // makes the intent explicit rather than relying on that.
+            if (!string.IsNullOrEmpty(buildPath))
+                TryDeleteQuietly(buildPath);
+
             OnBuildCompleted(false, $"Build error: {ex.Message}");
             return false;
         }
