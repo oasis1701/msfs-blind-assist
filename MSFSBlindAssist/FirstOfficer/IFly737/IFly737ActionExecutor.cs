@@ -167,7 +167,21 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// gate and the per-side baro STD readback.</summary>
     public void SetStateEvaluator(IFly737StateEvaluator? state) => _state = state;
 
-    public bool IsAvailable => _sc is { IsConnected: true } && _def != null && _announcer != null;
+    /// <summary>
+    /// Also requires <see cref="IFly737MAXDefinition.Sdk"/>.IsReady — without it, a dead or
+    /// absent iFly plugin still reports this executor as fully available. In that state
+    /// <see cref="IFly737MAXDefinition.ApplyUIVariable"/> still returns TRUE (its bool means
+    /// "the key is registered and was dispatched", not "the plugin took the write" —
+    /// HandleUIVariableSet returns true even when the SDK send fails, after only announcing
+    /// "iFly plugin not responding"), so every flow step reports success, FlowManager marks
+    /// each step complete, FlowCompleted fires, and MarkGroupComplete ticks every item and
+    /// sets the completion latch — which permanently disables RevertToState for the group.
+    /// A blind pilot is then shown "Complete" for switches that never moved, with no way for
+    /// the live-state mirror to correct it even after the plugin recovers. Gating IsAvailable
+    /// on IsReady routes the dead-plugin case to the fleet-standard behaviour instead: refuse
+    /// the step, and FlowManager announces "Sim not connected — cannot perform: X".
+    /// </summary>
+    public bool IsAvailable => _sc is { IsConnected: true } && _def != null && _def.Sdk.IsReady && _announcer != null;
 
     /// <summary>
     /// IFoActionExecutor — acquire+release the serialize gate. SemaphoreSlim async waiters

@@ -247,4 +247,112 @@ public class IFly737ExecutorTests
         Assert.False(await exec.PressGenerator(3, true));
         Assert.False(await exec.PressApuGenerator(0, false));
     }
+
+    // -----------------------------------------------------------------------
+    // Whole-branch review fix pass — executor-only write-key totality.
+    //
+    // IFly737ProfileStructureTests.EverySetSwitchStep_Resolves pins every varKey that appears
+    // as a literal SetSwitch/SetSwitchMultiple EventName in IFly737FlowDefinitions.cs. It does
+    // NOT see a key that only ever reaches the SDK through one of this executor's typed public
+    // methods (SetBattery, PressApuGenerator, ...) or one of its pseudo-key handler bodies
+    // (FireTestCoreAsync, ClickAndSettleCoreAsync, ...) — several of which are called ONLY from
+    // IFly737ChecklistDefinitions.cs's CheckAction lambdas, a surface no totality test walks
+    // (lambdas aren't statically inspectable the way a flow step's EventName string is). A typo
+    // in one of those literals fails exactly like every other mapping bug this suite exists to
+    // catch: ApplySilent logs "no registered iFly control" and returns false, and the control
+    // silently never moves — for BTN_FIRE_TEST_RELEASE specifically, that means the fire bell
+    // the held OVHT/FIRE test just triggered never gets silenced.
+    //
+    // This is every string literal written from inside IFly737ActionExecutor.cs — both the
+    // pseudo-key handler bodies and every typed public method's Set/MultiAsync call — checked
+    // against IFly737MAXDefinition.HasWriteCommand (the same "really writable" check
+    // EverySetSwitchStep_Resolves uses; a registered-but-read-only key would pass a bare
+    // ContainsKey the same way Spoiler_Lever_Status once did there). Some of these ARE also
+    // reachable via a flow step and so are already covered above — re-checking them here is
+    // harmless and keeps this list a complete, self-contained inventory of the executor's write
+    // surface rather than a hand-picked diff against the flow test.
+    private static readonly string[] ExecutorWriteKeys =
+    {
+        // Pseudo-key handler bodies (FireTestCoreAsync, ClickAndSettleCoreAsync,
+        // SetAltimetersStandardCoreAsync, and the two ApplySilent-only TCAS/GPWS handlers).
+        "BTN_FIRE_TEST_OVHT", "BTN_FIRE_TEST_RELEASE",
+        "BTN_STALL_WARNING_TEST_1", "BTN_STALL_WARNING_TEST_2",
+        "BTN_MACH_AIRSPEED_TEST_1", "BTN_MACH_AIRSPEED_TEST_2",
+        "BTN_XPDR_TEST", "BTN_GPWS_SYS_TEST",
+        "BTN_EFIS_CAPT_BARO_STD", "BTN_EFIS_FO_BARO_STD",
+
+        // Typed public methods.
+        "Battery_Switch_Mode",
+        "STANDBY_POWER_Switch_Mode",
+        "BTN_GRD_PWR_ON", "BTN_GRD_PWR_OFF",
+        "BTN_GEN_1_ON", "BTN_GEN_1_OFF", "BTN_GEN_2_ON", "BTN_GEN_2_OFF",
+        "BTN_APU_GEN_1_ON", "BTN_APU_GEN_1_OFF", "BTN_APU_GEN_2_ON", "BTN_APU_GEN_2_OFF",
+        "APU_Switch_Status",
+        "Fuel_L_AFT_Switch_Status", "Fuel_L_FWD_Switch_Status",
+        "Fuel_R_FWD_Switch_Status", "Fuel_R_AFT_Switch_Status",
+        "Fuel_CENTER_L_Switch_Status", "Fuel_CENTER_R_Switch_Status",
+        "Fuel_Crossfeed_Selector_Status",
+        "Pack_Switch_Status_0", "Pack_Switch_Status_1",
+        "Engine_Bleed_Air_Switch_Status_0", "Engine_Bleed_Air_Switch_Status_1",
+        "APU_Bleed_Air_Switch_Status",
+        "Isolation_Valve_Switch_Status",
+        "Trim_Air_Switch_Status",
+        "RecircFan_Switch_Status_0", "RecircFan_Switch_Status_1",
+        "Window_Heat_Switch_1_Status", "Window_Heat_Switch_2_Status",
+        "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status",
+        "Probe_Heat_Switch_1_Status", "Probe_Heat_Switch_2_Status",
+        "Wing_AntiIce_Switch_Status",
+        "Eng_1_AntiIce_Switch_Status", "Eng_2_AntiIce_Switch_Status",
+        "ENG_1_HYD_Switch_Status", "ENG_2_HYD_Switch_Status",
+        "ELEC_1_HYD_Switch_Status", "ELEC_2_HYD_Switch_Status",
+        "Anti_Collision_Light_Switch_Status",
+        "Position_Light_Switch_Status",
+        "Logo_Light_Switch_Status",
+        "Wing_Light_Switch_Status",
+        "Taxi_Light_Switch_Status",
+        "Runway_Turnoff_Light_1_Switch_Status", "Runway_Turnoff_Light_2_Switch_Status",
+        "Landing_Light_1_Switch_Status", "Landing_Light_2_Switch_Status",
+        "Fasten_Belts_Switch_Status",
+        "No_Smoking_Switch_Status",
+        "Emergency_Light_Switch_Status",
+        "Ignition_Select_Switch_Status",
+        "Engine_Start_Switch_Status_0", "Engine_Start_Switch_Status_1",
+        "Engine_Start_Lever_Status_0", "Engine_Start_Lever_Status_1",
+        "IRS_Mode_Switch_Status_0", "IRS_Mode_Switch_Status_1",
+        "FD_1_Switch_Status", "FD_2_Switch_Status",
+        "AT_Switch_Status",
+        "LNAV_Switch_Status",
+        "VNAV_Switch_Status",
+        "Transponder_Mode_Switch_Status",
+        "Autobrake_Selector_Status",
+        "Gear_Lever_Status",
+        "ND_Mode_Status_0",
+        "ND_Range_Status_0",
+        "BTN_ATTENDANT_CALL",
+        "BTN_SIX_PACK_RECALL",
+
+        // Written directly by a checklist action via the generic Set() path (not a typed
+        // wrapper — see PF_YD/AL_FLAPS's own comments), but still part of the executor's
+        // write surface and named explicitly by the review.
+        "FLAP_Status",
+    };
+
+    [Fact]
+    public void ExecutorWriteKeys_AreAllRealWritableSdkControls()
+    {
+        var def = new MSFSBlindAssist.Aircraft.IFly737MAXDefinition();
+        var vars = def.GetVariables();
+
+        Assert.True(ExecutorWriteKeys.Length > 60,
+            $"only {ExecutorWriteKeys.Length} executor write keys listed — expected well over " +
+            "60; this list should be a near-complete inventory of the executor's write surface");
+        Assert.Equal(ExecutorWriteKeys.Length, ExecutorWriteKeys.Distinct().Count());
+
+        foreach (string key in ExecutorWriteKeys)
+        {
+            Assert.True(vars.ContainsKey(key) && def.HasWriteCommand(key),
+                $"'{key}' is not a registered, writable iFly control — a flow/checklist action " +
+                "naming it would silently do nothing in the sim.");
+        }
+    }
 }

@@ -156,6 +156,9 @@ public static class IFly737ChecklistDefinitions
             // executor's generic Set() path exactly as its own doc comment allows.
             Auto("PF_YD", "PREFLIGHT", "Yaw damper: ON", "Yaw_Damper_Switch_Status", v => v > 0.5,
                 (e, _) => e.Set("Yaw_Damper_Switch_Status", 1)),
+            // Same wing-before-centre ordering requirement as SD_FUEL below — see that item's
+            // comment for why the un-awaited call order is load-bearing (SemaphoreSlim.WaitAsync
+            // registers waiters in call order) and must never be reordered or awaited.
             Auto("PF_FUEL_OFF", "PREFLIGHT", "Fuel pumps: OFF", "Fuel_L_AFT_Switch_Status", v => v < 0.5,
                 new[] { "Fuel_L_FWD_Switch_Status", "Fuel_R_FWD_Switch_Status", "Fuel_R_AFT_Switch_Status",
                         "Fuel_CENTER_L_Switch_Status", "Fuel_CENTER_R_Switch_Status" },
@@ -482,6 +485,15 @@ public static class IFly737ChecklistDefinitions
                 (e, _) => e.SetLogo(0)),
             Auto("SD_APUBLEED", "SHUTDOWN", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", v => v > 0.5,
                 (e, _) => e.SetApuBleed(1)),
+            // Ordering REQUIRED: wing-off before centre-off, so the centre pump's falling edge
+            // sees wing already off (no spurious manual-off latch — CLAUDE.md center-pump
+            // ordering invariant). This lambda is synchronous and calls SetWingFuelPumps then
+            // SetCenterFuelPumps WITHOUT awaiting either Task; the guarantee holds only because
+            // SemaphoreSlim.WaitAsync registers its waiters in call order even when the
+            // returned Task is never awaited, so the two MultiAsync dispatches queue onto
+            // _gate in this exact order and DispatchCoreAsync serializes them accordingly.
+            // Converting this lambda to async-with-awaits, or swapping the two lines, breaks
+            // the ordering SILENTLY (both calls still "succeed", just interleaved/reordered).
             Auto("SD_FUEL", "SHUTDOWN", "Fuel pumps: OFF", "Fuel_L_AFT_Switch_Status", v => v < 0.5,
                 new[] { "Fuel_L_FWD_Switch_Status", "Fuel_R_FWD_Switch_Status", "Fuel_R_AFT_Switch_Status",
                         "Fuel_CENTER_L_Switch_Status", "Fuel_CENTER_R_Switch_Status" },

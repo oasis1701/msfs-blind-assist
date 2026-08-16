@@ -895,7 +895,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// <summary>Verified write path for the FO executor (approach B): resolves the
     /// registered SimVarDefinition, suppresses the poll-echo announce of our own
     /// write (NoteWindowWrite), and dispatches through HandleUIVariableSet — the
-    /// single place every iFly encoding trap lives. False = key not registered.</summary>
+    /// single place every iFly encoding trap lives. False = key not registered.
+    ///
+    /// ⚠ A TRUE return means only "the key is registered and the write was DISPATCHED" —
+    /// NOT "the plugin received/applied it". HandleUIVariableSet's Sw/SwD/NumSet/Btn branch
+    /// calls <c>Sdk.SendCommand</c> and, if that fails (plugin dead or absent), announces
+    /// "iFly plugin not responding" but still returns true. A caller that reads true as
+    /// "delivered" — as the FO executor's IsAvailable once did, before it started also
+    /// gating on <see cref="IFlySdkClient.IsReady"/> — will report a flow step complete for a
+    /// switch that never moved, and FlowManager/ChecklistManager will latch the containing
+    /// checklist group permanently complete on that false success.</summary>
     public bool ApplyUIVariable(string varKey, double value,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {

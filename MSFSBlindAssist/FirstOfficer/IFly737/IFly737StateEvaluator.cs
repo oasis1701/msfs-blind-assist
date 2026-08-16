@@ -92,8 +92,11 @@ public class IFly737StateEvaluator : IFoStateEvaluator
     public bool IsOn(string field) => GetValue(field) > 0.5;
     public bool IsPosition(string field, int position) => Math.Abs(GetValue(field) - position) < 0.1;
 
-    /// <summary>Tests the aircraft's 0-5 switch+light composite encoding (value % 3 > 0 = lit).</summary>
-    public bool IsLit(string field) => IFly737FoComposition.Lit(GetValue(field));
+    // NOTE: there is deliberately no IsLit(field) helper here. GetValue(field) > 0.5-style
+    // collapsing of NaN (unknown) to "not lit" is exactly the trap the auto-manager avoids —
+    // see IFly737FOAutoManager's own NaN-aware Lit() callers. Use
+    // IFly737FoComposition.Lit(GetValue(field)) directly, and handle the NaN case explicitly
+    // at the call site, rather than reintroducing a same-shaped wrapper here.
 
     // -----------------------------------------------------------------------
     // Fuel pumps — merged Before-Start "Fuel pumps: ON" detection (§6): wing pumps on AND the

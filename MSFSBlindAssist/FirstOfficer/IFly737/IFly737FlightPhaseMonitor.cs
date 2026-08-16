@@ -31,7 +31,9 @@ namespace MSFSBlindAssist.FirstOfficer.IFly737;
 ///
 /// Hysteresis on every crossing prevents oscillating callouts near the altitude band.
 ///
-/// Thread-safe: Update() can be called from any thread.
+/// UI-thread only: <see cref="Update"/> mutates unsynchronised state fields (the crossing
+/// latches) and must always be called from the UI thread, same as the rest of the FO stack —
+/// it is not internally locked.
 /// </summary>
 public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
 {
