@@ -29,7 +29,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1)
+          # || true: under pipefail, a no-match grep makes this whole assignment fail,
+          # and set -e would abort right here - before the -z check below ever runs -
+          # leaving a bare "command failed" instead of the diagnostic written for
+          # exactly this case.
+          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1) || true
           echo "Pinned navdatareader version: $PIN"
           if [ -z "$PIN" ]; then
             echo "::error::Could not read the navdatareader version pin from .github/workflows/release.yml"
@@ -37,12 +41,20 @@ jobs:
           fi
           # A half-landed bump is as bad as no bump: the workflows would ship one version
           # while the csproj copy and the dev fallback path still name another.
+          #
+          # Extract the version each file actually names and compare it for exact
+          # equality, rather than grep -q "$PIN" against the file: embedding $PIN as a
+          # pattern turns its dots into regex wildcards (a file containing "1a2a4" would
+          # satisfy grep -q "1.2.4"), and an unanchored substring match also passes on a
+          # look-alike neighbour such as "1.2.45" or "21.2.4" - precisely the
+          # half-landed-bump case this step exists to catch.
           FAILED=0
           for f in .github/workflows/preview.yml .gitignore \
                    MSFSBlindAssist/MSFSBlindAssist.csproj \
                    MSFSBlindAssist/Database/NavdataReaderBuilder.cs; do
-            if ! grep -q "$PIN" "$f"; then
-              echo "::error file=$f::Does not reference navdatareader $PIN (release.yml pins v$PIN)"
+            FOUND=$(grep -oP 'Navdatareader-win-\K[0-9]+\.[0-9]+\.[0-9]+' "$f" | sort -u) || true
+            if [ "$FOUND" != "$PIN" ]; then
+              echo "::error file=$f::Does not reference navdatareader $PIN (release.yml pins v$PIN); found: ${FOUND:-none}"
               FAILED=1
             fi
           done
@@ -54,7 +66,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1)
+          # || true: see the "Check every version reference agrees" step above for why.
+          # An unreadable pin already failed that step and stopped the job before this
+          # one runs, so no separate -z check is needed here.
+          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1) || true
           gh release download "v$PIN" -R albar965/navdatareader -p "Navdatareader-win-$PIN.zip" -D /tmp
           unzip -o -q "/tmp/Navdatareader-win-$PIN.zip" -d /tmp/ndr
           STOCK="/tmp/ndr/Navdatareader-win-$PIN/config/navdatareader.cfg"
