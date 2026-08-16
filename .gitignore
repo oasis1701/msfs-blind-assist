@@ -123,7 +123,7 @@ docs/superpowers
 *.db-wal
 
 # Third-party binaries
-Navdatareader-win-1.2.3/
+Navdatareader-win-1.2.4/
 **/navdatareader/
 
 # nul

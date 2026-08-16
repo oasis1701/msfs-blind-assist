@@ -85,9 +85,9 @@ jobs:
       # Keep the Navdatareader version in sync with release.yml's identical step.
       - name: Download Navdatareader
         run: |
-          gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
-          Expand-Archive -Path Navdatareader-win-1.2.3.zip -DestinationPath temp-navdata
-          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
+          gh release download v1.2.4 -R albar965/navdatareader -p "Navdatareader-win-1.2.4.zip"
+          Expand-Archive -Path Navdatareader-win-1.2.4.zip -DestinationPath temp-navdata
+          Move-Item temp-navdata\Navdatareader-win-1.2.4 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
           Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader\
         shell: pwsh
         env:

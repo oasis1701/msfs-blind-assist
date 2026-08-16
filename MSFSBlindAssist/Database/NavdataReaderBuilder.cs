@@ -331,7 +331,7 @@ public class NavdataReaderBuilder
             return navdataReaderPath;
 
         // Look in parent directory (development environment)
-        string parentNavdataPath = Path.Combine(appDir, "..", "Navdatareader-win-1.2.3", "navdatareader.exe");
+        string parentNavdataPath = Path.Combine(appDir, "..", "Navdatareader-win-1.2.4", "navdatareader.exe");
         if (File.Exists(parentNavdataPath))
             return Path.GetFullPath(parentNavdataPath);
 
