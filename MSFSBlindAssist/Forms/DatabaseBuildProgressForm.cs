@@ -224,6 +224,18 @@ public partial class DatabaseBuildProgressForm : Form
             return;
         }
 
+        // Drop a progress line that arrives after the build has already finished. BeginInvoke
+        // POSTS, while the completion handler runs directly on the UI thread (InvokeRequired is
+        // false there), so a line published during the flush barrier is still queued when the
+        // final status is written and would then overwrite it with a stale mid-build message.
+        //
+        // The guard belongs HERE, not in UpdateStatus: buildCompleted is set BEFORE the
+        // completion handler's own UpdateStatus calls, so guarding there would suppress the
+        // final status itself. userCancelled is checked for the same reason — CancelButton_Click
+        // writes "Build cancelled" and a queued line must not paint over it either.
+        if (buildCompleted || userCancelled)
+            return;
+
         UpdateStatus(e.PercentComplete, e.StatusMessage, e.DetailMessage);
     }
 
