@@ -1068,6 +1068,21 @@ public partial class MainForm
             electronicFlightBagForm = null;
         }
 
+        // And the Taxi Assist window, for the same reason as the two above: it captures
+        // IAirportDataProvider in a readonly field at construction (MainForm.Dialogs.cs), so
+        // a rebuilt or switched database never reaches an already-open window — it keeps
+        // naming stands from the previous database for the rest of the session.
+        //
+        // Dispose() rather than Close(): TaxiAssistForm cancels its own FormClosing and
+        // hides instead, so Close() would leave the stale instance alive and merely
+        // invisible. GetOrCreateTaxiAssistForm already rebuilds it when the field is null
+        // or disposed.
+        if (taxiAssistForm != null && !taxiAssistForm.IsDisposed)
+        {
+            taxiAssistForm.Dispose();
+            taxiAssistForm = null;
+        }
+
         UpdateDatabaseStatusDisplay();
     }
 
