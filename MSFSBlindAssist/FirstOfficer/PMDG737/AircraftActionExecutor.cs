@@ -524,6 +524,10 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// own OXY_TestL/R momentary mechanism (transmit press/release; the spring-loaded
     /// switch's "up" direction is the TEST detent, no readable state exists). The
     /// audible oxygen-flow sound is the verification — live-confirmed 2026-08-16.</summary>
+    /// <summary>Gap between the two sides when ONE checklist tick tests both — sized to the
+    /// flow's inter-step pause so the pair sounds the same either way.</summary>
+    public const int OxygenTestSideGapMs = 2000;
+
     public Task<bool> OxygenTestCaptAsync() =>
         WarningTestAsync("EVT_OH_OXY_TEST_RESET_SWITCH_L", QuickTestHoldMs);
 
@@ -531,8 +535,17 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> OxygenTestFOAsync() =>
         WarningTestAsync("EVT_OH_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
 
-    // (No both-sides helper: each side is its own flow step and its own checklist item —
-    // a single tick firing both masks at once is not how the crew tests them.)
+    /// <summary>Both sides for the single "Oxygen test" checklist line, SPACED by
+    /// <see cref="OxygenTestSideGapMs"/>. The bare pair ran back-to-back on the dispatch
+    /// gate's 350 ms write spacing and read as one sound (user report 2026-08-16); the gap
+    /// gives each mask its own audible flow, matching the flow's two separate steps.</summary>
+    public async Task<bool> OxygenTestBothAsync()
+    {
+        bool capt = await OxygenTestCaptAsync();
+        await Task.Delay(OxygenTestSideGapMs);
+        bool fo = await OxygenTestFOAsync();
+        return capt && fo;
+    }
 
     /// <summary>Weather-radar / predictive-windshear test. The EFIS WXR overlay is a blind
     /// TOGGLE with no readable state anywhere in the NG3 SDK, so the sequence assumes it
