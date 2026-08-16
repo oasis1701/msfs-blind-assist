@@ -1,0 +1,89 @@
+name: Navdatareader config
+
+# The vendored MSFSBlindAssist/Resources/navdatareader.cfg REPLACES navdatareader's
+# built-in configuration rather than merging with it, so it has to stay in step with the
+# pinned release. It drifted once already: the file was copied from navdatareader master
+# instead of the pinned release, which silently added an ExcludeBglObjectFilter token the
+# shipped binary does not understand and dropped the [Database] section, while the file's
+# own header claimed a single change. Nothing could catch that, because the navdatareader
+# distribution is gitignored so there is no baseline in the tree to diff against.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  group: navdatareader-config-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Config matches the pinned navdatareader
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Check every version reference agrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1)
+          echo "Pinned navdatareader version: $PIN"
+          if [ -z "$PIN" ]; then
+            echo "::error::Could not read the navdatareader version pin from .github/workflows/release.yml"
+            exit 1
+          fi
+          # A half-landed bump is as bad as no bump: the workflows would ship one version
+          # while the csproj copy and the dev fallback path still name another.
+          FAILED=0
+          for f in .github/workflows/preview.yml .gitignore \
+                   MSFSBlindAssist/MSFSBlindAssist.csproj \
+                   MSFSBlindAssist/Database/NavdataReaderBuilder.cs; do
+            if ! grep -q "$PIN" "$f"; then
+              echo "::error file=$f::Does not reference navdatareader $PIN (release.yml pins v$PIN)"
+              FAILED=1
+            fi
+          done
+          exit $FAILED
+
+      - name: Diff the vendored config against that release's own config
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PIN=$(grep -oP 'gh release download v\K[0-9]+\.[0-9]+\.[0-9]+' .github/workflows/release.yml | head -1)
+          gh release download "v$PIN" -R albar965/navdatareader -p "Navdatareader-win-$PIN.zip" -D /tmp
+          unzip -o -q "/tmp/Navdatareader-win-$PIN.zip" -d /tmp/ndr
+          STOCK="/tmp/ndr/Navdatareader-win-$PIN/config/navdatareader.cfg"
+
+          # Compare SETTINGS lines only. Our copy carries an explanatory header and an
+          # MSFSBA marker comment; comments are ours to write, settings are not.
+          strip() { grep -vE '^\s*(#|$)' "$1" | sed 's/\r$//'; }
+          strip "$STOCK" > /tmp/stock.txt
+          strip MSFSBlindAssist/Resources/navdatareader.cfg > /tmp/ours.txt
+
+          if diff -u /tmp/stock.txt /tmp/ours.txt > /tmp/delta.txt; then
+            echo "::error::The vendored config has no MSFSBA change at all - the *_jetways.bgl exclusion is missing."
+            exit 1
+          fi
+
+          # Exactly one changed line pair is allowed, and only on ExcludeFilenames.
+          CHANGED=$(grep -cE '^[-+][^-+]' /tmp/delta.txt || true)
+          UNEXPECTED=$(grep -E '^[-+][^-+]' /tmp/delta.txt | grep -vc 'ExcludeFilenames=' || true)
+
+          if [ "$CHANGED" != "2" ] || [ "$UNEXPECTED" != "0" ]; then
+            echo "::error::The vendored config differs from navdatareader $PIN by more than the one allowed line."
+            echo "Allowed: ExcludeFilenames gains ,*_jetways.bgl — nothing else."
+            cat /tmp/delta.txt
+            exit 1
+          fi
+
+          if ! grep -q 'ExcludeFilenames=.*,\*_jetways\.bgl' MSFSBlindAssist/Resources/navdatareader.cfg; then
+            echo "::error::ExcludeFilenames does not carry *_jetways.bgl."
+            exit 1
+          fi
+
+          echo "Vendored config is navdatareader $PIN stock plus exactly the jetways exclusion."
