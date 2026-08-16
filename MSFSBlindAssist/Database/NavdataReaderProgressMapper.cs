@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+using System.Globalization;
+
 namespace MSFSBlindAssist.Database;
 
 /// <summary>One progress reading. <see cref="Percent"/> of -1 means "leave the bar alone".</summary>
@@ -47,6 +50,28 @@ public sealed class NavdataReaderProgressMapper
 
         if (Has(line, "Done") || Has(line, "Finished") || Has(line, "compiled"))
             return Advance(95, "Finalizing database...", "Completing final operations");
+
+        // Airport count extraction
+        if (Has(line, "airports") && Regex.IsMatch(line, @"\d+"))
+        {
+            var match = Regex.Match(line, @"(\d+)\s*airports?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (match.Success)
+            {
+                int count = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                string detailMessage = $"Found {count:N0} airports in scenery library";
+                return Advance(90, $"Processed {count:N0} airports", detailMessage);
+            }
+        }
+
+        // Loading/opening detail (not a phase, so return directly without Advance)
+        if (Has(line, "loading") || Has(line, "opening"))
+        {
+            if (line.Length < 100)
+            {
+                return new NavdataReaderProgress(-1, null, line.Trim());
+            }
+            return null;
+        }
 
         return null;
     }

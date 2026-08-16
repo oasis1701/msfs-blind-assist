@@ -31,6 +31,7 @@ public class NavdataReaderProgressMapperTests
 
         Assert.NotNull(backwards);
         Assert.Equal(-1, backwards!.Percent);
+        Assert.NotNull(backwards.Status);
         Assert.NotNull(backwards.Details);
     }
 
@@ -68,5 +69,63 @@ public class NavdataReaderProgressMapperTests
 
         Assert.Equal(85, mapper.Map("Vacuum database")!.Percent);
         Assert.Equal(90, mapper.Map("Analyzing database")!.Percent);
+    }
+
+    [Fact]
+    public void Map_KeepsTheHighWaterMarkAcrossASuppressedReading()
+    {
+        // A mutant that assigns _highestReported inside the suppressed branch would
+        // still pass the basic backwards tests, but this pins the high-water mark behavior.
+        // 85 (Vacuum) → suppressed Reading (25, but suppressed) → 50 (Processing) must
+        // ALSO be suppressed because 50 < 85.
+        var mapper = new NavdataReaderProgressMapper();
+
+        mapper.Map("Vacuum database");
+        mapper.Map("Reading BGL file");
+
+        var result = mapper.Map("Processing airports");
+
+        Assert.NotNull(result);
+        Assert.Equal(-1, result!.Percent);
+    }
+
+    [Fact]
+    public void Map_ReportsAirportCountAt90WithFormattedNumbers()
+    {
+        var mapper = new NavdataReaderProgressMapper();
+
+        var result = mapper.Map("Found 12345 airports in the database");
+
+        Assert.NotNull(result);
+        Assert.Equal(90, result!.Percent);
+        Assert.Equal("Processed 12,345 airports", result.Status);
+        Assert.Equal("Found 12,345 airports in scenery library", result.Details);
+    }
+
+    [Fact]
+    public void Map_ReportsLoadingLineWithoutMovingTheBar()
+    {
+        var mapper = new NavdataReaderProgressMapper();
+
+        // First establish a baseline
+        mapper.Map("Processing airports");
+
+        var result = mapper.Map("Loading scenery file");
+
+        Assert.NotNull(result);
+        Assert.Equal(-1, result!.Percent);
+        Assert.Null(result.Status);
+        Assert.Equal("Loading scenery file", result.Details);
+    }
+
+    [Fact]
+    public void Map_ReturnsNullForLongLoadingLine()
+    {
+        var mapper = new NavdataReaderProgressMapper();
+
+        var longLine = "Loading " + new string('x', 100);
+        var result = mapper.Map(longLine);
+
+        Assert.Null(result);
     }
 }
