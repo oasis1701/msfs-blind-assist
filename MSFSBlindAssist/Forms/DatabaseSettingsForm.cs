@@ -255,9 +255,15 @@ public partial class DatabaseSettingsForm : Form
                 }
                 else
                 {
-                    // Build failed or was cancelled
+                    // Show what actually went wrong. The old text told the pilot to "check
+                    // the error message for details" while the only copy of that message was
+                    // being disposed along with the progress dialog.
+                    string detail = string.IsNullOrWhiteSpace(progressForm.CompletionMessage)
+                        ? "The database build was cancelled."
+                        : progressForm.CompletionMessage;
+
                     MessageBox.Show(
-                        $"Database build was cancelled or failed.\n\nCheck the error message for details.",
+                        detail,
                         "Build Not Completed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
