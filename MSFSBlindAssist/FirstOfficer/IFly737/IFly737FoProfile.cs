@@ -37,10 +37,10 @@ public sealed class IFly737FoProfile : IFoProfile<IFly737ActionExecutor, IFly737
     private readonly IFly737MAXDefinition _def;
     private readonly ScreenReaderAnnouncer _announcer;
 
-    // Stashed by CreateEvaluator so SetExecutorSimConnect (called later, on both initial wiring
-    // and every reconnect) can hand the executor the SAME instance the rest of the FO engine
-    // evaluates against — see the class doc above.
-    private IFly737StateEvaluator? _state;
+    // Constructed once for this profile's lifetime, so SetExecutorSimConnect (called later, on
+    // both initial wiring and every reconnect) always hands the executor the SAME instance the
+    // rest of the FO engine evaluates against — see the class doc above.
+    private readonly IFly737StateEvaluator _state = new();
 
     public IFly737FoProfile(IFly737MAXDefinition def, ScreenReaderAnnouncer announcer)
     {
@@ -54,10 +54,8 @@ public sealed class IFly737FoProfile : IFoProfile<IFly737ActionExecutor, IFly737
 
     public IFly737StateEvaluator CreateEvaluator()
     {
-        var state = new IFly737StateEvaluator();
-        state.SetDefinition(_def);
-        _state = state;
-        return state;
+        _state.SetDefinition(_def);
+        return _state;
     }
 
     // No PMDG-style data manager on this airframe — state rides the definition's own SDK
@@ -69,11 +67,9 @@ public sealed class IFly737FoProfile : IFoProfile<IFly737ActionExecutor, IFly737
         exec.SetDefinition(_def);
         exec.SetAnnouncer(_announcer);
         exec.SetSimConnect(sc);
-        // The centre-pump gate + PRESS_ALTS pseudo-key read side — see class doc. _state is
-        // always non-null here in practice (FirstOfficerForm's constructor calls
-        // CreateEvaluator() before SetExecutorSimConnect can ever be reached), but the setter
-        // itself is null-tolerant so a hypothetical out-of-order caller degrades to the
-        // documented fail-closed/no-op behaviour rather than throwing.
+        // The centre-pump gate + PRESS_ALTS pseudo-key read side — see class doc. Re-asserted on
+        // every call (including disconnect) because this is the one place the FO engine wires
+        // the executor at all — there is no separate one-time construction hook for it.
         exec.SetStateEvaluator(_state);
     }
 

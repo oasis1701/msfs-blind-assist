@@ -22,7 +22,11 @@ public interface IFoProfile<TExec, TState>
     /// <summary>Bind the evaluator to the aircraft's data manager from the live SimConnect.</summary>
     void   BindDataManager(TState state, SimConnect.SimConnectManager sc);
 
-    /// <summary>Point the executor at the live SimConnect (or null when disconnected).</summary>
+    /// <summary>
+    /// Point the executor at the live SimConnect (or null when disconnected). Implementations
+    /// may also apply other executor wiring here (e.g. definition, announcer, state-evaluator) —
+    /// this is called on every connection change, including disconnect.
+    /// </summary>
     void   SetExecutorSimConnect(TExec exec, SimConnect.SimConnectManager? sc);
 
     /// <summary>Build the aircraft's phase-of-flight automation flows.</summary>
