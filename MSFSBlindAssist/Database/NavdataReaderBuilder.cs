@@ -222,10 +222,16 @@ public class NavdataReaderBuilder
             }
 
             // Barrier: HasExited/WaitForExitAsync return as soon as the process object dies,
-            // but the redirected stream readers may still be delivering. The argument-less
-            // WaitForExit is the documented flush point, and without it the tail of stderr —
-            // the actual reason a build failed — can be missing from errorBuilder below.
-            _process.WaitForExit();
+            // but the redirected stream readers may still be delivering. WaitForExit is the
+            // documented flush point, and without it the tail of stderr — the actual reason
+            // a build failed — can be missing from errorBuilder below. Bounded (rather than
+            // the argument-less overload) as defence in depth: the UI-thread marshal for
+            // each reader callback (DatabaseBuildProgressForm.Builder_ProgressUpdated) must
+            // itself stay non-blocking to avoid deadlocking against this very wait, but a
+            // bound here means that even if some future caller reintroduces a blocking
+            // marshal, a stuck reader degrades to a slightly truncated error message
+            // instead of hanging the whole app.
+            _process.WaitForExit(2000);
 
             int exitCode = _process.ExitCode;
 
@@ -350,7 +356,15 @@ public class NavdataReaderBuilder
         try
         {
             if (_process != null && !_process.HasExited)
+            {
                 _process.Kill();
+                // Kill() is asynchronous — the process hasn't necessarily released its
+                // handles (e.g. the .building SQLite file) the instant this returns. Give
+                // it a bounded moment to actually exit before the caller deletes that
+                // file, so a cancelled build doesn't routinely orphan a multi-hundred-MB
+                // temp file behind a lock TryDeleteQuietly then silently swallows.
+                _process.WaitForExit(2000);
+            }
         }
         catch (Exception ex)
         {

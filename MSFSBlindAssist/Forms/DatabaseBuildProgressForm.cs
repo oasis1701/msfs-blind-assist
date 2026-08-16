@@ -202,10 +202,25 @@ public partial class DatabaseBuildProgressForm : Form
 
     private void Builder_ProgressUpdated(object? sender, BuildProgressEventArgs e)
     {
-        // Update UI on main thread
+        // Update UI on main thread. Must be a non-blocking BeginInvoke, never a blocking
+        // Invoke: NavdataReaderBuilder's flush barrier (_process.WaitForExit(), hit right
+        // after navdatareader's final output line) blocks the UI thread until the
+        // redirected stdout/stderr reader callbacks finish delivering. A blocking Invoke
+        // here would make the reader thread wait for the UI thread to pump this call
+        // while the UI thread sits in that same non-pumping wait for the reader to
+        // finish — deadlock, at the end of every build. An IsHandleCreated check alone
+        // isn't a safe guard either (races a concurrent handle-destroy on dialog close),
+        // so this is wrapped in try/catch instead.
         if (InvokeRequired)
         {
-            Invoke(new Action(() => Builder_ProgressUpdated(sender, e)));
+            try
+            {
+                BeginInvoke(new Action(() => Builder_ProgressUpdated(sender, e)));
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle was destroyed concurrently (dialog closing) — nothing to update.
+            }
             return;
         }
 
