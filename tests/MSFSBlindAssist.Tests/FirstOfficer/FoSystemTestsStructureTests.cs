@@ -31,6 +31,7 @@ public class FoSystemTestsStructureTests
     [InlineData("PF_GPWS_TEST")]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
+    [InlineData("PF_OXY_TEST")]
     public void B737_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = B737.PMDG737ChecklistDefinitions.Build().First(g => g.Id == "PREFLIGHT");
@@ -40,6 +41,34 @@ public class FoSystemTestsStructureTests
         Assert.True(item.ManualCompletionAllowed);
         Assert.NotNull(item.CheckAction);
         Assert.Null(item.StateFieldName);   // never Auto — no readable test state
+    }
+
+    [Theory]
+    [InlineData("PF_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
+    [InlineData("PF_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST")]
+    public void B737_PreflightFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
+    {
+        var flow = B737.PMDG737FlowDefinitions.Build().First(f => f.Id == "PREFLIGHT");
+        var step = flow.Steps.FirstOrDefault(s => s.Id == stepId);
+        Assert.NotNull(step);
+        Assert.Equal(FlowStepActionType.SetSwitch, step!.ActionType);
+        Assert.Equal(pseudoKey, step.EventName);
+        Assert.Equal(itemId, step.CompletesChecklistItemId);
+    }
+
+    [Fact]
+    public void B737_OxygenTestsPrecedeFireTest()
+    {
+        // Quick oxygen-flow blips lead the flow so they never sit under the fire
+        // bell / TCAS callouts.
+        var steps = B737.PMDG737FlowDefinitions.Build()
+            .First(f => f.Id == "PREFLIGHT").Steps.Select(s => s.Id).ToList();
+        int oxyCapt = steps.IndexOf("PF_OXY_TEST_CAPT");
+        int oxyFo = steps.IndexOf("PF_OXY_TEST_FO");
+        int fire = steps.IndexOf("PF_FIRE_TEST");
+        Assert.True(oxyCapt >= 0 && oxyFo >= 0 && fire >= 0);
+        Assert.Equal(oxyCapt + 1, oxyFo);
+        Assert.True(oxyFo < fire, "oxygen tests must precede the fire test");
     }
 
     [Fact]

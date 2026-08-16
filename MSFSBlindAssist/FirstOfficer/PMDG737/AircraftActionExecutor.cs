@@ -250,6 +250,8 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "GPWS_TEST":    return GpwsTestAsync();
                 case "TCAS_TEST":    return TcasTestAsync();
                 case "WXR_TEST":     return WxrTestAsync();
+                case "OXY_TEST_CAPT": return OxygenTestCaptAsync();
+                case "OXY_TEST_FO":   return OxygenTestFOAsync();
             }
         }
         return step.ActionType switch
@@ -517,6 +519,26 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> GpwsTestAsync() =>
         MSFSBlindAssist.Settings.SettingsManager.Current.FOGpws737LongTest
             ? GpwsTestLongAsync() : GpwsTestShortAsync();
+
+    /// <summary>Crew oxygen TEST/RESET switch — one quick press per side, the panel's
+    /// own OXY_TestL/R momentary mechanism (transmit press/release; the spring-loaded
+    /// switch's "up" direction is the TEST detent, no readable state exists). The
+    /// audible oxygen-flow sound is the verification — live-confirmed 2026-08-16.</summary>
+    public Task<bool> OxygenTestCaptAsync() =>
+        WarningTestAsync("EVT_OH_OXY_TEST_RESET_SWITCH_L", QuickTestHoldMs);
+
+    /// <summary>First Officer side of the crew oxygen test — see OxygenTestCaptAsync.</summary>
+    public Task<bool> OxygenTestFOAsync() =>
+        WarningTestAsync("EVT_OH_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
+
+    /// <summary>Both sides in sequence (single checklist item covers the pair; the
+    /// dispatch gate serializes and frame-spaces the two presses).</summary>
+    public async Task<bool> OxygenTestBothAsync()
+    {
+        bool capt = await OxygenTestCaptAsync();
+        bool fo = await OxygenTestFOAsync();
+        return capt && fo;
+    }
 
     /// <summary>Weather-radar / predictive-windshear test. The EFIS WXR overlay is a blind
     /// TOGGLE with no readable state anywhere in the NG3 SDK, so the sequence assumes it

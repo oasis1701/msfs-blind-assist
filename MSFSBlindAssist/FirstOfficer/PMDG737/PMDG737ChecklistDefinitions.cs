@@ -89,6 +89,10 @@ public static class PMDG737ChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
+            // Oxygen test: manual tick fires both sides' quick TEST press (no readable
+            // "test performed" state — same rule as the fire/warning tests below).
+            ActionManualAsync("PF_OXY_TEST", "PREFLIGHT", "Oxygen test",
+                (e, _) => e.OxygenTestBothAsync()),
             // Fire + warning tests — no persistent sim state exists for a completed test,
             // so these are manual-tick actions: the box records "test performed" and the
             // tick fires the same held test the flow runs (Fenix PF_FIRE_* pattern).

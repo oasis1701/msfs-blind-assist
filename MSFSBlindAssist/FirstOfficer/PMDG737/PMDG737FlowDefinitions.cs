@@ -86,6 +86,14 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
+            // Crew oxygen tests — the panel's proven quick momentary press (transmit
+            // press/release); the audible oxygen-flow sound is the verification.
+            // First, before the fire test, so the flow sound never sits under the
+            // fire bell.
+            SW("PF_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
+                "OXY_TEST_CAPT", 1),
+            SW("PF_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST"),
             // Fire + warning tests (held self-completing tests via executor pseudo-keys;
             // the fire bell / stick shaker / overspeed clacker are the blind-pilot
             // verification — Fenix parity, live-probed 2026-07-11).
