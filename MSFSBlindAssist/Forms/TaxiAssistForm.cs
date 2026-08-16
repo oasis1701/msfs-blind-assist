@@ -200,6 +200,23 @@ public class TaxiAssistForm : Form
     // State
     private TaxiGraph? _graph;
     private string _currentIcao = "";
+    /// <summary>
+    /// The gate-list source token (<see cref="Services.GateDataSource.GetGateListVersion"/>) that
+    /// was live when <see cref="_graph"/> was built — the graph's own staleness key, alongside
+    /// <see cref="_currentIcao"/>.
+    ///
+    /// <para>
+    /// Stand names are baked into the graph's nodes at build time, so a graph built before GSX
+    /// published this airport carries navdata's concourse letters permanently. The dropdown cache
+    /// beside it already rebuilt on this token; the graph did not, and the same-ICAO early return
+    /// in <c>LoadAirportDataCoreAsync</c> meant it never could. Pre-planning the arrival during
+    /// descent therefore produced a form whose combo offered "B 25" while the graph it handed to
+    /// guidance as <c>prebuiltGraph</c> called the same stand "A 25" — and
+    /// <c>TaxiGuidanceManager.DescribeCurrentLocation</c> prefers that installed graph, so
+    /// Where-Am-I said "A 25" on arrival at the stand the pilot had just been routed to as B 25.
+    /// </para>
+    /// </summary>
+    private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
@@ -1653,7 +1670,15 @@ public class TaxiAssistForm : Form
         // destination type; the Enabled state needs its own refresh here.
         chkFitFilter.Enabled = _aircraftWingspan > 0;
 
-        if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
+        // Same airport AND the same gate-list source the graph's stand names were built from.
+        // The token half is what lets a graph built before GSX published this airport be
+        // rebuilt once it does; without it this return matched forever and the graph kept
+        // navdata's concourse letters for the session — see _graphSourceToken. Compared through
+        // ShouldRebuildGateList so a transient GSX drop (an API→fallback DOWNGRADE) does not
+        // throw away a good graph, exactly as the dropdown cache treats the same token.
+        string graphToken = _gateSource?.GetGateListVersion(icao) ?? "none";
+        if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null
+            && !Services.GateDataSource.ShouldRebuildGateList(_graphSourceToken, graphToken)) return;
 
         // DROP THE OLD AIRPORT'S GRAPH BEFORE ANYTHING ELSE, and do not claim the new
         // ICAO until one is actually built (below, right after BuildAsync).
@@ -1672,6 +1697,7 @@ public class TaxiAssistForm : Form
         // makes the caller's "no taxi path data available" guard do its job, and every
         // _graph == null path in this form already early-returns.
         _graph = null;
+        _graphSourceToken = "";
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
         // ICAO inside the GATE branch of PopulateDestinations (defence in depth),
@@ -1761,6 +1787,9 @@ public class TaxiAssistForm : Form
         // (PopulateDestinations, ResolveNamedHoldingPoints, the gate-spot cache), so it
         // has to be set before them and cannot simply move to the end of the method.
         _currentIcao = icao.ToUpperInvariant();
+        // Stamped with the graph, for the same reason and at the same moment: these names are
+        // now frozen into the nodes, and this records which source they came from.
+        _graphSourceToken = graphToken;
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 

@@ -59,9 +59,33 @@ public sealed class GateDataSource
     /// as the staleness check: identical text means GSX republished the exact same data (a real,
     /// harmless cache hit), any difference (a different airport, or the same airport's data having
     /// changed) forces a fresh read. See <see cref="TryBuildGatesFromRemoteApi"/>.
+    ///
+    /// <para>
+    /// TWO staleness keys, tried cheap-first. <c>version</c> is GSX's monotonic <c>handlerData</c>
+    /// publish counter, which answers the same question for the price of a field read; the raw-text
+    /// <c>airportSnapshot</c> is the fallback for when no version is available (see
+    /// <see cref="TryBuildGatesFromRemoteApi"/> for why 0 means "unavailable" rather than "version
+    /// zero"). Both are stored so an entry written under one can be validated by the other, and the
+    /// snapshot remains the authority whenever the counter cannot be trusted.
+    /// </para>
     /// </summary>
-    private readonly Dictionary<string, (string airportSnapshot, List<ParkingSpot> spots)> _apiCache
+    private readonly Dictionary<string, (long version, string airportSnapshot, List<ParkingSpot> spots)> _apiCache
         = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// GSX's <c>handlerData</c> publish counter, or 0 when it cannot be read or no supplier was
+    /// wired. Never throws — same degradation as <see cref="GetGateListVersion"/>, which folds the
+    /// same value into its token.
+    /// </summary>
+    private long ReadHandlerDataVersion(string icao)
+    {
+        try { return _handlerDataVersion(); }
+        catch (Exception ex)
+        {
+            Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
+            return 0;
+        }
+    }
 
     /// <param name="capabilities">
     /// Returns GSX's currently-advertised <c>hello.capabilities</c> tokens. The production call
@@ -141,13 +165,7 @@ public sealed class GateDataSource
 
         if (TryGetCurrentAirportHandlerData(icao, out _))
         {
-            long version;
-            try { version = _handlerDataVersion(); }
-            catch (Exception ex)
-            {
-                Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
-                version = 0;
-            }
+            long version = ReadHandlerDataVersion(icao);
             return "api:" + version.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
@@ -360,10 +378,39 @@ public sealed class GateDataSource
     {
         try
         {
+            // Try the CHEAP staleness key first. GSX's handlerData publish counter is monotonic
+            // and bumped wherever _state's handlerData key can change (the snapshot/hello arm and
+            // the handlerData patch), so an unchanged counter means unchanged content.
+            //
+            // The content compare below is not just slower, it is LARGE: airport.GetRawText()
+            // materialises the whole subtree as a string, measured at 93 us and 394,976 bytes --
+            // a large-object-heap allocation -- per call on the committed 238-stand KJFK capture,
+            // and it ran unconditionally BEFORE the lookup, so even a pure cache hit paid it, plus
+            // ~11 us to compare all 197k characters.
+            //
+            // Version 0 means "no version information": the constructor's default delegate is a
+            // constant 0, and the real counter is >= 1 by the time any handlerData exists (the
+            // frame that carries it does the first bump). So 0 falls back to the content compare
+            // rather than silently trusting a token that cannot move -- without that, any caller
+            // wiring getHandlerDataAirport but not handlerDataVersion would serve a permanently
+            // stale list for an ICAO whose data genuinely changed. GateDataSourceRoutingTests'
+            // "same airport's handlerData content changes" case constructs exactly that shape.
+            long version = ReadHandlerDataVersion(icao);
+            if (version > 0 && _apiCache.TryGetValue(icao, out var byVersion)
+                && byVersion.version == version)
+                return byVersion.spots;
+
             string snapshot = airport.GetRawText();
             if (_apiCache.TryGetValue(icao, out var cached)
                 && string.Equals(cached.airportSnapshot, snapshot, StringComparison.Ordinal))
+            {
+                // Same content under a NEW counter — GSX republished this airport unchanged.
+                // Re-stamp the entry so the cheap check answers next time; otherwise every call
+                // after a republish would re-materialise the whole subtree to reach this line.
+                if (version > 0 && cached.version != version)
+                    _apiCache[icao] = (version, cached.airportSnapshot, cached.spots);
                 return cached.spots;
+            }
 
             var spots = GsxRemoteParkingReader.Read(airport, icao);
 
@@ -424,7 +471,7 @@ public sealed class GateDataSource
                 return null;
             }
 
-            _apiCache[icao] = (snapshot, spots);
+            _apiCache[icao] = (version, snapshot, spots);
             return spots;
         }
         catch (Exception ex)

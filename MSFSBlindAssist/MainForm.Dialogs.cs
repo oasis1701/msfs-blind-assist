@@ -165,9 +165,15 @@ public partial class MainForm
             {
                 // The gate source is what makes the TCAS "at Gate B 25" label agree with every
                 // other stand readout (taxi dialog, Where-Am-I, SayIntentions) -- see
-                // Services/ParkingSpotSource. Passed as a FACTORY: the resolver creates it lazily
-                // and drops it on ClearCache, so a database switch never leaves it holding the
-                // old provider.
+                // Services/ParkingSpotSource. Passed as a FACTORY so the resolver creates it
+                // lazily, on first use rather than on window open.
+                //
+                // This resolver is built ONCE per TcasForm and captures the provider it is given
+                // in a readonly field, so a DATABASE switch is invalidated by rebuilding the
+                // window -- RefreshDatabaseProvider closes it, exactly as it closes the EFB. Do
+                // not re-add the claim that ClearCache covers that: it has no production caller,
+                // and it clears the spot cache without touching the readonly provider, so it
+                // could not fix a database switch even if something did call it.
                 var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider(), BuildGateDataSource);
                 tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
             }

@@ -955,9 +955,55 @@ public partial class TaxiGuidanceManager : IDisposable
     public int CurrentSegmentIndex => _currentSegmentIndex;
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
-    // the graph on every hotkey press. Keyed by ICAO; invalidated on aircraft/airport change.
+    // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
+    // invalidated on aircraft/airport change.
+    //
+    // The token half exists because stand names are frozen into the graph's nodes at build
+    // time. Keyed on ICAO alone, a Where-Am-I pressed at spawn or on descent — before GSX
+    // published handlerData — cached a graph carrying navdata's BGL parking-enum letters, and
+    // nothing ever invalidated it: OnAirportDataUpdated fires only for the online taxiway-name
+    // fetch, and ClearWhereAmICache has no production caller. Once GSX published, the taxi
+    // dialog and the TCAS "at Gate …" label both moved to GSX's letter while Where-Am-I kept
+    // saying "Gate A 25" about the stand everything else called "Gate B 25" — the
+    // one-stand-two-names defect Services/ParkingSpotSource exists to remove. Its two sibling
+    // caches (GateResolver._parkingCache, TaxiAssistForm._cachedGateSpots) were given this
+    // token; this one was missed.
     private TaxiGraph? _whereAmICachedGraph;
     private string _whereAmICachedIcao = "";
+    private string _whereAmICachedToken = "";
+
+    /// <summary>
+    /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
+    /// at the production call site, wired by <c>MainForm</c> beside
+    /// <see cref="ParkingSpotSupplier"/>. Must be O(1) and must never throw; a failure degrades
+    /// to "none".
+    ///
+    /// <para>
+    /// Null is the supported default and keeps every caller that does not wire it — the xUnit
+    /// suite, anything built outside MainForm — byte-identical to the pre-token behaviour: the
+    /// token is then the constant "none", can never differ, and the cache falls back to its
+    /// original ICAO-only invalidation. Same backward-compatibility shape as
+    /// <see cref="ParkingSpotSupplier"/> itself.
+    /// </para>
+    /// </summary>
+    public Func<string, string>? ParkingSpotVersionSupplier { get; set; }
+
+    /// <summary>
+    /// The gate-list source token for <paramref name="icao"/>, or "none" when no supplier is
+    /// wired. Never throws — a supplier failure degrades to "none", which simply means the
+    /// cache keeps its pre-token ICAO-only behaviour rather than losing the graph.
+    /// </summary>
+    private string ResolveParkingSpotVersion(string icao)
+    {
+        var supplier = ParkingSpotVersionSupplier;
+        if (supplier == null) return "none";
+        try { return supplier(icao) ?? "none"; }
+        catch (Exception ex)
+        {
+            Log.Debug("Taxi", $"parking list: version read failed for {icao}: {ex.Message}");
+            return "none";
+        }
+    }
 
     /// <summary>
     /// Describes the aircraft's current location for the "Where Am I" hotkey.
@@ -986,11 +1032,17 @@ public partial class TaxiGuidanceManager : IDisposable
         // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
         lock (_stateLock)
         {
+            // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
+            // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
+            // survives a reconnect flap. Same treatment the two sibling caches give this token.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
@@ -1009,6 +1061,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {
@@ -1038,6 +1091,7 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
+            _whereAmICachedToken = "";
         }
     }
 
@@ -1058,6 +1112,7 @@ public partial class TaxiGuidanceManager : IDisposable
             {
                 _whereAmICachedGraph = null;
                 _whereAmICachedIcao = "";
+                _whereAmICachedToken = "";
             }
         }
     }
@@ -1145,11 +1200,15 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             TaxiGraph? graph = null;
 
+            // Same cache, same staleness key — see the _whereAmICachedToken field comment.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
 
             if (graph == null)
@@ -1165,6 +1224,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {

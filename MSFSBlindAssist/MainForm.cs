@@ -630,6 +630,15 @@ public partial class MainForm : Form
                 ? new List<MSFSBlindAssist.Database.Models.ParkingSpot>()
                 : MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, BuildGateDataSource(), icao);
         };
+
+        // The staleness key for the graphs built from that supplier. Stand names are frozen
+        // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
+        // this airport would otherwise keep navdata's concourse letters for the whole session
+        // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
+        // O(1) by contract (a capability lookup, a dictionary read, a field read), which is why
+        // it is affordable to ask on every Where-Am-I press.
+        taxiGuidanceManager.ParkingSpotVersionSupplier =
+            icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
