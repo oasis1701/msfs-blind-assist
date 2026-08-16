@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.Gsx.Remote;
@@ -176,13 +177,39 @@ public class GsxBillingTests
                          receipt, GsxBilling.Parse(Json("""{"builders":[{"friendly":"X","subtotal":10.0}]}"""))));
     }
 
-    [Fact]
-    public void Invoice_total_is_invariant_formatted()
+    [Theory]
+    [InlineData("de-DE")]   // comma decimal separator, dot thousands
+    [InlineData("fr-FR")]   // comma decimal separator, narrow-nbsp thousands
+    [InlineData("en-US")]   // the CI default, kept so the invariant case is still covered
+    public void Invoice_total_is_invariant_formatted(string cultureName)
     {
-        // A comma decimal separator (de-DE, fr-FR, …) would make "1761,42" read
-        // as a completely different number through a screen reader.
-        var receipt = GsxReceipt.Parse(Json(LiveShapedReceipt))!;
-        var billing = GsxBilling.Parse(Json("""{"builders":[{"friendly":"X","subtotal":1234.5}]}"""));
-        Assert.Contains("1234.50", GsxService.FormatReceiptAnnouncement(receipt, billing), StringComparison.Ordinal);
+        // A comma decimal separator (de-DE, fr-FR, …) would make "1761,42" read as a
+        // completely different number through a screen reader.
+        //
+        // The culture MUST be swapped for the assertion to mean anything. This test ran under
+        // the ambient culture — en-US on windows-latest — where 1234.5.ToString("0.00") renders
+        // identically with or without CultureInfo.InvariantCulture, so it passed whether or not
+        // the production call site had it. Dropping the InvariantCulture from
+        // GsxService.FormatReceiptAnnouncement left all five invoice tests green while a de-DE
+        // pilot heard "Total 1761,42" — literally the failure this test names.
+        // Same idiom as SayIntentionsCultureTests (the tr-TR suite).
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+
+            var receipt = GsxReceipt.Parse(Json(LiveShapedReceipt))!;
+            var billing = GsxBilling.Parse(Json("""{"builders":[{"friendly":"X","subtotal":1234.5}]}"""));
+            string spoken = GsxService.FormatReceiptAnnouncement(receipt, billing);
+
+            Assert.Contains("1234.50", spoken, StringComparison.Ordinal);
+            // Pin the failure directly, not just the success: a comma separator must never
+            // reach the phrase, whatever the ambient culture formats numbers like.
+            Assert.DoesNotContain("1234,50", spoken, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 }
