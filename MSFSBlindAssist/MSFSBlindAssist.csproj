@@ -154,6 +154,10 @@
     <None Update="Guides\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- navdatareader config: stock, plus the GSX World of Jetways exclusion. -->
+    <None Update="Resources\navdatareader.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->
     <None Update="Resources\coherent-a380-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

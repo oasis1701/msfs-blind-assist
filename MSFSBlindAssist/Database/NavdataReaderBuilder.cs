@@ -114,6 +114,27 @@ public class NavdataReaderBuilder
             // Build command line arguments
             string arguments = $"-f {navdataSimFlag} -o \"{outputPath}\"";
 
+            // Our own navdatareader config, if it shipped with the build. It is the stock
+            // config plus one exclusion: GSX World of Jetways "<ICAO>_jetways.bgl" files.
+            // Those carry a FULL airport record (delete + a complete DEFAULT-airport parking
+            // set), not just jetway placements, so at any airport whose add-on scenery is
+            // processed before the World of Jetways package the payware stands are replaced
+            // by stock ones. See Resources\navdatareader.cfg for the full explanation.
+            // Missing file = fall back to navdatareader's built-in config (old behavior).
+            string configPath = GetNavdataReaderConfigPath();
+            if (File.Exists(configPath))
+            {
+                arguments += $" -c \"{configPath}\"";
+                Log.Debug("Database", $"Using navdatareader config: {configPath}");
+            }
+            else
+            {
+                Log.Warn("Database",
+                    $"navdatareader config not found at {configPath} - using the built-in config. " +
+                    "GSX World of Jetways files will not be excluded, so add-on airport parking " +
+                    "may be replaced by default-airport parking.");
+            }
+
             // For MSFS/MSFS24, add base path parameter if we can detect it
             // This ensures navdatareader looks in the correct location for scenery
             if (simulatorVersion == "FS2024" || simulatorVersion == "FS2020")
@@ -315,6 +336,14 @@ public class NavdataReaderBuilder
             return Path.GetFullPath(parentNavdataPath);
 
         return navdataReaderPath; // Return default path even if not found (error will be handled by caller)
+    }
+
+    /// <summary>
+    /// Gets the path to the navdatareader config shipped in Resources.
+    /// </summary>
+    private static string GetNavdataReaderConfigPath()
+    {
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "navdatareader.cfg");
     }
 
     /// <summary>
