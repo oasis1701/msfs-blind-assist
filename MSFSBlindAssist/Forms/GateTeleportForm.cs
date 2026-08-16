@@ -415,7 +415,16 @@ public partial class GateTeleportForm : Form
     private void ClearGatesAndParking()
     {
         gateListBox.Items.Clear();
-        _allParkingSpots.Clear();
+        // DROP the reference; never Clear() this list in place. GateDataSource returns the SAME
+        // List<ParkingSpot> instance it holds in its per-ICAO caches (ParkingSpotSource's own doc
+        // says so: "may be the SAME instance GateDataSource holds when it served a cached answer"),
+        // so clearing it emptied GSX's cached gate list. Retyping the ICAO then hit that cache and
+        // got the emptied list back, and this dialog reported "No gates or parking found" for the
+        // rest of its lifetime. It also slipped past TryBuildGatesFromRemoteApi's deliberate refusal
+        // to CACHE an empty list -- that guard sits after the cache-hit early return, so it never
+        // saw the emptying. Reached on every sub-4-character keystroke, on airport-not-found and in
+        // the catch, so the previous airport's cache was poisoned too.
+        _allParkingSpots = new List<ParkingSpot>();
         SelectedParkingSpot = null;
         SelectedAirport = null;
         teleportButton.Enabled = false;
