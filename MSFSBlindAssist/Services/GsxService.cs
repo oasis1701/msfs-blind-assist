@@ -1135,11 +1135,10 @@ public sealed class GsxService : IDisposable
     /// monitoring (AnnounceWhenFormHidden).
     /// </summary>
     /// <param name="source">
-    /// Which composer produced <paramref name="phrase"/>. Required, not optional, and it is
-    /// a PRIVACY classification as much as a diagnostic one — <see cref="GsxDiagnosticLog"/>
-    /// decides from it alone whether the text may be written to gsx.log (see
-    /// <see cref="GsxSpeechSource"/>). Making it a parameter of the one choke point means a
-    /// future announcement cannot reach the log unclassified.
+    /// Which composer produced <paramref name="phrase"/> — recorded as <c>src=</c> in gsx.log.
+    /// Required rather than optional so a future announcement cannot reach the log unlabelled:
+    /// when a phrase turns out wrong or missing, knowing whether it came from the typed
+    /// service announcer, GSX's message slot or the invoice path is most of the diagnosis.
     /// </param>
     private void Announce(string phrase, GsxSpeechSource source)
     {

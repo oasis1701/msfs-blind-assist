@@ -1,80 +1,56 @@
-using System.Security.Cryptography;
 using System.Text;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.Gsx.Remote;
 
 /// <summary>
-/// Where a spoken GSX phrase was composed. This is a PRIVACY classification as much as a
-/// diagnostic one, and it is what makes the tiering STRUCTURAL rather than a filter that
-/// someone has to remember to apply: <see cref="GsxDiagnosticLog.Spoke"/> decides from the
-/// source alone whether the text may be written down, so a new call site cannot leak by
-/// forgetting a flag — it can only be mis-CLASSIFIED, which is a visible, reviewable choice.
+/// Which composer produced a spoken GSX phrase — a DIAGNOSTIC tag, recorded as <c>src=</c>.
+/// It answers "which branch answered?", the same convention the SayIntentions import log
+/// follows: when a phrase turns out to be wrong or missing, knowing whether it came from the
+/// typed service announcer, GSX's message slot or the invoice path is most of the diagnosis.
 ///
 /// <para>
-/// "It was spoken aloud, so it is safe to log" is NOT the rule here, and the distinction is
-/// deliberate: speech is transient and reaches one person in their own headphones, while
-/// <c>%APPDATA%\MSFSBlindAssist\logs</c> is durable and exists precisely to be zipped and
-/// sent to a developer. This project already holds that line elsewhere — SayIntentions'
-/// flight.json values are SHOWN to the pilot in the Ctrl+Shift+S window and are still
-/// banned from every log.
+/// It is NOT a privacy classification, and an earlier version of this file was wrong to make
+/// it one. GSX is a flight-simulator ground-services add-on: its invoices, currency amounts,
+/// handling companies and service prose are all SIMULATED — "Invoice available from OneJet.
+/// Total 1761.42." is play money owed to a fictional ground crew. Redacting it cost real
+/// diagnostic value (an invoice bug became unreadable in the one log built to explain it) and
+/// protected nothing. Every phrase is now logged in full.
+/// </para>
+///
+/// <para>
+/// What still never reaches a log is unchanged and short, and none of it passes through here:
+/// raw frames (the <c>handlerData</c> blob is ~1.7 MB — a size problem before anything else),
+/// and command <c>args</c>, whose only genuinely real-world member is <c>simbrief_username</c>,
+/// the pilot's third-party account alias. Neither was ever needed to diagnose an announcement.
 /// </para>
 /// </summary>
 public enum GsxSpeechSource
 {
     /// <summary>
-    /// A phrase MSFSBA composed itself from typed service fields — "pax 113 of 143.",
-    /// "bags 40 percent.", "fuel 2221 kg loaded, aircraft 5252 kg.", "Deboard in progress
-    /// by OneJet.", "Refuel complete." Every input is an int, a double, a unit string, a
-    /// displayName or an operator name, so the text is safe verbatim.
-    ///
-    /// <para>
-    /// KNOWN, DELIBERATE RESIDUAL: two branches inside this tier echo GSX prose rather than
-    /// compose it — <c>StatePhrase</c>'s default arm (<c>stateText</c>, e.g. "Refueling
-    /// service can be requested") and <c>BusPhrase</c> (<c>detail.busPhase</c>, e.g. "on the
-    /// way, ETA 15 secs"). They ride here on purpose: they are narrow per-service STATUS
-    /// fields, not GSX's open render surface the way <see cref="Message"/> and
-    /// <see cref="Menu"/> are, and their wording is exactly what a "why did it say that?"
-    /// report needs. <see cref="MaxVerbatimChars"/> bounds them defensively.
-    /// </para>
+    /// A phrase the typed service announcer composed — "pax 113 of 143.", "bags 40 percent.",
+    /// "fuel 2221 kg loaded, aircraft 5252 kg.", "Deboard in progress by OneJet.",
+    /// "Refuel complete." Also its two GSX-prose arms: <c>StatePhrase</c>'s default
+    /// (<c>stateText</c>) and <c>BusPhrase</c> (<c>detail.busPhase</c>).
     /// </summary>
     Service,
 
     /// <summary>
-    /// <c>GsxGateSelectAnnouncer</c> output — stand names and fixed sentences. Safe
-    /// verbatim, and the precedent is already settled: gsx-gate-select.log records the
-    /// target, the identifier sent, the resolved gate and GSX's own error message.
+    /// <c>GsxGateSelectAnnouncer</c> output — stand names and fixed sentences. The
+    /// per-attempt detail lives in gsx-gate-select.log; this records what was SAID.
     /// </summary>
     GateSelect,
 
-    /// <summary>
-    /// GSX's "message" slot, spoken through verbatim and unvalidated. Metadata only: this
-    /// is vendor free text whose content is unbounded by construction, and a pass-through
-    /// channel inherits the vendor's choices permanently — a GSX update can widen what
-    /// lands here with no code change on our side and no test failure.
-    /// </summary>
+    /// <summary>GSX's "message" slot — the follow-me, marshaller and positioning banners.</summary>
     Message,
 
-    /// <summary>
-    /// Menu text. Metadata only, and the widest surface in the integration: GSX previews
-    /// INVOICES through the menu, its Administration block browses stored receipts, and
-    /// "Customize this Airplane" lists profile names (which carry filesystem paths under
-    /// the user profile, i.e. the Windows account name).
-    /// </summary>
+    /// <summary>Menu text.</summary>
     Menu,
 
-    /// <summary>
-    /// The invoice announcement. Metadata only — it carries the money figure
-    /// ("… Total 1761.42."), which the "never log a raw frame … receipt, billing … carry
-    /// operator names, cost" invariant names explicitly. The receipt's own digest is the
-    /// loggable identity.
-    /// </summary>
+    /// <summary>The invoice announcement, including GSX's simulated total.</summary>
     Receipt,
 
-    /// <summary>
-    /// A metered ground-connection timer phrase. Metadata only — it carries an accrued
-    /// amount ("… still running, 1 hour 6 minutes, amount 116.97.").
-    /// </summary>
+    /// <summary>A metered ground-connection timer phrase, including its simulated amount.</summary>
     BillingTimer,
 }
 
@@ -148,22 +124,33 @@ public enum SpeechRoute
 /// ~580 suppression lines, and summed it reaches ~18 MB/h, which evicts the whole 5 MB × 3
 /// rotation in about an hour, so a post-flight report would find its own evidence already
 /// rotated away. Suppressions are COUNTED and flushed as one <c>ev=summary</c> per service
-/// run instead (see <c>GsxServiceAnnouncer</c>). (2) NO RAW FRAMES, ever, at any verbosity —
-/// frames carry <c>handlerData</c> (SimBrief flight data), <c>receipt</c> (invoice HTML) and
-/// <c>billing</c> (money). (3) NO command <c>args</c>: a <c>settings.set</c> can carry
-/// <c>simbrief_username</c>, the pilot's real account alias. (4) NO gate.select duplication —
+/// run instead (see <c>GsxServiceAnnouncer</c>). (2) NO RAW FRAMES — chiefly a SIZE rule:
+/// <c>handlerData</c> alone is ~1.7 MB and <c>receipt</c> embeds rendered invoice HTML plus a
+/// base64 logo, so one frame would bury a turnaround; the derived fields this channel logs say
+/// more in a line than the payload says in a megabyte. (3) NO command <c>args</c>: a
+/// <c>settings.set</c> carries the field's value, and one of those is <c>simbrief_username</c>,
+/// the pilot's third-party account alias — the one genuinely real-world value in the
+/// integration, and never needed to diagnose an announcement. (4) NO gate.select duplication —
 /// gsx-gate-select.log is the documented first stop for "gate not found" and already carries
 /// richer fields per attempt.
+///
+/// <para>
+/// Everything else GSX publishes IS logged in full, including invoice totals, ground-connection
+/// amounts, handling companies and menu text. This is a flight simulator: that money is
+/// simulated and those companies are fictional. An earlier version of this file redacted them
+/// behind a hash, which made an invoice bug unreadable in the one log built to explain it.
+/// </para>
 /// </para>
 /// </summary>
 public static class GsxDiagnosticLog
 {
     /// <summary>
-    /// Defensive cap on a verbatim phrase. Every Tier-1 phrase is far shorter; this only
-    /// bounds the two GSX-prose branches noted on <see cref="GsxSpeechSource.Service"/>, so
-    /// a vendor surprise is truncated rather than dumped into the file.
+    /// Line-length sanity bound. Every real announcement is far shorter (they are spoken
+    /// sentences); this only stops a vendor surprise from putting a wall of text through the
+    /// GSX-prose arms (<c>stateText</c>, <c>busPhase</c>, the message slot). Generous on
+    /// purpose — truncating diagnostic text is a cost, not a feature.
     /// </summary>
-    internal const int MaxVerbatimChars = 200;
+    internal const int MaxPhraseChars = 500;
 
     internal const string None = "(none)";
 
@@ -235,68 +222,17 @@ public static class GsxDiagnosticLog
         $"message={Quote(message)} elapsedMs={elapsedMs}";
 
     /// <summary>
-    /// The privacy tiering, in one place: a phrase MSFSBA composed is written out; a phrase
-    /// GSX authored is reduced to a length and a stable short hash. The hash is what keeps
-    /// the metadata form diagnostically useful — a repeated identical hash IS repeat-spam,
-    /// and a hash that changes every tick IS countdown-style churn, which are the two
-    /// shapes this channel exists to tell apart, neither of which needs the words.
+    /// The phrase, in full. Every GSX announcement is loggable: the money is simulated, the
+    /// handling companies are fictional, and the service prose is GSX's own status text —
+    /// see <see cref="GsxSpeechSource"/> for why an earlier redaction tier was removed.
+    /// <see cref="MaxPhraseChars"/> is a line-length sanity bound, not a privacy device.
     /// </summary>
     internal static string DescribePhrase(GsxSpeechSource source, string phrase)
     {
+        _ = source;
         string flat = Flatten(phrase);
-        if (!IsVerbatimSafe(source))
-            return $"phrase={None} hash={ShortHash(flat)}";
-
-        string shown = flat.Length > MaxVerbatimChars ? flat[..MaxVerbatimChars] + "…" : flat;
+        string shown = flat.Length > MaxPhraseChars ? flat[..MaxPhraseChars] + "…" : flat;
         return $"phrase={Quote(shown)}";
-    }
-
-    /// <summary>True only for the tiers MSFSBA composes itself from typed fields.</summary>
-    internal static bool IsVerbatimSafe(GsxSpeechSource source) =>
-        source is GsxSpeechSource.Service or GsxSpeechSource.GateSelect;
-
-    /// <summary>
-    /// Per-PROCESS random salt, generated in memory and NEVER written to the log, to any
-    /// file, or to any announcement.
-    ///
-    /// <para>
-    /// It exists because an unsalted digest of a redacted phrase is NOT redaction — it is
-    /// encryption with a public key. The phrase templates here are fixed and public
-    /// (<c>"Invoice available from {operator}. Total {n}."</c>), so the only unknown in a
-    /// receipt line is the money; a 4-byte digest over a ~10^6 candidate space inverts to a
-    /// SINGLE preimage in well under a second, and the handling company is printed in clear
-    /// on the <c>ev=state</c> lines of the same file. That was measured against this exact
-    /// code, not theorised: the invoice total and the ground-connection amount both came
-    /// back uniquely. Truncating the hash further would not help (it widens collisions but
-    /// still leaks), and dropping the length field would not help either (the digest alone
-    /// is decisive) — the input has to stop being guessable, which is what the salt does.
-    /// </para>
-    ///
-    /// <para>
-    /// Salting per process costs nothing diagnostically: every use is a WITHIN-SESSION
-    /// comparison — "is this the same phrase the slot just published, or a different one?" —
-    /// and lines from one gsx.log are only ever compared with each other. Cross-session or
-    /// cross-pilot comparison was never a feature, and is exactly the capability that makes
-    /// the digest an inversion oracle.
-    /// </para>
-    /// </summary>
-    private static readonly byte[] HashSalt = RandomNumberGenerator.GetBytes(32);
-
-    /// <summary>
-    /// A short, stable-WITHIN-THIS-SESSION fingerprint of a phrase whose text may not be
-    /// written down: identical fingerprints on consecutive lines mean the phrase repeated
-    /// (repeat-spam), a fingerprint that changes every tick means it is churning (a
-    /// countdown). Salted — see <see cref="HashSalt"/>; without that it is reversible.
-    /// </summary>
-    internal static string ShortHash(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return None;
-
-        byte[] text = Encoding.UTF8.GetBytes(value);
-        byte[] salted = new byte[HashSalt.Length + text.Length];
-        Buffer.BlockCopy(HashSalt, 0, salted, 0, HashSalt.Length);
-        Buffer.BlockCopy(text, 0, salted, HashSalt.Length, text.Length);
-        return Convert.ToHexString(SHA256.HashData(salted), 0, 4);
     }
 
     /// <summary>
