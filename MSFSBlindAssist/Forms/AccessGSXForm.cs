@@ -12,7 +12,6 @@ using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.Gsx.Remote;
 using MSFSBlindAssist.Utils.Logging;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Forms;
 
@@ -578,6 +577,17 @@ public sealed class AccessGSXForm : Form
         // the menu closes; see the _renderedMenu field comment).
         string menuText = RepopulateMenu();
 
+        // Is this menu change worth SAYING at all? Computed BEFORE the visibility gate below,
+        // and that ordering is load-bearing for gsx.log rather than cosmetic: GSX republishes
+        // the whole /menu ~3x/s, so a suppression logged on the visibility gate while it sat
+        // first would be a per-tick line — the one thing GsxDiagnosticLog forbids outright
+        // (~18 MB/h evicts the 5 MB x 3 rotation in about an hour). Judged first, everything
+        // below fires only on a REAL menu change and is safe to log per occurrence. Nothing
+        // else moves: ShouldAnnounce is pure and _renderedMenu was already refreshed above.
+        bool shouldAnnounce = GsxMenuAnnounceResolver.ShouldAnnounce(previouslyAnnounced, _renderedMenu)
+                              && !string.IsNullOrWhiteSpace(menuText);
+        if (!shouldAnnounce) return;
+
         // Speech while the form is HIDDEN follows the pilot's "Announce GSX
         // tooltips in background" setting — the same rule every other
         // background GSX announcement (service transitions, invoices, the
@@ -589,16 +599,30 @@ public sealed class AccessGSXForm : Form
         // focus the moment they show the window. The connect-time double-speak
         // this used to be blamed on is handled by ShouldAnnounce's empty-current
         // rule, not by this gate.
-        if (!Visible && !_gsxService.AnnounceWhenFormHidden) return;
-
-        bool shouldAnnounce = GsxMenuAnnounceResolver.ShouldAnnounce(previouslyAnnounced, _renderedMenu);
-        if (shouldAnnounce && !string.IsNullOrWhiteSpace(menuText))
+        if (!Visible && !_gsxService.AnnounceWhenFormHidden)
         {
-            try { _announcer.Announce(menuText); }
-            catch (Exception ex)
-            {
-                Log.Debug("Forms", $"menu announce failed: {ex.Message}");
-            }
+            // A real menu change that NOBODY heard — the most useful line this path can write.
+            // Menu speech is the one GSX source that does NOT go through GsxService.Announce
+            // (this form owns it), so until this call existed the loudest, most heavily gated
+            // source in the integration left no trace in gsx.log in either direction, while
+            // both docs/gsx.md and CLAUDE.md asserted menu prose was logged. GsxSpeechSource.Menu
+            // had no production reference at all and read as dead code.
+            GsxDiagnosticLog.Spoke(GsxSpeechSource.Menu, menuText, SpeechRoute.None);
+            return;
+        }
+
+        try
+        {
+            _announcer.Announce(menuText);
+            // Background, not Window: this form queues straight to the screen reader, so
+            // delivery is subject only to the speech queue. SpeechRoute.Window is for a phrase
+            // HANDED to this window by GsxService, where the publishing layer cannot see
+            // whether it is visible — here that doubt does not exist, we just checked.
+            GsxDiagnosticLog.Spoke(GsxSpeechSource.Menu, menuText, SpeechRoute.Background);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Forms", $"menu announce failed: {ex.Message}");
         }
     }
 
@@ -948,8 +972,6 @@ public sealed class AccessGSXForm : Form
 /// </summary>
 internal static class GsxMenuAnnounceResolver
 {
-    private static readonly Regex DigitRun = new(@"\d+", RegexOptions.Compiled);
-
     public static bool ShouldAnnounce(GsxMenuModel previous, GsxMenuModel current)
     {
         // Empty -> empty (every connect/reconnect) and non-empty -> empty (the
@@ -970,7 +992,14 @@ internal static class GsxMenuAnnounceResolver
             if (string.Equals(before, after, StringComparison.Ordinal)) continue;
 
             changedCount++;
-            if (!IsDigitOnlyChange(before, after))
+            // The ONE digit-run rule, shared with the message slot and the service bus phase.
+            // This used to be a private copy splitting on a bare \d+, which matched the "25" of
+            // "Gate B25" and so classified "Gate B25" -> "Gate B27" as a counter tick. GSX's
+            // parking-search results are a fixed 10-slot menu, so re-searching A15 -> A16 changes
+            // exactly ONE of ten entries: below the page-turn guard, and silently unspoken.
+            // GsxPhraseGate's boundaries make a digit run STANDALONE-only, so an identifier keeps
+            // its digits and a genuine counter ("113/143" -> "114/143") still collapses.
+            if (!GsxPhraseGate.IsDigitRunOnlyChange(before, after))
                 nonDigitChange = true;
         }
 
@@ -981,27 +1010,6 @@ internal static class GsxMenuAnnounceResolver
         return nonDigitChange;
     }
 
-    /// <summary>
-    /// True when <paramref name="before"/> and <paramref name="after"/> are identical
-    /// once every run of digits is stripped out — i.e. they differ only in the numbers
-    /// embedded in the text, never in the surrounding words. Splitting on digit runs
-    /// (rather than comparing digit-count) also tolerates a run changing LENGTH, not
-    /// just value — "9/143 passengers boarded" -> "10/143 passengers boarded" is still
-    /// purely a counter tick.
-    /// </summary>
-    private static bool IsDigitOnlyChange(string before, string after)
-    {
-        string[] beforeParts = DigitRun.Split(before);
-        string[] afterParts = DigitRun.Split(after);
-        if (beforeParts.Length != afterParts.Length) return false;
-
-        for (int i = 0; i < beforeParts.Length; i++)
-        {
-            if (!string.Equals(beforeParts[i], afterParts[i], StringComparison.Ordinal))
-                return false;
-        }
-        return true;
-    }
 }
 
 /// <summary>
