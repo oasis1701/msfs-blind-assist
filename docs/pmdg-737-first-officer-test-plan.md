@@ -895,9 +895,10 @@ buttons send. The audible oxygen-flow sound is the verification.
    announce the Captain then First Officer oxygen tests and each press is followed
    by the oxygen-flow sound, clear of the fire bell that follows.
 2. Same on the 777 Cockpit Preparation flow (steps sit just before the fire test).
-3. Checklists: the 737 PREFLIGHT group's "Oxygen test" item and the 777 PREFLIGHT
-   group's "Oxygen: Tested 100%" item are manual ticks that fire BOTH sides
-   (two flow sounds, ~a second apart). Running the flow pre-ticks the item.
+3. Checklists: each side is its OWN item — 737 "Captain oxygen test" / "First officer
+   oxygen test", 777 "Oxygen: Tested 100% (captain)" / "(first officer)". Ticking one
+   fires only that side (a single flow sound); the pair reads complete once both are
+   ticked. Running the flow ticks each item as its own step fires.
 
 ---
 

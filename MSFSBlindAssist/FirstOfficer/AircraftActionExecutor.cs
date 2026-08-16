@@ -253,13 +253,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> OxygenTestFOAsync() =>
         HeldTransmitTestAsync("EVT_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
 
-    /// <summary>Both sides in sequence (single checklist item covers the pair).</summary>
-    public async Task<bool> OxygenTestBothAsync()
-    {
-        bool capt = await OxygenTestCaptAsync();
-        bool fo = await OxygenTestFOAsync();
-        return capt && fo;
-    }
+    // (No both-sides helper: each side is its own flow step and its own checklist item —
+    // a single tick firing both masks at once is not how the crew tests them.)
 
     /// <summary>WXR/PWS test — same managed sequence as the 737 (see that executor's doc):
     /// EFIS WXR overlay on (blind toggle, assumed OFF) → settle → TEST → callout wait →

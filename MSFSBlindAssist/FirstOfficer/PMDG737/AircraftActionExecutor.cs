@@ -531,14 +531,8 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> OxygenTestFOAsync() =>
         WarningTestAsync("EVT_OH_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
 
-    /// <summary>Both sides in sequence (single checklist item covers the pair; the
-    /// dispatch gate serializes and frame-spaces the two presses).</summary>
-    public async Task<bool> OxygenTestBothAsync()
-    {
-        bool capt = await OxygenTestCaptAsync();
-        bool fo = await OxygenTestFOAsync();
-        return capt && fo;
-    }
+    // (No both-sides helper: each side is its own flow step and its own checklist item —
+    // a single tick firing both masks at once is not how the crew tests them.)
 
     /// <summary>Weather-radar / predictive-windshear test. The EFIS WXR overlay is a blind
     /// TOGGLE with no readable state anywhere in the NG3 SDK, so the sequence assumes it

@@ -31,7 +31,8 @@ public class FoSystemTestsStructureTests
     [InlineData("PF_GPWS_TEST")]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
-    [InlineData("PF_OXY_TEST")]
+    [InlineData("PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO")]
     public void B737_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = B737.PMDG737ChecklistDefinitions.Build().First(g => g.Id == "PREFLIGHT");
@@ -44,8 +45,10 @@ public class FoSystemTestsStructureTests
     }
 
     [Theory]
-    [InlineData("PF_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
-    [InlineData("PF_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST")]
+    // Each side ticks its OWN checklist item — the pair reads complete only once both
+    // sides have been tested (user request 2026-08-16; a single item fired both at once).
+    [InlineData("PF_OXY_TEST_CAPT", "OXY_TEST_CAPT", "PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST_FO")]
     public void B737_PreflightFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
     {
         var flow = B737.PMDG737FlowDefinitions.Build().First(f => f.Id == "PREFLIGHT");
@@ -121,7 +124,8 @@ public class FoSystemTestsStructureTests
     [Theory]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
-    [InlineData("PF_OXYGEN")]
+    [InlineData("PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO")]
     public void B777_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
@@ -134,8 +138,9 @@ public class FoSystemTestsStructureTests
     }
 
     [Theory]
-    [InlineData("CP_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
-    [InlineData("CP_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXYGEN")]
+    // Each side ticks its OWN checklist item (see the 737 theory above).
+    [InlineData("CP_OXY_TEST_CAPT", "OXY_TEST_CAPT", "PF_OXY_TEST_CAPT")]
+    [InlineData("CP_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST_FO")]
     public void B777_CockpitPrepFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
     {
         var flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build();

@@ -91,9 +91,9 @@ public static class PMDG737FlowDefinitions
             // First, before the fire test, so the flow sound never sits under the
             // fire bell.
             SW("PF_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
-                "OXY_TEST_CAPT", 1),
+                "OXY_TEST_CAPT", 1, checklistItemId: "PF_OXY_TEST_CAPT"),
             SW("PF_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
-                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST"),
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST_FO"),
             // Fire + warning tests (held self-completing tests via executor pseudo-keys;
             // the fire bell / stick shaker / overspeed clacker are the blind-pilot
             // verification — Fenix parity, live-probed 2026-07-11).
