@@ -275,9 +275,7 @@ public class NavdataReaderBuilder
                 }
 
                 OnProgressUpdated(100, "Database build completed successfully");
-                // TODO(Task 7): VerifyExclusionApplied(simulatorVersion, outputPath) replaces
-                // this literal once it exists — see task-6-report.md for the handoff note.
-                OnBuildCompleted(true, "Database built successfully");
+                OnBuildCompleted(true, VerifyExclusionApplied(simulatorVersion, outputPath));
                 return true;
             }
             else
@@ -639,6 +637,51 @@ public class NavdataReaderBuilder
             Log.Debug("Database", $"Error parsing UserCfg.opt: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Confirms the World of Jetways exclusion actually applied, and returns the success
+    /// message to report.
+    ///
+    /// FS2020 only. An FS2024 database is built from SimConnect facility data and contains
+    /// a single synthetic bgl_file row with an empty filename, so the same query would
+    /// return zero there and read as success while proving nothing.
+    /// </summary>
+    private static string VerifyExclusionApplied(string simulatorVersion, string databasePath)
+    {
+        const string success = "Database built successfully";
+
+        if (simulatorVersion != "FS2020")
+            return success;
+
+        try
+        {
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath};Mode=ReadOnly");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                @"SELECT COUNT(*) FROM bgl_file WHERE filename LIKE '%\_jetways.bgl' ESCAPE '\'";
+
+            long leaked = Convert.ToInt64(command.ExecuteScalar() ?? 0L);
+            if (leaked > 0)
+            {
+                Log.Warn("Database",
+                    $"{leaked} World of Jetways BGL file(s) were still compiled into the database - the exclusion did not apply.");
+                return success +
+                    ", but the GSX World of Jetways exclusion did not take effect, so some add-on " +
+                    "airport stands may still show default names.";
+            }
+
+            Log.Debug("Database", "Verified: no World of Jetways BGL files were compiled into the database.");
+        }
+        catch (Exception ex)
+        {
+            // Verification is a diagnostic, never a reason to call a good build bad.
+            Log.Warn("Database", $"Could not verify the World of Jetways exclusion: {ex.Message}");
+        }
+
+        return success;
     }
 }
 
