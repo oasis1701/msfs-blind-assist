@@ -266,11 +266,12 @@ Tick **"APU: ON line"** (or run the Before Start flow): the APU selector goes **
 and the APU **spools up** (EGT rises, comes on line). A direct jump to START no longer leaves it un-started.
 
 ### H4. Engine start — status + actually starting (cold-and-dark)
-- On a **cold-and-dark** ramp, open the Engine Start group: items read **"Engine 1/2: running"** and are
-  **NOT** auto-ticked (no more false "complete" at engine-off). They tick only once N2 ≥ ~50%.
+- On a **cold-and-dark** ramp, open the Engine Start group: the items are the pilot-paced
+  start-switch and start-lever rows only (the old "Engine 1/2: running" N2 verification
+  rows are removed by design — do not expect them).
 - **Run Related Flow** on the Engine Start group (or run the Engine Start flow): each engine motors to
   ~N2 20% **before** the start lever introduces fuel, then starts normally. Confirm both engines start.
-- *Tunable:* the N2 thresholds (20% fuel-introduction, 50% "running") and the `TURB ENG N2` unit
+- *Tunable:* the N2 fuel-introduction threshold (20%) and the `TURB ENG N2` unit
   (percent vs ratio) — adjust if the sim reads differently.
 
 ### H5. Generators (Before Taxi)
@@ -645,11 +646,10 @@ Test (737, at a gate with ground power available and the APU RUNNING):
    - "Engine 2 start lever: IDLE (at 25 percent N2)" — tick moves the lever; the pilot
      times the fuel introduction. Also auto-ticks if the lever is moved in the cockpit
      or via the app panels (derived lever field).
-   - "Engine 2: running" — auto-verifies at N2 ≥ 50%.
-   (Same trio for engine 1; "Packs: OFF" unchanged at the top.)
+   (Same pair for engine 1; "Packs: OFF" unchanged at the top.)
    Test: start both engines purely from the checklist, timing the levers yourself; then
    start via "Run Related Flow" (still fully automated with spoken waits and the
-   start-valve/N2 abort guards) and confirm the lever + running items auto-tick.
+   start-valve/N2 abort guards) and confirm the lever items auto-tick.
 2. **Shutdown flows no longer stall after cutoff.** The 777's fixed 60 s "Engines
    spooling down" wait is removed (flow proceeds straight from fuel cutoff to the next
    steps); the 737's start-valve wait (an instant no-op) is removed too.
@@ -879,3 +879,22 @@ trail after the step. Confirm you never hear two test audios at once.
    clacker STOPS on the switch (release-on-swap), and no audio is stuck.
 5. The First Officer preflight stall/overspeed auto-tests still fire their brief ~1.5–3.5 s
    held tests as before (unchanged).
+
+---
+
+## Part X — crew oxygen test (PMDG 737 + 777, 2026-08-16)
+
+### Crew oxygen test (737 Preflight flow / 777 Cockpit Prep flow + checklists)
+
+Both PMDG jets now open their preflight flow with two oxygen-test steps ("Captain
+oxygen test", "First officer oxygen test") — each a quick press of that side's
+oxygen TEST/RESET switch, the same momentary press the app's panel Oxygen Test
+buttons send. The audible oxygen-flow sound is the verification.
+
+1. Run the 737 Preflight flow (cold-and-dark or powered): the first two steps
+   announce the Captain then First Officer oxygen tests and each press is followed
+   by the oxygen-flow sound, clear of the fire bell that follows.
+2. Same on the 777 Cockpit Preparation flow (steps sit just before the fire test).
+3. Checklists: the 737 PREFLIGHT group's "Oxygen test" item and the 777 PREFLIGHT
+   group's "Oxygen: Tested 100%" item are manual ticks that fire BOTH sides
+   (two flow sounds, ~a second apart). Running the flow pre-ticks the item.
