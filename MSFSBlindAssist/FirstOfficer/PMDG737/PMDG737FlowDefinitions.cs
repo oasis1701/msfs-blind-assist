@@ -90,12 +90,12 @@ public static class PMDG737FlowDefinitions
             // press/release); the audible oxygen-flow sound is the verification.
             // First, before the fire test, so the flow sound never sits under the
             // fire bell.
-            // Two steps (one per side); only the SECOND carries the checklist id, so the single
-            // "Oxygen test" line ticks once BOTH masks have been tested.
+            // One step per side, each ticking its OWN Preflight item (the crew's single
+            // "Oxygen: TESTED, 100%" readback line lives in PREFLIGHT_CL).
             SW("PF_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
-                "OXY_TEST_CAPT", 1),
+                "OXY_TEST_CAPT", 1, checklistItemId: "PF_OXY_TEST_CAPT"),
             SW("PF_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
-                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST"),
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST_FO"),
             // Fire + warning tests (held self-completing tests via executor pseudo-keys;
             // the fire bell / stick shaker / overspeed clacker are the blind-pilot
             // verification — Fenix parity, live-probed 2026-07-11).

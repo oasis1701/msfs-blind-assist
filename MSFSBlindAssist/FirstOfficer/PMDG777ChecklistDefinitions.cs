@@ -267,14 +267,15 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetGearLever(1)),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
-            // Oxygen test: ONE checklist line for the pair (the crew tests both masks under a
-            // single "Oxygen ... TESTED" call), ticked by the FLOW's second (F/O) step so it
-            // completes only once BOTH sides have been tested. Ticking it by hand runs both
-            // sides SPACED — the two presses used to land ~350 ms apart and read as one sound
-            // (user report 2026-08-16). No readable "test performed" state — same rule as the
-            // fire/TCAS/WXR tests.
-            ActionManualAsync("PF_OXYGEN", "PREFLIGHT", "Oxygen: Tested 100%",
-                (e, _) => e.OxygenTestBothAsync()),
+            // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
+            // ruling 2026-08-16). Each tick fires only its own side's quick TEST press, and
+            // the flow's matching step ticks the matching item. The single "Oxygen: Tested
+            // 100%" line the crew reads back lives in PREFLIGHT_CL and stays one item. No
+            // readable "test performed" state — same rule as the fire/TCAS/WXR tests.
+            ActionManualAsync("PF_OXY_TEST_CAPT", "PREFLIGHT", "Oxygen test (captain)",
+                (e, _) => e.OxygenTestCaptAsync()),
+            ActionManualAsync("PF_OXY_TEST_FO", "PREFLIGHT", "Oxygen test (first officer)",
+                (e, _) => e.OxygenTestFOAsync()),
             Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
             Reminder("PF_ATIS", "PREFLIGHT", "Obtain ATIS"),

@@ -133,12 +133,12 @@ public static class PMDG777FlowDefinitions
             // Crew oxygen tests — quick momentary press per side (transmit
             // press/release); the audible oxygen-flow sound is the verification.
             // Before the fire test so the flow sound never sits under the fire bell.
-            // Two steps (one per side); only the SECOND carries the checklist id, so the single
-            // "Oxygen: Tested 100%" line ticks once BOTH masks have been tested.
+            // One step per side, each ticking its OWN Preflight item (the crew's single
+            // "Oxygen: Tested 100%" readback line lives in PREFLIGHT_CL).
             SW("CP_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
-                "OXY_TEST_CAPT", 1),
+                "OXY_TEST_CAPT", 1, checklistItemId: "PF_OXY_TEST_CAPT"),
             SW("CP_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
-                "OXY_TEST_FO", 1, checklistItemId: "PF_OXYGEN"),
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXY_TEST_FO"),
             // Held FIRE/OVHT test (executor pseudo-key; fire bell audible while held).
             SW("CP_FIRE_TEST", "Fire and overheat test — listen for the fire bell",
                 "FIRE_OVHT_TEST", 1, checklistItemId: "PF_FIRE_TEST"),

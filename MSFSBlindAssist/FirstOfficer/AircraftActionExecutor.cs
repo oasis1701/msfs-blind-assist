@@ -246,10 +246,6 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// <summary>Crew oxygen TEST/RESET switch — one quick transmit press/release per
     /// side (the panel OXY_TestReset_L/R momentary mechanism; audible oxygen-flow
     /// sound is the verification — the 737 sibling was live-confirmed 2026-08-16).</summary>
-    /// <summary>Gap between the two sides when ONE checklist tick tests both — sized to the
-    /// flow's inter-step pause so the pair sounds the same either way.</summary>
-    public const int OxygenTestSideGapMs = 2000;
-
     public Task<bool> OxygenTestCaptAsync() =>
         HeldTransmitTestAsync("EVT_OXY_TEST_RESET_SWITCH_L", QuickTestHoldMs);
 
@@ -257,17 +253,9 @@ public class AircraftActionExecutor : IFoActionExecutor
     public Task<bool> OxygenTestFOAsync() =>
         HeldTransmitTestAsync("EVT_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
 
-    /// <summary>Both sides for the single "Oxygen: Tested 100%" checklist line, SPACED by
-    /// <see cref="OxygenTestSideGapMs"/>. The bare pair ran back-to-back on the dispatch
-    /// gate's write spacing and read as one sound (user report 2026-08-16); the gap gives
-    /// each mask its own audible flow, matching the flow's two separate steps.</summary>
-    public async Task<bool> OxygenTestBothAsync()
-    {
-        bool capt = await OxygenTestCaptAsync();
-        await Task.Delay(OxygenTestSideGapMs);
-        bool fo = await OxygenTestFOAsync();
-        return capt && fo;
-    }
+    // (No both-sides helper: each side is its own flow step and its own Preflight item, so
+    // each mask can be tested alone. Firing the pair from one tick put the two presses ~350 ms
+    // apart, which read as a single sound — user report 2026-08-16.)
 
     /// <summary>WXR/PWS test — same managed sequence as the 737 (see that executor's doc):
     /// EFIS WXR overlay on (blind toggle, assumed OFF) → settle → TEST → callout wait →

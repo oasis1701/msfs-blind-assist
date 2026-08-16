@@ -89,14 +89,16 @@ public static class PMDG737ChecklistDefinitions
         Id = "PREFLIGHT", Name = "Preflight",
         Items = new()
         {
-            // Oxygen test: ONE checklist line for the pair (the crew tests both masks under a
-            // single "Oxygen ... TESTED" call), ticked by the FLOW's second (F/O) step so it
-            // completes only once BOTH sides have been tested. Ticking it by hand runs both
-            // sides SPACED — the two presses used to land ~350 ms apart and read as one sound
-            // (user report 2026-08-16). No readable "test performed" state — same rule as the
-            // fire/warning tests below.
-            ActionManualAsync("PF_OXY_TEST", "PREFLIGHT", "Oxygen test",
-                (e, _) => e.OxygenTestBothAsync()),
+            // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
+            // ruling 2026-08-16) — the stall/overspeed pairs are shaped the same way. Each
+            // tick fires only its own side's quick TEST press, and the flow's matching step
+            // ticks the matching item. The single "Oxygen: TESTED, 100%" line the crew reads
+            // back lives in PREFLIGHT_CL and stays one item. No readable "test performed"
+            // state — same rule as the fire/warning tests below.
+            ActionManualAsync("PF_OXY_TEST_CAPT", "PREFLIGHT", "Captain oxygen test",
+                (e, _) => e.OxygenTestCaptAsync()),
+            ActionManualAsync("PF_OXY_TEST_FO", "PREFLIGHT", "First officer oxygen test",
+                (e, _) => e.OxygenTestFOAsync()),
             // Fire + warning tests — no persistent sim state exists for a completed test,
             // so these are manual-tick actions: the box records "test performed" and the
             // tick fires the same held test the flow runs (Fenix PF_FIRE_* pattern).

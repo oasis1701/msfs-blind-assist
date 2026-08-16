@@ -31,7 +31,8 @@ public class FoSystemTestsStructureTests
     [InlineData("PF_GPWS_TEST")]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
-    [InlineData("PF_OXY_TEST")]
+    [InlineData("PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO")]
     public void B737_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = B737.PMDG737ChecklistDefinitions.Build().First(g => g.Id == "PREFLIGHT");
@@ -44,10 +45,11 @@ public class FoSystemTestsStructureTests
     }
 
     [Theory]
-    // One step per side, but ONE checklist line: only the F/O step carries the id, so the
-    // line ticks once BOTH masks have been tested (user ruling 2026-08-16).
-    [InlineData("PF_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
-    [InlineData("PF_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST")]
+    // One step per side, each ticking its OWN Preflight item, so either mask can be tested
+    // alone (user ruling 2026-08-16). The crew's single "Oxygen: TESTED, 100%" readback line
+    // is a separate item in PREFLIGHT_CL — see PreflightReadbackKeepsOneOxygenLine below.
+    [InlineData("PF_OXY_TEST_CAPT", "OXY_TEST_CAPT", "PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST_FO")]
     public void B737_PreflightFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
     {
         var flow = B737.PMDG737FlowDefinitions.Build().First(f => f.Id == "PREFLIGHT");
@@ -107,6 +109,28 @@ public class FoSystemTestsStructureTests
         Assert.True(wxr > tcas + 1, "WXR must be well separated from TCAS");
     }
 
+    // The two groups are deliberately shaped DIFFERENTLY and this pins the difference (it
+    // was mis-collapsed twice): the Preflight ACTION group carries one oxygen item per side
+    // so either mask can be tested alone, while the read-aloud Preflight Checklist carries
+    // the crew's SINGLE "Oxygen ... TESTED, 100%" line — action-free, like every *_CL item.
+    [Fact]
+    public void PreflightReadbackKeepsOneOxygenLine()
+    {
+        // The two aircraft's groups are distinct generic types, so each is asserted directly.
+        var b737 = B737.PMDG737ChecklistDefinitions.Build().First(g => g.Id == "PREFLIGHT_CL")
+            .Items.Where(i => i.Label.Contains("Oxygen", System.StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(b737);
+        Assert.Null(b737[0].CheckAction);         // readback only — never fires the test
+
+        var b777 = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
+            .First(g => g.Id == "PREFLIGHT_CL")
+            .Items.Where(i => i.Label.Contains("Oxygen", System.StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(b777);
+        Assert.Null(b777[0].CheckAction);
+    }
+
     [Theory]
     [InlineData("CP_TCAS_TEST", "TCAS_TEST", "PF_TCAS_TEST")]
     [InlineData("CP_WXR_TEST", "WXR_TEST", "PF_WXR_TEST")]
@@ -123,7 +147,8 @@ public class FoSystemTestsStructureTests
     [Theory]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
-    [InlineData("PF_OXYGEN")]
+    [InlineData("PF_OXY_TEST_CAPT")]
+    [InlineData("PF_OXY_TEST_FO")]
     public void B777_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
@@ -136,9 +161,9 @@ public class FoSystemTestsStructureTests
     }
 
     [Theory]
-    // One step per side, ONE checklist line (see the 737 theory above).
-    [InlineData("CP_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
-    [InlineData("CP_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXYGEN")]
+    // One step per side, each ticking its own Preflight item (see the 737 theory above).
+    [InlineData("CP_OXY_TEST_CAPT", "OXY_TEST_CAPT", "PF_OXY_TEST_CAPT")]
+    [InlineData("CP_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXY_TEST_FO")]
     public void B777_CockpitPrepFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
     {
         var flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build();
