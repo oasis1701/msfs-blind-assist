@@ -81,6 +81,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- TFDi MD-11 control map. EmbeddedResource, not a copied file: the aircraft has zero
+         controls without it, so it must not be able to go missing from the output folder. -->
+    <EmbeddedResource Include="Resources\md11_control_map.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- NuGet Packages -->
     <PackageReference Include="GeoTimeZone" Version="6.1.0" />
     <PackageReference Include="Markdig" Version="1.3.2" />
@@ -132,6 +138,9 @@
     <None Update="HotkeyGuides\iFly_737MAX8_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\TFDi_MD11_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- Checklist Files -->
     <None Update="Checklists\FBW_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -177,6 +186,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-pmdg-efb-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-md11-efb-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-oans-agent.js">

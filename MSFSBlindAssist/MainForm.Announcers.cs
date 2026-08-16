@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -169,7 +169,12 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || uiEcho;
+        // Same pattern for the MD-11: it composes its flap read-out from INSIDE
+        // ProcessSimVarUpdate (two vars, one spoken fact) and returns true, so the generic
+        // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
+        bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
+            Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || md11Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -277,6 +282,15 @@ public partial class MainForm
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
                     Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the MD-11 Monitor Manager. Carries the most weight of any
+                // of these: the MD-11 announces 532 annunciator lamps, because with no readable
+                // displays those lamps ARE its instrument panel.
+                if (currentAircraft.AircraftCode == "TFDI_MD11" &&
+                    Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }

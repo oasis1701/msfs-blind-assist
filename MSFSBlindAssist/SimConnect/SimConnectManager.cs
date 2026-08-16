@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -194,6 +194,13 @@ public partial class SimConnectManager
     // PMDG data manager (generic slot; populated by InitializePMDG factory)
     private IPMDGDataManager? pmdgDataManager;
     public IPMDGDataManager? PMDGDataManager => pmdgDataManager;
+
+    // TFDi MD-11 MCDU client data area. Kept in its own slot rather than folded into the PMDG
+    // slot: it is not an IPMDGDataManager, and the MD-11 packs all three MCDUs into ONE area
+    // instead of PMDG's area-per-CDU. Same lifecycle as the PMDG manager, so it is created and
+    // disposed by the same InitializeAircraftData / DisposePMDG pair.
+    private MD11.Md11McduDataManager? md11McduDataManager;
+    public MD11.Md11McduDataManager? Md11McduDataManager => md11McduDataManager;
 
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
@@ -937,12 +944,22 @@ public partial class SimConnectManager
         };
 
         pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
+
+        if (aircraft.AircraftCode == "TFDI_MD11")
+        {
+            md11McduDataManager = new MD11.Md11McduDataManager(simConnect);
+            md11McduDataManager.Register();
+            md11McduDataManager.RequestAll();
+        }
     }
 
     public void DisposePMDG()
     {
         pmdgDataManager?.Dispose();
         pmdgDataManager = null;
+
+        md11McduDataManager?.Dispose();
+        md11McduDataManager = null;
     }
 
     public void Disconnect()

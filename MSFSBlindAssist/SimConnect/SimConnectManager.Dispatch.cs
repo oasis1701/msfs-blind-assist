@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -1450,5 +1450,10 @@ public partial class SimConnectManager
         {
             pmdgDataManager.ProcessClientData(data);
         }
+
+        // Forward client data to the MD-11 MCDU manager. It claims only its own three request
+        // ids and returns false for anything else, so the order relative to PMDG doesn't matter —
+        // the two never register overlapping ids (the MD-11's are namespaced into 0x4D44xxxx).
+        md11McduDataManager?.HandleClientData(data);
     }
 }
