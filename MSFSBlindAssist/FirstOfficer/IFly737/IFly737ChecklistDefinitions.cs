@@ -287,19 +287,15 @@ public static class IFly737ChecklistDefinitions
             // is a momentary that springs back; the lever items detect off
             // Engine_Start_Lever_Status_{0,1} (0-5 composite: 0-2 Cutoff, 3-5 Idle — >=3 covers
             // every fire-light variant of Idle), so a lever moved from the cockpit auto-ticks
-            // too. "Running" verification reads real N2 via the shared synthetic keys.
+            // too.
             ActionManual("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
                 (e, _) => e.SetEngStartSelector2(IFly737ActionExecutor.EngStartGround)),
             Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (at 25 percent N2)",
                 "Engine_Start_Lever_Status_1", v => v >= 3, (e, _) => e.SetFuelControl2(1)),
-            Auto("ES_E2_STAB", "ENGINE_START", "Engine 2: running", "FO_ENG2_N2",
-                v => v >= IFly737StateEvaluator.EngineRunningN2, action: null),
             ActionManual("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
                 (e, _) => e.SetEngStartSelector1(IFly737ActionExecutor.EngStartGround)),
             Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (at 25 percent N2)",
                 "Engine_Start_Lever_Status_0", v => v >= 3, (e, _) => e.SetFuelControl1(1)),
-            Auto("ES_E1_STAB", "ENGINE_START", "Engine 1: running", "FO_ENG1_N2",
-                v => v >= IFly737StateEvaluator.EngineRunningN2, action: null),
         }
     };
 

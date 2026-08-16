@@ -201,19 +201,15 @@ public static class PMDG737ChecklistDefinitions
             // solenoid and springs back at cutout, so a state condition would untick.
             // The lever items detect off the derived ENG_StartLever fields (1 = RUN,
             // from the fuel-valve annunciator), so a lever moved in the cockpit or via
-            // the panels auto-ticks too. "Running" verification reads real N2.
+            // the panels auto-ticks too.
             ActionManual("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
                 (e, _) => e.SetEngStartSelector2(0)),
             Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (at 25 percent N2)",
                 "ENG_StartLever_1", v => v > 0.5, (e, _) => e.SetFuelControl2(1)),
-            Auto("ES_E2_STAB", "ENGINE_START", "Engine 2: running", "FO_ENG2_N2",
-                v => v >= AircraftStateEvaluator.EngineRunningN2, action: null),
             ActionManual("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
                 (e, _) => e.SetEngStartSelector1(0)),
             Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (at 25 percent N2)",
                 "ENG_StartLever_0", v => v > 0.5, (e, _) => e.SetFuelControl1(1)),
-            Auto("ES_E1_STAB", "ENGINE_START", "Engine 1: running", "FO_ENG1_N2",
-                v => v >= AircraftStateEvaluator.EngineRunningN2, action: null),
         }
     };
 
