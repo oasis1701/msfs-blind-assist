@@ -145,6 +145,22 @@ public class CenterFuelPumpAutomationTests
         Assert.Equal(CenterFuelPumpAutomation.Action.TurnOn, a.Update(true, true, true, 2000, false, true, 1000));
     }
 
+    // Invalid quantity (NaN/negative/Infinity) must reset the confirm and never fire OFF on the
+    // invalid tick itself — only a fresh run of continuous VALID below-threshold ticks can confirm.
+    [Fact]
+    public void InvalidQuantity_ResetsConfirm_NeverFiresOffOnInvalidTick()
+    {
+        var a = new CenterFuelPumpAutomation();
+        // rising edge, first below-threshold tick (0 elapsed ms → no accrual yet)
+        Assert.Equal(Action.None, a.Update(true, true, false, 900, true, true, 0));
+        // an invalid reading must never fire OFF, and must reset the confirm window
+        Assert.Equal(Action.None, a.Update(true, true, false, double.NaN, true, true, 1000));
+        // fresh accrual: one valid below-threshold tick is not yet 2 s of continuous evidence
+        Assert.Equal(Action.None, a.Update(true, true, false, 900, true, true, 1000));
+        // second consecutive valid below-threshold tick completes the fresh 2 s confirm
+        Assert.Equal(Action.TurnOff, a.Update(true, true, false, 900, true, true, 1000));
+    }
+
     // ---- Refuel floor ratchet + margin (manual-off latch path — quantities well above the arm
     //      threshold so the assertions observe the clear/arm directly, matching the pre-existing
     //      pinned values). ----

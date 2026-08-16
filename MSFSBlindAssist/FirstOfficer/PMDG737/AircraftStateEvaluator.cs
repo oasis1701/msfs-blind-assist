@@ -135,7 +135,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsFuelPumpCtr2On()     => IsOn("FUEL_PumpCtrSw_1");
     public bool IsEitherCenterPumpOn() => IsFuelPumpCtr1On() || IsFuelPumpCtr2On();
 
-
     // NaN-safe (F13/M1): the old "// NaN → 0" comment was FALSE — (int)Math.Round(NaN) is
     // int.MinValue on x64. SafeRoundToInt returns 0 pre-snapshot.
     public int  FuelCenterLbs()        => FuelSystemLogic.SafeRoundToInt(GetValue("FUEL_QtyCenter"));

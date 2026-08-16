@@ -45,7 +45,11 @@ public sealed class CenterFuelPumpAutomation
     public const double RefuelMarginLbs = 250;
 
     /// <summary>Per-tick clamp on caller elapsed time (rejects a first-call/pause/hitch spike).
-    /// Bounds a single tick's contribution to a window.</summary>
+    /// Bounds a single tick's contribution to a window. A clamped maximum-length tick equals the
+    /// whole QtyOffConfirmSeconds (2 s) confirm window, so a single below-threshold sample after
+    /// a &gt;=2 s hitch satisfies the confirm on that one tick — accepted design: quantity is
+    /// stable, so the confirm only needs to ride out a single anomalous tick, not guard against
+    /// a genuinely fast crossing.</summary>
     private const double MaxElapsedMs = 2000;
     /// <summary>Un-sticks a pending command on a lost readback. Failure-path bound only,
     /// sized for the 20 s+ dispatch-gate tail.</summary>
@@ -136,6 +140,9 @@ public sealed class CenterFuelPumpAutomation
         // 5. below-threshold confirm — CONTINUOUS: any valid reading at/above the threshold
         //    (or an invalid one) resets it. Quantity does not flicker; this only rides out a
         //    single anomalous tick.
+        //    qtyValid also rejects NaN/negative/Infinity. The PMDG adapters route NaN through
+        //    SafeRoundToInt -> 0 before it reaches here, so this guard mainly protects
+        //    non-PMDG callers (iFly passes NaN through unconverted).
         bool qtyValid = !double.IsNaN(centerQtyLbs) && !double.IsInfinity(centerQtyLbs) && centerQtyLbs >= 0;
         if (qtyValid && centerQtyLbs < OffThresholdLbs)
             _belowMs = Math.Min(_belowMs + elapsedMs, QtyOffConfirmSeconds * 1000);
