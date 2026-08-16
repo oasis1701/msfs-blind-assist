@@ -848,8 +848,16 @@ internal static class GsxRangeBoundsResolver
         decimal current = ToDecimal(currentValue);
         decimal lo = min.HasValue ? ToDecimal(min.Value) : Math.Min(FallbackFloor, current);
         decimal hi = max.HasValue ? ToDecimal(max.Value) : Math.Max(FallbackCeiling, current);
+        // Never publish an inverted or zero-width range -- and never overflow widening it.
+        // `lo + 1m` throws when lo is already decimal.MaxValue, which an inverted published
+        // range of extreme values reaches (min above max, both out of double range); widen
+        // downwards instead. Same family as the ToDecimal defect above: the guard has to hold
+        // at the boundary it exists for.
         if (lo >= hi)
-            hi = lo + 1m; // Never publish an inverted or zero-width range.
+        {
+            if (lo < decimal.MaxValue) hi = lo + 1m;
+            else { hi = lo; lo -= 1m; }
+        }
 
         decimal increment = step.HasValue && step.Value > 0 ? ToDecimal(step.Value) : 1m;
         int decimalPlaces = isFloat ? 3 : 0;
@@ -858,11 +866,42 @@ internal static class GsxRangeBoundsResolver
         return new NumericRangeBounds(lo, hi, increment, decimalPlaces, value);
     }
 
-    /// <summary>Double -> decimal without an OverflowException at the extremes.
-    /// Shared with GsxSettingsForm's in-place range apply, so a republished
-    /// value goes through the same conversion the first render used.</summary>
+    /// <summary>
+    /// The exact bounds of <see cref="decimal"/>, written as <see cref="double"/> literals.
+    ///
+    /// <para>
+    /// <c>(double)decimal.MaxValue</c> CANNOT be used here: the conversion rounds UP to 2^96,
+    /// which is one greater than <c>decimal.MaxValue</c>, so clamping to it produced a value the
+    /// following cast still could not represent. These literals are the nearest doubles that
+    /// round DOWN into range. Measured boundary: 7.922816251426433e28 converts, 7.922816251426434e28
+    /// (= 2^96) throws.
+    /// </para>
+    /// </summary>
+    private const double DecimalMaxAsDouble = 7.922816251426433e28;
+    private const double DecimalMinAsDouble = -7.922816251426433e28;
+
+    /// <summary>
+    /// Double -> decimal without an OverflowException at the extremes — which the previous
+    /// version did not deliver. It read
+    /// <c>(decimal)Math.Clamp(value, (double)decimal.MinValue, (double)decimal.MaxValue)</c>, and
+    /// was byte-for-byte equivalent to a bare <c>(decimal)value</c> in every case: it threw on
+    /// 1e30, on NaN and on Infinity exactly as the unguarded cast does, because the clamp BOUND
+    /// itself rounded out of range (see <see cref="DecimalMaxAsDouble"/>) and because
+    /// <c>Math.Clamp(NaN, …)</c> returns NaN. A helper whose entire purpose is to prevent an
+    /// exception, prevented none, while its own doc comment asserted the opposite.
+    ///
+    /// <para>
+    /// Non-finite input now yields 0 rather than throwing. GSX should never publish one —
+    /// <c>GsxSettingsSchema.NumOrNull</c> rejects it at ingest, which is the real fix — but this
+    /// is the last line before a <c>NumericUpDown</c> on the UI thread, and the throw path had no
+    /// <c>catch</c> anywhere between here and <c>AccessGSXForm.OnSettingsChangedUi</c>: it
+    /// unwound into the message pump, so one malformed field cost the whole settings window AND
+    /// the rest of that GSX frame's announcement processing.
+    /// </para>
+    /// </summary>
     internal static decimal ToDecimal(double value) =>
-        (decimal)Math.Clamp(value, (double)decimal.MinValue, (double)decimal.MaxValue);
+        double.IsNaN(value) ? 0m
+        : (decimal)Math.Clamp(value, DecimalMinAsDouble, DecimalMaxAsDouble);
 }
 
 internal readonly record struct NumericRangeBounds(

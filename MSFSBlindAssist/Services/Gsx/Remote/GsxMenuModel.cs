@@ -160,12 +160,19 @@ public sealed class GsxMenuModel
         _ => (index + 1).ToString(CultureInfo.InvariantCulture),
     };
 
+    // Every accessor guards ValueKind == Object before TryGetProperty, which THROWS
+    // InvalidOperationException on anything else. Guarded here rather than relied on at each
+    // call site: the guard was missing in four of the seven copies of these helpers across this
+    // namespace, safe only because every current caller happened to pre-check, which is not a
+    // property a future edit can be expected to preserve.
     private static string? Str(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static IReadOnlyList<string> StrList(JsonElement e, string name)
     {
-        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        if (e.ValueKind != JsonValueKind.Object
+            || !e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
             return Array.Empty<string>();
         var list = new List<string>();
         foreach (var i in v.EnumerateArray())
@@ -175,7 +182,8 @@ public sealed class GsxMenuModel
 
     private static IReadOnlyList<bool> BoolList(JsonElement e, string name)
     {
-        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        if (e.ValueKind != JsonValueKind.Object
+            || !e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
             return Array.Empty<bool>();
         var list = new List<bool>();
         foreach (var i in v.EnumerateArray())

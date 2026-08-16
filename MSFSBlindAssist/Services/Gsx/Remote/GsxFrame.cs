@@ -124,18 +124,26 @@ public sealed class GsxFrame
         }
     }
 
+    // ValueKind == Object guarded before TryGetProperty, which throws InvalidOperationException
+    // on anything else. Parse() promises never to throw, and it reads `type` off the root before
+    // anything has established that the root is an object — the ValueKind check above happens to
+    // cover that today, but the guarantee should not rest on statement order in one caller.
     private static string? Str(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
     private static bool Bool(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.True;
 
     private static int Int(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : 0;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : 0;
 
     private static IReadOnlyList<string> StrList(JsonElement e, string name)
     {
-        if (!e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
+        if (e.ValueKind != JsonValueKind.Object
+            || !e.TryGetProperty(name, out var v) || v.ValueKind != JsonValueKind.Array)
             return Array.Empty<string>();
         var list = new List<string>();
         foreach (var item in v.EnumerateArray())

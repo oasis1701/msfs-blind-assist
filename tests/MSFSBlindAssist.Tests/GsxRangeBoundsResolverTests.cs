@@ -135,4 +135,51 @@ public class GsxRangeBoundsResolverTests
         Assert.True(bounds.Value <= bounds.Maximum);
         Assert.Equal(10m, bounds.Value);
     }
+
+    /// <summary>
+    /// ToDecimal exists to make the double -> decimal conversion safe at the extremes, and for a
+    /// while it did not: clamping to (double)decimal.MaxValue rounds UP to 2^96, one greater than
+    /// decimal.MaxValue, so the cast still overflowed — the helper was byte-for-byte equivalent to
+    /// the bare cast it replaced. NaN slipped through the same way, Math.Clamp returning NaN.
+    /// These were 22 orders of magnitude above anything the old tests reached (they topped out at
+    /// 5,000,000), which is why a helper that guarded nothing looked covered.
+    /// </summary>
+    [Theory]
+    [InlineData(1e30)]
+    [InlineData(-1e30)]
+    [InlineData(7.922816251426434e28)]   // exactly 2^96 — the measured throw boundary
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    [InlineData(double.NaN)]
+    public void ToDecimal_never_throws_at_the_extremes(double value)
+    {
+        decimal result = GsxRangeBoundsResolver.ToDecimal(value);
+
+        Assert.True(result >= decimal.MinValue && result <= decimal.MaxValue);
+        if (double.IsNaN(value)) Assert.Equal(0m, result);
+    }
+
+    [Fact]
+    public void ToDecimal_is_exact_for_ordinary_values()
+    {
+        Assert.Equal(0m, GsxRangeBoundsResolver.ToDecimal(0));
+        Assert.Equal(2.5m, GsxRangeBoundsResolver.ToDecimal(2.5));
+        Assert.Equal(-300m, GsxRangeBoundsResolver.ToDecimal(-300));
+    }
+
+    /// <summary>
+    /// And the same extremes must not reach ToDecimal in the first place: a whole published range
+    /// of non-finite values still resolves to usable bounds rather than throwing out of the render.
+    /// </summary>
+    [Fact]
+    public void Resolve_survives_a_range_published_entirely_out_of_double_range()
+    {
+        var bounds = GsxRangeBoundsResolver.Resolve(
+            double.NegativeInfinity, double.PositiveInfinity, double.NaN,
+            currentValue: 1e30, isFloat: true);
+
+        Assert.True(bounds.Minimum <= bounds.Maximum);
+        Assert.True(bounds.Value >= bounds.Minimum);
+        Assert.True(bounds.Value <= bounds.Maximum);
+    }
 }

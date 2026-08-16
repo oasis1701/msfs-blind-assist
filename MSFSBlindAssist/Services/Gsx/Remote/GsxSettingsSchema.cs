@@ -170,9 +170,29 @@ public sealed class GsxSettingsSchema
         _ => GsxFieldType.Unknown,
     };
 
+    // ValueKind == Object guarded before TryGetProperty, which throws InvalidOperationException
+    // on anything else — see the same note in GsxMenuModel.
     private static string? Str(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
+    /// <summary>
+    /// A numeric field, or null when absent, wrong-shaped, or NOT FINITE.
+    ///
+    /// <para>
+    /// The finite check is load-bearing, not defensive dressing. System.Text.Json reports a JSON
+    /// literal out of double's range (<c>1e400</c>) as <c>ValueKind.Number</c> whose
+    /// <c>GetDouble()</c> is <c>+Infinity</c>, and these values flow into
+    /// <c>GsxRangeBoundsResolver</c> and on to a <c>NumericUpDown</c>, whose <c>decimal</c>
+    /// cannot represent infinity or NaN at all — <c>(decimal)</c> throws
+    /// <c>OverflowException</c> on both. Rejecting at ingest keeps the whole settings page a
+    /// function of well-formed input; the alternative is every downstream consumer remembering
+    /// that a "number" here might not be one. Also switched from a bare <c>GetDouble()</c> to
+    /// <c>TryGetDouble</c>, matching every sibling in this namespace.
+    /// </para>
+    /// </summary>
     private static double? NumOrNull(JsonElement e, string name)
-        => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out double d) && double.IsFinite(d)
+           ? d : null;
 }
