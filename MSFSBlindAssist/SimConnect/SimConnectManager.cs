@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -57,6 +57,9 @@ public partial class SimConnectManager
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
+    // assist. Fired only while StartFlareAssistMonitoring is active.
+    public event EventHandler<FlareAssistData>? FlareAssistDataReceived;
     /// <summary>
     /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
     /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
@@ -389,6 +392,8 @@ public partial class SimConnectManager
         TAKEOFF_ASSIST_DATA = 15,
         // Ambient weather data (on-request)
         WEATHER_DATA = 16,
+        // Manual-landing flare/rollout assist consolidated data (SIM_FRAME while engaged)
+        FLARE_ASSIST_DATA = 17,
         // Hotkey readout definitions (one-shot, used by aircraft definitions)
         DEF_HEADING = 300,
         DEF_SPEED = 301,
@@ -561,6 +566,39 @@ public partial class SimConnectManager
         // 5 kt actual GS and "10 kt" at 15-20 kt actual. Takeoff-assist still
         // reads IAS for its V-speed callouts (separate field, intentional).
         public double GroundVelocityKnots;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FlareAssistData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double HeadingMagnetic;      // degrees (requested in degrees, unlike TakeoffAssistData)
+        public double MagneticVariation;    // degrees, East positive
+        public double GroundSpeedKnots;
+        public double VerticalSpeedFPM;
+        public double AGL;                  // PLANE ALT ABOVE GROUND — aircraft DATUM height, feet.
+                                            // Subtract the aircraft's FlareAltitudeBiasFt for gear height.
+        public double PitchRadians;         // body axis: negative = nose up (SimConnect convention)
+        public double OnGround;             // SIM ON GROUND (bool as double) — fresh at SIM_FRAME rate,
+                                            // unlike the 1 Hz continuous-batch SIM_ON_GROUND sample.
+        public double AltitudeMslFt;        // PLANE ALTITUDE — TRUE MSL datum altitude, feet. Used by the
+                                            // approach phase to measure the glidepath against the runway's
+                                            // navdata threshold ELEVATION. AGL cannot do this job: it follows
+                                            // the terrain under the aircraft, so rising/falling ground on the
+                                            // approach path would bend the reference glidepath with it.
+        public double BankDegrees;          // PLANE BANK DEGREES — SimConnect convention: POSITIVE = LEFT.
+                                            // Spoken (not toned) during the approach phase only; formatted by
+                                            // HandFlyManager.FormatBankAnnouncement, which expects this raw
+                                            // left-positive sign. Do NOT pass it to any tone/pan API without
+                                            // converting — those are right-positive.
+        public double GroundTrackTrue;      // GPS GROUND TRUE TRACK — the direction the aircraft is actually
+                                            // MOVING over the ground, degrees TRUE. Differenced against the
+                                            // true heading to get the live drift angle, which turns the
+                                            // approach phase's track-space intercept back into a heading the
+                                            // pilot can dial into HDG SEL. Not interchangeable with heading:
+                                            // in a crosswind they differ by exactly the error this exists to
+                                            // remove.
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

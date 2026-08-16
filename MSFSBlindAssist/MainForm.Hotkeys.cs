@@ -734,7 +734,12 @@ public partial class MainForm
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants
             // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
-            handFlyManager.ResumeAudio();
+            // EXCEPT while the manual-landing flare assist is engaged: VG auto-deactivates
+            // on the touchdown edge while the flare assist's rollout pan tone is running,
+            // and unmuting HandFly's tone there would stack a second tone on the rollout.
+            // The flare assist's own EngagedChanged(false) resumes HandFly when it ends.
+            if (!flareAssistManager.IsEngaged)
+                handFlyManager.ResumeAudio();
         }
     }
 

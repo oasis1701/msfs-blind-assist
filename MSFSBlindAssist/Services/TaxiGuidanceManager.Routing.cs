@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -384,6 +384,7 @@ public partial class TaxiGuidanceManager
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
+            _landingExitOffPavement = true;   // a new route re-decides this at its own handoff
             _approachAnnounced = false;
             _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;

@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -176,6 +176,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // terminates at a runway exit, not a gate) — drives the post-exit arrival
     // announcement in HandleArrival.
     private bool _isLandingExitRoute = false;
+    // Whether the landing-exit handoff actually ended up off the runway pavement.
+    // Set by ResolveExitHandoffDestination from the vacate walk's final lateral
+    // offset; read by the arrival callout, which must not tell a pilot to hold
+    // position while they are still on the concrete. Defaults true so any path that
+    // never reaches the handoff keeps the original wording.
+    private bool _landingExitOffPavement = true;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -2452,9 +2458,23 @@ public partial class TaxiGuidanceManager : IDisposable
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
             string exitName = _route?.DestinationName ?? "the exit";
-            AnnounceInstruction(
-                $"Off the runway at {exitName}. Stop and hold position. " +
-                $"Open the taxi planner to set a route to your gate.");
+            if (_landingExitOffPavement)
+            {
+                AnnounceInstruction(
+                    $"Off the runway at {exitName}. Stop and hold position. " +
+                    $"Open the taxi planner to set a route to your gate.");
+            }
+            else
+            {
+                // The route ended with the aircraft still within the runway pavement
+                // because the navdata maps no taxiway beyond this junction. "Hold
+                // position" here would stop a blind pilot on an active runway, so say
+                // what is actually true and let them keep rolling clear.
+                AnnounceInstruction(
+                    $"Taxiway data ends at {exitName}. You may still be on the runway — " +
+                    $"continue ahead until clear, then open the taxi planner to set a " +
+                    $"route to your gate.");
+            }
         }
         else if (!_dockingActive)
         {
@@ -2523,6 +2543,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
+        _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         ResetRolloutApproachLatches();
