@@ -1,0 +1,1 @@
+Airport stand designators are now unified across the app — the taxi planner, the gate teleport list, Where Am I, the SayIntentions gate check and the TCAS traffic list. Parked at the right stand, you are no longer told you are at the wrong one because two parts of the app disagreed about its concourse letter.
