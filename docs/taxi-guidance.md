@@ -262,7 +262,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
-**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built directly from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source the gate-teleport dialog uses — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
+**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built from `Services/ParkingSpotSource.GetSelectableGates(...)` — the same resolution the gate-teleport dialog uses, and the SELECTABLE half of the seam whose NAMING half (`GetNamedSpots`) feeds the graph builds and the SayIntentions parked-at-the-right-stand check; the two shapes deliberately return different lists but agree on every stand's name (see "One name for a stand" below) — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
 
 ### Taxiway connectivity in the route form
 
@@ -358,6 +358,19 @@ The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 6. **Nearest node** (≤ 60 m) with at least one taxiway name → `Near taxiway X`.
 
 Perpendicular distance uses equirectangular projection (sub-cm accuracy at taxi scale) and clamps to segment endpoints so the foot of the perpendicular falling outside still counts.
+
+### One name for a stand — where "Gate X" in that readout comes from
+
+Step 1 above ("Parking node within 40 m → `Gate X`") reads `TaxiNode.ParkingName`, which `TaxiGraph.Build`'s parking pass writes from whatever `List<ParkingSpot>` it was handed. **Every graph build in the app now takes that list from `Services/ParkingSpotSource.GetNamedSpots(dataProvider, gateSource, icao)`**: navdata's own parking list with the concourse letter **corrected in place** from the authoritative gate list (`GsxStandNameOverlay`), then `AugmentingAirportDataProvider.AugmentParking` re-run so this scenery's online aliases resolve against the corrected identity. So a stand is called the same thing in the taxi dialog's destination combo, the gate-teleport list, `gate.select`, Where-Am-I and SayIntentions' "are you at your assigned gate" check.
+
+Before that seam, only the dialogs went through `GateDataSource.GetGates`; everything else called `IAirportDataProvider.GetParkingSpots` and got navdata's name. At KJFK Terminal 4 those disagree — GSX says **B 25** (what a controller and SayIntentions say), navdata says **A 25** — and one consumer was not cosmetic: an aircraft parked exactly at B25 was told *"Aircraft appears near A 25, not assigned gate Terminal 4 Gate B25."* See [gsx.md](gsx.md) for the measurement behind the corrected letter.
+
+Four properties worth knowing before touching this:
+
+- **The list handed to `Build` must be navdata's own SET — same spots, same count, same coordinates, same order.** Correcting names in place rather than swapping in the GSX list is not stylistic. The parking pass writes `node.Type = TaxiNodeType.Parking` as well as the name, and unlike `ParkingName` — read only by `DescribeLocation` — `Type` is read by `NamedHoldingPointResolver` (which **skips** parking nodes when snapping a named holding point, a Progressive-Taxi terminator target), by `HoldShortNodeResolver`, and by the route truncation in `TaxiGuidanceManager.Routing`. A different set of spots marks a different set of nodes, so **a hold-short could move** — and that resolver's snap radii are probe-pinned against real navdata and live OSM at six airports precisely so they are not re-tuned by accident. The GSX list is also *smaller*: it excludes Vehicle/Fuel stands and drops stands with no usable heading (230 of KJFK's 231 survive `GateDataSource`), so swapping it in would strip the Where-Am-I label off stands that have one today. **Naming a stand and deciding which nodes are parking are different jobs, and only the first may change.**
+- **`GetNamedSpots` vs `GetSelectableGates`.** The seam has two shapes on purpose. Anything that must *act* on a stand — the destination combo, the gate-teleport list, `gate.select` — needs `GetSelectableGates`, i.e. GSX's own list, because it carries `GsxIdentifier`, the docking stop position, the max wingspan for the fit filter and `TerminalName` for disambiguating identically-named stands. Anything that merely *names* a stand uses `GetNamedSpots`. Both derive the name from the same authority, which is what makes them agree.
+- **The four graph-build sites are `TaxiGuidanceManager.DescribeCurrentLocation` / `TryDetectRunwayUnderAircraft` / `LoadRoute` (its no-prebuilt-graph branch) and the two forms (`TaxiAssistForm`, `LandingExitForm`).** The manager's three go through the injectable `TaxiGuidanceManager.ParkingSpotSupplier`, which **defaults to `dataProvider.GetParkingSpots`** when unwired — that default is what keeps the xUnit suite and any non-MainForm caller byte-identical to the pre-seam behaviour. `LandingExitForm` is in scope despite never speaking a stand name: the graph it builds is handed to `LandingExitPlanner.SetExit`, passed to `LoadRoute` as `prebuiltGraph`, becomes `TaxiGuidanceManager._graph`, and `DescribeCurrentLocation` **prefers** that graph — so it supplies the Where-Am-I stand names for the whole rollout and taxi-in.
+- **It runs off the UI thread.** Where-Am-I and the takeoff-assist runway probe both reach their graph builds from inside a `RequestAircraftPositionAsync` callback, so MainForm's supplier builds a fresh `GateDataSource` per call rather than sharing one with the UI thread (its per-ICAO caches are plain `Dictionary`). That is affordable only because every call site is a graph build — once per airport, then cached. **Never put the supplier on a position update.**
 
 ## Taxi Assist Form (route entry)
 
@@ -550,9 +563,12 @@ When **GSX Pro** is running and has a profile for the airport, it becomes the
 **authoritative** source for gates/stands — GSX's metadata (heavy/jetway/VDGS,
 exact positions) is far more accurate than navdata's, so navdata's own
 heavy/jetway classification is never shown when GSX can answer. GSX availability
-for gate sourcing = `GsxService.CouatlStarted` (running this session) AND a
-matching profile exists. When GSX is absent, everything falls back to navdata
-unchanged.
+for gate sourcing = GSX running this session — `GsxService.CouatlStarted` (the
+Remote API's flag) OR `SimConnectManager.GsxCouatlStartedLVar` (GSX's own
+`L:FSDT_GSX_COUATL_STARTED`, which every GSX build publishes, Remote API or not;
+see [gsx.md](gsx.md)) — AND a matching profile exists. Never the Remote flag alone:
+that silently floored these local-file features at GSX 4.0.1. When GSX is absent,
+everything falls back to navdata unchanged.
 
 ### Gate source (GSX-authoritative overlay)
 
@@ -577,10 +593,16 @@ Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
 filtering — works with or without GSX.
 
 **Per-ICAO gate-list cache.** `TaxiAssistForm` caches the airport's gate list as
-(spot, resolved graph node) pairs per ICAO; the search box and the fitting filter
-then filter **in memory** on each keystroke (matching the `GateTeleportForm`
-pattern). Do not reintroduce per-keystroke directory enumeration + navdata query
-+ per-spot nearest-node resolution on the UI thread.
+(spot, resolved graph node) pairs per (ICAO, gate-list SOURCE token —
+`GateDataSource.GetGateListVersion`, an O(1) compare-only token that moves when GSX
+publishes the airport after the list was built); the search box and the fitting
+filter then filter **in memory** on each keystroke (matching the `GateTeleportForm`
+pattern). The token is re-checked on show and at the top of Calculate, rebuilding only
+on an UPGRADE (fallback → API, or a fresh API publish), never on the downgrade a
+transient GSX drop causes; a chosen stand the rebuilt list no longer carries leaves
+NOTHING selected (never item 0) and is announced. Do not reintroduce per-keystroke
+directory enumeration + navdata query + per-spot nearest-node resolution on the UI
+thread — the token check is a property read, nothing more.
 
 ### "Show only fitting stands" filter
 
@@ -595,49 +617,51 @@ fixed.)
 ### Auto-select gate on Calculate Route
 
 Setting `GsxAutoSelectGateOnRoute` (default on). When Taxi Assist calculates a
-route to a gate and GSX is active, `GsxGateSelector` drives GSX's hierarchical
-parking menu to select that exact stand — structure-agnostic
-(terminal/concourse/flat), text-matching, and **never** chooses a WARP /
-Follow-Me / reposition entry (positive-safe-action-only, abort on uncertainty).
+route to a gate, `GsxRemoteGateSelector` sends GSX's documented `gate.select`
+verb over the Couatl Remote API with the stand's own identifier
+(`ParkingSpot.GsxIdentifier`, taken verbatim from
+`handlerData.airport.parkings` — never a label rebuilt from `Describe()` or
+`Name`/`Number`) — one request, one typed response, no menu interaction of any
+kind. The selector feature-checks the `gate` token in `hello.capabilities`
+first (GSX 4.0.8+); when it's absent, nothing is sent and the pilot still
+routes and taxis the aircraft manually, they just have to select the gate in
+GSX themselves. That last part is SPOKEN, once per dialog session, but only
+when GSX advertised a capability list that simply lacked `gate` — positive
+evidence of a connected 4.0.1-4.0.7 build. An empty list says nothing about
+the version (usually the Remote API isn't connected at all), so it stays
+silent rather than send the pilot after an update they may already have.
 
-The driver (`GsxMenuAutomation` over `GsxService`) is a **backtracking DFS**
-(`GsxGateSelector.TraverseAsync`): at each menu level it matches a gate leaf,
-else drills the best unvisited category (strongest concourse score first) and
-recurses, pressing GSX's "↑ Back" to try the next sibling when a branch misses —
-so it finds stands even when GSX files them under a different apron than their
-letter (e.g. OMDB groups C47–C64 outside "Apron C"). Apron submenus default to a
-filtered view, so the DFS clicks **"Show all positions"** first to reveal stands
-hidden by the size filter. All choices are page-relative and sent only while the
-live menu is on that page. Budget: 600 menu reads / 180 s for very large
-airports. **Changing gates:** when a gate is already selected, the top menu is
-"Change parking or service"; the selector drills its "Change Facility" entry to
-re-open the position selector, then traverses to the new stand.
+GSX's result is interpreted, never guessed. `services_active` (GSX already
+committed at a different gate) retries **exactly once** with
+`revokeServices: true` and is announced, so the pilot knows the previous
+stand's services were torn down. `assigned_to_other` (the stand is AI-occupied)
+is announced and **never** auto-`force`d — overriding it silently would put a
+blind pilot nose-to-nose with an aircraft they cannot see. `ambiguous` (several
+stands matched the identifier) is announced rather than guessed at. A
+`too_small` warning on an otherwise-successful selection is always spoken — it
+is GSX's own verdict on the real airframe, and there is no other route to that
+information. `already_parked`/`already_selected` — GSX had already prepared (or
+you are already parked at) that stand — are SPOKEN too ("GSX is already set up at
+Gate A12."): the vendor guide's "nothing to do" is about not retrying, not about
+not telling the pilot, and silence there is the wrong-stand failure by another
+route (see the invariant in CLAUDE.md and [gsx.md](gsx.md)). Every announcement
+is QUEUED (`Announce`), never immediate, so it can't interrupt a taxi callout. See `GsxGateSelectAnnouncer` for exactly which of
+`gate.select`'s outcomes are spoken and why the rest are deliberately silent.
 
-Success is confirmed by GSX's `FSDT_GSX_SetGate_Name/Number/Suffix` L-vars. These
-update with a lag (and briefly hold the previous gate when changing), so after
-choosing the leaf + the safe servicing action ("Show me this spot and activate",
-which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
-they match before announcing success. Tuning lives in one place
-(`GsxMenuClassifier`); the full walk is logged to
-`%APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+**Changing gates:** re-running Calculate to a different stand simply sends a
+new `gate.select`; the reentrancy guard SERIALIZES overlapping calls (so two
+Calculate clicks can't have the second call's `revokeServices` race the
+first's) rather than rejecting the second outright — a pilot who spots a wrong
+pick and immediately corrects it gets GSX ending on their last request, not a
+dropped correction behind a busy message.
 
-**Matching and reentrancy hardening:**
-
-- **Bare-number leaf fallback.** A letterless GSX menu leaf ("Parking 209") now
-  matches a navdata-lettered target ("P 209" — the letter was borrowed by the
-  merger for display) on bare number alone. Exact identity match is always tried
-  first; the fallback is logged as `MATCH-BARENUMBER`. Fixes a guaranteed
-  "not found" at EGLL-style airports.
-- **`SelectGateAsync` reentrancy latch** (`Interlocked`). Two Calculate clicks
-  could interleave two DFS traversals on one live GSX menu — the `IsMenuActive`
-  guard reads false during every menu transition, so it cannot prevent the
-  overlap — pressing arbitrary wrong entries. The second call now fails fast.
-- **Classifier ordering** (`GsxMenuClassifier`): the `"(N suitable parkings)"`
-  count-suffix Category check runs **before** the Back check (a group like
-  "Main Apron (12 suitable parkings)" classified as Back made every stand inside
-  unreachable and desynced `BackOutAsync`), and the "main"/"top" back-patterns
-  are full phrases ("main menu" / "back to top") so apron and terminal names
-  cannot false-positive as Back.
+Confirmation is immediate and synchronous, straight off `gate.select`'s own
+result payload — there is no L:var to poll and no lag. See
+[GSX Integration](gsx.md) for the full verb/result shapes, the two
+retained `.ini`/`.py`-parsing paths (remote-airport gate lists; the docking
+stop position, which the Remote API cannot supply), and
+`gsx-gate-select.log`'s per-attempt line (identifier sent, resolved gate,
+warnings, outcome).
 
 ## VDGS / Marshalling Docking
 

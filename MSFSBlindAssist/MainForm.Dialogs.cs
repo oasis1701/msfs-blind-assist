@@ -32,12 +32,13 @@ public partial class MainForm
             return;
         }
 
-        if (!_gsxService.IsConnected)
-        {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
-            return;
-        }
-
+        // Deliberately NOT gated on IsConnected. That gate refused to open the
+        // window whenever the GSX Remote API was unreachable — which is exactly
+        // the case the window exists to explain: its status box carries
+        // GsxService.UnavailableReason, and F5 speaks it. Refusing to open, with
+        // an announcement blaming the simulator, left a pilot on an older GSX
+        // with no way to find out what was actually wrong. There is no fallback
+        // transport to degrade to, so this explanation IS the mitigation.
         if (_accessGsxForm == null || _accessGsxForm.IsDisposed)
         {
             _accessGsxForm = new Forms.AccessGSXForm(_gsxService, announcer);
@@ -162,7 +163,18 @@ public partial class MainForm
         {
             if (tcasForm == null || tcasForm.IsDisposed)
             {
-                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider());
+                // The gate source is what makes the TCAS "at Gate B 25" label agree with every
+                // other stand readout (taxi dialog, Where-Am-I, SayIntentions) -- see
+                // Services/ParkingSpotSource. Passed as a FACTORY so the resolver creates it
+                // lazily, on first use rather than on window open.
+                //
+                // This resolver is built ONCE per TcasForm and captures the provider it is given
+                // in a readonly field, so a DATABASE switch is invalidated by rebuilding the
+                // window -- RefreshDatabaseProvider closes it, exactly as it closes the EFB. Do
+                // not re-add the claim that ClearCache covers that: it has no production caller,
+                // and it clears the spot cache without touching the readonly provider, so it
+                // could not fix a database switch even if something did call it.
+                var gateResolver = new Services.GateResolver(Database.DatabaseSelector.SelectProvider(), BuildGateDataSource);
                 tcasForm = new Forms.TcasForm(tcasService!, announcer, gateResolver);
             }
             tcasForm.ShowForm();
@@ -740,28 +752,62 @@ public partial class MainForm
         });
     }
 
+    /// <summary>
+    /// Wires <see cref="Services.GateDataSource"/> to live GSX data: the pre-existing
+    /// <c>.ini</c>/navdata path (unchanged, gated on <c>CouatlStarted</c> + a matching
+    /// profile), plus the Remote API path added by Spec 2 — GSX's own
+    /// <c>handlerData.airport.parkings</c> for whichever airport GSX currently has loaded.
+    /// The two extra delegates default to "off" when omitted (see
+    /// <see cref="Services.GateDataSource"/>'s own constructor doc), so wiring them here is
+    /// what actually turns the Remote API gate-list path on in the running app — without
+    /// this, <see cref="Services.GateDataSource.GetGates"/> can never take that branch no
+    /// matter what GSX publishes.
+    /// </summary>
     private Services.GateDataSource? BuildGateDataSource()
     {
         if (airportDataProvider == null) return null;
-        // GSX gates only when GSX is running this session (Couatl started) AND a profile matches.
+        // GSX gates (.ini/navdata path) only when GSX is running this session (Couatl
+        // started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
+        // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main
+        // SimConnect connection. The L:var is what every GSX build publishes, Remote API or
+        // not — the .ini overlay, deice pads and profile stop positions are local-file
+        // features that never needed the WebSocket, and gating them on the Remote flag
+        // alone silently switched them off for any GSX build older than 4.0.1 (docs/gsx.md:
+        // "neither is a version floor").
         return new Services.GateDataSource(
             airportDataProvider,
-            () => _gsxService != null && _gsxService.CouatlStarted);
+            () => (_gsxService != null && _gsxService.CouatlStarted)
+                  || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar),
+            capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
+            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport(),
+            // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a
+            // per-ICAO gate cache can notice GSX (re)publishing this airport per keystroke.
+            handlerDataVersion: () => _gsxService?.HandlerDataVersion ?? 0);
     }
 
     /// <summary>
-    /// Constructs a <see cref="Services.Gsx.GsxGateSelector"/> when GSX is
-    /// available in this session. Returns <c>null</c> when there is no GSX
-    /// service (GSX not installed / not yet started), so callers can simply
-    /// null-check before using it.
+    /// Constructs a <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> when GSX is
+    /// available in this session. Returns <c>null</c> when there is no GSX service (GSX not
+    /// installed / not yet started), so callers can simply null-check before using it.
+    /// Sends <c>gate.select</c> over the Remote API — one request, one typed response, no
+    /// menu interaction — replacing the retired menu-walking <c>GsxGateSelector</c>. The
+    /// selector itself feature-checks the <c>gate</c> capability before ever sending
+    /// anything (GSX 4.0.8+), so this is safe to construct even against an older GSX or one
+    /// that hasn't sent its <c>hello</c> frame yet.
     /// </summary>
-    private Services.Gsx.GsxGateSelector? BuildGsxGateSelector()
+    private Services.Gsx.Remote.GsxRemoteGateSelector? BuildGsxGateSelector()
     {
-        if (_gsxService == null) return null;
-        return new Services.Gsx.GsxGateSelector(
-            _gsxService,
-            new Services.Gsx.GsxMenuAutomation(_gsxService),
-            announcer);
+        // Captured as a local so the lambdas below close over a specific, narrowed-non-null
+        // GsxService instance rather than the mutable _gsxService field -- flow analysis
+        // cannot trust a field to stay non-null inside a closure that may run long after
+        // this null check (a later aircraft-switch teardown could null the field out), and
+        // a local copy is also the semantically right behavior: this selector should keep
+        // talking to the SAME GsxService instance for its lifetime.
+        var gsxService = _gsxService;
+        if (gsxService == null) return null;
+        return new Services.Gsx.Remote.GsxRemoteGateSelector(
+            async (verb, args) => (await gsxService.SendCommandAsync(verb, args)).Frame,
+            () => gsxService.Capabilities);
     }
 
     /// <summary>
@@ -872,7 +918,7 @@ public partial class MainForm
 
         landingExitForm = new LandingExitForm(
             airportDataProvider, announcer, landingExitPlanner, presetIcao, presetRunway,
-            simConnectManager);
+            simConnectManager, BuildGateDataSource());
 
         landingExitForm.Show();
         landingExitForm.BringToFront();

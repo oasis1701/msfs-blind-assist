@@ -1,0 +1,326 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using MSFSBlindAssist.Utils.Logging;
+
+namespace MSFSBlindAssist.Services.Gsx.Remote;
+
+/// <summary>
+/// The WebSocket link to GSX's Couatl Remote API. Nothing above this class knows
+/// about sockets.
+///
+/// GSX serves the PWA over HTTP and the API over an Upgrade on the SAME port, so
+/// the URL is simply ws://127.0.0.1:8744/. No pairing, no auth.
+/// </summary>
+public sealed class GsxRemoteConnection : IDisposable
+{
+    public const int DefaultPort = 8744;
+
+    // Fast-start backoff: after a RESTART_COUATL the listener returns within a few
+    // hundred ms. A flat 2 s retry makes the app look dead through every restart.
+    private const int ReconnectMinMs = 250;
+    private const int ReconnectMaxMs = 600;
+    private const int CommandTimeoutMs = 5000;
+    private const int ReceiveBufferBytes = 64 * 1024;
+
+    private static readonly string SubscribeJson =
+        """{"type":"subscribe","channels":["state","prompts","toasts"]}""";
+
+    public event Action<GsxFrame>? FrameReceived;
+    public event Action<bool>? ConnectedChanged;
+
+    private readonly int _port;
+    private readonly GsxPendingRequests _pending = new();
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+
+    private CancellationTokenSource? _cts;
+    private ClientWebSocket? _ws;
+    private Task? _loop;
+    private volatile bool _connected;
+    private bool _disposed;
+
+    public GsxRemoteConnection(int port = DefaultPort) => _port = port;
+
+    public bool IsConnected => _connected;
+
+    public void Start()
+    {
+        if (_disposed) return;
+
+        // Stop() only cancels and does not (and must not) block waiting for RunAsync to
+        // unwind, so a Stop() immediately followed by a Start() — a SimConnect
+        // disconnect->reconnect flap, an aircraft switch — routinely lands while the old
+        // loop is still mid-flight. Two RunAsync instances must never overlap (both would
+        // write the shared _ws/_connected fields and both call FailAll, corrupting
+        // whichever connection wins the race), so the new loop is CHAINED to begin only
+        // once the previous one has fully unwound. It used to be REFUSED instead, and the
+        // one caller (GsxService.Start) had already latched itself started and never
+        // retried, so the whole GSX integration stayed down until the next full
+        // disconnect/reconnect cycle while announcing a misleading "needs GSX 4.0.8"
+        // reason. Chaining keeps the no-overlap guarantee without asking anyone to retry.
+        try { _cts?.Dispose(); } catch { /* already disposed */ }
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        // Capture the TOKEN now, not the source: a further Start()/Dispose() before a
+        // deferred loop below has begun disposes this source, and CancellationTokenSource
+        // .Token throws ObjectDisposedException then — the queued loop would fault (a
+        // misleading ERROR log line) instead of simply observing "cancelled" and exiting.
+        CancellationToken token = cts.Token;
+
+        Task? previous = _loop;
+        if (previous != null && !previous.IsCompleted)
+        {
+            Log.Debug("Gsx", "Remote API start deferred until the previous receive loop unwinds.");
+            // ContinueWith runs regardless of how the old loop ended (its own faults are
+            // already observed below), then Unwrap so _loop tracks the NEW loop's lifetime.
+            _loop = previous.ContinueWith(_ => RunAsync(token), TaskScheduler.Default).Unwrap();
+        }
+        else
+        {
+            _loop = Task.Run(() => RunAsync(token));
+        }
+
+        // RunAsync catches everything it knows how to handle and only exits by falling
+        // off the end (cancellation) — a Faulted task here means something truly
+        // unexpected escaped it. Observe it so it is logged instead of silently vanishing
+        // as an unobserved task exception, and so IsCompleted still flips (letting a
+        // future Start() chain onto it).
+        _loop.ContinueWith(
+            t => Log.Error("Gsx", $"Remote API loop exited unexpectedly: {t.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
+        Log.Debug("Gsx", $"Remote API client started (port {_port}).");
+    }
+
+    public void Stop()
+    {
+        try { _cts?.Cancel(); } catch { /* already disposed */ }
+        SetConnected(false);
+        _pending.FailAll("connection stopped");
+    }
+
+    private async Task RunAsync(CancellationToken ct)
+    {
+        int backoff = ReconnectMinMs;
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                using var ws = new ClientWebSocket();
+                _ws = ws;
+                await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{_port}/"), ct).ConfigureAwait(false);
+
+                await SendRawAsync(SubscribeJson, ct).ConfigureAwait(false);
+                SetConnected(true);
+                backoff = ReconnectMinMs;
+
+                await ReceiveLoopAsync(ws, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                // GSX not running, or the engine restarted mid-flight. Neither is an
+                // error worth shouting about - we simply retry.
+                Log.Debug("Gsx", $"Remote API connection lost: {ex.Message}");
+            }
+            finally
+            {
+                _ws = null;
+                SetConnected(false);
+                _pending.FailAll("connection lost");
+            }
+
+            if (ct.IsCancellationRequested) break;
+            try { await Task.Delay(backoff, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
+            backoff = Math.Min(ReconnectMaxMs, (int)(backoff * 1.6));
+        }
+    }
+
+    private async Task ReceiveLoopAsync(ClientWebSocket ws, CancellationToken ct)
+    {
+        var buffer = new byte[ReceiveBufferBytes];
+        // Accumulate RAW BYTES and decode once at EndOfMessage — never per chunk. GSX's
+        // handlerData payload (~1.7 MB) always arrives fragmented across many ReceiveAsync
+        // calls, and Encoding.UTF8.GetString() on each chunk independently silently
+        // corrupts any multi-byte character split across a chunk boundary: UTF8's default
+        // replacement fallback never throws, so each half of a split character becomes
+        // U+FFFD and the result is still syntactically valid JSON — no exception, no log
+        // line, nothing to reveal it happened. Same bug, same fix, as
+        // CoherentDebuggerClient.ReceiveLoop (SimConnect/CoherentDebuggerClient.cs).
+        using var ms = new MemoryStream();
+
+        // ONE outstanding ReceiveAsync at a time. Issuing a second while one is
+        // pending faults the socket - a real failure hit while probing this API.
+        while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
+        {
+            WebSocketReceiveResult result;
+            try
+            {
+                result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) { return; }
+
+            if (result.MessageType == WebSocketMessageType.Close) return;
+
+            ms.Write(buffer, 0, result.Count);
+            if (!result.EndOfMessage) continue;   // handlerData alone is ~1.7 MB
+
+            string json = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+            ms.SetLength(0);   // reset for the next message (also clamps Position to 0)
+
+            GsxFrame frame = GsxFrame.Parse(json);   // never throws
+            if (frame.Type == GsxFrameType.Unknown) continue;
+            if (_pending.Complete(frame)) continue;  // a command ack we were awaiting
+
+            try { FrameReceived?.Invoke(frame); }
+            catch (Exception ex) { Log.Error("Gsx", $"Remote frame handler threw: {ex.Message}"); }
+        }
+    }
+
+    /// <summary>
+    /// Sends a command and awaits its correlated <c>result</c> frame. The returned
+    /// <see cref="GsxResult"/> carries the whole matched <see cref="GsxFrame"/> in
+    /// <see cref="GsxResult.Frame"/> (null for a locally-synthesized failure that never
+    /// reached GSX — not connected, send failed, timed out) — so a caller needing more
+    /// than Ok/ErrorCode/ErrorMessage (e.g. a typed interpreter reading
+    /// <c>payload</c>/<c>error.candidates</c>, as <c>GsxGateSelectResult.FromFrame</c>
+    /// does for <c>gate.select</c>) does not have to re-derive it. This method's own
+    /// shape did not need to change to carry that — the enrichment lives in
+    /// <see cref="GsxResult"/> and <see cref="GsxPendingRequests.Complete"/>.
+    /// </summary>
+    public async Task<GsxResult> SendAsync(string verb, object? args = null)
+    {
+        // Every outgoing verb passes through here, so this one site gives gsx.log complete
+        // coverage of what was asked of GSX and what came back. NOTE the two refusals below
+        // ("not connected", "timed out") were previously silent AND return early, which is
+        // what made a pilot's "I pressed it and nothing happened" indistinguishable from a
+        // keypress that never reached the code at all. `args` is deliberately NEVER logged:
+        // a settings.set carries the field's value, and one of those values is the pilot's
+        // simbrief_username.
+        long startedTicks = Environment.TickCount64;
+
+        if (!_connected)
+        {
+            GsxDiagnosticLog.Verb(verb, "not-connected", null, null, 0);
+            return GsxResult.Fail("not connected");
+        }
+
+        var (id, task) = _pending.Register();
+
+        try
+        {
+            // BuildCommand is INSIDE the try. It calls JsonSerializer.Serialize(args), and a
+            // throw there used to escape SendAsync entirely — past the registration on the
+            // line above, so the id leaked, and past every GsxDiagnosticLog.Verb call, so
+            // nothing was written to gsx.log or debug.log. Via the fire-and-forget Send()
+            // below (which discards the Task) that produced exactly the silent
+            // "I pressed it and nothing happened" this method's logging exists to remove.
+            string json = BuildCommand(verb, args, id);
+            await SendRawAsync(json, _cts?.Token ?? CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Built via JsonSerializer rather than a hand-rolled interpolated string: a
+            // $$"""..."""-style raw string here hits CS9007 (the trailing `}}` that
+            // closes both the nested "error" object and the outer object reads as an
+            // ambiguous interpolation-end with only two '$'), and three '$' would work
+            // but is more fragile than just serializing the shape directly.
+            string syntheticFailure = JsonSerializer.Serialize(new
+            {
+                type = "result",
+                ok = false,
+                id,
+                error = new { code = "send_failed", message = "send failed" }
+            });
+            _pending.Complete(GsxFrame.Parse(syntheticFailure));
+            Log.Debug("Gsx", $"Remote command '{verb}' send failed: {ex.Message}");
+            GsxDiagnosticLog.Verb(verb, "send-failed", "send_failed", ex.Message,
+                                  Environment.TickCount64 - startedTicks);
+            return GsxResult.Fail("send failed");
+        }
+
+        GsxResult r;
+        try
+        {
+            // WaitAsync, not WhenAny(task, Task.Delay(...)). The old form armed a real 5 s
+            // timer on EVERY command and never cancelled it on the (overwhelmingly common)
+            // success path, so an undebounced sender — GsxSettingsForm's NumericUpDown
+            // ValueChanged fires one settings.set per arrow tick, by its own comment — left
+            // dozens of live timer registrations per second, each outliving its command by
+            // the full timeout. WaitAsync cancels its timer when the task wins.
+            r = await task.WaitAsync(TimeSpan.FromMilliseconds(CommandTimeoutMs)).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Release the registration. This was the leak: the timeout branch returned
+            // without ever removing the id, and the store's only other exits are a matching
+            // result frame or the FailAll a socket drop triggers — which on a stable socket
+            // never comes. A GSX that stops acking one verb grew _pending unboundedly.
+            _pending.Abandon(id, "timed out");
+            GsxDiagnosticLog.Verb(verb, "timed-out", null, $"no result within {CommandTimeoutMs} ms",
+                                  Environment.TickCount64 - startedTicks);
+            return GsxResult.Fail("timed out");
+        }
+
+        if (!r.Ok) Log.Debug("Gsx", $"Remote command '{verb}' failed: {r.ErrorCode} {r.ErrorMessage}");
+        GsxDiagnosticLog.Verb(verb, r.Ok ? "ok" : "error", r.ErrorCode, r.ErrorMessage,
+                              Environment.TickCount64 - startedTicks);
+        return r;
+    }
+
+    /// <summary>
+    /// Fire-and-forget: for commands whose ack we do not need. The fault continuation is not
+    /// decoration — without it anything escaping <see cref="SendAsync"/> becomes an unobserved
+    /// task exception, i.e. a keypress that vanishes with no line in any log.
+    /// </summary>
+    public void Send(string verb, object? args = null)
+        => SendAsync(verb, args).ContinueWith(
+            t => Log.Error("Gsx", $"Remote command '{verb}' faulted: {t.Exception?.GetBaseException().Message}"),
+            TaskContinuationOptions.OnlyOnFaulted);
+
+    private static string BuildCommand(string verb, object? args, string id)
+    {
+        // Hand-built so `args` can be any anonymous object without a serializer context.
+        string argsJson = args is null ? "" : ",\"args\":" + JsonSerializer.Serialize(args);
+        return $"{{\"type\":\"command\",\"verb\":{JsonSerializer.Serialize(verb)},\"id\":{JsonSerializer.Serialize(id)}{argsJson}}}";
+    }
+
+    private async Task SendRawAsync(string json, CancellationToken ct)
+    {
+        var ws = _ws;
+        if (ws is null || ws.State != WebSocketState.Open) throw new InvalidOperationException("socket not open");
+
+        await _sendLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(json);
+            await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct)
+                    .ConfigureAwait(false);
+        }
+        finally { _sendLock.Release(); }
+    }
+
+    private void SetConnected(bool value)
+    {
+        if (_connected == value) return;
+        _connected = value;
+        try { ConnectedChanged?.Invoke(value); }
+        catch (Exception ex) { Log.Error("Gsx", $"ConnectedChanged handler threw: {ex.Message}"); }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Stop();
+        try { _cts?.Dispose(); } catch { }
+        // Intentionally NOT disposing _sendLock: Stop() cancels but does not join the
+        // background loop, which may be sitting inside SendRawAsync's try/finally having
+        // already acquired the lock (past WaitAsync, mid-send). Disposing here would race
+        // its eventual Release(), which throws ObjectDisposedException once disposed.
+        // Same reasoning, same fix as CoherentDebuggerClient.Dispose() in
+        // SimConnect/CoherentDebuggerClient.cs. No unmanaged handle is ever allocated
+        // (this type never touches AvailableWaitHandle), so nothing leaks by skipping it.
+    }
+}

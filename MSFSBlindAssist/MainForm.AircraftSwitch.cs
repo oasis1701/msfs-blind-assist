@@ -1105,6 +1105,21 @@ public partial class MainForm
             electronicFlightBagForm = null;
         }
 
+        // Same for the TCAS window, and for the same reason: its GateResolver is built ONCE in
+        // OpenTcasWindow from DatabaseSelector.SelectProvider() and captures that provider in a
+        // readonly field, plus a GateDataSource built over it and a per-ICAO cache of that
+        // database's parking spots. Nothing else invalidates any of it — GateResolver.ClearCache
+        // has no production caller, and could not help here anyway since it does not (and cannot)
+        // replace the readonly provider. The gate-list staleness token does not move on a
+        // database switch either, so without this the traffic list kept naming stands from the
+        // PREVIOUS simulator's scenery for the rest of the session. Rebuilding the window is the
+        // only correct invalidation; OpenTcasWindow already recreates it when tcasForm is null.
+        if (tcasForm != null && !tcasForm.IsDisposed)
+        {
+            tcasForm.Close();
+            tcasForm = null;
+        }
+
         UpdateDatabaseStatusDisplay();
     }
 

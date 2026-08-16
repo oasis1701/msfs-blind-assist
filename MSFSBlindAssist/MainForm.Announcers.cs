@@ -1506,9 +1506,18 @@ public partial class MainForm
     /// </summary>
     private void ReadLatestGsxTooltip()
     {
-        if (_gsxService == null || !_gsxService.IsConnected)
+        if (_gsxService == null)
         {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+        if (!_gsxService.IsConnected)
+        {
+            // UnavailableReason names the ACTUAL cause — an older GSX with no
+            // Remote API, a dropped Couatl, or no simulator connection. The old
+            // wording blamed the simulator in all three cases, which sent a
+            // pilot on a recent-enough-GSX hunt in the wrong place entirely.
+            announcer.AnnounceImmediate(_gsxService.UnavailableReason);
             return;
         }
         _gsxService.RefreshTooltip();

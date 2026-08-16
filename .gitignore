@@ -173,3 +173,8 @@ tools/taxi-census/
 # iFly 737 MAX8 aircraft package — reference material only (multi-GB vendor
 # payload); read to derive the IFly737MAXDefinition, never committed.
 ifly-aircraft-737max8/
+
+# Subagent-driven-development scratch: per-plan ledger, task briefs, implementer
+# reports and review packages. Working state for an in-flight plan, never part of
+# the repository — git history is the record once the branch merges.
+.superpowers/

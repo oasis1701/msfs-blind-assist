@@ -1,0 +1,155 @@
+[
+  {
+    "id": "Deboarding",
+    "displayName": "Deboard",
+    "state": "performing",
+    "stateRaw": 5,
+    "stateText": "Deboarding service is being performed",
+    "icon": "deboarding",
+    "canTrigger": false,
+    "canBypass": false,
+    "operator": "OneJet",
+    "detail": {
+      "busPhase": "in position",
+      "pax": {
+        "done": 181,
+        "total": 186
+      },
+      "bagsPercent": 100
+    },
+    "statusText": "bus in position\npax 181/186\nbags 100%",
+    "progress": {
+      "current": 181,
+      "total": 181,
+      "unit": "pax"
+    },
+    "progressText": "181/181"
+  },
+  {
+    "id": "Catering",
+    "displayName": "Catering",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Catering service can be requested",
+    "icon": "catering",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "Refueling",
+    "displayName": "Refuel",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Refueling service can be requested",
+    "icon": "refueling",
+    "canTrigger": true,
+    "canBypass": false,
+    "operator": "United Ground Express",
+    "progressText": ""
+  },
+  {
+    "id": "Boarding",
+    "displayName": "Board",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Boarding service can be requested",
+    "icon": "boarding",
+    "canTrigger": true,
+    "canBypass": false,
+    "operator": "OneJet",
+    "progressText": ""
+  },
+  {
+    "id": "Departure",
+    "displayName": "Pushback",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Departure service can be requested",
+    "icon": "departure",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "OperateJetways",
+    "displayName": "Jetway",
+    "state": "completed",
+    "stateRaw": 6,
+    "stateText": "OperateJetways service has been completed",
+    "icon": "operatejetways",
+    "canTrigger": false,
+    "canBypass": false,
+    "detail": {
+      "phase": "docked"
+    },
+    "statusText": "docked\n0:10:06 running $117",
+    "progressText": ""
+  },
+  {
+    "id": "OperateStairs",
+    "displayName": "Stairs",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "OperateStairs service can be requested",
+    "icon": "operatestairs",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "GPU",
+    "displayName": "GPU",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "GPU service can be requested",
+    "icon": "gpu",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "DeIce",
+    "displayName": "De-Ice",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "DeIce service can be requested",
+    "icon": "deice",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "Lavatory",
+    "displayName": "Lavatory",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Lavatory service can be requested",
+    "icon": "lavatory",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "Water",
+    "displayName": "Water",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Water service can be requested",
+    "icon": "water",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  },
+  {
+    "id": "Cleaning",
+    "displayName": "Cleaning",
+    "state": "available",
+    "stateRaw": 1,
+    "stateText": "Cleaning service can be requested",
+    "icon": "cleaning",
+    "canTrigger": true,
+    "canBypass": false,
+    "progressText": ""
+  }
+]
