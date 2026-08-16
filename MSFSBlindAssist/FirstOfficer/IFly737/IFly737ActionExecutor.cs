@@ -712,6 +712,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         ("Pack_Switch_Status_0", position),
         ("Pack_Switch_Status_1", position),
     });
+    public const int PackOff = 0;
+    public const int PackAuto = 1;
+    public const int PackHigh = 2;
 
     /// <summary>Both engine bleeds (Overhead.cs:250-253 — 0 Off / 1 On).</summary>
     public Task<bool> SetEngBleeds(int position) => MultiAsync(new (string, double?)[]
@@ -725,6 +728,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     /// <summary>Isolation valve (Overhead.cs:270 — 0 Close / 1 Auto / 2 Open).</summary>
     public Task<bool> SetIsolationValve(int position) => Set("Isolation_Valve_Switch_Status", position);
+    public const int IsolationValveClose = 0;
+    public const int IsolationValveAuto = 1;
+    public const int IsolationValveOpen = 2;
 
     /// <summary>Trim air (Overhead.cs:274 — 0 Off / 1 On).</summary>
     public Task<bool> SetTrimAir(int position) => Set("Trim_Air_Switch_Status", position);
@@ -940,11 +946,19 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <summary>Captain ND mode (RegisterEfisSide, ForwardPedestal.cs:199 — 0 Approach /
     /// 1 VOR / 2 Map / 3 Plan).</summary>
     public Task<bool> SetEFISModeCapt(int position) => Set("ND_Mode_Status_0", position);
+    public const int NdModeApproach = 0;
+    public const int NdModeVor = 1;
+    public const int NdModeMap = 2;
+    public const int NdModePlan = 3;
 
     /// <summary>Captain ND range (RegisterEfisSide, ForwardPedestal.cs:208 — 0..10 =
     /// 0.5/1/2/5/10/20/40/80/160/320/640 nm; the status field's "0~2" comment is wrong, the
     /// command doc is authoritative).</summary>
     public Task<bool> SetEFISRangeCapt(int position) => Set("ND_Range_Status_0", position);
+    /// <summary>Index 5 of the 0..10 range scale above (ForwardPedestal.cs:208) = 20 nm.</summary>
+    public const int NdRange20Nm = 5;
+    /// <summary>Index 6 of the 0..10 range scale above (ForwardPedestal.cs:208) = 40 nm.</summary>
+    public const int NdRange40Nm = 6;
 
     // ---- Calls / recall ----
 

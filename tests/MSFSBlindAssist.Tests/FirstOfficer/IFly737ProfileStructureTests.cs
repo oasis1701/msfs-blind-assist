@@ -1,4 +1,5 @@
 using System.Linq;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.IFly737;
 using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
@@ -146,5 +147,41 @@ public class IFly737ProfileStructureTests
         // item is the ONLY fuel-pump entry per phase.
         var allIds = groups.SelectMany(g => g.Items).Select(i => i.Id).ToArray();
         Assert.DoesNotContain(allIds, id => id.Contains("CTR_PUMP"));
+    }
+
+    /// <summary>
+    /// Fix pass 1 (2026-08), Fix 3: every StateFieldName/AdditionalStateFields entry across all
+    /// 24 groups must be EITHER a synthetic FO_-prefixed key (computed by
+    /// <see cref="IFly737StateEvaluator.GetValue"/>, never a raw SDK struct field) OR a real
+    /// flattened SDK field name. A misspelled raw field name reads NaN forever from
+    /// <see cref="IFly737StateEvaluator.GetValue"/> — ChecklistManager treats NaN as
+    /// INDETERMINATE (skips both auto-tick and revert) — which presents to a blind pilot as
+    /// "the checklist item never ticks", with no error, no crash, and nothing in a build log to
+    /// catch it. Membership is checked against <see cref="IFly737MAXDefinition.FieldOffsetsByKey"/>
+    /// rather than re-implementing the Count&gt;1 -> "Name_i" / else-bare-Name flattening rule —
+    /// that dictionary IS the app's own flattening (built once from IFlySdkFields.All), so this
+    /// test can never drift from the real membership test the evaluator itself relies on.
+    /// </summary>
+    [Fact]
+    public void EveryStateFieldName_IsSyntheticOrARealSdkField()
+    {
+        var groups = Groups();
+        var fieldNames = groups.SelectMany(g => g.Items)
+            .Where(i => i.StateFieldName != null)
+            .SelectMany(i => new[] { i.StateFieldName! }.Concat(i.AdditionalStateFields))
+            .Distinct()
+            .ToArray();
+
+        Assert.NotEmpty(fieldNames);
+
+        foreach (var field in fieldNames)
+        {
+            bool isSynthetic = field.StartsWith("FO_", System.StringComparison.Ordinal);
+            bool isRealSdkField = IFly737MAXDefinition.FieldOffsetsByKey.ContainsKey(field);
+            Assert.True(isSynthetic || isRealSdkField,
+                $"'{field}' is neither a synthetic FO_ key nor a field in " +
+                "IFly737MAXDefinition.FieldOffsetsByKey — this reads NaN forever and the " +
+                "checklist item that names it will never tick.");
+        }
     }
 }

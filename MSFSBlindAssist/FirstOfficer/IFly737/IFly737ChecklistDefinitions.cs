@@ -37,9 +37,18 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///  - Weather radar test (PF_WXR_TEST) is a Captain reminder, not an action — the iFly SDK has
 ///    no WXR TEST command (confirmed by grepping IFlyKeyCommand.cs for WXR/RADAR/TEST; the only
 ///    matches are mode/gain/altitude/brightness controls).
-///  - Gear lever has only Up(0)/Down(1) — no OFF detent. ATKO_GEAR_OFF ("Gear lever: OFF")
-///    therefore commands GearUp (there is nothing else "OFF" could mean), and the After Takeoff
-///    Checklist's "UP and OFF" twin accepts only UP.
+///  - Gear lever has only Up(0)/Down(1) — no OFF detent (RegisterLandingGear,
+///    IFly737MAXDefinition.ForwardPedestal.cs:24-25 — `new[] { "Up", "Down" }`). ATKO_GEAR_OFF
+///    and its After Takeoff Checklist twin ATC_GEAR command/detect GearUp only and are labelled
+///    "Gear lever: UP" / "Landing gear: UP" (Fix pass 1, 2026-08) — the PMDG-ported "OFF"/
+///    "UP and OFF" wording named a position this airframe's switch does not have.
+///  - Transponder STBY wording was likewise ported wrong: this airframe's resting/ground
+///    position is ALT OFF, not STBY (RegisterTransponder, IFly737MAXDefinition.cs:596-597 —
+///    `new[] { "ALT OFF", "XPNDR", "TA Only", "TA/RA" }`). PF_XPDR and SD_XPDR are labelled
+///    "Transponder: ALT OFF" (Fix pass 1, 2026-08).
+///  - Probe heat has no OFF position either — only Auto/On (RegisterAntiIce,
+///    IFly737MAXDefinition.Overhead.cs:424-428 — `new[] { "Auto", "On" }`). PF_PROBE_OFF,
+///    AL_PROBE and SDC_PROBE are labelled "Probe heat: AUTO" (Fix pass 1, 2026-08).
 ///  - "Lower display unit: SYS" (BT_LOWERDU) has no iFly counterpart — no lower-DU/EICAS
 ///    synoptic-page-select field exists in IFlySdkFields.cs (searched for LOWER/EICAS/Lower
 ///    Display) — so it is a Captain reminder here.
@@ -50,11 +59,21 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///    executor's own doc comment reserves for exactly this case is used instead of inventing a
 ///    parallel wrapper.
 ///  - Baro STD: a Before Takeoff Checklist readback (BTOC_BARO, confirms QNH — not standard —
-///    before departure) and a Descent state item (DSA_BARO, re-asserts STANDARD, actioned via
-///    SetAltimetersStandardAsync) were ADDED — the PMDG 737 template has no baro-STD checklist
-///    item anywhere (transition-altitude crossings are handled by a separate FlightPhaseMonitor
-///    there, not the checklist). This pair is new capability enabled by the iFly's per-side
-///    BARO_STD_Status readback per explicit Task 5 guidance; flagged for in-sim verification.
+///    before departure) was ADDED — the PMDG 737 template has no baro-STD checklist item
+///    anywhere. This is action-free (a pure readback), so it carries no risk of commanding the
+///    wrong pressure reference.
+///  - Fix pass 1 (2026-08) REMOVED a Descent state item (DSA_BARO) that had actioned
+///    SetAltimetersStandardAsync() — i.e. it commanded STANDARD pressure DURING THE DESCENT,
+///    which is backwards: standard is set climbing through the transition altitude, and local
+///    QNH is set descending through the transition level (see
+///    <see cref="MSFSBlindAssist.FirstOfficer.PMDG737.FlightPhaseMonitor"/> for the correct,
+///    already-shipped 737 behaviour). Being RevertToState, DSA_BARO auto-ticked at top of
+///    descent (standard was still set from cruise) and then UN-ticked itself the moment the
+///    pilot correctly set QNH at the transition level — telling a blind pilot an item was
+///    outstanding precisely because they had done the right thing — and a manual tick drove
+///    both altimeters back to 1013/29.92 below the transition level with no visual cross-check
+///    to catch it. Transition-altitude handling for this airframe belongs to a future
+///    IFly737FlightPhaseMonitor (PMDG parity), not the checklist.
 /// </summary>
 public static class IFly737ChecklistDefinitions
 {
@@ -141,9 +160,15 @@ public static class IFly737ChecklistDefinitions
                 new[] { "Fuel_L_FWD_Switch_Status", "Fuel_R_FWD_Switch_Status", "Fuel_R_AFT_Switch_Status",
                         "Fuel_CENTER_L_Switch_Status", "Fuel_CENTER_R_Switch_Status" },
                 (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
-            // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On.
+            // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On
+            // (IFly737MAXDefinition.LightsMisc.cs:96-104). On the real 737 the guard physically
+            // sits OVER the ARMED detent: with the guard down the switch cannot be moved to Off
+            // or On, so a guard-closed reading (0) IS armed, not merely "not yet confirmed
+            // armed" — it must be accepted here alongside the explicit Armed position (2), and
+            // (see SE_EMER/SEC_EMER) must NOT also satisfy OFF. v==1 (guard lifted, switch at
+            // Off) and v==3 (On) are the only non-armed readings.
             Auto("PF_EMER", "PREFLIGHT", "Emergency exit lights: ARMED", "Emergency_Light_Switch_Status",
-                v => v > 1.5 && v < 2.5, (e, _) => e.SetEmerExitLights(IFly737ActionExecutor.EmerExitArmed)),
+                v => v < 0.5 || (v > 1.5 && v < 2.5), (e, _) => e.SetEmerExitLights(IFly737ActionExecutor.EmerExitArmed)),
             // Fasten_Belts_Switch_Status: 0 Off/1 Auto/2 On — same numbering as the PMDG.
             Auto("PF_BELTS", "PREFLIGHT", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status", v => v > 1.5,
                 (e, _) => e.SetSeatBelts(IFly737ActionExecutor.SignOn)),
@@ -151,8 +176,10 @@ public static class IFly737ChecklistDefinitions
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 (e, _) => e.SetWindowHeat(1)),
             // Probe_Heat_Switch_{1,2}_Status: 0 AUTO/1 On (no separate OFF position on this
-            // airframe) — AUTO is the resting/"off" position the PMDG's OFF maps onto.
-            Auto("PF_PROBE_OFF", "PREFLIGHT", "Probe heat: OFF", "Probe_Heat_Switch_1_Status", v => v < 0.5,
+            // airframe — RegisterAntiIce, IFly737MAXDefinition.Overhead.cs:424-428, positions
+            // "Auto"/"On"). Label says AUTO, matching the switch's own wording, not the PMDG's
+            // OFF (Fix pass 1, 2026-08).
+            Auto("PF_PROBE_OFF", "PREFLIGHT", "Probe heat: AUTO", "Probe_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, (e, _) => e.SetProbeHeat(IFly737ActionExecutor.ProbeHeatAuto)),
             Auto("PF_WAI", "PREFLIGHT", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetWingAntiIce(0)),
@@ -163,10 +190,10 @@ public static class IFly737ChecklistDefinitions
                 new[] { "RecircFan_Switch_Status_1" }, (e, _) => e.SetRecircFans(1)),
             // Pack_Switch_Status_{0,1}: 0 Off/1 Auto/2 High.
             Auto("PF_PACKS", "PREFLIGHT", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
-                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(1)),
+                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(IFly737ActionExecutor.PackAuto)),
             // Isolation_Valve_Switch_Status: 0 Close/1 Auto/2 Open.
             Auto("PF_ISO", "PREFLIGHT", "Isolation valve: OPEN", "Isolation_Valve_Switch_Status", v => v > 1.5,
-                (e, _) => e.SetIsolationValve(2)),
+                (e, _) => e.SetIsolationValve(IFly737ActionExecutor.IsolationValveOpen)),
             Auto("PF_BLEEDS", "PREFLIGHT", "Engine bleeds: ON", "Engine_Bleed_Air_Switch_Status_0", v => v > 0.5,
                 new[] { "Engine_Bleed_Air_Switch_Status_1" }, (e, _) => e.SetEngBleeds(1)),
             AutoAsync("PF_PRESS", "PREFLIGHT", "Flight and landing altitudes: SET",
@@ -182,17 +209,20 @@ public static class IFly737ChecklistDefinitions
             // numbering as the PMDG template.
             Auto("PF_AB", "PREFLIGHT", "Autobrake: RTO", "Autobrake_Selector_Status", v => v < 0.5,
                 (e, _) => e.SetAutobrake(IFly737ActionExecutor.AutobrakeRto)),
-            // Transponder_Mode_Switch_Status: 0 ALT OFF/1 XPNDR/2 TA Only/3 TA-RA.
-            Auto("PF_XPDR", "PREFLIGHT", "Transponder: STBY", "Transponder_Mode_Switch_Status", v => v < 0.5,
+            // Transponder_Mode_Switch_Status: 0 ALT OFF/1 XPNDR/2 TA Only/3 TA-RA (RegisterTransponder,
+            // IFly737MAXDefinition.cs:596-597, positions "ALT OFF"/"XPNDR"/"TA Only"/"TA/RA").
+            // Label says ALT OFF, matching the switch's own wording, not the PMDG's STBY
+            // (Fix pass 1, 2026-08).
+            Auto("PF_XPDR", "PREFLIGHT", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetTransponderMode(IFly737ActionExecutor.XpdrAltOff)),
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "ND_Mode_Status_0", v => v > 1.5 && v < 2.5,
-                (e, _) => e.SetEFISModeCapt(2)),
+                (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeMap)),
             // ND_Range_Status_0: 0..10 = 0.5/1/2/5/10/20/40/80/160/320/640 nm (command-doc
             // authoritative — the status field's own "0~2" comment is wrong per the executor's
             // doc comment). 40 nm = index 6.
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "ND_Range_Status_0", v => v > 5.5 && v < 6.5,
-                (e, _) => e.SetEFISRangeCapt(6)),
+                (e, _) => e.SetEFISRangeCapt(IFly737ActionExecutor.NdRange40Nm)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
             // No WXR TEST command exists in the iFly SDK (grepped IFlyKeyCommand.cs for
             // WXR/RADAR/TEST — only mode/gain/altitude/brightness controls found) — reminder,
@@ -243,7 +273,7 @@ public static class IFly737ChecklistDefinitions
         Items = new()
         {
             Auto("ES_PACKS", "ENGINE_START", "Packs: OFF", "Pack_Switch_Status_0", v => v < 0.5,
-                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(0)),
+                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(IFly737ActionExecutor.PackOff)),
             // Pilot-paced start (PMDG 737 convention). Start-switch items are action-only — GRD
             // is a momentary that springs back; the lever items detect off
             // Engine_Start_Lever_Status_{0,1} (0-5 composite: 0-2 Cutoff, 3-5 Idle — >=3 covers
@@ -281,9 +311,9 @@ public static class IFly737ChecklistDefinitions
             Auto("BT_PROBE", "BEFORE_TAXI", "Probe heat: ON", "Probe_Heat_Switch_1_Status", v => v > 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, (e, _) => e.SetProbeHeat(IFly737ActionExecutor.ProbeHeatOn)),
             Auto("BT_PACKS", "BEFORE_TAXI", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
-                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(1)),
+                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(IFly737ActionExecutor.PackAuto)),
             Auto("BT_ISO", "BEFORE_TAXI", "Isolation valve: AUTO", "Isolation_Valve_Switch_Status",
-                v => v > 0.5 && v < 1.5, (e, _) => e.SetIsolationValve(1)),
+                v => v > 0.5 && v < 1.5, (e, _) => e.SetIsolationValve(IFly737ActionExecutor.IsolationValveAuto)),
             // Engine_Start_Switch_Status_{0,1}: 0 Ground/1 Off/2 Continuous/3 Flight — same
             // numbering as the PMDG template, threshold carries over unchanged.
             Auto("BT_START", "BEFORE_TAXI", "Engine start switches: CONT", "Engine_Start_Switch_Status_0",
@@ -332,16 +362,18 @@ public static class IFly737ChecklistDefinitions
         Items = new()
         {
             Auto("ATKO_PACKS", "AFTER_TAKEOFF", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
-                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(1)),
+                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(IFly737ActionExecutor.PackAuto)),
             Auto("ATKO_START_OFF", "AFTER_TAKEOFF", "Engine start switches: OFF", "Engine_Start_Switch_Status_0",
                 v => v > 0.5 && v < 1.5, new[] { "Engine_Start_Switch_Status_1" },
                 (e, _) => { e.SetEngStartSelector1(IFly737ActionExecutor.EngStartOff);
                             e.SetEngStartSelector2(IFly737ActionExecutor.EngStartOff); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "Runway_Turnoff_Light_1_Switch_Status",
                 v => v < 0.5, new[] { "Runway_Turnoff_Light_2_Switch_Status" }, (e, _) => e.SetRunwayTurnoff(0)),
-            // Gear_Lever_Status has only 0 Up/1 Down — no OFF detent on this airframe, so
-            // "Gear lever: OFF" (label unchanged from the PMDG template) commands UP.
-            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF", "Gear_Lever_Status", v => v < 0.5,
+            // Gear_Lever_Status has only 0 Up/1 Down — no OFF detent on this airframe
+            // (RegisterLandingGear, IFly737MAXDefinition.ForwardPedestal.cs:24-25, positions
+            // "Up"/"Down"), so this commands UP and is labelled "UP" rather than the PMDG's
+            // "OFF", which names a position that does not exist here (Fix pass 1, 2026-08).
+            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: UP", "Gear_Lever_Status", v => v < 0.5,
                 (e, _) => e.SetGearLever(IFly737ActionExecutor.GearUp)),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 v => v > 0.5 && v < 1.5, (e, _) => e.SetAutobrake(IFly737ActionExecutor.AutobrakeOff)),
@@ -356,10 +388,6 @@ public static class IFly737ChecklistDefinitions
             ActionManual("DSA_RECALL", "DESCENT", "Recall: checked", (e, _) => e.PressRecall()),
             Auto("DSA_BELTS", "DESCENT", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status", v => v > 1.5,
                 (e, _) => e.SetSeatBelts(IFly737ActionExecutor.SignOn)),
-            // ADDED (no PMDG 737 precedent — see class doc): re-asserts both altimeters on
-            // STANDARD during the descent phase. BARO_STD_Status_{0,1}: >0.5 = confirmed STD.
-            AutoAsync("DSA_BARO", "DESCENT", "Baro STD: SET", "BARO_STD_Status_0", v => v > 0.5,
-                new[] { "BARO_STD_Status_1" }, (e, _) => e.SetAltimetersStandardAsync()),
             Reminder("DSA_AB", "DESCENT", "Set the landing autobrake — Forward Panel, Autobrake"),
             Reminder("DSA_ILS", "DESCENT", "Set the ILS frequencies and course"),
         }
@@ -371,10 +399,10 @@ public static class IFly737ChecklistDefinitions
         Items = new()
         {
             Auto("APA_EFIS_MODE", "APPROACH", "EFIS mode: APP", "ND_Mode_Status_0", v => v < 0.5,
-                (e, _) => e.SetEFISModeCapt(0)),
+                (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeApproach)),
             // 20 nm = index 5 on the 0..10 range scale (see PF_EFIS_RANGE).
             Auto("APA_EFIS_RANGE", "APPROACH", "EFIS range: 20", "ND_Range_Status_0", v => v > 4.5 && v < 5.5,
-                (e, _) => e.SetEFISRangeCapt(5)),
+                (e, _) => e.SetEFISRangeCapt(IFly737ActionExecutor.NdRange20Nm)),
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall()),
             Reminder("APA_ALT", "APPROACH", "Set the altimeters"),
@@ -414,7 +442,8 @@ public static class IFly737ChecklistDefinitions
                 new[] { "Eng_2_AntiIce_Switch_Status" }, (e, _) => e.SetEngAntiIce(0)),
             Auto("AL_WAI", "AFTER_LANDING", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetWingAntiIce(0)),
-            Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: OFF", "Probe_Heat_Switch_1_Status", v => v < 0.5,
+            // No OFF position on this switch — AUTO is the resting position (see PF_PROBE_OFF).
+            Auto("AL_PROBE", "AFTER_LANDING", "Probe heat: AUTO", "Probe_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, (e, _) => e.SetProbeHeat(IFly737ActionExecutor.ProbeHeatAuto)),
             AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON line", "APU_Switch_Status", v => v > 0.5,
                 (e, _) => e.StartApuAsync()),
@@ -466,7 +495,8 @@ public static class IFly737ChecklistDefinitions
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "Window_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 (e, _) => e.SetWindowHeat(0)),
-            Auto("SD_XPDR", "SHUTDOWN", "Transponder: STBY", "Transponder_Mode_Switch_Status", v => v < 0.5,
+            // See PF_XPDR — this airframe's resting position is ALT OFF, not STBY.
+            Auto("SD_XPDR", "SHUTDOWN", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetTransponderMode(IFly737ActionExecutor.XpdrAltOff)),
         }
     };
@@ -478,15 +508,18 @@ public static class IFly737ChecklistDefinitions
         {
             Auto("SE_IRS", "SECURE", "IRS mode selectors: OFF", "IRS_Mode_Switch_Status_0", v => v < 0.5,
                 new[] { "IRS_Mode_Switch_Status_1" }, (e, _) => e.SetIrsMode(IFly737ActionExecutor.IrsOff)),
-            // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On — OFF detection
-            // covers both the guard-closed and switch-off resting states (< EmerExitArmed).
-            Auto("SE_EMER", "SECURE", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status", v => v < 1.5,
-                (e, _) => e.SetEmerExitLights(IFly737ActionExecutor.EmerExitOff)),
+            // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On — see PF_EMER: a
+            // closed guard physically holds the real switch at ARMED, so guard-closed (0) must
+            // read as ARMED, never OFF (the previous `< 1.5` here wrongly counted 0 as OFF,
+            // disagreeing with PF_EMER's ARMED test on the very same reading). OFF detection
+            // therefore accepts ONLY the explicit Off position (1).
+            Auto("SE_EMER", "SECURE", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status",
+                v => v > 0.5 && v < 1.5, (e, _) => e.SetEmerExitLights(IFly737ActionExecutor.EmerExitOff)),
             Auto("SE_WINHEAT", "SECURE", "Window heat: OFF", "Window_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 (e, _) => e.SetWindowHeat(0)),
             Auto("SE_PACKS", "SECURE", "Packs: OFF", "Pack_Switch_Status_0", v => v < 0.5,
-                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(0)),
+                new[] { "Pack_Switch_Status_1" }, (e, _) => e.SetPacks(IFly737ActionExecutor.PackOff)),
             Auto("SE_APU_OFF", "SECURE", "APU: OFF", "APU_Switch_Status", v => v < 0.5,
                 (e, _) => e.SetApuSelector(IFly737ActionExecutor.ApuOff)),
             // No reliable "GPU on bus" readback exists (same gap as the PMDG) — unlike the
@@ -597,9 +630,8 @@ public static class IFly737ChecklistDefinitions
                 v => v > 0.5, new[] { "Engine_Bleed_Air_Switch_Status_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
                 new[] { "Pack_Switch_Status_1" }, action: null),
-            // No OFF detent exists (Gear_Lever_Status is 0 Up/1 Down only), so "UP and OFF"
-            // (label unchanged from the PMDG template) can only mean UP here.
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP and OFF", "Gear_Lever_Status", v => v < 0.5,
+            // No OFF detent exists (Gear_Lever_Status is 0 Up/1 Down only) — see ATKO_GEAR_OFF.
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", "Gear_Lever_Status", v => v < 0.5,
                 action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
@@ -652,7 +684,8 @@ public static class IFly737ChecklistDefinitions
             Auto("SDC_FUEL", "SHUTDOWN_CL", "Fuel pumps: OFF", "Fuel_L_AFT_Switch_Status", v => v < 0.5,
                 new[] { "Fuel_L_FWD_Switch_Status", "Fuel_R_FWD_Switch_Status", "Fuel_R_AFT_Switch_Status",
                         "Fuel_CENTER_L_Switch_Status", "Fuel_CENTER_R_Switch_Status" }, action: null),
-            Auto("SDC_PROBE", "SHUTDOWN_CL", "Probe heat: OFF", "Probe_Heat_Switch_1_Status", v => v < 0.5,
+            // No OFF position on this switch — see PF_PROBE_OFF.
+            Auto("SDC_PROBE", "SHUTDOWN_CL", "Probe heat: AUTO", "Probe_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Probe_Heat_Switch_2_Status" }, action: null),
             Reminder("SDC_HYD", "SHUTDOWN_CL", "Hydraulic panel: set"),
             Reminder("SDC_FLAPS", "SHUTDOWN_CL", "Flaps: UP"),
@@ -670,8 +703,10 @@ public static class IFly737ChecklistDefinitions
         {
             Auto("SEC_IRS", "SECURE_CL", "IRS: OFF", "IRS_Mode_Switch_Status_0", v => v < 0.5,
                 new[] { "IRS_Mode_Switch_Status_1" }, action: null),
-            Auto("SEC_EMER", "SECURE_CL", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status", v => v < 1.5,
-                action: null),
+            // See SE_EMER — OFF must accept only the explicit Off position (1), never the
+            // guard-closed reading (0), which is really ARMED.
+            Auto("SEC_EMER", "SECURE_CL", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status",
+                v => v > 0.5 && v < 1.5, action: null),
             Auto("SEC_WINHEAT", "SECURE_CL", "Window heat: OFF", "Window_Heat_Switch_1_Status", v => v < 0.5,
                 new[] { "Window_Heat_Switch_2_Status", "Window_Heat_Switch_3_Status", "Window_Heat_Switch_4_Status" },
                 action: null),
