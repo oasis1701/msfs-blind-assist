@@ -44,6 +44,9 @@ jobs:
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
       # Keep the Navdatareader version in sync with preview.yml's identical step.
+      # BUMPING THIS PIN REQUIRES re-deriving MSFSBlindAssist/Resources/navdatareader.cfg
+      # from the new release's own config/navdatareader.cfg (re-copy stock, re-apply the
+      # single MSFSBA *_jetways.bgl line). navdatareader-config.yml fails the PR otherwise.
       - name: Download Navdatareader
         run: |
           gh release download v1.2.4 -R albar965/navdatareader -p "Navdatareader-win-1.2.4.zip"

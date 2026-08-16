@@ -194,6 +194,14 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
 
+### Navdata database build (→ [architecture.md](docs/architecture.md))
+
+- `MSFSBlindAssist/Resources/navdatareader.cfg` REPLACES navdatareader's built-in config (it does not merge), so it must be re-derived from the PINNED release's own `config/navdatareader.cfg` on every version bump — re-copy stock, re-apply the single MSFSBA `*_jetways.bgl` line, change nothing else. It was once copied from navdatareader MASTER instead, which silently added an `ExcludeBglObjectFilter` token the shipped binary does not understand and dropped the `[Database]` section while the header claimed one change. `.github/workflows/navdatareader-config.yml` enforces this and also checks that all five version references agree. → CLAUDE.md
+- The `*_jetways.bgl` exclusion only works for MSFS 2020. An MSFS 2024 database is built from SimConnect facility data and enumerates NO BGL files (measured: one scenery area "SimConnect Airports", zero BGLs, against 2,380 present in Community), so `ExcludeFilenames` cannot match anything there — never describe it as protecting FS2024 parking. → CLAUDE.md
+- The exclusion matches on FILENAME ONLY, library-wide: a third-party package shipping its own `<ICAO>_jetways.bgl` is dropped too. This is an accepted, deliberate trade (a package-scoped `ExcludePathFilter` was tested and rejected for simplicity and rename-resistance) — do not "fix" it without raising it first. → CLAUDE.md
+- `BuildDatabaseAsync` must refuse a missing/damaged config BEFORE touching the existing database, and must build to `<output>.building` and rename only on success — the old code deleted the database up front, so every later failure left the pilot with no navdata at all. → CLAUDE.md
+- Never reinstate the "SimConnect appears in stdout" failure heuristic: navdatareader's routine options dump contains that word on every run, so it latched always and reported every failure — including FS2020 disk builds that use no SimConnect — as a connection problem while hiding the real error. → CLAUDE.md
+
 ### Updates & release channels (→ [updates.md](docs/updates.md))
 
 - The rolling preview tag must NEVER begin with `v` — `release.yml` triggers on `tags: ['v*']`, so a `v…-pre.N` tag fires the release workflow and publishes a duplicate full release. → [updates.md](docs/updates.md)
