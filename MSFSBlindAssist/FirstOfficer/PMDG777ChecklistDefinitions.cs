@@ -267,7 +267,10 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetGearLever(1)),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
-            Reminder("PF_OXYGEN", "PREFLIGHT", "Oxygen: Tested 100%"),
+            // Oxygen test: manual tick fires both sides' quick TEST press (no readable
+            // "test performed" state — same rule as the fire/TCAS/WXR tests).
+            ActionManualAsync("PF_OXYGEN", "PREFLIGHT", "Oxygen: Tested 100%",
+                (e, _) => e.OxygenTestBothAsync()),
             Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
             Reminder("PF_ATIS", "PREFLIGHT", "Obtain ATIS"),

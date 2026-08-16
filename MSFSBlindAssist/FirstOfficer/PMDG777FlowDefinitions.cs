@@ -130,6 +130,13 @@ public static class PMDG777FlowDefinitions
                 s => s.IsGen1On() && s.IsGen2On()),
             Multi("CP_BACKUP_GENS","Backup generators: ON",
                 ("EVT_OH_ELEC_BACKUP_GEN1_SWITCH", 1), ("EVT_OH_ELEC_BACKUP_GEN2_SWITCH", 1)),
+            // Crew oxygen tests — quick momentary press per side (transmit
+            // press/release); the audible oxygen-flow sound is the verification.
+            // Before the fire test so the flow sound never sits under the fire bell.
+            SW("CP_OXY_TEST_CAPT", "Captain oxygen test — listen for the oxygen flow",
+                "OXY_TEST_CAPT", 1),
+            SW("CP_OXY_TEST_FO", "First officer oxygen test — listen for the oxygen flow",
+                "OXY_TEST_FO", 1, checklistItemId: "PF_OXYGEN"),
             // Held FIRE/OVHT test (executor pseudo-key; fire bell audible while held).
             SW("CP_FIRE_TEST", "Fire and overheat test — listen for the fire bell",
                 "FIRE_OVHT_TEST", 1, checklistItemId: "PF_FIRE_TEST"),

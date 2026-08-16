@@ -121,6 +121,7 @@ public class FoSystemTestsStructureTests
     [Theory]
     [InlineData("PF_TCAS_TEST")]
     [InlineData("PF_WXR_TEST")]
+    [InlineData("PF_OXYGEN")]
     public void B777_PreflightChecklist_HasManualTestItem(string itemId)
     {
         var group = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions.Build()
@@ -130,6 +131,32 @@ public class FoSystemTestsStructureTests
         Assert.Equal(ChecklistItemType.Actionable, item!.Type);
         Assert.True(item.ManualCompletionAllowed);
         Assert.NotNull(item.CheckAction);
+    }
+
+    [Theory]
+    [InlineData("CP_OXY_TEST_CAPT", "OXY_TEST_CAPT", null)]
+    [InlineData("CP_OXY_TEST_FO", "OXY_TEST_FO", "PF_OXYGEN")]
+    public void B777_CockpitPrepFlow_HasOxygenTestStep(string stepId, string pseudoKey, string? itemId)
+    {
+        var flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build();
+        var step = flows.SelectMany(f => f.Steps).FirstOrDefault(s => s.Id == stepId);
+        Assert.NotNull(step);
+        Assert.Equal(FlowStepActionType.SetSwitch, step!.ActionType);
+        Assert.Equal(pseudoKey, step.EventName);
+        Assert.Equal(itemId, step.CompletesChecklistItemId);
+    }
+
+    [Fact]
+    public void B777_OxygenTestsPrecedeFireTest()
+    {
+        var steps = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions.Build()
+            .SelectMany(f => f.Steps).Select(s => s.Id).ToList();
+        int oxyCapt = steps.IndexOf("CP_OXY_TEST_CAPT");
+        int oxyFo = steps.IndexOf("CP_OXY_TEST_FO");
+        int fire = steps.IndexOf("CP_FIRE_TEST");
+        Assert.True(oxyCapt >= 0 && oxyFo >= 0 && fire >= 0);
+        Assert.Equal(oxyCapt + 1, oxyFo);
+        Assert.True(oxyFo < fire, "oxygen tests must precede the fire test");
     }
 
     [Fact]

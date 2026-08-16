@@ -85,6 +85,8 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "FIRE_OVHT_TEST": return FireOvhtTestAsync();
                 case "TCAS_TEST":      return TcasTestAsync();
                 case "WXR_TEST":       return WxrTestAsync();
+                case "OXY_TEST_CAPT":  return OxygenTestCaptAsync();
+                case "OXY_TEST_FO":    return OxygenTestFOAsync();
                 // Guarded switch — the guard and the settle gap can't be expressed as
                 // a plain SetSwitch dispatch. See SetEmerExitLightsAsync.
                 case "EMER_EXIT_LIGHTS":
@@ -240,6 +242,24 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     /// <summary>TCAS self-test — quick press; "TCAS TEST" → ~8 s → "TCAS TEST PASS".</summary>
     public Task<bool> TcasTestAsync() => HeldTransmitTestAsync("EVT_TCAS_TEST", QuickTestHoldMs);
+
+    /// <summary>Crew oxygen TEST/RESET switch — one quick transmit press/release per
+    /// side (the panel OXY_TestReset_L/R momentary mechanism; audible oxygen-flow
+    /// sound is the verification — the 737 sibling was live-confirmed 2026-08-16).</summary>
+    public Task<bool> OxygenTestCaptAsync() =>
+        HeldTransmitTestAsync("EVT_OXY_TEST_RESET_SWITCH_L", QuickTestHoldMs);
+
+    /// <summary>First Officer side of the crew oxygen test — see OxygenTestCaptAsync.</summary>
+    public Task<bool> OxygenTestFOAsync() =>
+        HeldTransmitTestAsync("EVT_OXY_TEST_RESET_SWITCH_R", QuickTestHoldMs);
+
+    /// <summary>Both sides in sequence (single checklist item covers the pair).</summary>
+    public async Task<bool> OxygenTestBothAsync()
+    {
+        bool capt = await OxygenTestCaptAsync();
+        bool fo = await OxygenTestFOAsync();
+        return capt && fo;
+    }
 
     /// <summary>WXR/PWS test — same managed sequence as the 737 (see that executor's doc):
     /// EFIS WXR overlay on (blind toggle, assumed OFF) → settle → TEST → callout wait →
