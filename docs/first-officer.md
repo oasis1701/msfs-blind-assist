@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380 and FlyByWire A32NX. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX and iFly 737 MAX8. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
 
 ## Overview
 
@@ -35,6 +35,50 @@ schedule is reused near-verbatim from the A380** (same `A32NX_SPEEDS_*` L:vars, 
 aircraft share the FBW speed-tape implementation) — the settings checkbox now reads "Auto-manage
 flaps (FBW A380 and A32NX)." In-sim test plan:
 [docs/fbw-a320-first-officer-test-plan.md](docs/fbw-a320-first-officer-test-plan.md).
+
+**iFly 737 MAX8 First Officer (branch `feature/first-officer`):** a sixth profile,
+`FirstOfficer/IFly737/`, is a step-for-step port of the **PMDG 737 NG3** profile — same 13 flow
+phases, same 24-group checklist structure, same procedures, ids and step order — but with a
+different write approach from every profile above it: rather than a second aircraft-specific
+command table, `IFly737ActionExecutor` delegates every write to
+`IFly737MAXDefinition.ApplyUIVariable`, the panels' own already-verified write path (the FBW
+A380/A32NX pattern), under a suppressed-announcer wrap. This aircraft earned that approach more
+than any other: its official SDK (shared memory reads + WM_COPYDATA writes, see
+[docs/ifly-737.md](docs/ifly-737.md)) has the **fleet's densest set of live-verified
+encoding traps** — inverted start levers, a reversed FO display selector, landing-light command
+values that don't match their status field, guarded switches needing a Value3 bypass, two
+spring-loaded electrical momentary families that only actuate via click commands, and no
+absolute SET at all for several controls (squawk entry, RTP standby frequencies, ADF frequency).
+Reusing the panels' write path means the FO inherits every one of those fixes for free instead
+of re-discovering them in a second table; the executor's own doc comment explains the one
+deliberate difference from the A380 pattern — there is **no SetLVar fallback** for an
+unrecognized key, because nothing on the iFly is ever written as an L:var, so a key
+`ApplyUIVariable` doesn't recognize is a mapping bug to surface, not a control that needs another
+path. `IFly737StateEvaluator.IsLit` (the 0-5 switch+light composite lit test, `value % 3 > 0`) is
+the one genuinely new piece the port needed beyond wiring existing PMDG-737-shaped executor
+method names to their iFly equivalents.
+
+Deviations from the PMDG 737 template, each because this airframe's own switches don't have the
+PMDG's shape (full list + rationale: `docs/ifly-737-first-officer-test-plan.md`): the **gear
+lever has only Up/Down, no OFF detent** (so the After Takeoff step and its checklist twin are
+worded "Gear lever: UP", never "OFF"); **emergency exit lights are a four-position switch where
+0 means the guard is closed** — treated as ARMED consistently everywhere the FO reads it, not
+just at one call site; **speedbrake ARM and landing autobrake stay Captain reminders** — the
+speedbrake lever's write command has a documented but unverified scale mismatch against its own
+status readback, so the executor deliberately exposes no write for it (autobrake is a Captain
+item fleet-wide already); **no weather-radar test command exists in this SDK at all** (confirmed
+by grepping the full command enum), so unlike every other jet in the fleet the WXR-test checklist
+item is a permanent reminder, not a "this aircraft doesn't have the button yet" gap; **engine
+start gates on the start switch springing back plus N2 only** — there is no starter-valve field
+to wait on between GRD and the N2 gate, the one intermediate confirmation every other Boeing
+profile has; and **APU availability comes from the `APU_GEN_OFF_BUS_Light_Status` annunciator,
+because there is no EGT field** to fall back on the way the PMDG NG3's
+`AircraftStateEvaluator.ApuRunningEgt` does. In-sim test plan:
+[docs/ifly-737-first-officer-test-plan.md](docs/ifly-737-first-officer-test-plan.md) — it also
+carries several LIVE-VERIFY items a code review flagged but could not settle statically
+(BARO_STD latch-vs-momentary semantics, the APU-generator-light polarity, a Before-Start re-run
+that is expected to time out and abort today, the pressurization LED-window blank/minus padding,
+the ND range 0..10 scale, and the LNAV switch's value-3 composite edge case).
 
 **Architecture — everything aircraft-specific is injected via `IFoProfile<TExec,TState>`.** The form is identical across aircraft; the profile (`FirstOfficer/Pmdg777FoProfile.cs`, `FirstOfficer/PMDG737/Pmdg737FoProfile.cs`) supplies the executor, state evaluator, checklist + flow data, auto/phase managers, window title, and the data-manager binding. Generic engine pieces: `ChecklistManager` (toggle / auto-detect / revert), `FlowManager` (step runner + events), `FlightPhaseMonitor`, `FOAutoManager`; per-aircraft: `AircraftActionExecutor` (PMDG switch dispatch), `AircraftStateEvaluator` (reads PMDG data fields), `PMDG7x7ChecklistDefinitions`, `PMDG7x7FlowDefinitions`. Interfaces live in `FirstOfficer/IFo*.cs`; models in `FirstOfficer/Models/` (`ChecklistItem`, `ChecklistGroup`, `FlowDefinition`, `FlowStep`).
 

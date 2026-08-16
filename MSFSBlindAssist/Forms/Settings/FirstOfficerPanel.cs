@@ -154,7 +154,7 @@ public class FirstOfficerPanel : UserControl, ISettingsPanel
             Location = new Point(20, 335),
             AutoSize = true,
             AccessibleName = "Automatic center fuel pump management",
-            AccessibleDescription = "On the PMDG 737 and 777, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
+            AccessibleDescription = "On the PMDG 737 and 777 and the iFly MAX8, turn the center tank fuel pumps on during ground setup when center fuel is loaded, and off when the center tank runs dry."
         };
 
         Controls.AddRange(new Control[]

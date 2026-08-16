@@ -508,9 +508,9 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 
 - Two CDUs (no observer), no FPA mode, annunciator names differ from the 777 (LVL_CHG/HDG_SEL/VOR_LOC), DU selectors reverse sequence for the F/O, and fire handles need an active fire to test — see docs/pmdg-737.md for the full gotcha list. → [pmdg-737.md](docs/pmdg-737.md)
 
-### First Officer Automation (PMDG 777/737, Fenix A320, FBW A380, FBW A32NX) (→ [first-officer.md](docs/first-officer.md))
+### First Officer Automation (PMDG 777/737, Fenix A320, FBW A380, FBW A32NX, iFly 737 MAX8) (→ [first-officer.md](docs/first-officer.md))
 
-- Screen-reader First Officer (flows + checklists) across four aircraft via `IFoProfile<TExec,TState>`; the form is identical, the profile injects executor/evaluator/data. Full architecture + gotchas in the doc. → [first-officer.md](docs/first-officer.md)
+- Screen-reader First Officer (flows + checklists) across six aircraft via `IFoProfile<TExec,TState>`; the form is identical, the profile injects executor/evaluator/data. Full architecture + gotchas in the doc. → [first-officer.md](docs/first-officer.md)
 - No FMC programming, ever (deliberate user decision) — keep checklist text + V-speed reads + SimBrief load-only; never reintroduce CDU-keystroke automation. → [first-officer.md](docs/first-officer.md)
 - `*_CL` readback groups are action-free (no item has a non-null `CheckAction`); state/action groups fire the switch on tick and auto-detect from live state. → [first-officer.md](docs/first-officer.md)
 - 737 FO state groups are ALL `RevertToState` (never `StayComplete`), made safe by NaN-until-`IsReady` evaluator gating + the manual-tick grace. → [first-officer.md](docs/first-officer.md)
@@ -536,6 +536,11 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The CENTER low-press annunciator is gated on its OWN switch — a lit center light implies its switch is on (`lpCtrN ⟹ swCtrN`, live-measured M-2; the converse is FALSE: switch on + fuel → light out). The WING annunciator tracks output PRESSURE, not the switch (M-3) — the two families follow DIFFERENT models; no reasoning transfers between them, on either type. → [first-officer.md](docs/first-officer.md)
 - `(int)Math.Round(double.NaN)` is `int.MinValue` on x64 — every FO `Fuel*Lbs` reader must route through `FuelSystemLogic.SafeRoundToInt` (NaN→0); a NaN-derived quantity pinning the refuel floor would oscillate the pumps. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
 - MCP-probing gotcha (probing sessions only, NOT a conclusion about MSFSBA's dispatch): PMDG `send_pmdg_event` WITH a parameter is a silent no-op on both 737/777; WITHOUT a parameter it works via transmit and acts as a TOGGLE (two identical consecutive events coalesce). MSFSBA's own path (`TransmitClientEvent`-with-parameter) is absolute + idempotent — draw no dispatch conclusions from the MCP artifacts. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
+- iFly 737 MAX8 FO writes go through `IFly737MAXDefinition.ApplyUIVariable` ONLY — never a second command table; nothing on this aircraft is ever written as an L:var, so a key `ApplyUIVariable` doesn't recognize is a mapping bug, not a control needing another path. → [first-officer.md](docs/first-officer.md)
+- iFly 737 MAX8 center-pump ON gating sits at `IFly737ActionExecutor.DispatchCoreAsync`, the executor's single all-paths chokepoint — same rule as the PMDG jets, never gate a shallower call. → [first-officer.md](docs/first-officer.md)
+- iFly 737 MAX8 speedbrake ARM, takeoff flaps and landing autobrake are Captain items — the speedbrake lever's write has an unverified scale mismatch against its status readback, so no write is wired for it at all. → [first-officer.md](docs/first-officer.md)
+- iFly 737 MAX8 descent never commands standard pressure — the transition-level crossing is announce-only ("set local altimeter pressure now"); only the climb-through-transition-altitude crossing presses STD, and only on a side not already confirmed STD. → [first-officer.md](docs/first-officer.md)
+- iFly 737 MAX8 LNAV/VNAV latch must not burn on an unreadable snapshot — `ShouldBurnLnavVnavLatch` only spends the 400 ft one-shot when a push actually fired or both annunciators read definitively known; an all-NaN tick must leave the latch unset so the next tick can retry. → [first-officer.md](docs/first-officer.md)
 
 ### PMDG EFB (Coherent debugger) (→ [pmdg-efb.md](docs/pmdg-efb.md))
 
@@ -798,7 +803,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[iFly 737 MAX8](docs/ifly-737.md)** - official iFly SDK transport (shared memory + WM_COPYDATA), generated offsets, synthetic `SYN_*` fields, command-encoding traps
 - **[PMDG 777](docs/pmdg-777.md)** - CDA switch patterns, fuel-lever/ground-power exceptions, CDU crew-index convention, System Display
 - **[PMDG EFB](docs/pmdg-efb.md)** - Coherent-debugger EFB scrape agent shared by the PMDG 737/777 (and HS787's CDU transport pattern)
-- **[First Officer](docs/first-officer.md)** - Screen-reader First Officer flows/checklists/auto-managers across the PMDG 777/737, Fenix A320 and FBW A380
+- **[First Officer](docs/first-officer.md)** - Screen-reader First Officer flows/checklists/auto-managers across the PMDG 777/737, Fenix A320, FBW A380, FBW A32NX and iFly 737 MAX8
 - **[FlyByWire A380X](docs/a380x.md)** - MCDU/MFD, OANS/BTV, RMP, ECAM/EWD, checklists, flyPad-specific A380 notes, and all A380X invariants
 - **[FlyByWire A32NX / Fenix](docs/a32nx.md)** - A32NX panel parity, MCDU, DCDU, Fenix cockpit controls, Fenix monitor manager, momentary-button press-release fix
 - **[flyPad EFB](docs/flypad.md)** - Shared FlyByWire A320/A380 flyPad accessibility architecture (WebView2 shell, ground services, settings, dashboard)
