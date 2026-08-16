@@ -23,6 +23,7 @@ public partial class DatabaseBuildProgressForm : Form
 
     private bool buildCompleted;
     private bool buildSucceeded;
+    private bool userCancelled;
     private string completionMessage = "";
 
     /// <summary>
@@ -226,8 +227,9 @@ public partial class DatabaseBuildProgressForm : Form
 
         // Success is announced by DatabaseSettingsForm once the dialog closes. A failure was
         // announced nowhere at all, so a blind pilot heard confirmation on the good path and
-        // silence on the bad one.
-        if (!e.Success)
+        // silence on the bad one. User-initiated cancellation is not a failure to announce —
+        // the pilot already confirmed the cancel and the status box already says "Build cancelled".
+        if (!userCancelled && !e.Success)
         {
             announcer?.AnnounceImmediate(completionMessage);
         }
@@ -236,8 +238,9 @@ public partial class DatabaseBuildProgressForm : Form
         {
             UpdateStatus(100, "Build completed successfully!", e.Message);
         }
-        else
+        else if (!userCancelled)
         {
+            // Skip the "Build failed" relabel on user cancel; CancelButton_Click already set it to "Build cancelled".
             UpdateStatus(0, "Build failed", e.Message);
         }
 
@@ -287,6 +290,11 @@ public partial class DatabaseBuildProgressForm : Form
 
         if (result == DialogResult.Yes)
         {
+            // Cancellation is user-triggered, so don't announce it as a failure. The builder will
+            // call OnBuildCompleted(false, ...) with the same channel as a genuine error, but we
+            // suppress both the announcement and the "Build failed" relabel.
+            userCancelled = true;
+
             cancellationTokenSource.Cancel();
             builder.CancelBuild();
 
