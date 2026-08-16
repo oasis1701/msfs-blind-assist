@@ -1,1 +1,7 @@
-The First Officer now switches the centre fuel pumps off on the PMDG 737 and 777 when the centre tank runs dry. The LOW PRESSURE lights flicker on and off for a second or two as the tank empties rather than staying steadily lit, and that flicker used to reset the check that decides when the tank is empty — so the switch-off never came and the pumps kept running dry for the rest of the leg with nothing said. The check now adds up the time the lights are lit and only forgets it once they have been out for a good five seconds, so a normal fluttering low-pressure indication triggers the callout and the switch-off, while a single stray flash still does not.
+Automatic center-tank fuel pump management on the PMDG 737, PMDG 777 and iFly MAX8 now
+switches the pumps off by fuel quantity: once the center tank drops below 1,000 lbs the
+pumps come off with a spoken callout, in any phase of flight. The pumps only auto-arm on
+the ground when the center tank holds more than 1,500 lbs, so they no longer switch on
+just to run an almost-empty tank dry. Earlier builds watched the low-pressure lights,
+which could stay quiet through a real depletion and leave the pumps running on an empty
+tank.

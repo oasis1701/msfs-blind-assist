@@ -345,31 +345,46 @@ what value it holds cold, mid-transfer, and after a successful transfer.
 ## Part E — Center fuel pump automation (opt-in, default OFF)
 
 This is the same shared `CenterFuelPumpAutomation` policy used by the PMDG 737 and 777 (see
-`docs/first-officer.md`'s Center fuel pump section for the full policy description — arm-ON
-gating, the cumulative low-press debounce, the two arm-suppressor latches, the pending-command
-write-then-verify latch). The iFly adapter (`IFly737FOAutoManager.UpdateCenterPumps`) feeds it
-from `Fuel_CENTER_L/R_Switch_Status` + `LOW_PRESSURE_CENTER_L/R_Light_Status` (center) and the
-four wing pump/low-press pairs (credibility check) — this is the first time this policy runs
+`docs/first-officer.md`'s Center fuel pump section for the full policy description). As of
+2026-08-16 this policy is **QUANTITY-based**, not annunciator-based: OFF fires once center
+fuel quantity is confirmed below `OffThresholdLbs` (1000 lb) for 2 continuous seconds, in any
+phase of flight, and auto-arm requires center quantity above `ArmThresholdLbs` (1500 lb) with
+the wing pumps already on. The low-press annunciators are no longer read by this policy at all.
+The iFly adapter (`IFly737FOAutoManager.UpdateCenterPumps`) feeds it fuel quantity from the SDK
+and the wing/center pump switch states — this is the first time the rewritten policy runs
 against a non-PMDG SDK, so confirm the field wiring produces sane behavior, not just that the
 pure policy logic is correct (that part already has unit-test coverage independent of the
-aircraft).
+aircraft, including an invalid-quantity guard — iFly is the adapter that can pass NaN through
+unconverted).
 
-1. **Enable** "Auto-manage center fuel pumps (PMDG 737/777 and iFly MAX8)" in
-   **Settings → First Officer**. Load with center fuel present, wing pumps off, on the ground.
-2. Turn the wing pumps ON by hand (or run Before Start up to that point) — the center pumps
-   should switch ON shortly after ("Center fuel pumps on."), matching the Before Start flow's
-   merged "Fuel pumps: ON" step.
-3. Let the center tank run dry in flight (or reduce center fuel before the flight if you can).
-   Confirm the low-press annunciators light, and after ~3 seconds of (possibly intermittent)
-   low-press signal, the pumps switch off with "Center tank low. Center fuel pumps off." — this
-   should hold even if the low-press light flickers rather than staying solid (the debounce is
-   cumulative, not reset-on-any-gap).
-4. Confirm the pumps do **not** re-arm on their own after the dry-off — only a real refuel, a
-   settings toggle off/on, or an aircraft switch clears the dry-off latch.
+1. **Ground arm refused at or below 1500 lb, performed above it.** Enable "Auto-manage center
+   fuel pumps (PMDG 737/777 and iFly MAX8)" in **Settings → First Officer**. Load on the ground
+   with center fuel at or below 1500 lb, wing pumps off. Turn the wing pumps ON by hand (or run
+   Before Start up to that point) — the center pumps must stay OFF (no arm at ≤1500 lb, matching
+   the 500 lb hysteresis gap above `OffThresholdLbs`). Reload or refuel above 1500 lb and repeat
+   — the center pumps should switch ON shortly after wing pumps go on ("Center fuel pumps on."),
+   matching the Before Start flow's merged "Fuel pumps: ON" step.
+2. **In-flight depletion — auto-off within a few seconds of crossing 1000 lb.** Let the center
+   tank run dry in flight (or reduce center fuel before the flight if you can) with the pumps
+   running. As the gauge crosses below 1000 lb, the pumps should switch off within a few seconds
+   with "Center tank low. Center fuel pumps off." Verify in
+   `%APPDATA%\MSFSBlindAssist\logs\center_pumps.log`: `belowMs` should accrue toward 2000 as the
+   quantity stays below threshold, and the line ending in `-> TurnOff` should appear once the
+   confirm completes.
+3. **Manual-off respected.** Switch the center pumps off by hand (wing pumps still on, quantity
+   still above `OffThresholdLbs`) and confirm they do **not** re-arm on their own — only a
+   genuine ground refuel above the recorded floor + 250 lb, a settings toggle off/on, or an
+   aircraft switch clears the latch.
+4. **Ground refuel above floor + 250 re-arms.** After either a dry-off or a manual-off latch is
+   set (floor recorded at the quantity where it latched), refuel on the ground to above
+   `floor + 250` lb — the latch should clear and, with wing pumps on and quantity above 1500 lb,
+   the pumps should re-arm ("Center fuel pumps on.").
 5. With the setting **disabled** (default), confirm the center pumps never move on their own —
    only the flow/checklist paths (Before Start / Shutdown) touch them.
 6. Check `%APPDATA%\MSFSBlindAssist\logs\center_pumps.log` if anything looks wrong — it traces
    every input/latch/action for this feature and is the first thing to attach to a bug report.
+   Its line shape is now `qty= dt= ready= gnd= pumps= wing= belowMs= dryOffLatch=
+   manualOffLatch= floor= pending= -> Action` (no more `dry=`/`cred=`/`dryMs=`).
 
 ---
 
