@@ -1388,8 +1388,8 @@ public partial class TaxiGuidanceManager
         _headingErrorInitialized = false;
         _smoothedHeadingError    = 0;
         _steeringTone.SetPulse(false);
-        // Tone stays paused until UpdateBacktracking sees heading within 90° of
-        // the backtrack target — keeps the tone silent during the 180° U-turn.
+        // Tone resumes on the first UpdateBacktracking frame and pans throughout
+        // the 180° turn (no silent phase) — see UpdateBacktracking.
 
         SetState(TaxiGuidanceState.BacktrackingOnRunway);
 
@@ -1400,9 +1400,10 @@ public partial class TaxiGuidanceManager
 
     /// <summary>
     /// Per-frame logic while in <see cref="TaxiGuidanceState.BacktrackingOnRunway"/>.
-    /// Uses precision runway-lineup thresholds (silent ±0.5°, active ±1°) once the
-    /// pilot's heading is within 90° of the backtrack target. Silent while heading
-    /// is >90° away (the initial U-turn — direction is ambiguous for a 180° rotation).
+    /// Uses precision runway-lineup thresholds (silent ±0.5°, active ±1°). The tone
+    /// is NEVER silent during the turnaround: while heading is >90° from the
+    /// backtrack target it pans hard to whichever side the pilot commits the 180°,
+    /// then settles to fine steering as they straighten onto the reciprocal heading.
     /// Transitions to Taxiing when within BACKTRACK_HANDOFF_M of the connection node.
     /// </summary>
     private void UpdateBacktracking(double lat, double lon, double headingTrue, double groundSpeedKts)
@@ -1410,37 +1411,43 @@ public partial class TaxiGuidanceManager
         double headingError = NormalizeAngle(_backtrackHeadingTrue - headingTrue);
         double absError = Math.Abs(headingError);
 
-        if (absError <= 90.0)
+        // Never silent — the tone pans to show which way to turn, follows the
+        // pilot around the 180°, and settles to fine centerline-heading steering
+        // as they straighten (user preference 2026-07: a backtrack must NOT go
+        // quiet during the turnaround; silence reads as "system gave up").
+        bool firstFrame = !_headingErrorInitialized;
+        if (absError > 90.0)
         {
-            // Apply low-pass filter (same as normal taxiing) then update tone.
-            if (!_headingErrorInitialized)
-            {
-                _smoothedHeadingError = headingError;
-                _headingErrorInitialized = true;
-                if (!_steeringToneSuppressed) _steeringTone.Resume(); // activate from the initial U-turn silence
-            }
-            else
-            {
-                _smoothedHeadingError = _smoothedHeadingError * (1.0 - HEADING_ERROR_FILTER_ALPHA)
-                                      + headingError * HEADING_ERROR_FILTER_ALPHA;
-            }
-            if (!_steeringToneSuppressed)
-            {
-                _steeringTone.UpdateHeadingErrorWithThresholds(
-                    _smoothedHeadingError,
-                    silentThresholdDeg:     0.5,
-                    activationThresholdDeg: 1.0,
-                    maxPanThresholdDeg:     15.0);
-            }
+            // Still swinging through the U-turn. Track the RAW error (no low-pass)
+            // so a ±180° sign flip immediately follows whichever way the pilot
+            // commits the turn — keeping the pan hard to that side instead of an
+            // EMA averaging it toward centre across the wrap.
+            _smoothedHeadingError = headingError;
+            _headingErrorInitialized = true;
         }
         else
         {
-            // Still in the U-turn: keep tone silent and reset the smoother so it
-            // initialises cleanly once heading crosses the 90° threshold.
-            _steeringTone.Pause();
-            _headingErrorInitialized = false;
-            _smoothedHeadingError    = 0;
+            _smoothedHeadingError = firstFrame
+                ? headingError
+                : _smoothedHeadingError * (1.0 - HEADING_ERROR_FILTER_ALPHA)
+                  + headingError * HEADING_ERROR_FILTER_ALPHA;
+            _headingErrorInitialized = true;
         }
+        if (!_steeringToneSuppressed)
+        {
+            if (firstFrame) _steeringTone.Resume();
+            _steeringTone.UpdateHeadingErrorWithThresholds(
+                _smoothedHeadingError,
+                silentThresholdDeg:     0.5,
+                activationThresholdDeg: 1.0,
+                maxPanThresholdDeg:     15.0);
+        }
+
+        LogBacktrackFrame("backtrack", lat, lon, headingTrue,
+            headingError, _smoothedHeadingError,
+            _backtrackConnectionNodeId > 0
+                ? TaxiGraph.FastDistanceMeters(lat, lon, _backtrackConnectionLat, _backtrackConnectionLon)
+                : -1);
 
         if (_backtrackConnectionNodeId <= 0)
         {
@@ -1477,6 +1484,103 @@ public partial class TaxiGuidanceManager
             AnnounceInstruction("Runway vacated.");
             // _route is null; pilot loads the next route via Taxi Assist.
             SetState(TaxiGuidanceState.Taxiing);
+        }
+    }
+
+    /// <summary>
+    /// Per-frame logic while in <see cref="TaxiGuidanceState.BacktrackDeparture"/>
+    /// — the FULL-LENGTH backtrack DEPARTURE (opt-in). Steers along the runway
+    /// centerline on the RECIPROCAL of the takeoff heading toward the departure
+    /// threshold (the full-length lineup point in _lineupTargetLat/Lon), with the
+    /// same intercept-angle model as runway lineup so both cross-track and heading
+    /// are corrected. NEVER silent: the tone pans to guide the turn onto the runway
+    /// and holds the centerline. On reaching the threshold it hands off to
+    /// <see cref="UpdateLineup"/>/LiningUp, which pans the 180° turnaround and lines
+    /// up + auto-activates Takeoff Assist exactly as a normal full-length departure.
+    /// </summary>
+    private void UpdateBacktrackDeparture(double lat, double lon, double headingTrue)
+    {
+        double reciprocalHdgTrue = (_lineupHeadingTrue + 180.0) % 360.0;
+
+        // Cross-track + heading relative to the centerline, in the BACKTRACK
+        // direction (reference = reciprocal heading). Same tracker + intercept
+        // idiom as the runway-lineup branch of UpdateLineup, just facing the
+        // other way, so silence means "on the centerline heading the right way".
+        var track = RunwayCenterlineTracker.Compute(
+            lat, lon, headingTrue,
+            _lineupTargetLat, _lineupTargetLon,
+            reciprocalHdgTrue);
+
+        double absCrossFeet   = track.AbsCrossTrackFeet;
+        double crossTrackFeet = track.CrossTrackFeet; // signed: + = left of CL, - = right
+
+        const double MAX_INTERCEPT_DEG = 30.0;
+        double interceptDeg;
+        if (absCrossFeet <= LINEUP_NOISE_DEADBAND_FEET)
+            interceptDeg = 0.0;
+        else
+        {
+            double effectiveCross = absCrossFeet - LINEUP_NOISE_DEADBAND_FEET;
+            double saturationSpan = LINEUP_INTERCEPT_SAT_FEET - LINEUP_NOISE_DEADBAND_FEET;
+            double normalized = Math.Clamp(effectiveCross / saturationSpan, 0.0, 1.0);
+            interceptDeg = MAX_INTERCEPT_DEG * Math.Sqrt(normalized) * Math.Sign(crossTrackFeet);
+        }
+        double desiredHeadingTrue = reciprocalHdgTrue + interceptDeg;
+        double toneHeadingError = NormalizeAngle(desiredHeadingTrue - headingTrue);
+
+        bool firstFrame = !_headingErrorInitialized;
+        // >90° from the backtrack heading = still turning onto the runway from the
+        // entrance. Track the raw error (no low-pass) so the pan follows the turn;
+        // low-pass only once roughly aligned, for smooth centerline steering.
+        if (Math.Abs(toneHeadingError) > 90.0)
+            _smoothedHeadingError = toneHeadingError;
+        else
+            _smoothedHeadingError = firstFrame
+                ? toneHeadingError
+                : _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA)
+                  + toneHeadingError * HEADING_ERROR_FILTER_ALPHA;
+        _headingErrorInitialized = true;
+
+        if (!_steeringToneSuppressed)
+        {
+            if (firstFrame) _steeringTone.Resume();
+            _steeringTone.UpdateHeadingErrorWithThresholds(
+                _smoothedHeadingError,
+                silentThresholdDeg:     0.5,
+                activationThresholdDeg: 1.0,
+                maxPanThresholdDeg:     15.0);
+        }
+
+        // Distance remaining to the departure threshold (full-length lineup point).
+        double distToThreshold = TaxiGraph.FastDistanceMeters(
+            lat, lon, _lineupTargetLat, _lineupTargetLon);
+
+        LogBacktrackFrame("btDep", lat, lon, headingTrue,
+            toneHeadingError, _smoothedHeadingError, distToThreshold);
+
+        if (!_backtrackDepApproachAnnounced && distToThreshold <= BACKTRACK_DEP_APPROACH_M)
+        {
+            _backtrackDepApproachAnnounced = true;
+            int toHdg = (int)Math.Round(_lineupHeadingMag);
+            AnnounceInstruction(
+                $"Approaching runway end. Slow down, prepare to turn around to heading {toHdg}.");
+        }
+
+        if (distToThreshold <= BACKTRACK_DEP_HANDOFF_M)
+        {
+            // Reached the departure threshold — hand to LiningUp. The lineup target
+            // is already the full-length point + takeoff heading (set in LoadRoute),
+            // so LiningUp pans the 180° turnaround, converges on the centerline,
+            // announces "Lined up", and fires RequestTakeoffAssistAutoActivate. Reset
+            // the smoother so the reciprocal-phase error can't leak into it.
+            SetState(TaxiGuidanceState.LiningUp);
+            _lineupAnnouncedAligned = false;
+            _smoothedHeadingError = 0.0;
+            _headingErrorInitialized = false;
+            if (!_steeringToneSuppressed) _steeringTone.Resume();
+
+            int toHdgMag = (int)Math.Round(_lineupHeadingMag);
+            AnnounceInstruction($"Runway end. Turn around to line up, heading {toHdgMag}.");
         }
     }
 
@@ -1845,6 +1949,33 @@ public partial class TaxiGuidanceManager
     {
         try { _rolloutDiagLog.Info($"{msg}"); }
         catch { /* never fail on diag */ }
+    }
+
+    /// <summary>
+    /// Rate-limited per-frame diagnostic for the two backtrack states, mirroring
+    /// LogGuidanceFrame's role for Taxiing: proof in taxi_guidance.log that
+    /// position frames are actually reaching the state's update method (the EGNM
+    /// failure was frame starvation with no log evidence). Shares the Taxiing
+    /// logger's throttle — the states are mutually exclusive. distM is the
+    /// distance to the state's target (connection node / departure threshold),
+    /// -1 when no target exists.
+    /// </summary>
+    private void LogBacktrackFrame(
+        string phase, double lat, double lon, double headingTrue,
+        double rawHeadingError, double smoothedHeadingError, double distM)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastGuidanceLogTime).TotalMilliseconds < GUIDANCE_LOG_INTERVAL_MS) return;
+        _lastGuidanceLogTime = now;
+        try
+        {
+            _guidanceLog.Info(string.Format(
+                System.Globalization.CultureInfo.InvariantCulture,
+                "{0}: lat={1:F7},lon={2:F7},hdg={3:F1},raw={4:F2},smooth={5:F2},dist={6:F0}",
+                phase, lat, lon, headingTrue,
+                rawHeadingError, smoothedHeadingError, distM));
+        }
+        catch { /* diagnostic only — never crash guidance for a log failure */ }
     }
 
 }

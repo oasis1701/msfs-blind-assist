@@ -39,13 +39,25 @@ public enum TaxiGuidanceState
     LandingRollout,
     /// <summary>
     /// The pilot reached the runway end without exiting and is backtaxiing
-    /// toward the apron. Steering tone guides on the reciprocal runway heading
-    /// (silent while heading is &gt;90° from backtrack target — turn direction is
-    /// ambiguous for a 180° rotation). Transitions to Taxiing once the aircraft
-    /// is within BACKTRACK_HANDOFF_M of the first taxi-graph connection node,
-    /// or if no connection node was found nearby.
+    /// toward the apron. Steering tone guides on the reciprocal runway heading.
+    /// Transitions to Taxiing once the aircraft is within BACKTRACK_HANDOFF_M of
+    /// the first taxi-graph connection node, or if no connection node was found
+    /// nearby.
     /// </summary>
-    BacktrackingOnRunway
+    BacktrackingOnRunway,
+    /// <summary>
+    /// FULL-LENGTH BACKTRACK DEPARTURE (opt-in via the Taxi planner checkbox).
+    /// The pilot has been cleared onto the runway at an intermediate entrance and
+    /// is backtracking on the reciprocal takeoff heading toward the departure
+    /// threshold. The steering tone keeps them on the centerline (never silent —
+    /// the tone pans to guide the entry turn and the centerline hold). On reaching
+    /// the departure threshold it hands off to <see cref="LiningUp"/> at the
+    /// full-length lineup point, which pans the 180° turnaround and lines up +
+    /// auto-activates Takeoff Assist exactly as a normal full-length departure.
+    /// Entirely separate from <see cref="BacktrackingOnRunway"/> (the landing-side
+    /// backtaxi-to-apron maneuver).
+    /// </summary>
+    BacktrackDeparture
 }
 
 /// <summary>
@@ -140,6 +152,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // gate can legitimately reject the ILS hold, and a blind pilot has no other
     // way to know which line the route stops at.
     private RunwayHoldChoice _lastRunwayHoldChoice = RunwayHoldChoice.None;
+    // Taxi planner "Depart from named holding point" pick for the CURRENT route: the graph
+    // node of the chosen PAINTED hold line (0 = no holding point chosen). Persisted across a
+    // mid-taxi recalc for the same reason as _preferIlsHold — a recalc that dropped the pin
+    // would quietly hand the pilot back the corridor they didn't choose. See
+    // ApplyHoldingPointPin.
+    private int _holdingPointHoldNodeId;
 
     // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
     // last entry = final ToNode). Rebuilt lazily whenever _route changes —
@@ -569,6 +587,16 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double LINEUP_PULSE_MIN_CROSS_FEET = 10.0;
     private bool _isRunwayLineup = false;  // true = runway (use centerline), false = gate (heading only)
     private bool _hasLineupTarget = false; // explicit flag — safer than (_lineupTargetLat != 0)
+
+    // FULL-LENGTH BACKTRACK DEPARTURE (opt-in, Taxi planner checkbox). When true,
+    // the route ends at an intermediate runway entrance (_destinationNodeId) and
+    // the lineup target (_lineupTargetLat/Lon/_lineupHeadingTrue) is the FULL-LENGTH
+    // departure threshold. After the hold-short Continue, guidance enters
+    // BacktrackDeparture and steers the reciprocal-heading backtrack to the
+    // threshold, then hands to LiningUp for the turnaround. Set in LoadRoute,
+    // reset in StopGuidance; persists across auto-recalcs (like _preferIlsHold).
+    private bool _backtrackDeparture = false;
+    private bool _backtrackDepApproachAnnounced = false; // "approaching runway end" one-shot
     // Non-null while a Progressive Taxi leg is active. Drives the terminal
     // "progressive hold" end-state + announcement and suppresses the auto
     // hold-short on a cleared crossing. Cleared on every LoadRoute (set fresh
@@ -832,6 +860,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double BACKTRACK_TAXI_ANNOUNCE_M = 200.0;
     private const double BACKTRACK_HANDOFF_M        = 25.0;
 
+    // Full-length backtrack DEPARTURE thresholds (distance to the departure
+    // threshold / full-length lineup point).
+    // APPROACH: one-shot "approaching runway end, prepare to turn around" callout.
+    // HANDOFF:  switch from the reciprocal-heading backtrack steer to LiningUp,
+    //           which then pans the 180° turnaround and lines up full length.
+    private const double BACKTRACK_DEP_APPROACH_M = 150.0;
+    private const double BACKTRACK_DEP_HANDOFF_M  = 40.0;
+
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
     private const double LINEUP_HEADING_TOLERANCE_DEG = 5.0;             // gate default
@@ -937,7 +973,11 @@ public partial class TaxiGuidanceManager : IDisposable
                     var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    // Runways let the builder repair laterally-bogus start rows before
+                    // they reach the centerlines this very call is about to query
+                    // (TaxiGraph.SnapStartToRunwayCenterline).
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                            dataProvider.GetRunways(icao));
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
                 }
@@ -1093,7 +1133,11 @@ public partial class TaxiGuidanceManager : IDisposable
                     var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    // Runways let the builder repair laterally-bogus start rows before
+                    // they reach the centerlines this very call is about to query
+                    // (TaxiGraph.SnapStartToRunwayCenterline).
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                            dataProvider.GetRunways(icao));
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
                 }
@@ -1338,6 +1382,14 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.BacktrackingOnRunway)
         {
             UpdateBacktracking(lat, lon, headingTrue, groundSpeedKts);
+            return;
+        }
+
+        // Full-length backtrack DEPARTURE: reciprocal-heading centerline steer to
+        // the departure threshold, then hand to LiningUp for the turnaround.
+        if (_state == TaxiGuidanceState.BacktrackDeparture)
+        {
+            UpdateBacktrackDeparture(lat, lon, headingTrue);
             return;
         }
 
@@ -2300,6 +2352,31 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_holdShortAtDestination)
         {
             _holdShortAtDestination = false;
+
+            // Full-length backtrack departure: instead of lining up here (at the
+            // intermediate entrance), enter the backtrack phase — steer the
+            // reciprocal-heading run to the departure threshold, then LiningUp
+            // takes the turnaround. The lineup target is already the FULL-LENGTH
+            // threshold (set in LoadRoute), so nothing to re-anchor.
+            if (_backtrackDeparture)
+            {
+                SetState(TaxiGuidanceState.BacktrackDeparture);
+                _backtrackDepApproachAnnounced = false;
+                _steeringTone.Resume();
+                // Clean smoother — the taxi-phase turn-into-the-runway residual
+                // must not leak into the backtrack tone (same reason as lineup).
+                _smoothedHeadingError = 0.0;
+                _headingErrorInitialized = false;
+
+                double reciprocalHdgMag = (_lineupHeadingMag + 180.0) % 360.0;
+                int backHdg = (int)Math.Round(reciprocalHdgMag);
+                int toHdg   = (int)Math.Round(_lineupHeadingMag);
+                AnnounceInstruction(
+                    $"Entering {_destinationName}. Backtrack to full length, heading {backHdg}, " +
+                    $"then turn around to heading {toHdg}.");
+                return;
+            }
+
             SetState(TaxiGuidanceState.LiningUp);
             _lineupAnnouncedAligned = false;
             _steeringTone.Resume();
@@ -2394,7 +2471,11 @@ public partial class TaxiGuidanceManager : IDisposable
             SetState(TaxiGuidanceState.HoldShort);
 
             string rwy = _destinationName;
-            AnnounceInstruction($"Stop. Hold short of {rwy}. Press continue when cleared.");
+            // Full-length backtrack departure: the pilot will enter here and
+            // backtrack, so make the Continue prompt say so explicitly.
+            AnnounceInstruction(_backtrackDeparture
+                ? $"Stop. Hold short of {rwy}. Press continue when cleared to enter and backtrack."
+                : $"Stop. Hold short of {rwy}. Press continue when cleared.");
             return;
         }
 
@@ -2533,6 +2614,8 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd100Announced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
+        _backtrackDeparture = false;
+        _backtrackDepApproachAnnounced = false;
         _postHighSpeedExitMinBearing = 0.0;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)

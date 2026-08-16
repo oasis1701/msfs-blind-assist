@@ -35,6 +35,40 @@ public class TaxiRouter
     }
 
     /// <summary>
+    /// Joins two CONTIGUOUS legs (the first must END on the node the second STARTS from)
+    /// into one route. Rebuilt from the combined node list rather than by appending segment
+    /// lists, so cumulative/remaining distances and the turn angle AT THE JOIN are computed
+    /// across the seam instead of carried over from two independently-built legs (an appended
+    /// second leg would restart its cumulative distances at zero and read the join as
+    /// "straight" whatever the actual turn).
+    /// <para>Returns null when either leg is empty or they do not meet — callers keep their
+    /// original route.</para>
+    /// </summary>
+    public TaxiRoute? Concatenate(TaxiRoute first, TaxiRoute second)
+    {
+        var ids = NodeIdsOf(first);
+        var tail = NodeIdsOf(second);
+        if (ids.Count < 2 || tail.Count < 2) return null;
+        if (ids[^1] != tail[0]) return null;
+
+        for (int i = 1; i < tail.Count; i++)
+            ids.Add(tail[i]);
+
+        return BuildRoute(ids);
+    }
+
+    /// <summary>Node ids a route visits, in order (start node followed by every segment end).</summary>
+    private static List<int> NodeIdsOf(TaxiRoute route)
+    {
+        var ids = new List<int>();
+        if (route.Segments.Count == 0) return ids;
+        ids.Add(route.Segments[0].FromNode.NodeId);
+        foreach (var seg in route.Segments)
+            ids.Add(seg.ToNode.NodeId);
+        return ids;
+    }
+
+    /// <summary>
     /// Finds a path that follows the specified taxiway sequence.
     /// Falls back to shortest path if the constrained route fails, with reason stored in route.
     /// </summary>
@@ -397,6 +431,24 @@ public class TaxiRouter
     {
         var fromNode = _graph.Nodes[fromNodeId];
         int fromComponent = fromNode.ComponentId;
+
+        // Rank by GRAPH distance, never Euclidean — the same rule
+        // FindNearestNodeOnTaxiwayToTarget already follows for taxiway EXITS
+        // (KDEN M4). Straight-line distance treats a node the aircraft would
+        // have to taxi PAST the real junction to reach as equally close, and
+        // when it wins by a hair the route enters the cleared taxiway at the
+        // wrong end and immediately doubles back.
+        //
+        // Motivating defect (EVRA, 2026-08-07, clearance "C then P"): taxiway C
+        // runs east-west with its junction onto F in the middle. From the
+        // aircraft's position the C/F junction was 454 m away in a straight line
+        // and C's west (runway-hold) end 453 m — one metre closer, so the west
+        // end was chosen. The route then ran the pilot 111 m west past the
+        // junction to that dead end and 111 m straight back east along C: a 222 m
+        // out-and-back on an otherwise correct clearance. By graph distance the
+        // junction wins by the 111 m it actually is nearer, which is the point on
+        // C the aircraft genuinely reaches first.
+        var distFromStart = ComputeGraphDistancesFrom(fromNodeId);
         var candidates = new List<(int nodeId, double dist)>();
 
         foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
@@ -404,8 +456,17 @@ public class TaxiRouter
             var node = _graph.Nodes[nodeId];
             if (node.ComponentId != fromComponent) continue;
 
-            double dist = TaxiGraph.CalculateDistanceMeters(
-                fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
+            // Unreachable in the graph despite sharing a component id (an edge
+            // direction quirk) — keep the candidate but rank it behind every
+            // reachable one, ordered among its peers by straight-line distance.
+            // The offset must be a finite constant, not double.MaxValue: adding
+            // a few hundred metres to MaxValue is a no-op in floating point, so
+            // every unreachable candidate would tie and lose its ordering.
+            const double UNREACHABLE_RANK_BASE = 1e9;
+            double dist = distFromStart.TryGetValue(nodeId, out double graphDist)
+                ? graphDist
+                : UNREACHABLE_RANK_BASE + TaxiGraph.CalculateDistanceMeters(
+                    fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
 
             candidates.Add((nodeId, dist));
         }
@@ -417,6 +478,15 @@ public class TaxiRouter
             .ToList();
     }
 
+    /// <summary>
+    /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
+    /// whose geographic distance to (<paramref name="refLat"/>, <paramref name="refLon"/>) is minimal
+    /// (<paramref name="farthest"/> = false) or maximal (true), or -1 if none. The two callers honor a
+    /// last cleared taxiway that branches off the destination: NEAREST-to-the-runway-position picks
+    /// its hold-short end; FARTHEST-from-the-entry traverses it when the nearest-to-destination node
+    /// degenerates to the entry. Euclidean is correct here precisely because that taxiway does NOT
+    /// lead onto the destination in the graph, so graph distance degenerately picks the entry.
+    /// </summary>
     /// <summary>
     /// Returns the node on <paramref name="taxiwayName"/> (within <paramref name="requiredComponent"/>)
     /// whose geographic distance to (<paramref name="refLat"/>, <paramref name="refLon"/>) is minimal
