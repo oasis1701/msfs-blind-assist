@@ -656,14 +656,18 @@ public class NavdataReaderBuilder
 
         try
         {
-            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath};Mode=ReadOnly");
+            // Disable connection pooling to ensure the database is released immediately after the query.
+            // A pooled handle would be returned to the pool instead of closing the native file handle,
+            // keeping the database locked for the process lifetime. This could interfere with the
+            // File.Move that promoted the database moments before, on subsequent builds in the same session.
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath};Mode=ReadOnly;Pooling=false");
             connection.Open();
 
             using var command = connection.CreateCommand();
             command.CommandText =
                 @"SELECT COUNT(*) FROM bgl_file WHERE filename LIKE '%\_jetways.bgl' ESCAPE '\'";
 
-            long leaked = Convert.ToInt64(command.ExecuteScalar() ?? 0L);
+            long leaked = Convert.ToInt64(command.ExecuteScalar());
             if (leaked > 0)
             {
                 Log.Warn("Database",
