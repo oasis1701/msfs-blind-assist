@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using System.Threading;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -21,6 +20,7 @@ public class NavdataReaderBuilder
 
     private Process? _process;
     private bool _isCancelled;
+    private readonly NavdataReaderProgressMapper _progressMapper = new();
 
     /// <summary>
     /// Builds a database for the specified simulator version
@@ -32,6 +32,10 @@ public class NavdataReaderBuilder
     public async Task<bool> BuildDatabaseAsync(string simulatorVersion, string outputPath, CancellationToken cancellationToken = default)
     {
         _isCancelled = false;
+        // Hoisted above the try so the outer catch can clean it up too (see below) — it is
+        // set for real once we know outputPath, and stays empty until then so an exception
+        // during the earlier validation steps has nothing to (harmlessly) try to delete.
+        string buildPath = string.Empty;
 
         try
         {
@@ -73,6 +77,25 @@ public class NavdataReaderBuilder
                 return false;
             }
 
+            // The shipped navdatareader config. It REPLACES navdatareader's built-in config
+            // rather than merging with it, so a missing or truncated copy does not mean
+            // "fall back to defaults" — it means a build with every filter disabled, which
+            // is worse than not building at all. Refuse here, BEFORE the existing database
+            // is touched, so a broken deploy costs the pilot nothing.
+            string configPath = GetNavdataReaderConfigPath();
+            if (!NavdataReaderConfig.IsUsableFile(configPath))
+            {
+                OnBuildCompleted(false,
+                    "The navdatareader configuration that ships with MSFS Blind Assist is missing or damaged.\n\n" +
+                    $"Expected at: {configPath}\n\n" +
+                    "Without it the database would be built with add-on airport parking replaced by " +
+                    "default parking, so the build has been stopped and your existing database left " +
+                    "untouched.\n\n" +
+                    "Reinstalling or updating MSFS Blind Assist should restore the file.");
+                return false;
+            }
+            Log.Debug("Database", $"Using navdatareader config: {configPath}");
+
             // Ensure output directory exists
             string? outputDirectory = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(outputDirectory) && !Directory.Exists(outputDirectory))
@@ -80,19 +103,20 @@ public class NavdataReaderBuilder
                 Directory.CreateDirectory(outputDirectory);
             }
 
-            // Delete existing database file if it exists
+            // Prove the existing database is not locked WITHOUT deleting it. The old code
+            // deleted here, before navdatareader had produced anything, so every later
+            // failure — a sim not yet at the main menu, a crash, a cancel — left the pilot
+            // with no navdata at all.
             if (File.Exists(outputPath))
             {
                 try
                 {
-                    File.Delete(outputPath);
-                    Log.Debug("Database", $"Deleted existing database: {outputPath}");
+                    using var probe = new FileStream(outputPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
                 }
                 catch (IOException ioEx)
                 {
-                    // File is locked - likely because MSFS Blind Assist has connections open
                     OnBuildCompleted(false,
-                        $"Cannot delete existing database file - it is currently in use.\n\n" +
+                        $"Cannot replace the existing database file - it is currently in use.\n\n" +
                         $"Error: {ioEx.Message}\n\n" +
                         $"This usually means MSFS Blind Assist or another application has the database file open.\n" +
                         $"Please try closing and reopening MSFS Blind Assist, or close any other applications that might be accessing the database.");
@@ -100,9 +124,8 @@ public class NavdataReaderBuilder
                 }
                 catch (UnauthorizedAccessException uaEx)
                 {
-                    // Permission denied
                     OnBuildCompleted(false,
-                        $"Cannot delete existing database file - permission denied.\n\n" +
+                        $"Cannot replace the existing database file - permission denied.\n\n" +
                         $"Error: {uaEx.Message}\n\n" +
                         $"Please check file permissions or run as administrator.");
                     return false;
@@ -111,24 +134,21 @@ public class NavdataReaderBuilder
 
             OnProgressUpdated(0, $"Starting {simulatorVersion} database build...");
 
-            // Build command line arguments
-            string arguments = $"-f {navdataSimFlag} -o \"{outputPath}\"";
+            // Build to a temp file and rename on success, so a failed or cancelled build
+            // never destroys the database the pilot already has.
+            buildPath = outputPath + ".building";
+            TryDeleteQuietly(buildPath);
 
-            // For MSFS/MSFS24, add base path parameter if we can detect it
-            // This ensures navdatareader looks in the correct location for scenery
+            string? basePath = null;
             if (simulatorVersion == "FS2024" || simulatorVersion == "FS2020")
             {
-                string? basePath = GetMSFSBasePath(simulatorVersion);
-                if (!string.IsNullOrEmpty(basePath))
-                {
-                    arguments += $" -b \"{basePath}\"";
-                    Log.Debug("Database", $"Added base path parameter: -b \"{basePath}\"");
-                }
-                else
-                {
-                    Log.Debug("Database", $"Warning: Could not detect {simulatorVersion} base path, relying on auto-detection");
-                }
+                basePath = GetMSFSBasePath(simulatorVersion);
+                if (string.IsNullOrEmpty(basePath))
+                    Log.Debug("Database", $"Could not detect {simulatorVersion} base path, relying on auto-detection");
             }
+
+            string arguments = NavdataReaderArguments.Build(navdataSimFlag, buildPath, configPath, basePath);
+            Log.Debug("Database", $"navdatareader arguments: {arguments}");
 
             // Configure process
             var startInfo = new ProcessStartInfo
@@ -145,7 +165,6 @@ public class NavdataReaderBuilder
             _process = new Process { StartInfo = startInfo };
 
             // Capture output for progress reporting
-            var outputBuilder = new StringBuilder();
             var errorBuilder = new StringBuilder();
             bool hasSimConnectError = false;
 
@@ -153,16 +172,7 @@ public class NavdataReaderBuilder
             {
                 if (!string.IsNullOrEmpty(e.Data))
                 {
-                    outputBuilder.AppendLine(e.Data);
                     ParseProgressOutput(e.Data);
-
-                    // Detect SimConnect connection errors
-                    if (e.Data.IndexOf("Dir is empty", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        e.Data.IndexOf("SimConnect", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        e.Data.IndexOf("Cannot connect", StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        hasSimConnectError = true;
-                    }
                 }
             };
 
@@ -173,8 +183,10 @@ public class NavdataReaderBuilder
                     errorBuilder.AppendLine(e.Data);
                     Log.Debug("Database", $"{e.Data}");
 
-                    // Detect SimConnect errors in stderr
-                    if (e.Data.IndexOf("SimConnect", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    // Only a genuine connection failure, not the word "SimConnect" appearing
+                    // in routine diagnostic output.
+                    if (e.Data.IndexOf("Cannot connect", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        e.Data.IndexOf("SimConnect_Open", StringComparison.OrdinalIgnoreCase) >= 0 ||
                         e.Data.IndexOf("Dir is empty", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         hasSimConnectError = true;
@@ -189,60 +201,109 @@ public class NavdataReaderBuilder
             _process.BeginErrorReadLine();
             Log.Debug("Database", "Navdatareader process started, monitoring output...");
 
-            // Wait for completion with cancellation support
-            while (!_process.HasExited)
+            try
             {
-                if (cancellationToken.IsCancellationRequested || _isCancelled)
+                await _process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                TryKillProcess();
+                TryDeleteQuietly(buildPath);
+                OnBuildCompleted(false, "Build cancelled by user");
+                return false;
+            }
+
+            if (_isCancelled)
+            {
+                TryKillProcess();
+                TryDeleteQuietly(buildPath);
+                OnBuildCompleted(false, "Build cancelled by user");
+                return false;
+            }
+
+            // Barrier: HasExited/WaitForExitAsync return as soon as the process object dies,
+            // but the redirected stream readers may still be delivering. WaitForExit is the
+            // documented flush point, and without it the tail of stderr — the actual reason
+            // a build failed — can be missing from errorBuilder below. Bounded (rather than
+            // the argument-less overload) as defence in depth: the UI-thread marshal for
+            // each reader callback (DatabaseBuildProgressForm.Builder_ProgressUpdated) must
+            // itself stay non-blocking to avoid deadlocking against this very wait, but a
+            // bound here means that even if some future caller reintroduces a blocking
+            // marshal, a stuck reader degrades to a slightly truncated error message
+            // instead of hanging the whole app.
+            _process.WaitForExit(2000);
+
+            int exitCode = _process.ExitCode;
+
+            if (exitCode == 0 && File.Exists(buildPath))
+            {
+                // The lock probe earlier proved nothing about a handle acquired DURING the
+                // build — an FS2024 build runs for minutes over SimConnect, long enough for
+                // the pilot to open the EFB, TCAS or Taxi Assist and put a fresh handle on
+                // outputPath. That kind of lock is usually transient, so retry a few times
+                // before treating it as terminal; only the last failure is reported.
+                const int maxMoveAttempts = 3;
+                const int moveRetryDelayMs = 250;
+                Exception? lastMoveEx = null;
+                bool moved = false;
+
+                for (int attempt = 1; attempt <= maxMoveAttempts && !moved; attempt++)
                 {
-                    _process.Kill();
-                    OnBuildCompleted(false, "Build cancelled by user");
+                    try
+                    {
+                        File.Move(buildPath, outputPath, overwrite: true);
+                        moved = true;
+                    }
+                    catch (Exception moveEx)
+                    {
+                        lastMoveEx = moveEx;
+                        if (attempt < maxMoveAttempts)
+                            await Task.Delay(moveRetryDelayMs);
+                    }
+                }
+
+                if (!moved)
+                {
+                    // Keep buildPath rather than deleting it: it is a good, fully-built
+                    // database, just not yet installed over a file that would not let go.
+                    // The pilot's previous database is untouched at outputPath, so nothing is
+                    // lost. TryDeleteQuietly(buildPath) at the top of the NEXT build attempt is
+                    // what eventually cleans this one up (or the pilot can rename it by hand).
+                    OnBuildCompleted(false,
+                        $"The database was built successfully but could not replace the existing file, " +
+                        $"which is still in use.\n\n" +
+                        $"Error: {lastMoveEx?.Message}\n\n" +
+                        $"Your previous database has been left in place and is still usable. The newly " +
+                        $"built database has been kept at:\n{buildPath}\n\n" +
+                        $"Close MSFS Blind Assist and rename that file to:\n{outputPath}\n" +
+                        $"or simply run the build again.");
                     return false;
                 }
 
-                await Task.Delay(100, cancellationToken);
-            }
-
-            // Check exit code
-            int exitCode = _process.ExitCode;
-
-            if (exitCode == 0 && File.Exists(outputPath))
-            {
                 OnProgressUpdated(100, "Database build completed successfully");
-                OnBuildCompleted(true, "Database built successfully");
+                OnBuildCompleted(true, VerifyExclusionApplied(simulatorVersion, outputPath));
                 return true;
             }
             else
             {
-                // Provide helpful error messages based on detected issues
-                string errorMessage;
+                TryDeleteQuietly(buildPath);
 
-                if (hasSimConnectError && simulatorVersion == "FS2024")
+                // navdatareader's own message first. The previous code decided between two
+                // canned SimConnect texts on a substring match for "SimConnect", which its
+                // routine options dump always contains — so every failure, including an
+                // FS2020 disk build that uses no SimConnect at all, was reported as a
+                // connection problem and the real error was never shown.
+                string errorMessage = errorBuilder.Length > 0
+                    ? errorBuilder.ToString().Trim()
+                    : $"navdatareader exited with code {exitCode}";
+
+                if (hasSimConnectError)
                 {
-                    errorMessage =
-                        "Cannot connect to Flight Simulator 2024 via SimConnect.\n\n" +
-                        "Possible causes:\n" +
-                        "• Simulator is not running or not fully loaded to main menu\n" +
-                        "• SimConnect service is not responding\n" +
-                        "• Firewall blocking connection\n\n" +
-                        "Please ensure FS2024 is running and try again.";
-                }
-                else if (hasSimConnectError && simulatorVersion == "FS2020")
-                {
-                    errorMessage =
-                        "Cannot access Flight Simulator 2020 scenery files.\n\n" +
-                        "Possible causes:\n" +
-                        "• Simulator is running (it should be closed for FS2020)\n" +
-                        "• Scenery files are inaccessible\n" +
-                        "• Insufficient permissions\n\n" +
-                        "Please close FS2020 and try again.";
-                }
-                else if (errorBuilder.Length > 0)
-                {
-                    errorMessage = errorBuilder.ToString();
-                }
-                else
-                {
-                    errorMessage = $"navdatareader exited with code {exitCode}";
+                    errorMessage += simulatorVersion == "FS2024"
+                        ? "\n\nIf this looks like a connection problem: FS2024 must be running and loaded " +
+                          "to the main menu, because navdatareader reads its scenery data over SimConnect."
+                        : "\n\nIf this looks like a scenery access problem: FS2020 must be closed, because " +
+                          "navdatareader reads its scenery files directly from disk.";
                 }
 
                 OnBuildCompleted(false, $"Build failed:\n\n{errorMessage}");
@@ -251,6 +312,15 @@ public class NavdataReaderBuilder
         }
         catch (Exception ex)
         {
+            // A throw anywhere between process start and promotion (BeginErrorReadLine, the
+            // ExitCode read, an event handler marshalling onto a destroyed window handle)
+            // would otherwise leave a partial, potentially large temp file behind forever.
+            // Guarded so an empty buildPath (an exception before Step 3 ever set it) is never
+            // handed to TryDeleteQuietly — though File.Exists("") is itself a safe no-op, this
+            // makes the intent explicit rather than relying on that.
+            if (!string.IsNullOrEmpty(buildPath))
+                TryDeleteQuietly(buildPath);
+
             OnBuildCompleted(false, $"Build error: {ex.Message}");
             return false;
         }
@@ -278,6 +348,40 @@ public class NavdataReaderBuilder
             {
                 Log.Debug("Database", $"Error killing navdatareader process: {ex.Message}");
             }
+        }
+    }
+
+    private void TryKillProcess()
+    {
+        try
+        {
+            if (_process != null && !_process.HasExited)
+            {
+                _process.Kill();
+                // Kill() is asynchronous — the process hasn't necessarily released its
+                // handles (e.g. the .building SQLite file) the instant this returns. Give
+                // it a bounded moment to actually exit before the caller deletes that
+                // file, so a cancelled build doesn't routinely orphan a multi-hundred-MB
+                // temp file behind a lock TryDeleteQuietly then silently swallows.
+                _process.WaitForExit(2000);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Database", $"Error killing navdatareader process: {ex.Message}");
+        }
+    }
+
+    private static void TryDeleteQuietly(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Database", $"Could not delete {path}: {ex.Message}");
         }
     }
 
@@ -310,11 +414,19 @@ public class NavdataReaderBuilder
             return navdataReaderPath;
 
         // Look in parent directory (development environment)
-        string parentNavdataPath = Path.Combine(appDir, "..", "Navdatareader-win-1.2.3", "navdatareader.exe");
+        string parentNavdataPath = Path.Combine(appDir, "..", "Navdatareader-win-1.2.4", "navdatareader.exe");
         if (File.Exists(parentNavdataPath))
             return Path.GetFullPath(parentNavdataPath);
 
         return navdataReaderPath; // Return default path even if not found (error will be handled by caller)
+    }
+
+    /// <summary>
+    /// Gets the path to the navdatareader config shipped in Resources.
+    /// </summary>
+    private static string GetNavdataReaderConfigPath()
+    {
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "navdatareader.cfg");
     }
 
     /// <summary>
@@ -327,80 +439,9 @@ public class NavdataReaderBuilder
 
         try
         {
-            // Log all output for debugging
-            Log.Debug("Database", $"{line}");
-
-            string? detailMessage = null;
-
-            // Look for common progress indicators (case-insensitive using IndexOf)
-            if (line.IndexOf("Reading", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                // Extract more detail if available
-                if (line.IndexOf("scenery", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    detailMessage = "Reading scenery files from disk";
-                }
-                else if (line.IndexOf("BGL", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    detailMessage = "Reading BGL files";
-                }
-                OnProgressUpdated(25, "Reading scenery files...", detailMessage);
-            }
-            else if (line.IndexOf("Processing", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                detailMessage = line.Length < 100 ? line.Trim() : null;
-                OnProgressUpdated(50, "Processing airport data...", detailMessage);
-            }
-            else if (line.IndexOf("Creating", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     line.IndexOf("Writing", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                if (line.IndexOf("database", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    detailMessage = "Writing database structure";
-                }
-                OnProgressUpdated(75, "Writing database...", detailMessage);
-            }
-            else if (line.IndexOf("Vacuum", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                OnProgressUpdated(85, "Optimizing database...", "Running vacuum to compact database");
-            }
-            else if (line.IndexOf("Analyz", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                OnProgressUpdated(90, "Analyzing database...", "Gathering statistics for query optimization");
-            }
-            else if (line.IndexOf("index", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                     line.IndexOf("Creating", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                OnProgressUpdated(92, "Creating indexes...", "Building database indexes for fast queries");
-            }
-            else if (line.IndexOf("Done", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     line.IndexOf("Finished", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     line.IndexOf("compiled", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                OnProgressUpdated(95, "Finalizing database...", "Completing final operations");
-            }
-            else if (line.IndexOf("airports", StringComparison.OrdinalIgnoreCase) >= 0 &&
-                     Regex.IsMatch(line, @"\d+"))
-            {
-                // Extract airport count if available
-                var match = Regex.Match(line, @"(\d+)\s*airports?", RegexOptions.IgnoreCase);
-                if (match.Success)
-                {
-                    int count = int.Parse(match.Groups[1].Value);
-                    detailMessage = $"Found {count:N0} airports in scenery library";
-                    OnProgressUpdated(90, $"Processed {count:N0} airports", detailMessage);
-                }
-            }
-            else if (line.IndexOf("loading", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                     line.IndexOf("opening", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                // Only show concise loading messages
-                if (line.Length < 100)
-                {
-                    detailMessage = line.Trim();
-                    OnProgressUpdated(-1, null, detailMessage); // -1 means don't update percentage
-                }
-            }
+            var update = _progressMapper.Map(line);
+            if (update != null)
+                OnProgressUpdated(update.Percent, update.Status, update.Details);
         }
         catch (Exception ex)
         {
@@ -610,6 +651,55 @@ public class NavdataReaderBuilder
             Log.Debug("Database", $"Error parsing UserCfg.opt: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Confirms the World of Jetways exclusion actually applied, and returns the success
+    /// message to report.
+    ///
+    /// FS2020 only. An FS2024 database is built from SimConnect facility data and contains
+    /// a single synthetic bgl_file row with an empty filename, so the same query would
+    /// return zero there and read as success while proving nothing.
+    /// </summary>
+    private static string VerifyExclusionApplied(string simulatorVersion, string databasePath)
+    {
+        const string success = "Database built successfully";
+
+        if (simulatorVersion != "FS2020")
+            return success;
+
+        try
+        {
+            // Disable connection pooling to ensure the database is released immediately after the query.
+            // A pooled handle would be returned to the pool instead of closing the native file handle,
+            // keeping the database locked for the process lifetime. This could interfere with the
+            // File.Move that promoted the database moments before, on subsequent builds in the same session.
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={databasePath};Mode=ReadOnly;Pooling=false");
+            connection.Open();
+
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                @"SELECT COUNT(*) FROM bgl_file WHERE filename LIKE '%\_jetways.bgl' ESCAPE '\'";
+
+            long leaked = Convert.ToInt64(command.ExecuteScalar());
+            if (leaked > 0)
+            {
+                Log.Warn("Database",
+                    $"{leaked} World of Jetways BGL file(s) were still compiled into the database - the exclusion did not apply.");
+                return success +
+                    ", but the GSX World of Jetways exclusion did not take effect, so some add-on " +
+                    "airport stands may still show default names.";
+            }
+
+            Log.Debug("Database", "Verified: no World of Jetways BGL files were compiled into the database.");
+        }
+        catch (Exception ex)
+        {
+            // Verification is a diagnostic, never a reason to call a good build bad.
+            Log.Warn("Database", $"Could not verify the World of Jetways exclusion: {ex.Message}");
+        }
+
+        return success;
     }
 }
 
