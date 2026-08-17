@@ -562,6 +562,23 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Handles altitude thousand-foot crossing announcements for all aircraft.
     /// Aircraft with additional complex variable processing logic should override and call base.ProcessSimVarUpdate() first.
     /// </summary>
+    /// <summary>
+    /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
+    /// spoken phrase and the value the debounce keys on — the two must move together, or a type
+    /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
+    /// <para>
+    /// The default is degrees with an up/down word, which is the only thing a generic aircraft
+    /// can say. Override where the airframe has its own trim scale: the PMDG 777 speaks
+    /// stabiliser UNITS, because that is what its FMC asks for and its indicator shows.
+    /// </para>
+    /// </summary>
+    protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double rounded = Math.Round(degrees, 2);
+        string direction = rounded >= 0 ? "up" : "down";
+        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+    }
+
     public virtual bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         // Handle altitude thousand-foot crossing announcements
@@ -576,27 +593,26 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
+        // Elevator trim — rendered by DescribeElevatorTrim, debounced on the value it reports
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 2);
+            var (key, phrase) = DescribeElevatorTrim(value);
 
             // First update: store silently, don't announce initial value on app load
             if (double.IsNaN(_lastAnnouncedTrimDeg))
             {
-                _lastAnnouncedTrimDeg = rounded;
+                _lastAnnouncedTrimDeg = key;
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
-                return true; // Debounce — skip if less than 0.01 degree change
+            if (Math.Abs(key - _lastAnnouncedTrimDeg) < 0.005)
+                return true; // Debounce — skip when the reported value has not moved
 
-            _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
+            _lastAnnouncedTrimDeg = key;
+            announcer.Announce(phrase);
             return true;
         }
 

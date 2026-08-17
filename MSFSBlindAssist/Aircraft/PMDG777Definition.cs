@@ -6346,6 +6346,20 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return true;
     }
 
+    /// <summary>
+    /// Speak stabiliser trim in UNITS, not degrees — the scale the FMC TAKEOFF page asks for and
+    /// the control-stand indicator carries. See <see cref="Pmdg777StabTrim"/> for the conversion
+    /// and how its offset was measured.
+    /// </summary>
+    protected override (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double units = Pmdg777StabTrim.UnitsFromDegrees(degrees);
+        // The key IS the units value, so the debounce quantises with the announcement: the
+        // callout steps a quarter unit at a time, matching the indicator's own graduations,
+        // instead of speaking every hundredth of a degree the stabiliser drifts through.
+        return (units, Pmdg777StabTrim.Describe(degrees));
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         if (base.ProcessSimVarUpdate(varName, value, announcer))
