@@ -245,19 +245,34 @@ public partial class DatabaseSettingsForm : Form
 
                 if (dialogResult == DialogResult.OK)
                 {
-                    // Build succeeded
-                    announcer?.AnnounceImmediate($"{simulatorVersion} database built successfully");
+                    // Build succeeded. The builder's own success message can carry a
+                    // warning appended (e.g. "...but the GSX World of Jetways exclusion
+                    // did not take effect") — that text must be spoken and shown verbatim
+                    // rather than replaced with a fixed string, or the one signal designed
+                    // to warn the pilot about default stand names never reaches them. Fall
+                    // back to the generic wording only when the builder gave us nothing.
+                    string completionText = string.IsNullOrWhiteSpace(progressForm.CompletionMessage)
+                        ? $"{simulatorVersion} database built successfully"
+                        : progressForm.CompletionMessage;
+
+                    announcer?.AnnounceImmediate(completionText);
                     MessageBox.Show(
-                        $"{simulatorVersion} database has been built successfully!",
+                        completionText,
                         "Build Complete",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information);
                 }
                 else
                 {
-                    // Build failed or was cancelled
+                    // Show what actually went wrong. The old text told the pilot to "check
+                    // the error message for details" while the only copy of that message was
+                    // being disposed along with the progress dialog.
+                    string detail = string.IsNullOrWhiteSpace(progressForm.CompletionMessage)
+                        ? "The database build was cancelled."
+                        : progressForm.CompletionMessage;
+
                     MessageBox.Show(
-                        $"Database build was cancelled or failed.\n\nCheck the error message for details.",
+                        detail,
                         "Build Not Completed",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);

@@ -270,7 +270,25 @@ public static class GsxProfileParser
         return ok;
     }
 
-    private static double NormalizeHeading(double h)
+    /// <summary>
+    /// Folds a heading into 0-360. GSX publishes SIGNED headings — 37 of 68 live ENGM
+    /// parkings and 122 of 231 in the committed KJFK capture are negative — and a pilot
+    /// cannot reconcile "heading -90" with a heading indicator, so every GSX heading is
+    /// normalized on the way in regardless of which transport carried it.
+    /// <para>
+    /// <b>Internal, and shared on purpose.</b> <c>GsxRemoteParkingReader</c> (the Remote API
+    /// transport) calls this same helper rather than carrying a second copy of the maths:
+    /// the same GSX data must not read differently depending on how it arrived.
+    /// </para>
+    /// <para>
+    /// <see cref="double.NaN"/> passes through UNCHANGED (<c>NaN % 360</c> is NaN and
+    /// <c>NaN &lt; 0</c> is false). That is load-bearing, not incidental —
+    /// <c>GsxRemoteParkingReader</c> uses NaN as its "GSX published no heading" sentinel and
+    /// <c>HasUsableHeading</c> tests for it; normalizing NaN into a real bearing would point
+    /// docking due north at a stand nobody has a heading for.
+    /// </para>
+    /// </summary>
+    internal static double NormalizeHeading(double h)
     {
         h %= 360.0;
         if (h < 0) h += 360.0;

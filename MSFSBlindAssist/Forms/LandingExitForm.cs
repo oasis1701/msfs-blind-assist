@@ -24,6 +24,18 @@ public class LandingExitForm : Form
     private readonly LandingExitPlanner _planner;
     private readonly SimConnectManager? _simConnectManager;
 
+    /// <summary>
+    /// The authoritative gate list, only ever used to NAME the parking nodes of the graph this
+    /// form builds (see <see cref="Services.ParkingSpotSource"/>). This form itself never speaks
+    /// a stand name — but the graph it builds does reach the pilot: it is handed to
+    /// <see cref="LandingExitPlanner.SetExit"/>, which passes it to <c>LoadRoute</c> as
+    /// <c>prebuiltGraph</c>, making it <c>TaxiGuidanceManager._graph</c> — and
+    /// <c>DescribeCurrentLocation</c> PREFERS that graph over its own cache whenever the ICAO
+    /// matches. So this build supplies the Where-Am-I stand names for the whole rollout and
+    /// taxi-in, which is exactly when a blind pilot asks where they are.
+    /// </summary>
+    private readonly Services.GateDataSource? _gateSource;
+
     private readonly string? _presetIcao;
     private readonly Runway? _presetRunway;
 
@@ -61,12 +73,14 @@ public class LandingExitForm : Form
         LandingExitPlanner planner,
         string? presetIcao,
         Runway? presetRunway,
-        SimConnectManager? simConnectManager = null)
+        SimConnectManager? simConnectManager = null,
+        Services.GateDataSource? gateSource = null)
     {
         _dataProvider = dataProvider;
         _announcer = announcer;
         _planner = planner;
         _simConnectManager = simConnectManager;
+        _gateSource = gateSource;
         _presetIcao = presetIcao;
         _presetRunway = presetRunway;
         InitializeFormControls();
@@ -286,7 +300,7 @@ public class LandingExitForm : Form
         Navigation.TaxiGraph? builtGraph = null;
         try
         {
-            var parking = _dataProvider.GetParkingSpots(icao);
+            var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
             var starts = _dataProvider.GetRunwayStarts(icao);
             // Runways passed so Build can repair laterally-bogus start rows
             // (SnapStartToRunwayCenterline) — the exit planner's runway geometry must

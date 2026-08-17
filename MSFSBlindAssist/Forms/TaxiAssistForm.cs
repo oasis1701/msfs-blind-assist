@@ -35,12 +35,23 @@ public class TaxiAssistForm : Form
     private readonly Services.GateDataSource? _gateSource;
     // When non-null, OnCalculateClicked fires GSX gate auto-select for gate destinations
     // (if the setting is on and GSX is available). The selector is constructed in MainForm
-    // and is only non-null when GSX is installed. NOTE: the selector itself is always
-    // non-null once assigned — null-checking it tells you whether the feature is available
-    // at all, but the REAL runtime availability gate is _gsxGateSelector.CouatlStarted.
-    // A non-null selector with CouatlStarted == false means GSX is installed but not
-    // running this session; in that case auto-select silently falls through to manual routing.
-    private readonly Services.Gsx.GsxGateSelector? _gsxGateSelector;
+    // and is only non-null when GSX is installed. Unlike the retired menu-walking selector,
+    // there is no separate "CouatlStarted" gate to check here: GsxRemoteGateSelector
+    // feature-checks the 'gate' capability itself, on every call, before ever sending
+    // gate.select -- so a non-null selector against a GSX that isn't running returns
+    // Unavailable, and one against a connected build older than 4.0.8 returns
+    // GateSelectUnsupported; either way it falls through to manual routing with no wasted
+    // send. Only the second is spoken (once) -- see SelectGsxGateAsync.
+    private readonly Services.Gsx.Remote.GsxRemoteGateSelector? _gsxGateSelector;
+    // Once-per-instance latch for the "gate selection needs GSX 4.0.8" message — see
+    // SelectGsxGateAsync. In practice that means once per APP session, not once per time
+    // the dialog is opened: MainForm caches this form (GetOrCreateTaxiAssistForm) and
+    // OnFormClosing cancels a user close and Hide()s instead, so the instance — and this
+    // latch with it — survives closing and reopening the dialog. That is the right amount
+    // of speech either way: the fact does not change until the pilot updates GSX, which
+    // needs a sim restart anyway, and this path runs on EVERY gate-destination Calculate.
+    // Instance state rather than static so it cannot outlive the form it describes.
+    private bool _gsxUnsupportedAnnounced;
     // Optional. When non-null, OnCalculateClicked refreshes aircraft position
     // from `LastKnownPosition` (or via RequestAircraftPositionAsync) right
     // before computing the route, so the route starts from where the aircraft
@@ -235,6 +246,23 @@ public class TaxiAssistForm : Form
     // State
     private TaxiGraph? _graph;
     private string _currentIcao = "";
+    /// <summary>
+    /// The gate-list source token (<see cref="Services.GateDataSource.GetGateListVersion"/>) that
+    /// was live when <see cref="_graph"/> was built — the graph's own staleness key, alongside
+    /// <see cref="_currentIcao"/>.
+    ///
+    /// <para>
+    /// Stand names are baked into the graph's nodes at build time, so a graph built before GSX
+    /// published this airport carries navdata's concourse letters permanently. The dropdown cache
+    /// beside it already rebuilt on this token; the graph did not, and the same-ICAO early return
+    /// in <c>LoadAirportDataCoreAsync</c> meant it never could. Pre-planning the arrival during
+    /// descent therefore produced a form whose combo offered "B 25" while the graph it handed to
+    /// guidance as <c>prebuiltGraph</c> called the same stand "A 25" — and
+    /// <c>TaxiGuidanceManager.DescribeCurrentLocation</c> prefers that installed graph, so
+    /// Where-Am-I said "A 25" on arrival at the stand the pilot had just been routed to as B 25.
+    /// </para>
+    /// </summary>
+    private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
@@ -253,7 +281,7 @@ public class TaxiAssistForm : Form
     private Dictionary<string, Runway> _crossRunwayMap = new();
     // Gate mode: maps the display label (same key as _destinationNodeMap) → ParkingSpot.
     // Populated in the gate branch of PopulateDestinations so OnCalculateClicked can pass the
-    // actual ParkingSpot to GsxGateSelector without re-querying the data provider.
+    // actual ParkingSpot to GsxRemoteGateSelector without re-querying the data provider.
     private Dictionary<string, ParkingSpot> _destinationSpotMap = new();
 
     // Gate-branch cache (Fix: per-keystroke gate-list rebuild). PopulateDestinations
@@ -269,8 +297,22 @@ public class TaxiAssistForm : Form
     // The wingspan fit-filter is deliberately NOT baked into the cache: _aircraftWingspan
     // can change between passes (mid-session aircraft swap), so it must re-apply per pass
     // against the full cached list.
+    //
+    // The cache is keyed on the ICAO AND on GateDataSource.GetGateListVersion's token — the
+    // SOURCE the gate list came from, not just the airport. Without the token, a list bound
+    // from the .ini/navdata fallback BEFORE GSX had published the airport (the arrival
+    // pre-planned during descent, or the spawn before the first handlerData frame) was served
+    // for the rest of the session: this form is hide-on-close, LoadAirportDataCoreAsync
+    // early-returns for a same-ICAO reload, and nothing else ever invalidated it. Those spots
+    // carry GsxIdentifier == null (only the Remote API reader sets it), so every gate
+    // destination Calculate -> SelectGsxGateAsync -> BadArgs -> "GSX could not prepare this
+    // stand." until a DIFFERENT airport was loaded. The token is O(1) to compute (a property
+    // read, no file, no DB), which is what keeps the per-keystroke path cheap — the invariant
+    // this cache exists to protect. See RefreshDestinationsIfGateSourceChanged for the two
+    // extra moments it is checked outside PopulateDestinations.
     private List<(ParkingSpot spot, int nodeId)>? _cachedGateSpots;
     private string _cachedGateSpotsIcao = "";
+    private string _cachedGateSpotsSourceToken = "";
 
     // Docking guidance manager: receives the selected gate so proximity audio
     // and lateral tone can guide the pilot to the stop position. Set in
@@ -297,7 +339,7 @@ public class TaxiAssistForm : Form
         TcasService? tcasService = null,
         double aircraftWingspan = 0,
         Services.GateDataSource? gateSource = null,
-        Services.Gsx.GsxGateSelector? gsxGateSelector = null,
+        Services.Gsx.Remote.GsxRemoteGateSelector? gsxGateSelector = null,
         Services.DockingGuidanceManager? dockingManager = null,
         Func<Task>? importFromSayIntentions = null)
     {
@@ -1116,6 +1158,14 @@ public class TaxiAssistForm : Form
         _aircraftHeading = heading;
         txtAirport.Text = icao.ToUpperInvariant();
         await LoadAirportDataAsync(icao);
+        // Same-ICAO reload early-returns, so an import landing after GSX published
+        // this airport (the descent pre-plan case) would otherwise resolve its
+        // destination against the identifier-less fallback list and only discover
+        // that at Calculate time. Refresh here, before TryResolveExternalDestination
+        // reads the combo; the lost-selection result is irrelevant — the import
+        // seats its own destination next.
+        try { RefreshDestinationsIfGateSourceChanged(); }
+        catch (Exception ex) { _taxiFormLog.Error($"Gate-list refresh before import failed: {ex}"); }
         return _graph?.GetAllTaxiwayNames() ?? new List<string>();
     }
 
@@ -1812,7 +1862,15 @@ public class TaxiAssistForm : Form
         // destination type; the Enabled state needs its own refresh here.
         chkFitFilter.Enabled = _aircraftWingspan > 0;
 
-        if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
+        // Same airport AND the same gate-list source the graph's stand names were built from.
+        // The token half is what lets a graph built before GSX published this airport be
+        // rebuilt once it does; without it this return matched forever and the graph kept
+        // navdata's concourse letters for the session — see _graphSourceToken. Compared through
+        // ShouldRebuildGateList so a transient GSX drop (an API→fallback DOWNGRADE) does not
+        // throw away a good graph, exactly as the dropdown cache treats the same token.
+        string graphToken = _gateSource?.GetGateListVersion(icao) ?? "none";
+        if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null
+            && !Services.GateDataSource.ShouldRebuildGateList(_graphSourceToken, graphToken)) return;
 
         // DROP THE OLD AIRPORT'S GRAPH BEFORE ANYTHING ELSE, and do not claim the new
         // ICAO until one is actually built (below, right after BuildAsync).
@@ -1831,12 +1889,14 @@ public class TaxiAssistForm : Form
         // makes the caller's "no taxi path data available" guard do its job, and every
         // _graph == null path in this form already early-returns.
         _graph = null;
+        _graphSourceToken = "";
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
         // ICAO inside the GATE branch of PopulateDestinations (defence in depth),
         // but clearing here frees the old airport's spots immediately.
         _cachedGateSpots = null;
         _cachedGateSpotsIcao = "";
+        _cachedGateSpotsSourceToken = "";
         // A previous import's occupied-stand suppression belonged to that airport's
         // assigned gate; the pilot's own filter setting owns the new airport's list.
         _suppressOccupiedFilter = false;
@@ -1899,7 +1959,12 @@ public class TaxiAssistForm : Form
             return;
         }
 
-        var parking = _dataProvider.GetParkingSpots(icao);
+        // Navdata's own spot SET — unchanged in count, coordinates and order — carrying the SAME
+        // stand names this form's destination dropdown shows, so a stand cannot be "Gate B 25" in
+        // the combo and "Gate A 25" when Where-Am-I reads the graph this build produces. The set
+        // must stay navdata's: TaxiGraph.Build's parking pass also marks node TYPES, which the
+        // hold-short and named-holding-point resolvers read. See Services/ParkingSpotSource.
+        var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
         var starts = _dataProvider.GetRunwayStarts(icao);
         // The runway table is what lets Build run SnapStartToRunwayCenterline, which
         // repairs start rows that navdata stores off to the SIDE of their own runway
@@ -1925,6 +1990,9 @@ public class TaxiAssistForm : Form
         // (PopulateDestinations, ResolveNamedHoldingPoints, the gate-spot cache), so it
         // has to be set before them and cannot simply move to the end of the method.
         _currentIcao = icao.ToUpperInvariant();
+        // Stamped with the graph, for the same reason and at the same moment: these names are
+        // now frozen into the nodes, and this records which source they came from.
+        _graphSourceToken = graphToken;
 
         lblStatus.Text = $"{icao}: {_graph.Nodes.Count} nodes, {paths.Count} paths.";
 
@@ -2194,10 +2262,13 @@ public class TaxiAssistForm : Form
             // would see "Parking 21" in the gate teleport dialog but NOT in
             // the taxi guidance form — confusing and route-blocking.
             //
-            // The fix: drive the dropdown directly from
-            // `_dataProvider.GetParkingSpots(icao)` — the same data source
-            // gate teleport uses — and use `ParkingSpot.ToString()` for
-            // identical display labels (e.g. "P 21 - Ramp GA Large (Jetway)").
+            // The fix: drive the dropdown directly from the parking list —
+            // resolved through `Services.ParkingSpotSource`, the one resolution
+            // gate teleport, the graph builds and the SayIntentions
+            // parked-at-the-right-stand check also use, so a stand cannot be
+            // named two different ways in one session — and use
+            // `ParkingSpot.ToString()` for identical display labels
+            // (e.g. "P 21 - Ramp GA Large (Jetway)").
             // Each parking spot's actual lat/lon is the convergence target,
             // matching what TeleportToParkingSpot places you at, so taxi
             // guidance and gate teleport end up at the same physical position.
@@ -2214,16 +2285,24 @@ public class TaxiAssistForm : Form
             // per spot, synchronously on the UI thread (a screen-reader-responsiveness
             // hazard). The search text and fit filter do NOT affect node resolution,
             // so caching it is behaviour-preserving.
+            //
+            // ...ONCE per (ICAO, gate-list SOURCE). The token compare is the one thing added
+            // to the per-keystroke path, and it is a property read: GateDataSource does no
+            // file or DB work to answer it. It is what makes a list bound from the fallback
+            // before GSX published this airport rebuild the moment GSX does — the
+            // descent-pre-plan / pre-publish scenario described at the field.
+            string sourceToken = CurrentGateSourceToken();
             if (_cachedGateSpots == null
-                || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase))
+                || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)
+                || Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, sourceToken))
             {
-                var sourceSpots = (_gateSource?.GetGates(_currentIcao)) ?? _dataProvider.GetParkingSpots(_currentIcao);
-                // Apply online gate aliases to the GSX-sourced list too (GSX bypasses GetParkingSpots,
-                // but GSX stands carry spot codes that don't match real gate numbers — the online alias
-                // is what lets the pilot pick the ATC gate). No-op for the navdata list (already aliased)
-                // and when augmentation is off/uncached.
-                (_dataProvider as MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider)
-                    ?.AugmentParking(_currentIcao, sourceSpots);
+                // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
+                // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
+                // needs GsxIdentifier, and TerminalName is what tells two identically-named stands
+                // apart. Plus this scenery's online gate aliases (GSX bypasses GetParkingSpots, but
+                // GSX stands carry spot codes that don't match real gate numbers, and the alias is
+                // what lets the pilot pick the ATC gate).
+                var sourceSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
                 var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
                 foreach (var spot in sourceSpots)
                 {
@@ -2240,6 +2319,7 @@ public class TaxiAssistForm : Form
                 }
                 _cachedGateSpots = resolved;
                 _cachedGateSpotsIcao = _currentIcao;
+                _cachedGateSpotsSourceToken = sourceToken;
             }
 
             // ── Per-pass filter + ordering (cheap, in-memory) ─────────────────
@@ -2384,6 +2464,112 @@ public class TaxiAssistForm : Form
         // legitimately warrants the call-out speaks it itself (OnDestTypeChanged).
         if (cmbDestination.Items.Count > 0)
             SelectDestinationSilently(0);
+    }
+
+    /// <summary>The gate-list source token for the loaded airport — see
+    /// <see cref="Services.GateDataSource.GetGateListVersion"/>. "none" when this form was
+    /// built without a gate source, so the token can never differ and the cache falls back to
+    /// its original ICAO-only invalidation. Never throws (GetGateListVersion never does).</summary>
+    private string CurrentGateSourceToken()
+        => _gateSource?.GetGateListVersion(_currentIcao) ?? "none";
+
+    /// <summary>
+    /// Rebuilds the gate destination list when the gate-list SOURCE has moved since the cache
+    /// was filled — the fallback → Remote API flip described at <see cref="_cachedGateSpots"/>.
+    /// <see cref="PopulateDestinations"/> already checks the token on every pass, but it runs
+    /// only on airport load, destination-type change, fit-filter change and gate-search
+    /// keystrokes — NOT when the form is re-shown and NOT before Calculate. So a form opened,
+    /// hidden and re-shown after GSX caught up, or left open through a whole flight, kept
+    /// serving the identifier-less list. This closes those two gaps and is called from
+    /// <see cref="OnVisibleChanged"/> and the top of <see cref="OnCalculateClicked"/>.
+    /// <para>
+    /// A no-op (one string compare) unless the token differs AND the destination type is
+    /// Gate / Parking AND a graph is loaded — the only combination in which the cache is even
+    /// consulted. When it does rebuild, the pilot's current selection is put back by label
+    /// where the new list still carries it; the return value says whether it could NOT be —
+    /// which the caller must act on, because <see cref="PopulateDestinations"/> lands the combo
+    /// on item 0, a stand the pilot never chose. On the Calculate path that means ABORT, not
+    /// "route to item 0"; on the show path it means a queued announcement. Neither is a
+    /// UI-interaction echo: the list changed under the pilot because of a background GSX event.
+    /// </para>
+    /// </summary>
+    /// <returns>True when a destination was selected before the rebuild and could not be
+    /// restored afterwards (the selection is now cleared — never item 0). False when nothing
+    /// was rebuilt, the selection survived, or nothing was selected to begin with.</returns>
+    private bool RefreshDestinationsIfGateSourceChanged()
+    {
+        if (_graph == null || cmbDestType.SelectedIndex != 1) return false;
+
+        string token = CurrentGateSourceToken();
+        // Upgrade/refresh only — a transient drop downgrades the token and must NOT
+        // rebuild (see GateDataSource.ShouldRebuildGateList); the check inside
+        // PopulateDestinations applies the same rule, so both agree.
+        if (_cachedGateSpots == null
+            || !Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, token))
+            return false;
+
+        string? previous = cmbDestination.SelectedItem?.ToString();
+        PopulateDestinations();
+
+        if (string.IsNullOrEmpty(previous))
+        {
+            // Nothing was selected before this rebuild — which, on this form, means
+            // an EARLIER rebuild already lost the pilot's stand and cleared the
+            // selection (PopulateDestinations itself always seats item 0). Keep it
+            // cleared: a later same-tier refresh (GSX republishes handlerData on an
+            // arrival-gate assignment; a reconnect snapshot) must not quietly seat
+            // item 0 and let the next Calculate route to it. The pilot was already
+            // told to choose again; nothing new to say.
+            if (cmbDestination.Items.Count > 0)
+                cmbDestination.SelectedIndex = -1;
+            return false;
+        }
+        int idx = cmbDestination.Items.IndexOf(previous);
+        if (idx >= 0)
+        {
+            cmbDestination.SelectedIndex = idx;
+            return false;
+        }
+        // The pilot's stand is gone from the rebuilt list. LEAVE NOTHING SELECTED:
+        // PopulateDestinations lands the combo on item 0, and a later Calculate on
+        // that would route (and gate.select) to a stand the pilot never chose —
+        // with -1 it aborts with "Please select a destination." instead.
+        cmbDestination.SelectedIndex = -1;
+        _taxiFormLog.Info($"Gate list for {_currentIcao} rebuilt from a new source ({token}); previous destination '{previous}' is no longer listed.");
+        return true;
+    }
+
+    /// <summary>Spoken when the gate list was rebuilt from a new source and the pilot's chosen
+    /// destination is no longer in it. Shared by the show path (queued) and the Calculate path
+    /// (immediate abort) so the pilot hears the same words for the same event.</summary>
+    private const string GateListUpdatedMessage = "Gate list updated from GSX. Please choose the destination again.";
+
+    /// <summary>
+    /// This form is hide-on-close (see <see cref="OnFormClosing"/>), so re-opening it does not
+    /// reload the airport (<see cref="LoadAirportDataCoreAsync"/> early-returns for the same
+    /// ICAO) and nothing else re-populated the gate list. Becoming visible is therefore the
+    /// moment to notice that GSX has published this airport since the list was last built —
+    /// the arrival planned during descent, or the spawn before the first handlerData frame.
+    /// The refresh is a single string compare when nothing changed. A lost selection is
+    /// announced QUEUED, never immediate: it is a background state change, not the echo of
+    /// anything the pilot just did, and it must not stomp whatever the screen reader is
+    /// speaking about the window that just opened.
+    /// </summary>
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (!Visible || IsDisposed) return;
+
+        try
+        {
+            if (RefreshDestinationsIfGateSourceChanged())
+                _announcer.Announce(GateListUpdatedMessage);
+        }
+        catch (Exception ex)
+        {
+            // Never let a refresh failure break showing the form.
+            _taxiFormLog.Error($"Gate-list refresh on show failed: {ex}");
+        }
     }
 
     private void PopulateFirstTaxiway()
@@ -3714,6 +3900,22 @@ public class TaxiAssistForm : Form
             return;
         }
 
+        // A form left open through a whole flight never re-shows and never reloads the
+        // airport, so this is the last moment to notice GSX has published it since the gate
+        // list was built (see _cachedGateSpots). Before the destination lookup below and
+        // before SelectGsxGateAsync, because both read _destinationSpotMap: acting on the
+        // stale entry is exactly the "GSX could not prepare this stand" every-route failure.
+        // A no-op (one string compare) unless the source moved. If it did AND the pilot's
+        // destination is no longer in the rebuilt list, ABORT rather than route to whatever
+        // item 0 now is -- a stand they never chose. Immediate, not queued: this is the answer
+        // to the Calculate press, and AnnounceCalculateAbort carries any import summary too.
+        if (RefreshDestinationsIfGateSourceChanged())
+        {
+            AnnounceCalculateAbort(GateListUpdatedMessage);
+            lblStatus.Text = GateListUpdatedMessage;
+            return;
+        }
+
         // Refresh aircraft position from the latest SimConnect sample (if
         // available) before route construction. Without this, the route starts
         // from wherever the aircraft was when the form was OPENED — typically
@@ -4159,31 +4361,96 @@ public class TaxiAssistForm : Form
         // the feature is enabled. Conditions:
         //   - destination is a gate (not runway, not progressive taxi, not deice area)
         //   - setting is on
-        //   - a selector was provided (i.e. GsxService exists in this session)
-        //   - GSX CouatlStarted is confirmed via the selector being non-null
-        //     (the selector is only built by MainForm when _gsxService != null)
-        //     PLUS the CouatlStarted live check here, so we don't drive the
-        //     menu when GSX hasn't started yet this session.
-        // NOTE: deice areas (index 3) are explicitly excluded — SelectGateAsync
-        // drives the GSX parking-gate menu, which has no deice-pad entries.
-        // DockingGuidanceManager handles deice guidance via SetDestinationGate
-        // (spot.IsDeiceArea is true) without any GSX menu interaction.
+        //   - a selector was provided (i.e. GsxService existed in this session when
+        //     MainForm built this form) — no separate live "is GSX running" check is
+        //     needed here any more: GsxRemoteGateSelector.SelectGateAsync feature-checks
+        //     the 'gate' capability itself on every call, before ever sending gate.select,
+        //     and returns Unavailable (silent) when GSX isn't running, or
+        //     GateSelectUnsupported (spoken once per dialog) on a connected pre-4.0.8
+        //     build — see SelectGsxGateAsync's own doc comment.
+        // NOTE: deice areas (index 3) are explicitly excluded — gate.select prepares a
+        // GSX parking stand, which has no deice-pad equivalent. DockingGuidanceManager
+        // handles deice guidance via SetDestinationGate (spot.IsDeiceArea is true)
+        // without any GSX Remote API interaction.
         if (!isRunwayDest
             && cmbDestType.SelectedIndex != 3
             && SettingsManager.Current.GsxAutoSelectGateOnRoute
             && _gsxGateSelector != null
-            && _gsxGateSelector.CouatlStarted
             && _destinationSpotMap.TryGetValue(destName, out var gsxSpot))
         {
-            // The selector itself announces its outcome and never throws.
-            // Do NOT await — route loading must not block on GSX menu navigation.
-            _ = _gsxGateSelector.SelectGateAsync(gsxSpot);
+            // Do NOT await — route loading must not block on the GSX round trip.
+            _ = SelectGsxGateAsync(gsxSpot);
         }
 
         // Form stays open so the user can read the summary box while
         // guidance is active. They close it manually with Escape / window-X
         // or by switching focus elsewhere; Stop Guidance button is also
         // available without re-opening.
+    }
+
+    /// <summary>
+    /// Sends <c>gate.select</c> for <paramref name="spot"/> via <see cref="_gsxGateSelector"/>
+    /// and speaks the outcomes a blind pilot cannot learn any other way — see
+    /// <see cref="Services.Gsx.Remote.GsxGateSelectAnnouncer"/> for exactly which outcomes
+    /// that is and why. Uses the QUEUED announcer (<c>Announce</c>), never
+    /// <c>AnnounceImmediate</c>: this is a background GSX decision arriving some time after
+    /// the Calculate click, not a direct UI interaction, and it must not interrupt whatever
+    /// the pilot is already hearing (the route summary, a taxi callout, …). Never throws —
+    /// <see cref="Services.Gsx.Remote.GsxRemoteGateSelector.SelectGateAsync"/> itself never
+    /// throws, and <see cref="Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe"/> is pure
+    /// string logic over an already-parsed result.
+    /// </summary>
+    private async Task SelectGsxGateAsync(ParkingSpot spot)
+    {
+        var result = await _gsxGateSelector!.SelectGateAsync(spot).ConfigureAwait(true);
+
+        // GSX is connected and answering, but its capability list has no 'gate' token —
+        // a 4.0.1-4.0.7 build, where gate.select simply does not exist. Say so ONCE per
+        // form instance (see the latch field for why that is per app session): the first
+        // Calculate is an explicit pilot action that deserves an answer (silence here means
+        // taxiing to a stand believing GSX has prepared it, and finding no services on
+        // arrival — the same reasoning that gives Prepared/NotFound/BadArgs their own
+        // phrases in GsxGateSelectAnnouncer), but this path runs on EVERY
+        // gate-destination route calculation, and on an older GSX that is every flight —
+        // repeating it would be noise about something already said and unchanged.
+        // Deliberately NOT routed through GsxGateSelectAnnouncer.Describe: that mapper is
+        // pure and stateless so it stays unit-testable, so the latch belongs here.
+        // Everything else about GSX still works on those builds, so this must never reach
+        // GsxService.UnavailableReason or the Access GSX status text — announcing "GSX is
+        // unavailable" while the GSX window works perfectly would be wrong.
+        if (result.Outcome == Services.Gsx.Remote.GsxGateSelectOutcome.GateSelectUnsupported)
+        {
+            // No lock needed: SelectGsxGateAsync is started from the UI thread and awaits
+            // with ConfigureAwait(true), so the test and the set run in one message-loop
+            // turn — two overlapping Calculates cannot both pass the check.
+            if (!_gsxUnsupportedAnnounced)
+            {
+                _gsxUnsupportedAnnounced = true;
+                _announcer.Announce(Services.Gsx.Remote.GsxGateSelectAnnouncer.GateSelectUnsupportedMessage);
+            }
+            return;
+        }
+
+        string? phrase = Services.Gsx.Remote.GsxGateSelectAnnouncer.Describe(result);
+        if (!string.IsNullOrEmpty(phrase))
+        {
+            _announcer.Announce(phrase);
+            // Window route: this form's own announcer speaks it directly, so unlike the
+            // GsxService path there is no background/no-listener ambiguity to record.
+            Services.Gsx.Remote.GsxDiagnosticLog.Spoke(
+                Services.Gsx.Remote.GsxSpeechSource.GateSelect, phrase, Services.Gsx.Remote.SpeechRoute.Background);
+        }
+        else
+        {
+            // Several outcomes are silent BY DESIGN (no_airport, a repeat services_active,
+            // gsx_not_running/auth_required/Unavailable/TransportFailure). gsx-gate-select.log
+            // records what GSX answered, but only this says we then chose to say nothing —
+            // without it, "I picked a gate and heard nothing" cannot be told apart from a
+            // phrase that was produced and lost. One line per selection, not per tick.
+            Services.Gsx.Remote.GsxDiagnosticLog.Hushed(
+                Services.Gsx.Remote.GsxSpeechSource.GateSelect, string.Empty, "outcome-map",
+                $"outcome {result.Outcome} has no phrase (silent by design)");
+        }
     }
 
     private void CheckGateOccupancy(bool isRunwayDest, double? gateLat, double? gateLon)
