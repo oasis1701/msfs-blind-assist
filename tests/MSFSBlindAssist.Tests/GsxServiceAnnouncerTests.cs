@@ -13,6 +13,89 @@ public class GsxServiceAnnouncerTests
             StateText = $"{id} is {state}",
         };
 
+    private static GsxServiceState Boarding(string statusText, int? paxDone = null) =>
+        new()
+        {
+            Id = "Boarding", State = "performing", DisplayName = "Board",
+            StateText = "Boarding service is being performed",
+            StatusText = statusText, PaxDone = paxDone, PaxTotal = paxDone is null ? null : 93,
+        };
+
+    // ── statusText crew narration ───────────────────────────────────────────
+    // Wiring-level cover for GsxStatusNarration. The pure rules are pinned in
+    // GsxStatusNarrationTests; what matters here is that the phrase actually leaves Update,
+    // survives baselining, and is not starved by the one-phrase-per-tick else-chain.
+
+    [Fact]
+    public void Crew_narration_reaches_the_caller()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader approaching") });
+
+        var said = a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+    }
+
+    [Fact]
+    public void Crew_narration_is_not_starved_by_a_pax_milestone_on_the_same_tick()
+    {
+        // The failure this guards: hanging narration off the else-chain would let the pax
+        // phrase win and silently drop the loader, which is the loss the feature exists to end.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader approaching", paxDone: 10) });
+
+        var said = a.Update(new[] { Boarding("front loader raising belt", paxDone: 20) });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+        Assert.Contains(said, p => p.Contains("20"));
+    }
+
+    [Fact]
+    public void An_unchanged_status_block_stays_quiet()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader raising belt") });
+        a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Empty(a.Update(new[] { Boarding("front loader raising belt") }));
+    }
+
+    [Fact]
+    public void A_ticking_ETA_inside_the_status_block_stays_quiet()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front train on the way, ETA 33 secs") });
+        a.Update(new[] { Boarding("front train on the way, ETA 32 secs") });
+
+        Assert.Empty(a.Update(new[] { Boarding("front train on the way, ETA 31 secs") }));
+    }
+
+    [Fact]
+    public void The_first_update_never_narrates_the_crew()
+    {
+        // Baseline-first, like every other announcer here: joining a session mid-boarding
+        // must not read the whole ramp out at once.
+        var a = new GsxServiceAnnouncer();
+
+        Assert.Empty(a.Update(new[] { Boarding("front loader raising belt\nrear stairs in position") }));
+    }
+
+    [Fact]
+    public void A_new_run_narrates_from_the_top()
+    {
+        // _spoken is dropped on a state change, so flight 2's boarding replays the setup
+        // rather than being silenced by flight 1's identical lines.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader raising belt") });
+        a.Update(new[] { Boarding("front loader raising belt") });
+
+        a.Update(new[] { new GsxServiceState { Id = "Boarding", State = "completed", DisplayName = "Board" } });
+        var said = a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+    }
+
     [Fact]
     public void First_update_is_silent_baseline()
     {

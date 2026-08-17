@@ -54,10 +54,41 @@ public static class GsxPhraseGate
         return !IsDigitRunOnlyChange(lastSpoken, current);
     }
 
+    /// <summary>
+    /// A whole RUN of time-duration terms, collapsed to one token before the digit-run
+    /// comparison below.
+    ///
+    /// <para>
+    /// Blanking digits alone cannot see a countdown that crosses a unit boundary, because
+    /// crossing it changes the WORDS: live, one boarding produced eleven bus callouts of which
+    /// seven were distinct once digits were blanked, as the ETA recalculated across 60 seconds
+    /// — "on the way, ETA 1 min 5 secs" / "… ETA 55 secs" / "… ETA 1 min 5 secs" / "… ETA 36
+    /// secs". Collapsing the whole run (not each term) is what makes "1 min 5 secs" and "55
+    /// secs" the same token, so the PHASE words decide whether it is news.
+    /// </para>
+    ///
+    /// <para>
+    /// Time units only, spelled out — no bare "m"/"s"/"h". GSX's pushback line "Start after
+    /// 49.0 meters" is a DISTANCE, and a single-letter unit would swallow it (and any other
+    /// quantity that happens to be followed by one letter).
+    /// </para>
+    /// </summary>
+    private static readonly System.Text.RegularExpressions.Regex DurationRun =
+        new(@"(?:\d+(?:\.\d+)?\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\b\s*)+",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant |
+            System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private const string DurationToken = "duration";
+
     /// <summary>True when <paramref name="before"/> and <paramref name="after"/> are identical once
-    /// every standalone run of digits is blanked — i.e. they differ only in embedded numbers.</summary>
+    /// every time-duration run and every standalone run of digits is blanked — i.e. they differ
+    /// only in embedded numbers, or only in how long something still has to go.</summary>
     public static bool IsDigitRunOnlyChange(string before, string after)
     {
+        before = DurationRun.Replace(before, DurationToken);
+        after = DurationRun.Replace(after, DurationToken);
+
         string[] beforeParts = DigitRun.Split(before);
         string[] afterParts = DigitRun.Split(after);
         if (beforeParts.Length != afterParts.Length) return false;
