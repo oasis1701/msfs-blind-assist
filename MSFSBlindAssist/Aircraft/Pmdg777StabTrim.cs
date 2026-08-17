@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Aircraft;
+﻿namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
 /// Converts the stock <c>ELEVATOR TRIM POSITION</c> (degrees) into the PMDG 777's stabiliser
@@ -28,12 +28,17 @@ public static class Pmdg777StabTrim
     /// them is what made this hard to pin down in the first place.
     /// </para>
     /// <para>
-    /// A residual quarter-unit ambiguity is ACCEPTED and closed. If the indicator reads 0.00 at
-    /// the bottom stop this is exactly right; if it reads 0.25 the true offset is 4.0 and every
-    /// announcement is a quarter unit light. That cannot be settled by photographing the gauge —
-    /// an analogue pointer on a whole-unit scale does not resolve a quarter — and a quarter unit
-    /// is far inside the tolerance of any takeoff trim setting. Change this ONE constant if
-    /// better evidence ever appears.
+    /// A quarter-unit ambiguity was open for a while — 3.75 against the 4 in PMDG's comment,
+    /// which would make every announcement a quarter unit light — and it has since been CLOSED
+    /// against the indicator itself: the gauge was read at four settings spanning the useful
+    /// range (3.75, 4.00, 4.50, 6.00) and agreed with the announced units at every one. 3.75 and
+    /// 4.50 carry the weight, because both fall BETWEEN whole graduations, and an offset of 4.0
+    /// would have shown 4.00 against a gauge reading 4.25.
+    /// </para>
+    /// <para>
+    /// Weigh that for what it is: an enlarged screenshot read by image analysis, not an
+    /// instrument calibration. It is strong corroboration of the offset and it is not proof.
+    /// Should better evidence ever contradict it, this is still the ONE constant to change.
     /// </para>
     /// </summary>
     public const double UnitsOffset = 3.75;

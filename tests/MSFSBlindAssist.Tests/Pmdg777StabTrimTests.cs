@@ -107,9 +107,9 @@ public class Pmdg777StabTrimTests
     public void The_offset_and_step_are_the_only_knobs()
     {
         // Both are stated as constants precisely so a future correction is a one-line change.
-        // The residual quarter-unit ambiguity (3.75 vs PMDG's config-comment 4.0) cannot be
-        // settled by reading an analogue gauge marked in whole units, so this is where it lands
-        // if better evidence ever appears.
+        // The offset has since been checked against the indicator at 3.75, 4.00, 4.50 and 6.00
+        // and agreed at every one, which rules out the 4.0 reading PMDG's config comment might
+        // have suggested; this is still where a correction lands if that is ever contradicted.
         Assert.Equal(3.75, Pmdg777StabTrim.UnitsOffset);
         Assert.Equal(0.25, Pmdg777StabTrim.UnitsStep);
     }
