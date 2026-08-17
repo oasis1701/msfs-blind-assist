@@ -971,13 +971,20 @@ public partial class TaxiGuidanceManager
             ? "exit taxiway"
             : $"Taxiway {_rolloutExit.TaxiwayName}";
 
+        // Anchor the route START on the chosen exit taxiway. Without this the start snaps to
+        // the nearest node overall, which — because the early handoff fires while the aircraft
+        // is still on the runway short of the exit — can be a NEIGHBOURING exit (EIDW 28L abeam
+        // S5 while committed to S6), sending A* up that exit and across the parallel taxiway: a
+        // ~600 m hairpin. Empty name (unnamed exit) → null → legacy nearest-node snap.
+        string? startTwy = _rolloutExit.TaxiwayName.Length > 0 ? _rolloutExit.TaxiwayName : null;
         string? err = LoadRoute(
             _dataProvider, _icao,
             lat, lon, headingTrue,
             destNodeId, exitName,
             taxiwaySequence: null,
             prebuiltGraph: _graph,
-            announceSummary: false);
+            announceSummary: false,
+            startTaxiwayName: startTwy);
 
         if (err != null)
         {
@@ -1046,7 +1053,7 @@ public partial class TaxiGuidanceManager
                        : destNodeId == _rolloutExit.NodeId     ? "junction-only"
                        : $"ext:{destNodeId}";
         RolloutDiag($"TryEarlyExitHandoff OK: destNodeId={destNodeId} ({destSrc}) " +
-            $"firstSeg={firstBearing:F1}° segs={_route.Segments.Count}");
+            $"startTwy={startTwy ?? "(nearest)"} firstSeg={firstBearing:F1}° segs={_route.Segments.Count}");
 
         // Reset the heading-error smoother so the taxi tone starts clean rather
         // than inheriting the rollout's near-zero centreline residual.
@@ -1684,8 +1691,13 @@ public partial class TaxiGuidanceManager
             //   raw = crossTrackFeet        → signed (+left of CL, -right) — IMPORTANT
             //                                 for diagnosing sign-direction bugs
             //   smooth = smoothed heading error (degrees) — the actual tone driver
+            // gs = the real cached ground speed. It was hardcoded to 0.0 here, so every
+            // runway-lineup row in taxi_guidance.log read gs=0.0 while the aircraft was
+            // rolling at 11 kt (LEPA 2026-08-16) — which silently removes speed from
+            // every post-flight lineup diagnosis. The gate-lineup frame below always
+            // logged the real value; the two now agree.
             LogGuidanceFrame(
-                lat, lon, headingTrue, /* groundSpeedKts */ 0.0,
+                lat, lon, headingTrue, _lastGroundSpeedKts,
                 /* segIdx */ -1, /* segBrg = desiredHeadingTrue */ desiredHeadingTrue,
                 /* w = _lineupHeadingTrue (reference) */ _lineupHeadingTrue,
                 /* nxtTurn */ true,

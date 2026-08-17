@@ -407,6 +407,37 @@ public partial class TaxiGuidanceManager : IDisposable
     // window the 3 s persistence timer accumulated across a slow turn and fired
     // a recalc mid-turn, which re-routed the pilot onto a random shortest path.
     private const double POST_TURN_OFFROUTE_GRACE_SEC = 4.0;
+
+    // Proximity required before AdvanceToNearestSegment may treat "nearest of the next
+    // six segments" as progress. Generous enough to cover a real skip (a 30 kt taxi
+    // covers 15 m per 1 Hz sample, and navdata segments run 5-15 m, so a sparse update
+    // can legitimately jump several), tight enough that an aircraft leaving the route
+    // stops "advancing" along it. See AdvanceToNearestSegment for what happened without it.
+    private const double SEGMENT_ADVANCE_MAX_DIST_M = 100.0;
+
+    // How near the hold-short node the aircraft must be before a skipped hold-short is
+    // ANNOUNCED as reached ("Stop. Hold short of X"). Beyond this the index is clamped to
+    // the hold-short segment instead — never advanced past it, never announced early.
+    private const double HOLD_SHORT_ANNOUNCE_MAX_DIST_M = 40.0;
+
+    // Never-joined escape for the off-route detector. _hasJoinedRoute exists so the taxi
+    // from a gate onto the first cleared taxiway doesn't read as off-route before the
+    // pilot has joined it — but it had no way out: a route the aircraft NEVER joins left
+    // off-route detection disabled for that route's whole life. KBNA 2026-08-08: a gate
+    // route was loaded while the aircraft was still rolling out on 02R having missed its
+    // exit; it then drove 690 m the other way over 50 s at up to 31 kt with the tone
+    // pinned ~170° behind, and neither a recalc nor a single word ever came.
+    // A genuine join moves TOWARD the route, so the escape keys on the range OPENING:
+    // never joined, currently further from the route than the closest approach by this
+    // margin, and beyond the floor.
+    //
+    // Both numbers are deliberately well clear of normal ground manoeuvring. A pushback
+    // runs 60-100 m and an apron repositioning can add more, all of it legitimately
+    // AWAY from a route that starts at the stand — so an 80 m floor would have put a
+    // recalc in the middle of a long pushback. The failures this exists for are not
+    // marginal: KBNA was 690 m. 150 m still fires there within ~15 s at taxi speed.
+    private const double NEVER_JOINED_OPENING_M = 100.0;
+    private const double NEVER_JOINED_FLOOR_M = 150.0;
     // Minimum ground speed before off-route detection can fire. Prevents the
     // spurious "Recalculating…" chain when the aircraft is sitting still at the
     // gate before pushback: the initial position is never exactly on a graph
@@ -462,6 +493,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // Set true the first frame the aircraft is within perp tolerance of the route;
     // reset on LoadRoute / StopGuidance.
     private bool _hasJoinedRoute = false;
+    // Closest the aircraft has come to the route line while it has yet to join it.
+    // Feeds the never-joined escape in the off-route detector; MaxValue = no sample yet.
+    private double _minPerpWhileUnjoinedM = double.MaxValue;
     // Timestamp of the last segment advance (AdvanceSegment or
     // AdvanceToNearestSegment). Used with POST_TURN_OFFROUTE_GRACE_SEC to
     // suppress off-route detection briefly after we cross a turn node.
@@ -1605,14 +1639,23 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             bool arrived = distToTarget < arrivalRadius;
 
-            // Past-node backstop for plain taxiway-endpoint destinations
-            // (progressive-taxi "end of taxiway X"): no lineup target, no parking
-            // countdown, no docking — so a roll-through at taxi speed can miss the
-            // tight 6 m radius and the tone then chases the now-behind node. Scoped
-            // to !_hasLineupTarget && !_isRunwayLineup so gate parking countdown and
-            // runway lineup are untouched; landing-exit routes are already handled
-            // (and returned) by the branch above. Mirrors that along-track backstop.
-            if (!arrived && !_hasLineupTarget && !_isRunwayLineup)
+            // Past-node backstop for a destination the aircraft can roll THROUGH: a
+            // plain taxiway endpoint (progressive-taxi "end of taxiway X") or a gate.
+            // Both carry a tight ~6 m arrival radius, so a roll-through at taxi speed
+            // can miss the circle entirely and the tone then chases the now-behind node
+            // — the LPPT 02 → U5 failure that the landing-exit captures were widened
+            // for, and which a gate could still hit: its ONLY capture is that 6 m
+            // radius (a LOWS park came within 0.3 m, but nothing guarantees it), and
+            // missing it costs the "Align with gate" instruction as well as the tone.
+            //
+            // The countdown is not lost by including gates: CheckParkingCountdown gets
+            // its final call in the arrived branch below, and by the time the node is
+            // ASTERN the 50/20/10 ft cadence has nothing left to say anyway.
+            //
+            // Runway lineup stays excluded — LiningUp owns that approach and has its own
+            // unreachable-route warning. Landing-exit routes are handled (and returned)
+            // by the branch above.
+            if (!arrived && !_isRunwayLineup)
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
                     out double alongRemEndM, out double crossEndM);
@@ -1963,7 +2006,23 @@ public partial class TaxiGuidanceManager : IDisposable
         // isn't trimmed before the pilot joins it.
         if (perp <= perpTolerance) _hasJoinedRoute = true;
 
-        bool offRouteNow = _hasJoinedRoute && !nearTurn && (perp > perpTolerance || farBehindStart || goingBackward);
+        // Never-joined escape (see NEVER_JOINED_OPENING_M). Track the closest the
+        // aircraft has come to the route while it has yet to join; once it is clearly
+        // opening the range on that, treat it as off-route even though it never joined.
+        // A pilot taxiing off a stand toward the first cleared taxiway is CLOSING, so
+        // this cannot fire on the case _hasJoinedRoute was written to protect.
+        if (!_hasJoinedRoute)
+        {
+            if (perp < _minPerpWhileUnjoinedM) _minPerpWhileUnjoinedM = perp;
+        }
+        bool leavingWithoutJoining =
+            !_hasJoinedRoute
+            && _minPerpWhileUnjoinedM < double.MaxValue
+            && perp > _minPerpWhileUnjoinedM + NEVER_JOINED_OPENING_M
+            && perp > NEVER_JOINED_FLOOR_M;
+
+        bool offRouteNow = (_hasJoinedRoute || leavingWithoutJoining) && !nearTurn
+                           && (perp > perpTolerance || farBehindStart || goingBackward);
 
         // Persistence: off-route must be sustained for N seconds AND the aircraft
         // must actually be moving. This kills two bugs:
@@ -2590,6 +2649,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
         _hasJoinedRoute = false;
+        _minPerpWhileUnjoinedM = double.MaxValue;
         _lastSegmentAdvanceTime = DateTime.MinValue;
         _holdShortAtDestination = false;
         _recentCrossingAnnouncements.Clear();

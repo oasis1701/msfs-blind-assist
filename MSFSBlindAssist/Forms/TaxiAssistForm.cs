@@ -2084,6 +2084,16 @@ public class TaxiAssistForm : Form
                 // edge when no start row exists for this runway name — or when
                 // PickFullLengthStart rejects every row it has as a midfield
                 // placeholder, which is the same "no usable row" case.
+                //
+                // The row is trusted for WHERE ALONG the runway the departure begins,
+                // but pulled back onto the runway_end centerline first: EGKK's rows sit
+                // ~110 m to the SIDE of their own runway, which would aim the lineup
+                // target — the thing a blind pilot steers by — off the pavement, and
+                // feed the same error into the route destination node and the
+                // holding-point envelope's near end. TaxiGraph.Build already repairs the
+                // rows it uses for the centerlines (SnapStartToRunwayCenterline); this
+                // map is the other consumer, and the two must not disagree about where a
+                // runway begins. A no-op where the data is sound.
                 double lineupLat;
                 double lineupLon;
                 StartPosition? start = null;
@@ -2094,8 +2104,9 @@ public class TaxiAssistForm : Form
                 }
                 if (start != null)
                 {
-                    lineupLat = start.Latitude;
-                    lineupLon = start.Longitude;
+                    (lineupLat, lineupLon) = TaxiGraph.SnapStartToRunwayCenterline(
+                        start.Latitude, start.Longitude,
+                        rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
                 }
                 else
                 {
@@ -2295,12 +2306,23 @@ public class TaxiAssistForm : Form
                 }
             }
 
-            // Same ordering as before: category, then number, then name.
-            var parkingSpots = filtered
-                .OrderBy(r => categoryOrder.TryGetValue(r.spot.GetFilterCategory(), out int o) ? o : 99)
-                .ThenBy(r => r.spot.Number > 0 ? r.spot.Number : int.MaxValue)
-                .ThenBy(r => r.spot.Name, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            // Nearest first — a taxi destination is chosen from where the aircraft is
+            // standing, so the stands it might actually be going to belong at the top of
+            // a list a screen reader walks one item at a time. Falls back to the old
+            // category / number / name ordering when the position isn't known yet
+            // (LoadAirportData before the first position fix).
+            bool haveOwnPosition = _aircraftLat != 0 || _aircraftLon != 0;
+            var parkingSpots = haveOwnPosition
+                ? filtered
+                    .OrderBy(r => TaxiGraph.CalculateDistanceMeters(
+                        _aircraftLat, _aircraftLon, r.spot.Latitude, r.spot.Longitude))
+                    .ThenBy(r => r.spot.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : filtered
+                    .OrderBy(r => categoryOrder.TryGetValue(r.spot.GetFilterCategory(), out int o) ? o : 99)
+                    .ThenBy(r => r.spot.Number > 0 ? r.spot.Number : int.MaxValue)
+                    .ThenBy(r => r.spot.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
             foreach (var (spot, nodeId) in parkingSpots)
             {
@@ -2356,8 +2378,12 @@ public class TaxiAssistForm : Form
             PopulateTerminatorTaxiwayList();
         }
 
+        // Silently: the rebuild re-selects index 0 with no pilot involvement, and in gate
+        // mode that happens on every gate-search KEYSTROKE — a holding-point call-out per
+        // keystroke is noise over the letters the pilot is typing. The type change that
+        // legitimately warrants the call-out speaks it itself (OnDestTypeChanged).
         if (cmbDestination.Items.Count > 0)
-            cmbDestination.SelectedIndex = 0;
+            SelectDestinationSilently(0);
     }
 
     private void PopulateFirstTaxiway()
@@ -3557,14 +3583,17 @@ public class TaxiAssistForm : Form
         var dropped = rawNames.Where(n => !resolvedNames.Contains(n))
                               .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                               .ToList();
+        int projected = _namedHoldingPoints.Count(p => p.InsertedOnEdge);
         _taxiRouterLog.Info(
             $"{_currentIcao}: named holding points raw={raw.Count} distinct={rawNames.Count} " +
             $"resolved={_namedHoldingPoints.Count}" +
+            (projected > 0 ? $" (of which edge-projected={projected})" : "") +
             (dropped.Count > 0 ? $" dropped={string.Join(", ", dropped)}" : ""));
         foreach (var hp in _namedHoldingPoints)
             _taxiRouterLog.Debug(
                 $"  {hp.Name} -> node {hp.NodeId}, {hp.SnapDistanceMeters:F1} m, " +
-                $"designated={hp.SnappedToDesignatedNode}, kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
+                $"designated={hp.SnappedToDesignatedNode}, projected={hp.InsertedOnEdge}, " +
+                $"kind={(hp.Kind.Length > 0 ? hp.Kind : "-")}");
     }
 
     /// <summary>
@@ -4106,6 +4135,20 @@ public class TaxiAssistForm : Form
             standstillParts.Add(
                 $"Intersection {intersection.TaxiwayName} departure, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(intersection.RemainingMeters)} of runway ahead.");
+        }
+        // A named holding-point departure changes WHERE the route meets the runway just
+        // as an intersection departure does, so it gets the same confirmation: which
+        // painted line the route now runs through, and how much runway is left beyond it.
+        // Without it the only difference a pilot could hear between "depart from A2" and
+        // "depart from A4" was the hold-short callout minutes later, out on the taxiway.
+        if (holdingPointEntry != null)
+        {
+            string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+                ? "runway " + destName.Substring(7).Trim()
+                : destName;
+            standstillParts.Add(
+                $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
+                $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
         if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
             standstillParts.Add(_guidanceManager.LastRouteReachWarning);

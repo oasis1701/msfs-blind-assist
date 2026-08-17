@@ -181,8 +181,8 @@ public partial class TaxiGuidanceManager
 
             string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
             TaxiNode? firstTwNode = firstCleared != null
-                ? _graph.FindNearestNodeOnTaxiway(
-                    aircraftLat, aircraftLon, firstCleared, requiredComponentId: destComponentId)
+                ? SelectFirstTaxiwayEntry(
+                    aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId)
                 : null;
 
             bool attemptLeadIn = false;
@@ -481,6 +481,7 @@ public partial class TaxiGuidanceManager
             _lastIncursionWarningTime = DateTime.MinValue;
             _offRouteSince = DateTime.MinValue;
             _hasJoinedRoute = false;
+            _minPerpWhileUnjoinedM = double.MaxValue;
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
@@ -610,6 +611,27 @@ public partial class TaxiGuidanceManager
     /// <summary>
     /// Advances _currentSegmentIndex to the segment closest to the aircraft's current position.
     /// Only moves forward (never backward). Handles segment skipping when updates are sparse.
+    ///
+    /// PROXIMITY IS REQUIRED (<see cref="SEGMENT_ADVANCE_MAX_DIST_M"/>). "Nearest of the next
+    /// six" is only evidence of progress if the aircraft is actually NEAR the winner —
+    /// without that gate an aircraft driving AWAY from the route still advanced along it,
+    /// because as it moves some other segment endpoint keeps becoming marginally nearest.
+    /// Measured across three guidance logs: 13 of 981 advances happened while the steering
+    /// tone was pointing more than 90° away from the aircraft's heading, including a
+    /// 0 → 3 jump at 179° (three segments consumed in one frame, exactly reversed) and
+    /// five consecutive advances over 9 s at EIDW while the error grew 103° → 139°.
+    ///
+    /// Three things went wrong, all of them silent:
+    ///   1. the route consumed itself, so turning back resumed from the wrong place;
+    ///   2. every advance stamps <c>_lastSegmentAdvanceTime</c>, which forces
+    ///      <c>nearTurn</c> true for POST_TURN_OFFROUTE_GRACE_SEC and SUPPRESSES off-route
+    ///      detection — being off-route caused advances, and the advances switched off the
+    ///      thing that would have noticed (KBNA 2026-08-08: 690 m away over 50 s at up to
+    ///      31 kt, tone pinned ~170° behind, not one recalc and not one word);
+    ///   3. the hold-short skip loop below fired <see cref="HandleHoldShort"/> at ANY
+    ///      distance — which pauses the tone and says "Stop. Hold short of runway X" for a
+    ///      runway that may be hundreds of metres away, AND moves the index past it so the
+    ///      real crossing never announces. That is the runway-incursion direction.
     /// </summary>
     private void AdvanceToNearestSegment(double lat, double lon)
     {
@@ -637,18 +659,47 @@ public partial class TaxiGuidanceManager
             }
         }
 
+        // Not near any of them — the aircraft is off the route, not progressing along it.
+        // Leave the index alone so off-route detection sees an un-refreshed
+        // _lastSegmentAdvanceTime and can do its job.
+        if (bestDist > SEGMENT_ADVANCE_MAX_DIST_M) return;
+
         if (bestIdx > _currentSegmentIndex)
         {
-            // Check for hold-short points we might be skipping
+            // Check for hold-short points we might be skipping. A hold-short is never
+            // passed silently — that is the whole point of this block — but it is only
+            // ANNOUNCED when the aircraft is genuinely at it. "Stop. Hold short of
+            // runway 09L" for a line 90 m away is both a false stop (it pauses the tone
+            // and waits for a Continue press) and a lost one, because the index moves
+            // past the segment and the real crossing then gets nothing.
             for (int i = _currentSegmentIndex; i < bestIdx; i++)
             {
-                if (_route.Segments[i].IsHoldShortPoint)
+                if (!_route.Segments[i].IsHoldShortPoint) continue;
+
+                double distToHold = TaxiGraph.FastDistanceMeters(
+                    lat, lon,
+                    _route.Segments[i].ToNode.Latitude,
+                    _route.Segments[i].ToNode.Longitude);
+
+                if (distToHold <= HOLD_SHORT_ANNOUNCE_MAX_DIST_M)
                 {
                     _currentSegmentIndex = i + 1;
                     _lastSegmentAdvanceTime = DateTime.UtcNow;
                     HandleHoldShort(_route.Segments[i]);
-                    return;
                 }
+                else
+                {
+                    // Too far to call it reached. Hold the index ON the hold-short
+                    // segment rather than stepping over it, so the normal
+                    // 300/150/50 ft countdown still runs when the aircraft actually
+                    // arrives. Never advance past an un-announced hold-short.
+                    if (i > _currentSegmentIndex)
+                    {
+                        _currentSegmentIndex = i;
+                        _lastSegmentAdvanceTime = DateTime.UtcNow;
+                    }
+                }
+                return;
             }
 
             _currentSegmentIndex = bestIdx;
@@ -666,6 +717,50 @@ public partial class TaxiGuidanceManager
             _turnImminentAnnounced = false;
             _crossingAnnounced = false;
         }
+    }
+
+    /// <summary>
+    /// Picks the node on the FIRST cleared taxiway that the route should be anchored
+    /// on (the LEPA pre-snap). Ranks by the total graph cost of the route through the
+    /// candidate — (aircraft → entry) + (entry → destination) — via
+    /// <see cref="TaxiRouter.FindBestEntryNodeOnTaxiway"/>, so an entry the route
+    /// would have to reverse out of loses to the junction it hangs off.
+    ///
+    /// The Euclidean-nearest node this replaces picked a 15 m dead-end stub at LOWS
+    /// (2026-08-16, progressive taxi "L" off the runway 15 vacate point): the route
+    /// opened with a 15 m leg the wrong way and a 170° hairpin, and because the
+    /// pre-snap becomes the A* start node the router could not recover from it.
+    ///
+    /// Falls back to the Euclidean-nearest node whenever the cost ranking can't run
+    /// (no graph node near the aircraft, taxiway absent from the destination's
+    /// component) or picks something beyond the Euclidean search radius the caller
+    /// has always been bounded by — so this can only ever change WHICH near node is
+    /// chosen, never widen the search.
+    /// </summary>
+    private TaxiNode? SelectFirstTaxiwayEntry(
+        double aircraftLat, double aircraftLon, string taxiwayName,
+        int destComponentId, int destinationNodeId)
+    {
+        var euclideanNearest = _graph!.FindNearestNodeOnTaxiway(
+            aircraftLat, aircraftLon, taxiwayName, requiredComponentId: destComponentId);
+        if (euclideanNearest == null) return null;
+
+        // Dijkstra needs a node to start from; the aircraft sits between nodes, so
+        // use the nearest one. The hop from the aircraft onto it is the same for
+        // every candidate, so it can't affect the ranking.
+        var anchor = _graph.FindNearestNode(
+            aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+        if (anchor == null) return euclideanNearest;
+
+        int bestId = new TaxiRouter(_graph)
+            .FindBestEntryNodeOnTaxiway(anchor.NodeId, taxiwayName, destinationNodeId);
+        if (bestId == -1 || !_graph.Nodes.TryGetValue(bestId, out var best))
+            return euclideanNearest;
+
+        const double MAX_PRESNAP_M = 800.0;   // matches FindNearestNodeOnTaxiway's default
+        double gap = TaxiGraph.FastDistanceMeters(
+            aircraftLat, aircraftLon, best.Latitude, best.Longitude);
+        return gap <= MAX_PRESNAP_M ? best : euclideanNearest;
     }
 
     /// <summary>

@@ -110,8 +110,12 @@ public class TaxiRouter
         var fullPath = new List<int>();
         int currentNode = startNodeId;
 
-        // Step 1: Get onto the first taxiway - try multiple entry points
-        var candidateEntries = FindNearestNodesOnTaxiway(startNodeId, taxiwaySequence[0], 10);
+        // Step 1: Get onto the first taxiway - try multiple entry points.
+        // distFromFinalDest makes the ranking score the whole route through each
+        // candidate rather than just the hop onto it, so an entry that would force
+        // an immediate reversal (a stub off the junction) loses to the junction.
+        var candidateEntries = FindNearestNodesOnTaxiway(
+            startNodeId, taxiwaySequence[0], 10, distFromFinalDest);
         if (candidateEntries.Count == 0)
         {
             string reason = $"No nodes found on taxiway '{taxiwaySequence[0]}'";
@@ -425,9 +429,18 @@ public class TaxiRouter
     }
 
     /// <summary>
-    /// Finds the N nearest nodes on a given taxiway to a starting node.
+    /// Ranks the nodes on a given taxiway as candidate ENTRY points from
+    /// <paramref name="fromNodeId"/>, best first, and returns the top
+    /// <paramref name="maxResults"/>.
+    ///
+    /// When <paramref name="distToDestination"/> is supplied (Dijkstra costs from the
+    /// final destination) the score is the TOTAL route cost through the candidate —
+    /// (start → entry) + (entry → destination) — not the distance to the entry alone.
+    /// Without it the ranking degrades to the historical entry-distance-only rule.
     /// </summary>
-    private List<int> FindNearestNodesOnTaxiway(int fromNodeId, string taxiwayName, int maxResults)
+    private List<int> FindNearestNodesOnTaxiway(
+        int fromNodeId, string taxiwayName, int maxResults,
+        Dictionary<int, double>? distToDestination = null)
     {
         var fromNode = _graph.Nodes[fromNodeId];
         int fromComponent = fromNode.ComponentId;
@@ -448,8 +461,25 @@ public class TaxiRouter
         // out-and-back on an otherwise correct clearance. By graph distance the
         // junction wins by the 111 m it actually is nearer, which is the point on
         // C the aircraft genuinely reaches first.
+        //
+        // Entry distance ALONE is still not enough, because a taxiway's nearest
+        // point can be a stub the route has to reverse out of. Score by the TOTAL
+        // route cost through the candidate instead: (start → entry) + (entry →
+        // destination). Every node on the direct path ties at the minimum (the
+        // sum is just the through-route length), so the ThenBy picks the FIRST
+        // of them the aircraft reaches — the same answer entry-distance gave for
+        // the EVRA case — while a stub that costs a there-and-back detour is
+        // ranked behind by exactly the detour it adds.
+        //
+        // Motivating defect (LOWS, 2026-08-16, progressive taxi "L"): from the
+        // 15 vacate point, L's nearest node by BOTH Euclidean (64 m) and graph
+        // distance (80 m) was a 15 m dead-end stub hanging off the south junction;
+        // the north junction was 107 m. Entering at the stub made the route open
+        // with a 15 m leg at 167° and a 170° hairpin onto 337°, and the pilot spent
+        // 55 s turning round in it. By total cost the north junction wins (107 + Y
+        // against 186 + Y for the stub) and the route runs straight up L.
         var distFromStart = ComputeGraphDistancesFrom(fromNodeId);
-        var candidates = new List<(int nodeId, double dist)>();
+        var candidates = new List<(int nodeId, double totalCost, double distToEntry)>();
 
         foreach (int nodeId in _graph.GetNodesOnTaxiway(taxiwayName))
         {
@@ -463,19 +493,63 @@ public class TaxiRouter
             // a few hundred metres to MaxValue is a no-op in floating point, so
             // every unreachable candidate would tie and lose its ordering.
             const double UNREACHABLE_RANK_BASE = 1e9;
-            double dist = distFromStart.TryGetValue(nodeId, out double graphDist)
+            double distToEntry = distFromStart.TryGetValue(nodeId, out double graphDist)
                 ? graphDist
                 : UNREACHABLE_RANK_BASE + TaxiGraph.CalculateDistanceMeters(
                     fromNode.Latitude, fromNode.Longitude, node.Latitude, node.Longitude);
 
-            candidates.Add((nodeId, dist));
+            // Onward cost to the destination. Same unreachable treatment: a
+            // candidate the destination cannot be reached from is kept (the
+            // caller still tries the list in order) but ranked last.
+            double onward = 0.0;
+            if (distToDestination != null
+                && !distToDestination.TryGetValue(nodeId, out onward))
+            {
+                onward = UNREACHABLE_RANK_BASE;
+            }
+
+            candidates.Add((nodeId, distToEntry + onward, distToEntry));
         }
 
+        // Bucket the total cost before the tie-break: nodes on one through-path
+        // sum the SAME edges in different orders, so their totals differ only by
+        // floating-point noise and an exact comparison would order them at random.
         return candidates
-            .OrderBy(c => c.dist)
+            .OrderBy(c => Math.Round(c.totalCost / ENTRY_COST_TIE_M))
+            .ThenBy(c => c.distToEntry)
             .Take(maxResults)
             .Select(c => c.nodeId)
             .ToList();
+    }
+
+    /// <summary>
+    /// Bucket width (metres) for the entry-candidate total-cost comparison. Two
+    /// candidates within this of each other count as equal-cost and are separated
+    /// by which one the aircraft reaches first.
+    /// </summary>
+    private const double ENTRY_COST_TIE_M = 5.0;
+
+    /// <summary>
+    /// Picks the single best node on <paramref name="taxiwayName"/> to enter from
+    /// <paramref name="fromNodeId"/> when routing to <paramref name="destinationNodeId"/>,
+    /// by the same total-route-cost rule <see cref="FindNearestNodesOnTaxiway"/> uses.
+    /// Returns -1 when either node is missing from the graph or the taxiway has no
+    /// candidate in the start node's component.
+    ///
+    /// Exists so the route-start pre-snap in TaxiGuidanceManager.LoadRoute picks the
+    /// same entry the router would, instead of the Euclidean-nearest node: the
+    /// pre-snap runs BEFORE the router and overrides it (the chosen node becomes the
+    /// A* start), so a stub picked here could not be recovered from downstream.
+    /// </summary>
+    internal int FindBestEntryNodeOnTaxiway(int fromNodeId, string taxiwayName, int destinationNodeId)
+    {
+        if (string.IsNullOrEmpty(taxiwayName)) return -1;
+        if (!_graph.Nodes.ContainsKey(fromNodeId)) return -1;
+        if (!_graph.Nodes.ContainsKey(destinationNodeId)) return -1;
+
+        var distToDest = ComputeGraphDistancesFrom(destinationNodeId);
+        var best = FindNearestNodesOnTaxiway(fromNodeId, taxiwayName, 1, distToDest);
+        return best.Count > 0 ? best[0] : -1;
     }
 
     /// <summary>
