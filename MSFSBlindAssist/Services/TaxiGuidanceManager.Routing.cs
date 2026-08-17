@@ -385,6 +385,9 @@ public partial class TaxiGuidanceManager
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
             _landingExitOffPavement = true;   // a new route re-decides this at its own handoff
+            _landingExitMissed = false;
+            _landingExitMinDistToTargetM = double.MaxValue;
+            _missedVacateSince = DateTime.MinValue;
             _approachAnnounced = false;
             _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;
