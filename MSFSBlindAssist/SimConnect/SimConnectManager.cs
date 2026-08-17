@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -106,6 +106,21 @@ public partial class SimConnectManager
     public bool IsConnected { get; private set; }
     public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
+
+    /// <summary>
+    /// GSX's own <c>L:FSDT_GSX_COUATL_STARTED</c>, read over the main SimConnect
+    /// connection (DEF_GSX_COUATL_STARTED, once per second — DEFAULT flag, not
+    /// CHANGED, see RegisterGsxCouatlStartedDefinition). This is the
+    /// signal every GSX build publishes — Remote API or not — and it is what gates the
+    /// GSX <c>.ini</c> gate overlay, the deice pads and the profile stop positions:
+    /// local-file features that never needed GSX's WebSocket. Before the Remote API
+    /// migration <c>GsxService.CouatlStarted</c> WAS this L:var; afterwards it came
+    /// only from Remote-API frames, which silently switched those file-parsing
+    /// features off for any GSX build older than 4.0.1 (a floor docs/gsx.md says they
+    /// must not have). MainForm's gate-availability predicate ORs the two.
+    /// False whenever disconnected.
+    /// </summary>
+    public bool GsxCouatlStartedLVar { get; private set; }
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
     // Aircraft-detection retry. RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE;
@@ -360,6 +375,8 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
+        // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
+        REQUEST_GSX_COUATL_STARTED = 340,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -416,6 +433,8 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
+        // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
+        DEF_GSX_COUATL_STARTED = 340,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -724,6 +743,7 @@ public partial class SimConnectManager
         catch (COMException)
         {
             IsConnected = false;
+            GsxCouatlStartedLVar = false;
 
             // Only announce disconnection if we were previously connected
             if (wasConnected)
@@ -1097,6 +1117,7 @@ public partial class SimConnectManager
 
         IsConnected = false;
         IsFullyConnected = false;
+        GsxCouatlStartedLVar = false;
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)
