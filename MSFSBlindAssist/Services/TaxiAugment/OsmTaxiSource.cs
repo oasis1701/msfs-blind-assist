@@ -93,15 +93,14 @@ public sealed class OsmTaxiSource : ITaxiDataSource
             }
             else if (aeroway == "holding_position")
             {
-                // Designator lives in "ref" (VIKAS, N2E, A11…); a few mappers use "name"
-                // instead — same fallback order as taxiways. The vast majority of
-                // holding_position nodes are unnamed painted hold lines: skip those, only
-                // NAMED points are useful as pilot-selectable holds.
+                // Painted holding-point designator (LSZH "A2"). ref first, name as a
+                // fallback (same convention as taxiway ways). Unnamed hold lines carry
+                // no information for entry selection — skip them.
                 string hn = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("ref", out var hr)
                     ? (hr.GetString() ?? "") : "";
                 if (string.IsNullOrWhiteSpace(hn)
-                    && tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("name", out var hnm))
-                    hn = hnm.GetString() ?? "";
+                    && tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("name", out var hm))
+                    hn = hm.GetString() ?? "";
                 if (string.IsNullOrWhiteSpace(hn)) continue;
                 string kind = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("holding_position:type", out var hk)
                     ? (hk.GetString() ?? "") : "";
