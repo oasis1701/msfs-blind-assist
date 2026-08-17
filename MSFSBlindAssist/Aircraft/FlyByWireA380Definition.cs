@@ -666,13 +666,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // only reads back as 0..100 through a `, percent` suffix. Writing it raw — which the
         // slider ramp does — permanently re-registers it 1:1 for the session, after which
         // raw == percent and the Update loop's `(L:KNOB, percent)` read yields the 0..100 we
-        // wrote. 0..100 is therefore the correct slider range for every state the pilot can
-        // actually reach. KNOWN COSMETIC EDGE: until the knob is first moved (by this slider
-        // OR the cockpit knob), the untouched 0.85 maps to a thumb at ~1 % while the cockpit
-        // is really at 85 %; the first adjustment corrects it permanently. A display override
-        // canNOT fix this — MainForm's slider paths position the thumb straight from the raw
-        // value and never call TryGetDisplayOverride — and normalising inside the shared
-        // slider code for one aircraft's quirk would be the wrong altitude.
+        // wrote. 0..100 is therefore the correct slider range — but a PRISTINE knob read raw
+        // would seed the thumb at ~1 % while the cockpit is really at 85 %, and the thumb
+        // writes its ABSOLUTE position, so the pilot's first "brighten" nudge would darken
+        // the flood to ~2 %. OnDisplayPanelShown (Displays.cs) therefore self-normalizes
+        // both knobs with the idempotent "(L:KNOB, percent) (>L:KNOB)" when the Interior
+        // Lighting panel opens, before the pilot can reach the sliders. (Normalising inside
+        // the shared slider code for one aircraft's quirk would be the wrong altitude, and
+        // MainForm's slider paths never call TryGetDisplayOverride, so this is the one hook.)
         // Live-verified 2026-08-16: 0 / 50 / 100 each drove LIGHT POTENTIOMETER:83 to the
         // same percentage, ambient moved :7 independently.
         Slider("A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB", "Main Panel Flood Light");

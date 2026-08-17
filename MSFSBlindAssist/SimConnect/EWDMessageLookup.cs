@@ -397,16 +397,20 @@ public static class EWDMessageLookup
         ["290012802"] = "\x1b<5m -PTU................OFF",
         ["290012803"] = "\x1b<5m -GREEN ENG 1 PUMP...OFF",
         ["308118601"] = "\x1b<4m\x1b4mSEVERE ICE\x1bm DETECTED",
-        ["308118602"] = "\x1b5m -WING ANTI ICE.......ON",
-        ["308118603"] = "\x1b5m -ENG MOD SEL........IGN",
+        // These four action lines are "\x1b<5m" like every sibling — they were briefly
+        // "\x1b5m", which C#'s greedy \x escape compiles to U+01B5 'Ƶ' + 'm': the cleaner
+        // saw no code at all, so they announced as "Ƶm -WING ANTI ICE..." with no colour.
+        ["308118602"] = "\x1b<5m -WING ANTI ICE.......ON",
+        ["308118603"] = "\x1b<5m -ENG MOD SEL........IGN",
         ["308128001"] = "\x1b<4m\x1b4mANTI ICE\x1bm ICE DETECTED",
-        ["308128002"] = "\x1b5m -ENG 1 ANTI ICE......ON",
-        ["308128003"] = "\x1b5m -ENG 2 ANTI ICE......ON",
+        ["308128002"] = "\x1b<5m -ENG 1 ANTI ICE......ON",
+        ["308128003"] = "\x1b<5m -ENG 2 ANTI ICE......ON",
         // Circuit-breaker TRIPPED cautions — FBW #10878 (2026-08) added the A32NX ECAM
-        // control-panel circuit-breaker system. The 38 A32NX_CB_*_TRIPPED_n L:vars behind
+        // control-panel circuit-breaker system. The A32NX_CB_*_TRIPPED_n L:vars behind
         // these are packed BITMASKS read by the FWC, not pilot switches (a CB is pulled in
         // the 3-D cockpit), so the blind-accessible surface is these ECAM lines, not a
-        // panel of controls. Group "C/B$1" = the \x1b<4m\x1b4mC/B\x1bm prefix.
+        // panel of controls (counts + encoding: docs/a32nx.md). Group "C/B$1" = the
+        // \x1b<4m\x1b4mC/B\x1bm prefix.
         ["310011001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL J-M",
         ["310012001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL N-R",
         ["310013001"] = "\x1b<4m\x1b4mC/B\x1bm TRIPPED REAR PNL S-V",
@@ -613,14 +617,27 @@ public static class EWDMessageLookup
         return ""; // Return empty string for unknown codes or code 0
     }
 
+    // FWC format codes are ESC, then optional '<' / ')' / digits, ending in 'm' — the same
+    // grammar EWDMessageLookupA380.AnsiRe strips, and it covers the bare group-end reset
+    // "\x1bm" (zero-length middle) that used to leave a stray spoken "m" in every grouped
+    // caution ("C/B m TRIPPED ON OVHD PNL", observed live 2026-08-16). The ƴm alternate is
+    // A320-table-only: this file writes its ESC as the "\x1b" C# escape, which is GREEDY —
+    // "\x1b4m" compiles to U+01B4 'ƴ' + 'm', not ESC + "4m" — so every grouped title's
+    // underline code is mojibake at compile time and never had an ESC to anchor on. (The
+    // strings never leave the process: they come from the Messages dictionary above, not
+    // from SimConnect — the old "SimConnect corrupts \x1b" story here was a misdiagnosis.)
+    // ESC-anchored + the ƴm literal deliberately replaces the old bare "(?<!\d)\d{1,2}m"
+    // pass, which could eat real text like "75m". Static + Compiled: this runs ~14×/s on
+    // the SimConnect dispatch thread for the whole flight.
+    private static readonly Regex AnsiResidueRegex = new(@"\x1b[<)\d]*m|ƴm", RegexOptions.Compiled);
+    private static readonly Regex ControlCharsRegex = new(@"[\x00-\x1F]", RegexOptions.Compiled);
+    private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+
     /// <summary>
-    /// Removes ANSI escape sequences for screen reader compatibility
-    /// NOTE: SimConnect corrupts \x1b escape characters in these ways:
-    /// - \x1b<3m becomes <3m (escape stripped)
-    /// - \x1b4m becomes ƴm (escape corrupted to ƴ)
-    /// - \x1bm becomes m (escape stripped, m remains)
+    /// Removes the FWC format codes (and the compile-time ƴm mojibake) from a raw
+    /// dictionary message so the screen reader speaks only the message text.
     /// </summary>
-    /// <param name="rawMessage">Message with corrupted ANSI codes from SimConnect</param>
+    /// <param name="rawMessage">Raw message from the Messages dictionary (format codes intact)</param>
     /// <returns>Cleaned message text</returns>
     public static string CleanANSICodes(string rawMessage)
     {
@@ -629,43 +646,21 @@ public static class EWDMessageLookup
             return "";
         }
 
-        // Pass 1: Remove <digit>m patterns (no closing > bracket)
-        // Example: <4m, <3m, <2m
-        string cleaned = Regex.Replace(rawMessage, @"<\d+m", "");
+        string cleaned = AnsiResidueRegex.Replace(rawMessage, "");
 
-        // Pass 2: Remove corrupted escape character pattern ƴm
-        // This is what \x1b4m becomes after SimConnect corruption
-        cleaned = Regex.Replace(cleaned, @"ƴm", "");
-
-        // Pass 3: Remove stray 1-2 digit SGR residue (like "4m" from \x1b4m underline codes)
-        // ONLY when not preceded by a digit — so real values like "FL 350m" are preserved.
-        cleaned = Regex.Replace(cleaned, @"(?<!\d)\d{1,2}m", "");
-
-        // Pass 4: Remove )m pattern (from reset codes like \x1b)m)
-        cleaned = Regex.Replace(cleaned, @"\)m", "");
-
-        // Pass 4b: the GROUP-END RESET, ESC followed by 'm' (the "\x1bm" that closes every
-        // "\x1b4m<GROUP>\x1bm" title). Pass 5 below turns the ESC into a space and leaves the
-        // 'm' stranded as its own word, which the screen reader then SPEAKS: a real A320 caution
-        // came out as "C/B m TRIPPED ON OVHD PNL, Amber" (observed live 2026-08-16), and every
-        // grouped message had the same stray letter. Must run BEFORE Pass 5, while the ESC is
-        // still attached to identify the 'm' as ANSI residue rather than real text.
-        cleaned = Regex.Replace(cleaned, @"\x1bm", "");
-
-        // Pass 5: Clean any remaining non-printable control characters
-        cleaned = Regex.Replace(cleaned, @"[\x00-\x1F]", " ");
-
-        // Final cleanup: collapse multiple spaces and trim
-        cleaned = Regex.Replace(cleaned, @"\s+", " ");
+        // Any remaining non-printable control characters become spaces, then collapse.
+        cleaned = ControlCharsRegex.Replace(cleaned, " ");
+        cleaned = WhitespaceRegex.Replace(cleaned, " ");
 
         return cleaned.Trim();
     }
 
     /// <summary>
-    /// Extracts color information from ANSI codes for display
-    /// NOTE: SimConnect strips the \x1b escape character, so we match patterns WITHOUT it
+    /// Extracts color information from a raw dictionary message's format codes.
+    /// Matches "&lt;Nm" without requiring the ESC in front of it, so it works on the
+    /// dictionary strings regardless of how their C# escapes compiled.
     /// </summary>
-    /// <param name="rawMessage">Message with ANSI codes (escape character already stripped by SimConnect)</param>
+    /// <param name="rawMessage">Raw message from the Messages dictionary (format codes intact)</param>
     /// <returns>Color string (Red, Amber, Green, White, Cyan, Gray, or empty)</returns>
     public static string GetMessagePriority(string rawMessage)
     {
@@ -674,7 +669,6 @@ public static class EWDMessageLookup
             return "";
         }
 
-        // Match patterns WITHOUT escape character (SimConnect strips \x1b before delivery)
         if (rawMessage.Contains("<2m")) return "Red";      // Warning
         if (rawMessage.Contains("<4m")) return "Amber";    // Caution
         if (rawMessage.Contains("<3m")) return "Green";    // Memo

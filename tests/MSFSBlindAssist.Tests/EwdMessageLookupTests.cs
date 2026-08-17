@@ -10,9 +10,9 @@
 //     <5m=Cyan,<6m=Magenta,<7m=White. The A380 table DOES carry <6m rows -- codes
 //     314000001 ("T.O INHIBIT") and 314000002 ("LDG INHIBIT") -- so the Magenta
 //     branch is pinned below with real data.
-//   - A320 has a public CleanANSICodes(string) doing multi-pass corruption cleanup
-//     (documented as compensating for SimConnect mangling \x1b escapes). A380 has NO
-//     public CleanANSICodes -- its ANSI stripping is inlined in GetMessage(long) via a
+//   - A320 has a public CleanANSICodes(string) -- an ESC-anchored regex plus a "ƴm"
+//     alternate for the table's compile-time \x1b4m mojibake. A380 has NO public
+//     CleanANSICodes -- its ANSI stripping is inlined in GetMessage(long) via a
 //     private regex that assumes an intact ESC (\x1b) character, so A380's cleaning
 //     behavior is pinned through GetMessage instead.
 //
@@ -99,14 +99,14 @@ public class EwdMessageLookupTests
     {
         // Raw dictionary value for code 000001001 ("T.O AUTO BRK MAX" annunciator line).
         // NOTE: the source's "\x1b4m" literal is itself C#'s greedy \x hex-escape eating the
-        // trailing "4" (\x1b4 = U+01B4 "ƴ"), not a SimConnect runtime corruption as the
-        // production doc comment claims -- this is why Pass 2 of CleanANSICodes specifically
-        // matches "ƴm". The group-end reset ("\x1bm" -> ESC + literal 'm') used to leave a bare
-        // "m" here, which the screen reader SPOKE ("T.O m AUTO BRK"); Pass 4b now strips the
-        // ESC+'m' pair before the control-character pass can orphan the letter.
+        // trailing "4" (\x1b4 = U+01B4 "ƴ"), not a SimConnect runtime corruption -- which is
+        // why CleanANSICodes' regex carries the "ƴm" alternate. The group-end reset ("\x1bm"
+        // -> ESC + literal 'm') used to leave a bare "m" here, which the screen reader SPOKE
+        // ("T.O m AUTO BRK"); the ESC-anchored regex now strips the whole code, so "\x1b<5m"
+        // no longer leaves an ESC behind to become a space either (hence "BRK....." unspaced).
         string raw = "\x1b<3m\x1b4mT.O\x1bm AUTO BRK\x1b<5m.....MAX";
 
-        Assert.Equal("T.O AUTO BRK .....MAX", EWDMessageLookup.CleanANSICodes(raw));
+        Assert.Equal("T.O AUTO BRK.....MAX", EWDMessageLookup.CleanANSICodes(raw));
     }
 
     [Fact]
@@ -127,10 +127,10 @@ public class EwdMessageLookupTests
     [Fact]
     public void A320_CleanANSICodes_strips_only_the_escaped_m_never_a_real_letter()
     {
-        // Guards Pass 4b against being rewritten as a bare "m" pattern: that regex is one
-        // character away from stripping the letter out of every message, and the difference
-        // is invisible in the dictionary's uppercase text until something like "mm" or a
-        // lower-case unit slips through. ESC+'m' must go; every other 'm' must survive.
+        // Guards the ESC+'m' stripping against being rewritten as a bare "m" pattern: that
+        // regex is one character away from stripping the letter out of every message, and the
+        // difference is invisible in the dictionary's uppercase text until something like "mm"
+        // or a lower-case unit slips through. ESC+'m' must go; every other 'm' must survive.
         Assert.Equal("TRIM mm HYD", EWDMessageLookup.CleanANSICodes("TRIM\x1bm mm HYD"));
         Assert.Equal("m", EWDMessageLookup.CleanANSICodes("m"));
     }
@@ -149,8 +149,12 @@ public class EwdMessageLookupTests
 
     // --- Messages synced from FBW in 2026-08 (#10717 baro, #10878 circuit breakers) ---
     // These were transcribed from fbw-a32nx EwdMessages.ts, where the group prefix is a
-    // separate field ('NAV$9' / 'C/B$1'). Pinning the codes guards the transcription:
-    // a wrong id makes the aircraft's ECAM line announce as "ECAM message <code>".
+    // separate field ('NAV$9' / 'C/B$1'). Pinning the codes guards the transcription
+    // against edits on THIS side only — a wrong 9-digit id still passes (the expectation
+    // is the same transcription), and at runtime an id the table lacks is announced as
+    // NOTHING AT ALL (GetRawMessage returns "" and AnnounceECAMChanges skips empties),
+    // so a mis-transcribed code is a silent caution. Only a re-check against
+    // EwdMessages.ts validates the ids themselves.
 
     [Theory]
     [InlineData(340010101L, "\x1b<4m\x1b4mNAV\x1bm BARO VALUE DISAGREE")]
@@ -180,13 +184,32 @@ public class EwdMessageLookupTests
     [Fact]
     public void A320_CleanANSICodes_renders_the_new_grouped_lines_like_every_other_group()
     {
-        // The stray "m" is the SAME pre-existing residue the BRAKES/T.O cases above pin
-        // (C#'s greedy \x1b4 escape + the bare 'm' left by "\x1bm"), not something the
-        // 2026-08 sync introduced. Pinned so a future cleanup fixes all groups together.
+        // Pins that the new grouped lines render CLEAN — no stray "m" from the group-end
+        // reset, no "ƴm" mojibake — exactly like the BRAKES/T.O cases above. If either
+        // assert ever fails claiming a missing "m", the ESC+'m' stripping has been
+        // reverted, not broken (see docs/a32nx.md).
         Assert.Equal("C/B TRIPPED REAR PNL J-M",
             EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(310011001L)));
         Assert.Equal("NAV BARO VALUE DISAGREE",
             EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(340010101L)));
+    }
+
+    [Fact]
+    public void A320_anti_ice_action_lines_carry_the_white_code_and_clean_fully()
+    {
+        // These four were briefly stored "\x1b5m ..." — which C#'s greedy \x escape
+        // compiles to U+01B5 'Ƶ' + 'm', a form no cleaning pass matches — so they
+        // announced as "Ƶm -ENG 1 ANTI ICE......ON" with NO colour word. Pinned as
+        // "\x1b<5m" (White action lines) like every sibling.
+        foreach (long code in new[] { 308118602L, 308118603L, 308128002L, 308128003L })
+        {
+            string raw = EWDMessageLookup.GetRawMessage(code);
+            Assert.StartsWith("\x1b<5m", raw);
+            Assert.Equal("White", EWDMessageLookup.GetMessagePriority(raw));
+            Assert.DoesNotContain("Ƶ", EWDMessageLookup.CleanANSICodes(raw));
+        }
+        Assert.Equal("-ENG 1 ANTI ICE......ON",
+            EWDMessageLookup.CleanANSICodes(EWDMessageLookup.GetRawMessage(308128002L)));
     }
 
     // ===================== A380 (EWDMessageLookupA380) =====================
