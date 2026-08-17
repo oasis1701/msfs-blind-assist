@@ -104,6 +104,16 @@ public class TaxiAssistForm : Form
     // and the import speaks its own single summary that a holding-point call-out must
     // not talk over.
     private bool _suppressHoldingPointAnnounce;
+    // Set while an EXTERNAL destination (the SayIntentions assigned gate) is being
+    // resolved and kept set once one has been seated: the occupied-stands filter is a
+    // browsing aid, but an assigned gate with AI parked on it is still the assigned
+    // gate, and hiding it makes the name, alias AND position steps all miss — the
+    // whole chain then falls through to the ARRIVAL RUNWAY, the failure those
+    // fallbacks exist to stop. Latched (not restored on success) so a later list
+    // rebuild cannot drop the stand the pilot is being taxied to; cleared when the
+    // pilot toggles the checkbox themselves and on every airport load. The occupancy
+    // WARNING still reaches them at Calculate (CheckGateOccupancy).
+    private bool _suppressOccupiedFilter;
     // CAT III / low-visibility hold (runway destinations only). When ticked, a
     // runway-destination route holds at the CAT III / ILS hold-short (further
     // back, protects the ILS critical area — e.g. EGKK A3/C3/M3) instead of the
@@ -463,7 +473,12 @@ public class TaxiAssistForm : Form
             AccessibleName = "Hide occupied stands",
             AccessibleDescription = "When checked, parking spots with an aircraft already on them are left out of the destination list"
         };
-        chkHideOccupied.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 1) PopulateDestinations(); };
+        chkHideOccupied.CheckedChanged += (s, e) =>
+        {
+            // The pilot asserting the filter outranks an import's latched suppression.
+            _suppressOccupiedFilter = false;
+            if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+        };
         y += 20;
 
         // Gate search box (type-to-filter on name+number+suffix). Hidden
@@ -612,6 +627,13 @@ public class TaxiAssistForm : Form
             AccessibleName = "CAT three, low visibility hold",
             AccessibleDescription = "When checked, hold at the CAT three / ILS hold-short further back from the runway for low-visibility procedures, instead of the full-length hold closest to the runway"
         };
+        // Ticking LVP changes WHICH painted line the route holds at (EGKK 26L: M3
+        // behind M1), and the call-out has a dedicated CAT III variant keyed on this
+        // state — without this the variant was unreachable in the natural flow, so a
+        // pilot ticking it for exactly the low-visibility case that matters heard
+        // nothing and taxied expecting the normal line. Not a "combo value change"
+        // readback: the tick names the DERIVED hold, which the screen reader cannot.
+        chkCatIiiHold.CheckedChanged += (s, e) => AnnounceDefaultHoldingPoint();
         y += 30;
 
         // Full-length backtrack departure. Runway destinations only (same
@@ -1158,6 +1180,14 @@ public class TaxiAssistForm : Form
         // filtered-out gate reads exactly like "this airport has no such gate".
         if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
 
+        // Same reasoning for the occupied-stands filter (see _suppressOccupiedFilter):
+        // an assigned stand with AI parked on it must still be resolvable. The explicit
+        // rebuild is needed because SelectDestinationType only repopulates when the type
+        // actually CHANGES — already in gate mode, the stale filtered list would stand.
+        bool priorSuppressOccupied = _suppressOccupiedFilter;
+        _suppressOccupiedFilter = true;
+        if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+
         List<string>? runwayLabels = null;
         List<string>? gateLabels = null;
 
@@ -1212,12 +1242,19 @@ public class TaxiAssistForm : Form
             int index = cmbDestination.Items.IndexOf(match);
             if (index < 0) continue;
 
-            cmbDestination.SelectedIndex = index;
+            // Silently: this is the import seating its own destination, not the pilot
+            // choosing one, and the import's own summary must not be talked over.
+            SelectDestinationSilently(index);
             isRunway = candidate.IsRunway;
             label = match;
             gateSubstitution = substitution;
             return true;
         }
+
+        // Nothing was seated, so nothing needs the occupied stand kept visible: put the
+        // pilot's own filter back (and rebuild under it) before restoring the rest.
+        _suppressOccupiedFilter = priorSuppressOccupied;
+        if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
 
         RestoreDestinationState(
             priorType, priorSearch, priorDestination,
@@ -1358,34 +1395,57 @@ public class TaxiAssistForm : Form
         return ComboItemTexts(cmbDestination);
     }
 
+    /// <summary>Switches the destination type WITHOUT speaking the holding-point
+    /// call-out. Every caller is an external-route path (the SayIntentions import and
+    /// its probing), where the switch is not a pilot choice: OnDestTypeChanged fires
+    /// AnnounceDefaultHoldingPoint for runway mode, so probing a runway candidate the
+    /// pilot never picked would name its holding point out loud, rewrite the status
+    /// line and burn the call-out's dedup key — leaving the real call-out silent when
+    /// they later select that runway themselves, and breaking the invariant that
+    /// probing leaves no mark. The import speaks its own single summary instead.</summary>
     private void SelectDestinationType(bool isRunway)
     {
         int wanted = isRunway ? 0 : 1;
-        if (cmbDestType.SelectedIndex != wanted) cmbDestType.SelectedIndex = wanted;
+        if (cmbDestType.SelectedIndex == wanted) return;
+        bool prior = _suppressHoldingPointAnnounce;
+        _suppressHoldingPointAnnounce = true;
+        try { cmbDestType.SelectedIndex = wanted; }
+        finally { _suppressHoldingPointAnnounce = prior; }
     }
 
     private void RestoreDestinationState(
         int priorType, string priorSearch, string? priorDestination,
         bool priorIntersection, string? priorIntersectionLabel, bool priorCatIiiHold)
     {
-        // Type first: leaving gate mode blanks the gate search, which would undo the
-        // search restore if it ran the other way round.
-        if (priorType >= 0 && cmbDestType.SelectedIndex != priorType)
-            cmbDestType.SelectedIndex = priorType;
-        if (txtGateSearch.Text != priorSearch)
-            txtGateSearch.Text = priorSearch;
-
-        if (!string.IsNullOrEmpty(priorDestination))
+        // Silent throughout: a restore is the probe undoing itself, so it must not
+        // speak — nor burn the holding-point dedup key, which would swallow the real
+        // call-out when the pilot next selects that runway ("probing leaves no mark").
+        bool priorSuppressAnnounce = _suppressHoldingPointAnnounce;
+        _suppressHoldingPointAnnounce = true;
+        try
         {
-            int index = cmbDestination.Items.IndexOf(priorDestination);
-            if (index >= 0) cmbDestination.SelectedIndex = index;
-        }
+            // Type first: leaving gate mode blanks the gate search, which would undo the
+            // search restore if it ran the other way round.
+            if (priorType >= 0 && cmbDestType.SelectedIndex != priorType)
+                cmbDestType.SelectedIndex = priorType;
+            if (txtGateSearch.Text != priorSearch)
+                txtGateSearch.Text = priorSearch;
 
-        // Both boxes are runway-only, and the intersection list is rebuilt against
-        // whichever runway is selected — so this has to run AFTER the destination is
-        // back, or the departure is restored onto the wrong runway's intersections.
-        RestoreIntersectionState(priorIntersection, priorIntersectionLabel);
-        if (chkCatIiiHold.Checked != priorCatIiiHold) chkCatIiiHold.Checked = priorCatIiiHold;
+            if (!string.IsNullOrEmpty(priorDestination))
+            {
+                int index = cmbDestination.Items.IndexOf(priorDestination);
+                if (index >= 0) cmbDestination.SelectedIndex = index;
+            }
+
+            // Both boxes are runway-only, and the intersection list is rebuilt against
+            // whichever runway is selected — so this has to run AFTER the destination is
+            // back, or the departure is restored onto the wrong runway's intersections.
+            // Inside the suppression too: restoring the LVP tick raises CheckedChanged,
+            // which speaks the CAT III call-out.
+            RestoreIntersectionState(priorIntersection, priorIntersectionLabel);
+            if (chkCatIiiHold.Checked != priorCatIiiHold) chkCatIiiHold.Checked = priorCatIiiHold;
+        }
+        finally { _suppressHoldingPointAnnounce = priorSuppressAnnounce; }
     }
 
     /// <summary>Puts the intersection-departure box and its selection back after a failed
@@ -1499,10 +1559,14 @@ public class TaxiAssistForm : Form
     {
         ResetRouteShapingControls();
 
-        cmbDestType.SelectedIndex = isRunway ? 0 : 1;
+        // Silent: the import is seating its own destination, and its single standstill
+        // summary is what tells the pilot where they are going — a holding-point
+        // call-out queued here would either be discarded by that utterance or talk
+        // over it, and would burn the call-out's dedup key either way.
+        SelectDestinationType(isRunway);
         int destIndex = cmbDestination.Items.IndexOf(destinationLabel);
         bool destinationApplied = destIndex >= 0;
-        if (destinationApplied) cmbDestination.SelectedIndex = destIndex;
+        if (destinationApplied) SelectDestinationSilently(destIndex);
 
         var applied = new List<string>();
         var skipped = new List<string>();
@@ -1637,6 +1701,13 @@ public class TaxiAssistForm : Form
     /// announcement to reveal it.</summary>
     private void ResetRouteShapingControls()
     {
+        // Silent: this is the import clearing the pilot's leftovers, not a choice they
+        // made, and unticking LVP raises CheckedChanged → the CAT III call-out, which
+        // would speak over the import's own single summary.
+        bool priorSuppressAnnounce = _suppressHoldingPointAnnounce;
+        _suppressHoldingPointAnnounce = true;
+        try
+        {
         // Unticking fires OnIntersectionToggled, which also empties the intersection
         // list and its map.
         if (chkIntersection.Checked) chkIntersection.Checked = false;
@@ -1651,6 +1722,8 @@ public class TaxiAssistForm : Form
         // Every dynamic row's taxiway, hold-short checkbox and hold-short runway go
         // with the row itself.
         ClearAllAdditionalTaxiways();
+        }
+        finally { _suppressHoldingPointAnnounce = priorSuppressAnnounce; }
 
         // chkFitFilter is deliberately NOT reset: it describes the aircraft's
         // wingspan rather than the route, and forcing it either way could hide the
@@ -1764,6 +1837,9 @@ public class TaxiAssistForm : Form
         // but clearing here frees the old airport's spots immediately.
         _cachedGateSpots = null;
         _cachedGateSpotsIcao = "";
+        // A previous import's occupied-stand suppression belonged to that airport's
+        // assigned gate; the pilot's own filter setting owns the new airport's list.
+        _suppressOccupiedFilter = false;
         _destinationNodeMap.Clear();
         _destinationHeadingMap.Clear();
 
@@ -1825,12 +1901,20 @@ public class TaxiAssistForm : Form
 
         var parking = _dataProvider.GetParkingSpots(icao);
         var starts = _dataProvider.GetRunwayStarts(icao);
+        // The runway table is what lets Build run SnapStartToRunwayCenterline, which
+        // repairs start rows that navdata stores off to the SIDE of their own runway
+        // (EGKK: three of four rows 99–122 m out). Without it this graph pairs its
+        // centerlines from the unrepaired rows while the guidance manager's own build
+        // is repaired — two graphs disagreeing about where a runway is, and THIS is the
+        // one the planner hands to LoadRoute as prebuiltGraph, so it is the one every
+        // hold-short association and crossing test on a planned route measures against.
+        var graphRunways = _dataProvider.GetRunways(icao);
 
         lblStatus.Text = $"{icao}: building taxi graph…";
         btnCalculate.Enabled = false;
         try
         {
-            _graph = await TaxiGraph.BuildAsync(paths, parking, starts);
+            _graph = await TaxiGraph.BuildAsync(paths, parking, starts, graphRunways);
         }
         finally
         {
@@ -1971,10 +2055,18 @@ public class TaxiAssistForm : Form
             // has no entry for a given runway name. That preserves the current
             // behavior for runways the start table doesn't cover (rare; covers
             // DBs/scenery where start-table data is incomplete).
+            // ALL rows per runway end, not the first one: a runway end can carry
+            // several, and TaxiGraph.PickFullLengthStart picks the full-length
+            // (furthest-back) one and REJECTS a row past 40 % of the runway. Taking
+            // g.First() took whichever the DB happened to return — EGLL 09R's is 342 m
+            // down the runway with a 67 m row sitting right there, and LatinVFR's LEMD
+            // parks four runways' rows at the MIDPOINT — which anchors both the route
+            // destination and the lineup target mid-field, and skews the holding-point
+            // envelope's LineupAlong with them.
             var startsByRunway = _dataProvider.GetRunwayStarts(_currentIcao)
                 .Where(s => !string.IsNullOrEmpty(s.RunwayName))
                 .GroupBy(s => s.RunwayName, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
 
             var runways = _dataProvider.GetRunways(_currentIcao);
 
@@ -1989,10 +2081,18 @@ public class TaxiAssistForm : Form
 
                 // Prefer the start-table lineup point (handles displaced
                 // thresholds correctly). Fall back to the physical pavement
-                // edge when no start row exists for this runway name.
+                // edge when no start row exists for this runway name — or when
+                // PickFullLengthStart rejects every row it has as a midfield
+                // placeholder, which is the same "no usable row" case.
                 double lineupLat;
                 double lineupLon;
-                if (startsByRunway.TryGetValue(rwy.RunwayID, out var start))
+                StartPosition? start = null;
+                if (startsByRunway.TryGetValue(rwy.RunwayID, out var rwyStartRows))
+                {
+                    start = TaxiGraph.PickFullLengthStart(
+                        rwyStartRows, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
+                }
+                if (start != null)
                 {
                     lineupLat = start.Latitude;
                     lineupLon = start.Longitude;
@@ -2171,8 +2271,13 @@ public class TaxiAssistForm : Form
             // CheckGateOccupancy (SpotIsOccupied) so the list and that warning can never
             // disagree. Applied PER PASS, never baked into _cachedGateSpots — traffic
             // moves. Silently inert when there is no traffic feed.
+            // NOT gated on chkHideOccupied.Visible: that is EFFECTIVE visibility, false
+            // while the form itself is hidden, so the same list came back filtered on a
+            // shown form and unfiltered on a hidden one (the SayIntentions import builds
+            // it hidden). This block already sits inside the gate branch, which is the
+            // condition the Visible flag was standing in for.
             int occupiedHidden = 0;
-            if (chkHideOccupied.Checked && chkHideOccupied.Visible && _tcasService != null)
+            if (chkHideOccupied.Checked && !_suppressOccupiedFilter && _tcasService != null)
             {
                 // Snapshot the traffic ONCE for the whole pass. This runs on every gate-
                 // search keystroke, and GetTraffic copies its dictionary under a lock —
@@ -3844,6 +3949,9 @@ public class TaxiAssistForm : Form
         // threshold and lines up full length. Mutually exclusive with the
         // intersection shortcut (which lines up PARTWAY down and does not backtrack).
         bool backtrackActive = false;
+        // Spoken as part of the ONE standstill utterance (or the abort) further down,
+        // never on its own — see where it is set.
+        string? backtrackFallbackNote = null;
         if (isRunwayDest && chkFullLengthBacktrack.Checked && _graph != null)
         {
             string runwayId = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
@@ -3868,8 +3976,14 @@ public class TaxiAssistForm : Form
                 }
                 else
                 {
-                    _announcer.AnnounceImmediate(
-                        "No backtrack entrance found for this runway. Full length departure.");
+                    // HELD, not spoken here. An AnnounceImmediate at this point is
+                    // stomped moments later by the single standstill AnnounceImmediate
+                    // (and by an abort's), so the pilot who ticked backtrack would taxi
+                    // off expecting to be taken onto the runway with no audible sign the
+                    // mode was dropped. It rides in that one utterance instead — the
+                    // same lesson as the import summary and the reach warning below.
+                    backtrackFallbackNote =
+                        "No backtrack entrance found for this runway. Full length departure.";
                 }
             }
         }
@@ -3929,7 +4043,10 @@ public class TaxiAssistForm : Form
 
         if (error != null)
         {
-            AnnounceCalculateAbort(error);
+            // The dropped-backtrack note leads: it explains what the pilot asked for
+            // and did not get, and the abort's own reason follows it.
+            AnnounceCalculateAbort(
+                backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
             lblStatus.Text = error;
             txtRouteSummary.Text = error;
             return;
@@ -3978,6 +4095,9 @@ public class TaxiAssistForm : Form
         var standstillParts = new List<string>();
         string? imported = _importSummary?.Invoke(true);
         if (!string.IsNullOrEmpty(imported)) standstillParts.Add(imported);
+        // A ticked backtrack the airport could not honour — said before the route
+        // details, because it changes what the pilot should expect to happen next.
+        if (backtrackFallbackNote != null) standstillParts.Add(backtrackFallbackNote);
         if (intersection != null)
         {
             string rwyLabel = destName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
