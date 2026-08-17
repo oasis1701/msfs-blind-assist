@@ -148,6 +148,13 @@ public partial class FlyByWireA380Definition
             displayText = value < 0.05 ? "Retracted" : value > 0.95 ? "Full" : $"{(int)Math.Round(value * 100)} percent";
             return true;
         }
+        // (No display override for the cockpit flood/ambient dimmers: they render as
+        // RenderAsSlider TrackBars, and MainForm's slider paths — PanelBuilder's initial
+        // position and Announcers' sim-side refresh — both map the raw value with
+        // (value - SliderMin) / span * 100 and never consult TryGetDisplayOverride. An
+        // override here would be dead code. The pristine-0..1-ratio quirk is instead
+        // fixed sim-side: OnDisplayPanelShown below self-normalizes both knob L:vars
+        // when the Interior Lighting panel opens.)
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
         if (varKey == "A32NX_NOSE_WHEEL_POSITION")
         {
@@ -706,6 +713,24 @@ public partial class FlyByWireA380Definition
     public override void OnDisplayPanelShown(string panelKey, SimConnectManager simConnect)
     {
         if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
+        // Interior Lighting: self-normalize the two PED dimmer knobs BEFORE the pilot can
+        // touch their sliders. A pristine (never-written) knob L:var holds a 0..1 RATIO
+        // (0.85 = 85 %), which would seed the slider thumb at ~1 % — and because the thumb
+        // writes its ABSOLUTE position, the pilot's first "brighten" nudge would then write
+        // ~2 and drop a really-85 % flood light to 2 %. "(L:X, percent) (>L:X)" is
+        // idempotent: pristine, it reads 85 via the percent conversion and the raw write
+        // re-registers the var 1:1 at 85; already normalized, it rewrites the current value
+        // unchanged. The forced re-read then lands the 0..100 value in the cache, and the
+        // sim-refresh path repositions the thumb from it.
+        if (panelKey == "Interior Lighting" && simConnect.IsConnected)
+        {
+            foreach (string knob in new[] { "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB",
+                                            "A380X_PED_LIGHTING_AMBIENT_LT_KNOB" })
+            {
+                simConnect.ExecuteCalculatorCode($"(L:{knob}, percent) (>L:{knob})");
+                simConnect.RequestVariable(knob, forceUpdate: true);
+            }
+        }
         if (panelKey != "ECAM Control Panel" || !simConnect.IsConnected) return;
         int idx = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_ECAM_SD_CURRENT_PAGE_INDEX") ?? -1);
         RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);

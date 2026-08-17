@@ -196,6 +196,14 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Sim-facing paths are verified only against a live sim — describe an in-sim test plan in the PR; pure logic belongs in `tests/MSFSBlindAssist.Tests` (CI-enforced). → CLAUDE.md
 - `main` is protected — never commit directly to main; always branch + PR. → CLAUDE.md
 
+### Navdata database build (→ [architecture.md](docs/architecture.md))
+
+- `MSFSBlindAssist/Resources/navdatareader.cfg` REPLACES navdatareader's built-in config (it does not merge), so it must be re-derived from the PINNED release's own `config/navdatareader.cfg` on every version bump — re-copy stock, re-apply the single MSFSBA `*_jetways.bgl` line, change nothing else. It was once copied from navdatareader MASTER instead, which silently added an `ExcludeBglObjectFilter` token the shipped binary does not understand and dropped the `[Database]` section while the header claimed one change. `.github/workflows/navdatareader-config.yml` enforces this and also checks that all five version references agree. → CLAUDE.md
+- The `*_jetways.bgl` exclusion only works for MSFS 2020. An MSFS 2024 database is built from SimConnect facility data and enumerates NO BGL files (measured: one scenery area "SimConnect Airports", zero BGLs, against 2,380 present in Community), so `ExcludeFilenames` cannot match anything there — never describe it as protecting FS2024 parking. → CLAUDE.md
+- The exclusion matches on FILENAME ONLY, library-wide: a third-party package shipping its own `<ICAO>_jetways.bgl` is dropped too. This is an accepted, deliberate trade (a package-scoped `ExcludePathFilter` was tested and rejected for simplicity and rename-resistance) — do not "fix" it without raising it first. → CLAUDE.md
+- `BuildDatabaseAsync` must refuse a missing/damaged config BEFORE touching the existing database, and must build to `<output>.building` and rename only on success — the old code deleted the database up front, so every later failure left the pilot with no navdata at all. → CLAUDE.md
+- Never reinstate the "SimConnect appears in stdout" failure heuristic: navdatareader's routine options dump contains that word on every run, so it latched always and reported every failure — including FS2020 disk builds that use no SimConnect — as a connection problem while hiding the real error. → CLAUDE.md
+
 ### Updates & release channels (→ [updates.md](docs/updates.md))
 
 - The rolling preview tag must NEVER begin with `v` — `release.yml` triggers on `tags: ['v*']`, so a `v…-pre.N` tag fires the release workflow and publishes a duplicate full release. → [updates.md](docs/updates.md)
@@ -252,6 +260,10 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 ### Universal variable/control troubleshooting playbook (→ [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) — explicitly applies to every aircraft)
 
 - Never conclude "doesn't work" from the MCP `set_lvar` tool (native data-def write) — it is unreliable for many FBW/add-on L:vars; always test writes via the calculator/MobiFlight path. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
+- `L:NAME` and `L:1:NAME` are DIFFERENT variables — mirror whichever form the FBW source reads (newer systems use `RegisteredSimVar.create('L:1:…')`); writing the unprefixed form sticks on read-back yet the systems never see it, and `SetLVar` only ever emits the unprefixed form. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
+- Never "verify" a 9-digit ECAM code by injecting it through the MobiFlight calc path — that path is float32, so `310015001` lands as `310015008` and the lookup misses; trigger the real condition or rely on the lookup unit tests. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
+- Do NOT build an A32NX circuit-breaker panel: only ONE breaker (49VU E12, the ECAM Control Panel's own power) is modelled as clickable; the 196 monitored positions in the `A32NX_CB_*_TRIPPED_*` bitmasks are SDAC monitoring inputs with no 3-D object or name. → [a32nx.md](docs/a32nx.md)
+- The A32NX C/B TRIPPED cautions need a monitored bit AND flight phase 1/2/6 AND a full 60-second confirm — don't declare them broken after a short wait. → [a32nx.md](docs/a32nx.md)
 - A control can be fully working with NO audible/visible feedback — confirm by READ-BACK after ~1-2s, never by "I can't tell if it did anything." → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
 - Read back the DOWNSTREAM effect (the stock simvar/system output), not just the L:var you wrote — a dead output-mirror L:var holds a write but drives nothing, and conversely a genuine mirror L:var can falsely "pass" a stickiness test if written to its own already-current value. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
 - Test every state of a multi-position control, not just 0→1 — a control can stick at one value and revert at another. → [troubleshooting-playbook.md](docs/troubleshooting-playbook.md)
