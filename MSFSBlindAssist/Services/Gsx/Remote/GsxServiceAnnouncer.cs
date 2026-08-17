@@ -53,7 +53,7 @@ public sealed class GsxServiceAnnouncer
                                             int? ProgressCurrent, int? ProgressTotal, string? ProgressUnit);
 
     private readonly record struct Spoken(int? PaxMilestone, int? BagsMilestone, DateTime? ProgressSpokenUtc,
-                                         string? BusSpoken);
+                                         string? BusSpoken, IReadOnlyList<string>? StatusSpoken);
 
     /// <summary>
     /// Per-service tally of what this run did with the ~1 Hz stream, flushed as ONE
@@ -142,6 +142,19 @@ public sealed class GsxServiceAnnouncer
                 else if (ProgressPhrase(s, was, now, nowUtc) is { Length: > 0 } p)
                 {
                     said.Add(p);
+                    Spoke(s.Id);
+                }
+
+                // ADDITIVE, deliberately outside the else-chain above. The chain picks ONE
+                // phrase per service per tick, which is right for three views of the same
+                // fact (state / bus / progress) but wrong here: the crew narration is a
+                // DIFFERENT fact, and hanging it off the chain would let a pax milestone
+                // swallow "front loader raising belt" — the exact class of loss this exists
+                // to end. Its own gate (GsxStatusNarration) is what keeps it quiet, not its
+                // position in a chain.
+                if (StatusNarrationPhrase(s) is { Length: > 0 } narration)
+                {
+                    said.Add(narration);
                     Spoke(s.Id);
                 }
             }
@@ -296,6 +309,54 @@ public sealed class GsxServiceAnnouncer
     /// does not re-fire every tick. Returns empty when the phase is unchanged, absent, or
     /// only its embedded countdown moved — leaving pax/bags progress free to announce.
     /// </summary>
+    /// <summary>
+    /// GSX's per-vehicle ground-crew narration for this row — "front loader raising belt",
+    /// "rear stairs in position", "front train on the way" — or empty when no vehicle moved.
+    ///
+    /// <para>
+    /// This text has reached the tooltip and nothing else since the Remote API migration split
+    /// the old scraped tooltip string into a banner (the <c>message</c> slot, which got an
+    /// announcer) and per-row <c>statusText</c> (which did not). <see cref="GsxStatusNarration"/>
+    /// owns the rules: quantity lines belong to the typed announcers, the bus line belongs to
+    /// <see cref="BusPhrase"/>'s dedicated field, and a line differing only in a standalone
+    /// digit run is a countdown tick rather than news.
+    /// </para>
+    ///
+    /// <para>
+    /// Simultaneous changes are joined into ONE utterance rather than queued as several: when a
+    /// service starts, half a dozen vehicles report at once, and six separate announcements of
+    /// one moment is how a useful stream becomes noise. The last-spoken set is per service and
+    /// is cleared with the rest of <c>_spoken</c> on a state change, so the next run narrates
+    /// from the top.
+    /// </para>
+    /// </summary>
+    private string StatusNarrationPhrase(GsxServiceState s)
+    {
+        var current = GsxStatusNarration.VehicleLines(s.StatusText);
+        if (current.Count == 0)
+        {
+            // The block cleared: forget what was said so the next run announces in full, the
+            // same gap-makes-it-news rule BusPhrase applies to its own slot.
+            if (_spoken.TryGetValue(s.Id, out var cleared) && cleared.StatusSpoken != null)
+                _spoken[s.Id] = cleared with { StatusSpoken = null };
+            return string.Empty;
+        }
+
+        _spoken.TryGetValue(s.Id, out var spoken);
+        var fresh = GsxStatusNarration.NewSince(current, spoken.StatusSpoken ?? Array.Empty<string>());
+
+        // Remember the WHOLE current block, not just what was spoken: a line held back as a
+        // countdown tick must still count as known, or it re-qualifies as news next tick.
+        _spoken[s.Id] = spoken with { StatusSpoken = current };
+
+        if (fresh.Count == 0)
+        {
+            Hushed(s.Id, Hush.Countdown);
+            return string.Empty;
+        }
+        return $"{Name(s)} {string.Join(", ", fresh)}.";
+    }
+
     private string BusPhrase(GsxServiceState s, Snapshot was, Snapshot now)
     {
         if (string.IsNullOrEmpty(now.BusPhase))
