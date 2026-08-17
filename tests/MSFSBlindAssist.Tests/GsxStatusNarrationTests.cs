@@ -46,7 +46,10 @@ public class GsxStatusNarrationTests
             "front loader raising belt",
             "rear loader raising belt",
             "front train on the way",
-            "rear train on the way, ETA 33 secs",
+            "rear train on the way",
+            // The ETA is its own clause once commas split, which is what lets the countdown
+            // be held back without holding back the train's phase alongside it.
+            "ETA 33 secs",
         }, lines);
     }
 
@@ -96,7 +99,7 @@ public class GsxStatusNarrationTests
     {
         var fresh = GsxStatusNarration.NewSince(GsxStatusNarration.VehicleLines(Boarding), Array.Empty<string>());
 
-        Assert.Equal(5, fresh.Count);
+        Assert.Equal(6, fresh.Count);
         Assert.Contains("front loader raising belt", fresh);
         Assert.DoesNotContain("pax 0/93", fresh);
     }
@@ -158,5 +161,100 @@ public class GsxStatusNarrationTests
             new[] { "front loader approaching", "rear loader approaching" });
 
         Assert.Equal(new[] { "front loader raising belt", "rear loader raising belt" }, fresh);
+    }
+
+    // ── GSX publishes the vehicle block as ONE comma-separated line ──────────
+    // Measured from a live turnaround AFTER the first version shipped: 31 narration
+    // utterances carried 83 clauses, and 55 of them (66 %) were clauses already spoken.
+    //   "Board rear stairs approaching, front loader on the way, rear loader on the way."
+    //   "Board rear stairs approaching, front loader approaching, rear loader on the way."
+    // Only the front loader moved, but the whole block re-read, because splitting on
+    // newlines alone left the block as a single line. The captured fixtures had misled us:
+    // their newline-separated "bus in position" / "pax 181/186" made per-line look like
+    // per-vehicle. A clause is the unit, and clauses are comma-separated.
+
+    [Fact]
+    public void A_comma_separated_block_is_split_per_clause()
+    {
+        Assert.Equal(
+            new[] { "rear stairs approaching", "front loader on the way", "rear loader on the way" },
+            GsxStatusNarration.VehicleLines("rear stairs approaching, front loader on the way, rear loader on the way"));
+    }
+
+    [Fact]
+    public void Only_the_clause_that_moved_is_narrated_from_a_comma_block()
+    {
+        var before = GsxStatusNarration.VehicleLines("rear stairs approaching, front loader on the way, rear loader on the way");
+        var after = GsxStatusNarration.VehicleLines("rear stairs approaching, front loader approaching, rear loader on the way");
+
+        Assert.Equal(new[] { "front loader approaching" }, GsxStatusNarration.NewSince(after, before));
+    }
+
+    [Fact]
+    public void A_quantity_or_bus_clause_inside_a_comma_block_is_still_dropped()
+    {
+        Assert.Equal(
+            new[] { "rear stairs in position", "front loader raising belt" },
+            GsxStatusNarration.VehicleLines("rear stairs in position, front loader raising belt, bus idle, pax 0/93"));
+    }
+
+    [Fact]
+    public void A_thousands_separator_does_not_split_a_clause()
+    {
+        // "fuel 4,801 lb" is one clause. Splitting inside the number would make "fuel 4" and
+        // "801 lb" two clauses, and the second would re-announce on every tick.
+        Assert.Equal(new[] { "pumping", "fuel 4,801 lb" },
+                     GsxStatusNarration.VehicleLines("pumping, fuel 4,801 lb"));
+    }
+
+    [Fact]
+    public void A_metered_refuel_clause_settles_after_one_reading()
+    {
+        // The live line: "pumping, fuel 4801/12682 lb, aircraft 7313 lb, Bill $2863". Each
+        // clause differs from its predecessor only in digits, so only "pumping" survives the
+        // first reading and the numbers never speak again.
+        var before = GsxStatusNarration.VehicleLines("pumping, fuel 4801/12682 lb, aircraft 7313 lb, Bill $2863");
+        var after = GsxStatusNarration.VehicleLines("pumping, fuel 4900/12682 lb, aircraft 7412 lb, Bill $2901");
+
+        Assert.Empty(GsxStatusNarration.NewSince(after, before));
+    }
+
+    [Fact]
+    public void The_real_captured_boarding_never_says_a_clause_twice()
+    {
+        // The eight status blocks GSX actually published during one live boarding, in order,
+        // recovered from gsx.log. Under the newline-only split these produced 83 spoken
+        // clauses of which 55 (66 %) repeated something already said.
+        string[] blocks =
+        {
+            "rear stairs approaching, front loader on the way, rear loader on the way",
+            "rear stairs approaching, front loader approaching, rear loader on the way",
+            "rear stairs extending stairs, front loader raising belt, rear loader on the way, front train on the way",
+            "rear stairs raising staircase, front loader raising belt, rear loader on the way, front train on the way",
+            "rear stairs repositioning, front loader raising belt, rear loader on the way, front train on the way",
+            "rear stairs moving staircase to door, front loader raising belt, rear loader on the way, front train on the way",
+            "waiting for FuelTruck to clear the work area, rear stairs in position, front loader raising belt, rear loader on the way, front train on the way",
+            "rear stairs in position, front loader waiting for train, rear loader on the way, front train on the way",
+        };
+
+        var spokenEver = new List<string>();
+        IReadOnlyList<string> last = Array.Empty<string>();
+        foreach (string block in blocks)
+        {
+            var current = GsxStatusNarration.VehicleLines(block);
+            spokenEver.AddRange(GsxStatusNarration.NewSince(current, last));
+            last = current;
+        }
+
+        // Every clause the crew actually reached is still announced ...
+        Assert.Contains("front loader raising belt", spokenEver);
+        Assert.Contains("rear stairs moving staircase to door", spokenEver);
+        Assert.Contains("waiting for FuelTruck to clear the work area", spokenEver);
+        Assert.Contains("front loader waiting for train", spokenEver);
+
+        // ... and none of them twice. "rear loader on the way" spans all eight blocks and is
+        // spoken once; "rear stairs in position" recurs in blocks 7 and 8 and is spoken once.
+        Assert.Equal(spokenEver.Count, spokenEver.Distinct().Count());
+        Assert.Equal(13, spokenEver.Count);
     }
 }

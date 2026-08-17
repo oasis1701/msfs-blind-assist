@@ -62,6 +62,12 @@ internal static class GsxStatusNarration
     private static readonly Regex BusLine =
         new(@"^\s*bus\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // A comma NOT sitting inside a number: "fuel 4,801 lb" is ONE clause, and splitting it
+    // would leave "801 lb" to re-announce on every tick. The negative lookahead is what keeps
+    // a thousands separator joined, since GSX writes those with no following space.
+    private static readonly Regex ClauseSeparator =
+        new(@",\s*(?!\d)", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     /// <summary>The narration lines of one row's status block, in GSX's own order, with the
     /// quantity lines the typed announcers own removed.</summary>
     public static IReadOnlyList<string> VehicleLines(string? statusText)
@@ -69,11 +75,22 @@ internal static class GsxStatusNarration
         if (string.IsNullOrWhiteSpace(statusText)) return Array.Empty<string>();
 
         var lines = new List<string>();
-        foreach (string raw in statusText.ReplaceLineEndings("\n")
-                                         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (string line in statusText.ReplaceLineEndings("\n")
+                                          .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
-            if (QuantityLine.IsMatch(raw) || BusLine.IsMatch(raw)) continue;
-            lines.Add(raw);
+            // Split on COMMAS as well as newlines. GSX publishes the vehicle block as one
+            // comma-separated line, so newlines alone left it whole and any single vehicle
+            // moving re-read the lot: measured on a live turnaround, 55 of 83 spoken clauses
+            // (66 %) were clauses already said. The captured fixtures hid this because their
+            // "bus in position" / "pax 181/186" genuinely are newline-separated, which made
+            // per-line look like per-vehicle.
+            foreach (string raw in ClauseSeparator.Split(line))
+            {
+                string clause = raw.Trim();
+                if (clause.Length == 0) continue;
+                if (QuantityLine.IsMatch(clause) || BusLine.IsMatch(clause)) continue;
+                lines.Add(clause);
+            }
         }
         return lines;
     }
