@@ -407,11 +407,18 @@ public partial class FlyByWireA380Definition
     {
         _sliderRampSim = simConnect;
         target = Math.Max(rangeMin, Math.Min(rangeMax, target));
+        bool rampInFlight = _sliderTarget.ContainsKey(lvar);
         _sliderTarget[lvar] = target;
         // Step scales with the var's range so a 0-1 slider ramps over the same ~1.3 s
         // as a 0-100 one (fixed 3.0 snapped 0-1 sliders to the target in one tick).
         _sliderStep[lvar] = Math.Max(0.0005, (rangeMax - rangeMin) * 0.03);
-        if (!_sliderCurrent.ContainsKey(lvar))
+        // Re-seed the ramp's start from the sim whenever no ramp is in flight for this
+        // lvar — NOT only on first use. Some slider vars are also moved OUTSIDE MSFSBA
+        // (the PED dimmer knobs: cockpit knob, FBW lighting presets), and ramping from a
+        // stale remembered value snaps the light back to it (flood 90 -> ~23) before
+        // ramping toward the new target. A mid-ramp retarget keeps its in-flight position.
+        // (The completed-ramp force re-read in SliderRampTick keeps the cache current.)
+        if (!rampInFlight || !_sliderCurrent.ContainsKey(lvar))
             _sliderCurrent[lvar] = simConnect.GetCachedVariableValue(lvar) ?? target;
         if (_sliderRampTimer == null)
         {
@@ -430,10 +437,15 @@ public partial class FlyByWireA380Definition
             double step = _sliderStep.TryGetValue(lvar, out var st) ? st : 3.0;
             double target = _sliderTarget[lvar];
             double cur = _sliderCurrent.TryGetValue(lvar, out var c) ? c : target;
-            if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
+            bool reached = Math.Abs(target - cur) <= step;
+            if (reached) { cur = target; _sliderTarget.Remove(lvar); }
             else cur += Math.Sign(target - cur) * step;
             _sliderCurrent[lvar] = cur;
             sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")", quiet: true);   // per-frame writer (40ms timer) -- skip per-command debug log
+            // On completion, refresh the cache to the just-written value (after the write,
+            // so the read can't race ahead of it on the shared SimConnect pipe) — the next
+            // ramp's re-seed and the panel thumb then start from reality.
+            if (reached) sim.RequestVariable(lvar, forceUpdate: true);
         }
         if (_sliderTarget.Count == 0) StopSliderRamp();
     }
