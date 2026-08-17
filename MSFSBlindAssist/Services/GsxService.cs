@@ -1,4 +1,4 @@
-﻿// GsxService — facade over the GSX Ground Services Pro accessibility
+// GsxService — facade over the GSX Ground Services Pro accessibility
 // integration. All of it — menu, tooltip ("message"), services, settings,
 // billing, receipts, and (since Spec 2) gate selection and the live gate
 // list — is fed by ONE transport: the Couatl Remote API (WebSocket JSON,
@@ -1111,13 +1111,9 @@ public sealed class GsxService : IDisposable
     /// </summary>
     private void RecomputeTooltip()
     {
-        // RawMessageText() is read UNCONDITIONALLY now, not just as the no-service fallback: it
-        // is where GSX's live ground-crew narration lives, and a governing service is exactly
-        // when there is narration to read.
-        string raw = RawMessageText();
         string text = GsxActiveServiceResolver.ResolveGoverning(Services, _selectedActiveService) is { } governing
-            ? GsxActiveServiceResolver.ComposeTooltip(governing, raw)
-            : raw;
+            ? GsxActiveServiceResolver.ComposeTooltip(governing)
+            : RawMessageText();
 
         if (string.Equals(text, _lastTooltip, StringComparison.Ordinal))
             return;
@@ -1363,35 +1359,11 @@ internal static class GsxActiveServiceResolver
     /// (e.g. a fuel row's "8823/13001 kg", where there is no contradicting
     /// source and the units make it self-describing).
     /// </summary>
-    /// <param name="messageText">
-    /// GSX's live message slot, when it has visible text. Appended rather than discarded — see
-    /// the regression note below. Pass null/empty to compose the service summary alone.
-    /// </param>
-    /// <remarks>
-    /// The <paramref name="messageText"/> parameter fixes a live regression (reported 2026-08-17,
-    /// present in origin/main). The tooltip used to be the ONLY way to read GSX's running
-    /// ground-crew narration — "Headset operator approaching", "Inserting bypass pin", "Raising
-    /// nose gear", "Disconnecting tug", "Removing bypass pin", "Signalling clear" — and a blind
-    /// pilot polled it precisely because none of it is auto-announced. But
-    /// <c>RecomputeTooltip</c> only fell back to the message slot when NO service was governing,
-    /// so the narration was surfaced exactly when GSX had nothing to say and replaced by a coarse
-    /// one-line summary the moment anything was actually happening. The service state and the
-    /// live narration answer different questions — "what is running" versus "what is it doing
-    /// right now" — so the tooltip carries both.
-    /// </remarks>
-    public static string ComposeTooltip(GsxServiceState service, string? messageText = null)
+    public static string ComposeTooltip(GsxServiceState service)
     {
         string text = string.IsNullOrWhiteSpace(service.StateText) ? NameOf(service) : service.StateText;
         string detail = ComposeDetail(service);
-        string head = detail.Length == 0 ? text : $"{text} ({detail})";
-
-        string live = (messageText ?? string.Empty).Trim();
-        if (live.Length == 0) return head;
-        // GSX often restates the service phase in the slot ("Deboarding in progress"). Appending
-        // that verbatim would have the pilot hear the same clause twice on every poll, which is
-        // the fastest way to train someone to stop polling.
-        if (head.Contains(live, StringComparison.OrdinalIgnoreCase)) return head;
-        return $"{head}. {live}";
+        return detail.Length == 0 ? text : $"{text} ({detail})";
     }
 
     /// <summary>
