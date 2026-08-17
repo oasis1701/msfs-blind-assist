@@ -1,0 +1,23 @@
+{
+  "timers": [
+    {
+      "subService": "Jetway",
+      "friendly": "Jetway operations",
+      "hours": 0.1,
+      "running": true,
+      "amount": 0.0
+    }
+  ],
+  "builders": [
+    {
+      "friendly": "Ground Handling",
+      "subtotal": 1761.42,
+      "lines": [
+        {
+          "description": "Passenger deboarding",
+          "amount": 1761.42
+        }
+      ]
+    }
+  ]
+}

@@ -123,6 +123,75 @@ public partial class TaxiGuidanceManager : IDisposable
     // a plain lock is fine and keeps the position loop responsive.
     private readonly object _stateLock = new object();
 
+    /// <summary>
+    /// Supplies the parking list every <see cref="TaxiGraph.Build"/> call in this class is fed —
+    /// the ONE place a stand's name is decided app-wide (see <see cref="ParkingSpotSource"/>).
+    /// Wired by <c>MainForm</c> to <see cref="ParkingSpotSource.GetNamedSpots"/>, so Where-Am-I
+    /// calls a stand what the taxi dialog, the gate-teleport list and <c>gate.select</c> call it,
+    /// instead of navdata's BGL parking-name enum (KJFK Terminal 4: "Gate B 25" vs navdata's
+    /// "Gate A 25").
+    ///
+    /// <para>
+    /// <b>It must return navdata's own spot SET, with names corrected in place</b> — same spots,
+    /// same count, same coordinates, same order. Never a different list. <c>TaxiGraph.Build</c>'s
+    /// parking pass writes <c>node.Type = TaxiNodeType.Parking</c> as well as the name, and
+    /// <c>Type</c> is read by <c>NamedHoldingPointResolver</c> (which SKIPS parking nodes when
+    /// snapping a named holding point), <c>HoldShortNodeResolver</c>, and the route truncation in
+    /// <c>TaxiGuidanceManager.Routing</c>. A supplier that returned a different SET would move a
+    /// hold-short and would strip the Where-Am-I label off any stand it omitted. Naming a stand and
+    /// deciding which nodes are parking are different jobs, and only the first may change.
+    /// </para>
+    /// <para>
+    /// <b>Null is the supported default</b>, and it keeps every caller that does not wire it —
+    /// the xUnit suite, anything constructed outside MainForm — byte-identical to the
+    /// pre-seam behaviour: <see cref="ResolveParkingSpots"/> falls straight back to
+    /// <c>dataProvider.GetParkingSpots</c>. Same backward-compatibility shape as
+    /// <see cref="GateDataSource"/>'s own optional constructor parameters.
+    /// </para>
+    /// <para>
+    /// <b>It runs off the UI thread.</b> Where-Am-I and the takeoff-assist runway probe both
+    /// reach their graph builds from inside a <c>RequestAircraftPositionAsync</c> callback, so
+    /// MainForm's wiring must not hand out a <see cref="GateDataSource"/> instance the UI thread
+    /// is also using — its per-ICAO caches are plain Dictionaries. The wiring builds a fresh one
+    /// per call for exactly that reason; that is affordable ONLY because every call site here is
+    /// a graph build (once per airport, then cached), never a position update.
+    /// </para>
+    /// </summary>
+    public Func<string, List<ParkingSpot>>? ParkingSpotSupplier { get; set; }
+
+    /// <summary>
+    /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
+    /// <paramref name="dataProvider"/>'s own when none is wired.
+    ///
+    /// <para>
+    /// The supplier reaches into GSX (a live socket's published JSON, a profile directory, a
+    /// navdata query), so it gets a try/catch the raw provider call never needed: a graph built
+    /// with navdata's names is a slightly worse readout, while no graph at all is a blind pilot
+    /// with no answer to "where am I". An empty list is a legitimate answer (an airport with no
+    /// modelled stands) and is NOT treated as failure — falling back on empty would just re-ask
+    /// the source <see cref="GateDataSource"/> itself already falls through to.
+    /// </para>
+    /// </summary>
+    private List<ParkingSpot> ResolveParkingSpots(IAirportDataProvider dataProvider, string icao)
+    {
+        var supplier = ParkingSpotSupplier;
+        if (supplier != null)
+        {
+            try
+            {
+                var spots = supplier(icao);
+                if (spots != null) return spots;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Taxi",
+                    $"parking list: supplier failed for {icao}, falling back to navdata names: {ex.Message}");
+            }
+        }
+
+        return dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+    }
+
     // Retained for recalculation
     private IAirportDataProvider? _dataProvider;
     private int _destinationNodeId;
@@ -886,9 +955,55 @@ public partial class TaxiGuidanceManager : IDisposable
     public int CurrentSegmentIndex => _currentSegmentIndex;
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
-    // the graph on every hotkey press. Keyed by ICAO; invalidated on aircraft/airport change.
+    // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
+    // invalidated on aircraft/airport change.
+    //
+    // The token half exists because stand names are frozen into the graph's nodes at build
+    // time. Keyed on ICAO alone, a Where-Am-I pressed at spawn or on descent — before GSX
+    // published handlerData — cached a graph carrying navdata's BGL parking-enum letters, and
+    // nothing ever invalidated it: OnAirportDataUpdated fires only for the online taxiway-name
+    // fetch, and ClearWhereAmICache has no production caller. Once GSX published, the taxi
+    // dialog and the TCAS "at Gate …" label both moved to GSX's letter while Where-Am-I kept
+    // saying "Gate A 25" about the stand everything else called "Gate B 25" — the
+    // one-stand-two-names defect Services/ParkingSpotSource exists to remove. Its two sibling
+    // caches (GateResolver._parkingCache, TaxiAssistForm._cachedGateSpots) were given this
+    // token; this one was missed.
     private TaxiGraph? _whereAmICachedGraph;
     private string _whereAmICachedIcao = "";
+    private string _whereAmICachedToken = "";
+
+    /// <summary>
+    /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
+    /// at the production call site, wired by <c>MainForm</c> beside
+    /// <see cref="ParkingSpotSupplier"/>. Must be O(1) and must never throw; a failure degrades
+    /// to "none".
+    ///
+    /// <para>
+    /// Null is the supported default and keeps every caller that does not wire it — the xUnit
+    /// suite, anything built outside MainForm — byte-identical to the pre-token behaviour: the
+    /// token is then the constant "none", can never differ, and the cache falls back to its
+    /// original ICAO-only invalidation. Same backward-compatibility shape as
+    /// <see cref="ParkingSpotSupplier"/> itself.
+    /// </para>
+    /// </summary>
+    public Func<string, string>? ParkingSpotVersionSupplier { get; set; }
+
+    /// <summary>
+    /// The gate-list source token for <paramref name="icao"/>, or "none" when no supplier is
+    /// wired. Never throws — a supplier failure degrades to "none", which simply means the
+    /// cache keeps its pre-token ICAO-only behaviour rather than losing the graph.
+    /// </summary>
+    private string ResolveParkingSpotVersion(string icao)
+    {
+        var supplier = ParkingSpotVersionSupplier;
+        if (supplier == null) return "none";
+        try { return supplier(icao) ?? "none"; }
+        catch (Exception ex)
+        {
+            Log.Debug("Taxi", $"parking list: version read failed for {icao}: {ex.Message}");
+            return "none";
+        }
+    }
 
     /// <summary>
     /// Describes the aircraft's current location for the "Where Am I" hotkey.
@@ -917,11 +1032,17 @@ public partial class TaxiGuidanceManager : IDisposable
         // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
         lock (_stateLock)
         {
+            // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
+            // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
+            // survives a reconnect flap. Same treatment the two sibling caches give this token.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
@@ -934,12 +1055,13 @@ public partial class TaxiGuidanceManager : IDisposable
                     if (paths == null || paths.Count == 0)
                         return $"No taxi data available for {icao}.";
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {
@@ -969,6 +1091,7 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
+            _whereAmICachedToken = "";
         }
     }
 
@@ -989,6 +1112,7 @@ public partial class TaxiGuidanceManager : IDisposable
             {
                 _whereAmICachedGraph = null;
                 _whereAmICachedIcao = "";
+                _whereAmICachedToken = "";
             }
         }
     }
@@ -1076,11 +1200,15 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             TaxiGraph? graph = null;
 
+            // Same cache, same staleness key — see the _whereAmICachedToken field comment.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
 
             if (graph == null)
@@ -1090,16 +1218,17 @@ public partial class TaxiGuidanceManager : IDisposable
                     var paths = dataProvider.GetTaxiPaths(icao) ?? new List<TaxiPath>();
                     if (paths.Count == 0) return false;
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
                     graph = TaxiGraph.Build(paths, parking, runwayStarts);
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Taxi", 
+                    Log.Debug("Taxi",
                         $"TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
                     return false;
                 }

@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "result",
+  "ts": 1786562973,
+  "ok": false,
+  "id": "probe-control",
+  "error": {
+    "code": "unknown_verb",
+    "message": "unknown verb: zzz.notaverb"
+  }
+}
