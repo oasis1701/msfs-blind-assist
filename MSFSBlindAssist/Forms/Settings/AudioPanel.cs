@@ -215,7 +215,14 @@ public class AudioPanel : UserControl, ISettingsPanel
         try
         {
             // Auditions the COMBO's current selection, not the saved setting, so devices can
-            // be compared before committing to one.
+            // be compared before committing to one. Passed through UNCHANGED — deviceId is ""
+            // for the "Windows default device" row (AudioDeviceSelector.FollowWindowsDefaultId),
+            // and CreatePlayer's deviceIdOverride treats "" and null completely differently
+            // (see the <param> doc on AudioOutputDeviceService.CreatePlayer / AudioToneGenerator.
+            // Start): null means "use the SAVED setting". Collapsing "" to null here (via an
+            // IsNullOrWhiteSpace check that used to sit on this line) made auditioning "Windows
+            // default device" silently play on the saved device instead — the one control built
+            // to prove which device is which was lying about it.
             string deviceId = SelectedRow().Id;
 
             // Captured into a LOCAL and used throughout the background loop below instead of
@@ -225,7 +232,7 @@ public class AudioPanel : UserControl, ISettingsPanel
             // session rather than the one this loop is actually driving.
             var tone = new AudioToneGenerator();
             tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
-                deviceIdOverride: string.IsNullOrWhiteSpace(deviceId) ? null : deviceId);
+                deviceIdOverride: deviceId);
             _testTone = tone;
 
             // Pan left to right so the pilot can confirm the device is the stereo pair they

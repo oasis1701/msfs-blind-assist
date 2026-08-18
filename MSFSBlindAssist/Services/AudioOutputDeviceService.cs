@@ -111,10 +111,21 @@ public static class AudioOutputDeviceService
     }
 
     /// <summary>
-    /// Opens the effective output. <paramref name="deviceIdOverride"/> lets the settings
-    /// panel audition a device without saving it; null means "use the saved setting".
-    /// Returns null only when no endpoint could be opened at all.
+    /// Opens the effective output. Returns null only when no endpoint could be opened at all.
     /// </summary>
+    /// <param name="deviceIdOverride">
+    /// Three-state contract — every caller must preserve all three states exactly:
+    /// <c>null</c> means "use the saved setting" (what every real guidance tone passes, and
+    /// the only value that participates in the once-per-session <c>_lastAppliedDeviceId</c>
+    /// seed/tracking <see cref="ApplyDeviceChange"/> depends on); <c>""</c> (
+    /// <see cref="AudioDeviceSelector.FollowWindowsDefaultId"/>) means explicitly the Windows
+    /// default device, regardless of what is saved; any other value is that specific endpoint
+    /// id. The settings panel's device audition ("Test Tone") passes <c>""</c> or a real id
+    /// here. NEVER collapse <c>""</c> to <c>null</c> with an <c>IsNullOrWhiteSpace</c>-style
+    /// check before calling this — that folds the second state into the first, so auditioning
+    /// "Windows default device" silently plays on the SAVED device instead (the bug this doc
+    /// exists to prevent a repeat of).
+    /// </param>
     public static AudioOutputSession? CreatePlayer(string? deviceIdOverride = null)
     {
         string requestedId = deviceIdOverride ?? SafeSavedDeviceId();

@@ -72,6 +72,14 @@ public class AudioToneGenerator : IDisposable
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
     /// <param name="frequency">Initial frequency in Hz. Pass a negative value (the default) to use
     ///   the configured centre frequency, which honours any prior <see cref="Configure"/> call.</param>
+    /// <param name="deviceIdOverride">
+    /// Forwarded verbatim to <see cref="AudioOutputDeviceService.CreatePlayer"/> — see its
+    /// three-state contract doc. <c>null</c> (the default, and what every feature tone
+    /// passes — taxi steering, takeoff centerline, hand fly, visual guidance, docking beeps)
+    /// means use the saved output-device setting; only the settings panel's device audition
+    /// passes <c>""</c> or a real device id here. Never collapse <c>""</c> to <c>null</c>
+    /// before calling.
+    /// </param>
     public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = -1.0, string? deviceIdOverride = null)
     {
         lock (startStopLock)
