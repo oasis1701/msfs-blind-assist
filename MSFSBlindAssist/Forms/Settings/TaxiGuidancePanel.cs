@@ -140,12 +140,13 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         // Test Tone Button
         testToneButton = new Button
         {
-            Text = "Test Tone",
             Location = new Point(20, 145),
             Size = new Size(120, 35),
-            AccessibleName = "Test Tone",
             AccessibleDescription = "Play a sample steering tone with current settings to preview the sound"
         };
+        // Routes the initial label/name through the same helper every later state change
+        // uses, so Text and AccessibleName can never drift apart — see SetTestToneButtonState.
+        SetTestToneButtonState(playing: false);
         testToneButton.Click += TestToneButton_Click;
 
         // Invert steering tone direction. Default off (current behaviour:
@@ -499,13 +500,25 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         if (testToneGenerator?.IsPlaying == true)
         {
             StopTestTone();
-            testToneButton.Text = "Test Tone";
+            SetTestToneButtonState(playing: false);
         }
         else
         {
             PlayTestTone();
-            testToneButton.Text = "Stop Test";
+            SetTestToneButtonState(playing: true);
         }
+    }
+
+    /// <summary>Sets the button's label AND its accessible name together. WinForms'
+    /// ControlAccessibleObject.Name returns an explicitly-set AccessibleName permanently once
+    /// set — it does NOT fall back to Text — so every site that changes what this button will
+    /// do next must go through this helper instead of assigning .Text directly, or a screen
+    /// reader keeps announcing the stale action (e.g. "Test tone" while activating it would
+    /// actually stop one).</summary>
+    private void SetTestToneButtonState(bool playing)
+    {
+        testToneButton.Text = playing ? "Stop Test" : "Test Tone";
+        testToneButton.AccessibleName = playing ? "Stop test tone" : "Test tone";
     }
 
     private void PlayTestTone()
@@ -537,7 +550,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
                             Invoke(() =>
                             {
                                 StopTestTone();
-                                testToneButton.Text = "Test Tone";
+                                SetTestToneButtonState(playing: false);
                             });
                         }
                         catch (InvalidOperationException)
@@ -748,12 +761,13 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     /// <summary>Stops both the steering test tone and the docking-beep test whenever this tab
     /// is left (tab switch or dialog close on any path — OK, Cancel, or the [X] button), and
-    /// resets the steering Test Tone button's caption back to idle so re-entering the tab
-    /// never shows a stale "Stop Test". Idempotent and non-throwing.</summary>
+    /// resets the steering Test Tone button's caption and accessible name back to idle so
+    /// re-entering the tab never shows — or announces — a stale "Stop Test". Idempotent and
+    /// non-throwing.</summary>
     public void OnLeaving()
     {
         StopTestTone();
-        testToneButton.Text = "Test Tone";
+        SetTestToneButtonState(playing: false);
         StopDockingBeepTest();
     }
 

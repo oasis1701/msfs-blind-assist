@@ -185,12 +185,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         // Test Tone Button
         testToneButton = new Button
         {
-            Text = "Test Tone",
             Location = new Point(20, 280),
             Size = new Size(120, 35),
-            AccessibleName = "Test Tone",
             AccessibleDescription = "Play a sample tone with current settings"
         };
+        // Routes the initial label/name through the same helper every later state change
+        // uses, so Text and AccessibleName can never drift apart — see SetTestToneButtonState.
+        SetTestToneButtonState(playing: false);
         testToneButton.Click += TestToneButton_Click;
 
         // Monitor Heading Checkbox
@@ -611,13 +612,25 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         if (testToneGenerator?.IsPlaying == true)
         {
             StopTestTone();
-            testToneButton.Text = "Test Tone";
+            SetTestToneButtonState(playing: false);
         }
         else
         {
             PlayTestTone();
-            testToneButton.Text = "Stop Test";
+            SetTestToneButtonState(playing: true);
         }
+    }
+
+    /// <summary>Sets the button's label AND its accessible name together. WinForms'
+    /// ControlAccessibleObject.Name returns an explicitly-set AccessibleName permanently once
+    /// set — it does NOT fall back to Text — so every site that changes what this button will
+    /// do next must go through this helper instead of assigning .Text directly, or a screen
+    /// reader keeps announcing the stale action (e.g. "Test tone" while activating it would
+    /// actually stop one).</summary>
+    private void SetTestToneButtonState(bool playing)
+    {
+        testToneButton.Text = playing ? "Stop Test" : "Test Tone";
+        testToneButton.AccessibleName = playing ? "Stop test tone" : "Test tone";
     }
 
     private void PlayTestTone()
@@ -688,7 +701,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
                             Invoke(() =>
                             {
                                 StopTestTone();
-                                testToneButton.Text = "Test Tone";
+                                SetTestToneButtonState(playing: false);
                             });
                         }
                         catch (InvalidOperationException)
@@ -801,12 +814,12 @@ public class HandFlyPanel : UserControl, ISettingsPanel
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on
     /// any path — OK, Cancel, or the [X] button), and resets the Test Tone button's caption
-    /// back to idle so re-entering the tab never shows a stale "Stop Test". Idempotent and
-    /// non-throwing.</summary>
+    /// and accessible name back to idle so re-entering the tab never shows — or announces — a
+    /// stale "Stop Test". Idempotent and non-throwing.</summary>
     public void OnLeaving()
     {
         StopTestTone();
-        testToneButton.Text = "Test Tone";
+        SetTestToneButtonState(playing: false);
     }
 
     protected override void Dispose(bool disposing)
