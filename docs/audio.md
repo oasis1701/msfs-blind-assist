@@ -18,8 +18,9 @@ simulator itself keeps the speakers. Persisted as `UserSettings.GuidanceToneDevi
   pilot changes the setting.
 - `Services/AudioToneGenerator.cs` — one instance per guidance tone (`TaxiSteeringTone`,
   `TakeoffAssistManager`, `HandFlyManager`, `VisualGuidanceManager`'s two tones,
-  `ProximityBeeper`'s docking beep, plus the settings panel's own audition instance). Owns the
-  oscillator, `Start`/`Stop`/`RebindOutput`.
+  `ProximityBeeper`'s docking beep), plus test-tone audition instances on
+  `Forms/Settings/HandFlyPanel.cs` (line 630), `Forms/Settings/TaxiGuidancePanel.cs`
+  (line 518), and the main Audio Settings panel. Owns the oscillator, `Start`/`Stop`/`RebindOutput`.
 - `Services/AudioDeviceSelector.cs` — pure resolution logic (saved id vs. what currently
   exists vs. the live default), deliberately free of any NAudio reference so it is
   unit-testable with no audio hardware. Also owns the status-line and fallback-announcement
@@ -103,12 +104,14 @@ simulator itself keeps the speakers. Persisted as `UserSettings.GuidanceToneDevi
 
 - **The Test Tone button's state is set from what `PlayTestTone` actually achieved
   (`tone.IsPlaying` after `Start`), never assumed.** `AudioToneGenerator.Start` swallows its
-  own exceptions by contract (audio is optional feedback), so a real endpoint failure returns
-  with no tone playing and throws nothing — assuming success left the button reading "Stop
-  Test" for a tone that was never sounding, so the pilot's next press took the start branch
-  again instead of stopping anything. A silent failure now also writes a reason into the
-  status `TextBox` (never a `MessageBox` alone — a screen reader needs to be able to reach the
-  reason by tabbing back to the status line, not just hear a modal at the moment it appeared).
+  own exceptions by contract (audio is optional feedback). When the selected device fails to
+  open, `CreatePlayer` falls back to `TryOpenDefault()` and the tone plays on the Windows
+  default device with `IsPlaying == true`; the tone stays silent only when no endpoint can be
+  opened at all. Assuming success left the button reading "Stop Test" for a tone that was never
+  sounding, so the pilot's next press took the start branch again instead of stopping anything.
+  A silent failure now also writes a reason into the status `TextBox` (never a `MessageBox` alone
+  — a screen reader needs to be able to reach the reason by tabbing back to the status line, not
+  just hear a modal at the moment it appeared).
 
 ## Related documentation
 
