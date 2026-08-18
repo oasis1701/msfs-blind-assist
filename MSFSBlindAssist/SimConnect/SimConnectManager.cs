@@ -382,6 +382,7 @@ public partial class SimConnectManager
         REQUEST_FO_AIRSPEED_IAS  = 381,
         REQUEST_FO_ENG1_N2       = 382,
         REQUEST_FO_ENG2_N2       = 383,
+        REQUEST_FO_CENTER_FUEL_LBS = 384,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -445,6 +446,7 @@ public partial class SimConnectManager
         DEF_FO_AIRSPEED_IAS = 381,
         DEF_FO_ENG1_N2 = 382,
         DEF_FO_ENG2_N2 = 383,
+        DEF_FO_CENTER_FUEL_LBS = 384,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -789,6 +791,15 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    /// <summary>Two doubles read in one data definition (e.g. the FO center-fuel request's
+    /// tank gallons + fuel weight per gallon, multiplied at dispatch into pounds).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValuePair
+    {
+        public double value1;
+        public double value2;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

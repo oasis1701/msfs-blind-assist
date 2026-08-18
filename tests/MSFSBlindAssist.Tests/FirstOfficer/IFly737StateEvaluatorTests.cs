@@ -345,4 +345,74 @@ public class IFly737StateEvaluatorTests
         var metric = Ready(metricBuf);
         Assert.Equal(1000.0 * IFly737FoComposition.KgToLb, metric.GetValue("FO_CENTER_QTY_LBS"), 3);
     }
+
+    // ------------------------------------------------------------------
+    // SimConnect fallback for the center quantity. Live finding (2026-08-17 flight,
+    // center_pumps.log + IFlySdkProbe `fuel` mode): the iFly MAX8 writes BLANK (code 10)
+    // into every Fuel_Quantity_Indicator_Status cell for the whole powered flight, so the
+    // gauge-text read is NaN forever, the FO automation can never arm the center pumps and
+    // the executor's CenterPumpGate suppresses the Before-Start flow's center-pump ON
+    // writes (debug.log 10:26:00 "centre-pump ON suppressed"). The stock sim fuel system
+    // IS live for this aircraft (FUEL TANK CENTER QUANTITY x FUEL WEIGHT PER GALLON), so
+    // the FO background timer pushes that product via SetSimCenterFuelLbs — same
+    // SimConnect-sourced push pattern (and SDK-dropout independence) as SetEngineN2.
+    // The gauge text still WINS when it is readable: it is the aircraft's own gauge.
+    // ------------------------------------------------------------------
+    [Fact]
+    public void CenterQty_BlankGauge_FallsBackToPushedSimFuel()
+    {
+        var buf = Buf();
+        SetCenterQty(buf, "", units: 1); // gauge blank — the live MAX8 behaviour
+        var eval = Ready(buf);
+        eval.SetSimCenterFuelLbs(2300.0);
+
+        Assert.Equal(2300.0, eval.CenterQtyLbs());
+        Assert.Equal(2300.0, eval.GetValue("FO_CENTER_QTY_LBS"));
+    }
+
+    [Fact]
+    public void CenterQty_ReadableGauge_WinsOverPushedSimFuel()
+    {
+        var buf = Buf();
+        SetCenterQty(buf, "2300", units: 1);
+        var eval = Ready(buf);
+        eval.SetSimCenterFuelLbs(9999.0);
+
+        Assert.Equal(2300.0, eval.CenterQtyLbs());
+    }
+
+    [Fact]
+    public void CenterQty_BlankGauge_NoPush_StaysNaN()
+    {
+        var buf = Buf();
+        SetCenterQty(buf, "", units: 1);
+        var eval = Ready(buf);
+
+        Assert.True(double.IsNaN(eval.CenterQtyLbs()));
+    }
+
+    // Blank-gauge fallback feeds the merged Before-Start fuel-pumps synthetic too — with a
+    // pushed quantity the synthetic must resolve instead of staying indeterminate (this is
+    // the exact "wing pumps on, center loaded, center pumps still off" tick that must
+    // auto-tick only once the center pumps come on).
+    [Fact]
+    public void BeforeStartFuelPumps_BlankGauge_UsesPushedSimFuel()
+    {
+        var buf = Buf();
+        buf[IFlySdkOffsets.Fuel_L_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_L_AFT_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_FWD_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_R_AFT_Switch_Status] = 1;
+        SetCenterQty(buf, ""); // gauge blank
+        var eval = Ready(buf);
+        eval.SetSimCenterFuelLbs(2300.0); // loaded center tank, pumps still off
+
+        Assert.Equal(0.0, eval.GetValue("FO_FUEL_PUMPS_BS_OK")); // resolves (not NaN): pumps should be on
+
+        buf[IFlySdkOffsets.Fuel_CENTER_L_Switch_Status] = 1;
+        buf[IFlySdkOffsets.Fuel_CENTER_R_Switch_Status] = 1;
+        var evalOn = Ready(buf);
+        evalOn.SetSimCenterFuelLbs(2300.0);
+        Assert.Equal(1.0, evalOn.GetValue("FO_FUEL_PUMPS_BS_OK"));
+    }
 }

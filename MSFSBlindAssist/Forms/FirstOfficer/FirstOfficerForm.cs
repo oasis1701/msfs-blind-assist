@@ -166,6 +166,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 _simConnect.RequestFOAirspeedIndicated();
                 _simConnect.RequestFOEngineN2();
 
+                // iFly MAX8 only: the SDK's fuel-gauge digit cells read blank all flight,
+                // so its center-pump logic reads the stock sim fuel system instead
+                // (pushed back via OnSimVarUpdated -> SetSimCenterFuelLbs).
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator)
+                    _simConnect.RequestFOCenterFuelLbs();
+
                 // LVar-based profiles (Fenix/FBW): poll OnRequest-registered control vars
                 // onto the cache so checklist auto-detection can read them. PMDG evaluators
                 // are not LVarStateEvaluator, so this is a no-op for them.
@@ -294,6 +300,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             case "FO_AIRSPEED_IAS":  _latestIas = e.Value; break;
             case "FO_ENG1_N2":       _latestEng1N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
             case "FO_ENG2_N2":       _latestEng2N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
+            case "FO_CENTER_FUEL_LBS":
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator iflyEval)
+                    iflyEval.SetSimCenterFuelLbs(e.Value);
+                break;
         }
     }
 

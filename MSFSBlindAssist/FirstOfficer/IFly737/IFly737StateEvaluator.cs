@@ -140,10 +140,34 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         return FuelSystemLogic.BeforeStartFuelPumpsOk(wingOn, centerOn, hasFuel) ? 1 : 0;
     }
 
-    /// <summary>Center tank quantity in pounds (metric gauge readings converted); NaN when the
-    /// SDK isn't ready or the gauge reads blank/unparseable.</summary>
-    public double CenterQtyLbs() =>
-        ReadySource() && SnapshotSource() is { } snap ? IFly737FoComposition.CenterQuantityLbs(snap) : double.NaN;
+    // Stock-sim center fuel (lbs), pushed from the FO background timer via SimConnect
+    // (FUEL TANK CENTER QUANTITY x FUEL WEIGHT PER GALLON). Exists because the iFly MAX8
+    // writes BLANK into every Fuel_Quantity_Indicator_Status gauge cell for the whole
+    // powered flight (live-verified 2026-08-17/18: center_pumps.log qty=NaN on every tick
+    // of a flying session + IFlySdkProbe `fuel` mode showing all cells at code 10), so the
+    // gauge-text read alone left the center-pump automation unable to arm and the
+    // CenterPumpGate suppressing the Before-Start flow's center-pump ON writes. Same
+    // SimConnect push pattern (and SDK-dropout independence) as the engine N2 cache above:
+    // NaN until the first push, never a fabricated 0. Volatile for the same cross-thread
+    // handoff reason as _eng1N2.
+    private double _simCenterFuelLbs = double.NaN;
+
+    /// <summary>Store the stock-sim center tank fuel quantity (pounds), pushed from the FO
+    /// background timer (SimConnect). Used as the fallback when the SDK gauge text is
+    /// blank/unparseable — see <see cref="CenterQtyLbs"/>.</summary>
+    public void SetSimCenterFuelLbs(double lbs) => Volatile.Write(ref _simCenterFuelLbs, lbs);
+
+    /// <summary>Center tank quantity in pounds. The aircraft's own gauge text wins when it is
+    /// readable (metric readings converted); when the gauge reads blank/unparseable — which on
+    /// the iFly MAX8 is ALWAYS (see <see cref="_simCenterFuelLbs"/>) — falls back to the
+    /// SimConnect-pushed stock-sim quantity. NaN only when neither source has a value.</summary>
+    public double CenterQtyLbs()
+    {
+        double gauge = ReadySource() && SnapshotSource() is { } snap
+            ? IFly737FoComposition.CenterQuantityLbs(snap)
+            : double.NaN;
+        return double.IsNaN(gauge) ? Volatile.Read(ref _simCenterFuelLbs) : gauge;
+    }
 
     // -----------------------------------------------------------------------
     // SimBrief pressurization plan (set when an OFP is loaded). Rounded to the panel knob steps

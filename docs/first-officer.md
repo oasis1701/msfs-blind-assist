@@ -244,6 +244,22 @@ is pure and touches no SimConnect state.
   the 2026-08-16 defects require a diagnostic trace to root-cause. `center_pumps.log` is
   still the trace to ask for when a pilot reports the center pumps not switching off —
   check `belowMs` accrual and the `-> TurnOff` line.
+- **iFly MAX8 quantity source is the STOCK SIM fuel system, not the SDK gauge (2026-08-18
+  fix).** The iFly plugin writes BLANK (code 10) into every
+  `Fuel_Quantity_Indicator_Status` digit cell for the whole powered flight
+  (live-verified: the 2026-08-17 `center_pumps.log` shows `qty=NaN` on every tick of a
+  flying session, and `IFlySdkProbe fuel` shows all 15 cells at 10), so the gauge-text
+  read (`IFly737FoComposition.CenterQuantityLbs`) is NaN forever — the automation could
+  never arm, and `CenterPumpGate` suppressed the Before-Start flow's center-pump ON
+  writes (`debug.log`: "centre-pump ON suppressed"). The FO background timer now also
+  requests `FUEL TANK CENTER QUANTITY` × `FUEL WEIGHT PER GALLON` via SimConnect
+  (`RequestFOCenterFuelLbs` → `SimVarUpdated "FO_CENTER_FUEL_LBS"` →
+  `IFly737StateEvaluator.SetSimCenterFuelLbs`, iFly profile only), and
+  `CenterQtyLbs()` falls back to that pushed value whenever the gauge text is
+  blank/unparseable (the gauge still wins when readable — it is the aircraft's own
+  gauge). The stock vars ARE authoritative for this aircraft: the iFly WASM stomps its
+  own fuel state back into them (see the GSX-refuel note in `docs/ifly-737.md`). Same
+  SimConnect-push pattern and SDK-dropout independence as the engine-N2 cache.
 
 **Consolidation (§6 of the original design doc, unchanged by the quantity-off rewrite) —
 ONE "Fuel pumps" checklist item per phase, on both PMDG jets:**

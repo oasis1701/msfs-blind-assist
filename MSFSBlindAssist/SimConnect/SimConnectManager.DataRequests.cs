@@ -331,6 +331,39 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Request the stock-sim center tank fuel quantity for the First Officer background timer
+    /// (iFly 737 MAX8: the SDK's fuel-gauge digit cells read blank all flight, so the FO's
+    /// center-pump logic reads the stock fuel system instead). One definition carrying
+    /// FUEL TANK CENTER QUANTITY (gallons) + FUEL WEIGHT PER GALLON (pounds), multiplied at
+    /// dispatch. Fires SimVarUpdated with VarName "FO_CENTER_FUEL_LBS" (pounds) — NOT announced.
+    /// </summary>
+    public void RequestFOCenterFuelLbs()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var defId = DATA_DEFINITIONS.DEF_FO_CENTER_FUEL_LBS;
+                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(defId,
+                    "FUEL TANK CENTER QUANTITY", "gallons",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.AddToDataDefinition(defId,
+                    "FUEL WEIGHT PER GALLON", "pounds",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<DoubleValuePair>(defId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS,
+                    defId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO center fuel: {ex.Message}");
+            }
+        }
+    }
+
     public void RequestAirspeedTrue()
     {
         if (!IsConnected || simConnect == null) return;
