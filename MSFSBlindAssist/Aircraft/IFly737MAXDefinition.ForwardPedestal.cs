@@ -67,10 +67,11 @@ public partial class IFly737MAXDefinition
         Disp(P, "Hydraulic_Brake_Pressure_Status", "Hydraulic Brake Pressure PSI");
 
         // Guarded switch: combo state from the _Mode field (1 = ALT, 2 = NORM);
-        // GEAR_STEERING_SWITCH_SET Value2 is 0 = ALT, 1 = NORM → map v-1.
+        // GEAR_STEERING_SWITCH_SET Value2 is 0 = ALT, 1 = NORM → map v-1. No working
+        // Value3 guard-bypass — the first send only opens the guard → doubleSend.
         Sw(P, "Nose_Wheel_Steering_Mode", "Nose Wheel Steering",
             IFlyKeyCommand.GEAR_STEERING_SWITCH_SET, new[] { "Alternate", "Normal" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
     }
 
     // =========================================================================
@@ -151,7 +152,7 @@ public partial class IFly737MAXDefinition
 
         // Guarded inhibit switches. Status: 0 cover CLOSED / 1 open+INHIBIT / 2 open+NORM.
         // WARNING_GPWS_*_INHIBIT_SET Value2: 0 = INHIBIT, 1 = NORMAL (no guard-ignore
-        // Value3 documented; the SET operates the switch regardless of the cover).
+        // Value3 documented; the first send only OPENS the guard → doubleSend).
         // Selecting "Guard closed, normal" commands NORMAL (the cover state itself
         // can't be commanded).
         void Inhibit(string field, string display, IFlyKeyCommand set) =>
@@ -162,7 +163,7 @@ public partial class IFly737MAXDefinition
                     [1] = "Inhibit",
                     [2] = "Normal",
                 },
-                map: v => v == 1 ? 0 : 1);
+                map: v => v == 1 ? 0 : 1, doubleSend: true);
 
         Inhibit("Flap_Inhibit_Switch_Status", "Flap Inhibit", IFlyKeyCommand.WARNING_GPWS_FLAP_INHIBIT_SET);
         Inhibit("Gear_Inhibit_Switch_Status", "Gear Inhibit", IFlyKeyCommand.WARNING_GPWS_GEAR_INHIBIT_SET);
@@ -219,6 +220,19 @@ public partial class IFly737MAXDefinition
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_DEC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_DEC));
         Btn(P, $"BTN_EFIS_{tag}_RANGE_INC", "Navigation Display Range Increase",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_INC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_INC));
+        // Read-only readback of the mod-3 status ring beside the buttons — without it
+        // the range would be WRITE-only (no announcement, no panel row, no Ctrl+M
+        // entry) for a blind pilot. The raw ring position is all the SDK exposes
+        // (which absolute range each position means is not observable — see above),
+        // so the labels claim no mileage; each INC/DEC press announces the new
+        // position as a background change.
+        SwD(P, $"ND_Range_Status{sfx}", "Navigation Display Range", set: null,
+            descriptions: new Dictionary<double, string>
+            {
+                [0] = "Position 1 of 3",
+                [1] = "Position 2 of 3",
+                [2] = "Position 3 of 3",
+            });
         Btn(P, $"BTN_EFIS_{tag}_TFC", "Traffic",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_TFC, IFlyKeyCommand.INSTRUMENT_EFIS_R_TFC));
 
@@ -746,14 +760,15 @@ public partial class IFly737MAXDefinition
 
         // Guarded cutout/override switches: combo state from the _Mode fields
         // (1-based), commands' Value2 is 0-based in the same order → map v-1.
-        //   STAB_TRIM_PRI_SET / BU_SET:   Value2 0 NORMAL / 1 CUTOFF (no guard Value3 documented)
+        //   STAB_TRIM_PRI_SET / BU_SET:   Value2 0 NORMAL / 1 CUTOFF (no guard Value3 —
+        //                                 the first send only opens the guard → doubleSend)
         //   STAB_TRIM_OVERRIDE_SET:       Value2 0 OVERRIDE / 1 NORMAL, Value3 1 = ignore guard
         Sw(P, "Stab_Trim_Primary_Mode", "Stabilizer Trim Primary Cutout",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_PRI_SET, new[] { "Normal", "Cutoff" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
         Sw(P, "Stab_Trim_Backup_Mode", "Stabilizer Trim Backup Cutout",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_BU_SET, new[] { "Normal", "Cutoff" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
         Sw(P, "Stabilizer_Trim_Override_Mode", "Stabilizer Trim Override",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_OVERRIDE_SET, new[] { "Override", "Normal" },
             map: v => v - 1, valueBase: 1, value3: 1);

@@ -238,11 +238,14 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FLTCTRL_FLIGHT_CONTROL_B_SET,
             new[] { "Standby Rudder", "Off", "On" }, map: v => v - 1, value3: 1, valueBase: 1);
 
-        // Spoiler A/B SET commands document Value2 only (no guard-ignore Value3).
+        // Spoiler A/B SET commands document Value2 only (no guard-ignore Value3 —
+        // the first send only opens the guard → doubleSend).
         Sw(P, "Spoiler_A_Mode", "Flight Spoiler A",
-            IFlyKeyCommand.FLTCTRL_SPOILER_A_SET, new[] { "Off", "On" }, map: v => v - 1, valueBase: 1);
+            IFlyKeyCommand.FLTCTRL_SPOILER_A_SET, new[] { "Off", "On" }, map: v => v - 1, valueBase: 1,
+            doubleSend: true);
         Sw(P, "Spoiler_B_Mode", "Flight Spoiler B",
-            IFlyKeyCommand.FLTCTRL_SPOILER_B_SET, new[] { "Off", "On" }, map: v => v - 1, valueBase: 1);
+            IFlyKeyCommand.FLTCTRL_SPOILER_B_SET, new[] { "Off", "On" }, map: v => v - 1, valueBase: 1,
+            doubleSend: true);
 
         Sw(P, "Yaw_Damper_Switch_Status", "Yaw Damper",
             IFlyKeyCommand.FLTCTRL_YAW_DAMPER_SET, new[] { "Off", "On" });
