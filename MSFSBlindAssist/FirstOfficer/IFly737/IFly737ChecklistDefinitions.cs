@@ -34,12 +34,10 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///    read-only. Its Landing Checklist twin (LDC_SPDBRK) auto-detects on
 ///    SPEED_BRAKE_ARMED_Light_Status instead of staying a reminder, since the iFly DOES expose
 ///    that readback (the PMDG NG3 struct has none at all).
-///  - Weather radar test (PF_WXR_TEST) is a Captain reminder, not an action. NOT because no
-///    command exists — an earlier grep looked for a WXR test CLICK and wrongly concluded that.
-///    `FMS_WXR_SYS_CTRL_SET` (v1.5 key_command.h: "Value2: 0:switch TEST; 1:switch NORM") is
-///    in the generated enum, and `Weather_Radar_System_Control_Switch_Status` (0 TEST/1 NORM)
-///    reads it back. It is deliberately UNWIRED pending in-sim verification that the TEST
-///    position is modelled at all — see the same note on IFly737ActionExecutor.PseudoKeys.
+///  - Weather radar test: REMOVED from this aircraft's checklist and flow entirely (user
+///    decision 2026-08-18 — do not re-add). The command exists (`FMS_WXR_SYS_CTRL_SET`,
+///    Value2 0 TEST/1 NORM, readable back via `Weather_Radar_System_Control_Switch_Status`)
+///    but remains deliberately unwired — see IFly737ActionExecutor.PseudoKeys.
 ///  - Gear lever has only Up(0)/Down(1) — no OFF detent (RegisterLandingGear,
 ///    IFly737MAXDefinition.ForwardPedestal.cs:24-25 — `new[] { "Up", "Down" }`). ATKO_GEAR_OFF
 ///    and its After Takeoff Checklist twin ATC_GEAR command/detect GearUp only and are labelled
@@ -227,17 +225,12 @@ public static class IFly737ChecklistDefinitions
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "ND_Mode_Status_0", v => v > 1.5 && v < 2.5,
                 (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeMap)),
             // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
-            // 2026-08-18, PR #196): RANGE_SET is dead for every Value2, ND_Range_Status is
-            // a read-only mod-3 ring (the old "0..10 = 0.5..640 nm" command doc is wrong),
-            // and which range each position means is not observable blind — a reminder,
-            // not an action (the WXR precedent below).
+            // 2026-08-18, PR #196 + re-probed same day): RANGE_SET is dead for every Value2,
+            // ND_Range_Status is net-clicks mod 3, and the cockpit knob L:var
+            // (VC_CAPT_EFIS_ND_Range_SW_VAL) is a free-spinning wrap-around rotation counter
+            // — relative clicks only, no absolute position anywhere. A reminder, not an action.
             Reminder("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: SET"),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
-            // A WXR TEST command DOES exist (FMS_WXR_SYS_CTRL_SET, Value2 0 TEST/1 NORM) and
-            // is readable back (Weather_Radar_System_Control_Switch_Status) — it is left
-            // unwired pending in-sim verification that the TEST position is modelled at all
-            // (see the class doc), so this stays a reminder, not an action.
-            Reminder("PF_WXR_TEST", "PREFLIGHT", "Weather radar test"),
             ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
                 (e, _) => e.GpwsTestAsync()),
         }

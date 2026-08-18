@@ -85,11 +85,11 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    read-only (Disp, ForwardPedestal.cs:822: "raw position (int 0-225) ... nearest-detent
 ///    decode" — no write command exists at all) and the executor deliberately exposes no write
 ///    for it (unverified scale mismatch).
-///  - Weather radar test (PF_WXR_TEST) is a Captain reminder. A WXR TEST command DOES exist
-///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, with the readable
-///    `Weather_Radar_System_Control_Switch_Status`) — an earlier grep looked for a test CLICK
-///    and wrongly concluded otherwise. It is deliberately unwired pending in-sim verification
-///    that the TEST position is modelled at all (see IFly737ActionExecutor.PseudoKeys).
+///  - Weather radar test: REMOVED from this aircraft's flow and checklist entirely (user
+///    decision 2026-08-18 — do not re-add). A WXR TEST command does exist
+///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, readable back via
+///    `Weather_Radar_System_Control_Switch_Status`) but remains deliberately unwired — see
+///    IFly737ActionExecutor.PseudoKeys.
 ///  - Lower display unit (BT_LOWERDU) is a Captain reminder — no lower-DU/EICAS synoptic-page-
 ///    select field exists in IFlySdkFields.cs.
 ///  - Labels changed to match this airframe's own switch wording (Fix-pass-1 convention
@@ -272,15 +272,13 @@ public static class IFly737FlowDefinitions
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeMap),
             // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
-            // 2026-08-18, PR #196): RANGE_SET is dead for every Value2, ND_Range_Status
-            // is a read-only mod-3 ring, and which absolute range each position means
-            // is not observable blind — so this is a captain action, not an FO switch
-            // (the WXR-test precedent below).
+            // 2026-08-18, PR #196 + re-probed same day): RANGE_SET is dead for every Value2,
+            // ND_Range_Status is net-clicks mod 3, and the cockpit knob L:var
+            // (VC_CAPT_EFIS_ND_Range_SW_VAL) is a free-spinning wrap-around rotation counter
+            // (+10 per click, mod 360) — relative clicks, no absolute position anywhere. So
+            // this is a captain action, not an FO switch.
             Captain("PF_EFIS_RANGE", "Set the EFIS range."),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
-            // FMS_WXR_SYS_CTRL_SET (0 TEST/1 NORM) exists but is deliberately unwired pending
-            // in-sim verification that the TEST position is modelled — see the class doc.
-            Captain("PF_WXR_TEST", "Weather radar test"),
             // GPWS test goes LAST — its self-test callouts trail for several seconds after the
             // step completes, so nothing must follow it (PMDG 737 parity).
             SW("PF_GPWS_TEST", "GPWS system test — listen for the self-test callouts",
@@ -505,7 +503,7 @@ public static class IFly737FlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "EFIS approach mode, range 20, altimeters.",
+        Description = "EFIS approach mode, cabin notification, altimeters.",
         RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
         Steps = new()
         {

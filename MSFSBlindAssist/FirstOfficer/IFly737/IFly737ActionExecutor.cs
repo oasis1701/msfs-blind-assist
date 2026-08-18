@@ -143,8 +143,9 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// DELIBERATELY UNWIRED pending in-sim verification that the TEST position is modelled at
     /// all: this aircraft has a documented class of test switches that accept commands and do
     /// nothing (the A/P and A/T disengage-light TEST switches, live-tested 2026-07-23), and
-    /// driving TEST blind risks latching an unmodelled or un-releasing TEST mode. Until then a
-    /// WXR test stays a Captain reminder.</summary>
+    /// driving TEST blind risks latching an unmodelled or un-releasing TEST mode. The WXR test
+    /// was REMOVED from this aircraft's flow and checklist entirely (user decision 2026-08-18 —
+    /// do not re-add it).</summary>
     public static readonly IReadOnlyList<string> PseudoKeys = PseudoKeyHandlers.Keys.ToList();
 
     private static readonly HashSet<string> PseudoKeySet = new(PseudoKeys, StringComparer.Ordinal);
@@ -1012,10 +1013,19 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public const int NdModePlan = 3;
 
     // NO SetEFISRangeCapt: the ND range cannot be commanded absolutely on this SDK
-    // (probe-verified 2026-08-18, PR #196 — RANGE_SET is dead for every Value2,
-    // ND_Range_Status is a read-only mod-3 ring, and which absolute range each
-    // position means is not observable blind). The range steps are Captain/Reminder
-    // items; the panel exposes Increase/Decrease step buttons for the pilot.
+    // (probe-verified 2026-08-18, PR #196, and re-probed the same day against the live
+    // sim + cockpit model XML): RANGE_SET is dead for every Value2; ND_Range_Status is
+    // net-clicks mod 3 (INC 10x then DEC 20x read 1 then 2 — it counts clicks, it does
+    // not mirror the range); and the cockpit knob's own L:var
+    // (VC_CAPT_EFIS_ND_Range_SW_VAL, iFly737Max_INTERIOR.xml) is a free-spinning
+    // wrap-around rotation counter (+10 per click, wraps mod 360, went negative-wrapped
+    // to 260 past any real detent stop) — relative clicks, not absolute position. There
+    // is NO absolute range readback or command anywhere (SDK or model). The one untested
+    // avenue: IF the plugin's INTERNAL range state clamps at the 5/640 nm ends, an
+    // absolute set could be built as "8+ DECs to the stop, then N INCs" — verifying that
+    // needs a powered flight deck and a sighted look at the ND (cold-and-dark this
+    // session, so unresolved). The range steps are Captain/Reminder items; the panel
+    // exposes Increase/Decrease step buttons for the pilot.
 
     // ---- Calls / recall ----
 
