@@ -106,6 +106,12 @@ public partial class MainForm
         announcer.SetAnnouncementMode(mode);
         RestartNearestCityAnnouncementTimer();
 
+        // Guidance tone output device. Moves any sounding tone to the newly chosen device,
+        // so a wrong device can be corrected mid-taxi without stopping guidance. No-ops when
+        // the device did not change, so saving an unrelated setting never puts a gap in a
+        // tone that is currently steering the aircraft.
+        Services.AudioOutputDeviceService.ApplyDeviceChange();
+
         if (activeSkyWeatherMonitor != null)
         {
             activeSkyWeatherMonitor.IntervalMinutes = settings.WeatherAutoAnnounceIntervalMinutes;

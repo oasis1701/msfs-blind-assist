@@ -528,6 +528,29 @@ public partial class MainForm : Form
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
 
+        // Guidance-tone device fallback notices. Tone Start() runs on the ProximityBeeper
+        // timer thread and on the taxi position thread, and ScreenReaderAnnouncer silently
+        // no-ops off the UI thread, so this has to marshal. Queued Announce (never
+        // AnnounceImmediate) so a device notice can never interrupt a hold-short or landing
+        // callout.
+        Services.AudioOutputDeviceService.AnnounceFallback = message =>
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed)
+                    return;
+
+                BeginInvoke(() =>
+                {
+                    try { announcer.Announce(message); } catch { }
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle destroyed between the check and the post — nothing to announce to.
+            }
+        };
+
         // Note: Diagnostic test removed to prevent test speech on startup
         // Uncomment the next lines if you need to troubleshoot screen reader connections:
         // Log.Debug("MainForm", "[MainForm] Running initial screen reader diagnostic test");
