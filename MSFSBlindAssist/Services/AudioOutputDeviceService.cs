@@ -56,6 +56,20 @@ public static class AudioOutputDeviceService
     // cannot nag, but a genuinely new problem is still heard.
     private static string _fallbackAnnouncedForId = string.Empty;
 
+    // Whether the LAST time the saved preference was resolved (CreatePlayer with
+    // deviceIdOverride == null) it had to fall back to the default endpoint instead of opening
+    // the requested one — e.g. the saved headset was unplugged. Written only by CreatePlayer's
+    // saved-preference path (never by a settings-panel audition); read only by ApplyDeviceChange.
+    //
+    // This is what lets a pilot get a fallen-back tone to move back onto a RECONNECTED device.
+    // Without it, ApplyDeviceChange's usual "did the id change" guard is the only thing that
+    // ever forces a rebind — so once a tone has fallen back, re-saving the SAME device (the
+    // only device selectable, since it is still what's saved) compares unchanged==unchanged
+    // and silently no-ops forever, even after the pilot plugs the headset back in. There is no
+    // other trigger that would ever re-resolve it: nothing here listens for device arrival
+    // (IMMNotificationClient) by design — see docs/audio.md.
+    private static bool _lastAppliedFellBack;
+
     /// <summary>
     /// Sink for the once-per-session fallback notice. MainForm assigns this at startup.
     /// The delegate MUST marshal to the UI thread — tone Start() runs on the ProximityBeeper
@@ -168,6 +182,12 @@ public static class AudioOutputDeviceService
             if (chosen != null)
             {
                 ClearFallbackLatch(requestedId);
+                // Only the saved-preference path feeds _lastAppliedFellBack — see its field
+                // doc. A successful open means whatever fell back before has now recovered.
+                if (deviceIdOverride == null)
+                {
+                    SetLastAppliedFellBack(false);
+                }
                 return chosen;
             }
 
@@ -176,7 +196,15 @@ public static class AudioOutputDeviceService
             if (deviceIdOverride == null)
             {
                 AnnounceFallbackOnce(requestedId);
+                SetLastAppliedFellBack(true);
             }
+        }
+        else if (deviceIdOverride == null)
+        {
+            // The saved preference IS "Windows default" (empty id) -- TryOpenDefault below is
+            // the deliberate target, not a degraded fallback, so this can never count as a
+            // fall-back needing a later forced rebind.
+            SetLastAppliedFellBack(false);
         }
 
         return TryOpenDefault();
@@ -198,6 +226,14 @@ public static class AudioOutputDeviceService
     /// Called from MainForm.ApplyRuntimeSettings after the Settings dialog is accepted.
     /// Moves every sounding tone to the new device — but only when the device actually
     /// changed, so saving an unrelated setting does not put a gap in a steering tone.
+    ///
+    /// Also rebinds when the id has NOT changed but its last resolution had fallen back
+    /// (<c>_lastAppliedFellBack</c>) — e.g. the saved headset was unplugged and has since
+    /// been reconnected. Without this, an unchanged id is always a no-op, so re-saving (or
+    /// simply re-opening and closing Settings on) the SAME already-selected device is the
+    /// only way a pilot could ever ask for a rebind, and it would silently do nothing: a
+    /// sounding tone that fell back to the default endpoint would stay there for the rest of
+    /// the session even after the preferred device came back.
     /// </summary>
     public static void ApplyDeviceChange()
     {
@@ -206,7 +242,8 @@ public static class AudioOutputDeviceService
 
         lock (Gate)
         {
-            if (string.Equals(current, _lastAppliedDeviceId, StringComparison.OrdinalIgnoreCase))
+            bool idUnchanged = string.Equals(current, _lastAppliedDeviceId, StringComparison.OrdinalIgnoreCase);
+            if (idUnchanged && !_lastAppliedFellBack)
             {
                 return;
             }
@@ -400,6 +437,17 @@ public static class AudioOutputDeviceService
             {
                 _fallbackAnnouncedForId = string.Empty;
             }
+        }
+    }
+
+    /// <summary>Records whether the saved preference's LAST resolution had to fall back —
+    /// see the field doc on <c>_lastAppliedFellBack</c>. Only called from CreatePlayer's
+    /// saved-preference branches (deviceIdOverride == null); never from an audition.</summary>
+    private static void SetLastAppliedFellBack(bool value)
+    {
+        lock (Gate)
+        {
+            _lastAppliedFellBack = value;
         }
     }
 

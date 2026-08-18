@@ -21,20 +21,34 @@
 //    ever replaced with a direct, synchronous call, this test would observe the sink running
 //    on the calling thread and fail.
 //
-// Neither test needs real audio hardware: both only ever drive CreatePlayer() with a
+// 3) ApplyDeviceChange_RebindsOnAnUnchangedId_WhenTheLastResolutionHadFallenBack pins the
+//    "recover after reconnect" fix (_lastAppliedFellBack). Before this fix, ApplyDeviceChange's
+//    ONLY rebind trigger was "did the saved id change" -- so once a tone had fallen back (the
+//    saved device was gone when it last resolved), no UI action could ever force a fresh
+//    resolution: the id a pilot could select was still the same fallen-back device, so
+//    re-saving it (or simply reopening/closing Settings) always compared unchanged==unchanged
+//    and silently no-opped, even after the pilot plugged the preferred device back in. This
+//    test reproduces the fallen-back state, then calls ApplyDeviceChange again with the SAME
+//    id still selected, and uses the same fallback-announcement latch as (1) to observe
+//    whether a fresh resolution attempt actually happened.
+//
+// None of the three tests need real audio hardware: all only ever drive CreatePlayer() with a
 // deliberately-bogus device id, which is guaranteed to fail TryOpenById before the code ever
 // reaches a real endpoint. Whatever TryOpenDefault() does afterward (open a real device,
 // or fail and log, on a machine with no audio at all) is irrelevant to what these tests
 // assert.
 //
-// AudioOutputDeviceService keeps three relevant statics with no reset hook: _lastAppliedDeviceId,
-// _lastAppliedSeeded and _fallbackAnnouncedForId. _lastAppliedSeeded in particular latches true
-// forever after the first CreatePlayer(null) call anywhere in the process (by design), so these
-// tests cannot assume they are the first thing to touch it. Every scenario below is instead
-// bootstrapped through ApplyDeviceChange, which unconditionally overwrites _lastAppliedDeviceId
-// whenever the requested id differs from whatever it currently holds -- paired with a freshly
-// generated GUID id per run, that makes each scenario's starting point deterministic regardless
-// of what any earlier test left behind, and regardless of test execution order.
+// AudioOutputDeviceService keeps four relevant statics with no reset hook: _lastAppliedDeviceId,
+// _lastAppliedSeeded, _fallbackAnnouncedForId and _lastAppliedFellBack. _lastAppliedSeeded in
+// particular latches true forever after the first CreatePlayer(null) call anywhere in the
+// process (by design), so these tests cannot assume they are the first thing to touch it. Every
+// scenario below is instead bootstrapped through ApplyDeviceChange, which unconditionally
+// overwrites _lastAppliedDeviceId whenever the requested id differs from whatever it currently
+// holds -- paired with a freshly generated GUID id per run, that makes each scenario's starting
+// point deterministic regardless of what any earlier test left behind, and regardless of test
+// execution order. _lastAppliedFellBack needs no separate bootstrap: whatever it holds from an
+// earlier test, the first CreatePlayer() call against a fresh bogus id in each scenario below
+// deterministically overwrites it (a bogus id can never resolve, so it always ends up true).
 //
 // Shares the SettingsManagerGlobalState collection with SettingsSeedTests (see
 // SettingsManagerGlobalStateCollection) and, as of this change, with AudioOutputDeviceServiceTests:
@@ -165,5 +179,65 @@ public class AudioOutputDeviceServiceFallbackTests : IDisposable
         Assert.True(signaled, "The fallback sink was never invoked within the timeout.");
         Assert.NotNull(sinkThreadId);
         Assert.NotEqual(callingThreadId, sinkThreadId!.Value);
+    }
+
+    [Fact]
+    public void ApplyDeviceChange_RebindsOnAnUnchangedId_WhenTheLastResolutionHadFallenBack()
+    {
+        string missingId = "{unit-test-fellback-" + Guid.NewGuid() + "}";
+
+        int announceCount = 0;
+        var signal = new ManualResetEventSlim(false);
+        AudioOutputDeviceService.AnnounceFallback = _ =>
+        {
+            Interlocked.Increment(ref announceCount);
+            signal.Set();
+        };
+
+        // Bootstrap: guarantee _lastAppliedSeeded is true (see the class comment above), same
+        // trick as the race-window test -- "" can never reach the announce path.
+        SettingsManager.Current.GuidanceToneDeviceId = "";
+        AudioOutputDeviceService.CreatePlayer()?.Dispose();
+
+        // Deterministically plant missingId as the baseline _lastAppliedDeviceId. Once seeded,
+        // ApplyDeviceChange is the only remaining path that writes it, and a fresh GUID is
+        // guaranteed to differ from whatever it currently holds, so this update always fires.
+        SettingsManager.Current.GuidanceToneDeviceId = missingId;
+        AudioOutputDeviceService.ApplyDeviceChange();
+
+        // A tone starts on missingId. It cannot resolve (guaranteed-bogus id), so this both
+        // announces the fallback once AND -- the state under test -- latches
+        // _lastAppliedFellBack to true.
+        signal.Reset();
+        AudioOutputDeviceService.CreatePlayer()?.Dispose();
+        Assert.True(signal.Wait(AnnounceWaitTimeout), "Expected the first fallback announcement.");
+        Assert.Equal(1, announceCount);
+
+        // THE SCENARIO: the pilot does NOT change the device selection -- missingId is still
+        // saved, exactly as if a headset had been unplugged (forcing the fallback above) and
+        // then reconnected: nothing about the SAVED id changes when a device reconnects, only
+        // its live availability does. The pilot's only lever is re-opening/closing Settings
+        // (or otherwise re-triggering a save) with the same device still selected.
+        signal.Reset();
+        AudioOutputDeviceService.ApplyDeviceChange();
+
+        // THE ASSERTION UNDER TEST: because the last resolution of missingId had fallen back,
+        // ApplyDeviceChange must NOT early-return merely because the id is unchanged -- it
+        // must still reset the announcement latch so the next resolution gets a fresh attempt.
+        // Pre-fix, ApplyDeviceChange's only guard is "did the id change"; missingId == missingId,
+        // so it early-returns, the latch is never reset, and this next CreatePlayer() call for
+        // the same still-missing id is silently swallowed by AnnounceFallbackOnce's
+        // already-announced-for-this-id check -- exactly the symptom that leaves a pilot with
+        // no way to ever recover a fallen-back tone after reconnecting the preferred device,
+        // since no UI action produces a different observable id to compare against.
+        AudioOutputDeviceService.CreatePlayer()?.Dispose();
+        bool secondSignal = signal.Wait(AnnounceWaitTimeout);
+
+        Assert.True(secondSignal,
+            "Expected a second fallback announcement after ApplyDeviceChange ran again with " +
+            "the SAME (still-missing) device selected. The announcement latch was never reset " +
+            "-- this is the exact symptom of ApplyDeviceChange's id-only guard silently " +
+            "no-opping when the id hasn't changed but the last resolution had fallen back.");
+        Assert.Equal(2, announceCount);
     }
 }
