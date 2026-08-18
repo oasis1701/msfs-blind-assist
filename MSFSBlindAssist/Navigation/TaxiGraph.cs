@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Database.Models;
+﻿using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Navigation;
 
@@ -66,6 +66,20 @@ public class TaxiGraph
         public double Latitude, Longitude;      // that node projected ONTO the centerline
         public double AlongMetersFromThreshold; // from the named runway's takeoff-end threshold
         public double RemainingMeters;          // runway ahead in the takeoff direction
+
+        /// <summary>
+        /// For a NAMED holding point (<see cref="ResolveHoldingPointEntries"/>): the graph
+        /// node the PAINTED HOLD LINE itself snapped to, as opposed to <see cref="NodeId"/>
+        /// (where its stub meets the runway). 0 for runway intersections, and for a painted
+        /// point whose line didn't snap to a distinct reachable node.
+        /// <para>Routing pins the route THROUGH this node so the pilot taxis up the stub they
+        /// named. Without it only the runway ENTRY is fixed and the approach corridor is a
+        /// free A* choice, which at EGLL 27R took a pilot who picked A2 up the neighbouring A3
+        /// stub — A2 and A3 merge just short of the runway, so the route rejoined A2 for its
+        /// last 60 m and the hold-short (navdata-authoritative, the LAST hold node on the
+        /// route) landed on and announced A3.</para>
+        /// </summary>
+        public int HoldNodeId;
     }
 
     // Max perpendicular distance (metres) from a hold-short node to a runway
@@ -143,17 +157,60 @@ public class TaxiGraph
     /// 200-500ms and would otherwise stall the UI thread. Runs on the thread pool.
     /// </summary>
     public static System.Threading.Tasks.Task<TaxiGraph> BuildAsync(
-        List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts)
+        List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts,
+        IReadOnlyList<Runway>? runways = null)
     {
-        return System.Threading.Tasks.Task.Run(() => Build(paths, parkingSpots, runwayStarts));
+        return System.Threading.Tasks.Task.Run(() => Build(paths, parkingSpots, runwayStarts, runways));
     }
 
     /// <summary>
     /// Builds the taxi graph from raw taxi path data and parking spots.
     /// </summary>
-    public static TaxiGraph Build(List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts)
+    public static TaxiGraph Build(List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts,
+        IReadOnlyList<Runway>? runways = null)
     {
         var graph = new TaxiGraph();
+
+        // Repair laterally-bogus start rows against the runway table when the caller has
+        // one (see SnapStartToRunwayCenterline for the EGKK evidence). Everything below —
+        // runway-start node marking, the centerlines, the hold-short naming fallback —
+        // reads runwayStarts, so correcting it once here covers all three. Callers with no
+        // runway table (tests, probes) keep today's behavior exactly.
+        if (runways != null && runways.Count > 0 && runwayStarts.Count > 0)
+        {
+            var byName = new Dictionary<string, Runway>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in runways)
+                if (!string.IsNullOrEmpty(r.RunwayID)) byName.TryAdd(r.RunwayID.Trim(), r);
+
+            var snapped = new List<StartPosition>(runwayStarts.Count);
+            foreach (var s in runwayStarts)
+            {
+                if (!byName.TryGetValue(s.RunwayName?.Trim() ?? "", out var rwy))
+                {
+                    snapped.Add(s);
+                    continue;
+                }
+                var (lat, lon) = SnapStartToRunwayCenterline(
+                    s.Latitude, s.Longitude, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
+                if (Math.Abs(lat - s.Latitude) < 1e-9 && Math.Abs(lon - s.Longitude) < 1e-9)
+                {
+                    snapped.Add(s);
+                    continue;
+                }
+                // Copy rather than mutate: the caller's list is often a cached provider
+                // result that other features read.
+                snapped.Add(new StartPosition
+                {
+                    RunwayName = s.RunwayName,
+                    Type = s.Type,
+                    Heading = s.Heading,
+                    Altitude = s.Altitude,
+                    Latitude = lat,
+                    Longitude = lon,
+                });
+            }
+            runwayStarts = snapped;
+        }
 
         foreach (var path in paths)
         {
@@ -284,16 +341,81 @@ public class TaxiGraph
             }
         }
 
-        // Build runway centerlines by pairing opposing runway-start positions.
-        // Each physical runway has two `start` rows whose headings differ by 180°
-        // (e.g. 27L heading ~270° pairs with 09R heading ~90°). We pair them up so
-        // DescribeLocation can detect "on runway X" anywhere along the runway,
-        // not just within 50 m of a threshold node — the previous edge-scan path
-        // required taxi_path.type='R' which doesn't exist in the navdatareader DB.
-        // Half-width defaults to 75 ft (≈23 m) when we can't infer it from a
-        // nearby taxi_path edge — covers most Code C/D/E runways.
+        // Build runway centerlines by pairing opposing runway-start positions, so
+        // DescribeLocation can detect "on runway X" anywhere along the runway, not just
+        // within 50 m of a threshold node — the previous edge-scan path required
+        // taxi_path.type='R', which doesn't exist in the navdatareader DB. Half-width
+        // defaults to 75 ft (≈23 m) when we can't infer it from a nearby taxi_path edge,
+        // which covers most Code C/D/E runways.
+        //
+        // TWO PASSES, DESIGNATOR FIRST. Designators are reciprocal BY DEFINITION (number
+        // differs by 18, L↔R swapped, C/none unchanged) and the side letter keeps
+        // parallels apart — 08L can only ever pair with 26R — whereas `start.heading` is
+        // wrong often enough to mis-pair whole airports. LEMD stores 0° on runways that
+        // point 322°, which made the heading test read 32R as the reciprocal of 18L and
+        // 32L as the reciprocal of 18R: two lines drawn DIAGONALLY ACROSS THE AIRFIELD,
+        // and no correct line at all. EGKK stores 08L and 26R both at 257.6° and 08R and
+        // 26L both at ~168°, so nothing paired and it built ZERO centerlines.
+        //
+        // Measured over the whole fs2020 navdata (41.8 k airports, 47.9 k centerlines),
+        // running the designator pass first changes 10 airports and improves ALL TEN —
+        // mis-paired lines fall from 662 to 642 and LEMD goes from 2 wrong lines to 4
+        // right ones. Nothing regresses, which is why the order is safe to fix.
         const double DEFAULT_HALF_WIDTH_FT = 75.0;
         var paired = new HashSet<int>();
+
+        for (int i = 0; i < runwayStarts.Count; i++)
+        {
+            if (paired.Contains(i)) continue;
+            var a = runwayStarts[i];
+            string? reciprocal = ReciprocalRunwayName(a.RunwayName);
+            if (reciprocal == null) continue;
+
+            for (int j = i + 1; j < runwayStarts.Count; j++)
+            {
+                if (paired.Contains(j)) continue;
+                var b = runwayStarts[j];
+                if (!string.Equals(b.RunwayName?.Trim(), reciprocal, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                // Sanity: opposing thresholds should be 200 m – 6000 m apart
+                // (smaller = same end, larger = different runway pair).
+                double sep = FastDistanceMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+                if (sep < 200.0 || sep > 6000.0) continue;
+
+                // Does the a→b direction actually match what "a" is called? This replaces
+                // the stored heading as the geometry check. The tolerance is wide (45°)
+                // because the designator is magnetic while the computed bearing is true,
+                // and magnetic variation reaches ~20° at high latitudes; the exact-
+                // reciprocal-name and separation tests do the real work.
+                double designatorHdg = RunwayDesignatorHeading(a.RunwayName);
+                double actualHdg = NavigationCalculator.CalculateBearing(
+                    a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+                if (Math.Abs(NormalizeAngle(designatorHdg - actualHdg)) > 45.0) continue;
+
+                graph.RunwayCenterlines.Add(new RunwayCenterline
+                {
+                    Lat1 = a.Latitude, Lon1 = a.Longitude,
+                    Lat2 = b.Latitude, Lon2 = b.Longitude,
+                    Name1 = a.RunwayName,
+                    Name2 = b.RunwayName,
+                    // The stored heading is what we just declined to trust — use the
+                    // measured one, which is also what every consumer of this line means.
+                    HeadingDeg1 = actualHdg,
+                    HalfWidthMeters = (DEFAULT_HALF_WIDTH_FT * 0.3048),
+                });
+                paired.Add(i);
+                paired.Add(j);
+                break;
+            }
+        }
+
+        // SECOND PASS — the leftovers, by reciprocal HEADING (±15° to absorb mag/true
+        // conventions). Still needed, and not merely as a safety net: it is what rescues
+        // the NAME-SWAPPED airports, where the row labelled for one end physically sits at
+        // the other. AYCH's "03" row sits at the 21 threshold carrying 21's heading, so the
+        // designator pass correctly refuses it (the a→b bearing is 185° from what "03"
+        // claims) while the heading pass still finds the true pair.
         for (int i = 0; i < runwayStarts.Count; i++)
         {
             if (paired.Contains(i)) continue;
@@ -302,11 +424,8 @@ public class TaxiGraph
             {
                 if (paired.Contains(j)) continue;
                 var b = runwayStarts[j];
-                // Reciprocal heading check (allow ±15° to absorb mag/true conventions).
                 double hdgDelta = Math.Abs(NormalizeAngle(a.Heading - b.Heading + 180.0));
                 if (hdgDelta > 15.0) continue;
-                // Sanity: opposing thresholds should be 200 m – 6000 m apart
-                // (smaller = same end, larger = different runway pair).
                 double sep = FastDistanceMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
                 if (sep < 200.0 || sep > 6000.0) continue;
 
@@ -490,6 +609,191 @@ public class TaxiGraph
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Subdivides the taxi edge nearest <paramref name="lat"/>/<paramref name="lon"/> at the
+    /// perpendicular projection of that point and returns the inserted node — the fallback that
+    /// lets a PAINTED holding point which sits on the pavement but between two navdata vertices
+    /// be used as a destination. Returns null when no edge lies within
+    /// <paramref name="maxPerpMeters"/>, so the caller still DROPS the point rather than
+    /// misplacing it.
+    ///
+    /// <para>Motivating measurement (EGLL, 2026-08): 11 of the airport's 14 unresolved painted
+    /// points sit ≤2 m from a taxiway centreline yet 31-63 m from the nearest vertex, because MSFS
+    /// only puts vertices at junctions and bends. LOMAN is the clean case — 0.0 m from the taxiway
+    /// A edge, 34.7 m from a vertex, and equidistant between the two vertices either side, so it is
+    /// unreachable by ANY node-snap radius: widening the radius would place the hold ~35 m up or
+    /// down the taxiway from the paint. Projection is the only placement that lands on the line.</para>
+    ///
+    /// <para>Topologically this is a pure subdivision: the new node has degree 2, the two halves
+    /// sum to the original length, and no connectivity is created or removed — so A* costs and
+    /// every route are unchanged, and the node is <see cref="TaxiNodeType.Normal"/> so it can never
+    /// be mistaken for a scenery hold-short node by the (navdata-authoritative, safety-critical)
+    /// hold-short placement walks. Parking connectors are skipped for the same reason
+    /// <see cref="NamedHoldingPointResolver.SnapToNode"/> skips them: a stand connector is not a
+    /// holding point. A projection landing on (or within the merge threshold of) an endpoint is
+    /// refused — that case is already the node snap's, and splitting there would create a
+    /// zero-length edge.</para>
+    /// </summary>
+    /// <summary>
+    /// Node ids created by <see cref="InsertHoldingPointNodeOnEdge"/>. These are placements for
+    /// PAINTED HOLD LINES, never junctions, so any search that is looking for real navdata
+    /// topology must skip them — see the skip in <see cref="ResolveHoldingPointEntries"/>.
+    /// </summary>
+    private readonly HashSet<int> _holdingPointProjectionNodes = new();
+
+    /// <summary>True when the node was inserted by the holding-point edge projection.</summary>
+    public bool IsHoldingPointProjectionNode(int nodeId) =>
+        _holdingPointProjectionNodes.Contains(nodeId);
+
+    public TaxiNode? InsertHoldingPointNodeOnEdge(double lat, double lon, double maxPerpMeters)
+    {
+        TaxiEdge? bestEdge = null;
+        double bestPerp = maxPerpMeters;
+        double bestLat = 0, bestLon = 0;
+
+        // Build stores every segment as a forward + reverse pair, so visit each undirected
+        // pair once. Keyed on (min,max,name) rather than a From<To filter so a one-directional
+        // edge (if one ever exists) is still considered.
+        var visited = new HashSet<(int, int, string)>();
+
+        foreach (var edges in Adjacency.Values)
+        {
+            foreach (var e in edges)
+            {
+                var key = e.FromNodeId < e.ToNodeId
+                    ? (e.FromNodeId, e.ToNodeId, e.TaxiwayName)
+                    : (e.ToNodeId, e.FromNodeId, e.TaxiwayName);
+                if (!visited.Add(key)) continue;
+
+                if (!Nodes.TryGetValue(e.FromNodeId, out var a) ||
+                    !Nodes.TryGetValue(e.ToNodeId, out var b)) continue;
+                if (a.Type == TaxiNodeType.Parking || b.Type == TaxiNodeType.Parking) continue;
+
+                var (perp, t, projLat, projLon) = ProjectOntoSegmentClamped(
+                    lat, lon, a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+                if (perp >= bestPerp) continue;
+                if (t <= 0.0 || t >= 1.0) continue;
+                if (FastDistanceMeters(projLat, projLon, a.Latitude, a.Longitude) < MERGE_THRESHOLD_METERS) continue;
+                if (FastDistanceMeters(projLat, projLon, b.Latitude, b.Longitude) < MERGE_THRESHOLD_METERS) continue;
+
+                bestPerp = perp;
+                bestEdge = e;
+                bestLat = projLat;
+                bestLon = projLon;
+            }
+        }
+
+        return bestEdge == null ? null : SplitEdgeAt(bestEdge, bestLat, bestLon);
+    }
+
+    /// <summary>
+    /// Replaces the undirected edge <paramref name="fwd"/> (and its reverse twin, when present)
+    /// with two halves meeting at a new node placed at <paramref name="lat"/>/<paramref name="lon"/>.
+    /// The new node inherits the edge's taxiway name (so taxiway-keyed lookups see it as part of
+    /// that taxiway, like every other vertex on it) and its endpoint's ComponentId — correct by
+    /// construction, since a subdivision cannot change reachability, and needed because
+    /// AssignConnectedComponents has already run by the time holding points resolve.
+    /// </summary>
+    private TaxiNode SplitEdgeAt(TaxiEdge fwd, double lat, double lon)
+    {
+        int aId = fwd.FromNodeId, bId = fwd.ToNodeId;
+        var a = Nodes[aId];
+        var b = Nodes[bId];
+
+        int newId = _nextNodeId++;
+        var node = new TaxiNode
+        {
+            NodeId = newId,
+            Latitude = lat,
+            Longitude = lon,
+            Type = TaxiNodeType.Normal,
+            ComponentId = a.ComponentId,
+        };
+        if (!string.IsNullOrEmpty(fwd.TaxiwayName))
+            node.TaxiwayNames.Add(fwd.TaxiwayName);
+
+        Nodes[newId] = node;
+        Adjacency[newId] = new List<TaxiEdge>();
+        _holdingPointProjectionNodes.Add(newId);
+
+        string hashKey = GetSpatialHashKey(lat, lon);
+        if (!_spatialHash.ContainsKey(hashKey))
+            _spatialHash[hashKey] = new List<int>();
+        _spatialHash[hashKey].Add(newId);
+
+        if (!string.IsNullOrEmpty(fwd.TaxiwayName))
+            RegisterTaxiwayNode(fwd.TaxiwayName, newId);
+
+        double distA = FastDistanceMeters(a.Latitude, a.Longitude, lat, lon);
+        double distB = FastDistanceMeters(lat, lon, b.Latitude, b.Longitude);
+        double bearAn = NavigationCalculator.CalculateBearing(a.Latitude, a.Longitude, lat, lon);
+        double bearNb = NavigationCalculator.CalculateBearing(lat, lon, b.Latitude, b.Longitude);
+
+        Adjacency[aId].Remove(fwd);
+        TaxiEdge? rev = null;
+        if (Adjacency.TryGetValue(bId, out var bEdges))
+        {
+            foreach (var e in bEdges)
+            {
+                if (e.ToNodeId == aId && e.TaxiwayName == fwd.TaxiwayName && e.PathType == fwd.PathType)
+                {
+                    rev = e;
+                    break;
+                }
+            }
+            if (rev != null) bEdges.Remove(rev);
+        }
+
+        AddEdge(Half(fwd, aId, newId, distA, bearAn));
+        AddEdge(Half(fwd, newId, bId, distB, bearNb));
+        if (rev != null)
+        {
+            AddEdge(Half(rev, bId, newId, distB, (bearNb + 180.0) % 360.0));
+            AddEdge(Half(rev, newId, aId, distA, (bearAn + 180.0) % 360.0));
+        }
+
+        return node;
+
+        static TaxiEdge Half(TaxiEdge src, int from, int to, double dist, double bearing) => new()
+        {
+            FromNodeId = from,
+            ToNodeId = to,
+            DistanceMeters = dist,
+            TaxiwayName = src.TaxiwayName,
+            BearingDegrees = bearing,
+            WidthFeet = src.WidthFeet,
+            PathType = src.PathType,
+        };
+    }
+
+    /// <summary>
+    /// Perpendicular distance and projection of a point onto the SEGMENT a→b, with the
+    /// parameter clamped to [0,1]. Distinct from <see cref="ProjectOntoCenterline"/>, which
+    /// deliberately leaves the parameter unclamped so callers can reason about along-track
+    /// positions beyond a runway threshold.
+    /// </summary>
+    private static (double perp, double t, double projLat, double projLon) ProjectOntoSegmentClamped(
+        double plat, double plon, double alat, double alon, double blat, double blon)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos((alat + blat) * 0.5 * (Math.PI / 180.0));
+
+        double bx = (blon - alon) * metersPerDegLon, by = (blat - alat) * METERS_PER_DEG_LAT;
+        double px = (plon - alon) * metersPerDegLon, py = (plat - alat) * METERS_PER_DEG_LAT;
+
+        double lenSq = bx * bx + by * by;
+        if (lenSq < 1e-9)
+            return (Math.Sqrt(px * px + py * py), 0.0, alat, alon);
+
+        double t = (px * bx + py * by) / lenSq;
+        if (t < 0.0) t = 0.0;
+        else if (t > 1.0) t = 1.0;
+
+        double ex = px - t * bx, ey = py - t * by;
+        return (Math.Sqrt(ex * ex + ey * ey), t,
+                alat + t * (blat - alat), alon + t * (blon - alon));
     }
 
     /// <summary>
@@ -1323,6 +1627,334 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Finds the taxiway→runway entrance node to use for a FULL-LENGTH BACKTRACK
+    /// departure: the pilot enters the runway partway down, backtracks toward the
+    /// departure threshold, turns around, and lines up full length.
+    ///
+    /// Purely GEOMETRIC and NAME-INDEPENDENT (unlike <see cref="GetRunwayIntersections"/>,
+    /// which keys on taxiway names) — many third-party sceneries model backtrack
+    /// airports with UNNAMED taxi_path segments (iniBuilds EGNM: every taxiway name
+    /// is empty), so a name-based scan finds nothing there. This walks the graph
+    /// nodes instead.
+    ///
+    /// <paramref name="thrLat"/>/<paramref name="thrLon"/> is the DEPARTURE-END
+    /// threshold (the takeoff end of the named runway); <paramref name="farLat"/>/
+    /// <paramref name="farLon"/> is the opposite end. An entrance qualifies when it:
+    ///   • lies on the runway (perpendicular ≤ half-width + slop),
+    ///   • is genuinely down-field of the departure threshold (so a backtrack is
+    ///     actually required) yet not a far-end nub,
+    ///   • has at least one graph neighbour OFF the runway (a real taxiway junction,
+    ///     not a mid-runway centerline node), and
+    ///   • is reachable from the aircraft (same connected component).
+    /// Among those, the one CLOSEST to the departure threshold is returned — that
+    /// minimises the backtrack distance and matches real procedure (e.g. EGNM 32
+    /// enters at D1, ~575 m from the 32 threshold, not at the far-end A1). Returns
+    /// null when the airport has no such entrance (caller falls back to a normal
+    /// full-length departure).
+    /// </summary>
+    public TaxiNode? FindBacktrackEntryNode(
+        double thrLat, double thrLon, double farLat, double farLon,
+        double halfWidthMeters, double aircraftLat, double aircraftLon)
+    {
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return null;
+
+        double maxPerp = halfWidthMeters + 5.0;
+        const double MIN_ALONG_M     = 40.0;  // past the threshold connector — a backtrack is genuinely needed
+        const double MIN_REMAINING_M = 45.0;  // and on the runway proper, not a far-end nub
+
+        // Reachability: restrict to the aircraft's connected component. A shared
+        // ComponentId guarantees A* can path to the node (undirected graph), so
+        // this filters out isolated pad/runway islands the apron can't reach.
+        var acNode = FindNearestNode(aircraftLat, aircraftLon);
+        if (acNode == null) return null;
+        int comp = acNode.ComponentId;
+
+        TaxiNode? best = null;
+        double bestAlong = double.MaxValue;
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId != comp) continue;
+            var (perp, along, _, _) = ProjectOntoCenterline(
+                node.Latitude, node.Longitude, thrLat, thrLon, farLat, farLon);
+            if (perp > maxPerp) continue;
+            if (along < MIN_ALONG_M || along > totalLen - MIN_REMAINING_M) continue;
+            if (!HasOffRunwayNeighbour(node, thrLat, thrLon, farLat, farLon, maxPerp)) continue;
+
+            // Closest to the departure threshold = least backtrack. This is what
+            // makes the choice DIRECTION-AWARE: measured from the takeoff-end
+            // threshold, the nearest entrance is the correct one for THIS runway
+            // direction (the reciprocal picks the entrance near the other end).
+            if (along < bestAlong) { bestAlong = along; best = node; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// Resolves named PAINTED HOLDING POINTS (OSM aeroway=holding_position refs, e.g.
+    /// LSZH "A2") to runway entry nodes, so the Taxi planner can offer "depart from
+    /// holding point A2" even where the entry stub taxiway is UNNAMED in navdata
+    /// (MK Studios LSZH: every taxi_path is nameless, so the name-keyed
+    /// <see cref="GetRunwayIntersections"/> can't list those entries).
+    ///
+    /// GEOMETRIC and name-independent, mirroring <see cref="FindBacktrackEntryNode"/>:
+    /// a holding point belongs to this runway when it sits within
+    /// <paramref name="maxPointPerpMeters"/> of the centerline, and its entry node is the nearest
+    /// same-component on-runway node with an off-runway neighbour (a real
+    /// taxiway↔runway junction) within <paramref name="maxNodeDistMeters"/> of the
+    /// point. The painted point only ever SELECTS the entry — hold-short placement on
+    /// the resulting route stays authoritative from navdata (TruncateToHoldShort),
+    /// per the augmentation anti-geometry rule.
+    ///
+    /// Returns one <see cref="RunwayIntersection"/> per resolved point (TaxiwayName
+    /// carries the HOLDING-POINT name; Latitude/Longitude is the entry node projected
+    /// onto the centerline — the same lineup-target convention as
+    /// <see cref="GetRunwayIntersections"/>), sorted by distance from the departure
+    /// threshold. Full-length entries are deliberately INCLUDED (unlike the
+    /// intersection list): picking the full-length holding point by name (A2 vs A1)
+    /// is exactly the use case. Same-name points resolving to the same entry node are
+    /// deduplicated; distinct entries sharing a name are all returned (the caller's
+    /// labels carry distances).
+    ///
+    /// <paramref name="thrLat"/>/<paramref name="thrLon"/> must be the DEPARTURE
+    /// lineup point (the `start` table row), never the runway_end pavement edge —
+    /// see the caller's note in TaxiAssistForm.PopulateHoldingPoints. Both along-track
+    /// gates below are written against that anchor.
+    ///
+    /// BEHIND-THRESHOLD holds (EGCC 23L): some airports paint their full-length
+    /// departure holds well BEHIND the threshold, on the lead-in taxiways of a
+    /// holding/queue area — EGCC's Runway 2 has VB1 73 m and T1 430 m behind the 23L
+    /// pavement edge, and the whole area was silently dropped by the old
+    /// "ptAlong ≥ −30" gate (unlike EGKK 26L, whose set-back holding area is rescued
+    /// by the start-row envelope, EGCC's start row sits INTO the runway so the
+    /// envelope never grows backwards). Such a point is admitted only under THREE
+    /// gates, all required, so other airports never gain false entries:
+    /// (1) <paramref name="behindThresholdEligible"/> says its OSM
+    /// holding_position:type marks a line that GUARDS a runway ("runway"/"ils" —
+    /// never "intermediate" queue-ladder holds, never untagged points; callers
+    /// without kind data pass null and keep the old behavior exactly);
+    /// (2) no OTHER runway's centerline is closer to the point than this one's
+    /// (see <see cref="AnotherRunwayClaimsPoint"/> — EGCC's V1–V6 sit almost midway
+    /// between the parallels and must not migrate between lists), which needs
+    /// <paramref name="runwayName"/> to tell self/reciprocal apart;
+    /// (3) its entry binds no farther away than the threshold anchor itself is
+    /// (+60 m slack), so a behind-threshold point can only ever select the
+    /// full-length entry, never a junction downfield.
+    /// </summary>
+    public List<RunwayIntersection> ResolveHoldingPointEntries(
+        IReadOnlyList<(string Name, double Lat, double Lon)> holdingPoints,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double halfWidthMeters, double aircraftLat, double aircraftLon,
+        double maxNodeDistMeters = 200.0,
+        // Own tolerance rather than HOLDSHORT_RUNWAY_MATCH_M (150 m). That constant sizes
+        // a DIFFERENT judgement — "which runway is this hold-short node protecting" — where
+        // being tight matters, because EGKK's two centerlines run only ~200 m apart and a
+        // loose gate would name a hold after the wrong runway. Here the runway is already
+        // decided by the caller and the entry NODE still has to sit on this centerline, so
+        // the point gate only has to be wide enough to admit a legitimately set-back
+        // CAT II/III hold: EGKK's A3 is 162 m out and was silently missing from the picker.
+        double maxPointPerpMeters = 200.0,
+        // Opt-in for the behind-threshold admission above: given a point's NAME, is its
+        // OSM kind one that guards a runway ("runway"/"ils")? Null = feature off.
+        Func<string, bool>? behindThresholdEligible = null,
+        // This runway's designator ("23L"), used only to exclude self + reciprocal from
+        // the other-runway ownership guard. Null = guard unusable, behind-threshold
+        // points stay excluded (safe default).
+        string? runwayName = null)
+    {
+        var result = new List<RunwayIntersection>();
+        if (holdingPoints == null || holdingPoints.Count == 0) return result;
+
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return result;
+
+        double maxPerp = halfWidthMeters + 5.0;
+        // The anchor is the departure lineup point, and a FULL-LENGTH entry stub meets
+        // the runway right at it — often a few metres behind, since the lineup point is
+        // where the nose sits and the stub joins the pavement abeam or short of that.
+        // A 5 m floor (correct when this was anchored on the pavement edge) filtered the
+        // full-length junction out entirely, and the full-length holding points then
+        // snapped to the NEXT entry down the runway: at EGKK 26L, M1/M3 resolved to the
+        // A entrance 112 m in, silently mislabelling which stub you were selecting.
+        const double MIN_ALONG_M = -40.0;     // allow the full-length junction itself; still exclude off-end nubs
+        const double MIN_REMAINING_M = 45.0;  // far-end nubs are not a usable departure entry
+
+        // Reachability: same connected component as the aircraft (matches
+        // FindBacktrackEntryNode — guarantees A* can path to the entry).
+        var acNode = FindNearestNode(aircraftLat, aircraftLon);
+        if (acNode == null) return result;
+        int comp = acNode.ComponentId;
+
+        // Behind-threshold admission window (gate 1 of the three in the doc comment).
+        // 1000 m spans the largest holding area measured (EGCC V1 is 901 m back); the
+        // eligibility/ownership/binding gates are what carry the precision.
+        const double MAX_BEHIND_ALONG_M = 1000.0;
+
+        var seen = new HashSet<(string, int)>();
+        var scored = new List<(RunwayIntersection Entry, double PointToEntryMeters)>();
+        foreach (var (name, hLat, hLon) in holdingPoints)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            // OSM names a runway-crossing hold line after the RUNWAY it protects
+            // ("08L/26R" at EGKK), not after a taxiway. That is never something ATC
+            // clears you to depart from, and in a picker it reads as a second runway
+            // having appeared in the list — drop it.
+            if (IsRunwayDesignatorLabel(name)) continue;
+
+            // Does this painted point belong to THIS runway?
+            var (ptPerp, ptAlong, _, _) = ProjectOntoCenterline(hLat, hLon, thrLat, thrLon, farLat, farLon);
+            if (ptPerp > maxPointPerpMeters) continue;
+            // Beyond the far end is the RECIPROCAL's holding area — always its list, never ours.
+            if (ptAlong > totalLen) continue;
+
+            double bindCap = maxNodeDistMeters;
+            if (ptAlong < -30.0)
+            {
+                // Behind the threshold: admit only under all three gates (doc comment).
+                if (ptAlong < -MAX_BEHIND_ALONG_M) continue;
+                if (behindThresholdEligible == null || !behindThresholdEligible(name)) continue;
+                if (runwayName == null ||
+                    AnotherRunwayClaimsPoint(hLat, hLon, ptPerp, runwayName, MAX_BEHIND_ALONG_M)) continue;
+                // Gate 3: the entry may sit no farther from the point than the threshold
+                // anchor itself (+60 m connector slack) — structurally, only the
+                // full-length entry (or something even nearer) can bind.
+                bindCap = Math.Max(maxNodeDistMeters,
+                    FastDistanceMeters(hLat, hLon, thrLat, thrLon) + 60.0);
+            }
+
+            // Nearest qualifying entry node to the painted point.
+            TaxiNode? best = null;
+            double bestDist = bindCap;
+            double bestAlong = 0, bestProjLat = 0, bestProjLon = 0;
+            foreach (var node in Nodes.Values)
+            {
+                if (node.ComponentId != comp) continue;
+                // A hold-line projection node is a painted LINE's position, not a runway
+                // junction. Skipping it keeps this entry list byte-identical to what it was
+                // before the projection fallback existed: an earlier point in this same loop
+                // can insert one, and a mid-stub node close enough to the centreline would
+                // otherwise outrank the real junction and move the entry short of the runway.
+                if (IsHoldingPointProjectionNode(node.NodeId)) continue;
+                var (perp, along, projLat, projLon) = ProjectOntoCenterline(
+                    node.Latitude, node.Longitude, thrLat, thrLon, farLat, farLon);
+                if (perp > maxPerp) continue;
+                if (along < MIN_ALONG_M || along > totalLen - MIN_REMAINING_M) continue;
+                if (!HasOffRunwayNeighbour(node, thrLat, thrLon, farLat, farLon, maxPerp)) continue;
+
+                double dist = FastDistanceMeters(node.Latitude, node.Longitude, hLat, hLon);
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    best = node;
+                    bestAlong = along;
+                    bestProjLat = projLat;
+                    bestProjLon = projLon;
+                }
+            }
+            if (best == null) continue;
+            if (!seen.Add((name.Trim().ToUpperInvariant(), best.NodeId))) continue;
+
+            // The painted line's OWN node, snapped per point (not per name — a name can be
+            // painted twice). Routing pins the route through it so the pilot taxis up THIS
+            // stub; see RunwayIntersection.HoldNodeId for what goes wrong without it.
+            // Same-component only (the pin must be routable) and never the entry node itself
+            // (pinning to the destination is a no-op).
+            int holdNodeId = 0;
+            if (NamedHoldingPointResolver.SnapOrInsert(this, hLat, hLon) is { } holdSnap
+                && holdSnap.Node.ComponentId == comp
+                && holdSnap.Node.NodeId != best.NodeId)
+            {
+                holdNodeId = holdSnap.Node.NodeId;
+            }
+
+            scored.Add((new RunwayIntersection
+            {
+                TaxiwayName = name.Trim(),
+                NodeId = best.NodeId,
+                Latitude = bestProjLat,
+                Longitude = bestProjLon,
+                AlongMetersFromThreshold = bestAlong,
+                RemainingMeters = totalLen - bestAlong,
+                HoldNodeId = holdNodeId,
+            }, bestDist));
+        }
+
+        // Along-track first (the picker's reading order). Several behind-threshold
+        // holds share the full-length entry and so tie exactly on along-track; break
+        // the tie by the painted line NEAREST its entry — the line closest to the
+        // runway is "the normal clearance" AnnounceDefaultHoldingPoint promises to
+        // name (EGCC 23L: VB1 at ~90 m beats T1 at ~430 m) — then by name so the
+        // order is deterministic across sessions.
+        scored.Sort((a, b) =>
+        {
+            int byAlong = a.Entry.AlongMetersFromThreshold.CompareTo(b.Entry.AlongMetersFromThreshold);
+            if (byAlong != 0) return byAlong;
+            int byDist = a.PointToEntryMeters.CompareTo(b.PointToEntryMeters);
+            if (byDist != 0) return byDist;
+            return string.Compare(a.Entry.TaxiwayName, b.Entry.TaxiwayName, StringComparison.OrdinalIgnoreCase);
+        });
+        result.AddRange(scored.Select(s => s.Entry));
+        return result;
+    }
+
+    /// <summary>
+    /// Ownership guard for a BEHIND-THRESHOLD holding point candidate (see
+    /// <see cref="ResolveHoldingPointEntries"/>): true when some OTHER runway's
+    /// centerline is strictly closer to the point than the runway being resolved is
+    /// — the point is that runway's hold, not ours. "Other" excludes the resolved
+    /// runway's own centerline by designator (either end — one centerline carries
+    /// both names, so this also excludes the reciprocal). The along window is that
+    /// runway's own span EXTENDED by the same behind-threshold band the admission
+    /// uses (<paramref name="behindBandMeters"/>, both ends — the centerline serves
+    /// both directions): the claim window must equal the admission window, or a
+    /// point behind BOTH runways' thresholds is in neither narrow window and the
+    /// guard never fires — at LEMD, Y-1 (36R's hold, 82 m from its line) was also
+    /// admitted to 14L's list at 169 m perp through exactly that gap.
+    /// </summary>
+    private bool AnotherRunwayClaimsPoint(
+        double lat, double lon, double perpToThisRunwayMeters, string runwayName, double behindBandMeters)
+    {
+        foreach (var cl in RunwayCenterlines)
+        {
+            if (string.Equals(cl.Name1?.Trim(), runwayName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(cl.Name2?.Trim(), runwayName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            double len = FastDistanceMeters(cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+            if (len < 1.0) continue;
+            var (perp, along, _, _) = ProjectOntoCenterline(lat, lon, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
+            if (along < -behindBandMeters || along > len + behindBandMeters) continue;
+            // 5 m margin: a real claim is closer by tens of metres; the margin keeps a
+            // same-runway centerline that slipped past the name check (designator
+            // format drift) from "claiming" its own point on float noise, since that
+            // line is collinear with the envelope line the caller measured against.
+            if (perp < perpToThisRunwayMeters - 5.0) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="node"/> has at least one adjacent node that is
+    /// OFF the given runway centerline (perpendicular &gt; <paramref name="maxPerp"/>)
+    /// — i.e. the node is a real taxiway↔runway junction, not a node buried in the
+    /// runway pavement. Used by <see cref="FindBacktrackEntryNode"/> to reject
+    /// mid-runway nodes that no taxiway actually connects to.
+    /// </summary>
+    private bool HasOffRunwayNeighbour(
+        TaxiNode node, double thrLat, double thrLon, double farLat, double farLon, double maxPerp)
+    {
+        if (!Adjacency.TryGetValue(node.NodeId, out var edges)) return false;
+        foreach (var e in edges)
+        {
+            int otherId = e.FromNodeId == node.NodeId ? e.ToNodeId : e.FromNodeId;
+            if (!Nodes.TryGetValue(otherId, out var other)) continue;
+            var (perp, _, _, _) = ProjectOntoCenterline(
+                other.Latitude, other.Longitude, thrLat, thrLon, farLat, farLon);
+            if (perp > maxPerp) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// Projects a point onto the runway centerline (a→b). Returns the
     /// perpendicular distance, the signed along-track distance from a (metres),
     /// and the foot-of-perpendicular point in lat/lon. Equirectangular frame —
@@ -1870,6 +2502,235 @@ public class TaxiGraph
         while (angle > 180) angle -= 360;
         while (angle < -180) angle += 360;
         return angle;
+    }
+
+    /// <summary>
+    /// Of a runway end's `start`-table rows, the FULL-LENGTH departure point — the one
+    /// furthest back along the takeoff direction.
+    ///
+    /// A runway end can carry several rows, and taking whichever the DB returned first picks
+    /// an arbitrary one: EGLL 09R's first row is 342 m down the runway while a 67 m row sits
+    /// right there, and VRMM 18's is 826 m in versus 28 m. 14 airports in the fs2020 navdata
+    /// carry duplicates, and 13 runway ends were choosing a worse row. The full-length point
+    /// is by definition the furthest back, so there is nothing to weigh up.
+    ///
+    /// Rows are compared by along-track only — lateral error is <see cref="SnapStartToRunwayCenterline"/>'s
+    /// business. Returns null for an empty sequence.
+    ///
+    /// Returns null too when even the best row lies past <paramref name="maxAlongFraction"/> of
+    /// the runway, because such a row is not describing a departure point at all and the caller
+    /// is better off with the threshold. LatinVFR's LEMD is the case: its 32R, 32L, 18L and 18R
+    /// rows all sit at 47-48 % — the runway MIDPOINT, a placeholder never dragged to the
+    /// threshold — with no taxiway within 220-660 m, and two of them carry a heading of 0° on a
+    /// runway that points 322°. Selecting LEMD 32R as a taxi destination therefore routed to a
+    /// taxiway a third of the way down the runway and aimed the lineup mid-field.
+    ///
+    /// The 40 % bar comes from the shape of the data, not taste: across all 97,488 rows in the
+    /// live fs2020 navdata, 93.5 % sit within the first 10 % of their runway and over half
+    /// between 2 % and 5 %. Only 115 rows (0.12 %) lie past 40 %, and the ones inspected —
+    /// LEMD's four, URWW 05/23 at 99-101 %, KMWH 18 at 103 %, N15 16/34 at 97-98 % — are all
+    /// plainly broken. Runways under 100 m are exempt: the fraction is meaningless on a strip.
+    /// </summary>
+    public static StartPosition? PickFullLengthStart(
+        IEnumerable<StartPosition> rows,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double maxAlongFraction = 0.40)
+    {
+        StartPosition? best = null;
+        double bestAlong = double.MaxValue;
+        foreach (var row in rows)
+        {
+            var (_, along, _, _) = ProjectOntoCenterline(
+                row.Latitude, row.Longitude, thrLat, thrLon, farLat, farLon);
+            if (best == null || along < bestAlong)
+            {
+                best = row;
+                bestAlong = along;
+            }
+        }
+        if (best == null) return null;
+
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen >= 100.0 && bestAlong > totalLen * maxAlongFraction) return null;
+        return best;
+    }
+
+    /// <summary>
+    /// Picks the runway extent the named-holding-point picker measures against: the OUTER
+    /// ENVELOPE of the pavement edges (runway_end) and the departure lineup points.
+    ///
+    /// Neither source alone works, because navdata disagrees with itself in both directions.
+    /// EGKK 26L departs 406 m BEYOND its `runway_end` on a starter extension, so anchoring on
+    /// the edge hides the entire A/M holding area behind the anchor. But EGLL 09R and EHAM 36C
+    /// put the start row 45 m and 480 m INTO the runway, so anchoring on the lineup point
+    /// instead drops the full-length holds that sit behind it — measured, that cost EGLL 09R
+    /// its N1/NB1 and 27L its N8/NB8, and EHAM 36C its CAT III hold.
+    ///
+    /// Taking the furthest-back near end and the furthest-forward far end is inclusive by
+    /// construction: the window can only ever grow, so no entry either source would have
+    /// offered can be lost. Callers with no reciprocal lineup point pass the far pavement edge
+    /// for both far arguments, which degrades to the edge.
+    ///
+    /// LineupAlong (never negative) is where the departure point sits inside that window, so
+    /// the caller can still tell a full-length entry from a partway one.
+    /// </summary>
+    public static (double ThrLat, double ThrLon, double FarLat, double FarLon, double LineupAlong)
+        ChooseHoldingPointExtent(
+            double edgeThrLat, double edgeThrLon, double edgeFarLat, double edgeFarLon,
+            double lineupLat, double lineupLon,
+            double farLineupLat, double farLineupLon)
+    {
+        double thrLat = edgeThrLat, thrLon = edgeThrLon;
+        var (_, lineupOnEdge, _, _) = ProjectOntoCenterline(
+            lineupLat, lineupLon, edgeThrLat, edgeThrLon, edgeFarLat, edgeFarLon);
+        if (lineupOnEdge < 0)
+        {
+            thrLat = lineupLat;
+            thrLon = lineupLon;
+        }
+
+        double farLat = edgeFarLat, farLon = edgeFarLon;
+        var (_, edgeFarAlong, _, _) = ProjectOntoCenterline(
+            edgeFarLat, edgeFarLon, thrLat, thrLon, edgeFarLat, edgeFarLon);
+        var (_, farLineupAlong, _, _) = ProjectOntoCenterline(
+            farLineupLat, farLineupLon, thrLat, thrLon, edgeFarLat, edgeFarLon);
+        if (farLineupAlong > edgeFarAlong)
+        {
+            farLat = farLineupLat;
+            farLon = farLineupLon;
+        }
+
+        var (_, lineupAlong, _, _) = ProjectOntoCenterline(
+            lineupLat, lineupLon, thrLat, thrLon, farLat, farLon);
+        return (thrLat, thrLon, farLat, farLon, Math.Max(0.0, lineupAlong));
+    }
+
+    /// <summary>
+    /// Pulls a `start`-table lineup point back ONTO the runway_end centerline, keeping
+    /// its along-track position. A no-op (to the metre) wherever the start row is sound.
+    ///
+    /// The start table is the right source for WHERE ALONG the runway a departure begins —
+    /// it accounts for displaced thresholds and starter extensions, which runway_end does
+    /// not — but it is not always laterally trustworthy. EGKK (fs2020) is the case that
+    /// forced this: three of its four start rows sit 99-122 m to the SIDE of their own
+    /// runway (and carry headings 90-180° out), while every other airport probed —
+    /// EGLL, EGCC, EGSS, EGGW, EHAM, LFPG, KJFK, KBOS, LEBL — lands within 5 m. Left
+    /// alone, that lateral error propagates into the route destination, the LINEUP TARGET
+    /// a blind pilot steers by, and the runway centerlines; at EGKK 26L it aimed the
+    /// lineup ~109 m north of the pavement.
+    ///
+    /// Projecting rather than rejecting keeps the along-track value that made the start
+    /// table worth using: EGKK 26L's row projects 406 m BEHIND the landing threshold,
+    /// which is exactly the full-length departure point on the starter extension.
+    /// Negative along-track is therefore expected and preserved.
+    ///
+    /// This ONLY ever repairs the lateral error, and only inside a plausible along-track
+    /// window; anything else is returned UNCHANGED so today's behaviour is preserved
+    /// exactly. Both refusals are load-bearing:
+    ///
+    /// - Further than <paramref name="maxOffsetMeters"/> off the line, the row is not
+    ///   "offset", it is describing something else, and we have no basis to relocate it.
+    /// - Past midfield (or as far behind), the row is not this runway's departure point at
+    ///   all. Some airports carry NAME-SWAPPED start rows — AYCH's "03" row sits at the 21
+    ///   threshold with 21's heading, and URWW's "05" sits 2854 m away at the 23 end.
+    ///   Projecting those onto their named runway put both of an airport's rows at
+    ///   midfield, on top of each other, which then failed the 200 m separation test and
+    ///   COST AYCH the centerline it used to have. Refusing leaves that pre-existing data
+    ///   problem exactly as it was rather than converting it into a new one.
+    /// </summary>
+    public static (double Lat, double Lon) SnapStartToRunwayCenterline(
+        double startLat, double startLon,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double maxOffsetMeters = 250.0)
+    {
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return (startLat, startLon);
+
+        var (perp, along, projLat, projLon) =
+            ProjectOntoCenterline(startLat, startLon, thrLat, thrLon, farLat, farLon);
+
+        if (perp <= 1.0) return (startLat, startLon);          // already on the line
+        if (perp > maxOffsetMeters) return (startLat, startLon); // not this runway's line at all
+
+        // The along-track window: anywhere from a starter extension half a runway behind
+        // the landing threshold, up to midfield. Outside it, this row is not describing
+        // this runway's departure point — leave it alone.
+        double half = totalLen / 2.0;
+        if (along < -half || along > half) return (startLat, startLon);
+
+        return (projLat, projLon);
+    }
+
+    /// <summary>
+    /// Splits a runway designator into its number and side letter — "26L" → (26, "L"),
+    /// "08" → (8, ""), "9C" → (9, "C"). Returns null for anything that isn't a
+    /// 1-2 digit number optionally followed by a single L/R/C (helipads "H1", water
+    /// starts, blank names). Case-insensitive; surrounding whitespace is ignored.
+    /// </summary>
+    internal static (int Number, string Side)? ParseRunwayDesignator(string? name)
+    {
+        string s = name?.Trim() ?? "";
+        if (s.Length == 0) return null;
+
+        int digits = 0;
+        while (digits < s.Length && char.IsAsciiDigit(s[digits])) digits++;
+        if (digits == 0 || digits > 2) return null;
+        if (!int.TryParse(s.Substring(0, digits), out int number)) return null;
+        if (number < 1 || number > 36) return null;
+
+        string side = s.Substring(digits).ToUpperInvariant();
+        if (side.Length > 1) return null;
+        if (side.Length == 1 && side != "L" && side != "R" && side != "C") return null;
+        return (number, side);
+    }
+
+    /// <summary>
+    /// The designator of the opposite end — "26L" → "08R", "08" → "26", "18C" → "36C".
+    /// Null when the name doesn't parse as a runway designator. The number wraps in the
+    /// 1-36 space (26 + 18 = 44 → 8) and L/R swap because the two ends see the parallel
+    /// pair from opposite directions; C and side-less designators are unchanged.
+    /// Zero-padded to two digits, matching how navdata writes them.
+    /// </summary>
+    internal static string? ReciprocalRunwayName(string? name)
+    {
+        var parsed = ParseRunwayDesignator(name);
+        if (parsed == null) return null;
+        var (number, side) = parsed.Value;
+
+        int opposite = number + 18;
+        if (opposite > 36) opposite -= 36;
+
+        string oppositeSide = side switch { "L" => "R", "R" => "L", _ => side };
+        return $"{opposite:00}{oppositeSide}";
+    }
+
+    /// <summary>
+    /// True when a label is a runway designator or a pair of them — "26L", "08L/26R",
+    /// "36C-18C" (EHAM maps its runway hold lines dash-separated). OSM tags a
+    /// runway-crossing holding position with the crossed runway's name, so this
+    /// separates those from genuine taxiway holding-point designators (A2, N4, VIKAS).
+    /// </summary>
+    internal static bool IsRunwayDesignatorLabel(string? label)
+    {
+        string s = label?.Trim() ?? "";
+        if (s.Length == 0) return false;
+
+        foreach (var part in s.Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries))
+            if (ParseRunwayDesignator(part) == null) return false;
+        return true;
+    }
+
+    private static readonly char[] SeparatorChars = { '/', '-' };
+
+    /// <summary>
+    /// The nominal heading a designator implies, in degrees — "26L" → 260. Zero when the
+    /// name doesn't parse, which callers treat as "no opinion" rather than "due north"
+    /// (they only ever use this against a tolerance alongside a name match).
+    /// </summary>
+    internal static double RunwayDesignatorHeading(string? name)
+    {
+        var parsed = ParseRunwayDesignator(name);
+        return parsed == null ? 0.0 : parsed.Value.Number * 10.0;
     }
 
     /// <summary>

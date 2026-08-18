@@ -252,6 +252,126 @@ public class NamedHoldingPointResolverTests
         Assert.Equal(NodeNear(graph, 12, 0).NodeId, hp.NodeId);
     }
 
+    // --- Edge-projection fallback (EGLL LOMAN) -------------------------------
+
+    [Fact]
+    public void Resolve_projects_onto_the_edge_when_the_point_is_on_pavement_but_between_vertices()
+    {
+        // The EGLL LOMAN case, to scale: a 200 m taxiway leg with vertices only at its
+        // ends, and a painted point ON the centreline at the midpoint — 0 m from the
+        // edge but 100 m from either vertex, so no node-snap radius can reach it.
+        var graph = BuildGraph(Edge(0, 0, "", 200, 0, ""));
+        int nodesBefore = graph.Nodes.Count;
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("LOMAN", LatN(100), LonE(0), "intermediate") });
+
+        var hp = Assert.Single(result);
+        Assert.Equal("LOMAN", hp.Name);
+        Assert.True(hp.InsertedOnEdge);
+        Assert.False(hp.SnappedToDesignatedNode);
+        // Placed exactly on the paint, not 100 m up or down the taxiway.
+        Assert.Equal(0.0, hp.SnapDistanceMeters, 1.0);
+        Assert.Equal(LatN(100), hp.Latitude, 6);
+
+        // A pure subdivision: one node added, degree 2, both halves present.
+        Assert.Equal(nodesBefore + 1, graph.Nodes.Count);
+        var inserted = graph.Nodes[hp.NodeId];
+        Assert.Equal(TaxiNodeType.Normal, inserted.Type);
+        Assert.Equal(2, graph.Adjacency[hp.NodeId].Count);
+        Assert.Equal(graph.Nodes[NodeNear(graph, 0, 0).NodeId].ComponentId, inserted.ComponentId);
+    }
+
+    [Fact]
+    public void Resolve_drops_a_point_that_is_near_neither_a_node_nor_the_pavement()
+    {
+        // EGLL A12/AB12/AY1: 55-85 m from any edge. Off-pavement stays dropped —
+        // the fallback is an "on the pavement?" test, not a wider search radius.
+        var graph = BuildGraph(Edge(0, 0, "", 200, 0, ""));
+        int nodesBefore = graph.Nodes.Count;
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("A12", LatN(100), LonE(60), "ILS") });
+
+        Assert.Empty(result);
+        Assert.Equal(nodesBefore, graph.Nodes.Count);   // nothing inserted on a miss
+    }
+
+    [Fact]
+    public void Resolve_prefers_an_existing_node_over_projecting_a_new_one()
+    {
+        // The fallback is strictly a fallback: a point 12 m from a real vertex takes
+        // that vertex, even though projecting it would land 0 m from the centreline.
+        var graph = BuildGraph(Edge(0, 0, "", 200, 0, ""));
+        int nodesBefore = graph.Nodes.Count;
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("VIKAS", LatN(12), LonE(0), "intermediate") });
+
+        var hp = Assert.Single(result);
+        Assert.False(hp.InsertedOnEdge);
+        Assert.Equal(NodeNear(graph, 0, 0).NodeId, hp.NodeId);
+        Assert.Equal(nodesBefore, graph.Nodes.Count);
+    }
+
+    [Fact]
+    public void Resolve_duplicate_ranking_keeps_the_node_snap_over_a_nearer_edge_projection()
+    {
+        // Additive-only guarantee: a name that resolves today must resolve to the SAME
+        // node after the change. One painted line sits 25 m from a vertex (a valid node
+        // snap); its twin sits exactly on a different taxiway's centreline, which would
+        // project at 0 m. The node snap must still win, or the pilot would silently be
+        // selecting the other physical line (EGLL A4/SATUN are parallel painted lines).
+        var graph = BuildGraph(
+            Edge(25, 0, "", 200, 0, ""),
+            Edge(0, 400, "", 200, 400, "", name: "B"));
+
+        var result = NamedHoldingPointResolver.Resolve(graph, new[]
+        {
+            ("A4", LatN(0), LonE(0), "runway"),
+            ("A4", LatN(100), LonE(400), "runway"),
+        });
+
+        var hp = Assert.Single(result);
+        Assert.False(hp.InsertedOnEdge);
+        Assert.Equal(NodeNear(graph, 25, 0).NodeId, hp.NodeId);
+    }
+
+    [Fact]
+    public void Resolve_is_idempotent_across_repeated_calls_on_the_same_graph()
+    {
+        // The form re-resolves until the async online fetch has been seen, so the same
+        // graph can be resolved several times. The second pass must find the node the
+        // first inserted, not split the (now halved) edge again.
+        var graph = BuildGraph(Edge(0, 0, "", 200, 0, ""));
+        var points = new[] { ("LOMAN", LatN(100), LonE(0), "intermediate") };
+
+        var first = NamedHoldingPointResolver.Resolve(graph, points);
+        int afterFirst = graph.Nodes.Count;
+        var second = NamedHoldingPointResolver.Resolve(graph, points);
+
+        Assert.Equal(afterFirst, graph.Nodes.Count);
+        Assert.Equal(first[0].NodeId, second[0].NodeId);
+        Assert.False(second[0].InsertedOnEdge);   // second pass is a plain node snap
+    }
+
+    [Fact]
+    public void Resolve_never_projects_onto_a_parking_connector_edge()
+    {
+        // Same rule as the node snap: a stand connector is not a holding point. The
+        // point sits on the stand lead-in, 40 m from the taxiway — nothing resolves.
+        var graph = BuildGraph(
+            Edge(0, 0, "P", 0, 200, "P", name: "STAND"),
+            Edge(40, 0, "", 40, 200, ""));
+        int nodesBefore = graph.Nodes.Count;
+
+        var result = NamedHoldingPointResolver.Resolve(
+            graph, new[] { ("VIKAS", LatN(0), LonE(100), "intermediate") });
+
+        Assert.Empty(result);
+        Assert.Equal(nodesBefore, graph.Nodes.Count);
+    }
+
     [Theory]
     [InlineData("RUNWAY", "N2E (runway hold)")]
     [InlineData("ils", "A11 (ILS hold)")]
