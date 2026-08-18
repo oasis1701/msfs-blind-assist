@@ -1,0 +1,1 @@
+You can now choose which audio device MSFS Blind Assist's own tones play on, under Settings, Audio. Keep the simulator on your speakers while your taxi, takeoff, hand fly, landing guidance and docking cues come through your headset.
