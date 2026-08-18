@@ -152,6 +152,54 @@ public class TaxiRouterTests
         Assert.Contains("B", names);
     }
 
+    // --- Concatenate --------------------------------------------------------------
+    // Used by the named-holding-point route pin (TaxiGuidanceManager.ApplyHoldingPointPin)
+    // to join "aircraft -> painted hold line" and "hold line -> runway entry" into one
+    // route. The join must be REBUILT, not appended: an appended second leg restarts its
+    // cumulative distances at zero and reads the seam as "straight" whatever the real turn.
+
+    [Fact]
+    public void Concatenate_rebuilds_one_route_across_the_join()
+    {
+        var (graph, router) = BuildLGraph();
+        var a3 = FindNode(graph, 37.002, -122.000);
+        var junction = FindNode(graph, 37.001, -122.000);
+        var b2 = FindNode(graph, 37.001, -121.999);
+
+        var legA = router.FindShortestPath(a3.NodeId, junction.NodeId)!;
+        var legB = router.FindShortestPath(junction.NodeId, b2.NodeId)!;
+
+        var joined = router.Concatenate(legA, legB);
+
+        Assert.NotNull(joined);
+        Assert.Equal(legA.Segments.Count + legB.Segments.Count, joined!.Segments.Count);
+        Assert.Equal(a3.NodeId, joined.Segments[0].FromNode.NodeId);
+        Assert.Equal(b2.NodeId, joined.Segments[^1].ToNode.NodeId);
+        // Distances run continuously across the seam rather than restarting.
+        Assert.Equal(legA.TotalDistanceMeters + legB.TotalDistanceMeters,
+                     joined.TotalDistanceMeters, 3);
+        Assert.True(joined.Segments[^1].CumulativeDistanceMeters >
+                    joined.Segments[0].CumulativeDistanceMeters);
+        // The A->B corner is a real turn, computed at the join.
+        Assert.NotEqual("straight", joined.Segments[^1].TurnDirection);
+    }
+
+    [Fact]
+    public void Concatenate_refuses_legs_that_do_not_meet()
+    {
+        var (graph, router) = BuildLGraph();
+        var a1 = FindNode(graph, 37.000, -122.000);
+        var junction = FindNode(graph, 37.001, -122.000);
+        var b2 = FindNode(graph, 37.001, -121.999);
+
+        // Second leg starts where the first one does, not where it ends.
+        var legA = router.FindShortestPath(a1.NodeId, junction.NodeId)!;
+        var legB = router.FindShortestPath(a1.NodeId, b2.NodeId)!;
+
+        Assert.Null(router.Concatenate(legA, legB));
+        Assert.Null(router.Concatenate(legA, new TaxiRoute()));
+    }
+
     // --- GetTurnDirection ---------------------------------------------------------
 
     [Theory]

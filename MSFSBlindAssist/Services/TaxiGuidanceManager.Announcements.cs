@@ -360,6 +360,28 @@ public partial class TaxiGuidanceManager
             return $"Backtracking.{gsStr}";
         }
 
+        // Full-length backtrack DEPARTURE. This branch must stay ABOVE the route
+        // checks below: the route ENDED at the intermediate entrance, so
+        // _currentSegmentIndex is already past the last segment and the query would
+        // otherwise fall through to "Arrived at {destination}." — telling a pilot
+        // rolling the wrong way down an active runway that the maneuver is over.
+        if (_state == TaxiGuidanceState.BacktrackDeparture)
+        {
+            string gsStr = _positionInitialized
+                ? $" Ground speed {(int)Math.Round(_lastGroundSpeedKts)} knots."
+                : "";
+            int turnHdg = (int)Math.Round(_lineupHeadingMag);
+            if (_hasLineupTarget && _positionInitialized)
+            {
+                double distM = TaxiGraph.FastDistanceMeters(
+                    _lastLat, _lastLon, _lineupTargetLat, _lineupTargetLon);
+                return $"Backtracking {_destinationName} to full length. " +
+                       $"{FormatDistance(distM)} to go, then turn around to heading {turnHdg}.{gsStr}";
+            }
+            return $"Backtracking {_destinationName} to full length. " +
+                   $"Turn around to heading {turnHdg} at the runway end.{gsStr}";
+        }
+
         if (_state == TaxiGuidanceState.ProgressiveHold)
             return _progressiveTerminator?.EndAnnouncement()
                    ?? "Holding. Set a new route when cleared.";

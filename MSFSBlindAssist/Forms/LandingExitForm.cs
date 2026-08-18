@@ -302,7 +302,10 @@ public class LandingExitForm : Form
         {
             var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
             var starts = _dataProvider.GetRunwayStarts(icao);
-            builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts);
+            // Runways passed so Build can repair laterally-bogus start rows
+            // (SnapStartToRunwayCenterline) — the exit planner's runway geometry must
+            // agree with every other graph in the app.
+            builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts, _dataProvider.GetRunways(icao));
         }
         finally
         {

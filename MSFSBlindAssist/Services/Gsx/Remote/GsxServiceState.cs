@@ -59,33 +59,14 @@ public sealed class GsxServiceState
     /// </summary>
     public string StatusText { get; init; } = "";
 
-    /// <summary>
-    /// True when this row carries a QUANTITY that <see cref="GsxServiceAnnouncer"/> already
-    /// speaks on its own schedule — passengers, bags, fuel, or the generic progress pair.
-    ///
-    /// <para>
-    /// It exists to answer one question precisely: while this service runs, is GSX's
-    /// <c>message</c> slot its rotating progress ticker, or is it carrying real prose?
-    /// Boarding, deboarding, catering and refuel all publish a quantity, and their ticker
-    /// lines ("80/155 passengers boarded", "Baggage loading progress 83%") are already
-    /// announced milestone- or time-gated, so the slot must stay silent for them.
-    /// <b>Pushback (<c>Departure</c>) and de-icing publish none</b> — no pax, no bags, no
-    /// fuel, no progress pair — and for those the slot is the ONLY channel GSX gives the
-    /// prompts a pilot has to act on ("set the parking brake", "release the parking brake").
-    /// <c>Phase</c> is not a substitute: it is parsed and has no consumer anywhere.
-    /// </para>
-    ///
-    /// <para>
-    /// This replaces a blanket "any service is performing" test, whose own justification was
-    /// "the typed pax/bags/fuel announcers already carry those figures" — true for the
-    /// boarding+refuel capture it was written from, and false for every service that carries
-    /// no figures at all. Typed throughout: no text matching, so a GSX rewording cannot
-    /// change the answer.
-    /// </para>
-    /// </summary>
-    public bool PublishesTypedProgress =>
-        PaxDone.HasValue || PaxTotal.HasValue || BagsPercent.HasValue ||
-        FuelCurrent.HasValue || ProgressCurrent.HasValue || ProgressTotal.HasValue;
+    // PublishesTypedProgress lived here. It answered "while this service runs, is GSX's
+    // message slot its rotating progress ticker?" and was the sole gate on that slot's
+    // speech. It has no consumer any more and is deliberately NOT kept: the question was
+    // unanswerable at service granularity. Refuel's crew prose ("Operator walking to pump",
+    // "Lowering platform") rides the SAME slot as refuel's figures, so a row-level yes threw
+    // the prose away with the ticker — measured at 1 h 00 m 49 s of silence across one
+    // pilot's ground operations. The distinction is now drawn per PHRASE, structurally, by
+    // GsxSlotRotationTracker. Restoring a row-level gate here would reinstate that defect.
 
     public static IReadOnlyList<GsxServiceState> ParseList(JsonElement array)
     {

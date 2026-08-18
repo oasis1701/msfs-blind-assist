@@ -313,6 +313,12 @@ public sealed class GsxService : IDisposable
     private string _lastAnnouncedMessage = string.Empty;
     // False until the first snapshot has seeded _lastAnnouncedMessage — see AnnounceMessageIfChanged.
     private bool _messageBaselined;
+    // Longer than one phrase: what separates GSX's rotating progress ticker from its
+    // ground-crew narration, which share the one message slot. See GsxSlotRotationTracker.
+    private readonly GsxSlotRotationTracker _slotRotation = new();
+    // True while a run of rotation suppressions is in progress, so gsx.log gets one line per
+    // run rather than one per ~1 Hz republish.
+    private bool _slotRotationHushed;
 
     public GsxService(IntPtr windowHandle, ScreenReaderAnnouncer announcer)
     {
@@ -440,6 +446,10 @@ public sealed class GsxService : IDisposable
         _selectedActiveService = null;
         _messageBaselined = false;
         _lastAnnouncedMessage = string.Empty;
+        // A NEW session must narrate in full: a phrase surviving from the dead one must not
+        // silence its first showing here.
+        _slotRotation.Clear();
+        _slotRotationHushed = false;
         if (clearReceiptDigests)
         {
             // A NEW session follows: forget its predecessor's invoices, and
@@ -711,6 +721,10 @@ public sealed class GsxService : IDisposable
             // _messageBaselined is deliberately NOT reset -- the session continues, and
             // re-baselining would record-not-speak the restarted engine's first message.
             _lastAnnouncedMessage = string.Empty;
+            // Same reasoning: the restarted engine re-narrates from the top, and its first
+            // showing must not be mistaken for the dead engine's ticker cycling back.
+            _slotRotation.Clear();
+            _slotRotationHushed = false;
 
             // Same reasoning for the tooltip, and through the event-raising path for the
             // same reason ResetSessionModels uses it: AccessGSXForm refreshes its Tooltip
@@ -1018,11 +1032,13 @@ public sealed class GsxService : IDisposable
     }
 
     /// <summary>
-    /// Speaks GSX's own "message" slot — the text GSX itself publishes when no
-    /// typed service row says anything (follow-me/marshaller/positioning banners,
-    /// the idle and cruise text) — whenever it changes by more than a run of
-    /// digits, and ONLY while no service is performing (see the ticker note in
-    /// the body). This was the pre-Remote-API transport's primary announcement
+    /// Speaks GSX's own "message" slot — the follow-me/marshaller/positioning
+    /// banners, the idle and cruise text, and the running ground-crew narration
+    /// ("Operator walking to pump", "Lowering platform", "Locking gear") — whenever
+    /// it changes by more than a run of digits AND is not the slot cycling back to
+    /// a phrase it already showed (see the rotation note in the body). It is NOT
+    /// gated on which service is running; that was tried twice and is what silenced
+    /// the narration. This was the pre-Remote-API transport's primary announcement
     /// stream (every tooltip-text change, delta-trimmed) and it went missing in
     /// the migration: a "message" patch only ever refreshed the Tooltip box.
     ///
@@ -1038,31 +1054,36 @@ public sealed class GsxService : IDisposable
     {
         string text = RawMessageText();
 
-        // While a service that publishes a QUANTITY is performing, the message slot is GSX's
-        // rotating progress TICKER — live, with boarding and refuel running together it
-        // cycled "80/155 passengers boarded" -> "The airplane system is loading Fuel: 776
-        // USGAL (2360 kg)" -> "Baggage loading progress 83%" -> blank, every few seconds.
-        // Every one of those is already spoken, milestone- or time-gated, by the typed
-        // pax/bags/fuel announcers; read here as wording changes they became continuous
-        // speech. Track the text silently so the last ticker line is not spoken as news the
-        // moment the service completes.
+        // With boarding and refuel running together the slot is PARTLY GSX's rotating progress
+        // TICKER — live, it cycled "80/155 passengers boarded" -> "The airplane system is
+        // loading Fuel: 776 USGAL (2360 kg)" -> "Baggage loading progress 83%" -> blank, every
+        // few seconds. Every one of those is already spoken, milestone- or time-gated, by the
+        // typed pax/bags/fuel announcers; read here as wording changes they became continuous
+        // speech. But the SAME slot carries that same service's ground-crew narration, which
+        // nothing else speaks at all — which is why the answer is per-phrase, not per-service.
         //
-        // The test is PER-SERVICE (GsxServiceState.PublishesTypedProgress), not "is anything
-        // performing". A blanket gate silenced the slot for pushback and de-icing too, and
-        // those publish no pax, no bags, no fuel and no progress pair — so the slot is the
-        // ONLY channel carrying "set the parking brake" / "release the parking brake", and
-        // nothing else was speaking or even showing them: RecomputeTooltip is gated the same
-        // way, so Ctrl+G could not retrieve them either, and detail.phase has no consumer.
-        // A pilot got "Pushback in progress" and then silence through the whole manoeuvre.
-        // The blanket gate's own justification was "the typed announcers already carry those
-        // figures" — sound for the boarding+refuel capture it was written from, and false for
-        // a service with no figures at all.
-        if (Services.Any(s => GsxActiveServiceResolver.IsActive(s) && s.PublishesTypedProgress))
-        {
-            _lastAnnouncedMessage = string.IsNullOrWhiteSpace(text) ? string.Empty : text;
-            return;
-        }
-
+        // The service-level test this REPLACES (GsxServiceState.PublishesTypedProgress) stood
+        // the whole slot down while any performing service published pax/bags/fuel. It was
+        // already once narrowed from a blanket "is anything performing", which had silenced
+        // pushback and de-icing — they publish no figures at all, so for them the slot is the
+        // ONLY channel carrying "set the parking brake" / "release the parking brake".
+        //
+        // The narrowed form had the same defect one level down, and it cost a whole hour of a
+        // blind pilot's ground time: refuel's crew prose rides the SAME slot as refuel's
+        // figures, so gating on "this service publishes a quantity" throws the prose away with
+        // the ticker. Measured on that pilot's own gsx.log — nine performing windows of
+        // Refueling/Boarding/Deboarding, SEVEN with not one spoken slot line, 1 h 00 m 49 s of
+        // silence. No "Operator walking to pump", no "Lowering platform", no "Fuel Truck is in
+        // position". The 08-17 refuel went dark from 22:04:12 to 22:07:48.
+        //
+        // The slot cannot be split by SERVICE (one shared field, nothing names its writer) or
+        // by TEXT ("drop anything with a digit" takes "Waiting for your action: open R Entry 5"
+        // with it). It is split STRUCTURALLY instead — see GsxSlotRotationTracker. Every phrase
+        // GSX offers is recorded, spoken or not; one that matches an EARLIER entry but not the
+        // most recent is the ticker cycling and stays silent, while a phrase never seen is
+        // narration and speaks. The ticker therefore reads one lap and then goes quiet, which
+        // is the deliberate cost of the trade: a bounded handful of lines whose figures the
+        // typed announcers also carry, in exchange for never again dropping a crew instruction.
         if (string.IsNullOrWhiteSpace(text))
         {
             // The slot cleared: whatever comes next is the start of something
@@ -1073,6 +1094,31 @@ public sealed class GsxService : IDisposable
             _lastAnnouncedMessage = string.Empty;
             return;
         }
+
+        // Ask BEFORE recording, and record whatever the answer was: a suppressed lap that
+        // left no trace would make the next lap's lines look adjacent to the previous lap's
+        // and read as nags. One clock read, shared, so the query and the record cannot land
+        // in different windows.
+        DateTime nowUtc = DateTime.UtcNow;
+        bool rotation = _slotRotation.IsRotation(text, nowUtc);
+        _slotRotation.Record(text, nowUtc);
+        if (rotation)
+        {
+            // Logged once per RUN of suppressions, never per tick: GSX republishes at ~1 Hz
+            // and a four-minute refuel would otherwise write hundreds of lines and evict the
+            // rotation the log exists to explain (docs/gsx.md: never log a per-tick
+            // suppression). The first line of a cycle is the one worth having — it names the
+            // phrase and says the ticker started repeating.
+            if (!_slotRotationHushed)
+            {
+                _slotRotationHushed = true;
+                GsxDiagnosticLog.Hushed(GsxSpeechSource.Message, text, "rotation",
+                                        "slot is cycling phrases it already showed; further repeats this run are silent");
+            }
+            return;
+        }
+        _slotRotationHushed = false;
+
         if (!GsxMessageAnnounceGate.ShouldAnnounce(_lastAnnouncedMessage, text))
             return;
 
