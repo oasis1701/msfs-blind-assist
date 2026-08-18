@@ -30,8 +30,14 @@ public static class AudioOutputDeviceService
     private static readonly object Gate = new();
     private static readonly List<WeakReference<AudioToneGenerator>> LiveGenerators = new();
 
-    // The saved device ID as of the last ApplyDeviceChange, so an unrelated settings save
-    // does not interrupt a tone that is currently steering the aircraft.
+    // The saved device ID as of the last time it took effect — either a tone actually starting
+    // on it (seeded in CreatePlayer) or the last ApplyDeviceChange — so an unrelated settings
+    // save does not interrupt a tone that is currently steering the aircraft. Must be seeded
+    // from CreatePlayer as well as written by ApplyDeviceChange: this field starts at
+    // string.Empty, and "Windows default" is ALSO id string.Empty, so without the CreatePlayer
+    // seed a pilot who starts a session on a saved device and then switches TO "Windows
+    // default" compares the new "" against a never-seeded "" and ApplyDeviceChange silently
+    // no-ops — the one direction of this feature it must never fail on.
     private static string _lastAppliedDeviceId = string.Empty;
 
     // Which saved device we have already announced a fallback for. Re-armed when the setting
@@ -43,7 +49,18 @@ public static class AudioOutputDeviceService
     /// Sink for the once-per-session fallback notice. MainForm assigns this at startup.
     /// The delegate MUST marshal to the UI thread — tone Start() runs on the ProximityBeeper
     /// timer thread and on the taxi position thread, and ScreenReaderAnnouncer silently
-    /// no-ops off the UI thread.
+    /// no-ops off the UI thread. That marshal MUST be non-blocking (Control.BeginInvoke),
+    /// NEVER a synchronous wait (Control.Invoke).
+    ///
+    /// AnnounceFallbackOnce dispatches the call to this delegate onto the thread pool rather
+    /// than invoking it on the calling AudioToneGenerator's own thread specifically so this
+    /// sink can never be reached while that generator's startStopLock is held. Do not
+    /// interpret that as license to block here anyway: a synchronous Control.Invoke on the
+    /// pool thread this runs on would still stall waiting for the UI thread's message pump,
+    /// and if anything ever calls this delegate directly on a startStopLock-holding thread
+    /// again, a blocking marshal is exactly what turns that into the deadlock this dispatch
+    /// exists to prevent — a UI thread parked inside ApplyDeviceChange -> RebindOutput waiting
+    /// on the same lock the blocking call is waiting to get past.
     /// </summary>
     public static Action<string>? AnnounceFallback { get; set; }
 
@@ -90,6 +107,26 @@ public static class AudioOutputDeviceService
     public static AudioOutputSession? CreatePlayer(string? deviceIdOverride = null)
     {
         string requestedId = deviceIdOverride ?? SafeSavedDeviceId();
+
+        if (deviceIdOverride == null)
+        {
+            // A real tone is starting on the saved setting (not a settings-panel audition).
+            // This is the only place that ever seeds _lastAppliedDeviceId from the setting
+            // that is ACTUALLY in effect, so ApplyDeviceChange has something correct to
+            // compare against on the very first settings save of a session. Without this,
+            // the field started at string.Empty and was only ever written by
+            // ApplyDeviceChange itself — so a pilot with device X saved from a previous
+            // session, switching to "Windows default" (id "") and saving, compared new "" to
+            // never-seeded "" and silently no-opped: the sounding tone stayed on X. Seeded
+            // unconditionally (not only on a successful open) because this tracks the SAVED
+            // ID, not the resolved device — a disconnected saved device must still latch here
+            // so an unrelated settings save doesn't repeatedly re-trigger a rebind onto the
+            // same fallback. Idempotent on every ordinary Start() where nothing changed.
+            lock (Gate)
+            {
+                _lastAppliedDeviceId = requestedId;
+            }
+        }
 
         if (!string.IsNullOrWhiteSpace(requestedId))
         {
@@ -296,14 +333,29 @@ public static class AudioOutputDeviceService
 
         string message = AudioDeviceSelector.FallbackAnnouncement(SafeSavedDeviceName());
         Log.Warn("Audio", message);
-        try
+
+        Action<string>? sink = AnnounceFallback;
+        if (sink == null)
         {
-            AnnounceFallback?.Invoke(message);
+            return;
         }
-        catch (Exception ex)
+
+        // Dispatched on the thread pool, not invoked here on the calling thread: this method
+        // is only ever reached from CreatePlayer, which is only ever reached from
+        // AudioToneGenerator.StartLocked — a context that always holds that generator's
+        // startStopLock. See the LOCK ORDER note on this class and the doc on AnnounceFallback
+        // itself for why the sink must never be called while that lock is held.
+        Task.Run(() =>
         {
-            Log.Warn("Audio", $"Fallback announcement failed: {ex.Message}");
-        }
+            try
+            {
+                sink(message);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Audio", $"Fallback announcement failed: {ex.Message}");
+            }
+        });
     }
 
     private static void ClearFallbackLatch(string requestedId)

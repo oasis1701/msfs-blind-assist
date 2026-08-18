@@ -131,9 +131,14 @@ public class AudioToneGenerator : IDisposable
             lastFrequency = frequency;
             lastPan = 0f;
             lastDeviceIdOverride = deviceIdOverride;
-            isPlaying = true;
 
+            // Register BEFORE isPlaying flips true: if Register throws, the catch below calls
+            // Cleanup(), which does not (and must not) reset isPlaying — so setting it early
+            // would leave isPlaying == true with session/oscillator already nulled out, an
+            // inconsistent state that also permanently blocks Start() from retrying until an
+            // explicit Stop() is called.
             AudioOutputDeviceService.Register(this);
+            isPlaying = true;
         }
         catch (Exception ex)
         {
@@ -204,7 +209,15 @@ public class AudioToneGenerator : IDisposable
     /// <param name="pitchDegrees">Aircraft pitch in degrees (negative = nose down, positive = nose up).</param>
     public void UpdatePitch(double pitchDegrees)
     {
-        if (oscillator == null || !isPlaying)
+        // Read the field into a local ONCE: this method takes no lock (by design, for
+        // real-time smoothness), so RebindOutput can null the `oscillator` field on another
+        // thread between the null-check and the use below. Re-reading the field for the use
+        // would race; using the captured local cannot — worst case it writes into an
+        // oscillator that RebindOutput has already orphaned, which is harmless, whereas
+        // dereferencing a field that just went null is a NullReferenceException reachable
+        // from any high-frequency caller (e.g. TaxiSteeringTone.SetTone at ~30 Hz).
+        PhaseContinuousOscillator? osc = oscillator;
+        if (osc == null || !isPlaying)
             return;
 
         // Map pitch (degrees) to frequency (Hz). ±pitchRangeDeg saturates to min/max frequency;
@@ -214,7 +227,7 @@ public class AudioToneGenerator : IDisposable
         double targetFrequency = CenterFrequency + (clampedPitch * (halfFrequencyRange / pitchRangeDeg));
 
         // Phase-continuous oscillator smoothly transitions to new frequency (no clicks/pops)
-        oscillator.SetFrequency(targetFrequency);
+        osc.SetFrequency(targetFrequency);
         lastFrequency = targetFrequency;
     }
 
@@ -225,11 +238,13 @@ public class AudioToneGenerator : IDisposable
     /// <param name="pan">Pan value from -1.0 (full left) to +1.0 (full right).</param>
     public void SetPan(float pan)
     {
-        if (panningSampleProvider == null || !isPlaying)
+        // See UpdatePitch for why the field is captured once into a local before use.
+        PanningSampleProvider? panProvider = panningSampleProvider;
+        if (panProvider == null || !isPlaying)
             return;
 
         lastPan = Math.Clamp(pan, -1.0f, 1.0f);
-        panningSampleProvider.Pan = lastPan;
+        panProvider.Pan = lastPan;
     }
 
     /// <summary>
@@ -239,7 +254,9 @@ public class AudioToneGenerator : IDisposable
     /// <param name="bankDegrees">Aircraft bank in degrees using standard convention (negative = left, positive = right).</param>
     public void UpdateBank(double bankDegrees)
     {
-        if (panningSampleProvider == null || !isPlaying)
+        // See UpdatePitch for why the field is captured once into a local before use.
+        PanningSampleProvider? panProvider = panningSampleProvider;
+        if (panProvider == null || !isPlaying)
             return;
 
         // Map bank angle to stereo pan using standard right-positive convention:
@@ -253,7 +270,7 @@ public class AudioToneGenerator : IDisposable
         float pan = (float)(clampedBank / bankRangeDeg);
 
         lastPan = pan;
-        panningSampleProvider.Pan = pan;
+        panProvider.Pan = pan;
     }
 
     /// <summary>
@@ -263,10 +280,12 @@ public class AudioToneGenerator : IDisposable
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
     public void UpdateVolume(double volume)
     {
-        if (oscillator == null)
+        // See UpdatePitch for why the field is captured once into a local before use.
+        PhaseContinuousOscillator? osc = oscillator;
+        if (osc == null)
             return;
 
-        oscillator.SetGain(volume);
+        osc.SetGain(volume);
         lastVolume = volume;
     }
 
@@ -277,10 +296,12 @@ public class AudioToneGenerator : IDisposable
     /// <param name="waveType">New wave type.</param>
     public void UpdateWaveType(HandFlyWaveType waveType)
     {
-        if (oscillator == null)
+        // See UpdatePitch for why the field is captured once into a local before use.
+        PhaseContinuousOscillator? osc = oscillator;
+        if (osc == null)
             return;
 
-        oscillator.SetWaveType(waveType);
+        osc.SetWaveType(waveType);
         lastWaveType = waveType;
     }
 
