@@ -31,14 +31,25 @@ public static class AudioOutputDeviceService
     private static readonly List<WeakReference<AudioToneGenerator>> LiveGenerators = new();
 
     // The saved device ID as of the last time it took effect — either a tone actually starting
-    // on it (seeded in CreatePlayer) or the last ApplyDeviceChange — so an unrelated settings
-    // save does not interrupt a tone that is currently steering the aircraft. Must be seeded
-    // from CreatePlayer as well as written by ApplyDeviceChange: this field starts at
-    // string.Empty, and "Windows default" is ALSO id string.Empty, so without the CreatePlayer
-    // seed a pilot who starts a session on a saved device and then switches TO "Windows
-    // default" compares the new "" against a never-seeded "" and ApplyDeviceChange silently
-    // no-ops — the one direction of this feature it must never fail on.
+    // on it (seeded ONCE per session in CreatePlayer, see _lastAppliedSeeded) or the last
+    // ApplyDeviceChange — so an unrelated settings save does not interrupt a tone that is
+    // currently steering the aircraft. Must be seeded from CreatePlayer as well as written by
+    // ApplyDeviceChange: this field starts at string.Empty, and "Windows default" is ALSO id
+    // string.Empty, so without the CreatePlayer seed a pilot who starts a session on a saved
+    // device and then switches TO "Windows default" compares the new "" against a never-seeded
+    // "" and ApplyDeviceChange silently no-ops — the one direction of this feature it must
+    // never fail on.
     private static string _lastAppliedDeviceId = string.Empty;
+
+    // Guards the CreatePlayer seed above to exactly ONCE per session. The original bug reseeded
+    // _lastAppliedDeviceId from the live saved setting on EVERY tone start: a tone starting in
+    // the window between a settings save and the ApplyDeviceChange() call would seed the field
+    // onto the NEW id before ApplyDeviceChange ever compares, so that comparison reads
+    // new==new, early-returns, and any tone already sounding on the OLD device is never
+    // rebound — and re-saving the same device can't recover it either, since the comparison
+    // still matches. After the first seed of a session, ApplyDeviceChange owns this field
+    // exclusively; CreatePlayer never touches it again.
+    private static bool _lastAppliedSeeded;
 
     // Which saved device we have already announced a fallback for. Re-armed when the setting
     // changes or when that device opens successfully again, so a repeatedly restarting tone
@@ -118,13 +129,25 @@ public static class AudioOutputDeviceService
             // ApplyDeviceChange itself — so a pilot with device X saved from a previous
             // session, switching to "Windows default" (id "") and saving, compared new "" to
             // never-seeded "" and silently no-opped: the sounding tone stayed on X. Seeded
-            // unconditionally (not only on a successful open) because this tracks the SAVED
-            // ID, not the resolved device — a disconnected saved device must still latch here
-            // so an unrelated settings save doesn't repeatedly re-trigger a rebind onto the
-            // same fallback. Idempotent on every ordinary Start() where nothing changed.
+            // unconditionally on that first call (not only on a successful open) because this
+            // tracks the SAVED ID, not the resolved device — a disconnected saved device must
+            // still latch here so an unrelated settings save doesn't repeatedly re-trigger a
+            // rebind onto the same fallback.
+            //
+            // Guarded to fire ONCE per session (_lastAppliedSeeded), never on every Start():
+            // reseeding every call let a tone starting between a settings save and the
+            // ApplyDeviceChange() call re-latch the field onto the NEW id first, so
+            // ApplyDeviceChange's comparison read new==new, early-returned, and any tone
+            // already sounding on the OLD device was stranded there — re-saving the same
+            // device couldn't recover it either, since the comparison still matched. After
+            // this first seed, ApplyDeviceChange owns the field exclusively.
             lock (Gate)
             {
-                _lastAppliedDeviceId = requestedId;
+                if (!_lastAppliedSeeded)
+                {
+                    _lastAppliedDeviceId = requestedId;
+                    _lastAppliedSeeded = true;
+                }
             }
         }
 
