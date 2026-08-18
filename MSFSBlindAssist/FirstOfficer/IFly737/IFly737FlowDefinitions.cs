@@ -41,10 +41,13 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 /// - Seatbelt/No-smoking signs 0=Off/1=Auto/2=On (same numbering as PMDG).
 /// - Emergency exit lights 0=Guard closed/1=Off/2=Armed/3=On — NOT the PMDG's 0/1/2 numbering;
 ///   use IFly737ActionExecutor.EmerExit* constants, never a bare literal.
-/// - Position lights 0=Steady/1=Off/2=Strobe&amp;Steady (same numbering as PMDG).
-/// - Landing lights are a plain 0=Off/1=On STATUS on two switches (Landing_Light_1/2) — no
-///   retractable/fixed split like the PMDG's four lights.
-/// - EFIS (ND) mode 0=Approach/1=VOR/2=Map/3=Plan; ND range index 5=20nm, 6=40nm (0..10 scale).
+/// - Position lights 0=Strobe&amp;Steady/1=Off/2=Steady (probe-verified, PR #196 — the SDK status
+///   doc's reversed labels were wrong; NOT the PMDG numbering). Use the PositionLights* constants.
+/// - Landing lights are a 3-state 0=Off/1=Flash/2=On STATUS on two switches (Landing_Light_1/2 —
+///   probe-verified, PR #196; 1 is FLASH, not On) — no retractable/fixed split like the PMDG's
+///   four lights. Use the LandingLights* constants.
+/// - EFIS (ND) mode 0=Approach/1=VOR/2=Map/3=Plan. The ND range is NOT commandable on this SDK
+///   (PR #196: RANGE_SET dead, status a read-only mod-3 ring) — range steps are Captain items.
 /// - Autobrake 0=RTO/1=Off/2.."1"/3.."2"/4.."3"/5=Max Auto (same numbering as PMDG).
 /// - Transponder is a 4-position ABSOLUTE SET (0 ALT OFF/1 XPNDR/2 TA Only/3 TA-RA) — no walked
 ///   rotary, unlike the PMDG NG3's CDA-deaf EVT_TCAS_MODE.
@@ -435,9 +438,11 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TAKEOFF_CL" },
         Steps = new()
         {
-            // Landing_Light_{1,2}_Switch_Status: 0 Off/1 On only — no retractable/fixed split.
+            // Landing_Light_{1,2}_Switch_Status: 0 Off/1 Flash/2 On (probe-verified, PR #196 —
+            // 1 is FLASH, not On). No retractable/fixed split.
             Multi("BTO_LAND", "Landing lights: ON",
-                ("Landing_Light_1_Switch_Status", 1), ("Landing_Light_2_Switch_Status", 1)),
+                ("Landing_Light_1_Switch_Status", IFly737ActionExecutor.LandingLightsOn),
+                ("Landing_Light_2_Switch_Status", IFly737ActionExecutor.LandingLightsOn)),
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "Position_Light_Switch_Status",
                 IFly737ActionExecutor.PositionLightsStrobeAndSteady),
             // Autothrottle arm: absolute SET, no toggle-guard skip predicate needed.
@@ -546,7 +551,8 @@ public static class IFly737FlowDefinitions
         Steps = new()
         {
             Multi("AL_LAND_OFF", "Landing lights: OFF",
-                ("Landing_Light_1_Switch_Status", 0), ("Landing_Light_2_Switch_Status", 0)),
+                ("Landing_Light_1_Switch_Status", IFly737ActionExecutor.LandingLightsOff),
+                ("Landing_Light_2_Switch_Status", IFly737ActionExecutor.LandingLightsOff)),
             Multi("AL_TURNOFF", "Runway turnoff lights: ON",
                 ("Runway_Turnoff_Light_1_Switch_Status", 1), ("Runway_Turnoff_Light_2_Switch_Status", 1)),
             SW("AL_TAXI", "Taxi light: ON", "Taxi_Light_Switch_Status", 1),

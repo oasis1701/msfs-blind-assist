@@ -850,13 +850,14 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// <summary>Anti-collision beacon (LightsMisc.cs:35 — 0 Off / 1 On).</summary>
     public Task<bool> SetBeacon(int position) => Set("Anti_Collision_Light_Switch_Status", position);
 
-    /// <summary>Position lights (LightsMisc.cs:45 — STATUS encoding 0 Steady / 1 Off /
-    /// 2 Strobe-and-steady). The SET command's encoding is exactly reversed; the definition's
-    /// `map: v => 2 - v` handles it, so the value passed here is the STATUS position.</summary>
+    /// <summary>Position lights (LightsMisc.cs — probe-verified 2026-08-18, PR #196:
+    /// SET == STATUS, 0 Strobe-and-steady / 1 Off / 2 Steady; the SDK status doc's
+    /// reversed labels and the definition's old `map: v => 2 - v` are both gone).
+    /// The value passed here is the verified STATUS position.</summary>
     public Task<bool> SetPositionLights(int position) => Set("Position_Light_Switch_Status", position);
-    public const int PositionLightsSteady = 0;
+    public const int PositionLightsStrobeAndSteady = 0;
     public const int PositionLightsOff = 1;
-    public const int PositionLightsStrobeAndSteady = 2;
+    public const int PositionLightsSteady = 2;
 
     /// <summary>Logo lights (LightsMisc.cs:33 — 0 Off / 1 On).</summary>
     public Task<bool> SetLogo(int position) => Set("Logo_Light_Switch_Status", position);
@@ -874,14 +875,18 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         ("Runway_Turnoff_Light_2_Switch_Status", position),
     });
 
-    /// <summary>Both landing lights (LightsMisc.cs:22-25 — STATUS 0 Off / 1 On). The SET
-    /// command's Value2 is 0 Off / 1 Flash / 2 On; the definition's `map: v => v == 0 ? 0 : 2`
-    /// handles that trap, so the value passed here is the 0/1 STATUS position.</summary>
+    /// <summary>Both landing lights (LightsMisc.cs — probe-verified 2026-08-18, PR #196:
+    /// the status is 3-state and SET == STATUS, 0 Off / 1 Flash / 2 On; the SDK status
+    /// doc's 2-state 0/1 claim and the definition's old `map: v => v == 0 ? 0 : 2` are
+    /// both gone). Pass <see cref="LandingLightsOn"/> (2) for ON — 1 is FLASH, which
+    /// latches in the status but produced no stock-var lighting live.</summary>
     public Task<bool> SetLandingLights(int position) => MultiAsync(new (string, double?)[]
     {
         ("Landing_Light_1_Switch_Status", position),
         ("Landing_Light_2_Switch_Status", position),
     });
+    public const int LandingLightsOff = 0;
+    public const int LandingLightsOn = 2;
 
     // ---- Signs (RegisterInteriorLightsSigns, IFly737MAXDefinition.LightsMisc.cs:57) ----
 

@@ -14,9 +14,9 @@ namespace MSFSBlindAssist.FirstOfficer.IFly737;
 ///   ON  — descending through 9,700 ft  (falling threshold − 300 ft hysteresis)
 /// Gated on <see cref="AutoLights10kEnabled"/> (UserSettings.FOAutoLights10kEnabled); the
 /// crossing latch keeps tracking while disabled so re-enabling mid-flight can't fire a stale
-/// crossing. Unlike the PMDG 737 the iFly landing-light STATUS field is a plain 0=Off/1=On (no
-/// retractable EXTEND-vs-ON distinction), so the executor's SetLandingLights takes 0/1, not
-/// the PMDG's 0/2.
+/// crossing. The iFly landing-light STATUS is 3-state 0=Off/1=Flash/2=On (probe-verified,
+/// PR #196 — 1 is FLASH, not On, and there is no retractable EXTEND-vs-ON distinction), so
+/// the executor's SetLandingLights takes the LandingLightsOff/On constants (0/2).
 ///
 /// Transition altitude / level altimeter handling — climb commands standard, descent NEVER
 /// does:
@@ -175,11 +175,12 @@ public class IFly737FlightPhaseMonitor : IFoPhaseMonitor
         switch (action)
         {
             case LandingLightAction.TurnOff:
-                _ = _executor.SetLandingLights(0);  // STATUS 0 = Off (both landing lights)
+                _ = _executor.SetLandingLights(IFly737ActionExecutor.LandingLightsOff);
                 _announcer.AnnounceImmediate("Above ten thousand. Landing lights off.");
                 break;
             case LandingLightAction.TurnOn:
-                _ = _executor.SetLandingLights(1);  // STATUS 1 = On
+                // STATUS 2 = On (1 is FLASH — probe-verified, PR #196)
+                _ = _executor.SetLandingLights(IFly737ActionExecutor.LandingLightsOn);
                 _announcer.AnnounceImmediate("Below ten thousand. Landing lights on.");
                 break;
         }

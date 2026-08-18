@@ -344,14 +344,15 @@ public static class IFly737ChecklistDefinitions
         Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
         Items = new()
         {
-            // Landing_Light_{1,2}_Switch_Status: 0 Off/1 On only (no retractable/fixed split
-            // on this airframe).
-            Auto("BTKO_LAND", "BEFORE_TAKEOFF", "Landing lights: ON", "Landing_Light_1_Switch_Status", v => v > 0.5,
-                new[] { "Landing_Light_2_Switch_Status" }, (e, _) => e.SetLandingLights(1)),
-            // Position_Light_Switch_Status: 0 Steady/1 Off/2 Strobe & Steady — same numbering as
-            // the PMDG template.
+            // Landing_Light_{1,2}_Switch_Status: 0 Off/1 Flash/2 On (probe-verified, PR #196 —
+            // 1 is FLASH, not On, so "ON" means status 2). No retractable/fixed split.
+            Auto("BTKO_LAND", "BEFORE_TAKEOFF", "Landing lights: ON", "Landing_Light_1_Switch_Status", v => v > 1.5,
+                new[] { "Landing_Light_2_Switch_Status" },
+                (e, _) => e.SetLandingLights(IFly737ActionExecutor.LandingLightsOn)),
+            // Position_Light_Switch_Status: 0 Strobe & Steady/1 Off/2 Steady (probe-verified,
+            // PR #196 — the SDK status doc's labels were reversed; NOT the PMDG numbering).
             Auto("BTKO_STROBE", "BEFORE_TAKEOFF", "Position lights: STROBE & STEADY", "Position_Light_Switch_Status",
-                v => v > 1.5, (e, _) => e.SetPositionLights(IFly737ActionExecutor.PositionLightsStrobeAndSteady)),
+                v => v < 0.5, (e, _) => e.SetPositionLights(IFly737ActionExecutor.PositionLightsStrobeAndSteady)),
             // AT_Switch_Status is an absolute SET (0 Off/1 Armed) — no guard/state param needed.
             Auto("BTKO_AT", "BEFORE_TAKEOFF", "Autothrottle: ARM", "AT_Switch_Status", v => v > 0.5,
                 (e, _) => e.SetATArm(true)),
@@ -436,12 +437,14 @@ public static class IFly737ChecklistDefinitions
         Items = new()
         {
             Auto("AL_LAND_OFF", "AFTER_LANDING", "Landing lights: OFF", "Landing_Light_1_Switch_Status", v => v < 0.5,
-                new[] { "Landing_Light_2_Switch_Status" }, (e, _) => e.SetLandingLights(0)),
+                new[] { "Landing_Light_2_Switch_Status" },
+                (e, _) => e.SetLandingLights(IFly737ActionExecutor.LandingLightsOff)),
             Auto("AL_TURNOFF", "AFTER_LANDING", "Runway turnoff lights: ON", "Runway_Turnoff_Light_1_Switch_Status",
                 v => v > 0.5, new[] { "Runway_Turnoff_Light_2_Switch_Status" }, (e, _) => e.SetRunwayTurnoff(1)),
             Auto("AL_TAXI", "AFTER_LANDING", "Taxi light: ON", "Taxi_Light_Switch_Status", v => v > 0.5,
                 (e, _) => e.SetTaxiLights(1)),
-            Auto("AL_STROBE", "AFTER_LANDING", "Position lights: STEADY", "Position_Light_Switch_Status", v => v < 0.5,
+            // Steady = status 2 under the verified encoding (PR #196) — see BTKO_STROBE.
+            Auto("AL_STROBE", "AFTER_LANDING", "Position lights: STEADY", "Position_Light_Switch_Status", v => v > 1.5,
                 (e, _) => e.SetPositionLights(IFly737ActionExecutor.PositionLightsSteady)),
             Auto("AL_EAI", "AFTER_LANDING", "Engine anti-ice: OFF", "Eng_1_AntiIce_Switch_Status", v => v < 0.5,
                 new[] { "Eng_2_AntiIce_Switch_Status" }, (e, _) => e.SetEngAntiIce(0)),
