@@ -838,6 +838,47 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // DC/AC meter selectors: the SET commands are broken — a SET with ANY Value2
+        // acts as one INC click (probe-verified 2026-08-18: repeated identical SETs
+        // stepped the knob 2→3→4…; DEC/INC work normally). Walk the knob to the
+        // picked position with INC/DEC clicks against the live status instead.
+        // (Live note: the AC knob reached status 7 — one position past the SDK doc's
+        // 0-6 — so the walk is signed-delta, never a wrap assumption.)
+        if (varKey is "DC_Meters_Selector_Status" or "AC_Meters_Selector_Status")
+        {
+            bool dc = varKey[0] == 'D';
+            WalkSelectorAsync(announcer,
+                snapOffset: dc ? IFlySdkOffsets.DC_Meters_Selector_Status : IFlySdkOffsets.AC_Meters_Selector_Status,
+                target: (int)Math.Round(value),
+                inc: dc ? IFlyKeyCommand.ELECTRICAL_DC_METER_INC : IFlyKeyCommand.ELECTRICAL_AC_METER_INC,
+                dec: dc ? IFlyKeyCommand.ELECTRICAL_DC_METER_DEC : IFlyKeyCommand.ELECTRICAL_AC_METER_DEC);
+            return true;
+        }
+
+        // Flaps: the SDK FLTCTRL_FLAP_SET is a complete no-op (probe-verified
+        // 2026-08-18, 6 s dwell each way), but the iFly tracks the STOCK flap
+        // events — FLAPS_INCR moved the lever to detent 1 live (FLAPS_SET, the
+        // stock axis event, is also dead). Step the stock events from the current
+        // detent to the picked one — the third sanctioned stock-event exception
+        // beside KOHLSMAN_SET and the pressurization altitudes (docs/ifly-737.md).
+        if (varKey == "FLAP_Status")
+        {
+            int targetDetent = (int)Math.Round(value);
+            int current = Sdk.Snapshot is { } fs ? fs.ByteAt(IFlySdkOffsets.FLAP_Status) : -1;
+            if (current < 0) { announcer.AnnounceImmediate("Flap position unavailable."); return true; }
+            int delta = targetDetent - current;
+            if (delta == 0) return true;
+            _ = Task.Run(async () =>
+            {
+                for (int i = 0; i < Math.Abs(delta); i++)
+                {
+                    simConnect.SendEvent(delta > 0 ? "FLAPS_INCR" : "FLAPS_DECR", 0);
+                    await Task.Delay(200);
+                }
+            });
+            return true;
+        }
+
         if (_writes.TryGetValue(varKey, out var w))
         {
             if (_numSetRanges.TryGetValue(varKey, out var range))
@@ -853,6 +894,19 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             {
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
+            }
+            // Guarded switches whose SET has no working Value3 guard-bypass need the
+            // command TWICE: the first send only OPENS the guard, the second moves
+            // the switch (probe-verified 2026-08-18 on the stab-trim cutouts, nose
+            // wheel steering and GPWS flap inhibit — a single send read as "dead",
+            // and the guard auto-closes after a few seconds, which is what made
+            // slow retries look dead too). The SET is absolute, so when the guard
+            // is already open the first send moves the switch and the second is an
+            // idempotent no-op — double-sending is safe in every guard state.
+            if (_guardedDoubleSend.Contains(varKey))
+            {
+                var cmd = w.Command; var vv2 = v2; var vv3 = w.Value3;
+                _ = Task.Run(async () => { await Task.Delay(250); Sdk.SendCommand(cmd, vv2, vv3); });
             }
             // Numeric entry confirmation (screen-reader rule: numeric inputs DO confirm).
             // Course fields zero-pad to match the MCP window's 3-digit display (and the
@@ -886,6 +940,54 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
 
         return false;
+    }
+
+    /// <summary>Guarded switches whose SET commands need the double-send (first send
+    /// opens the guard, second moves the switch; no working Value3 bypass) — see the
+    /// dispatch comment above. Flap inhibit, both stab-trim cutouts, nose wheel
+    /// steering and flight spoiler A are probe-verified; the other three GPWS
+    /// inhibits and spoiler B share the exact registration shape and guard
+    /// encoding (unprobed individually). NOT in this set: the guarded switches
+    /// whose Value3=1 bypass works single-send (battery, standby power, IDG,
+    /// bus transfer, stab-trim override, elevator jam, dome light) and the
+    /// unguarded-through emergency exit lights / cargo fire arm (single-send
+    /// verified same sweep).</summary>
+    private static readonly HashSet<string> _guardedDoubleSend = new(StringComparer.Ordinal)
+    {
+        "Nose_Wheel_Steering_Mode",
+        "Stab_Trim_Primary_Mode",
+        "Stab_Trim_Backup_Mode",
+        "Spoiler_A_Mode",
+        "Spoiler_B_Mode",
+        "Flap_Inhibit_Switch_Status",
+        "Gear_Inhibit_Switch_Status",
+        "Terr_Inhibit_Switch_Status",
+        "Runway_Inhibit_Switch_Status",
+    };
+
+    /// <summary>Walk a rotary selector whose SET command is broken (acts as a bare
+    /// INC click regardless of Value2 — the DC/AC meter knobs) to the target
+    /// position with paced INC/DEC clicks, re-reading the live status per step so
+    /// an unexpected position (e.g. the AC knob's undocumented 8th detent) can
+    /// never loop; bounded at 16 clicks.</summary>
+    private void WalkSelectorAsync(ScreenReaderAnnouncer announcer, int snapOffset, int target,
+        IFlyKeyCommand inc, IFlyKeyCommand dec)
+    {
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (Sdk.Snapshot is not { } snap) return;
+                int cur = snap.ByteAt(snapOffset);
+                if (cur == target) return;
+                if (!Sdk.SendCommand(cur < target ? inc : dec))
+                {
+                    Sdk.RunOnUi(() => announcer.AnnounceImmediate("iFly plugin not responding."));
+                    return;
+                }
+                await Task.Delay(350); // command action + the 250 ms shared-memory poll
+            }
+        });
     }
 
     /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll

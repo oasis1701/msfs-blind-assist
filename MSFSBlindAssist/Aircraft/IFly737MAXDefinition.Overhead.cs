@@ -85,6 +85,12 @@ public partial class IFly737MAXDefinition
         Btn(P, "BTN_APU_GEN_2_OFF", "APU Generator 2 Off", IFlyKeyCommand.ELECTRICAL_APU_GENERATOR_2_UP);
 
         // Meters selectors (status and SET Value2 encodings match).
+        // ⚠ The DC/AC METER_SET commands are BROKEN — a SET with ANY Value2 acts as
+        // one INC click (probe-verified 2026-08-18). HandleUIVariableSet intercepts
+        // these two keys and walks the knob with INC/DEC clicks instead (the SET
+        // command registered here is never actually sent). Live note: the AC knob
+        // has an undocumented 8th position (status 7, past the doc's 0-6 TEST) —
+        // unreachable from the combo, shown as a raw number if parked there.
         Sw(P, "DC_Meters_Selector_Status", "DC Meters Selector", IFlyKeyCommand.ELECTRICAL_DC_METER_SET,
             new[] { "Standby Power", "Battery Bus", "Battery", "Auxiliary Battery", "TR1", "TR2", "TR3", "Test" });
         Sw(P, "AC_Meters_Selector_Status", "AC Meters Selector", IFlyKeyCommand.ELECTRICAL_AC_METER_SET,
@@ -359,6 +365,10 @@ public partial class IFly737MAXDefinition
 
         // High altitude landing: status packs switch+INOP light (0-5, >=3 = switch ON);
         // HIGH_ALTITUDE_LANDING_SET Value2 is just 0:OFF 1:ON -> map v => v >= 3 ? 1 : 0.
+        // Live note (2026-08-18 probe): the SET (v2 1/0, with and without Value3=1),
+        // the Press click AND the guarded double-send pattern are all no-ops (status
+        // pinned at 0) — unmodeled in the plugin (the EEC class). Kept as a harmless
+        // no-op per that precedent.
         SwD(P, "High_Altitude_Landing_Switch_Status", "High Altitude Landing",
             IFlyKeyCommand.AIRSYSTEM_HIGH_ALTITUDE_LANDING_SET,
             new Dictionary<double, string>
@@ -409,6 +419,9 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.ANTIICE_RIGHT_SIDE_WINDOW_HEAT_SET, new[] { "Off", "On" });
 
         // Window heat test: 3-position held switch (0:OVHT 1:NEUTRAL 2:PWR TEST, SET Value2 matches).
+        // Live note (2026-08-18 probe): single AND double sends of v2=0/2 left the
+        // status pinned at 1 — either the spring-back is faster than the 250 ms poll
+        // (it is a HELD switch) or the write is unmodeled; unresolvable blind, kept as-is.
         Sw(P, "Window_Heat_Test_Switch_Status", "Window Heat Test",
             IFlyKeyCommand.ANTIICE_WINDOW_HEAT_TEST_SET, new[] { "Overheat", "Neutral", "Power Test" });
 
@@ -523,11 +536,11 @@ public partial class IFly737MAXDefinition
         // (the SET doc calls the OFF position "ALTN" — same physical position), so any
         // status >= 6 means the switch is ON -> map v => v >= 6 ? 1 : 0. No Value3
         // guard-bypass exists for the EEC SET.
-        // Live note (2026-08-18 probe): with the guard CLOSED, both EEC_1_SET (v2 0
-        // and 1) and the EEC_1 Click were complete no-ops (status pinned at 6) — the
-        // switch may be dead behind the closed guard or unmodeled (the AP/AT
-        // test-switch class). Not an inversion; combo kept as-is, revisit if a
-        // pilot reports the EEC combo doing nothing with the guard open.
+        // Live note (2026-08-18 probe): EEC_1_SET (v2 0/1), the EEC_1 Click AND the
+        // rapid double-send that fixes the other guarded switches are ALL no-ops
+        // (status pinned at 6) — genuinely unmodeled in the plugin (the AP/AT
+        // test-switch class), not a guard-timing artifact. Combo kept as a
+        // harmless no-op per that precedent; revisit if a future iFly build wires it.
         var eecStates = new Dictionary<double, string>
         {
             [0] = "Off",

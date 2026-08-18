@@ -206,13 +206,19 @@ public partial class IFly737MAXDefinition
         Btn(P, $"BTN_EFIS_{tag}_CTR", "Center Display",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_CTR, IFlyKeyCommand.INSTRUMENT_EFIS_R_CTR));
 
-        // ⚠ ENCODING TRAP: the ND_Range_Status struct comment says "0~2", but the
-        // RANGE_SET command doc is authoritative: Value2 0..10 = 0.5 / 1 / 2 / 5 /
-        // 10 / 20 / 40 / 80 / 160 / 320 / 640 nautical miles. Positions follow it.
-        Sw(P, $"ND_Range_Status{sfx}", "Navigation Display Range",
-            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_SET, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_SET),
-            new[] { "0.5 miles", "1 mile", "2 miles", "5 miles", "10 miles", "20 miles",
-                    "40 miles", "80 miles", "160 miles", "320 miles", "640 miles" });
+        // ⚠ RANGE_SET IS DEAD and the old 11-position combo was wrong (probe-verified
+        // 2026-08-18): the SET command is a no-op for EVERY Value2 (0, 1, 2, 5, 8 all
+        // left the knob unmoved), while INC/DEC step normally and the status field
+        // wraps modulo 3 (six INC clicks from 0 land back on 0) — so the struct
+        // comment's "0~2" is what the field really does and the command doc's 0..10
+        // never was. Whether the underlying knob has 3 detents or 11 with a mod-3
+        // status mirror is not observable blind, so the range is exposed as the two
+        // step buttons (the physical knob's own interface) instead of a dead combo
+        // claiming absolute ranges the write path cannot deliver.
+        Btn(P, $"BTN_EFIS_{tag}_RANGE_DEC", "Navigation Display Range Decrease",
+            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_DEC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_DEC));
+        Btn(P, $"BTN_EFIS_{tag}_RANGE_INC", "Navigation Display Range Increase",
+            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_INC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_INC));
         Btn(P, $"BTN_EFIS_{tag}_TFC", "Traffic",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_TFC, IFlyKeyCommand.INSTRUMENT_EFIS_R_TFC));
 
@@ -808,7 +814,12 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Control Stand";
 
-        // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
+        // ⚠ FLTCTRL_FLAP_SET IS DEAD (probe-verified 2026-08-18: v2=1 with 6 s dwell
+        // moved nothing, hydraulics powered) — but the iFly tracks the STOCK flap
+        // events: FLAPS_INCR/FLAPS_DECR step the lever (FLAPS_SET, the stock axis
+        // event, is also dead). HandleUIVariableSet intercepts FLAP_Status and walks
+        // the stock events from the current detent; the SET registered here is never
+        // actually sent. Detents 0-8 = UP..40 per FLAP_Status.
         // DisplayName "Flaps" gives the fleet-parity wording on the GENERIC combo
         // path ("Flaps: 5" / "Flaps: Up" — the colon form this branch already uses
         // for the parking brake). Deliberately NOT self-announced from
