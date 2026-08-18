@@ -932,9 +932,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
 
     /// <summary>Engine 1 start lever, LOGICAL 1 = Run / 0 = Cutoff. The status field is a
     /// 0-5 composite (position × fire light) whose combo positions are 0 Cutoff and 3 Idle
-    /// (Overhead.cs:493-505); the definition's `map: v => v >= 3 ? 0 : 1` then inverts it for
-    /// the SET command, whose Value2 is 0 IDLE / 1 CUTOFF. So this passes the combo position,
-    /// not the command value.</summary>
+    /// (Overhead.cs); the definition's `map: v => v >= 3 ? 1 : 0` converts to the SET
+    /// command's Value2, which live is 0 CUTOFF / 1 IDLE — the vendor doc's claimed
+    /// 0 IDLE / 1 CUTOFF is wrong, probe-verified 2026-08-18 in PR #196 (trusting it
+    /// inverted the levers: the FO's "IDLE" commanded cutoff, so engine starts never
+    /// lit). This passes the combo position, not the command value.</summary>
     public Task<bool> SetFuelControl1(int run) => Set("Engine_Start_Lever_Status_0", run == 1 ? StartLeverIdle : StartLeverCutoff);
     /// <summary>Engine 2 start lever — same encoding (Overhead.cs:508).</summary>
     public Task<bool> SetFuelControl2(int run) => Set("Engine_Start_Lever_Status_1", run == 1 ? StartLeverIdle : StartLeverCutoff);
