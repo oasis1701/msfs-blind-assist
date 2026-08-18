@@ -7,6 +7,14 @@ using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
 
+// ResolveCurrentNeverThrows_AndAlwaysProducesStatusText and ApplyDeviceChangeNeverThrowsWithNoLiveTones
+// both read (and the latter also writes) SettingsManager.Current and AudioOutputDeviceService's
+// own process-global fallback-latch statics (_lastAppliedDeviceId, _fallbackAnnouncedForId) --
+// the same globals AudioOutputDeviceServiceFallbackTests depends on landing in a known state
+// between its own steps. Sharing the SettingsManagerGlobalState collection (see
+// SettingsManagerGlobalStateCollection and DistanceUnitGlobalStateCollection for the same
+// pattern) keeps this class from interleaving with those tests and corrupting their sequencing.
+[Collection("SettingsManagerGlobalState")]
 public class AudioOutputDeviceServiceTests
 {
     [Fact]
