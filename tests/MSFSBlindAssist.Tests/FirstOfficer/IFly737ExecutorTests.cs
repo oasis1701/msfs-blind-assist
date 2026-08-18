@@ -358,7 +358,10 @@ public class IFly737ExecutorTests
         "Autobrake_Selector_Status",
         "Gear_Lever_Status",
         "ND_Mode_Status_0",
-        "ND_Range_Status_0",
+        // ND_Range_Status_0 is deliberately ABSENT: the range cannot be commanded
+        // absolutely on this SDK (PR #196 probe — RANGE_SET dead, status a read-only
+        // mod-3 ring), so the executor has no range write and the flow/checklist
+        // range steps are Captain/Reminder items.
         "BTN_ATTENDANT_CALL",
         "BTN_SIX_PACK_RECALL",
 

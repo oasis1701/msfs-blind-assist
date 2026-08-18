@@ -1004,14 +1004,11 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     public const int NdModeMap = 2;
     public const int NdModePlan = 3;
 
-    /// <summary>Captain ND range (RegisterEfisSide, ForwardPedestal.cs:208 — 0..10 =
-    /// 0.5/1/2/5/10/20/40/80/160/320/640 nm; the status field's "0~2" comment is wrong, the
-    /// command doc is authoritative).</summary>
-    public Task<bool> SetEFISRangeCapt(int position) => Set("ND_Range_Status_0", position);
-    /// <summary>Index 5 of the 0..10 range scale above (ForwardPedestal.cs:208) = 20 nm.</summary>
-    public const int NdRange20Nm = 5;
-    /// <summary>Index 6 of the 0..10 range scale above (ForwardPedestal.cs:208) = 40 nm.</summary>
-    public const int NdRange40Nm = 6;
+    // NO SetEFISRangeCapt: the ND range cannot be commanded absolutely on this SDK
+    // (probe-verified 2026-08-18, PR #196 — RANGE_SET is dead for every Value2,
+    // ND_Range_Status is a read-only mod-3 ring, and which absolute range each
+    // position means is not observable blind). The range steps are Captain/Reminder
+    // items; the panel exposes Increase/Decrease step buttons for the pilot.
 
     // ---- Calls / recall ----
 

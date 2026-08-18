@@ -268,8 +268,12 @@ public static class IFly737FlowDefinitions
                 IFly737ActionExecutor.XpdrAltOff),
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeMap),
-            // ND_Range_Status_0: 0..10 = 0.5/1/2/5/10/20/40/80/160/320/640 nm; 40 nm = index 6.
-            SW("PF_EFIS_RANGE", "EFIS range: 40", "ND_Range_Status_0", IFly737ActionExecutor.NdRange40Nm),
+            // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
+            // 2026-08-18, PR #196): RANGE_SET is dead for every Value2, ND_Range_Status
+            // is a read-only mod-3 ring, and which absolute range each position means
+            // is not observable blind — so this is a captain action, not an FO switch
+            // (the WXR-test precedent below).
+            Captain("PF_EFIS_RANGE", "Set the EFIS range."),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
             // FMS_WXR_SYS_CTRL_SET (0 TEST/1 NORM) exists but is deliberately unwired pending
             // in-sim verification that the TEST position is modelled — see the class doc.
@@ -501,7 +505,9 @@ public static class IFly737FlowDefinitions
         Steps = new()
         {
             SW("AP_EFIS_MODE", "EFIS mode: APP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeApproach),
-            SW("AP_EFIS_RANGE", "EFIS range: 20", "ND_Range_Status_0", IFly737ActionExecutor.NdRange20Nm),
+            // Captain action — the ND range is not commandable/observable on this SDK
+            // (see the PF_EFIS_RANGE note in BuildPreflight).
+            Captain("AP_EFIS_RANGE", "Set the EFIS range."),
             // Notify the cabin crew for landing — the attendant-call button.
             SW("AP_CABIN", "Notify the cabin crew for landing", "BTN_ATTENDANT_CALL", 1,
                 checklistItemId: "AP_CABIN", isMomentary: true),

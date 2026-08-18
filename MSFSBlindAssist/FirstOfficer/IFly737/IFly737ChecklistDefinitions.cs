@@ -226,11 +226,12 @@ public static class IFly737ChecklistDefinitions
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "ND_Mode_Status_0", v => v > 1.5 && v < 2.5,
                 (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeMap)),
-            // ND_Range_Status_0: 0..10 = 0.5/1/2/5/10/20/40/80/160/320/640 nm (command-doc
-            // authoritative — the status field's own "0~2" comment is wrong per the executor's
-            // doc comment). 40 nm = index 6.
-            Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "ND_Range_Status_0", v => v > 5.5 && v < 6.5,
-                (e, _) => e.SetEFISRangeCapt(IFly737ActionExecutor.NdRange40Nm)),
+            // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
+            // 2026-08-18, PR #196): RANGE_SET is dead for every Value2, ND_Range_Status is
+            // a read-only mod-3 ring (the old "0..10 = 0.5..640 nm" command doc is wrong),
+            // and which range each position means is not observable blind — a reminder,
+            // not an action (the WXR precedent below).
+            Reminder("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: SET"),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
             // A WXR TEST command DOES exist (FMS_WXR_SYS_CTRL_SET, Value2 0 TEST/1 NORM) and
             // is readable back (Weather_Radar_System_Control_Switch_Status) — it is left
@@ -405,9 +406,8 @@ public static class IFly737ChecklistDefinitions
         {
             Auto("APA_EFIS_MODE", "APPROACH", "EFIS mode: APP", "ND_Mode_Status_0", v => v < 0.5,
                 (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeApproach)),
-            // 20 nm = index 5 on the 0..10 range scale (see PF_EFIS_RANGE).
-            Auto("APA_EFIS_RANGE", "APPROACH", "EFIS range: 20", "ND_Range_Status_0", v => v > 4.5 && v < 5.5,
-                (e, _) => e.SetEFISRangeCapt(IFly737ActionExecutor.NdRange20Nm)),
+            // Reminder — the ND range is not commandable/observable on this SDK (see PF_EFIS_RANGE).
+            Reminder("APA_EFIS_RANGE", "APPROACH", "EFIS range: SET"),
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall()),
             Reminder("APA_ALT", "APPROACH", "Set the altimeters"),
