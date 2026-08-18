@@ -65,12 +65,13 @@ public class AudioPanel : UserControl, ISettingsPanel
         yPos += rowHeight + 10;
         _testToneButton = new Button
         {
-            Text = "Test Tone",
             Location = new System.Drawing.Point(20, yPos),
             Size = new System.Drawing.Size(120, 30),
-            AccessibleName = "Test tone",
             AccessibleDescription = "Play a tone on the selected device to confirm where the guidance tones will be heard"
         };
+        // Routes the initial label/name through the same helper every later state change
+        // uses, so Text and AccessibleName can never drift apart — see SetTestToneButtonState.
+        SetTestToneButtonState(playing: false);
         _testToneButton.Click += TestToneButton_Click;
         Controls.Add(_testToneButton);
 
@@ -160,7 +161,7 @@ public class AudioPanel : UserControl, ISettingsPanel
     public void OnLeaving()
     {
         StopTestTone();
-        _testToneButton.Text = "Test Tone";
+        SetTestToneButtonState(playing: false);
     }
 
     private AudioOutputDevice SelectedRow()
@@ -188,13 +189,25 @@ public class AudioPanel : UserControl, ISettingsPanel
         if (_testTone?.IsPlaying == true)
         {
             StopTestTone();
-            _testToneButton.Text = "Test Tone";
+            SetTestToneButtonState(playing: false);
         }
         else
         {
             PlayTestTone();
-            _testToneButton.Text = "Stop Test";
+            SetTestToneButtonState(playing: true);
         }
+    }
+
+    /// <summary>Sets the button's label AND its accessible name together. WinForms'
+    /// ControlAccessibleObject.Name returns an explicitly-set AccessibleName permanently once
+    /// set — it does NOT fall back to Text — so every site that changes what this button will
+    /// do next must go through this helper instead of assigning .Text directly, or a screen
+    /// reader keeps announcing the stale action (e.g. "Test tone" while activating it would
+    /// actually stop one).</summary>
+    private void SetTestToneButtonState(bool playing)
+    {
+        _testToneButton.Text = playing ? "Stop Test" : "Test Tone";
+        _testToneButton.AccessibleName = playing ? "Stop test tone" : "Test tone";
     }
 
     private void PlayTestTone()
@@ -205,35 +218,60 @@ public class AudioPanel : UserControl, ISettingsPanel
             // be compared before committing to one.
             string deviceId = SelectedRow().Id;
 
-            _testTone = new AudioToneGenerator();
-            _testTone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
+            // Captured into a LOCAL and used throughout the background loop below instead of
+            // re-reading the _testTone field: a Stop (button press, OnLeaving, tab switch,
+            // dialog close) followed by a fresh Start can land inside the loop's ~100ms
+            // Task.Delay granularity, and a field re-read would pan a stray value into a NEW
+            // session rather than the one this loop is actually driving.
+            var tone = new AudioToneGenerator();
+            tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
                 deviceIdOverride: string.IsNullOrWhiteSpace(deviceId) ? null : deviceId);
+            _testTone = tone;
 
             // Pan left to right so the pilot can confirm the device is the stereo pair they
             // expect, which is what the steering tones depend on.
             Task.Run(async () =>
             {
-                for (int i = 0; i < 20 && _testTone?.IsPlaying == true; i++)
+                for (int i = 0; i < 20 && tone.IsPlaying; i++)
                 {
                     float pan = (float)Math.Sin(i * 0.15) * 0.8f;
-                    _testTone?.SetPan(pan);
+                    tone.SetPan(pan);
                     await Task.Delay(100);
                 }
 
-                if (_testTone?.IsPlaying == true && IsHandleCreated && !IsDisposed)
+                if (tone.IsPlaying && IsHandleCreated && !IsDisposed)
                 {
                     try
                     {
                         Invoke(() =>
                         {
-                            StopTestTone();
-                            _testToneButton.Text = "Test Tone";
+                            // Re-check on the UI thread — the same thread every write to
+                            // _testTone happens on, so this needs no lock — that `tone` is
+                            // STILL the current session before stopping/resetting anything. A
+                            // newer Start/Stop (another Test Tone press, OnLeaving, tab switch,
+                            // dialog close) may have already replaced or cleared _testTone
+                            // while this delegate sat queued on the UI thread; stopping THAT
+                            // session or relabelling the button out from under it would be
+                            // wrong.
+                            if (ReferenceEquals(_testTone, tone))
+                            {
+                                StopTestTone();
+                                SetTestToneButtonState(playing: false);
+                            }
                         });
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Handle actually torn down mid-flight — Invoke throws this once the
+                        // control's handle has been destroyed rather than merely closing.
+                        // OnLeaving/Dispose also call StopTestTone, so the tone still stops.
                     }
                     catch (InvalidOperationException)
                     {
-                        // Handle destroyed mid-flight (tab switched/dialog closed) —
-                        // OnLeaving/Dispose also call StopTestTone, so the tone still stops.
+                        // ObjectDisposedException derives from this, so it is caught above;
+                        // this covers the handle-destroyed-mid-flight window more generally
+                        // (tab switched/dialog closed) — OnLeaving/Dispose also call
+                        // StopTestTone, so the tone still stops either way.
                     }
                 }
             });
