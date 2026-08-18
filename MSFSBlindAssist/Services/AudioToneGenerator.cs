@@ -12,7 +12,14 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class AudioToneGenerator : IDisposable
 {
-    private WaveOutEvent? waveOut;
+    private AudioOutputSession? session;
+
+    // Last commanded tone state, replayed by RebindOutput onto a newly chosen device.
+    private HandFlyWaveType lastWaveType = HandFlyWaveType.Sine;
+    private double lastVolume = 0.5;
+    private double lastFrequency = -1.0;
+    private float lastPan;
+    private string? lastDeviceIdOverride;
     private PhaseContinuousOscillator? oscillator;
     private PanningSampleProvider? panningSampleProvider;
     private volatile bool isPlaying;
@@ -65,52 +72,74 @@ public class AudioToneGenerator : IDisposable
     /// <param name="volume">Volume level (0.0 to 1.0).</param>
     /// <param name="frequency">Initial frequency in Hz. Pass a negative value (the default) to use
     ///   the configured centre frequency, which honours any prior <see cref="Configure"/> call.</param>
-    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = -1.0)
+    public void Start(HandFlyWaveType waveType = HandFlyWaveType.Sine, double volume = 0.5, double frequency = -1.0, string? deviceIdOverride = null)
     {
-        if (frequency < 0)
-            frequency = CenterFrequency;
         lock (startStopLock)
         {
             if (isPlaying)
                 return;
 
-            try
+            StartLocked(waveType, volume, frequency, deviceIdOverride);
+        }
+    }
+
+    /// <summary>
+    /// Start body, assuming startStopLock is already held. Split out so RebindOutput can
+    /// tear down and restart inside one critical section.
+    /// </summary>
+    private void StartLocked(HandFlyWaveType waveType, double volume, double frequency, string? deviceIdOverride)
+    {
+        if (frequency < 0)
+            frequency = CenterFrequency;
+
+        try
+        {
+            // The output is chosen first, because the oscillator has to be built at the
+            // endpoint's OWN mix rate. Building at a fixed 44100 (as this did before the
+            // device setting existed) makes NAudio insert its DMO resampler on the common
+            // 48 kHz endpoint, and would make a rebind to a differently-clocked device play
+            // the tone sharp.
+            AudioOutputSession? opened = AudioOutputDeviceService.CreatePlayer(deviceIdOverride);
+            if (opened == null)
             {
-                // Create phase-continuous oscillator (eliminates clicks/pops)
-                oscillator = new PhaseContinuousOscillator(44100, waveType, (float)frequency, volume);
-
-                // Apply low-pass filter for sawtooth wave to remove harsh harmonics
-                ISampleProvider audioSource = oscillator;
-                if (waveType == HandFlyWaveType.Sawtooth)
-                {
-                    // Sawtooth needs cutoff at 1200 Hz due to rich harmonic content
-                    // Preserves character (fundamental + 2nd harmonic) while removing harshness
-                    audioSource = new LowPassFilterProvider(oscillator, 1200f, 0.707f);
-                }
-
-                // Wrap in panning provider for stereo control
-                panningSampleProvider = new PanningSampleProvider(audioSource)
-                {
-                    Pan = 0f // Center
-                };
-
-                // Initialize playback device with increased latency to prevent buffer underruns
-                waveOut = new WaveOutEvent
-                {
-                    NumberOfBuffers = 2,
-                    DesiredLatency = 150 // Increased from 100ms to prevent crackling
-                };
-
-                waveOut.Init(panningSampleProvider);
-                waveOut.Play();
-                isPlaying = true;
+                Log.Warn("Services", "AudioToneGenerator start failed: no audio output device could be opened");
+                return;
             }
-            catch (Exception ex)
+
+            session = opened;
+
+            oscillator = new PhaseContinuousOscillator(opened.MixSampleRate, waveType, (float)frequency, volume);
+
+            ISampleProvider audioSource = oscillator;
+            if (waveType == HandFlyWaveType.Sawtooth)
             {
-                // Log error but don't crash - audio is optional feedback
-                Log.Debug("Services", $"AudioToneGenerator start failed: {ex.Message}");
-                Cleanup();
+                // Sawtooth needs cutoff at 1200 Hz due to rich harmonic content.
+                // Preserves character (fundamental + 2nd harmonic) while removing harshness.
+                audioSource = new LowPassFilterProvider(oscillator, 1200f, 0.707f);
             }
+
+            panningSampleProvider = new PanningSampleProvider(audioSource)
+            {
+                Pan = 0f // Center
+            };
+
+            opened.Player.Init(panningSampleProvider);
+            opened.Player.Play();
+
+            lastWaveType = waveType;
+            lastVolume = volume;
+            lastFrequency = frequency;
+            lastPan = 0f;
+            lastDeviceIdOverride = deviceIdOverride;
+            isPlaying = true;
+
+            AudioOutputDeviceService.Register(this);
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't crash - audio is optional feedback
+            Log.Debug("Services", $"AudioToneGenerator start failed: {ex.Message}");
+            Cleanup();
         }
     }
 
@@ -127,6 +156,45 @@ public class AudioToneGenerator : IDisposable
             Cleanup();
             isPlaying = false;
         }
+    }
+
+    /// <summary>
+    /// Moves a sounding tone to the currently selected output device, preserving frequency,
+    /// volume, waveform and pan. Called by AudioOutputDeviceService when the pilot changes
+    /// the device, so a wrong device can be corrected mid-taxi without stopping guidance.
+    ///
+    /// This restarts through StartLocked rather than swapping the IWavePlayer alone, because
+    /// the new endpoint may mix at a different sample rate — and an oscillator built for the
+    /// old rate would play sharp under a swapped player. Costs roughly the output latency as
+    /// a gap, only on a deliberate device change.
+    ///
+    /// Any Configure() mapping survives: min/max frequency and the pitch/bank ranges are
+    /// separate fields that neither Cleanup nor StartLocked touches.
+    /// </summary>
+    internal void RebindOutput()
+    {
+        float panToRestore;
+
+        lock (startStopLock)
+        {
+            if (!isPlaying)
+                return;
+
+            HandFlyWaveType waveType = lastWaveType;
+            double volume = lastVolume;
+            double frequency = lastFrequency;
+            string? deviceIdOverride = lastDeviceIdOverride;
+            panToRestore = lastPan;
+
+            Cleanup();
+            isPlaying = false;
+
+            StartLocked(waveType, volume, frequency, deviceIdOverride);
+        }
+
+        // Outside the lock: SetPan takes no lock, and holding startStopLock across it buys
+        // nothing.
+        SetPan(panToRestore);
     }
 
     /// <summary>
@@ -147,6 +215,7 @@ public class AudioToneGenerator : IDisposable
 
         // Phase-continuous oscillator smoothly transitions to new frequency (no clicks/pops)
         oscillator.SetFrequency(targetFrequency);
+        lastFrequency = targetFrequency;
     }
 
     /// <summary>
@@ -159,7 +228,8 @@ public class AudioToneGenerator : IDisposable
         if (panningSampleProvider == null || !isPlaying)
             return;
 
-        panningSampleProvider.Pan = Math.Clamp(pan, -1.0f, 1.0f);
+        lastPan = Math.Clamp(pan, -1.0f, 1.0f);
+        panningSampleProvider.Pan = lastPan;
     }
 
     /// <summary>
@@ -182,6 +252,7 @@ public class AudioToneGenerator : IDisposable
         double clampedBank = Math.Clamp(bankDegrees, -bankRangeDeg, bankRangeDeg);
         float pan = (float)(clampedBank / bankRangeDeg);
 
+        lastPan = pan;
         panningSampleProvider.Pan = pan;
     }
 
@@ -196,6 +267,7 @@ public class AudioToneGenerator : IDisposable
             return;
 
         oscillator.SetGain(volume);
+        lastVolume = volume;
     }
 
     /// <summary>
@@ -209,6 +281,7 @@ public class AudioToneGenerator : IDisposable
             return;
 
         oscillator.SetWaveType(waveType);
+        lastWaveType = waveType;
     }
 
     /// <summary>
@@ -223,9 +296,9 @@ public class AudioToneGenerator : IDisposable
     {
         try
         {
-            waveOut?.Stop();
-            waveOut?.Dispose();
-            waveOut = null;
+            AudioOutputDeviceService.Unregister(this);
+            session?.Dispose();
+            session = null;
             oscillator = null;
             panningSampleProvider = null;
         }
