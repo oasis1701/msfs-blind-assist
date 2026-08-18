@@ -193,8 +193,15 @@ public class AudioPanel : UserControl, ISettingsPanel
         }
         else
         {
-            PlayTestTone();
-            SetTestToneButtonState(playing: true);
+            // The button state is set from what PlayTestTone actually achieved, never assumed
+            // — AudioToneGenerator.Start swallows its own exceptions by contract (audio is
+            // optional feedback), so a real endpoint failure returns silently with no tone
+            // playing. Assuming success here left the button reading "Stop Test" for a tone
+            // that never started: the NEXT press then took this same start branch again
+            // instead of stopping anything — the button was inverted, not merely
+            // stale-labelled.
+            bool started = PlayTestTone();
+            SetTestToneButtonState(playing: started);
         }
     }
 
@@ -210,7 +217,13 @@ public class AudioPanel : UserControl, ISettingsPanel
         _testToneButton.AccessibleName = playing ? "Stop test tone" : "Test tone";
     }
 
-    private void PlayTestTone()
+    /// <summary>Starts the audition tone and reports whether it actually started, so the
+    /// caller can set the Test Tone button's state from reality rather than an assumption —
+    /// see the comment in TestToneButton_Click. A failure that AudioToneGenerator.Start
+    /// swallowed (no exception, tone just never started) is written to the status line
+    /// instead of relying solely on the MessageBox below, which only ever fires for a genuine
+    /// thrown exception — a realistic endpoint failure throws nothing.</summary>
+    private bool PlayTestTone()
     {
         try
         {
@@ -233,6 +246,19 @@ public class AudioPanel : UserControl, ISettingsPanel
             var tone = new AudioToneGenerator();
             tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
                 deviceIdOverride: deviceId);
+
+            if (!tone.IsPlaying)
+            {
+                // Start() never throws (audio is optional feedback and degrades by contract
+                // — see AudioOutputDeviceService's class doc), so a real "could not open this
+                // endpoint" failure lands here silently rather than in the catch block below.
+                // Without this check the button still claimed "playing" and the pilot got no
+                // feedback at all about why the audition was silent.
+                tone.Dispose();
+                _statusTextBox.Text = "Could not play the test tone on the selected device.";
+                return false;
+            }
+
             _testTone = tone;
 
             // Pan left to right so the pilot can confirm the device is the stereo pair they
@@ -282,11 +308,19 @@ public class AudioPanel : UserControl, ISettingsPanel
                     }
                 }
             });
+
+            return true;
         }
         catch (Exception ex)
         {
+            // A genuine thrown exception (as opposed to Start()'s silent degrade above) —
+            // kept as a MessageBox since it signals something unexpected enough to be worth
+            // an explicit acknowledgement, but the status line still gets the reason too so
+            // it isn't the pilot's only record of what happened.
+            _statusTextBox.Text = $"Could not play the test tone: {ex.Message}";
             MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
         }
     }
 
