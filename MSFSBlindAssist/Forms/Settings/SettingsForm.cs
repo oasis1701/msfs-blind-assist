@@ -29,21 +29,17 @@ public class SettingsForm : Form
         { if (_tabs.SelectedIndex >= 0 && _tabs.SelectedIndex < _panels.Count) _currentPanel = _panels[_tabs.SelectedIndex]; };
 
         // Panels are added here in FINAL TAB ORDER:
-        // Announcements, Weather, VATSIM, GeoNames, SimBrief, Gemini, HandFly, TaxiGuidance, Updates, Audio.
+        // Announcements, Weather, VATSIM, GeoNames, SimBrief, Gemini, Audio, HandFly, TaxiGuidance, Updates.
         AddPanel(new AnnouncementsPanel());
         AddPanel(new WeatherPanel());
         AddPanel(new VatsimPanel(vatsimStatus));
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
         AddPanel(new AiSettingsPanel());
+        AddPanel(new AudioPanel());
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
         AddPanel(new UpdatesPanel());
-
-        // Appended LAST on purpose: a screen-reader user navigates these tabs by position,
-        // so inserting mid-list would shift every tab after it. Easy to move later if a
-        // different grouping is preferred.
-        AddPanel(new AudioPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
