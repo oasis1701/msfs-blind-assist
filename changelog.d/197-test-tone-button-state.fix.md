@@ -1,0 +1,1 @@
+The Test Tone buttons in the Hand Fly and Taxi Guidance settings now tell your screen reader whether pressing them will start or stop the tone. They used to announce "Test tone" whatever they were doing, so tabbing back to a button while a tone was playing told you it would start one when it would actually stop it.
