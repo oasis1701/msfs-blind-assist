@@ -40,6 +40,11 @@ public class SettingsForm : Form
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
         AddPanel(new UpdatesPanel());
 
+        // Appended LAST on purpose: a screen-reader user navigates these tabs by position,
+        // so inserting mid-list would shift every tab after it. Easy to move later if a
+        // different grouping is preferred.
+        AddPanel(new AudioPanel());
+
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
         ok.Click += OnOk;
