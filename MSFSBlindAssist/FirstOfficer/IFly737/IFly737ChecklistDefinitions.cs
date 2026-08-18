@@ -224,12 +224,12 @@ public static class IFly737ChecklistDefinitions
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "ND_Mode_Status_0", v => v > 1.5 && v < 2.5,
                 (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeMap)),
-            // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
-            // 2026-08-18, PR #196 + re-probed same day): RANGE_SET is dead for every Value2,
-            // ND_Range_Status is net-clicks mod 3, and the cockpit knob L:var
-            // (VC_CAPT_EFIS_ND_Range_SW_VAL) is a free-spinning wrap-around rotation counter
-            // — relative clicks only, no absolute position anywhere. A reminder, not an action.
-            Reminder("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: SET"),
+            // NO EFIS-range item (removed entirely, user decision 2026-08-18 — do not
+            // re-add): the ND range cannot be commanded absolutely on this SDK (RANGE_SET
+            // dead, ND_Range_Status net-clicks mod 3, the cockpit knob L:var a free-spinning
+            // rotation counter — no absolute position anywhere; see IFly737ActionExecutor's
+            // SetEFISRangeCapt note), so an item here could only nag. The panel's Range
+            // Increase/Decrease buttons remain for the pilot.
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
             ActionManualAsync("PF_GPWS_TEST", "PREFLIGHT", "GPWS system test",
                 (e, _) => e.GpwsTestAsync()),
@@ -400,8 +400,7 @@ public static class IFly737ChecklistDefinitions
         {
             Auto("APA_EFIS_MODE", "APPROACH", "EFIS mode: APP", "ND_Mode_Status_0", v => v < 0.5,
                 (e, _) => e.SetEFISModeCapt(IFly737ActionExecutor.NdModeApproach)),
-            // Reminder — the ND range is not commandable/observable on this SDK (see PF_EFIS_RANGE).
-            Reminder("APA_EFIS_RANGE", "APPROACH", "EFIS range: SET"),
+            // NO EFIS-range item — removed with the Preflight one (see that group's note).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall()),
             Reminder("APA_ALT", "APPROACH", "Set the altimeters"),

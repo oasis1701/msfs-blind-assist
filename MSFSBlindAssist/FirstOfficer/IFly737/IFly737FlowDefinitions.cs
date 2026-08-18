@@ -47,7 +47,9 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///   probe-verified, PR #196; 1 is FLASH, not On) — no retractable/fixed split like the PMDG's
 ///   four lights. Use the LandingLights* constants.
 /// - EFIS (ND) mode 0=Approach/1=VOR/2=Map/3=Plan. The ND range is NOT commandable on this SDK
-///   (PR #196: RANGE_SET dead, status a read-only mod-3 ring) — range steps are Captain items.
+///   (RANGE_SET dead, no absolute position anywhere — see IFly737ActionExecutor's
+///   SetEFISRangeCapt note) — range steps were REMOVED from the flows/checklists entirely
+///   (user decision 2026-08-18, do not re-add); the panel's step buttons remain.
 /// - Autobrake 0=RTO/1=Off/2.."1"/3.."2"/4.."3"/5=Max Auto (same numbering as PMDG).
 /// - Transponder is a 4-position ABSOLUTE SET (0 ALT OFF/1 XPNDR/2 TA Only/3 TA-RA) — no walked
 ///   rotary, unlike the PMDG NG3's CDA-deaf EVT_TCAS_MODE.
@@ -271,13 +273,13 @@ public static class IFly737FlowDefinitions
                 IFly737ActionExecutor.XpdrAltOff),
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeMap),
-            // The ND range CANNOT be commanded absolutely on this SDK (probe-verified
-            // 2026-08-18, PR #196 + re-probed same day): RANGE_SET is dead for every Value2,
-            // ND_Range_Status is net-clicks mod 3, and the cockpit knob L:var
-            // (VC_CAPT_EFIS_ND_Range_SW_VAL) is a free-spinning wrap-around rotation counter
-            // (+10 per click, mod 360) — relative clicks, no absolute position anywhere. So
-            // this is a captain action, not an FO switch.
-            Captain("PF_EFIS_RANGE", "Set the EFIS range."),
+            // NO EFIS-range step (removed entirely, user decision 2026-08-18 — do not
+            // re-add): the ND range cannot be commanded absolutely on this SDK (RANGE_SET
+            // dead for every Value2, ND_Range_Status is net-clicks mod 3, and the cockpit
+            // knob L:var is a free-spinning rotation counter — no absolute position
+            // anywhere; see IFly737ActionExecutor's SetEFISRangeCapt note), so a step here
+            // could only nag. The panel's Range Increase/Decrease buttons remain for the
+            // pilot.
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
             // GPWS test goes LAST — its self-test callouts trail for several seconds after the
             // step completes, so nothing must follow it (PMDG 737 parity).
@@ -508,9 +510,7 @@ public static class IFly737FlowDefinitions
         Steps = new()
         {
             SW("AP_EFIS_MODE", "EFIS mode: APP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeApproach),
-            // Captain action — the ND range is not commandable/observable on this SDK
-            // (see the PF_EFIS_RANGE note in BuildPreflight).
-            Captain("AP_EFIS_RANGE", "Set the EFIS range."),
+            // NO EFIS-range step — removed with the Preflight one (see BuildPreflight).
             // Notify the cabin crew for landing — the attendant-call button.
             SW("AP_CABIN", "Notify the cabin crew for landing", "BTN_ATTENDANT_CALL", 1,
                 checklistItemId: "AP_CABIN", isMomentary: true),
