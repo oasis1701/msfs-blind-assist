@@ -488,8 +488,12 @@ public partial class IFly737MAXDefinition
         // ordering.
         //
         // Start levers: status 0-2 CUTOFF × fire light, 3-5 IDLE × fire light.
-        // ⚠ ENCODING TRAP: ENGAPU_ENG_n_START_LEVER_SET Value2 is 0 = IDLE,
-        // 1 = CUTOFF (INVERTED vs. the intuitive order) → map v >= 3 ? 0 : 1.
+        // ⚠ THE SDK DOC IS WRONG HERE: key_command.h documents ENGAPU_ENG_n_
+        // START_LEVER_SET Value2 as "0:switch IDLE; 1:switch CUTOFF", but the
+        // LIVE plugin does the opposite — v2=0 → CUTOFF (status 0), v2=1 → IDLE
+        // (status 3), probe-verified both engines/both directions 2026-08-18
+        // (tools/IFlySdkProbe send + get). Trusting the doc inverted the combo
+        // (picking Idle cut the engine off). Map v >= 3 ? 1 : 0.
         var startLeverStates = new Dictionary<double, string>
         {
             [0] = "Cutoff",
@@ -502,11 +506,11 @@ public partial class IFly737MAXDefinition
         Sw(P, "Engine_Start_Switch_Status_0", "Engine 1 Start",
             IFlyKeyCommand.ENGAPU_ENG_1_START_SET, new[] { "Ground", "Off", "Continuous", "Flight" });
         SwD(P, "Engine_Start_Lever_Status_0", "Engine 1 Start Lever",
-            IFlyKeyCommand.ENGAPU_ENG_1_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
+            IFlyKeyCommand.ENGAPU_ENG_1_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 1 : 0);
         Sw(P, "Engine_Start_Switch_Status_1", "Engine 2 Start",
             IFlyKeyCommand.ENGAPU_ENG_2_START_SET, new[] { "Ground", "Off", "Continuous", "Flight" });
         SwD(P, "Engine_Start_Lever_Status_1", "Engine 2 Start Lever",
-            IFlyKeyCommand.ENGAPU_ENG_2_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 0 : 1);
+            IFlyKeyCommand.ENGAPU_ENG_2_START_LEVER_SET, startLeverStates, map: v => v >= 3 ? 1 : 0);
 
         // Readback legitimately differs from the picked value (fire-light bit folded
         // into the same 0-5 field) — suppress the post-set echo on the time window
