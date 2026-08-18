@@ -870,10 +870,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (delta == 0) return true;
             _ = Task.Run(async () =>
             {
+                // 100 ms per detent (sim key events process per frame; the PMDG
+                // paths pace 40-120 ms) — a full UP→40 sweep is ~0.8 s of lever
+                // travel, and the surfaces take their own time regardless.
                 for (int i = 0; i < Math.Abs(delta); i++)
                 {
                     simConnect.SendEvent(delta > 0 ? "FLAPS_INCR" : "FLAPS_DECR", 0);
-                    await Task.Delay(200);
+                    await Task.Delay(100);
                 }
             });
             return true;
@@ -967,25 +970,37 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
     /// <summary>Walk a rotary selector whose SET command is broken (acts as a bare
     /// INC click regardless of Value2 — the DC/AC meter knobs) to the target
-    /// position with paced INC/DEC clicks, re-reading the live status per step so
-    /// an unexpected position (e.g. the AC knob's undocumented 8th detent) can
-    /// never loop; bounded at 16 clicks.</summary>
+    /// position. BURST-then-verify (the RTP-frequency pattern): the expected click
+    /// count goes out open-loop at 80 ms (the CDU key-queue pace — a 60 ms burst
+    /// landed 5/5 clicks both directions live, 2026-08-18; WM_COPYDATA is
+    /// synchronous so each click is handled before the next send returns), then
+    /// verify rounds against the live status correct any residue, one click per
+    /// 350 ms round (poll refresh), so an unexpected position (the AC knob's
+    /// undocumented 8th detent) can never loop. Worst case ~0.6 s to the target
+    /// instead of the ~2.5 s a per-click readback walk cost.</summary>
     private void WalkSelectorAsync(ScreenReaderAnnouncer announcer, int snapOffset, int target,
         IFlyKeyCommand inc, IFlyKeyCommand dec)
     {
         _ = Task.Run(async () =>
         {
-            for (int i = 0; i < 16; i++)
+            if (Sdk.Snapshot is not { } s0) return;
+            int cur = s0.ByteAt(snapOffset);
+            for (int i = 0; i < Math.Abs(target - cur); i++)
             {
-                if (Sdk.Snapshot is not { } snap) return;
-                int cur = snap.ByteAt(snapOffset);
-                if (cur == target) return;
                 if (!Sdk.SendCommand(cur < target ? inc : dec))
                 {
                     Sdk.RunOnUi(() => announcer.AnnounceImmediate("iFly plugin not responding."));
                     return;
                 }
+                await Task.Delay(80);
+            }
+            for (int i = 0; i < 6; i++)
+            {
                 await Task.Delay(350); // command action + the 250 ms shared-memory poll
+                if (Sdk.Snapshot is not { } snap) return;
+                int now = snap.ByteAt(snapOffset);
+                if (now == target) return;
+                if (!Sdk.SendCommand(now < target ? inc : dec)) return;
             }
         });
     }
