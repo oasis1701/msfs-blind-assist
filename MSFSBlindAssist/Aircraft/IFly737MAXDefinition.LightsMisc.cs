@@ -17,12 +17,24 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Exterior Lights";
 
-        // TRAP: status is 0 OFF / 1 ON, but GENERAL_LANDING_LIGHT_n_SET Value2 is
-        // 0 OFF / 1 FLASH / 2 ON — map On (1) to Value2 2, never send 1 from a 2-state combo.
-        Sw(P, "Landing_Light_1_Switch_Status", "Left Landing Light",
-            IFlyKeyCommand.GENERAL_LANDING_LIGHT_1_SET, new[] { "Off", "On" }, map: v => v == 0 ? 0 : 2);
-        Sw(P, "Landing_Light_2_Switch_Status", "Right Landing Light",
-            IFlyKeyCommand.GENERAL_LANDING_LIGHT_2_SET, new[] { "Off", "On" }, map: v => v == 0 ? 0 : 2);
+        // ⚠ THE SDK STATUS DOC IS WRONG HERE: SDK_Defines.h claims the status is
+        // 2-state 0 OFF / 1 ON, but live (probe-verified 2026-08-18) it is 3-state
+        // and IDENTICAL to the SET encoding: 0 OFF / 1 FLASH / 2 ON (SET v2=2
+        // lands status 2 and lights the stock LIGHT LANDING var; v2=0 → status 0,
+        // light out). The old 2-state combo could not render readback state 2, so
+        // "On" always displayed stale. FLASH is a real switch position (status
+        // lands on 1) but produced no stock-var lighting over ~3 s live — likely
+        // tied to the LandingLlightAlternateFlash config flag; exposed as-is.
+        var landingLightStates = new Dictionary<double, string>
+        {
+            [0] = "Off",
+            [1] = "Flash",
+            [2] = "On",
+        };
+        SwD(P, "Landing_Light_1_Switch_Status", "Left Landing Light",
+            IFlyKeyCommand.GENERAL_LANDING_LIGHT_1_SET, landingLightStates);
+        SwD(P, "Landing_Light_2_Switch_Status", "Right Landing Light",
+            IFlyKeyCommand.GENERAL_LANDING_LIGHT_2_SET, landingLightStates);
 
         Sw(P, "Runway_Turnoff_Light_1_Switch_Status", "Left Runway Turnoff Light",
             IFlyKeyCommand.GENERAL_RUNWAY_TURNOFF_LIGHT_1_SET, new[] { "Off", "On" });
@@ -39,12 +51,17 @@ public partial class IFly737MAXDefinition
         Sw(P, "Wheel_Well_Light_Switch_Status", "Wheel Well Light",
             IFlyKeyCommand.GENERAL_WHEEL_WELL_LIGHT_SET, new[] { "Off", "On" });
 
-        // TRAP: status is 0 STEADY / 1 OFF / 2 STROBE & STEADY, but
-        // GENERAL_POSITION_LIGHT_SET Value2 is 0 STROBE & STEADY / 1 OFF / 2 STEADY —
-        // exactly reversed. Labels follow the STATUS encoding; map inverts for the write.
+        // ⚠ THE SDK STATUS DOC IS WRONG HERE (probe-verified 2026-08-18): the
+        // SET and STATUS encodings are IDENTICAL — 0 STROBE & STEADY / 1 OFF /
+        // 2 STEADY — i.e. the SET doc's labels are right and SDK_Defines.h's
+        // status labels (0 STEADY … 2 STROBE & STEADY) are reversed. Verified by
+        // meaning, not just numbers: SET v2=0 → status 0 AND stock LIGHT STROBE
+        // + LIGHT NAV both on; v2=2 → status 2, nav on, strobe off; v2=1 → both
+        // off. The old `2 - v` map wrote the intended state by double inversion,
+        // but displayed/announced Steady and Strobe-and-steady swapped.
         Sw(P, "Position_Light_Switch_Status", "Position Lights",
             IFlyKeyCommand.GENERAL_POSITION_LIGHT_SET,
-            new[] { "Steady", "Off", "Strobe and steady" }, map: v => 2 - v);
+            new[] { "Strobe and steady", "Off", "Steady" });
 
         // Skipped (config flags, not cockpit controls): AutoOffTaxiLlight, LandingLlightAlternateFlash.
     }

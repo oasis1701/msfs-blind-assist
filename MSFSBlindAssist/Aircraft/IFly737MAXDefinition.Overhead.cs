@@ -523,6 +523,11 @@ public partial class IFly737MAXDefinition
         // (the SET doc calls the OFF position "ALTN" — same physical position), so any
         // status >= 6 means the switch is ON -> map v => v >= 6 ? 1 : 0. No Value3
         // guard-bypass exists for the EEC SET.
+        // Live note (2026-08-18 probe): with the guard CLOSED, both EEC_1_SET (v2 0
+        // and 1) and the EEC_1 Click were complete no-ops (status pinned at 6) — the
+        // switch may be dead behind the closed guard or unmodeled (the AP/AT
+        // test-switch class). Not an inversion; combo kept as-is, revisit if a
+        // pilot reports the EEC combo doing nothing with the guard open.
         var eecStates = new Dictionary<double, string>
         {
             [0] = "Off",

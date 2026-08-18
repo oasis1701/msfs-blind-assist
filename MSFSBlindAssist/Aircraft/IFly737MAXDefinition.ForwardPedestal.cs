@@ -104,12 +104,16 @@ public partial class IFly737MAXDefinition
         Sw(P, "CAPT_Display_Selector_Switch_Status", "Captain Display Selector",
             IFlyKeyCommand.INSTRUMENT_CAPT_DISP_SEL_SET, new[] { "Outboard", "Normal", "Inboard" });
 
-        // ⚠ ENCODING TRAP: the FO STATUS field is 0 INBD / 1 NORMAL / 2 OUTBD, but
-        // FO_DISP_SEL_SET Value2 is 0 OUTBD / 1 NORMAL / 2 INBD (same order as the
-        // captain command, NOT the FO status) → map 2 - v.
+        // ⚠ THE SDK DOCS CONTRADICT EACH OTHER HERE and the live plugin settles
+        // the map (probe-verified 2026-08-18): FO_DISP_SEL_SET Value2 lands the
+        // SAME status number (v2=0 → status 0, v2=2 → status 2), so SET == STATUS
+        // and the old `2 - v` map (built from the doc contradiction) inverted the
+        // switch. Which doc's LABELS are right is not externally observable (the
+        // status doc says 0 INBD like the real 737's mirrored FO knob, the SET
+        // doc says 0 OUTBD like the Captain's) — labels follow the STATUS doc;
+        // identity map keeps pick and readback self-consistent either way.
         Sw(P, "FO_Display_Selector_Switch_Status", "First Officer Display Selector",
-            IFlyKeyCommand.INSTRUMENT_FO_DISP_SEL_SET, new[] { "Inboard", "Normal", "Outboard" },
-            map: v => 2 - v);
+            IFlyKeyCommand.INSTRUMENT_FO_DISP_SEL_SET, new[] { "Inboard", "Normal", "Outboard" });
 
         Btn(P, "BTN_MFD_ENG", "MFD Engine", IFlyKeyCommand.INSTRUMENT_MFD_ENG);
         Btn(P, "BTN_MFD_SYS", "MFD System", IFlyKeyCommand.INSTRUMENT_MFD_SYS);
