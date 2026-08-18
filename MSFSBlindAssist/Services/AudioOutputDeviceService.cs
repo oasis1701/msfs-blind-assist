@@ -375,7 +375,14 @@ public static class AudioOutputDeviceService
         return new AudioOutputSession(player, mixSampleRate, device);
     }
 
-    private static (string Id, string Name) DefaultEndpointInfo()
+    /// <summary>
+    /// The id/name of whatever Windows currently calls the default render endpoint. A full
+    /// WASAPI query on its own (a fresh <see cref="MMDeviceEnumerator"/>) — public so a caller
+    /// that also needs <see cref="Enumerate"/> (the settings panel's device list) can fetch
+    /// both once and reuse them, rather than going through <see cref="ResolveCurrent"/>
+    /// repeatedly and paying for two fresh enumerations on every call.
+    /// </summary>
+    public static (string Id, string Name) DefaultEndpointInfo()
     {
         try
         {

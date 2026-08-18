@@ -28,6 +28,18 @@ public class AudioPanel : UserControl, ISettingsPanel
     private readonly List<AudioOutputDevice> _deviceRows = new();
     private AudioToneGenerator? _testTone;
 
+    // Cached by LoadFrom and reused by UpdateStatusText, which fires on every
+    // SelectedIndexChanged -- i.e. on every arrow-key press while a screen reader user
+    // browses the dropdown. Resolving through AudioOutputDeviceService.ResolveCurrent per
+    // keystroke would perform TWO full WASAPI enumerations each time (Enumerate() and
+    // DefaultEndpointInfo(), each constructing its own MMDeviceEnumerator) on the UI thread --
+    // the same class of defect as re-querying TaxiAssistForm's gate list per keystroke. Real
+    // endpoints only, same contract as AudioOutputDeviceService.Enumerate(); UpdateStatusText
+    // resolves through the pure AudioDeviceSelector.Resolve directly against these instead of
+    // re-enumerating.
+    private IReadOnlyList<AudioOutputDevice> _realDevices = Array.Empty<AudioOutputDevice>();
+    private (string Id, string Name) _defaultEndpoint = (string.Empty, string.Empty);
+
     public string TabTitle => "Audio";
 
     public AudioPanel()
@@ -114,9 +126,14 @@ public class AudioPanel : UserControl, ISettingsPanel
         string savedId = settings.GuidanceToneDeviceId ?? string.Empty;
         string savedName = settings.GuidanceToneDeviceName ?? string.Empty;
 
+        // Enumerated ONCE per load and cached (see the field comments) rather than once here
+        // AND again inside every later UpdateStatusText call.
+        _realDevices = AudioOutputDeviceService.Enumerate();
+        _defaultEndpoint = AudioOutputDeviceService.DefaultEndpointInfo();
+
         _deviceRows.Clear();
         _deviceRows.Add(new AudioOutputDevice(AudioDeviceSelector.FollowWindowsDefaultId, AudioDeviceSelector.DefaultDeviceLabel));
-        _deviceRows.AddRange(AudioOutputDeviceService.Enumerate());
+        _deviceRows.AddRange(_realDevices);
 
         bool savedIsPresent = string.IsNullOrWhiteSpace(savedId)
             || _deviceRows.Any(d => string.Equals(d.Id, savedId, StringComparison.OrdinalIgnoreCase));
@@ -179,8 +196,16 @@ public class AudioPanel : UserControl, ISettingsPanel
     {
         // Writing a TextBox is not an announcement, so this does not violate the
         // never-announce-a-combo-change rule; the screen reader speaks the combo itself.
+        //
+        // Resolves against the CACHED _realDevices/_defaultEndpoint (see their field
+        // comments) via the pure AudioDeviceSelector.Resolve directly, rather than
+        // AudioOutputDeviceService.ResolveCurrent, which would re-enumerate WASAPI from
+        // scratch on every call -- this method is wired to SelectedIndexChanged, so a screen
+        // reader user arrowing the dropdown would otherwise fire two full endpoint
+        // enumerations per keystroke on the UI thread.
         AudioOutputDevice row = SelectedRow();
-        AudioDeviceResolution resolution = AudioOutputDeviceService.ResolveCurrent(row.Id, row.FriendlyName);
+        AudioDeviceResolution resolution = AudioDeviceSelector.Resolve(
+            row.Id, row.FriendlyName, _realDevices, _defaultEndpoint.Id, _defaultEndpoint.Name);
         _statusTextBox.Text = resolution.StatusText;
     }
 
