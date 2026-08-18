@@ -531,6 +531,16 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - PID math, phase machine, and lateral arc-capture logic must stay untouched by tone work — VG's failure mode must always be "missing audible reference," never "wrong steering command." → [visual-guidance.md](docs/visual-guidance.md)
 - VG's manual-query grace window must only suppress the two chatty per-second callouts (bank guidance, centerline deviation) — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](docs/visual-guidance.md)
 
+### Guidance tone output device (→ [audio.md](docs/audio.md))
+
+- LOCK ORDER: `AudioToneGenerator.startStopLock` → `AudioOutputDeviceService.Gate`, never the reverse — `ApplyDeviceChange` must release `Gate` before calling `RebindOutput()`, which re-enters `Register`/`Unregister` and takes `Gate` again from inside the generator's own lock. → [audio.md](docs/audio.md)
+- `_lastAppliedDeviceId` is seeded ONCE per session, from `CreatePlayer`, guarded by `_lastAppliedSeeded` — reseeding on every tone start strands a sounding tone on the old device when a settings save races a tone start, and re-saving the same device cannot recover it either. → [audio.md](docs/audio.md)
+- `CreatePlayer`'s `deviceIdOverride` is a three-state contract — `null` = use the saved setting, `""` (`AudioDeviceSelector.FollowWindowsDefaultId`) = explicitly the Windows default device, anything else = that endpoint — never collapse `""` to `null` with an `IsNullOrWhiteSpace` check before calling; that makes auditioning "Windows default device" silently play on the saved device instead. → [audio.md](docs/audio.md)
+- WASAPI SHARED mode only (`AudioClientShareMode.Shared`) — exclusive mode would take the endpoint away from the simulator and from the screen reader, which may be using the same one. → [audio.md](docs/audio.md)
+- The tone is generated at the endpoint's OWN mix sample rate, read once per open — a device rebind must rebuild the oscillator from scratch (never swap the player under the same oscillator), because the new endpoint may be clocked differently. → [audio.md](docs/audio.md)
+- The fallback-announcement sink dispatch must stay a NON-BLOCKING thread-pool marshal and must never be invoked while any `AudioToneGenerator.startStopLock` is held — it is only ever reached from inside `StartLocked`, which always holds that lock. → [audio.md](docs/audio.md)
+- `ApplyDeviceChange` must also rebind when the saved id is UNCHANGED but its last resolution had fallen back (`_lastAppliedFellBack`) — the id-only "did it change" guard alone leaves a pilot with no way to ever recover a tone that fell back to the default endpoint after reconnecting the preferred device. → [audio.md](docs/audio.md)
+
 ### PMDG 777 (→ [pmdg-777.md](docs/pmdg-777.md))
 
 - Continuous knobs (brightness, temperature, EFIS baro/mins) cannot be controlled via the PMDG SDK event with a position parameter — do not add them to panels via that path (the cockpit-model-L:var-IS-the-input exception applies only to a few named knobs, e.g. shoulder heaters). → [pmdg-777.md](docs/pmdg-777.md)
@@ -777,6 +787,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Adding or modifying hotkeys** → [Hotkey System](docs/hotkey-system.md)
 - **Fenix rotary encoders (RMP, FCU)** → [Fenix Increment/Decrement](docs/fenix-increment-decrement.md)
 - **Tuning visual guidance PID controller** → [Visual Guidance](docs/visual-guidance.md)
+- **Working on the guidance-tone output device (which Windows audio endpoint tones play on)** → [Guidance Tone Output Device](docs/audio.md)
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
@@ -804,6 +815,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[Variable System](docs/variable-system.md)** - Three patterns for managing variables (Panel, Monitoring, Hotkey)
 - **[Fenix Increment/Decrement](docs/fenix-increment-decrement.md)** - Counter-based pattern for Fenix rotary encoders
 - **[Visual Guidance](docs/visual-guidance.md)** - PID controller tuning and ground track monitoring
+- **[Guidance Tone Output Device](docs/audio.md)** - Which Windows audio endpoint the taxi/takeoff/hand-fly/visual-guidance/docking tones play on, device fallback and recovery, the settings panel
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
