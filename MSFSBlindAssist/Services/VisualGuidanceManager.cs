@@ -35,6 +35,14 @@ public class VisualGuidanceManager : IDisposable
     private HandFlyWaveType currentToneWaveType = HandFlyWaveType.Sine;
     private double currentToneVolume = 0.05;
     private bool hardPanTone = false;  // see VisualGuidanceHardPanTone setting
+    // The aircraft's dual-tone frequency/pan mapping, set from VisualGuidanceProfile in
+    // Initialize (populated the same way as the other "aircraft-specific tunables" fields
+    // below). Cached here — rather than read once from Initialize's own `profile` parameter —
+    // because ProcessUpdate's tone-pair re-arm (see there) has to replay the same Configure()
+    // call on a freshly reconstructed generator pair, and a method parameter does not survive
+    // past Initialize's return. Defaults are the A320 numbers, matching every other tunable
+    // below when no profile has been applied yet.
+    private VisualGuidanceProfile visualGuidanceProfile = new();
     // Defer audible Start() until the first ProcessUpdate computes real pitch/bank — otherwise
     // the user hears ~33 ms of fused 500 Hz center-pan tone that represents nothing. Both tones
     // are instantiated in Initialize so disposal/lifecycle stays simple; this flag controls
@@ -313,6 +321,8 @@ public class VisualGuidanceManager : IDisposable
         flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
         flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
         flareTargetPitchDeg = profile.FlareTargetPitchDeg;
+        // Cached for ProcessUpdate's tone-pair re-arm — see the field comment.
+        visualGuidanceProfile = profile;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -583,6 +593,37 @@ public class VisualGuidanceManager : IDisposable
         if (!isActive || runway == null || desiredAttitudeTone == null)
         {
             return;
+        }
+
+        // The pair invariant StartTonesIfNeeded enforces at startup has to hold continuously:
+        // a device change rebinds the two generators independently, so the reference tone can
+        // die while the follower survives -- and the follower alone is a constant drone the
+        // pilot cannot match anything against. Re-arming here restores the invariant on the
+        // next update instead of leaving it broken for the rest of the approach.
+        //
+        // !tonesNeedStart is what stops this from firing on the very first frame after
+        // Initialize -- the tones are constructed there but not yet Start()ed, so IsPlaying is
+        // still false at that point too. tonesNeedStart only latches back to false once
+        // StartTonesIfNeeded has actually attempted a Start, so this block cannot see a "not
+        // playing yet" tone as a "died" tone. Once it does fire it sets tonesNeedStart back to
+        // true and returns -- it does not call Start itself -- so the very next
+        // StartTonesIfNeeded (later in this same call, once the cached-data guard below has
+        // passed) consumes that flag and is the only thing that can flip it false again. That
+        // makes this a one-shot per death: it cannot re-fire on the following frame without
+        // another real rebind failure in between, whether the restart succeeds (IsPlaying
+        // becomes true) or gives up (StartTonesIfNeeded nulls both tones itself, which then
+        // makes the guard above return early for the rest of this approach).
+        if (!tonesNeedStart && desiredAttitudeTone != null && !desiredAttitudeTone.IsPlaying)
+        {
+            Log.Debug("VisualGuidance", "Desired-attitude tone is no longer playing; restarting both tones");
+            DisposeTones();
+            desiredAttitudeTone = new AudioToneGenerator();
+            currentAttitudeTone = new AudioToneGenerator();
+            desiredAttitudeTone.Configure(visualGuidanceProfile.ToneMinFrequencyHz, visualGuidanceProfile.ToneMaxFrequencyHz,
+                                          visualGuidanceProfile.TonePitchRangeDeg, visualGuidanceProfile.ToneBankRangeDeg);
+            currentAttitudeTone.Configure(visualGuidanceProfile.ToneMinFrequencyHz, visualGuidanceProfile.ToneMaxFrequencyHz,
+                                          visualGuidanceProfile.TonePitchRangeDeg, visualGuidanceProfile.ToneBankRangeDeg);
+            tonesNeedStart = true;
         }
 
         // Ensure we have all required data
