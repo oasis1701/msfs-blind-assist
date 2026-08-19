@@ -21,11 +21,11 @@ public class AudioDeviceSelectorTests
     };
 
     [Fact]
-    public void EmptySavedId_FollowsWindowsDefault_AndIsNotAFallback()
+    public void EmptySavedId_ResolvesToTheLiveDefaultEndpointId()
     {
         var result = AudioDeviceSelector.Resolve("", "", TwoDevices(), DefaultId, DefaultName);
 
-        Assert.Equal(AudioDeviceSelector.FollowWindowsDefaultId, result.DeviceId);
+        Assert.Equal(DefaultId, result.DeviceId);
         Assert.False(result.FellBack);
         Assert.Contains(DefaultName, result.StatusText);
     }
@@ -48,10 +48,30 @@ public class AudioDeviceSelectorTests
 
         var result = AudioDeviceSelector.Resolve(HeadsetId, HeadsetName, onlyDefault, DefaultId, DefaultName);
 
-        Assert.Equal(AudioDeviceSelector.FollowWindowsDefaultId, result.DeviceId);
+        Assert.Equal(DefaultId, result.DeviceId);
         Assert.True(result.FellBack);
         Assert.Contains(HeadsetName, result.StatusText);
         Assert.Contains(DefaultName, result.StatusText);
+    }
+
+    [Fact]
+    public void SavedDeviceMissing_ResolvesToTheDefaultEndpointId_AndFlagsFellBack()
+    {
+        var onlyDefault = new List<AudioOutputDevice> { new(DefaultId, DefaultName) };
+
+        var result = AudioDeviceSelector.Resolve(HeadsetId, HeadsetName, onlyDefault, DefaultId, DefaultName);
+
+        Assert.Equal(DefaultId, result.DeviceId);
+        Assert.True(result.FellBack);
+    }
+
+    [Fact]
+    public void NoDefaultEndpointKnown_LeavesDeviceIdEmpty()
+    {
+        var result = AudioDeviceSelector.Resolve(HeadsetId, HeadsetName, new List<AudioOutputDevice>(), "", "");
+
+        Assert.Equal(string.Empty, result.DeviceId);
+        Assert.True(result.FellBack);
     }
 
     [Fact]
@@ -78,7 +98,7 @@ public class AudioDeviceSelectorTests
     {
         var result = AudioDeviceSelector.Resolve(null, null, null, DefaultId, DefaultName);
 
-        Assert.Equal(AudioDeviceSelector.FollowWindowsDefaultId, result.DeviceId);
+        Assert.Equal(DefaultId, result.DeviceId);
         Assert.False(result.FellBack);
     }
 
