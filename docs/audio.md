@@ -191,7 +191,7 @@ startup, both of them silence rather than noise:
   (`StartTonesIfNeeded` starts the follower only if the reference started).
 
 - **The Test Tone audition sweep must reach BOTH channels at every duration used** (20 / 40 / 60
-  ticks — Audio, Taxi Guidance, Hand Fly). `TestTonePlayer.FullCycle` is shared by all three and
+  ticks — Audio, Taxi Guidance, Hand Fly). `TestTonePan.FullCycle` is shared by all three and
   pinned by `FullCycle_ReachesBothChannelsAtEveryPanelDuration`. The old per-panel
   `sin(i * 0.15)` never went negative over 20 ticks (0–2.85 rad, entirely inside `[0, π]`), so
   the Audio panel's own audition — the one control built to prove which device is which — never
