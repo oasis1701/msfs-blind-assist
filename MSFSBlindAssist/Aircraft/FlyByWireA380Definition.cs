@@ -1315,12 +1315,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Rate-to-maintain is likewise stored in fpm (RA_VARIANTS rateToMaintain = 0/±1500/±2500);
         // "number" (raw) for the same ×196.85 reason as the VSPEED bands above.
         MonNum("A32NX_TCAS_RA_RATE_TO_MAINTAIN", "TCAS RA rate to maintain");
-        // Managed / preselected target speeds + selected V/S + expedite + flight directors.
-        // Decoded in TryGetDisplayOverride (none / knots / mach / fpm). Preselect = -1 when unset.
+        // Managed / preselected target speeds + flight directors.
+        // Decoded in TryGetDisplayOverride (none / knots / mach). Preselect = -1 when unset.
+        // ⚠️ A32NX_AUTOPILOT_VS_SELECTED is NOT registered here: it is registered once,
+        // with the other FCU value vars, as "number". A second Read() of the same name
+        // silently overwrote this entry (vars[key] = ...), so the "feet per minute" unit
+        // that used to sit here never took effect and only misled readers.
         Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
         Read("A32NX_SpeedPreselVal", "Preselected speed", "knots");
         Read("A32NX_MachPreselVal", "Preselected Mach", "mach");
-        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected vertical speed", "feet per minute");
         Stock("FD_1", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", "Flight director 1", "bool",
             new Dictionary<double, string> { [0] = "off", [1] = "on" });
         Stock("FD_2", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Flight director 2", "bool",
@@ -1954,7 +1957,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
                 Evt($"A32NX.FCU_EFIS_{efisSide}_{btn}_PUSH",
                     $"A32NX.FCU_EFIS_{efisSide}_{btn}_PUSH",
                     $"{(efisSide == "L" ? "Capt" : "F/O")} {btn}");
-        Evt("A32NX.FCU_EXPED_PUSH", "A32NX.FCU_EXPED_PUSH", "Expedite");
+        // (No EXPED event: the A380 FCU has no EXPED button — see the note by the
+        //  FCU push events below. A32NX.FCU_EXPED_PUSH is A320-only.)
         Evt("A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_AP_DISCONNECT_PUSH", "Autopilot Disconnect");
         Evt("A32NX.FCU_ATHR_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH", "Autothrust Disconnect");
         Evt("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "Speed / Mach Toggle");
@@ -1977,8 +1981,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // read back as 005), since the L:var read path doesn't apply SimVar units.
         Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "number");
         Read("A32NX_AUTOPILOT_SPEED_SELECTED", "Selected Speed");
-        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number"); // L:var — must be "number"
-        Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA");
+        // ⚠️ "number" (raw) for both: since FBW #10855 these are display-unit shims
+        // (fpm / degrees straight off the FCU), so no unit conversion is wanted on
+        // either the SimConnect side or ours. See the FCU readout in .SimVarUpdate.cs.
+        Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number");
+        Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA", "number");
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
         // so pushing/pulling speed/heading/altitude/VS gave no audible feedback.

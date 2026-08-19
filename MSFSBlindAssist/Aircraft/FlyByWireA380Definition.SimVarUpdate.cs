@@ -736,16 +736,12 @@ public partial class FlyByWireA380Definition
         // through so the FCU panel's display readouts work normally.
         if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
         {
-            // SimConnect's native L-var read returns this ANGULAR var in RADIANS
-            // (verified live: 250° reads 4.363, 300° reads 5.236) — non-angular FCU
-            // vars like VS/speed come through unscaled. Convert to degrees only when
-            // the magnitude is in the radian range (<= 2pi), so a future build/path
-            // that returns degrees directly is handled correctly too.
-            if (varName.EndsWith("HEADING_SELECTED"))
-            {
-                double hv = Math.Abs(value) <= (Math.PI * 2 + 0.05) ? value * 180.0 / Math.PI : value;
-                _pHdgVal = ((hv % 360) + 360) % 360;
-            }
+            // ⚠️ FBW #10855 turned the FCU value L:vars into display-unit shims
+            // (idFcuShimHdgValue2 <- selectedFcuAfs.hdg_trk_value), so this arrives in
+            // DEGREES, not the radians older builds wrote. Verified live: FCU 345 reads
+            // 345.0. Do NOT re-add a "looks like radians" guess — it would mangle any
+            // selected heading of 006° or less. Requires the A380X build in docs/a380x.md.
+            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = ((value % 360) + 360) % 360;
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
@@ -795,13 +791,12 @@ public partial class FlyByWireA380Definition
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
                        varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
         {
-            // V/S is a RATE, so the SimConnect L:var read returns it in m/s (SI),
-            // NOT feet/min (verified live: MobiFlight=2000 fpm reads as 10.16 here).
-            // Convert m/s -> fpm (x196.85) and round to the FCU's 100-fpm step.
-            if (varName.EndsWith("VS_SELECTED")) _pVsVal = Math.Round(value * 196.8503937 / 100.0) * 100.0;
-            // FPA is angular, so SimConnect returns it in radians (like heading);
-            // convert when the magnitude is in the radian range (FPA maxes at ~9.9°).
-            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value;
+            // ⚠️ Same #10855 shim as heading: both come from selectedFcuAfs.vs_fpa_value,
+            // so V/S is already FEET PER MINUTE and FPA already DEGREES. Verified live:
+            // FCU 500 fpm reads 500.0 (the old ×196.85 m/s conversion spoke "98400").
+            // The 100-fpm rounding just snaps to the FCU's detent step.
+            if (varName.EndsWith("VS_SELECTED")) _pVsVal = Math.Round(value / 100.0) * 100.0;
+            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = value;
             else _pVsMode = value;
             if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
             {
