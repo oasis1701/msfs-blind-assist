@@ -95,7 +95,11 @@ public sealed class TestTonePlayer : IDisposable
         SetButtonState(playing: false);
     }
 
-    /// <summary>True while an audition is sounding.</summary>
+    /// <summary>True while an audition is actually SOUNDING — which is not the same as "this
+    /// player owns a session". A generator holds <c>IsPlaying == false</c> for the whole of a
+    /// rebind and after a failed one, while this player still owns it and still has to be able
+    /// to stop it. <see cref="Toggle"/> deliberately does NOT branch on this; see the comment
+    /// there before wiring any new lifecycle decision to it.</summary>
     public bool IsPlaying => _tone?.IsPlaying == true;
 
     /// <summary>
@@ -112,7 +116,19 @@ public sealed class TestTonePlayer : IDisposable
     /// <param name="ticks">How many ticks the demo runs for. Each panel keeps its own length.</param>
     public bool Toggle(Func<AudioToneGenerator?> start, Action<AudioToneGenerator, int> onTick, int ticks)
     {
-        if (IsPlaying)
+        // Branches on OWNERSHIP (_tone != null), not on IsPlaying. IsPlaying is
+        // `_tone?.IsPlaying == true`, and RebindTo holds isPlaying false for the WHOLE of a
+        // rebind — so a device event during the 2-6 s audition plus a button press inside that
+        // window took the START branch, overwrote _tone, and never called Stop(), the only path
+        // that reaches UnregisterLocked. The orphan finished its rebind, sounded, stayed in the
+        // router's registry, and its own AutoStop then refused to touch it because
+        // ReferenceEquals(_tone, tone) was false: a tone nothing in the UI could stop. That is
+        // the same leak AutoStop was just changed to close, reopened one method along.
+        //
+        // Stopping a tone that reports not-playing is free (Stop is idempotent and
+        // non-throwing), and a session this player owns is one it must be able to end — so
+        // "do I hold a generator?" is the right question here, not "is it making noise?".
+        if (_tone != null)
         {
             Stop();
             return false;

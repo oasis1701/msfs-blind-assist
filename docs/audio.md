@@ -207,6 +207,17 @@ startup, both of them silence rather than noise:
   also writes a reason into the Audio panel's status `TextBox`: a screen reader must be able to
   tab back to the reason, not merely hear a modal at the moment it appeared.
 
+- **`TestTonePlayer` decides stop-vs-start on OWNERSHIP (`_tone != null`), never on
+  `IsPlaying`** — the same distinction `VisualGuidanceManager` makes, for the same reason.
+  `IsPlaying` is `_tone?.IsPlaying == true`, and `RebindTo` holds `isPlaying` false for the whole
+  of a rebind, so a device event during the 2–6 s audition plus a button press inside that window
+  took the *start* branch, overwrote `_tone`, and never called `Stop()` — the only path that
+  reaches `UnregisterLocked`. The orphaned generator finished its rebind, sounded, stayed in the
+  router's registry, and its own `AutoStop` then refused to touch it because
+  `ReferenceEquals(_tone, tone)` was false: an audition tone nothing in the UI could stop.
+  `Stop()` is idempotent and non-throwing, so stopping a session that reports not-playing costs
+  nothing.
+
 - **`AudioPanel` caches one WASAPI enumeration pass (`Enumerate()` + `DefaultEndpointInfo()`)
   for the lifetime of a `LoadFrom` call and reuses it in `UpdateStatusText`.**
   `UpdateStatusText` is wired to the device combo's `SelectedIndexChanged`, so a screen-reader
