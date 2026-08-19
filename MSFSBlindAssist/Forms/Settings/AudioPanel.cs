@@ -30,11 +30,11 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     // Cached by LoadFrom and reused by UpdateStatusText, which fires on every
     // SelectedIndexChanged -- i.e. on every arrow-key press while a screen reader user
-    // browses the dropdown. Resolving through AudioOutputDeviceService.ResolveCurrent per
-    // keystroke would perform TWO full WASAPI enumerations each time (Enumerate() and
+    // browses the dropdown. Re-resolving against live WASAPI state per keystroke would
+    // perform TWO full endpoint enumerations each time (Enumerate() and
     // DefaultEndpointInfo(), each constructing its own MMDeviceEnumerator) on the UI thread --
     // the same class of defect as re-querying TaxiAssistForm's gate list per keystroke. Real
-    // endpoints only, same contract as AudioOutputDeviceService.Enumerate(); UpdateStatusText
+    // endpoints only, same contract as AudioOutputRouter.Enumerate(); UpdateStatusText
     // resolves through the pure AudioDeviceSelector.Resolve directly against these instead of
     // re-enumerating.
     private IReadOnlyList<AudioOutputDevice> _realDevices = Array.Empty<AudioOutputDevice>();
@@ -128,8 +128,8 @@ public class AudioPanel : UserControl, ISettingsPanel
 
         // Enumerated ONCE per load and cached (see the field comments) rather than once here
         // AND again inside every later UpdateStatusText call.
-        _realDevices = AudioOutputDeviceService.Enumerate();
-        _defaultEndpoint = AudioOutputDeviceService.DefaultEndpointInfo();
+        _realDevices = AudioOutputRouter.Shared.Enumerate();
+        _defaultEndpoint = AudioOutputRouter.Shared.DefaultEndpointInfo();
 
         _deviceRows.Clear();
         _deviceRows.Add(new AudioOutputDevice(AudioDeviceSelector.FollowWindowsDefaultId, AudioDeviceSelector.DefaultDeviceLabel));
@@ -198,8 +198,8 @@ public class AudioPanel : UserControl, ISettingsPanel
         // never-announce-a-combo-change rule; the screen reader speaks the combo itself.
         //
         // Resolves against the CACHED _realDevices/_defaultEndpoint (see their field
-        // comments) via the pure AudioDeviceSelector.Resolve directly, rather than
-        // AudioOutputDeviceService.ResolveCurrent, which would re-enumerate WASAPI from
+        // comments) via the pure AudioDeviceSelector.Resolve directly, rather than asking
+        // AudioOutputRouter to re-resolve, which would re-enumerate WASAPI from
         // scratch on every call -- this method is wired to SelectedIndexChanged, so a screen
         // reader user arrowing the dropdown would otherwise fire two full endpoint
         // enumerations per keystroke on the UI thread.
@@ -256,7 +256,7 @@ public class AudioPanel : UserControl, ISettingsPanel
             // be compared before committing to one. Passed through UNCHANGED — deviceId is ""
             // for the "Windows default device" row (AudioDeviceSelector.FollowWindowsDefaultId),
             // and CreatePlayer's deviceIdOverride treats "" and null completely differently
-            // (see the <param> doc on AudioOutputDeviceService.CreatePlayer / AudioToneGenerator.
+            // (see the <param> doc on AudioOutputRouter.OpenFor / AudioToneGenerator.
             // Start): null means "use the SAVED setting". Collapsing "" to null here (via an
             // IsNullOrWhiteSpace check that used to sit on this line) made auditioning "Windows
             // default device" silently play on the saved device instead — the one control built
@@ -275,7 +275,7 @@ public class AudioPanel : UserControl, ISettingsPanel
             if (!tone.IsPlaying)
             {
                 // Start() never throws (audio is optional feedback and degrades by contract
-                // — see AudioOutputDeviceService's class doc), so a real "could not open this
+                // — see AudioOutputRouter's class doc), so a real "could not open this
                 // endpoint" failure lands here silently rather than in the catch block below.
                 // Without this check the button still claimed "playing" and the pilot got no
                 // feedback at all about why the audition was silent.

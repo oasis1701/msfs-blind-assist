@@ -17,9 +17,10 @@ namespace MSFSBlindAssist.Services;
 /// endpoint's own rate keeps NAudio's DMO resampler out of the signal chain in the common
 /// case (most endpoints mix at 48 kHz, while the tone chain historically hardcoded 44.1 kHz).
 ///
-/// DeviceId/DeviceName report the endpoint actually opened — which CreatePlayer can silently
-/// resolve to something other than what was requested (a missing saved device, or an unknown
-/// deviceIdOverride, both fall back to the default endpoint). A caller auditioning a device
+/// DeviceId/DeviceName report the endpoint actually opened — which AudioOutputRouter.OpenFor
+/// can silently resolve to something other than what was requested (a missing saved device, or
+/// an unknown deviceIdOverride, both fall back to the default endpoint). It is also what a
+/// routing sweep compares each generator's binding against. A caller auditioning a device
 /// before committing to it (the settings panel's "Test Tone") needs to be able to tell the
 /// pilot which device the sound actually came from, not just that a session was returned.
 /// </summary>

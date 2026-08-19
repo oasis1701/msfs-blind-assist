@@ -1,5 +1,6 @@
-// The pure half of guidance-tone routing. These replace AudioOutputDeviceServiceFallbackTests,
-// which pinned the same three regressions against process-global statics that no longer exist.
+// The pure half of guidance-tone routing. These replace the deleted fallback tests of the old
+// static device service, which pinned the same three regressions against process-global
+// statics that no longer exist.
 
 using MSFSBlindAssist.Services;
 
@@ -44,7 +45,7 @@ public class AudioRebindPlannerTests
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
     }
 
-    // The regression AudioOutputDeviceServiceFallbackTests test 3 pinned: a tone that fell
+    // The regression the old fallback tests' test 3 pinned: a tone that fell
     // back must be able to come home. Per-generator state makes it fall out of the compare.
     [Fact]
     public void FallenBackGenerator_MovesHome_WhenThePreferredDeviceReturns()

@@ -4,8 +4,8 @@
 // endpoint. The interesting failure mode - reading a real MMDevice's ID/FriendlyName after
 // the device has vanished between opening and construction - needs a live endpoint to reach
 // and is covered by manual/in-sim verification, not here (same reasoning as
-// AudioOutputDeviceServiceTests: no CI runner has a WASAPI endpoint). What IS testable
-// without hardware is the null-device path: Build() in AudioOutputDeviceService never
+// AudioOutputRouterTests: no CI runner has a WASAPI endpoint). What IS testable
+// without hardware is the null-device path: Build() in AudioOutputRouter never
 // actually passes a null device in production, but the constructor still has to degrade to
 // empty strings rather than throw if it ever did, and that path is exercised here directly
 // via the internal constructor (InternalsVisibleTo is already wired for this project - see

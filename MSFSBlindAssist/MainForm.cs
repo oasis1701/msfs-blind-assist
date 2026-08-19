@@ -528,12 +528,12 @@ public partial class MainForm : Form
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
 
-        // Guidance-tone device fallback notices. Tone Start() runs on the ProximityBeeper
-        // timer thread and on the taxi position thread, and ScreenReaderAnnouncer silently
-        // no-ops off the UI thread, so this has to marshal. Queued Announce (never
-        // AnnounceImmediate) so a device notice can never interrupt a hold-short or landing
-        // callout.
-        Services.AudioOutputDeviceService.AnnounceFallback = message =>
+        // Guidance-tone routing notices. These arrive on the router's own worker thread, and
+        // ScreenReaderAnnouncer silently no-ops off the UI thread, so this has to marshal.
+        // BeginInvoke, never Invoke: the UI thread can be inside the settings save that asked
+        // for the sweep. Queued Announce (never AnnounceImmediate) so a device notice can
+        // never interrupt a hold-short or landing callout.
+        Services.AudioOutputRouter.Shared.AnnounceRouteChange = message =>
         {
             try
             {

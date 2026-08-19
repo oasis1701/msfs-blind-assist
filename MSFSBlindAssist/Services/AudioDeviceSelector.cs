@@ -68,15 +68,49 @@ public static class AudioDeviceSelector
     }
 
     /// <summary>
-    /// The spoken notice for a fallback. Queued, once per session — see
-    /// <see cref="AudioOutputDeviceService"/>. Names the device so the pilot knows which one
-    /// went away rather than merely that something did.
+    /// The spoken notice for a fallback, dispatched by AudioOutputRouter's sweep. Names the
+    /// device that went away — the SAVED one, not the one now in use — so the pilot knows
+    /// which piece of hardware to go and check rather than merely that something moved.
     /// </summary>
     public static string FallbackAnnouncement(string? savedName)
     {
         return string.IsNullOrWhiteSpace(savedName)
             ? "Guidance tone device is not available. Using the Windows default device."
             : $"Guidance tone device {savedName} is not available. Using the Windows default device.";
+    }
+
+    /// <summary>
+    /// The spoken notice for a preferred device that has come back — the pilot reconnected
+    /// the headset the tones had fallen back from, and the tones are moving onto it. Names
+    /// the RECOVERED device, which is also the one now in use.
+    /// </summary>
+    public static string RecoveredAnnouncement(string? deviceName)
+    {
+        return string.IsNullOrWhiteSpace(deviceName)
+            ? "Guidance tone device is back. Moving the guidance tones to it."
+            : $"Guidance tone device {deviceName} is back. Moving the guidance tones to it.";
+    }
+
+    /// <summary>
+    /// The spoken notice for Windows promoting a different default endpoint while the setting
+    /// is "follow the default". Deliberately terse: the pilot did not ask for this and did not
+    /// do anything wrong, so it reports the new destination and nothing else.
+    /// </summary>
+    public static string DefaultDeviceChangedAnnouncement(string? deviceName)
+    {
+        return string.IsNullOrWhiteSpace(deviceName)
+            ? $"Guidance tones now on the {DefaultDeviceLabel}."
+            : $"Guidance tones now on {deviceName}.";
+    }
+
+    /// <summary>
+    /// The spoken notice for no endpoint being resolvable at all — every guidance tone is
+    /// about to be silent, which a blind pilot must never have to infer from the absence of a
+    /// sound they were steering with.
+    /// </summary>
+    public static string NoDeviceAvailableAnnouncement()
+    {
+        return "No audio device available for guidance tones.";
     }
 
     private static string DescribeDefault(string defaultDeviceName)
