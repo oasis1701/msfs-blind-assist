@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
 using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
 
 namespace MSFSBlindAssist.Services;
@@ -88,16 +89,41 @@ public sealed class AudioOutputRouter : IDisposable
     private readonly Thread _worker;
     private readonly AutoResetEvent _wake = new(false);
 
+    // The endpoint-notification registration. BOTH are null together when the machine has no
+    // audio stack (or the registration was refused): device changes then go unnoticed and the
+    // router only sweeps when something asks it to, which is a degradation worth having rather
+    // than an error worth failing construction over. The enumerator is held for the LIFETIME of
+    // the router rather than being a `using` local, because unregistering needs the same object
+    // that registered.
+    private readonly MMDeviceEnumerator? _notifyEnumerator;
+    private readonly IMMNotificationClient? _notifications;
+
     // 0 = nothing asked for, 1 = a sweep is owed. An int rather than a bool so the worker can
     // TEST AND CLEAR it in one atomic step: a plain read-then-write leaves a window in which a
     // RequestSweep landing between the two has its 1 overwritten by the clear while its Set is
-    // consumed by the next WaitOne — i.e. a dropped request. Harmless at settings-save rates,
-    // not once device-arrival notifications drive this.
+    // consumed by the next WaitOne — i.e. a dropped request. Harmless at settings-save rates;
+    // not harmless now that endpoint notifications drive this too, where a burst of arrivals
+    // and default-device changes lands in milliseconds.
     private int _sweepPending;
     private int _disposed;
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
+    /// <summary>
+    /// Starts the worker, then subscribes to WASAPI endpoint notifications.
+    ///
+    /// THAT ORDER MATTERS ONLY FOR READING, not for correctness: a callback that arrives
+    /// before <c>_worker.Start()</c> returns still lands safely, because everything
+    /// <see cref="RequestSweep"/> touches (<c>_sweepPending</c>, <c>_wake</c>, <c>_disposed</c>)
+    /// is a field initialiser, and an AutoResetEvent signalled before anyone waits stays
+    /// signalled. Publishing <c>this</c> to COM from a constructor is safe for the same reason
+    /// the AudioToneGenerator constructor's registration is: the only thing a callback can
+    /// reach is that one method.
+    ///
+    /// NOTHING HERE MAY THROW. A machine with no audio stack at all must still get a working
+    /// router — the tones will be silent, but every call site is inside a feature a blind pilot
+    /// is steering with, and this type's whole contract is that it degrades instead.
+    /// </summary>
     public AudioOutputRouter()
     {
         _worker = new Thread(WorkerLoop)
@@ -106,6 +132,36 @@ public sealed class AudioOutputRouter : IDisposable
             Name = "MSFSBA audio router",
         };
         _worker.Start();
+
+        MMDeviceEnumerator? notifyEnumerator = null;
+        IMMNotificationClient? notifications = null;
+        try
+        {
+            notifications = new EndpointNotifications(this);
+            notifyEnumerator = new MMDeviceEnumerator();
+
+            // PreserveSig in NAudio 2.3.0 — a refusal comes back as a failed HRESULT, not an
+            // exception, so it has to be READ or a silent non-registration would look like a
+            // successful one for the rest of the session.
+            int hr = notifyEnumerator.RegisterEndpointNotificationCallback(notifications);
+            if (hr != 0)
+            {
+                Log.Warn("Audio", $"Audio device notifications unavailable (0x{hr:X8}); the guidance tones will not follow a device change on their own.");
+                try { notifyEnumerator.Dispose(); } catch { }
+                notifyEnumerator = null;
+                notifications = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Audio", $"Audio device notifications unavailable: {ex.Message}");
+            try { notifyEnumerator?.Dispose(); } catch { }
+            notifyEnumerator = null;
+            notifications = null;
+        }
+
+        _notifyEnumerator = notifyEnumerator;
+        _notifications = notifications;
     }
 
     /// <summary>
@@ -217,8 +273,8 @@ public sealed class AudioOutputRouter : IDisposable
     /// <summary>
     /// Asks for a routing sweep. Returns immediately — the work happens on the router's own
     /// worker thread, never on the caller's, because the caller is typically the UI thread
-    /// inside a settings save (and, once the device-notification client lands, a WASAPI
-    /// callback, which must not be blocked at all).
+    /// inside a settings save, or a WASAPI endpoint-notification callback, which Core Audio
+    /// forbids blocking at all.
     ///
     /// Overlapping requests COALESCE: several calls arriving before the worker wakes produce
     /// one sweep, and a call arriving during a sweep produces exactly one more afterwards.
@@ -567,10 +623,6 @@ public sealed class AudioOutputRouter : IDisposable
     /// Stops the worker. Idempotent — a second call is a no-op, which a test pins, and which
     /// matters because a router can be disposed both by an owner's teardown and by a form
     /// closing.
-    ///
-    /// SEAM: the device-arrival/removal notification client (IMMNotificationClient) is not
-    /// wired up yet. When it is, its unregistration and the MMDeviceEnumerator held for it
-    /// belong at the top of this method, before the worker is stopped.
     /// </summary>
     public void Dispose()
     {
@@ -578,6 +630,17 @@ public sealed class AudioOutputRouter : IDisposable
         {
             return;
         }
+
+        // The endpoint notifications go FIRST, before the worker is asked to stop: they are
+        // the only thing that can still ask for work, and this releases COM's reference to
+        // this object at the earliest point. RequestSweep's IsDisposed check already drops a
+        // callback that lands in the gap, so this is about ownership, not about a race.
+        if (_notifyEnumerator != null && _notifications != null)
+        {
+            try { _notifyEnumerator.UnregisterEndpointNotificationCallback(_notifications); } catch { }
+        }
+
+        try { _notifyEnumerator?.Dispose(); } catch { }
 
         try { _wake.Set(); } catch { }
 
@@ -597,4 +660,74 @@ public sealed class AudioOutputRouter : IDisposable
     }
 
     private sealed record Registration(int Token, WeakReference<AudioToneGenerator> Generator);
+
+    /// <summary>
+    /// Forwards WASAPI endpoint notifications to the router's worker. Nothing here may block
+    /// or re-enter the enumerator — Microsoft's Core Audio documentation is explicit about
+    /// both — so every callback does nothing but request a sweep, which is an Interlocked
+    /// write plus an event Set. The enumeration and the opens all happen later, on the
+    /// worker.
+    ///
+    /// This is what restores the behaviour the retired WaveOutEvent path got for free: WinMM's
+    /// WAVE_MAPPER (DeviceNumber -1) is re-routed by Windows when the default endpoint
+    /// changes, while a WASAPI-direct client has to implement stream routing itself. Without
+    /// it, "Windows default device" silently stopped following the default, and a reconnected
+    /// headset needed an undiscoverable save-the-settings-again ritual to get the tones back.
+    ///
+    /// Every method swallows: these are called by the audio service across a COM boundary, and
+    /// an exception escaping one becomes a failed HRESULT returned to Windows.
+    /// </summary>
+    private sealed class EndpointNotifications : IMMNotificationClient
+    {
+        private readonly AudioOutputRouter owner;
+
+        internal EndpointNotifications(AudioOutputRouter owner) => this.owner = owner;
+
+        // A device becoming Active/Unplugged/Disabled changes what Enumerate() returns, which
+        // is what decides whether the saved device is reachable — so this is the callback that
+        // carries an unplugged headset AND its reconnection on most hardware.
+        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => Notify("device state changed");
+
+        public void OnDeviceAdded(string pwstrDeviceId) => Notify("device added");
+
+        public void OnDeviceRemoved(string deviceId) => Notify("device removed");
+
+        /// <summary>
+        /// Filtered to the exact endpoint role the router opens
+        /// (<c>GetDefaultAudioEndpoint(Render, Console)</c>). Windows raises this once per
+        /// (flow, role) pair — Console, Multimedia and Communications, for Render and Capture
+        /// alike — so an unfiltered forward turns one default change into six requests. They
+        /// would coalesce, but a log full of capture-device reasons is a worse answer to "why
+        /// did the tones move?" than one line naming the thing that actually moved.
+        /// </summary>
+        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+        {
+            if (flow == DataFlow.Render && role == Role.Console)
+            {
+                Notify("default device changed");
+            }
+        }
+
+        /// <summary>
+        /// Deliberately silent. A property change is a rename or a volume/format tweak, never
+        /// a change of WHICH endpoint the tones belong on — and Windows fires it far too often
+        /// (every volume step) to hang a WASAPI enumeration off. A rename in particular cannot
+        /// matter here: an endpoint id is stable across renames, which is why the setting
+        /// persists the id.
+        /// </summary>
+        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
+
+        private void Notify(string reason)
+        {
+            try
+            {
+                owner.RequestSweep(reason);
+            }
+            catch
+            {
+                // Never let anything cross back into the audio service. RequestSweep already
+                // handles its own failures; this is the boundary guard, not a second attempt.
+            }
+        }
+    }
 }

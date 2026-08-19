@@ -252,8 +252,8 @@ public class AudioToneGenerator : IDisposable
             if (opened == null)
             {
                 // Nothing opened at all. The generator STAYS REGISTERED with needsDevice set,
-                // so the next sweep — a settings save, or (Task 7) a device arriving — names
-                // it, calls RebindTo, and retries the open. Until then it is simply silent,
+                // so the next sweep — a settings save, or a device arriving — names it,
+                // calls RebindTo, and retries the open. Until then it is simply silent,
                 // which is the correct degradation for optional feedback.
                 needsDevice = true;
                 currentDeviceId = string.Empty;

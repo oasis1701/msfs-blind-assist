@@ -119,4 +119,70 @@ public class AudioDeviceSelectorTests
         Assert.Contains("Guidance tone device", message);
         Assert.EndsWith(".", message);
     }
+
+    [Fact]
+    public void RecoveredAnnouncement_NamesTheDeviceThatCameBack()
+    {
+        string message = AudioDeviceSelector.RecoveredAnnouncement(HeadsetName);
+
+        Assert.Contains(HeadsetName, message);
+        Assert.EndsWith(".", message);
+    }
+
+    [Fact]
+    public void RecoveredAnnouncement_WithoutAName_IsStillASentence()
+    {
+        string message = AudioDeviceSelector.RecoveredAnnouncement("");
+
+        Assert.Contains("Guidance tone device", message);
+        Assert.EndsWith(".", message);
+    }
+
+    [Fact]
+    public void DefaultDeviceChangedAnnouncement_NamesTheEndpointWindowsPromoted()
+    {
+        string message = AudioDeviceSelector.DefaultDeviceChangedAnnouncement(DefaultName);
+
+        Assert.Contains(DefaultName, message);
+        Assert.EndsWith(".", message);
+    }
+
+    [Fact]
+    public void DefaultDeviceChangedAnnouncement_WithoutAName_FallsBackToTheDefaultDeviceLabel()
+    {
+        // Windows promoted something whose name could not be read. The pilot still has to be
+        // told the tones moved, so this must never degrade to silence or to a dangling
+        // "Guidance tones now on ." — it names the synthetic label the settings combo uses.
+        string message = AudioDeviceSelector.DefaultDeviceChangedAnnouncement("");
+
+        Assert.Contains(AudioDeviceSelector.DefaultDeviceLabel, message);
+        Assert.EndsWith(".", message);
+    }
+
+    [Fact]
+    public void NoDeviceAvailableAnnouncement_SaysTheGuidanceTonesHaveNoOutput()
+    {
+        string message = AudioDeviceSelector.NoDeviceAvailableAnnouncement();
+
+        Assert.Contains("guidance tones", message, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith(".", message);
+    }
+
+    [Fact]
+    public void EveryRouteNoticeSaysSomethingDifferent()
+    {
+        // The four notices exist because they ask for four different reactions — go and check
+        // the headset, nothing to do it is back, Windows moved you, there is no sound at all.
+        // Two that read alike would collapse into one for a pilot who only ever HEARS them,
+        // so the distinctness is the feature, not an accident of the wording.
+        var messages = new[]
+        {
+            AudioDeviceSelector.FallbackAnnouncement(HeadsetName),
+            AudioDeviceSelector.RecoveredAnnouncement(HeadsetName),
+            AudioDeviceSelector.DefaultDeviceChangedAnnouncement(DefaultName),
+            AudioDeviceSelector.NoDeviceAvailableAnnouncement(),
+        };
+
+        Assert.Equal(messages.Length, messages.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
 }
