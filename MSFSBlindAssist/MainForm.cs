@@ -561,12 +561,19 @@ public partial class MainForm : Form
         // still moving every sounding tone. The tones jumped endpoints with no explanation,
         // exactly once per session.
         //
-        // Deliberately silent: a pilot who has just launched the app has changed nothing, and
-        // startup chatter is not wanted. The baseline flag suppresses the announcement only —
-        // the rebinds and the state store both still happen. See
-        // AudioOutputRouter.RequestBaselineSweep and docs/audio.md for the two limits that
-        // silence carries. Requested AFTER the sink is wired so the ordering reads as
-        // deliberate; it would be silent either way.
+        // Silent about a HEALTHY opening state — a pilot who has just launched has changed
+        // nothing, and startup chatter is not wanted — but it DOES speak the two that mean the
+        // saved configuration is not being honoured before they touched anything: the chosen
+        // device is gone, or nothing resolved at all (in which case every guidance tone is
+        // silent for the session). Both are otherwise invisible: the only other channel is the
+        // Audio tab's status line, which a blind pilot may never open. Same judgement as the
+        // VATSIM startup plugin check above.
+        //
+        // So this MUST come after the sink is assigned, not merely alongside it: the two
+        // startup phrases have nowhere to go otherwise. Delivery works from here — the handle
+        // is already forced by `new ScreenReaderAnnouncer(this.Handle)` above, and the queued
+        // Announce cannot tick until the message pump runs, which is exactly how the VATSIM
+        // startup notice lands after the form is up.
         Services.AudioOutputRouter.Shared.RequestBaselineSweep();
 
         // Note: Diagnostic test removed to prevent test speech on startup

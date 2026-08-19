@@ -384,9 +384,12 @@ public class AudioToneGenerator : IDisposable
     /// one decision instead of re-resolving per generator.
     ///
     /// This restarts through StartLocked rather than swapping the IWavePlayer alone, because
-    /// the new endpoint may mix at a different sample rate — and an oscillator built for the
-    /// old rate would play sharp under a swapped player. Costs roughly the output latency as
-    /// a gap, only on a deliberate device change.
+    /// the new endpoint may mix at a different sample rate and the OSCILLATOR'S PHASE STEP IS
+    /// DERIVED FROM THAT RATE, so it has to be rebuilt. (NOT because a stale oscillator "would
+    /// play sharp" — that claim was disproved: the oscillator declares the same rate it
+    /// generates at and Init copies that format, so declared and generated cannot diverge. See
+    /// StartLocked and docs/audio.md.) Costs roughly the output latency as a gap, only on a
+    /// deliberate device change.
     ///
     /// Any Configure() mapping survives: min/max frequency and the pitch/bank ranges are
     /// separate fields that neither Cleanup nor StartLocked touches.

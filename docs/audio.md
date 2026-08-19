@@ -15,22 +15,16 @@ simulator itself keeps the speakers. Persisted as `UserSettings.GuidanceToneDevi
 The tones **follow the hardware on their own**. Unplug the chosen headset and every sounding
 tone moves to the Windows default endpoint; plug it back in and they move back; promote a
 different default while the setting is "follow the default" and they follow that. Each of those
-outcomes is spoken once, *after* the move has happened — with two deliberate exceptions at
-startup, both of them silence rather than noise:
+outcomes is spoken once, *after* the move has happened.
 
-- **The session's first sweep is the silent baseline** (`RequestBaselineSweep`, called once from
-  `MainForm` right after the announcement sink is wired). It seeds the router's last-target state
-  from current reality and says nothing, because a pilot who has just launched the app has
-  changed nothing. So the state the app *starts* in is never announced: a saved headset that was
-  already unplugged at launch is not spoken about, only shown in the Audio tab's status line.
-  A real sweep that coalesces into the baseline (an endpoint notification landing in the same few
-  milliseconds) is silenced with it — a window that was silent before the baseline existed
-  anyway.
-- **`NoDeviceAvailable` is therefore unreachable at startup.** On a machine where nothing
-  resolves at launch, the baseline is the only sweep that runs and it does not speak; the pilot
-  is told the first time something else asks for a sweep (a device arriving, a settings save).
-  The baseline does not dedup it away — it never touches the last-*spoken* pair — so that later
-  sweep does say it.
+**At startup there is one extra sweep, and it is selectively quiet.** `RequestBaselineSweep`
+runs once, from `MainForm`, right after the announcement sink is wired, and seeds the router's
+last-target state from current reality. It says nothing about a *healthy* opening state — a pilot
+who has just launched the app has changed nothing — but it **does** speak the two notices that
+mean the saved configuration is not being honoured before they have touched anything: the chosen
+device is gone (`FellBackToDefault`), or nothing resolved at all (`NoDeviceAvailable`, i.e. every
+guidance tone will be silent for the whole session). See the invariant below for why those two
+and not the other two.
 
 **Key files:**
 - `Services/AudioOutputRouter.cs` — the router. An **instance** (`IDisposable`) with a
@@ -129,7 +123,7 @@ startup, both of them silence rather than noise:
   arm, so a new `AudioRouteNotice` member stays silent until someone deliberately gives it a
   voice.
 
-- **The session's first sweep is a SILENT baseline, requested once from `MainForm`.**
+- **The session's first sweep is a baseline, requested once from `MainForm`.**
   `RequestBaselineSweep` seeds `_lastTargetDeviceId`, `_lastFellBack` and
   `_lastFollowingWindowsDefault` from current reality so that the first *real* change is judged
   against a true baseline. Without it those fields stayed at their blank initial values until
@@ -137,12 +131,38 @@ startup, both of them silence rather than noise:
   "Windows default device", the first mid-flight default-device change suppressed
   `DefaultDeviceChanged` (because `previouslyFollowingWindowsDefault` read false, i.e. "the pilot
   must have just chosen this") while the same plan **still moved every sounding tone** — an
-  unexplained jump to another endpoint, exactly once per session. The baseline flag suppresses
-  the **announcement only**: the rebinds run and the last-target trio is stored, which is the
-  entire point. It must **never** seed `_lastNotice`/`_lastNoticeDeviceId` — those record what the
-  pilot has *heard*, so seeding them from an unspoken sweep would dedup away the first real
-  announcement of that kind. The flag is consumed on the same worker pass it is observed, so it
-  can never carry forward and silence a later sweep.
+  unexplained jump to another endpoint, exactly once per session. Seeding `_lastFellBack` is also
+  what makes **recovery** work at all: `RecoveredPreferred` needs a previous fallback to recover
+  from, so before the baseline a replug could never announce.
+
+  **It narrows the announcement to a DEGRADED opening state; it does not suppress it.**
+  `FellBackToDefault` and `NoDeviceAvailable` speak at baseline. `DefaultDeviceChanged` and
+  `RecoveredPreferred` do not — nothing is wrong in either case, and the first would announce a
+  default the pilot never changed while the second would announce recovery from a fault they were
+  never told about. The two that speak are the ones where the saved configuration is not being
+  honoured before the pilot has touched anything, where the only other channel is the Audio tab's
+  status line (which a blind pilot may never open), and where there is a concrete action — and in
+  the `NoDeviceAvailable` case, where **every guidance tone is silent for the entire session**.
+  This is the same judgement the VATSIM startup plugin check makes (`Locked` / `Failed` /
+  first-install `Installed` announce because they are otherwise invisible or unrepeatable and
+  mean the pilot is about to fly on something that is not what shipped; `AlreadyCurrent` and
+  `VPilotNotFound` stay settings-only because they need no action). It is also why this router
+  differs from every other baseline-first monitor in the app: those baseline a *neutral* reading
+  (no ECAM failures, smooth turbulence, an AS mode), whereas a fallback at launch is a *fault*,
+  and baselining a fault silently is how it goes unreported forever.
+
+  `_lastNotice`/`_lastNoticeDeviceId` follow the **speech**, not the sweep — they record what the
+  pilot has *heard*. A notice the baseline swallows must leave them alone, or the first real
+  sweep of that kind is deduped away and never spoken; a notice the baseline **speaks** must
+  update them like any other, or the very next sweep repeats it. The baseline flag itself is
+  consumed on the same worker pass it is observed, so it can never carry forward and re-narrow a
+  later sweep.
+
+  Delivery from that call site works and is not incidental: `MainForm` has already forced the
+  handle with `new ScreenReaderAnnouncer(this.Handle)`, the sink is assigned one statement
+  earlier (so the call must stay after it), and the queued `Announce` cannot tick until the
+  message pump runs — the same mechanism the VATSIM startup notice relies on to land after the
+  form is up.
 
 - **The announcement sink must marshal to the UI thread with a NON-BLOCKING
   `Control.BeginInvoke`, never `Control.Invoke`.** The marshal is required because the sink is
@@ -248,9 +268,11 @@ startup, both of them silence rather than noise:
   retried by the next sweep, so the state self-heals — but the pilot may hear a recovery a
   moment before it is true. Pre-existing; unchanged by this feature.
 
-- **The startup baseline sweep is silent**, with the two consequences spelled out in the
-  Overview: the state the app launches in is never announced, and `NoDeviceAvailable` cannot be
-  the first thing a session says.
+- **A real sweep that coalesces into the startup baseline is judged by the baseline's rule.** An
+  endpoint notification landing in the same few milliseconds as `RequestBaselineSweep` produces
+  one sweep, so a `DefaultDeviceChanged` or `RecoveredPreferred` in that window goes unspoken.
+  The window is a few milliseconds of app startup and was entirely silent before the baseline
+  existed, so this is strictly better than what it replaced — but it is not nothing.
 
 ## Related documentation
 

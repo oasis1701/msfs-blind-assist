@@ -344,20 +344,30 @@ public sealed class AudioOutputRouter : IDisposable
     /// sounding tone. The tones jumped endpoints unexplained, exactly once per session, and only
     /// the second such change was ever spoken.
     ///
-    /// WHY IT IS SILENT: a pilot who has just launched the app has changed nothing, so there is
-    /// nothing to report — startup chatter is not wanted. The flag suppresses ONLY the
-    /// announcement: the rebinds still run and the last-target trio
-    /// (<c>_lastTargetDeviceId</c> / <c>_lastFellBack</c> / <c>_lastFollowingWindowsDefault</c>)
-    /// is still stored, which is the entire point. It deliberately does NOT touch
-    /// <c>_lastNotice</c>/<c>_lastNoticeDeviceId</c> — those mean "what the pilot has already
-    /// HEARD", and seeding them from an unspoken sweep would dedup away the first real
-    /// announcement of that kind.
+    /// SILENT ABOUT A HEALTHY STATE, NOT ABOUT A DEGRADED ONE. A pilot who has just launched the
+    /// app has changed nothing, so a normal opening state is not worth a word — but a saved
+    /// device that is GONE (<c>FellBackToDefault</c>) or an endpoint set that resolves to
+    /// NOTHING (<c>NoDeviceAvailable</c>) means the saved configuration is not being honoured
+    /// before the pilot has touched anything, and in the second case every guidance tone will be
+    /// silent for the whole session. Those two speak; see <see cref="RunSweep"/> for the rule and
+    /// for why <c>DefaultDeviceChanged</c>/<c>RecoveredPreferred</c> do not. It is the same
+    /// judgement the VATSIM plugin check makes at startup — announce the states that are
+    /// otherwise invisible or unrepeatable and that the pilot can act on, stay quiet about the
+    /// ones that need nothing.
     ///
-    /// TWO HONEST LIMITS, both documented in docs/audio.md: a real sweep that coalesces into
-    /// this one (an endpoint notification landing in the same few milliseconds) is silenced with
-    /// it — a startup window that was silent before this existed anyway; and a machine where
-    /// NOTHING resolves at launch is not told so at launch, because this sweep is the only one
-    /// that runs in that state and it does not speak.
+    /// EITHER WAY the rebinds run and the last-target trio (<c>_lastTargetDeviceId</c> /
+    /// <c>_lastFellBack</c> / <c>_lastFollowingWindowsDefault</c>) is stored, which is the
+    /// reason the pass exists. Seeding <c>_lastFellBack</c> is also what makes RECOVERY work:
+    /// without it a replug could never raise <c>RecoveredPreferred</c>, because the planner
+    /// needs a previous fallback to recover from.
+    ///
+    /// <c>_lastNotice</c>/<c>_lastNoticeDeviceId</c> mean "what the pilot has already HEARD",
+    /// so they follow the speech and not the sweep: untouched by a notice this pass swallows,
+    /// updated normally by one it speaks.
+    ///
+    /// ONE HONEST LIMIT, documented in docs/audio.md: a real sweep that coalesces into this one
+    /// (an endpoint notification landing in the same few milliseconds) is judged by the baseline
+    /// rule — a startup window that was silent before this existed anyway.
     /// </summary>
     public void RequestBaselineSweep()
     {
@@ -470,10 +480,11 @@ public sealed class AudioOutputRouter : IDisposable
     /// then say so. The ORDER is the point — see <see cref="AnnounceRouteChange"/>.
     /// </summary>
     /// <param name="baseline">
-    /// True for the session's one silent seeding pass (<see cref="RequestBaselineSweep"/>).
-    /// It suppresses the ANNOUNCEMENT ONLY — the rebinds run and the last-target trio is
-    /// stored, because seeding that trio is the whole reason the pass exists. The
-    /// last-notice pair is left alone: it records what the pilot has HEARD.
+    /// True for the session's one seeding pass (<see cref="RequestBaselineSweep"/>). It narrows
+    /// the ANNOUNCEMENT ONLY, to the two notices that describe a DEGRADED opening state — the
+    /// rebinds run and the last-target trio is stored either way, because seeding that trio is
+    /// the whole reason the pass exists. The last-notice pair follows the speech, not the
+    /// sweep: it records what the pilot has HEARD.
     /// </param>
     private void RunSweep(bool baseline = false)
     {
@@ -540,17 +551,33 @@ public sealed class AudioOutputRouter : IDisposable
             }
         }
 
+        // The baseline pass is silent about a HEALTHY opening state and speaks a DEGRADED one.
+        // Those are the two notices that mean the saved configuration is not being honoured
+        // right now: the chosen endpoint is gone (tones are on the default instead), or nothing
+        // resolved at all (every guidance tone will be silent for the session). Both are
+        // otherwise invisible — the only other channel is the Audio tab's status line, which a
+        // blind pilot may never open — and both have a concrete action. Same rule the VATSIM
+        // startup check follows for Locked/Failed/first-install Installed, and the same reason
+        // AlreadyCurrent and VPilotNotFound stay settings-only there.
+        //
+        // DefaultDeviceChanged and RecoveredPreferred stay silent here because nothing is
+        // wrong in either: the first would announce a default the pilot never changed, the
+        // second a recovery from a fault they were never told about.
+        bool speakableAtBaseline = plan.Notice is AudioRouteNotice.FellBackToDefault
+                                               or AudioRouteNotice.NoDeviceAvailable;
+
         lock (Gate)
         {
             _lastTargetDeviceId = target.DeviceId;
             _lastFellBack = target.FellBack;
             _lastFollowingWindowsDefault = followingWindowsDefault;
 
-            // Only a notice that is about to be SPOKEN updates the dedup pair. A silent sweep
-            // must leave the pilot's last-heard state alone — which covers the baseline pass
-            // too: whatever it computed was never said, so the first real sweep of that kind
-            // must still be free to say it.
-            if (!baseline && plan.Notice != AudioRouteNotice.None)
+            // Only a notice that is about to be SPOKEN updates the dedup pair — the pilot's
+            // last-heard state, not the router's last-computed one. The baseline obeys that
+            // rule in BOTH directions: a notice it swallows must leave the pair alone so the
+            // first real sweep of that kind can still say it, and a notice it speaks must
+            // update the pair like any other, or the very next sweep repeats it.
+            if ((!baseline || speakableAtBaseline) && plan.Notice != AudioRouteNotice.None)
             {
                 _lastNotice = plan.Notice;
                 _lastNoticeDeviceId = target.DeviceId;
@@ -559,9 +586,14 @@ public sealed class AudioOutputRouter : IDisposable
 
         if (baseline)
         {
-            // Logged so debug.log explains the one sweep that deliberately says nothing.
-            Log.Debug("Audio", $"Audio routing baseline seeded silently (device '{target.DeviceName}', fellBack={target.FellBack}, followingWindowsDefault={followingWindowsDefault}); would have said: {plan.Notice}");
-            return;
+            // Logged either way, so debug.log explains both the sweep that says nothing and
+            // the one startup phrase a pilot may be surprised to hear.
+            Log.Debug("Audio", $"Audio routing baseline seeded (device '{target.DeviceName}', fellBack={target.FellBack}, followingWindowsDefault={followingWindowsDefault}, notice={plan.Notice}, spoken={speakableAtBaseline})");
+
+            if (!speakableAtBaseline)
+            {
+                return;
+            }
         }
 
         Announce(plan.Notice, plan.NoticeDeviceName, savedName);
