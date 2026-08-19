@@ -26,7 +26,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, HeadsetId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Empty(plan.TokensToRebind);
@@ -38,7 +38,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
@@ -51,7 +51,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: SpeakersId, previouslyFellBack: true, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: HeadsetId);
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
@@ -70,7 +70,7 @@ public class AudioRebindPlannerTests
             new AudioGeneratorState(2, SpeakersId, NeedsDevice: false),
         };
 
-        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 2 }, plan.TokensToRebind);
@@ -82,7 +82,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: SpeakersId, previouslyFellBack: true, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: HeadsetId);
 
         Assert.Empty(plan.TokensToRebind);
@@ -94,7 +94,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, HeadsetId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
@@ -107,7 +107,7 @@ public class AudioRebindPlannerTests
         var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
         var newDefault = new AudioDeviceResolution(HeadsetId, HeadsetName, false, $"Using Windows default device ({HeadsetName}).");
 
-        var plan = AudioRebindPlanner.Plan(newDefault, followingWindowsDefault: true, generators,
+        var plan = AudioRebindPlanner.Plan(newDefault, followingWindowsDefault: true, previouslyFollowingWindowsDefault: true, generators,
             previousTargetDeviceId: SpeakersId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
@@ -121,7 +121,7 @@ public class AudioRebindPlannerTests
         var generators = new[] { new AudioGeneratorState(1, "", NeedsDevice: true) };
         var nothing = new AudioDeviceResolution("", "", true, "Saved device is not connected - using Windows default device.");
 
-        var plan = AudioRebindPlanner.Plan(nothing, followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(nothing, followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: SpeakersId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Empty(plan.TokensToRebind);
@@ -133,7 +133,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, HeadsetId, NeedsDevice: true) };
 
-        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, generators,
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
@@ -144,8 +144,8 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, generators,
-            previousTargetDeviceId: SpeakersId, previouslyFellBack: false, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: HeadsetId);
+        var plan = AudioRebindPlanner.Plan(FellBackToSpeakers(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: SpeakersId, previouslyFellBack: false, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: SpeakersId);
 
         Assert.Equal(AudioRouteNotice.None, plan.Notice);
     }
@@ -155,7 +155,7 @@ public class AudioRebindPlannerTests
     {
         var generators = new[] { new AudioGeneratorState(1, HeadsetId, NeedsDevice: false) };
 
-        var plan = AudioRebindPlanner.Plan(OnSpeakersByChoice(), followingWindowsDefault: true, generators,
+        var plan = AudioRebindPlanner.Plan(OnSpeakersByChoice(), followingWindowsDefault: true, previouslyFollowingWindowsDefault: false, generators,
             previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
 
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);

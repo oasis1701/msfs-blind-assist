@@ -45,6 +45,7 @@ public static class AudioRebindPlanner
     public static AudioRebindPlan Plan(
         AudioDeviceResolution target,
         bool followingWindowsDefault,
+        bool previouslyFollowingWindowsDefault,
         IReadOnlyList<AudioGeneratorState>? generators,
         string? previousTargetDeviceId,
         bool previouslyFellBack,
@@ -55,7 +56,7 @@ public static class AudioRebindPlanner
         previousTargetDeviceId ??= string.Empty;
         lastNoticeDeviceId ??= string.Empty;
 
-        AudioRouteNotice notice = ChooseNotice(target, followingWindowsDefault, previousTargetDeviceId, previouslyFellBack);
+        AudioRouteNotice notice = ChooseNotice(target, followingWindowsDefault, previouslyFollowingWindowsDefault, previousTargetDeviceId, previouslyFellBack);
 
         // Dedup against the immediately preceding notice so a settings save that changes
         // nothing cannot re-speak a warning the pilot already has. FellBackToDefault and
@@ -92,6 +93,7 @@ public static class AudioRebindPlanner
     private static AudioRouteNotice ChooseNotice(
         AudioDeviceResolution target,
         bool followingWindowsDefault,
+        bool previouslyFollowingWindowsDefault,
         string previousTargetDeviceId,
         bool previouslyFellBack)
     {
@@ -100,7 +102,7 @@ public static class AudioRebindPlanner
             return AudioRouteNotice.NoDeviceAvailable;
         }
 
-        if (target.FellBack && !previouslyFellBack && !string.Equals(target.DeviceId, previousTargetDeviceId, StringComparison.OrdinalIgnoreCase))
+        if (target.FellBack && !previouslyFellBack)
         {
             return AudioRouteNotice.FellBackToDefault;
         }
@@ -110,17 +112,15 @@ public static class AudioRebindPlanner
             return AudioRouteNotice.RecoveredPreferred;
         }
 
-        // Only meaningful while the pilot is following the default: the endpoint changed
-        // underneath them and they did not choose it. previousTargetDeviceId empty means this
-        // is the session's first resolution, which is not a change. Only announce if the
-        // previous target WAS the default-like device (inferred: not fallen back and was
-        // on "speakers" or similar fallback-patterned device), suggesting we were already
-        // following the default when it changed. If we just switched FROM a preferred device
-        // TO the default, that's not a default change, that's user preference.
+        // Only a change the pilot did NOT make themselves is worth speaking. Following the
+        // default both before and after means Windows promoted a different endpoint underneath
+        // them; following it only now means they just chose it in the Settings dialog, and the
+        // screen reader has already spoken that interaction. previousTargetDeviceId empty means
+        // this is the session's first resolution, which is not a change.
         if (followingWindowsDefault
+            && previouslyFollowingWindowsDefault
             && !string.IsNullOrWhiteSpace(previousTargetDeviceId)
-            && !string.Equals(previousTargetDeviceId, target.DeviceId, StringComparison.OrdinalIgnoreCase)
-            && previousTargetDeviceId.Contains(".{speakers}", StringComparison.OrdinalIgnoreCase))
+            && !string.Equals(previousTargetDeviceId, target.DeviceId, StringComparison.OrdinalIgnoreCase))
         {
             return AudioRouteNotice.DefaultDeviceChanged;
         }
