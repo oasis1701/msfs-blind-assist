@@ -989,6 +989,17 @@ public partial class MainForm : Form
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
+
+        // The router owns an IMMNotificationClient COM registration and a background worker;
+        // Dispose unregisters the callback and stops the worker. Cleared first so a sweep that
+        // is already in flight has nothing to marshal an announcement into on the way down.
+        try
+        {
+            Services.AudioOutputRouter.Shared.AnnounceRouteChange = null;
+            Services.AudioOutputRouter.Shared.Dispose();
+        }
+        catch { }
+
         base.OnFormClosing(e);
     }
 }
