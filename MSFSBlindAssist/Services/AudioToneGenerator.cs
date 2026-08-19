@@ -264,6 +264,16 @@ public class AudioToneGenerator : IDisposable
             session = opened;
             currentDeviceId = opened.DeviceId ?? string.Empty;
 
+            // NAudio's WasapiOut render loop catches AUDCLNT_E_DEVICE_INVALIDATED into a local
+            // and hands it to RaisePlaybackStopped, which DISCARDS it when nothing is
+            // subscribed -- and that throw path never reaches `playbackState = Stopped`. So
+            // without this handler an endpoint yanked mid-flight left isPlaying true forever:
+            // Start() early-returned, the owner kept feeding a dead stream, and the pilot's
+            // only evidence was the absence of a sound they were steering by. Subscribed
+            // BEFORE Init/Play, so a failure in either is still reported through it; Cleanup
+            // detaches it again before the session is disposed.
+            opened.Player.PlaybackStopped += OnPlaybackStopped;
+
             oscillator = new PhaseContinuousOscillator(opened.MixSampleRate, waveType, (float)frequency, volume);
 
             ISampleProvider audioSource = oscillator;
@@ -550,6 +560,47 @@ public class AudioToneGenerator : IDisposable
     public bool IsPlaying => isPlaying;
 
     /// <summary>
+    /// NAudio's ONLY channel for "the endpoint died underneath a playing stream" — the render
+    /// thread catches the fault, stops filling buffers and reports it here. Nothing else in
+    /// this class can notice: the tone simply stops making sound while every field still says
+    /// it is playing.
+    ///
+    /// NON-BLOCKING BY CONTRACT, for two separate reasons:
+    ///   * It can arrive on WasapiOut's own play thread — the thread that just failed — so any
+    ///     WASAPI work done here would run on it.
+    ///   * <see cref="Cleanup"/> disposes the session while holding startStopLock, and that
+    ///     dispose calls Player.Stop(), which JOINS the render thread. A handler that took
+    ///     startStopLock would therefore park the render thread on a lock held by the thread
+    ///     waiting for that render thread to exit — a deadlock, on the ordinary Stop path.
+    /// So this marks state and asks for a sweep; the router's worker does the re-resolve, in
+    /// the right lock order, on a thread that holds nothing.
+    ///
+    /// It deliberately writes neither <c>isPlaying</c> nor <c>currentDeviceId</c>: both flip
+    /// only under startStopLock (a lock-free write here could clobber a value a concurrent
+    /// StartLocked had just set), and neither is needed for recovery —
+    /// <see cref="RebindTo"/> acts on <see cref="NeedsDevice"/> alone, and the planner rebinds
+    /// any generator carrying it regardless of what it is nominally bound to.
+    /// </summary>
+    private void OnPlaybackStopped(object? sender, StoppedEventArgs e)
+    {
+        // An ordinary Stop() raises this too, with a null Exception. Only a fault is news —
+        // and a fault is the one a blind pilot cannot see for themselves.
+        if (e?.Exception == null)
+        {
+            return;
+        }
+
+        needsDevice = true;
+        Log.Warn("Services", $"Guidance tone output stopped unexpectedly: {e.Exception.Message}");
+
+        // NotifyDeviceLost rather than RequestSweep: it is the router's own name for exactly
+        // this call site, and it documents that the CALLER sets NeedsDevice first (the router
+        // cannot — it is this class's field). Guarded because audio must never throw at an
+        // owner, and this can run during a router's teardown.
+        try { router?.NotifyDeviceLost(this); } catch { }
+    }
+
+    /// <summary>
     /// Adds this generator to the router's registry unless it is already there.
     /// Caller holds startStopLock.
     /// </summary>
@@ -599,7 +650,18 @@ public class AudioToneGenerator : IDisposable
     {
         try
         {
-            session?.Dispose();
+            AudioOutputSession? closing = session;
+            if (closing != null)
+            {
+                // Detached BEFORE the dispose, and unconditionally. The dispose calls
+                // Player.Stop(), which raises PlaybackStopped — with a null Exception, so the
+                // handler would ignore it, but a still-attached handler on a session being
+                // torn down is one more thing reachable from the render thread this very call
+                // is joining. A player with no handler cannot surprise it.
+                try { closing.Player.PlaybackStopped -= OnPlaybackStopped; } catch { }
+                closing.Dispose();
+            }
+
             session = null;
             oscillator = null;
             panningSampleProvider = null;
