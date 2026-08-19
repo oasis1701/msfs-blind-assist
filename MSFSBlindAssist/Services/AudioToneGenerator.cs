@@ -33,7 +33,11 @@ public class AudioToneGenerator : IDisposable
     // this class goes through this field — reaching for AudioOutputRouter.Shared anywhere
     // below would make a constructed router's registry unreachable and turn the seam into
     // decoration.
-    private readonly AudioOutputRouter router;
+    //
+    // NULLABLE because resolving the shared router can fail — see the constructor. A null
+    // router degrades to no registration, no sweeps and no tone; it is never an exception at
+    // an owner.
+    private readonly AudioOutputRouter? router;
 
     private AudioOutputSession? session;
 
@@ -94,18 +98,39 @@ public class AudioToneGenerator : IDisposable
     /// byte-identical.
     ///
     /// Registration happens HERE, not at the first Start — see the class doc. Publishing
-    /// `this` from a constructor is safe in this one case, and only because it is the LAST
-    /// statement: every field a sweep can read is either a field initializer (which all run
-    /// before any constructor body) or `router` itself, assigned on the line above, and a
-    /// sweep must acquire the router's Gate — the same lock Register releases — before it can
-    /// read any of them.
+    /// `this` into a registry from a constructor is safe in this one case, but NOT because
+    /// Register is the last statement (it is not — `registered` and `router` are assigned
+    /// after it). It is safe because of WHAT a sweep can reach: everything a sweep reads
+    /// directly — currentDeviceId, needsDevice, isPlaying, startStopLock — is a field
+    /// initializer, and those all run before any constructor body; and the one call it can
+    /// make, RebindTo, takes startStopLock and returns false at once on a generator that is
+    /// neither playing nor waiting for a device, so it cannot reach `router` before the line
+    /// below assigns it.
+    ///
+    /// NOTHING HERE MAY THROW. This class's contract is that audio degrades and never throws,
+    /// and TakeoffAssistManager, ProximityBeeper and TaxiSteeringTone all construct with no
+    /// try of their own. Resolving Shared is a real throw surface: it is a Lazy under
+    /// ExecutionAndPublication whose factory starts the router's worker thread, and a Lazy
+    /// CACHES its factory's exception permanently, so once it fails every later construction
+    /// fails identically. A router that cannot be had leaves the field null and every router
+    /// call in this class a no-op — silent, never fatal. A Register that throws leaves
+    /// `registered` false, which EnsureRegisteredLocked simply retries at the first Start.
     /// </summary>
     public AudioToneGenerator(AudioOutputRouter? router = null)
     {
-        this.router = router ?? AudioOutputRouter.Shared;
+        AudioOutputRouter? resolved = null;
+        try
+        {
+            resolved = router ?? AudioOutputRouter.Shared;
+            resolved.Register(this);
+            registered = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Services", $"AudioToneGenerator could not register with the audio router: {ex.Message}");
+        }
 
-        this.router.Register(this);
-        registered = true;
+        this.router = resolved;
     }
 
     // Default pitch→frequency mapping. Min = dive (negative pitch), max = climb (positive pitch),
@@ -223,7 +248,7 @@ public class AudioToneGenerator : IDisposable
             // device setting existed) makes NAudio insert its DMO resampler on the common
             // 48 kHz endpoint, and would make a rebind to a differently-clocked device play
             // the tone sharp.
-            AudioOutputSession? opened = router.OpenFor(deviceIdOverride);
+            AudioOutputSession? opened = router?.OpenFor(deviceIdOverride);
             if (opened == null)
             {
                 // Nothing opened at all. The generator STAYS REGISTERED with needsDevice set,
@@ -272,6 +297,17 @@ public class AudioToneGenerator : IDisposable
             // retrying until an explicit Stop().
             needsDevice = false;
             isPlaying = true;
+
+            // CATCH-UP. A command that arrived while OpenFor was constructing the WasapiOut
+            // (a WASAPI enumerate plus an IAudioClient activation -- much the slowest part of
+            // a start) wrote its snapshot field and then found a null oscillator, so the chain
+            // above was built from the PARAMETERS rather than from the latest values. Re-apply
+            // them now. ProximityBeeper's solid stop-tone is the case that cannot self-heal --
+            // it sets the volume once and latches -- so without this the docking tone can come
+            // back silent and stay silent for the rest of the dock. Pan has the same shape but
+            // self-heals, because taxi steering rewrites it every position update.
+            oscillator.SetGain(lastVolume);
+            panningSampleProvider.Pan = lastPan;
         }
         catch (Exception ex)
         {
@@ -519,7 +555,7 @@ public class AudioToneGenerator : IDisposable
     /// </summary>
     private void EnsureRegisteredLocked()
     {
-        if (registered)
+        if (registered || router == null)
             return;
 
         router.Register(this);
@@ -542,7 +578,10 @@ public class AudioToneGenerator : IDisposable
         registered = false;
         try
         {
-            router.Unregister(this);
+            // `registered` can only be true if a non-null router accepted a Register, so the
+            // ?. can never actually skip a live registration -- it is here because the field
+            // is nullable and that invariant lives two methods away.
+            router?.Unregister(this);
         }
         catch
         {
