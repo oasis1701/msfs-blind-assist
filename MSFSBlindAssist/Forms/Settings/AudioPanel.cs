@@ -39,13 +39,13 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     // Cached by LoadFrom and reused by UpdateStatusText, which fires on every
     // SelectedIndexChanged -- i.e. on every arrow-key press while a screen reader user
-    // browses the dropdown. Re-resolving against live WASAPI state per keystroke would
-    // perform TWO full endpoint enumerations each time (Enumerate() and
-    // DefaultEndpointInfo(), each constructing its own MMDeviceEnumerator) on the UI thread --
-    // the same class of defect as re-querying TaxiAssistForm's gate list per keystroke. Real
-    // endpoints only, same contract as AudioOutputRouter.Enumerate(); UpdateStatusText
-    // resolves through the pure AudioDeviceSelector.Resolve directly against these instead of
-    // re-enumerating.
+    // browses the dropdown. Re-resolving against live WASAPI state per keystroke would go back
+    // to Core Audio twice each time: AudioOutputRouter.Enumerate() walks every active render
+    // endpoint, and DefaultEndpointInfo() does a single GetDefaultAudioEndpoint lookup -- each
+    // constructing its own MMDeviceEnumerator, on the UI thread. That is the same class of
+    // defect as re-querying TaxiAssistForm's gate list per keystroke. Real endpoints only, same
+    // contract as AudioOutputRouter.Enumerate(); UpdateStatusText resolves through the pure
+    // AudioDeviceSelector.Resolve directly against these instead of re-enumerating.
     private IReadOnlyList<AudioOutputDevice> _realDevices = Array.Empty<AudioOutputDevice>();
     private (string Id, string Name) _defaultEndpoint = (string.Empty, string.Empty);
 
@@ -146,23 +146,29 @@ public class AudioPanel : UserControl, ISettingsPanel
         _deviceRows.Add(new AudioOutputDevice(AudioDeviceSelector.FollowWindowsDefaultId, AudioDeviceSelector.DefaultDeviceLabel));
         _deviceRows.AddRange(_realDevices);
 
-        bool savedIsPresent = string.IsNullOrWhiteSpace(savedId)
-            || _deviceRows.Any(d => string.Equals(d.Id, savedId, StringComparison.OrdinalIgnoreCase));
+        // The resolver already answers "is the saved device actually there?" — it is the same
+        // question, asked the same way, that produces the status line and drives every routing
+        // fallback. Re-deriving it here with a second presence rule (which had to special-case
+        // the synthetic default row twice over) was one more place for the two answers to
+        // disagree.
+        AudioDeviceResolution saved = AudioDeviceSelector.Resolve(
+            savedId, savedName, _realDevices, _defaultEndpoint.Id, _defaultEndpoint.Name);
+        bool savedIsMissing = saved.FellBack;
 
         // A saved device that is not connected right now is still listed, so the pilot's
         // choice stays visible and is never silently reset to default behind their back.
-        if (!savedIsPresent)
+        int missingRowIndex = -1;
+        if (savedIsMissing)
         {
+            missingRowIndex = _deviceRows.Count;
             _deviceRows.Add(new AudioOutputDevice(savedId, string.IsNullOrWhiteSpace(savedName) ? "Saved device" : savedName));
         }
 
         _deviceCombo.Items.Clear();
-        foreach (AudioOutputDevice row in _deviceRows)
+        for (int i = 0; i < _deviceRows.Count; i++)
         {
-            bool connected = string.IsNullOrWhiteSpace(row.Id)
-                || !string.Equals(row.Id, savedId, StringComparison.OrdinalIgnoreCase)
-                || savedIsPresent;
-            _deviceCombo.Items.Add(connected ? row.FriendlyName : $"{row.FriendlyName} (not connected)");
+            AudioOutputDevice row = _deviceRows[i];
+            _deviceCombo.Items.Add(i == missingRowIndex ? $"{row.FriendlyName} (not connected)" : row.FriendlyName);
         }
 
         int index = _deviceRows.FindIndex(d => string.Equals(d.Id, savedId, StringComparison.OrdinalIgnoreCase));
@@ -211,10 +217,10 @@ public class AudioPanel : UserControl, ISettingsPanel
         //
         // Resolves against the CACHED _realDevices/_defaultEndpoint (see their field
         // comments) via the pure AudioDeviceSelector.Resolve directly, rather than asking
-        // AudioOutputRouter to re-resolve, which would re-enumerate WASAPI from
-        // scratch on every call -- this method is wired to SelectedIndexChanged, so a screen
-        // reader user arrowing the dropdown would otherwise fire two full endpoint
-        // enumerations per keystroke on the UI thread.
+        // AudioOutputRouter to re-resolve, which would go back to Core Audio from scratch on
+        // every call -- this method is wired to SelectedIndexChanged, so a screen reader user
+        // arrowing the dropdown would otherwise fire an endpoint enumeration plus a default-
+        // endpoint lookup per keystroke on the UI thread.
         AudioOutputDevice row = SelectedRow();
         AudioDeviceResolution resolution = AudioDeviceSelector.Resolve(
             row.Id, row.FriendlyName, _realDevices, _defaultEndpoint.Id, _defaultEndpoint.Name);
@@ -249,7 +255,44 @@ public class AudioPanel : UserControl, ISettingsPanel
         var tone = new AudioToneGenerator();
         tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
             deviceIdOverride: deviceId);
+
+        if (tone.IsPlaying)
+        {
+            ReportAuditionDevice(deviceId, tone.CurrentDeviceId);
+        }
+
         return tone;
+    }
+
+    /// <summary>Says which device the audition ACTUALLY reached, which is not always the one
+    /// the pilot picked.
+    ///
+    /// OpenFor falls back to the default endpoint when the chosen one will not open, and hands
+    /// back a perfectly playing session — so IsPlaying alone cannot tell the pilot whether they
+    /// just heard the device they selected, and the status line went on naming the selection
+    /// while the sound came out of something else. That is the exact failure this whole panel
+    /// exists to make impossible. AudioToneGenerator.CurrentDeviceId carries the answer and
+    /// had no reader.
+    ///
+    /// A match refreshes the status line from the resolver rather than leaving whatever a
+    /// previous failed audition wrote there, so the warning below can never outlive the
+    /// condition that produced it.</summary>
+    private void ReportAuditionDevice(string requestedId, string actualId)
+    {
+        // The "Windows default device" row asks for whatever Windows currently calls the
+        // default, so there is no specific endpoint for the session to contradict.
+        if (string.IsNullOrWhiteSpace(requestedId)
+            || string.Equals(actualId, requestedId, StringComparison.OrdinalIgnoreCase))
+        {
+            UpdateStatusText();
+            return;
+        }
+
+        string actualName = _realDevices.FirstOrDefault(d =>
+            string.Equals(d.Id, actualId, StringComparison.OrdinalIgnoreCase)).FriendlyName;
+        _statusTextBox.Text = string.IsNullOrWhiteSpace(actualName)
+            ? "Selected device could not be opened - playing on another device."
+            : $"Selected device could not be opened - playing on {actualName}.";
     }
 
     protected override void Dispose(bool disposing)
