@@ -21,12 +21,21 @@ public class AudioPanel : UserControl, ISettingsPanel
     private const double TestToneVolume = 0.1;
     private const double TestToneFrequencyHz = 440.0;
 
+    // Two seconds of tone at TestTonePlayer's 100 ms tick — long enough to place a device in
+    // the room, short enough not to become a nuisance if the pilot walks away from it.
+    private const int TestToneTicks = 20;
+
+    // One complete left-right-left cycle, built once. Panning is the ONLY thing this audition
+    // demonstrates, so it has to reach both channels at this duration — which is exactly what
+    // the hand-rolled loop this replaces did not do; see TestTonePan.FullCycle.
+    private static readonly float[] PanSweep = TestTonePan.FullCycle(TestToneTicks);
+
     private ComboBox _deviceCombo = null!;
     private Button _testToneButton = null!;
+    private TestTonePlayer _testTonePlayer = null!;
     private TextBox _statusTextBox = null!;
 
     private readonly List<AudioOutputDevice> _deviceRows = new();
-    private AudioToneGenerator? _testTone;
 
     // Cached by LoadFrom and reused by UpdateStatusText, which fires on every
     // SelectedIndexChanged -- i.e. on every arrow-key press while a screen reader user
@@ -81,9 +90,11 @@ public class AudioPanel : UserControl, ISettingsPanel
             Size = new System.Drawing.Size(120, 30),
             AccessibleDescription = "Play a tone on the selected device to confirm where the guidance tones will be heard"
         };
-        // Routes the initial label/name through the same helper every later state change
-        // uses, so Text and AccessibleName can never drift apart — see SetTestToneButtonState.
-        SetTestToneButtonState(playing: false);
+        // The player owns this button's Text and AccessibleName from here on (it sets the idle
+        // pair in its constructor), so they can never drift apart — see TestTonePlayer. The
+        // failure sink is the status TextBox rather than a dialog: it is in the tab order, so
+        // a screen-reader user can go back and re-read it.
+        _testTonePlayer = new TestTonePlayer(_testToneButton, message => _statusTextBox.Text = message);
         _testToneButton.Click += TestToneButton_Click;
         Controls.Add(_testToneButton);
 
@@ -177,8 +188,9 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     public void OnLeaving()
     {
-        StopTestTone();
-        SetTestToneButtonState(playing: false);
+        // Stop() also returns the button to its idle label, so re-entering the tab never shows
+        // a stale "Stop Test".
+        _testTonePlayer?.Stop();
     }
 
     private AudioOutputDevice SelectedRow()
@@ -211,168 +223,40 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     private void TestToneButton_Click(object? sender, EventArgs e)
     {
-        if (_testTone?.IsPlaying == true)
-        {
-            StopTestTone();
-            SetTestToneButtonState(playing: false);
-        }
-        else
-        {
-            // The button state is set from what PlayTestTone actually achieved, never assumed
-            // — AudioToneGenerator.Start swallows its own exceptions by contract (audio is
-            // optional feedback), so a real endpoint failure returns silently with no tone
-            // playing. Assuming success here left the button reading "Stop Test" for a tone
-            // that never started: the NEXT press then took this same start branch again
-            // instead of stopping anything — the button was inverted, not merely
-            // stale-labelled.
-            bool started = PlayTestTone();
-            SetTestToneButtonState(playing: started);
-        }
+        // Everything the audition needs to get right — whether Start actually produced a
+        // sounding tone, the button's Text/AccessibleName pairing, the stale-session guard and
+        // the auto-stop — belongs to TestTonePlayer. All this panel supplies is which device
+        // to open and what to do on each tick.
+        _testTonePlayer.Toggle(StartAuditionTone, (tone, i) => tone.SetPan(PanSweep[i]), TestToneTicks);
     }
 
-    /// <summary>Sets the button's label AND its accessible name together. WinForms'
-    /// ControlAccessibleObject.Name returns an explicitly-set AccessibleName permanently once
-    /// set — it does NOT fall back to Text — so every site that changes what this button will
-    /// do next must go through this helper instead of assigning .Text directly, or a screen
-    /// reader keeps announcing the stale action (e.g. "Test tone" while activating it would
-    /// actually stop one).</summary>
-    private void SetTestToneButtonState(bool playing)
+    /// <summary>Constructs and starts the audition tone on the device the combo currently
+    /// shows. Returns it unconditionally — whether it actually sounded is TestTonePlayer's
+    /// check, because AudioToneGenerator.Start degrades silently by contract.</summary>
+    private AudioToneGenerator? StartAuditionTone()
     {
-        _testToneButton.Text = playing ? "Stop Test" : "Test Tone";
-        _testToneButton.AccessibleName = playing ? "Stop test tone" : "Test tone";
-    }
+        // Auditions the COMBO's current selection, not the saved setting, so devices can
+        // be compared before committing to one. Passed through UNCHANGED — deviceId is ""
+        // for the "Windows default device" row (AudioDeviceSelector.FollowWindowsDefaultId),
+        // and OpenFor's deviceIdOverride treats "" and null completely differently
+        // (see the <param> doc on AudioOutputRouter.OpenFor / AudioToneGenerator.Start):
+        // null means "use the SAVED setting". Collapsing "" to null here (via an
+        // IsNullOrWhiteSpace check that used to sit on this line) made auditioning "Windows
+        // default device" silently play on the saved device instead — the one control built
+        // to prove which device is which was lying about it.
+        string deviceId = SelectedRow().Id;
 
-    /// <summary>Starts the audition tone and reports whether it actually started, so the
-    /// caller can set the Test Tone button's state from reality rather than an assumption —
-    /// see the comment in TestToneButton_Click. A failure that AudioToneGenerator.Start
-    /// swallowed (no exception, tone just never started) is written to the status line
-    /// instead of relying solely on the MessageBox below, which only ever fires for a genuine
-    /// thrown exception — a realistic endpoint failure throws nothing.</summary>
-    private bool PlayTestTone()
-    {
-        try
-        {
-            // Auditions the COMBO's current selection, not the saved setting, so devices can
-            // be compared before committing to one. Passed through UNCHANGED — deviceId is ""
-            // for the "Windows default device" row (AudioDeviceSelector.FollowWindowsDefaultId),
-            // and OpenFor's deviceIdOverride treats "" and null completely differently
-            // (see the <param> doc on AudioOutputRouter.OpenFor / AudioToneGenerator.
-            // Start): null means "use the SAVED setting". Collapsing "" to null here (via an
-            // IsNullOrWhiteSpace check that used to sit on this line) made auditioning "Windows
-            // default device" silently play on the saved device instead — the one control built
-            // to prove which device is which was lying about it.
-            string deviceId = SelectedRow().Id;
-
-            // Captured into a LOCAL and used throughout the background loop below instead of
-            // re-reading the _testTone field: a Stop (button press, OnLeaving, tab switch,
-            // dialog close) followed by a fresh Start can land inside the loop's ~100ms
-            // Task.Delay granularity, and a field re-read would pan a stray value into a NEW
-            // session rather than the one this loop is actually driving.
-            var tone = new AudioToneGenerator();
-            tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
-                deviceIdOverride: deviceId);
-
-            if (!tone.IsPlaying)
-            {
-                // Start() never throws (audio is optional feedback and degrades by contract
-                // — see AudioOutputRouter's class doc), so a real "could not open this
-                // endpoint" failure lands here silently rather than in the catch block below.
-                // Without this check the button still claimed "playing" and the pilot got no
-                // feedback at all about why the audition was silent.
-                tone.Dispose();
-                _statusTextBox.Text = "Could not play the test tone on the selected device.";
-                return false;
-            }
-
-            _testTone = tone;
-
-            // Pan left to right so the pilot can confirm the device is the stereo pair they
-            // expect, which is what the steering tones depend on.
-            Task.Run(async () =>
-            {
-                for (int i = 0; i < 20 && tone.IsPlaying; i++)
-                {
-                    float pan = (float)Math.Sin(i * 0.15) * 0.8f;
-                    tone.SetPan(pan);
-                    await Task.Delay(100);
-                }
-
-                if (tone.IsPlaying && IsHandleCreated && !IsDisposed)
-                {
-                    try
-                    {
-                        Invoke(() =>
-                        {
-                            // Re-check on the UI thread — the same thread every write to
-                            // _testTone happens on, so this needs no lock — that `tone` is
-                            // STILL the current session before stopping/resetting anything. A
-                            // newer Start/Stop (another Test Tone press, OnLeaving, tab switch,
-                            // dialog close) may have already replaced or cleared _testTone
-                            // while this delegate sat queued on the UI thread; stopping THAT
-                            // session or relabelling the button out from under it would be
-                            // wrong.
-                            if (ReferenceEquals(_testTone, tone))
-                            {
-                                StopTestTone();
-                                SetTestToneButtonState(playing: false);
-                            }
-                        });
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        // Handle actually torn down mid-flight — Invoke throws this once the
-                        // control's handle has been destroyed rather than merely closing.
-                        // OnLeaving/Dispose also call StopTestTone, so the tone still stops.
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        // ObjectDisposedException derives from this, so it is caught above;
-                        // this covers the handle-destroyed-mid-flight window more generally
-                        // (tab switched/dialog closed) — OnLeaving/Dispose also call
-                        // StopTestTone, so the tone still stops either way.
-                    }
-                }
-            });
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            // A genuine thrown exception (as opposed to Start()'s silent degrade above) —
-            // kept as a MessageBox since it signals something unexpected enough to be worth
-            // an explicit acknowledgement, but the status line still gets the reason too so
-            // it isn't the pilot's only record of what happened.
-            _statusTextBox.Text = $"Could not play the test tone: {ex.Message}";
-            MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return false;
-        }
-    }
-
-    /// <summary>Stops and disposes the audition tone. Idempotent and non-throwing —
-    /// OnLeaving and Dispose callers must never fail.</summary>
-    private void StopTestTone()
-    {
-        try
-        {
-            _testTone?.Stop();
-            _testTone?.Dispose();
-        }
-        catch
-        {
-            // Non-throwing by contract.
-        }
-        finally
-        {
-            _testTone = null;
-        }
+        var tone = new AudioToneGenerator();
+        tone.Start(HandFlyWaveType.Sine, TestToneVolume, TestToneFrequencyHz,
+            deviceIdOverride: deviceId);
+        return tone;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            StopTestTone();
+            _testTonePlayer?.Dispose();
         }
 
         base.Dispose(disposing);
