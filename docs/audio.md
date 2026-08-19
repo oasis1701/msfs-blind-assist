@@ -15,7 +15,22 @@ simulator itself keeps the speakers. Persisted as `UserSettings.GuidanceToneDevi
 The tones **follow the hardware on their own**. Unplug the chosen headset and every sounding
 tone moves to the Windows default endpoint; plug it back in and they move back; promote a
 different default while the setting is "follow the default" and they follow that. Each of those
-outcomes is spoken once, *after* the move has happened.
+outcomes is spoken once, *after* the move has happened — with two deliberate exceptions at
+startup, both of them silence rather than noise:
+
+- **The session's first sweep is the silent baseline** (`RequestBaselineSweep`, called once from
+  `MainForm` right after the announcement sink is wired). It seeds the router's last-target state
+  from current reality and says nothing, because a pilot who has just launched the app has
+  changed nothing. So the state the app *starts* in is never announced: a saved headset that was
+  already unplugged at launch is not spoken about, only shown in the Audio tab's status line.
+  A real sweep that coalesces into the baseline (an endpoint notification landing in the same few
+  milliseconds) is silenced with it — a window that was silent before the baseline existed
+  anyway.
+- **`NoDeviceAvailable` is therefore unreachable at startup.** On a machine where nothing
+  resolves at launch, the baseline is the only sweep that runs and it does not speak; the pilot
+  is told the first time something else asks for a sweep (a device arriving, a settings save).
+  The baseline does not dedup it away — it never touches the last-*spoken* pair — so that later
+  sweep does say it.
 
 **Key files:**
 - `Services/AudioOutputRouter.cs` — the router. An **instance** (`IDisposable`) with a
@@ -113,6 +128,21 @@ outcomes is spoken once, *after* the move has happened.
   and there was no tone. `AudioOutputRouter.Announce` names its cases explicitly with a discard
   arm, so a new `AudioRouteNotice` member stays silent until someone deliberately gives it a
   voice.
+
+- **The session's first sweep is a SILENT baseline, requested once from `MainForm`.**
+  `RequestBaselineSweep` seeds `_lastTargetDeviceId`, `_lastFellBack` and
+  `_lastFollowingWindowsDefault` from current reality so that the first *real* change is judged
+  against a true baseline. Without it those fields stayed at their blank initial values until
+  something changed, and `AudioRebindPlanner.ChooseNotice` reads them: with the setting on
+  "Windows default device", the first mid-flight default-device change suppressed
+  `DefaultDeviceChanged` (because `previouslyFollowingWindowsDefault` read false, i.e. "the pilot
+  must have just chosen this") while the same plan **still moved every sounding tone** — an
+  unexplained jump to another endpoint, exactly once per session. The baseline flag suppresses
+  the **announcement only**: the rebinds run and the last-target trio is stored, which is the
+  entire point. It must **never** seed `_lastNotice`/`_lastNoticeDeviceId` — those record what the
+  pilot has *heard*, so seeding them from an unspoken sweep would dedup away the first real
+  announcement of that kind. The flag is consumed on the same worker pass it is observed, so it
+  can never carry forward and silence a later sweep.
 
 - **The announcement sink must marshal to the UI thread with a NON-BLOCKING
   `Control.BeginInvoke`, never `Control.Invoke`.** The marshal is required because the sink is

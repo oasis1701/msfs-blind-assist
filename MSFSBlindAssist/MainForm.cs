@@ -551,6 +551,24 @@ public partial class MainForm : Form
             }
         };
 
+        // Seed the router's last-target state from current reality, ONCE, and SILENTLY. The
+        // only three things that ask for a sweep are a settings save, a WASAPI endpoint
+        // notification and a tone losing its device — none of which happens at launch — so
+        // without this the session's FIRST real change was judged against a blank history:
+        // with the setting on "Windows default device", the first time the pilot promoted a
+        // different default mid-flight, the planner suppressed the "default device changed"
+        // notice (it could not tell "Windows moved it" from "the pilot just picked it") while
+        // still moving every sounding tone. The tones jumped endpoints with no explanation,
+        // exactly once per session.
+        //
+        // Deliberately silent: a pilot who has just launched the app has changed nothing, and
+        // startup chatter is not wanted. The baseline flag suppresses the announcement only —
+        // the rebinds and the state store both still happen. See
+        // AudioOutputRouter.RequestBaselineSweep and docs/audio.md for the two limits that
+        // silence carries. Requested AFTER the sink is wired so the ordering reads as
+        // deliberate; it would be silent either way.
+        Services.AudioOutputRouter.Shared.RequestBaselineSweep();
+
         // Note: Diagnostic test removed to prevent test speech on startup
         // Uncomment the next lines if you need to troubleshoot screen reader connections:
         // Log.Debug("MainForm", "[MainForm] Running initial screen reader diagnostic test");

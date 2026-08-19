@@ -74,9 +74,12 @@ public sealed class AudioOutputRouter : IDisposable
     private bool _lastFellBack;
 
     // Whether the PREVIOUS sweep was following the Windows default (i.e. the saved id was
-    // blank then). Initialised false, which is what keeps the session's first sweep silent
-    // even for a pilot whose saved setting already is "Windows default" — announcing a default
-    // they chose themselves, at startup, would be noise. See AudioRebindPlanner.ChooseNotice.
+    // blank then). Initialised false and SEEDED by the startup baseline sweep — see
+    // RequestBaselineSweep. Left unseeded (the state before that sweep existed) the very first
+    // real change of a session was judged against a blank history: with the setting on "Windows
+    // default device", AudioRebindPlanner.ChooseNotice suppressed DefaultDeviceChanged because
+    // previouslyFollowingWindowsDefault read false, WHILE the same plan still moved every tone
+    // — so the tones jumped to another endpoint with no explanation, exactly once per session.
     private bool _lastFollowingWindowsDefault;
 
     // The last notice actually SPOKEN and the endpoint it was spoken about. Written only when
@@ -105,6 +108,12 @@ public sealed class AudioOutputRouter : IDisposable
     // not harmless now that endpoint notifications drive this too, where a burst of arrivals
     // and default-device changes lands in milliseconds.
     private int _sweepPending;
+
+    // 0 = the next sweep speaks normally, 1 = the next sweep is the SILENT baseline. Same
+    // Interlocked treatment as _sweepPending and consumed on the same pass, so it can never be
+    // carried forward into a later sweep that ought to be audible.
+    private int _baselinePending;
+
     private int _disposed;
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
@@ -321,6 +330,49 @@ public sealed class AudioOutputRouter : IDisposable
     }
 
     /// <summary>
+    /// Asks for ONE SILENT sweep that seeds the last-target state from current reality. Called
+    /// exactly once per session, from MainForm, immediately after
+    /// <see cref="AnnounceRouteChange"/> is wired.
+    ///
+    /// WHY IT EXISTS: the three ordinary <see cref="RequestSweep"/> callers are a settings save,
+    /// an endpoint notification, and a tone losing its device — none of which happens at
+    /// startup. So <c>_lastFollowingWindowsDefault</c> stayed false and <c>_lastTargetDeviceId</c>
+    /// stayed empty until something changed, and <see cref="AudioRebindPlanner.ChooseNotice"/>
+    /// reads both: with the setting on "Windows default device", the FIRST time the pilot
+    /// promoted a different default mid-flight it suppressed <c>DefaultDeviceChanged</c> (because
+    /// <c>previouslyFollowingWindowsDefault</c> was false) while the SAME plan still moved every
+    /// sounding tone. The tones jumped endpoints unexplained, exactly once per session, and only
+    /// the second such change was ever spoken.
+    ///
+    /// WHY IT IS SILENT: a pilot who has just launched the app has changed nothing, so there is
+    /// nothing to report — startup chatter is not wanted. The flag suppresses ONLY the
+    /// announcement: the rebinds still run and the last-target trio
+    /// (<c>_lastTargetDeviceId</c> / <c>_lastFellBack</c> / <c>_lastFollowingWindowsDefault</c>)
+    /// is still stored, which is the entire point. It deliberately does NOT touch
+    /// <c>_lastNotice</c>/<c>_lastNoticeDeviceId</c> — those mean "what the pilot has already
+    /// HEARD", and seeding them from an unspoken sweep would dedup away the first real
+    /// announcement of that kind.
+    ///
+    /// TWO HONEST LIMITS, both documented in docs/audio.md: a real sweep that coalesces into
+    /// this one (an endpoint notification landing in the same few milliseconds) is silenced with
+    /// it — a startup window that was silent before this existed anyway; and a machine where
+    /// NOTHING resolves at launch is not told so at launch, because this sweep is the only one
+    /// that runs in that state and it does not speak.
+    /// </summary>
+    public void RequestBaselineSweep()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        // Set BEFORE the sweep flag so the worker cannot observe the request and miss its
+        // silence. WorkerLoop consumes both on one pass, so the pair cannot come apart.
+        Interlocked.Exchange(ref _baselinePending, 1);
+        RequestSweep("startup baseline (silent)");
+    }
+
+    /// <summary>
     /// Adds a sounding tone to the registry so sweeps can move it. Called from inside the
     /// generator's own startStopLock — Gate being the INNER lock is what makes that safe.
     /// </summary>
@@ -386,14 +438,23 @@ public sealed class AudioOutputRouter : IDisposable
             // (auto-reset) handle, so the worker loops straight into a second, fresh sweep
             // rather than acting on state read before that request. Doing it as a separate
             // read then write would drop exactly that request — see the field comment.
-            if (Interlocked.Exchange(ref _sweepPending, 0) == 0)
+            int pending = Interlocked.Exchange(ref _sweepPending, 0);
+
+            // Consumed on the SAME pass it is observed, never carried forward: a baseline flag
+            // left set would silence whichever later sweep happened to pick it up, which could
+            // be a genuine device change the pilot needs to hear about. It also counts as work
+            // on its own, so the baseline sweep still runs if its RequestSweep was coalesced
+            // into a sweep that had already started.
+            bool baseline = Interlocked.Exchange(ref _baselinePending, 0) != 0;
+
+            if (pending == 0 && !baseline)
             {
                 continue;
             }
 
             try
             {
-                RunSweep();
+                RunSweep(baseline);
             }
             catch (Exception ex)
             {
@@ -408,7 +469,13 @@ public sealed class AudioOutputRouter : IDisposable
     /// One routing pass: resolve where the tones should be, move the ones that are not there,
     /// then say so. The ORDER is the point — see <see cref="AnnounceRouteChange"/>.
     /// </summary>
-    private void RunSweep()
+    /// <param name="baseline">
+    /// True for the session's one silent seeding pass (<see cref="RequestBaselineSweep"/>).
+    /// It suppresses the ANNOUNCEMENT ONLY — the rebinds run and the last-target trio is
+    /// stored, because seeding that trio is the whole reason the pass exists. The
+    /// last-notice pair is left alone: it records what the pilot has HEARD.
+    /// </param>
+    private void RunSweep(bool baseline = false)
     {
         var states = new List<AudioGeneratorState>();
         var byToken = new Dictionary<int, AudioToneGenerator>();
@@ -480,12 +547,21 @@ public sealed class AudioOutputRouter : IDisposable
             _lastFollowingWindowsDefault = followingWindowsDefault;
 
             // Only a notice that is about to be SPOKEN updates the dedup pair. A silent sweep
-            // must leave the pilot's last-heard state alone.
-            if (plan.Notice != AudioRouteNotice.None)
+            // must leave the pilot's last-heard state alone — which covers the baseline pass
+            // too: whatever it computed was never said, so the first real sweep of that kind
+            // must still be free to say it.
+            if (!baseline && plan.Notice != AudioRouteNotice.None)
             {
                 _lastNotice = plan.Notice;
                 _lastNoticeDeviceId = target.DeviceId;
             }
+        }
+
+        if (baseline)
+        {
+            // Logged so debug.log explains the one sweep that deliberately says nothing.
+            Log.Debug("Audio", $"Audio routing baseline seeded silently (device '{target.DeviceName}', fellBack={target.FellBack}, followingWindowsDefault={followingWindowsDefault}); would have said: {plan.Notice}");
+            return;
         }
 
         Announce(plan.Notice, plan.NoticeDeviceName, savedName);

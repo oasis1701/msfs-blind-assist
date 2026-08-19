@@ -39,6 +39,19 @@ public class AudioOutputRouterTests
     }
 
     [Fact]
+    public void RequestBaselineSweepNeverThrows_WithNoLiveTones()
+    {
+        using var router = new AudioOutputRouter();
+
+        // Runs once per session from MainForm, before anything else could have asked for a
+        // sweep. It reaches the same WASAPI enumerate/resolve path as an ordinary sweep, so on
+        // a CI runner with no audio endpoint at all it must still degrade rather than throw.
+        // That it stays SILENT cannot be asserted here — the sink is never wired in a test —
+        // so what is pinned is the half a runner can judge.
+        router.RequestBaselineSweep();
+    }
+
+    [Fact]
     public void DisposeIsIdempotent()
     {
         var router = new AudioOutputRouter();
