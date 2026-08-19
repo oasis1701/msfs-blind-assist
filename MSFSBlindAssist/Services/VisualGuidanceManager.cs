@@ -601,21 +601,47 @@ public class VisualGuidanceManager : IDisposable
         // pilot cannot match anything against. Re-arming here restores the invariant on the
         // next update instead of leaving it broken for the rest of the approach.
         //
+        // Gated on NeedsDevice, NOT IsPlaying -- IsPlaying is the wrong signal here and reads
+        // false for the ENTIRE DURATION of a healthy, in-flight rebind, not just a failed one.
+        // AudioToneGenerator.RebindTo sets isPlaying = false BEFORE it reopens the device, and
+        // StartLocked does not set it back to true until the new WasapiOut has actually been
+        // built and Play() has been called -- the WASAPI enumerate, GetDevice, construction and
+        // Init/Play in between all run with isPlaying still false. That rebind happens on the
+        // router's own worker thread with no synchronisation against this UI-thread tick, so a
+        // ProcessUpdate landing mid-rebind would read a healthy, about-to-succeed tone as dead.
+        // DisposeTones's first Stop() blocks on the very startStopLock the router thread is
+        // holding; by the time it is released the router has already reopened a good session,
+        // which this block would then immediately stop and dispose again -- tearing down the
+        // follower too even though ITS rebind may have succeeded cleanly -- for an avoidable
+        // extra teardown/reopen and audio gap during the exact device change the router's
+        // "move it without stopping guidance" sweep exists to make seamless.
+        // NeedsDevice does not have that transient-false window: StartLocked sets it ONLY at
+        // the two genuinely terminal outcomes of an open attempt (opened == null, or the catch
+        // block) and clears it only on that same attempt's full success -- never on an
+        // in-progress one -- and OnPlaybackStopped sets it the instant a live fault is detected.
+        // So NeedsDevice==true always means "as of the last attempt, this generator ended up
+        // with no device," never "an attempt is currently in flight." Do not swap this back to
+        // IsPlaying, and do not require IsPlaying == false in addition to NeedsDevice: the two
+        // can legitimately both be true right after OnPlaybackStopped fires on a still-flagged-
+        // playing session, and requiring IsPlaying too would just delay detection of that case
+        // until some later rebind attempt touches the flag.
+        //
         // !tonesNeedStart is what stops this from firing on the very first frame after
-        // Initialize -- the tones are constructed there but not yet Start()ed, so IsPlaying is
-        // still false at that point too. tonesNeedStart only latches back to false once
-        // StartTonesIfNeeded has actually attempted a Start, so this block cannot see a "not
-        // playing yet" tone as a "died" tone. Once it does fire it sets tonesNeedStart back to
-        // true and returns -- it does not call Start itself -- so the very next
-        // StartTonesIfNeeded (later in this same call, once the cached-data guard below has
-        // passed) consumes that flag and is the only thing that can flip it false again. That
-        // makes this a one-shot per death: it cannot re-fire on the following frame without
-        // another real rebind failure in between, whether the restart succeeds (IsPlaying
-        // becomes true) or gives up (StartTonesIfNeeded nulls both tones itself, which then
-        // makes the guard above return early for the rest of this approach).
-        if (!tonesNeedStart && desiredAttitudeTone != null && !desiredAttitudeTone.IsPlaying)
+        // Initialize -- the tones are constructed there but not yet Start()ed, so NeedsDevice
+        // is still false at that point too (it defaults false and nothing has attempted an open
+        // yet). tonesNeedStart only latches back to false once StartTonesIfNeeded has actually
+        // attempted a Start, so this block cannot see a "not started yet" tone as a "died" tone.
+        // Once it does fire it sets tonesNeedStart back to true and returns -- it does not call
+        // Start itself -- so the very next StartTonesIfNeeded (later in this same call, once the
+        // cached-data guard below has passed) consumes that flag and is the only thing that can
+        // flip it false again. That makes this a one-shot per death: it cannot re-fire on the
+        // following frame without another real rebind failure in between, whether the restart
+        // succeeds (NeedsDevice goes back to false) or gives up (StartTonesIfNeeded nulls both
+        // tones itself, which then makes the guard above return early for the rest of this
+        // approach).
+        if (!tonesNeedStart && desiredAttitudeTone != null && desiredAttitudeTone.NeedsDevice)
         {
-            Log.Debug("VisualGuidance", "Desired-attitude tone is no longer playing; restarting both tones");
+            Log.Debug("VisualGuidance", "Desired-attitude tone needs a device (rebind failed or its endpoint was lost); restarting both tones");
             DisposeTones();
             desiredAttitudeTone = new AudioToneGenerator();
             currentAttitudeTone = new AudioToneGenerator();
