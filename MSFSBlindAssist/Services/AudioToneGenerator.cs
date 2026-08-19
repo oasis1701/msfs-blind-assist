@@ -131,9 +131,14 @@ public class AudioToneGenerator : IDisposable
             AudioOutputSession? opened = AudioOutputRouter.Shared.OpenFor(deviceIdOverride);
             if (opened == null)
             {
-                // Nothing opened at all. Recorded rather than merely logged, so that when an
-                // endpoint does appear the next routing sweep knows this tone is waiting for
-                // one instead of reading its empty binding as "already where it should be".
+                // Nothing opened at all. NOTE, so nobody reads this as a working recovery:
+                // needsDevice is WRITE-ONLY on this path today. This branch returns before
+                // Register(this), so no routing sweep can ever see this generator, and
+                // RebindTo would early-return on !isPlaying even if one could. The flag is set
+                // here so that it is already correct when Task 5 moves registration out of the
+                // success path — at which point a sweep reads it and moves this tone onto the
+                // first endpoint that appears. Until then, a tone that fails to open stays
+                // silent until something restarts it.
                 needsDevice = true;
                 currentDeviceId = string.Empty;
                 Log.Warn("Services", "AudioToneGenerator start failed: no audio output device could be opened");

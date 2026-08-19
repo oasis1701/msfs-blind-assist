@@ -149,11 +149,11 @@ public partial class MainForm
             // SimConnect monitoring) with no spoken announcement — so saving Settings while
             // Takeoff Assist is active silently switches it off, for ANY settings change,
             // including one as unrelated as the guidance-tone output device added by this
-            // branch (whose own ApplyDeviceChange() call sits just above this block). The
-            // root cause predates this branch: this recreate block already went out of its
-            // way to preserve the runway reference across the recreate (see hadRunwayRef
-            // above) but never considered preserving ACTIVE state the same way. Not fixed
-            // here because re-arming activation after the recreate would have to replay
+            // branch (whose own RequestSweep("settings saved") call sits just above this
+            // block). The root cause predates this branch: this recreate block already went
+            // out of its way to preserve the runway reference across the recreate (see
+            // hadRunwayRef above) but never considered preserving ACTIVE state the same way.
+            // Not fixed here because re-arming activation after the recreate would have to replay
             // whatever Toggle()'s real activation path does (StartTakeoffAssistMonitoring,
             // clearing the docking destination gate, stopping taxi guidance, pulling Fenix
             // V-speeds — see OnTakeoffAssistActiveChanged) and interacts with the

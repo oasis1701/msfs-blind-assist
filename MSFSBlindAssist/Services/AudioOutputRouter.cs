@@ -87,7 +87,13 @@ public sealed class AudioOutputRouter : IDisposable
 
     private readonly Thread _worker;
     private readonly AutoResetEvent _wake = new(false);
-    private volatile bool _sweepPending;
+
+    // 0 = nothing asked for, 1 = a sweep is owed. An int rather than a bool so the worker can
+    // TEST AND CLEAR it in one atomic step: a plain read-then-write leaves a window in which a
+    // RequestSweep landing between the two has its 1 overwritten by the clear while its Set is
+    // consumed by the next WaitOne — i.e. a dropped request. Harmless at settings-save rates,
+    // not once device-arrival notifications drive this.
+    private int _sweepPending;
     private int _disposed;
 
     private bool IsDisposed => Volatile.Read(ref _disposed) != 0;
@@ -228,7 +234,7 @@ public sealed class AudioOutputRouter : IDisposable
         try
         {
             Log.Debug("Audio", $"Audio routing sweep requested: {reason}");
-            _sweepPending = true;
+            Interlocked.Exchange(ref _sweepPending, 1);
             _wake.Set();
         }
         catch (Exception ex)
@@ -300,15 +306,15 @@ public sealed class AudioOutputRouter : IDisposable
                 return;
             }
 
-            if (!_sweepPending)
+            // Tested and cleared in ONE atomic step, and BEFORE the sweep, deliberately. A
+            // request arriving while the sweep runs re-sets the flag and signals the
+            // (auto-reset) handle, so the worker loops straight into a second, fresh sweep
+            // rather than acting on state read before that request. Doing it as a separate
+            // read then write would drop exactly that request — see the field comment.
+            if (Interlocked.Exchange(ref _sweepPending, 0) == 0)
             {
                 continue;
             }
-
-            // Cleared BEFORE the sweep, deliberately. A request arriving while the sweep runs
-            // sets the flag again and signals the (auto-reset) handle, so the worker loops
-            // straight into a second, fresh sweep rather than acting on stale state.
-            _sweepPending = false;
 
             try
             {

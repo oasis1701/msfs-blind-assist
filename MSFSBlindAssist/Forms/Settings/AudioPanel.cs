@@ -255,7 +255,7 @@ public class AudioPanel : UserControl, ISettingsPanel
             // Auditions the COMBO's current selection, not the saved setting, so devices can
             // be compared before committing to one. Passed through UNCHANGED — deviceId is ""
             // for the "Windows default device" row (AudioDeviceSelector.FollowWindowsDefaultId),
-            // and CreatePlayer's deviceIdOverride treats "" and null completely differently
+            // and OpenFor's deviceIdOverride treats "" and null completely differently
             // (see the <param> doc on AudioOutputRouter.OpenFor / AudioToneGenerator.
             // Start): null means "use the SAVED setting". Collapsing "" to null here (via an
             // IsNullOrWhiteSpace check that used to sit on this line) made auditioning "Windows
