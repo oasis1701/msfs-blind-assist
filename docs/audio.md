@@ -151,6 +151,15 @@ outcomes is spoken once, *after* the move has happened.
   guard races the router and tears down a rebind that was about to succeed. `NeedsDevice` is the
   flag that means "this generator does not have a working output right now".
 
+  **The re-arm watches BOTH tones**, not just the reference one. A sweep rebinds the two
+  generators independently, so either can fail on its own: a successful `desiredAttitudeTone`
+  rebind followed by a failed `currentAttitudeTone` open left the follower registered with
+  `NeedsDevice` set and silent, the re-arm never fired, and the pilot flew the rest of the
+  approach hearing the commanded attitude with nothing to zero-beat it against — the mirror
+  image of the lone-drone state this block exists to prevent. `currentAttitudeTone` is read
+  null-conditionally because it can legitimately be null while the reference is not
+  (`StartTonesIfNeeded` starts the follower only if the reference started).
+
 - **The Test Tone audition sweep must reach BOTH channels at every duration used** (20 / 40 / 60
   ticks — Audio, Taxi Guidance, Hand Fly). `TestTonePlayer.FullCycle` is shared by all three and
   pinned by `FullCycle_ReachesBothChannelsAtEveryPanelDuration`. The old per-panel

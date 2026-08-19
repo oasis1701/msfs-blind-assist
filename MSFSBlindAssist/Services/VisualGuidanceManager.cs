@@ -596,10 +596,21 @@ public class VisualGuidanceManager : IDisposable
         }
 
         // The pair invariant StartTonesIfNeeded enforces at startup has to hold continuously:
-        // a device change rebinds the two generators independently, so the reference tone can
-        // die while the follower survives -- and the follower alone is a constant drone the
-        // pilot cannot match anything against. Re-arming here restores the invariant on the
+        // a device change rebinds the two generators independently, so EITHER one can die
+        // while the other survives, and a lone tone is useless in both directions. The
+        // follower alone is a constant drone the pilot cannot match anything against; the
+        // reference alone is a commanded attitude with nothing to compare it to, which is the
+        // same silence dressed up as guidance. Re-arming here restores the invariant on the
         // next update instead of leaving it broken for the rest of the approach.
+        //
+        // WATCHES BOTH TONES, deliberately. Gating on the reference alone covered exactly one
+        // of the two orderings: a sweep that rebound desiredAttitudeTone successfully and then
+        // failed to reopen currentAttitudeTone left the follower registered with NeedsDevice
+        // set and silent, the re-arm never fired, and the pilot flew the rest of the approach
+        // hearing the commanded attitude with nothing to zero-beat it against.
+        // currentAttitudeTone is null-conditional because it legitimately CAN be null while
+        // the reference is not: StartTonesIfNeeded starts the follower only if the reference
+        // started, so a partial start leaves exactly that shape.
         //
         // Gated on NeedsDevice, NOT IsPlaying -- IsPlaying is the wrong signal here and reads
         // false for the ENTIRE DURATION of a healthy, in-flight rebind, not just a failed one.
@@ -639,9 +650,14 @@ public class VisualGuidanceManager : IDisposable
         // succeeds (NeedsDevice goes back to false) or gives up (StartTonesIfNeeded nulls both
         // tones itself, which then makes the guard above return early for the rest of this
         // approach).
-        if (!tonesNeedStart && desiredAttitudeTone != null && desiredAttitudeTone.NeedsDevice)
+        bool desiredNeedsDevice = desiredAttitudeTone != null && desiredAttitudeTone.NeedsDevice;
+        bool currentNeedsDevice = currentAttitudeTone?.NeedsDevice == true;
+        if (!tonesNeedStart && (desiredNeedsDevice || currentNeedsDevice))
         {
-            Log.Debug("VisualGuidance", "Desired-attitude tone needs a device (rebind failed or its endpoint was lost); restarting both tones");
+            string which = desiredNeedsDevice && currentNeedsDevice ? "Both attitude tones need"
+                : desiredNeedsDevice ? "The desired-attitude tone needs"
+                : "The current-attitude tone needs";
+            Log.Debug("VisualGuidance", $"{which} a device (rebind failed or its endpoint was lost); restarting both tones");
             DisposeTones();
             desiredAttitudeTone = new AudioToneGenerator();
             currentAttitudeTone = new AudioToneGenerator();
