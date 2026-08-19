@@ -1,16 +1,34 @@
-// Pins AudioToneGenerator's REGISTRATION/LIFETIME contract, which is the half of this class a
-// CI runner with no audio endpoint can still judge. Everything asserted here is true with or
-// without an output device: no test asserts that a tone actually sounded.
+// Pins two things about AudioToneGenerator that a CI runner with no audio endpoint can still
+// judge: RebindTo's REFUSAL GUARDS (a generator that was never started, and one whose owner has
+// stopped it, must both refuse to be moved by a sweep), and the relationship
+// `IsPlaying == !NeedsDevice` after a start — the invariant that makes a failed open
+// recoverable, since every failure exit sets NeedsDevice and every success clears it. Everything
+// asserted here is true with or without an output device: no test asserts that a tone sounded.
+//
+// WHAT THIS FILE DOES **NOT** PIN, despite the registration talk in the individual comments: the
+// registration LIFETIME contract itself. Mutation-checked — reverting all three of the core
+// registration changes (register-before-open, EnsureRegisteredLocked on restart, stay-registered
+// on a failed open) leaves every test here green, because registry membership is not observable
+// from outside the router. Pinning it needs an internal registration-count accessor on
+// AudioOutputRouter; until that exists, treat those comments as documentation of intent, not as
+// covered behaviour.
 //
 // Every generator is given its OWN router rather than AudioOutputRouter.Shared. That is the
 // point of the injectable-router constructor — a test that registered into the process-wide
 // registry would leave entries behind for every other test in the run.
+//
+// In the SettingsManagerGlobalState collection because every `generator.Start(...)` reaches
+// SettingsManager.Current through OpenFor -> SafeSavedDeviceId. SettingsSeedTests reflectively
+// repoints SettingsDirectory/SettingsFilePath and nulls _currentSettings, and outside the
+// collection it runs in parallel with this class -- so a Current miss landing in that window
+// would run Load() -> SeedFenixMonitorDefaults -> Save() against whichever path was live.
 
 using MSFSBlindAssist.Services;
-using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Settings; // HandFlyWaveType
 
 namespace MSFSBlindAssist.Tests;
 
+[Collection("SettingsManagerGlobalState")]
 public class AudioToneGeneratorTests
 {
     [Fact]

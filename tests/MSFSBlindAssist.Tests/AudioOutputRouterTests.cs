@@ -5,11 +5,19 @@
 //
 // Routing DECISIONS are tested in AudioRebindPlannerTests against the pure planner; nothing here
 // depends on which endpoints happen to exist.
+//
+// In the SettingsManagerGlobalState collection because a sweep reads SettingsManager.Current on
+// the router's worker thread (SafeSavedDeviceId/SafeSavedDeviceName), and OpenFor reaches it too.
+// SettingsSeedTests reflectively repoints SettingsDirectory/SettingsFilePath and nulls
+// _currentSettings, and outside the collection it runs in parallel with this class -- so a
+// Current miss landing in that window would run Load() -> SeedFenixMonitorDefaults -> Save()
+// against whichever path happened to be live.
 
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
 
+[Collection("SettingsManagerGlobalState")]
 public class AudioOutputRouterTests
 {
     [Fact]

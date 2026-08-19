@@ -226,6 +226,32 @@ startup, both of them silence rather than noise:
   either per keystroke on the UI thread is what the cache exists to avoid. `UpdateStatusText`
   calls the pure `AudioDeviceSelector.Resolve` against the cached lists instead.
 
+## Known limitations
+
+- **A flapping endpoint has no debounce and no backoff.** The recovery path is a closed loop:
+  `OnPlaybackStopped` → `NotifyDeviceLost` → `RequestSweep` → `RebindTo` → open → fault →
+  `OnPlaybackStopped`. Nothing in it rate-limits anything, so an endpoint that keeps enumerating
+  as `Active` while faulting on `Play` **sustains the loop indefinitely** — one sweep, one
+  teardown-and-reopen and (where the notice is not deduped) one spoken notice per lap, for as
+  long as the hardware stays in that state. In practice it is bounded only by Windows eventually
+  raising `OnDeviceStateChanged` so the endpoint drops out of `Enumerate()` and the router
+  resolves onto something else. It is not "one announce per flap": that description assumed the
+  flap count is driven by the hardware, and it is not — the loop drives itself. No such device
+  has been observed; this is written down because the shape of the loop, not a report, is what
+  says it can happen. A fix would be a minimum interval between rebind attempts *per generator*
+  (not per sweep — a global throttle would also delay the unrelated tones a real device change
+  has to move).
+
+- **The spoken notice does not know whether the rebinds actually worked.** `RunSweep` discards
+  `RebindTo`'s `bool`, so "your headset is back, moving the tones onto it" is spoken from the
+  *plan*, not from the outcome. A tone that failed to reopen is left flagged `NeedsDevice` and
+  retried by the next sweep, so the state self-heals — but the pilot may hear a recovery a
+  moment before it is true. Pre-existing; unchanged by this feature.
+
+- **The startup baseline sweep is silent**, with the two consequences spelled out in the
+  Overview: the state the app launches in is never announced, and `NoDeviceAvailable` cannot be
+  the first thing a session says.
+
 ## Related documentation
 
 - [Visual Guidance](visual-guidance.md) — the dual-tone landing-guidance feature that
