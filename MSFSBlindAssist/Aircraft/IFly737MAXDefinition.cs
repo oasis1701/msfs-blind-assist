@@ -100,7 +100,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // each control ONCE: variable definition + panel placement + write mapping.
     // =========================================================================
 
-    internal sealed record IFlyWrite(IFlyKeyCommand Command, Func<double, double>? Map = null, double Value3 = 0);
+    // DoubleSend: guarded switch whose SET has no working Value3 guard-bypass — the
+    // first send only OPENS the guard, so the dispatch repeats the command after
+    // 250 ms (see HandleUIVariableSet). Declared at the registration, beside Value3,
+    // so the fact can't drift from the switch it describes.
+    internal sealed record IFlyWrite(IFlyKeyCommand Command, Func<double, double>? Map = null, double Value3 = 0,
+                                     bool DoubleSend = false);
 
     private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
     private readonly Dictionary<string, SimConnect.SimVarDefinition> _vars = new();
@@ -174,11 +179,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// <summary>Multi-position switch/selector. Combo state from the SDK field; set via a WM_COPYDATA command.
     /// Combo values are the FIELD's encoding; <paramref name="map"/> converts to the command's Value2 when they differ.</summary>
     private void Sw(string panel, string field, string display, IFlyKeyCommand? set, string[] positions,
-                    Func<double, double>? map = null, double value3 = 0, double valueBase = 0, bool announced = true)
+                    Func<double, double>? map = null, double value3 = 0, double valueBase = 0, bool announced = true,
+                    bool doubleSend = false)
     {
         var descriptions = new Dictionary<double, string>();
         for (int i = 0; i < positions.Length; i++) descriptions[valueBase + i] = positions[i];
-        SwD(panel, field, display, set, descriptions, map, value3, announced: announced);
+        SwD(panel, field, display, set, descriptions, map, value3, announced: announced, doubleSend: doubleSend);
     }
 
     /// <summary>Switch with an explicit value→label dictionary (non-contiguous or offset encodings).
@@ -190,7 +196,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// and skips the generic panel-refresh write, so a panel TextBox for them would go stale).</summary>
     private void SwD(string panel, string field, string display, IFlyKeyCommand? set,
                      Dictionary<double, string> descriptions, Func<double, double>? map = null,
-                     double value3 = 0, bool inPanel = true, bool announced = true)
+                     double value3 = 0, bool inPanel = true, bool announced = true, bool doubleSend = false)
     {
         _vars[field] = new SimConnect.SimVarDefinition
         {
@@ -204,7 +210,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         };
         if (inPanel) PanelList(panel).Add(field); else PanelList(panel);
         if (set.HasValue)
-            _writes[field] = new IFlyWrite(set.Value, map, value3);
+            _writes[field] = new IFlyWrite(set.Value, map, value3, doubleSend);
     }
 
     /// <summary>Multi-position switch whose SDK write is a DISTINCT absolute click
@@ -861,6 +867,91 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // DC/AC meter selectors: the SET commands are broken — a SET with ANY Value2
+        // acts as one INC click (probe-verified 2026-08-18: repeated identical SETs
+        // stepped the knob 2→3→4…; DEC/INC work normally). Walk the knob to the
+        // picked position with INC/DEC clicks against the live status instead.
+        // (Live note: the AC knob reached status 7 — one position past the SDK doc's
+        // 0-6 — so the walk is signed-delta, never a wrap assumption.)
+        if (varKey is "DC_Meters_Selector_Status" or "AC_Meters_Selector_Status")
+        {
+            bool dc = varKey[0] == 'D';
+            WalkSelectorAsync(announcer, varDef.DisplayName,
+                snapOffset: dc ? IFlySdkOffsets.DC_Meters_Selector_Status : IFlySdkOffsets.AC_Meters_Selector_Status,
+                target: (int)Math.Round(value),
+                inc: dc ? IFlyKeyCommand.ELECTRICAL_DC_METER_INC : IFlyKeyCommand.ELECTRICAL_AC_METER_INC,
+                dec: dc ? IFlyKeyCommand.ELECTRICAL_DC_METER_DEC : IFlyKeyCommand.ELECTRICAL_AC_METER_DEC);
+            return true;
+        }
+
+        // Flaps: the SDK FLTCTRL_FLAP_SET is a complete no-op (probe-verified
+        // 2026-08-18, 6 s dwell each way), but the iFly tracks the STOCK flap
+        // events — FLAPS_INCR moved the lever to detent 1 live (FLAPS_SET, the
+        // stock axis event, is also dead). Step the stock events from the current
+        // detent to the picked one — the third sanctioned stock-event exception
+        // beside KOHLSMAN_SET and the NAV standby radio (docs/ifly-737.md).
+        if (varKey == "FLAP_Status")
+        {
+            // Stock events need SimConnect (the SDK transport can't drive this lever),
+            // and SendEvent silently no-ops when disconnected — refuse OUT LOUD, or a
+            // pilot flying the iFly without SimConnect (a supported configuration)
+            // hears nothing while the combo latches a detent the lever never took.
+            if (simConnect is not { IsConnected: true })
+            {
+                announcer.AnnounceImmediate("Not connected to simulator. Flaps unchanged.");
+                return true;
+            }
+            if (Sdk.Snapshot is not { } fs)
+            {
+                announcer.AnnounceImmediate("Flap position unavailable.");
+                return true;
+            }
+            int targetDetent = (int)Math.Round(value);
+            int gen = ++_flapWalkGen; // latest pick wins — a newer commit abandons this walk
+            _flapWalkTarget = targetDetent;
+            _flapWalkQuietUntilTicks = Environment.TickCount64 + 4000; // swallow intermediate-detent announces (see ProcessSimVarUpdate)
+            // Plain async local function, NEVER Task.Run: SendEvent must stay on the
+            // UI thread (unlocked eventIds dictionary — the PMDG 777 emergency-lights
+            // rule in CLAUDE.md), which also makes the generation check race-free.
+            async void Walk()
+            {
+                int current = fs.ByteAt(IFlySdkOffsets.FLAP_Status);
+                // 100 ms per detent (sim key events process per frame; the PMDG
+                // paths pace 40-120 ms) — a full UP→40 sweep is ~0.8 s of lever
+                // travel, and the surfaces take their own time regardless.
+                for (int i = 0; i < Math.Abs(targetDetent - current); i++)
+                {
+                    if (gen != _flapWalkGen) return; // superseded by a newer pick
+                    simConnect.SendEvent(current < targetDetent ? "FLAPS_INCR" : "FLAPS_DECR", 0);
+                    await Task.Delay(100);
+                }
+                // Verify rounds against the live detent: the burst's start position
+                // came from a snapshot up to 250 ms stale, and a dropped event would
+                // otherwise leave the lever short with nothing spoken.
+                for (int i = 0; i < 6; i++)
+                {
+                    await Task.Delay(350); // event action + the 250 ms shared-memory poll
+                    if (gen != _flapWalkGen) return;
+                    if (Sdk.Snapshot is not { } snap)
+                    {
+                        announcer.AnnounceImmediate("Flap position unavailable.");
+                        return;
+                    }
+                    int now = snap.ByteAt(IFlySdkOffsets.FLAP_Status);
+                    if (now == targetDetent)
+                    {
+                        _flapWalkQuietUntilTicks = 0; // done — cockpit-side moves announce again
+                        return;
+                    }
+                    if (i == 5) break; // out of rounds — report instead of clicking on unverified
+                    simConnect.SendEvent(now < targetDetent ? "FLAPS_INCR" : "FLAPS_DECR", 0);
+                }
+                announcer.AnnounceImmediate("Flaps did not reach the selected detent.");
+            }
+            Walk();
+            return true;
+        }
+
         if (_writes.TryGetValue(varKey, out var w))
         {
             if (_numSetRanges.TryGetValue(varKey, out var range))
@@ -876,6 +967,31 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             {
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
+            }
+            // Guarded switches whose SET has no working Value3 guard-bypass need the
+            // command TWICE: the first send only OPENS the guard, the second moves
+            // the switch (probe-verified 2026-08-18 on the stab-trim cutouts, nose
+            // wheel steering and GPWS flap inhibit — a single send read as "dead",
+            // and the guard auto-closes after a few seconds, which is what made
+            // slow retries look dead too). The SET is absolute, so when the guard
+            // is already open the first send moves the switch and the second is an
+            // idempotent no-op — for a SINGLE pick. A NEWER pick of the same switch
+            // within the 250 ms would be overwritten by the stale queued value, so
+            // the delayed send is latest-wins gated per key. Plain async local
+            // function on the UI thread (not Task.Run): keeps the supersede check
+            // race-free and any failure announcement on the Tolk thread.
+            if (w.DoubleSend)
+            {
+                int gen = _doubleSendGen.TryGetValue(varKey, out var g) ? g + 1 : 1;
+                _doubleSendGen[varKey] = gen;
+                async void SendSecond()
+                {
+                    await Task.Delay(250);
+                    if (_doubleSendGen[varKey] != gen) return; // a newer pick owns the switch
+                    if (!Sdk.SendCommand(w.Command, v2, w.Value3))
+                        announcer.AnnounceImmediate("iFly plugin not responding.");
+                }
+                SendSecond();
             }
             // Numeric entry confirmation (screen-reader rule: numeric inputs DO confirm).
             // Course fields zero-pad to match the MCP window's 3-digit display (and the
@@ -909,6 +1025,80 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
 
         return false;
+    }
+
+    /// <summary>Per-key latest-wins generation for the guarded double-send above
+    /// (IFlyWrite.DoubleSend — the flag lives on each registration; probe provenance
+    /// 2026-08-18: flap inhibit, both stab-trim cutouts, nose wheel steering and
+    /// flight spoiler A verified live, the other three GPWS inhibits and spoiler B
+    /// share the exact registration shape and guard encoding. NOT flagged: the
+    /// guarded switches whose Value3=1 bypass works single-send — battery, standby
+    /// power, IDG, bus transfer, stab-trim override, elevator jam, dome light — and
+    /// the guard-transparent emergency exit lights / cargo fire arm). UI-thread only.</summary>
+    private readonly Dictionary<string, int> _doubleSendGen = new(StringComparer.Ordinal);
+
+    /// <summary>App-driven flap walk state (see the FLAP_Status dispatch): latest-wins
+    /// generation, the detent being walked to, and the ticks until which intermediate
+    /// FLAP_Status changes stay silent (the generic _uiSetEcho gate is value-matched,
+    /// so only the TARGET detent would be eaten — without this window every detent the
+    /// lever steps through announces as a background change). UI-thread only.</summary>
+    private int _flapWalkGen;
+    private int _flapWalkTarget = -1;
+    private long _flapWalkQuietUntilTicks;
+
+    /// <summary>Per-knob (snapshot-offset-keyed) latest-wins generations for
+    /// <see cref="WalkSelectorAsync"/> — arrow-keying a selector combo commits every
+    /// step, and without the guard the overlapping walkers fight each other's verify
+    /// rounds toward different targets. Guarded by its own lock (the walkers run on
+    /// pool threads).</summary>
+    private readonly Dictionary<int, int> _selectorWalkGen = new();
+
+    /// <summary>Walk a rotary selector whose SET command is broken (acts as a bare
+    /// INC click regardless of Value2 — the DC/AC meter knobs) to the target
+    /// position. BURST-then-verify (the RTP-frequency pattern): the expected click
+    /// count goes out open-loop at 80 ms (the CDU key-queue pace — a 60 ms burst
+    /// landed 5/5 clicks both directions live, 2026-08-18; WM_COPYDATA is
+    /// synchronous so each click is handled before the next send returns), then
+    /// verify rounds against the live status correct any residue, one click per
+    /// 350 ms round (poll refresh), so an unexpected position (the AC knob's
+    /// undocumented 8th detent) can never loop. Worst case ~0.6 s to the target
+    /// instead of the ~2.5 s a per-click readback walk cost. Latest-wins per knob,
+    /// and EVERY give-up path is spoken — a silent give-up leaves the combo
+    /// displaying a position the knob never reached.</summary>
+    private void WalkSelectorAsync(ScreenReaderAnnouncer announcer, string display, int snapOffset, int target,
+        IFlyKeyCommand inc, IFlyKeyCommand dec)
+    {
+        int gen;
+        lock (_selectorWalkGen)
+            gen = _selectorWalkGen[snapOffset] = _selectorWalkGen.TryGetValue(snapOffset, out var g) ? g + 1 : 1;
+        bool Superseded() { lock (_selectorWalkGen) return _selectorWalkGen[snapOffset] != gen; }
+        void Announce(string msg) => Sdk.RunOnUi(() => announcer.AnnounceImmediate(msg));
+        _ = Task.Run(async () =>
+        {
+            if (Sdk.Snapshot is not { } s0) { Announce("iFly 737 not detected."); return; }
+            int cur = s0.ByteAt(snapOffset);
+            for (int i = 0; i < Math.Abs(target - cur); i++)
+            {
+                if (Superseded()) return;
+                if (!Sdk.SendCommand(cur < target ? inc : dec))
+                {
+                    Announce("iFly plugin not responding.");
+                    return;
+                }
+                await Task.Delay(80);
+            }
+            for (int i = 0; i < 6; i++)
+            {
+                await Task.Delay(350); // command action + the 250 ms shared-memory poll
+                if (Superseded()) return;
+                if (Sdk.Snapshot is not { } snap) { Announce("iFly 737 not detected."); return; }
+                int now = snap.ByteAt(snapOffset);
+                if (now == target) return;
+                if (i == 5) break; // out of rounds — report instead of clicking on unverified
+                if (!Sdk.SendCommand(now < target ? inc : dec)) { Announce("iFly plugin not responding."); return; }
+            }
+            Announce($"{display} did not reach the selected position.");
+        });
     }
 
     /// <summary>Fire-and-forget write verify: after ~800 ms (plugin action + poll
@@ -1840,6 +2030,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             return true;
         }
+
+        // App-driven flap walk (the FLAP_Status dispatch in HandleUIVariableSet): the
+        // lever steps through every intermediate detent, and each would announce as a
+        // background change — the generic _uiSetEcho gate is value-matched, so it
+        // only eats the TARGET. Swallow the intermediates during the walk window; the
+        // target itself falls through so the combo refresh and echo suppression
+        // behave exactly like a normal set (returning true here for the final value
+        // would leave the panel combo stale — see the FLAP_Status registration note).
+        if (varName == "FLAP_Status"
+            && Environment.TickCount64 < _flapWalkQuietUntilTicks
+            && (int)Math.Round(value) != _flapWalkTarget)
+            return true;
 
         // Annunciator lights: announce lit-edge only; both DIM and BRT count as lit.
         // Master LIGHTS TEST would flood every light on — suppress while held.
