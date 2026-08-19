@@ -1024,10 +1024,24 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             string who = side == "L" ? "Capt" : "F/O";
             OnOff($"A380X_EFIS_{side}_LS_BUTTON_IS_ON", $"{who} LS");
-            OnOff($"A380X_EFIS_{side}_VV_BUTTON_IS_ON", $"{who} V/V");
-            OnOff($"A380X_EFIS_{side}_CSTR_BUTTON_IS_ON", $"{who} Constraints");
-            OnOff($"A380X_EFIS_{side}_ARPT_BUTTON_IS_ON", $"{who} Airport");
             OnOff($"A380X_EFIS_{side}_TRAF_BUTTON_IS_ON", $"{who} Traffic");
+            // V/V, CSTR, ARPT + the three ND-filter buttons moved to the FCU EFIS-CP with
+            // FBW #10855: the A380X_EFIS_*_BUTTON_IS_ON vars are gone, replaced by the
+            // FCU's own per-button lights that the cockpit indicator reads
+            // (efis-cp.xml: INDICATOR_CODE = L:A32NX_FCU_EFIS_#SIDE#_#NAME#_LIGHT_ON).
+            // Read-only state; the set fires *_PUSH via _fcuToggleEvents.
+            //
+            // ⚠️ WPT / VORD / NDB are INDEPENDENT toggles, NOT a single-select filter.
+            // The old A380X_EFIS_*_ACTIVE_FILTER combo (Off/Waypoints/VOR-DME/NDB) modelled
+            // them as mutually exclusive, which is wrong: live-verified 2026-08-18 that WPT,
+            // VORD and NDB can all be lit at the same time. Three separate On/Off controls
+            // is the faithful shape, and a blind pilot gets the same reach as a sighted one.
+            OnOff($"A32NX_FCU_EFIS_{side}_VV_LIGHT_ON", $"{who} V/V");
+            OnOff($"A32NX_FCU_EFIS_{side}_CSTR_LIGHT_ON", $"{who} Constraints");
+            OnOff($"A32NX_FCU_EFIS_{side}_ARPT_LIGHT_ON", $"{who} Airport");
+            OnOff($"A32NX_FCU_EFIS_{side}_WPT_LIGHT_ON", $"{who} Waypoints");
+            OnOff($"A32NX_FCU_EFIS_{side}_VORD_LIGHT_ON", $"{who} VOR/DME");
+            OnOff($"A32NX_FCU_EFIS_{side}_NDB_LIGHT_ON", $"{who} NDB");
             Sel($"A32NX_EFIS_{side}_ND_MODE", $"{who} ND Mode",
                 new Dictionary<double, string> { [0] = "Rose ILS", [1] = "Rose VOR", [2] = "Rose Nav", [3] = "Arc", [4] = "Plan" });
             Sel($"A32NX_EFIS_{side}_ND_RANGE", $"{who} ND Range",
@@ -1307,7 +1321,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SpeedPreselVal", "Preselected speed", "knots");
         Read("A32NX_MachPreselVal", "Preselected Mach", "mach");
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected vertical speed", "feet per minute");
-        ReadEnum("A32NX_FMA_EXPEDITE_MODE", "Expedite", new Dictionary<double, string> { [0] = "off", [1] = "on" });
         Stock("FD_1", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", "Flight director 1", "bool",
             new Dictionary<double, string> { [0] = "off", [1] = "on" });
         Stock("FD_2", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Flight director 2", "bool",
@@ -1483,11 +1496,24 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_TCAS_MODE", "TCAS Mode", new Dictionary<double, string>
             { [0] = "standby", [1] = "traffic advisory only", [2] = "traffic and resolution advisories" });
         ReadEnum("A32NX_TCAS_FAULT", "TCAS Fault", new Dictionary<double, string> { [0] = "normal", [1] = "fault" });
-        Mon("A32NX_FMA_SPEED_PROTECTION_MODE", "Speed Protection",
-            new Dictionary<double, string> { [0] = "off", [1] = "active" });
-        Mon("A32NX_FMA_MODE_REVERSION", "FMA Reversion",
-            new Dictionary<double, string> { [0] = "none", [1] = "mode reversion" });
-
+        // FMA speed-protection + mode-reversion moved into the PRIM FG discrete words with
+        // FBW #10855 (FG into the PRIM); the old A32NX_FMA_* vars are gone from the A380.
+        // BOTH conditions live in FG discrete word 5 — bit 29 "V/S Target not held" (what the
+        // PFD's own inSpeedProtection derives from) and bit 28 "AP/FD Mode Reversion" — so
+        // this is ONE registered var that ProcessSimVarUpdate decodes into two separate
+        // spoken alerts.
+        //
+        // ⚠️ Deliberately a SINGLE key, NOT one key per condition. Two var keys sharing one
+        // underlying Name would put two identical "L:..." entries into the continuous batch,
+        // and SetupDataDefinitions sorts that batch by full name to mirror SimConnect's own
+        // ordering — the exact "data-definition position drift" the ExcludeFromBatch docs warn
+        // about, which would silently shift every later var's struct slot and make unrelated
+        // readouts return each other's values. One var, one slot, two derived announcements.
+        vars["FMA_FG_ALERTS"] = new SimVarDefinition
+        {
+            Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_5", DisplayName = "FMA Mode Alerts",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
+        };
         // ---- SAFETY AURAL CALLOUTS — the EGPWS / stall / AP-disconnect aurals a blind pilot
         // otherwise can't hear. Auto-announced on onset (the L-var holds the current warning,
         // so it speaks once per event, not per aural repeat). Mutable via Ctrl+M. ----
@@ -1921,6 +1947,13 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Evt("A32NX.FCU_ATHR_PUSH", "A32NX.FCU_ATHR_PUSH", "Autothrust");
         Evt("A32NX.FCU_LOC_PUSH", "A32NX.FCU_LOC_PUSH", "Localizer");
         Evt("A32NX.FCU_APPR_PUSH", "A32NX.FCU_APPR_PUSH", "Approach");
+        // EFIS-CP button push events (FBW #10855). Fired by _fcuToggleEvents when the
+        // matching *_LIGHT_ON combo is set to a state different from the current one.
+        foreach (var efisSide in new[] { "L", "R" })
+            foreach (var btn in new[] { "ARPT", "CSTR", "VV", "WPT", "VORD", "NDB" })
+                Evt($"A32NX.FCU_EFIS_{efisSide}_{btn}_PUSH",
+                    $"A32NX.FCU_EFIS_{efisSide}_{btn}_PUSH",
+                    $"{(efisSide == "L" ? "Capt" : "F/O")} {btn}");
         Evt("A32NX.FCU_EXPED_PUSH", "A32NX.FCU_EXPED_PUSH", "Expedite");
         Evt("A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_AP_DISCONNECT_PUSH", "Autopilot Disconnect");
         Evt("A32NX.FCU_ATHR_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH", "Autothrust Disconnect");
@@ -2050,7 +2083,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // generic announce is suppressed by the decoded handler returning true.
         Mon("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes", new Dictionary<double, string>());
         Mon("A32NX_FMA_LATERAL_ARMED", "Armed Lateral Modes", new Dictionary<double, string>());
-        Read("A32NX_FMA_CRUISE_ALT_MODE", "Cruise Altitude Mode");
+        // Cruise-altitude mode moved into PRIM FG discrete word 3 bit 29 ("altIsCrzAlt",
+        // what the PFD's own ALT CRZ / ALT CRZ* FMA message derives from) with FBW #10855;
+        // the old A32NX_FMA_CRUISE_ALT_MODE is gone. Decoded in TryGetDisplayOverride.
+        vars["FMA_CRUISE_ALT_MODE"] = new SimVarDefinition
+        {
+            Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_3", DisplayName = "Cruise Altitude Mode",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+        };
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Vertical Deviation");
         // FMS vertical-profile target altitude at the current position — the basis for
         // the PFD linear (V/DEV) deviation: deviation = current altitude − this, shown
@@ -2068,9 +2108,18 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // when the picked state differs from current (A380 has no FCU light vars).
         Sel("A32NX_AUTOPILOT_1_ACTIVE", "Autopilot 1", onOff);
         Sel("A32NX_AUTOPILOT_2_ACTIVE", "Autopilot 2", onOff);
-        Sel("A32NX_FCU_LOC_MODE_ACTIVE", "Localizer", onOff);
-        Sel("A32NX_FCU_APPR_MODE_ACTIVE", "Approach", onOff);
-        Sel("A32NX_FMA_EXPEDITE_MODE", "Expedite", onOff);
+        // LOC / APPR state moved with FBW #10855 (FG into the PRIM): the old
+        // A32NX_FCU_LOC/APPR_MODE_ACTIVE vars no longer exist on the A380 — the FCU now
+        // publishes the button lights, which is what the cockpit's own indicator reads
+        // (efis-cp/fcu.xml INDICATOR_CODE). Written per-frame by the WASM from
+        // fcu1Afs.loc_light_on || fcu2Afs.loc_light_on, so they are READ-ONLY state; the
+        // set path stays the unchanged A32NX.FCU_LOC/APPR_PUSH toggle events via
+        // _fcuToggleEvents. Live-verified 2026-08-18 on a380x-dev.1bbd304.
+        Sel("A32NX_FCU_LOC_LIGHT_ON", "Localizer", onOff);
+        Sel("A32NX_FCU_APPR_LIGHT_ON", "Approach", onOff);
+        // (Expedite REMOVED — the A380 FCU has no EXPED button at all: zero hits for
+        // "exped" in the A380 cockpit XML, and A32NX_FMA_EXPEDITE_MODE is gone from the
+        // A380 source entirely. It remains a real A32NX control, so the A320 def keeps it.)
 
         // ---- EFIS Control Panel: flight director + baro (per side) ----
         // FD control is the FD_1_CTL / FD_2_CTL combos registered above: per-side stock
@@ -2446,8 +2495,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         foreach (var side in new[] { "L", "R" })
         {
             string who = side == "L" ? "Capt" : "F/O";
-            Sel($"A380X_EFIS_{side}_ACTIVE_FILTER", $"{who} ND Filter",
-                new Dictionary<double, string> { [0] = "Off", [1] = "Waypoints", [2] = "VOR/DME", [3] = "NDB" });
+            // (A380X_EFIS_*_ACTIVE_FILTER REMOVED — deleted by FBW #10855, and its
+            // single-select shape was wrong anyway: WPT / VORD / NDB are independent
+            // toggles, live-verified all three lit at once. They are now three separate
+            // On/Off controls registered in the EFIS Control Panel block above.)
             Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
             // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
@@ -2862,6 +2913,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
     // Per-var last announced state for the ARINC429 enum guard.
     private readonly Dictionary<string, int> _arincEnumState = new();
+    // Last announced bit state for the two FMA monitors that share PRIM FG discrete word 5
+    // (see ProcessSimVarUpdate). Absent key = not yet sampled, so the first read baselines
+    // silently instead of announcing on connect.
+    private readonly Dictionary<string, bool> _fmaFgBitState = new();
 
     // ===================================================================
     // Panel structure
@@ -3137,9 +3192,26 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A32NX_AUTOPILOT_1_ACTIVE"] = "A32NX.FCU_AP_1_PUSH",
         ["A32NX_AUTOPILOT_2_ACTIVE"] = "A32NX.FCU_AP_2_PUSH",
         ["A32NX_AUTOTHRUST_STATUS"] = "AUTO_THROTTLE_ARM",
-        ["A32NX_FCU_LOC_MODE_ACTIVE"] = "A32NX.FCU_LOC_PUSH",
-        ["A32NX_FCU_APPR_MODE_ACTIVE"] = "A32NX.FCU_APPR_PUSH",
-        ["A32NX_FMA_EXPEDITE_MODE"] = "A32NX.FCU_EXPED_PUSH",
+        ["A32NX_FCU_LOC_LIGHT_ON"] = "A32NX.FCU_LOC_PUSH",
+        ["A32NX_FCU_APPR_LIGHT_ON"] = "A32NX.FCU_APPR_PUSH",
+        // (No EXPED entry — the A380 FCU has no EXPED button; A32NX.FCU_EXPED_PUSH does
+        // not exist on this airframe either. See the registration block for the evidence.)
+        // EFIS control-panel buttons, per side. Same shape as LOC/APPR: the *_LIGHT_ON
+        // var is read-only FCU output (the cockpit's own INDICATOR_CODE reads it) and the
+        // set fires the matching push event. All twelve live-verified 0->1->0 individually
+        // on a380x-dev.1bbd304, 2026-08-18.
+        ["A32NX_FCU_EFIS_L_ARPT_LIGHT_ON"] = "A32NX.FCU_EFIS_L_ARPT_PUSH",
+        ["A32NX_FCU_EFIS_L_CSTR_LIGHT_ON"] = "A32NX.FCU_EFIS_L_CSTR_PUSH",
+        ["A32NX_FCU_EFIS_L_VV_LIGHT_ON"] = "A32NX.FCU_EFIS_L_VV_PUSH",
+        ["A32NX_FCU_EFIS_L_WPT_LIGHT_ON"] = "A32NX.FCU_EFIS_L_WPT_PUSH",
+        ["A32NX_FCU_EFIS_L_VORD_LIGHT_ON"] = "A32NX.FCU_EFIS_L_VORD_PUSH",
+        ["A32NX_FCU_EFIS_L_NDB_LIGHT_ON"] = "A32NX.FCU_EFIS_L_NDB_PUSH",
+        ["A32NX_FCU_EFIS_R_ARPT_LIGHT_ON"] = "A32NX.FCU_EFIS_R_ARPT_PUSH",
+        ["A32NX_FCU_EFIS_R_CSTR_LIGHT_ON"] = "A32NX.FCU_EFIS_R_CSTR_PUSH",
+        ["A32NX_FCU_EFIS_R_VV_LIGHT_ON"] = "A32NX.FCU_EFIS_R_VV_PUSH",
+        ["A32NX_FCU_EFIS_R_WPT_LIGHT_ON"] = "A32NX.FCU_EFIS_R_WPT_PUSH",
+        ["A32NX_FCU_EFIS_R_VORD_LIGHT_ON"] = "A32NX.FCU_EFIS_R_VORD_PUSH",
+        ["A32NX_FCU_EFIS_R_NDB_LIGHT_ON"] = "A32NX.FCU_EFIS_R_NDB_PUSH",
     };
     private readonly Dictionary<string, double> _fcuStateCache = new();
 

@@ -155,6 +155,17 @@ public partial class FlyByWireA380Definition
         // override here would be dead code. The pristine-0..1-ratio quirk is instead
         // fixed sim-side: OnDisplayPanelShown below self-normalizes both knob L:vars
         // when the Interior Lighting panel opens.)
+        // Cruise-altitude mode: PRIM FG discrete word 3 bit 29 ("altIsCrzAlt" — the same bit
+        // the PFD's ALT CRZ / ALT CRZ* FMA message derives from). SSM-gated: a word that is
+        // not Normal Operation / Functional Test reads "not available" rather than a
+        // misleading "off". (FBW #10855 moved this out of A32NX_FMA_CRUISE_ALT_MODE.)
+        if (varKey == "FMA_CRUISE_ALT_MODE")
+        {
+            var cw = new SimConnect.Arinc429Word(value);
+            displayText = (!cw.IsNormalOperation && !cw.IsFunctionalTest) ? "not available"
+                        : cw.BitValueOr(29, false) ? "cruise altitude" : "off";
+            return true;
+        }
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
         if (varKey == "A32NX_NOSE_WHEEL_POSITION")
         {

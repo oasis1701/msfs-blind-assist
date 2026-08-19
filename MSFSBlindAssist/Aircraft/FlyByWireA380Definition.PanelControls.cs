@@ -260,10 +260,15 @@ public partial class FlyByWireA380Definition
         // EFIS Control Panel split per side (Captain / First Officer), PMDG-style.
         p["EFIS Captain"] = new List<string>
         {
-            "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_L_VV_BUTTON_IS_ON", "A380X_EFIS_L_CSTR_BUTTON_IS_ON",
-            "A380X_EFIS_L_ARPT_BUTTON_IS_ON", "A380X_EFIS_L_TRAF_BUTTON_IS_ON",
+            "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_L_TRAF_BUTTON_IS_ON",
+            // V/V, CSTR, ARPT + the three ND-filter buttons now come from the FCU EFIS-CP
+            // lights (FBW #10855). WPT/VORD/NDB replace the old single-select ND Filter
+            // combo — they are independent toggles, not mutually exclusive.
+            "A32NX_FCU_EFIS_L_VV_LIGHT_ON", "A32NX_FCU_EFIS_L_CSTR_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_ARPT_LIGHT_ON", "A32NX_FCU_EFIS_L_WPT_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_VORD_LIGHT_ON", "A32NX_FCU_EFIS_L_NDB_LIGHT_ON",
             "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
-            "A380X_EFIS_L_ACTIVE_FILTER", "A380X_EFIS_L_ACTIVE_OVERLAY",
+            "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
             "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
             "A32NX_EFIS_L_OANS_RANGE",
@@ -274,10 +279,15 @@ public partial class FlyByWireA380Definition
         };
         p["EFIS First Officer"] = new List<string>
         {
-            "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_VV_BUTTON_IS_ON", "A380X_EFIS_R_CSTR_BUTTON_IS_ON",
-            "A380X_EFIS_R_ARPT_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
+            "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
+            // V/V, CSTR, ARPT + the three ND-filter buttons now come from the FCU EFIS-CP
+            // lights (FBW #10855). WPT/VORD/NDB replace the old single-select ND Filter
+            // combo — they are independent toggles, not mutually exclusive.
+            "A32NX_FCU_EFIS_R_VV_LIGHT_ON", "A32NX_FCU_EFIS_R_CSTR_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_ARPT_LIGHT_ON", "A32NX_FCU_EFIS_R_WPT_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_VORD_LIGHT_ON", "A32NX_FCU_EFIS_R_NDB_LIGHT_ON",
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
-            "A380X_EFIS_R_ACTIVE_FILTER", "A380X_EFIS_R_ACTIVE_OVERLAY",
+            "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
             "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "XMLVAR_Baro_Selector_HPA_2",
             "A32NX_EFIS_R_OANS_RANGE",
@@ -288,7 +298,7 @@ public partial class FlyByWireA380Definition
             // Engage/mode controls as stateful combos (show live state, pick to
             // toggle) instead of blind buttons — see HandleUIVariableSet.
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
-            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE", "A32NX_FMA_EXPEDITE_MODE",
+            "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
             "A32NX_TRK_FPA_MODE_ACTIVE",
             // Genuine momentary knob push/pulls stay as buttons.
             "A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PULL",
@@ -682,7 +692,7 @@ public partial class FlyByWireA380Definition
             "PFD_VSTALL1G", "PFD_SPEEDTREND", "PFD_GAMMA_A", "PFD_GAMMA_T",
             // Target/preselect speeds + selected V/S + expedite + flight directors + autobrake.
             "A32NX_SPEEDS_MANAGED_PFD", "A32NX_SpeedPreselVal", "A32NX_MachPreselVal",
-            "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_FMA_EXPEDITE_MODE", "FD_1", "FD_2",
+            "A32NX_AUTOPILOT_VS_SELECTED", "FD_1", "FD_2",
             "A32NX_AUTOBRAKES_ARMED_MODE", "PFD_AUTOLAND"
         };
         // ND accessible snapshot — mode/range, TO waypoint (decoded ident + distance/
@@ -776,9 +786,8 @@ public partial class FlyByWireA380Definition
             ["A32NX.FCU_AP_1_PUSH"] = "A32NX_AUTOPILOT_1_ACTIVE",
             ["A32NX.FCU_AP_2_PUSH"] = "A32NX_AUTOPILOT_2_ACTIVE",
             ["A32NX.FCU_ATHR_PUSH"] = "A32NX_AUTOTHRUST_STATUS",
-            ["A32NX.FCU_LOC_PUSH"] = "A32NX_FCU_LOC_MODE_ACTIVE",
-            ["A32NX.FCU_APPR_PUSH"] = "A32NX_FCU_APPR_MODE_ACTIVE",
-            ["A32NX.FCU_EXPED_PUSH"] = "A32NX_FMA_EXPEDITE_MODE",
+            ["A32NX.FCU_LOC_PUSH"] = "A32NX_FCU_LOC_LIGHT_ON",
+            ["A32NX.FCU_APPR_PUSH"] = "A32NX_FCU_APPR_LIGHT_ON",
             ["A32NX.FCU_TRK_FPA_TOGGLE_PUSH"] = "A32NX_TRK_FPA_MODE_ACTIVE"
         };
     }

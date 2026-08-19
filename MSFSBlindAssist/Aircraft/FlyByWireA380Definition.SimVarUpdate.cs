@@ -285,6 +285,33 @@ public partial class FlyByWireA380Definition
                 announcer.Announce($"{arDef.DisplayName}: {sdesc}");
             return true;
         }
+        // FMA mode alerts (FBW #10855 moved both into the PRIM FG bus). ONE registered var —
+        // PRIM FG discrete word 5 — decoded into TWO spoken alerts: bit 29 "V/S Target not
+        // held" (what the PFD's own inSpeedProtection uses) = Speed Protection, and bit 28
+        // "AP/FD Mode Reversion" = FMA Reversion. Registering one key per condition would
+        // duplicate the same L:var in the continuous batch and risk data-definition position
+        // drift, so the split happens here instead.
+        //
+        // SSM-gated: a word that is not Normal Operation / Functional Test announces NOTHING
+        // rather than a false "off". The first sample only baselines (no announce on connect),
+        // matching every other MSFSBA monitor. Ctrl+M mutes both alerts together via the
+        // single FMA_FG_ALERTS entry.
+        if (varName == "FMA_FG_ALERTS")
+        {
+            var fgWord = new Arinc429Word(value);
+            if (!fgWord.IsNormalOperation && !fgWord.IsFunctionalTest) return true;
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
+            foreach (var (bit, label) in new[] { (29, "Speed Protection"), (28, "FMA Reversion") })
+            {
+                bool bitOn = fgWord.BitValueOr(bit, false);
+                string stateKey = $"{varName}:{bit}";
+                bool hadPrev = _fmaFgBitState.TryGetValue(stateKey, out var prevOn);
+                _fmaFgBitState[stateKey] = bitOn;
+                if (hadPrev && bitOn != prevOn && !muted)
+                    announcer.Announce($"{label}: {(bitOn ? "active" : "off")}");
+            }
+            return true;
+        }
         // Keep the live current state of the FCU engage/mode toggles so their
         // combos can decide whether a "set" needs to fire the toggle event. Fall
         // through so the base still auto-announces the state change.

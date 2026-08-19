@@ -570,8 +570,10 @@ public partial class FlyByWireA380Definition
         if (!s.IsConnected) return;
         foreach (var v in new[] {
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
-            "A32NX_FCU_LOC_MODE_ACTIVE", "A32NX_FCU_APPR_MODE_ACTIVE",
-            "A32NX_FMA_EXPEDITE_MODE", "FD_1_CTL", "FD_2_CTL" })
+            // LOC/APPR state = the FCU button lights since FBW #10855 (the old
+            // *_MODE_ACTIVE vars are gone). No EXPED — the A380 FCU has no such button.
+            "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
+            "FD_1_CTL", "FD_2_CTL" })
             s.RequestVariable(v, forceUpdate: true);
     }
 
