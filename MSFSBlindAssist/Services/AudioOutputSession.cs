@@ -5,9 +5,13 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// An open output: the player, the endpoint it is bound to, and that endpoint's mix sample
-/// rate. The MMDevice is bundled because NAudio's WasapiOut.Dispose() disposes the audio
-/// client but NOT the device it was constructed from, so something has to own it; making the
-/// pair one disposable keeps that ownership from leaking into AudioToneGenerator.
+/// rate. The MMDevice is bundled because WasapiOut.Dispose() disposes the audio client but not the
+/// device it was constructed from, so the session has to keep the device reachable for as long
+/// as the player is alive. Note that MMDevice.Dispose() itself is close to a no-op in NAudio
+/// 2.3.0 -- it disposes only AudioEndpointVolume/AudioSessionManager, neither of which this
+/// path ever touches, and never releases the IMMDevice RCW; that release comes from ordinary
+/// GC finalization. Keeping the pair in one disposable is still the right ownership call, but
+/// do not read the Dispose() call below as what frees the COM object.
 ///
 /// MixSampleRate is the reason this returns a rate at all: generating the tone AT the
 /// endpoint's own rate keeps NAudio's DMO resampler out of the signal chain in the common

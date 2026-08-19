@@ -361,18 +361,21 @@ public static class AudioOutputDeviceService
 
     private static AudioOutputSession Build(MMDevice device)
     {
-        int mixSampleRate = 44100;
-        try
-        {
-            mixSampleRate = device.AudioClient.MixFormat.SampleRate;
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Audio", $"Could not read the device mix format, using 44100 Hz: {ex.Message}");
-        }
-
+        // The rate comes off the PLAYER, not a separate probe. NAudio 2.3.0's
+        // MMDevice.AudioClient is not cached -- its own doc says "Makes a new one each call
+        // to allow caller to manage when to dispose" -- so a `device.AudioClient.MixFormat`
+        // probe activates a second IAudioClient that nothing owns: MMDevice.Dispose() holds no
+        // reference to it and AudioClient has no finalizer, so it was released only by
+        // non-deterministic RCW finalization, once per tone start AND per rebind.
+        //
+        // WasapiOut's constructor already ends with `OutputWaveFormat = audioClient.MixFormat`,
+        // so this is the same value with no second activation. It also removes an unreachable
+        // 44100 Hz fallback: the probe and the constructor performed the identical two COM
+        // operations, so anything that made the probe throw made the constructor throw too and
+        // the fallback could never reach a playing session -- while its log line told an
+        // investigator a tone was playing at the wrong rate when no tone had started at all.
         var player = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: LatencyMs);
-        return new AudioOutputSession(player, mixSampleRate, device);
+        return new AudioOutputSession(player, player.OutputWaveFormat.SampleRate, device);
     }
 
     /// <summary>
