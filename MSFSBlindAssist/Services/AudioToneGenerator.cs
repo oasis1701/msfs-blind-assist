@@ -127,7 +127,7 @@ public class AudioToneGenerator : IDisposable
         }
         catch (Exception ex)
         {
-            Log.Debug("Services", $"AudioToneGenerator could not register with the audio router: {ex.Message}");
+            Log.Debug("Audio", $"AudioToneGenerator could not register with the audio router: {ex.Message}");
         }
 
         this.router = resolved;
@@ -243,11 +243,17 @@ public class AudioToneGenerator : IDisposable
             // sweep after the first deactivation).
             EnsureRegisteredLocked();
 
-            // The output is chosen first, because the oscillator has to be built at the
-            // endpoint's OWN mix rate. Building at a fixed 44100 (as this did before the
-            // device setting existed) makes NAudio insert its DMO resampler on the common
-            // 48 kHz endpoint, and would make a rebind to a differently-clocked device play
-            // the tone sharp.
+            // The output is chosen first because the oscillator is built at the endpoint's own
+            // mix rate. That is a quality choice, not a correctness one: WASAPI shared mode
+            // always opens with AutoConvertPcm | SrcDefaultQuality and converts whatever we hand
+            // it, so a rate mismatch was never audible -- generating at the endpoint's rate just
+            // keeps the engine's sample-rate converter out of the chain. (NAudio's DMO resampler
+            // is exclusive-mode only and never ran on this path; and the oscillator declares the
+            // same rate it generates at, with Init setting OutputWaveFormat from the provider,
+            // so declared and generated can never diverge -- a mismatched rate could not have
+            // played sharp either.) A rebind still rebuilds the oscillator rather than swapping
+            // the player under it, because the new endpoint may mix at a different rate and the
+            // oscillator's phase step is derived from it.
             AudioOutputSession? opened = router?.OpenFor(deviceIdOverride);
             if (opened == null)
             {
@@ -257,7 +263,7 @@ public class AudioToneGenerator : IDisposable
                 // which is the correct degradation for optional feedback.
                 needsDevice = true;
                 currentDeviceId = string.Empty;
-                Log.Warn("Services", "AudioToneGenerator start failed: no audio output device could be opened");
+                Log.Warn("Audio", "AudioToneGenerator start failed: no audio output device could be opened");
                 return;
             }
 
@@ -322,7 +328,7 @@ public class AudioToneGenerator : IDisposable
         catch (Exception ex)
         {
             // Log error but don't crash - audio is optional feedback
-            Log.Debug("Services", $"AudioToneGenerator start failed: {ex.Message}");
+            Log.Debug("Audio", $"AudioToneGenerator start failed: {ex.Message}");
             Cleanup();
 
             // AFTER Cleanup, so what survives is the failure. Every failure exit from this
@@ -610,7 +616,7 @@ public class AudioToneGenerator : IDisposable
         }
 
         needsDevice = true;
-        Log.Warn("Services", $"Guidance tone output stopped unexpectedly: {e.Exception.Message}");
+        Log.Warn("Audio", $"Guidance tone output stopped unexpectedly: {e.Exception.Message}");
 
         // NotifyDeviceLost rather than RequestSweep: it is the router's own name for exactly
         // this call site, and it documents that the CALLER sets NeedsDevice first (the router

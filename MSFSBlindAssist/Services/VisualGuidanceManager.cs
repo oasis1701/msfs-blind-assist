@@ -46,7 +46,7 @@ public class VisualGuidanceManager : IDisposable
     // Defer audible Start() until the first ProcessUpdate computes real pitch/bank — otherwise
     // the user hears ~33 ms of fused 500 Hz center-pan tone that represents nothing. Both tones
     // are instantiated in Initialize so disposal/lifecycle stays simple; this flag controls
-    // when WaveOut actually fires up.
+    // when the audio output actually fires up.
     private bool tonesNeedStart = false;
 
     // Bank (degrees, standard convention) at which hard-pan mode snaps to full left / right.
@@ -676,12 +676,13 @@ public class VisualGuidanceManager : IDisposable
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
             double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
-            // First-frame deferred Start — by the time WaveOut's 150 ms buffer fills, the
-            // phase-continuous oscillator's portamento has reached the target frequency
-            // (~0.23 ms at 44.1 kHz), so the very first audible note already reflects the
-            // commanded / actual attitude. No fused-tone glitch at session start.
-            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if WaveOut.Init throws
-            // (bad audio device, driver issue). Re-check both tones after this point — the
+            // First-frame deferred Start — by the time the 150 ms WasapiOut buffer fills, the
+            // phase-continuous oscillator's portamento has reached the target frequency (well
+            // under a millisecond, whatever rate the endpoint mixes at), so the very first
+            // audible note already reflects the commanded / actual attitude. No fused-tone
+            // glitch at session start.
+            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if no output opens or
+            // Init throws (bad audio device, driver issue). Re-check both tones after this — the
             // early-out at the top of ProcessUpdate only proves they were non-null on entry.
             StartTonesIfNeeded();
 

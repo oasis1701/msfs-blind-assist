@@ -12,106 +12,169 @@ guidance tone the app generates, so a pilot can send those tones to a headset wh
 simulator itself keeps the speakers. Persisted as `UserSettings.GuidanceToneDeviceId` /
 `GuidanceToneDeviceName`.
 
+The tones **follow the hardware on their own**. Unplug the chosen headset and every sounding
+tone moves to the Windows default endpoint; plug it back in and they move back; promote a
+different default while the setting is "follow the default" and they follow that. Each of those
+outcomes is spoken once, *after* the move has happened.
+
 **Key files:**
-- `Services/AudioOutputDeviceService.cs` — static, process-wide: enumerates WASAPI render
-  endpoints, opens the effective output for a tone, and moves already-sounding tones when the
-  pilot changes the setting.
+- `Services/AudioOutputRouter.cs` — the router. An **instance** (`IDisposable`) with a
+  process-wide `Shared` singleton, owning: the live-tone registry, every WASAPI call
+  (enumerate / open / default endpoint), the `IMMNotificationClient` subscription, and ONE
+  dedicated background worker thread that performs every rebind.
+- `Services/AudioRebindPlanner.cs` — the pure decision layer: given each live tone's actual
+  binding and the resolved target, which tokens must move and which notice (if any) the pilot
+  hears. No NAudio, no statics, no clock, so every routing decision is unit-tested on a CI
+  runner with no audio hardware.
 - `Services/AudioToneGenerator.cs` — one instance per guidance tone (`TaxiSteeringTone`,
   `TakeoffAssistManager`, `HandFlyManager`, `VisualGuidanceManager`'s two tones,
-  `ProximityBeeper`'s docking beep), plus test-tone audition instances on
-  `Forms/Settings/HandFlyPanel.cs` (line 630), `Forms/Settings/TaxiGuidancePanel.cs`
-  (line 518), and the main Audio Settings panel. Owns the oscillator, `Start`/`Stop`/`RebindOutput`.
+  `ProximityBeeper`'s docking beep), plus the audition instances the three settings panels
+  build. Owns the oscillator, `Start`/`Stop`/`RebindTo`, and its own registry membership.
 - `Services/AudioDeviceSelector.cs` — pure resolution logic (saved id vs. what currently
-  exists vs. the live default), deliberately free of any NAudio reference so it is
-  unit-testable with no audio hardware. Also owns the status-line and fallback-announcement
-  wording.
+  exists vs. the live default), deliberately free of any NAudio reference. Also owns the
+  status-line wording and all four spoken notices.
 - `Services/AudioOutputDevice.cs` / `AudioOutputSession.cs` / `AudioDeviceResolution.cs` — the
   three small data types the above pass around.
 - `Forms/Settings/AudioPanel.cs` — the settings UI: device combo, status line, Test Tone
-  audition button.
+  audition button. `Forms/Settings/TestTonePlayer.cs` is the shared audition driver behind all
+  three Test Tone buttons (Audio, Hand Fly, Taxi Guidance).
 
 ## Invariants
 
-- **Lock order: `AudioToneGenerator.startStopLock` → `AudioOutputDeviceService.Gate`, never
-  the reverse.** `ApplyDeviceChange` snapshots the live-generator registry under `Gate` and
-  **releases it before calling `RebindOutput()`**, because `RebindOutput` takes the
-  generator's own lock and then re-enters `Register`/`Unregister`, which take `Gate` again. A
-  UI thread that took the locks in the other order would deadlock against a tone's own
-  start/stop.
+- **LOCK ORDER: owner lock → `AudioToneGenerator.startStopLock` → `AudioOutputRouter.Gate`,
+  never the reverse.** `Gate` is the INNERMOST lock in the audio stack. `RunSweep` takes it to
+  snapshot the registry, **releases it before calling `RebindTo`**, and takes it again to store
+  the result — because `RebindTo` takes the generator's own lock and then re-enters
+  `Register`/`Unregister`, which take `Gate` again. Two consequences that must not be eroded:
+  the sweep runs on a **dedicated worker thread** precisely so it never runs on a thread that
+  already holds an owner's lock; and `CurrentDeviceId`/`NeedsDevice` must stay **lock-free
+  volatile field reads**, because the snapshot reads them while holding `Gate` and giving
+  either one a lock would make that a `Gate → startStopLock` acquisition, i.e. exactly the
+  reversal.
 
-- **`_lastAppliedDeviceId` is seeded ONCE per session, in `CreatePlayer`, guarded by
-  `_lastAppliedSeeded`.** Re-seeding on every tone start (the original bug) lets a tone that
-  starts in the window between a settings save and `MainForm`'s `ApplyDeviceChange()` call
-  re-latch the field onto the *new* id first, so `ApplyDeviceChange`'s comparison reads
-  new==new, early-returns, and any tone already sounding on the *old* device is stranded
-  there — and re-saving the same device can't recover it either, since the comparison still
-  matches. After the first seed of a process, `ApplyDeviceChange` owns the field exclusively;
-  `CreatePlayer` never touches it again.
+- **A tone must move iff its ACTUAL bound endpoint differs from the resolved target, or it is
+  flagged `NeedsDevice`.** That is a per-generator fact, decided in `AudioRebindPlanner.Plan`.
+  The predecessor compared saved-setting ids in three process-global fields
+  (`_lastAppliedDeviceId` / `_lastAppliedSeeded` / `_lastAppliedFellBack`, all deleted), which
+  could not represent "generator A is on the speakers while generator B is on the headset" — a
+  state reachable whenever one tone starts before a settings save and another after — and whose
+  id-only guard silently no-opped whenever the id had not changed, so a fallen-back tone could
+  never recover. Do not reintroduce a process-global "last applied device" in any form.
 
-- **`CreatePlayer`'s `deviceIdOverride` is a three-state contract** — `null` means "use the
-  saved setting" (what every real guidance tone passes, and the only value that participates
-  in the seed/tracking above); `""` (`AudioDeviceSelector.FollowWindowsDefaultId`) means
-  *explicitly* the Windows default device, regardless of what is saved; any other value is
-  that specific endpoint id. Only the settings panel's Test Tone audition ever passes `""` or
-  a real id. **Never collapse `""` to `null`** with an `IsNullOrWhiteSpace`-style check before
-  calling — that folds the second state into the first, so auditioning "Windows default
-  device" silently plays on the *saved* device instead (the bug that made the one control
-  built to prove which device is which lie about it). See the `<param>` docs on
-  `AudioOutputDeviceService.CreatePlayer` and `AudioToneGenerator.Start`.
+- **Registration means "alive and its owner has not stopped it", NEVER "currently sounding".**
+  `AudioToneGenerator` registers in its constructor and again in `EnsureRegisteredLocked` on a
+  start, and unregisters only on `Stop()`/`Dispose()`. A start whose open FAILED stays
+  registered with `NeedsDevice` set — that is the whole mechanism by which a later sweep retries
+  it. `Register` is not idempotent on the router side, so the generator's own `registered` flag
+  is what stops a second entry (two entries would tear one tone down and rebuild it twice for a
+  single device change).
+
+- **`AudioDeviceResolution.DeviceId` carries the REAL effective endpoint id**, not the saved
+  preference: the saved device when it is present, otherwise the live Windows default, with
+  `FellBack` telling the two apart. Empty means nothing is resolvable at all. The saved
+  preference is never rewritten on a fallback — it is what brings the headset back on reconnect.
+
+- **`OpenFor`'s `deviceIdOverride` is a three-state contract** — `null` means "use the saved
+  setting" (what every real guidance tone passes); `""`
+  (`AudioDeviceSelector.FollowWindowsDefaultId`) means *explicitly* the Windows default device,
+  regardless of what is saved; any other value is that specific endpoint id. Only the settings
+  panels' Test Tone audition ever passes `""` or a real id. **Never collapse `""` to `null`**
+  with an `IsNullOrWhiteSpace`-style check before calling — that folds the second state into the
+  first, so auditioning "Windows default device" silently plays on the *saved* device instead
+  (the bug that made the one control built to prove which device is which lie about it).
 
 - **WASAPI SHARED mode only** (`AudioClientShareMode.Shared` in `Build`). Exclusive mode would
-  take the endpoint away from the simulator and from the screen reader, which may well be
-  using the same one.
+  take the endpoint away from the simulator and from the screen reader, which may well be using
+  the same one.
 
-- **The tone is generated at the endpoint's own mix sample rate**, read once per open
-  (`AudioClient.MixFormat.SampleRate`, falling back to 44100 Hz if that throws). A device
-  change rebuilds the oscillator from scratch (`RebindOutput` tears down and calls
-  `StartLocked` again) rather than swapping the player under the same oscillator, because the
-  new endpoint may be clocked differently — reusing an oscillator built for the old rate would
-  play the tone audibly sharp or flat.
+- **The tone is generated at the endpoint's own mix sample rate, read off the player**
+  (`WasapiOut.OutputWaveFormat.SampleRate`, which the constructor has already set from
+  `AudioClient.MixFormat`) — never a second `device.AudioClient` probe, which activates an
+  `IAudioClient` nothing owns. This is a **quality** choice, not a correctness one, and both
+  claims that used to justify it were wrong against NAudio 2.3.0. Shared mode always opens with
+  `AutoConvertPcm | SrcDefaultQuality` and converts whatever it is handed — the whole
+  `IsFormatSupported` / `ResamplerDmoStream` / `dmoResamplerNeeded` block sits inside
+  `if (shareMode == AudioClientShareMode.Exclusive)`, so **NAudio's DMO resampler never ran on
+  this path at any rate**. And the oscillator declares the same rate it generates at while
+  `Init` sets `OutputWaveFormat = waveProvider.WaveFormat`, so declared and generated **cannot
+  diverge** and a rebind to a differently-clocked endpoint could never have played the tone
+  sharp either. Generating at the endpoint's own rate is still worth doing — it keeps the
+  engine's sample-rate converter out of the chain — but for that reason and no other. A rebind
+  still rebuilds the oscillator rather than swapping the player under it, because the new
+  endpoint may mix at a different rate and the oscillator's phase step is derived from it.
 
-- **The fallback-announcement sink is a NON-BLOCKING marshal, dispatched on the thread pool,
-  and must never be invoked while any `AudioToneGenerator.startStopLock` is held.**
-  `AnnounceFallbackOnce` is only ever reached from `CreatePlayer`, which is only ever reached
-  from `AudioToneGenerator.StartLocked` — a context that always holds that generator's own
-  lock. `MainForm` assigns `AudioOutputDeviceService.AnnounceFallback` at startup, and that
-  delegate must itself marshal to the UI thread with `Control.BeginInvoke`, never
-  `Control.Invoke` — `Start()` runs on the `ProximityBeeper` timer thread and on the taxi
-  position thread, and a synchronous wait there can park behind a UI thread that is itself
-  inside `ApplyDeviceChange → RebindOutput` waiting on the same generator lock.
+- **There are exactly four spoken notices, all queued, all spoken AFTER the outcome is known:**
+  fell back to the default / recovered the preferred device / the default changed underneath a
+  "follow the default" setting / no device available at all. They are raised **only from
+  `RunSweep`, only with `Gate` released, and only after that sweep's rebinds have run** — so
+  what the pilot hears has already happened. `OpenFor` never announces: the predecessor spoke
+  "using the Windows default device" from inside the open path, *before* the default endpoint
+  had been tried at all, so it said so even in the case where the default then failed to open
+  and there was no tone. `AudioOutputRouter.Announce` names its cases explicitly with a discard
+  arm, so a new `AudioRouteNotice` member stays silent until someone deliberately gives it a
+  voice.
 
-- **A fallen-back tone can recover onto a reconnected device, but only via a Settings save (or
-  a fresh tone starting), never automatically.** `_lastAppliedFellBack` records whether the
-  saved preference's *last* resolution had to fall back to the default endpoint (written only
-  by `CreatePlayer`'s saved-preference path). `ApplyDeviceChange`'s usual guard — "did the
-  saved id change" — is not enough on its own: once a tone has fallen back, the id a pilot
-  could re-select is still the very same device, so re-saving it compares
-  unchanged-to-unchanged and would silently no-op forever. `ApplyDeviceChange` additionally
-  rebinds when the id is unchanged but `_lastAppliedFellBack` is true, which resets the
-  fallback-announcement latch and forces a fresh resolution attempt through whatever tones are
-  still registered. There is **deliberately no `IMMNotificationClient` device-arrival
-  listener** — that would make the recovery automatic and is real, but out-of-scope, follow-up
-  work; today the pilot (or the next tone that happens to start) still has to trigger the
-  retry.
+- **The announcement sink must marshal to the UI thread with a NON-BLOCKING
+  `Control.BeginInvoke`, never `Control.Invoke`.** The marshal is required because the sink is
+  invoked on the **router's own worker thread**, and `ScreenReaderAnnouncer` silently no-ops off
+  the UI thread. (It is *not* required because a tone's `Start()` runs on a background thread —
+  an earlier version of this bullet said so and it was false: every production tone owner runs
+  on the UI thread, since all SimConnect dispatch does, and `ProximityBeeper`'s timer thread
+  calls `UpdateVolume`, not `Start`.) It must be non-blocking because the UI thread can be
+  inside the settings save that asked for the sweep, and a synchronous wait would park the
+  worker behind a message pump that is itself waiting. Queued `Announce`, never
+  `AnnounceImmediate` — a device notice must never interrupt a hold-short or landing callout.
+
+- **`IMMNotificationClient` callbacks must not block and must not re-enter the enumerator.**
+  Every callback does an `Interlocked` write plus an event `Set` (`RequestSweep`) and returns,
+  inside a `catch` so nothing can cross back into the Windows audio service as a failed HRESULT.
+  `OnDefaultDeviceChanged` is filtered to one `(flow, role)` pair — Windows raises it once per
+  pair, i.e. six times per change — which is for the log's sake, not for correctness (they would
+  coalesce into one sweep anyway). `OnPropertyValueChanged` requests nothing: it fires on every
+  volume step, and the one property change that might look routing-relevant, a rename, cannot
+  be, because an endpoint id is stable across renames.
+
+- **`RegisterEndpointNotificationCallback` is NOT `PreserveSig`**, despite its `int` return —
+  the method-impl flags are IL-only on both the NAudio wrapper and the underlying
+  `IMMDeviceEnumerator` method, so the CLR applies HRESULT transformation and **a refusal
+  arrives as a thrown `COMException`** (probed against this exact package: register → 0, first
+  unregister → 0, second unregister → `COMException 0x80070490` "Element not found"). **Do not
+  narrow the constructor's catch** around that call on the strength of it "returning" a status:
+  a refusal escaping the constructor would be cached permanently by `Shared`'s `Lazy`
+  (`ExecutionAndPublication` caches the factory's exception) and **every guidance tone in the
+  process would then be silent for the whole session**. The return is still read, so the code
+  stays correct if a future NAudio ever marks the method `PreserveSig`.
+
+- **`VisualGuidanceManager` re-arms its tone pair on `NeedsDevice`, never on `!IsPlaying`.**
+  `isPlaying` is deliberately false for the *whole* of a healthy rebind (`RebindTo` cleans up,
+  and `StartLocked` flips it only once there is a working, playing chain), so an `!IsPlaying`
+  guard races the router and tears down a rebind that was about to succeed. `NeedsDevice` is the
+  flag that means "this generator does not have a working output right now".
+
+- **The Test Tone audition sweep must reach BOTH channels at every duration used** (20 / 40 / 60
+  ticks — Audio, Taxi Guidance, Hand Fly). `TestTonePlayer.FullCycle` is shared by all three and
+  pinned by `FullCycle_ReachesBothChannelsAtEveryPanelDuration`. The old per-panel
+  `sin(i * 0.15)` never went negative over 20 ticks (0–2.85 rad, entirely inside `[0, π]`), so
+  the Audio panel's own audition — the one control built to prove which device is which — never
+  exercised the left channel, and a dead left driver passed it. The defect was
+  duration-dependent, so pinning only one length would let the same class of bug back in at
+  another.
+
+- **The Test Tone button's state is set from what actually happened, never assumed.**
+  `TestTonePlayer.TryStart` reads `tone.IsPlaying` back after the caller's `start` lambda
+  returns; a null return, a silent `Start` failure and a thrown exception all end as "not
+  playing" — tone disposed, failure reported, button left reading "Test Tone". `Text` and
+  `AccessibleName` are written together by one private setter and nowhere else. A silent failure
+  also writes a reason into the Audio panel's status `TextBox`: a screen reader must be able to
+  tab back to the reason, not merely hear a modal at the moment it appeared.
 
 - **`AudioPanel` caches one WASAPI enumeration pass (`Enumerate()` + `DefaultEndpointInfo()`)
   for the lifetime of a `LoadFrom` call and reuses it in `UpdateStatusText`.**
   `UpdateStatusText` is wired to the device combo's `SelectedIndexChanged`, so a screen-reader
-  user arrowing the dropdown fires it on every keystroke; resolving through
-  `AudioOutputDeviceService.ResolveCurrent` there would re-enumerate WASAPI (two fresh
-  `MMDeviceEnumerator` instances) per keystroke on the UI thread. `UpdateStatusText` instead
-  calls the pure `AudioDeviceSelector.Resolve` directly against the cached lists.
-
-- **The Test Tone button's state is set from what `PlayTestTone` actually achieved
-  (`tone.IsPlaying` after `Start`), never assumed.** `AudioToneGenerator.Start` swallows its
-  own exceptions by contract (audio is optional feedback). When the selected device fails to
-  open, `CreatePlayer` falls back to `TryOpenDefault()` and the tone plays on the Windows
-  default device with `IsPlaying == true`; the tone stays silent only when no endpoint can be
-  opened at all. Assuming success left the button reading "Stop Test" for a tone that was never
-  sounding, so the pilot's next press took the start branch again instead of stopping anything.
-  A silent failure now also writes a reason into the status `TextBox` (never a `MessageBox` alone
-  — a screen reader needs to be able to reach the reason by tabbing back to the status line, not
-  just hear a modal at the moment it appeared).
+  user arrowing the dropdown fires it on every keystroke. `Enumerate()` walks every active
+  render endpoint and `DefaultEndpointInfo()` does a `GetDefaultAudioEndpoint` lookup; doing
+  either per keystroke on the UI thread is what the cache exists to avoid. `UpdateStatusText`
+  calls the pure `AudioDeviceSelector.Resolve` against the cached lists instead.
 
 ## Related documentation
 
