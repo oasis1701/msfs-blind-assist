@@ -220,13 +220,20 @@ public sealed class TestTonePlayer : IDisposable
 
     private void AutoStop(AudioToneGenerator tone)
     {
-        if (!tone.IsPlaying)
-        {
-            // Already stopped by the pilot, OnLeaving or Dispose — all of which reset the
-            // button themselves.
-            return;
-        }
-
+        // Deliberately NOT gated on tone.IsPlaying. A tone can end up not playing while this
+        // player still owns it: OnPlaybackStopped raises NeedsDevice on a fault WITHOUT
+        // clearing isPlaying, and if the routing sweep it triggers then cannot re-open the
+        // endpoint, the generator settles at isPlaying == false with _tone still pointing at
+        // it. Bailing out here left the button reading "Stop Test" (and announcing "Stop test
+        // tone") over a dead session, and — worse — the next press took the START branch and
+        // overwrote _tone without ever calling Stop(), the only path that reaches
+        // UnregisterLocked. The abandoned generator stayed in the router's registry with
+        // NeedsDevice set, so a later sweep could make it sound again with nothing in the UI
+        // able to stop it.
+        //
+        // Stop() is safe on an already-stopped tone, and the ReferenceEquals check below is
+        // what keeps this from touching a session this player no longer owns — so falling
+        // through unconditionally costs nothing and closes that leak.
         if (_button.IsDisposed || !_button.IsHandleCreated)
         {
             return;
@@ -240,7 +247,8 @@ public sealed class TestTonePlayer : IDisposable
                 // on, so this needs no lock — that `tone` is STILL the current session. A
                 // newer Start/Stop may have replaced or cleared it while this delegate sat
                 // queued; stopping THAT session, or relabelling the button out from under it,
-                // would be wrong.
+                // would be wrong. A tone the pilot already stopped fails this check, because
+                // Stop() nulls the field.
                 if (ReferenceEquals(_tone, tone))
                 {
                     Stop();

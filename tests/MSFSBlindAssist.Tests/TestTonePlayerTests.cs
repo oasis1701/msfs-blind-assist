@@ -23,8 +23,11 @@ public class TestTonePlayerTests
         Assert.True(pans.Max() > 0.7f, "the sweep must reach the right channel");
     }
 
+    // Starts only -- NOT "starts and ends", which is what this was called until the arithmetic
+    // was checked: the last sample of a full cycle is one step SHORT of the wrap, so pans[19]
+    // of FullCycle(20) is -0.247, not ~0. The tone begins centred; it does not end centred.
     [Fact]
-    public void FullCycle_StartsAndEndsNearCentre()
+    public void FullCycle_StartsAtCentre()
     {
         float[] pans = TestTonePan.FullCycle(20);
 

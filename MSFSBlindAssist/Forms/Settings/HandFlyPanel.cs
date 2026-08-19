@@ -624,6 +624,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private const double MaxPitchDeltaPerTick = 3.0 * 0.1;
 
     // Slow enough that the rate limiter above can still track it to the full ±10° range.
+    //
+    // This deliberately covers only HALF a cycle over the demo's 60 ticks (0..1.5 rad), so the
+    // pitch demo sweeps nose-up only. Do NOT "harmonise" it onto TestTonePan.FullCycle the way
+    // the pan sweep was: a full pitch cycle needs 40° of target travel, and the rate limiter
+    // above only affords 60 × 0.3 = 18°, so the demo would simply fail to track its own curve.
+    // Correcting it means re-tuning MaxPitchDeltaPerTick, which is a crackle-avoidance number
+    // that can only be judged by ear against real hardware.
     private const double PitchSweepRadPerTick = 0.025;
 
     private void TestToneButton_Click(object? sender, EventArgs e)
@@ -643,11 +650,20 @@ public class HandFlyPanel : UserControl, ISettingsPanel
                 currentPitch = StepPitch(currentPitch, i);
                 tone.UpdatePitch(currentPitch);
 
-                // Pan directly rather than through UpdateBank's degrees-to-pan mapping: the
-                // shared sweep is already in pan units and already smooth by construction, so
-                // the old bank rate limiter had nothing left to smooth — and, being the binding
-                // constraint on a faster cosine, it was what kept the demo from ever reaching
-                // full left. The two calls write the same panner.
+                // Pan directly rather than through UpdateBank's degrees-to-pan mapping (the two
+                // write the same panner), and with no rate limiter: the shared sweep is already
+                // in pan units and already smoother than the limiter's own threshold, so the
+                // limiter could never bind. Measured — at 60 ticks the sweep's largest step is
+                // 0.084 pan/tick, against a cap of 1.5°/tick which is 0.150 pan/tick once
+                // UpdateBank's ±10° range is applied. Limiting a curve that never exceeds the
+                // limit is dead code, not safety.
+                //
+                // What DOES change is the shape of the extremes: the old cosine-plus-limiter
+                // demo saturated, sitting pegged at full ±1.0 for ticks 6-8, 22-32 and 46-51
+                // (bank trough −17.63° at tick 27, well past the ±10° clamp). It reached both
+                // channels — do not repeat the earlier claim that it never reached full left,
+                // which was a simulation error — it just spent a third of the demo hard against
+                // the stops. The sweep now peaks smoothly at ±0.8 with no plateaus.
                 tone.SetPan(PanSweep[i]);
             },
             TestToneTicks);
