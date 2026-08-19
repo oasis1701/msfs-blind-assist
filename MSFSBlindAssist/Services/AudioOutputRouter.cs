@@ -140,13 +140,32 @@ public sealed class AudioOutputRouter : IDisposable
             notifications = new EndpointNotifications(this);
             notifyEnumerator = new MMDeviceEnumerator();
 
-            // PreserveSig in NAudio 2.3.0 — a refusal comes back as a failed HRESULT, not an
-            // exception, so it has to be READ or a silent non-registration would look like a
-            // successful one for the rest of the session.
+            // NOT PreserveSig, despite the int return — the method-impl flags are IL only, on
+            // BOTH the NAudio wrapper and the underlying IMMDeviceEnumerator interface method
+            // (of that interface's five methods, only GetDefaultAudioEndpoint carries
+            // PreserveSig). So the CLR applies HRESULT transformation and A REFUSAL ARRIVES AS
+            // A THROWN COMException, which the catch below is what actually handles. Probed
+            // against this exact package: Register returned 0x00000000, a first Unregister
+            // returned 0x00000000, a second THREW COMException 0x80070490 "Element not found".
+            //
+            // THEREFORE: DO NOT NARROW THE CATCH BELOW to just the `new MMDeviceEnumerator()`
+            // line on the strength of this call "returning" its status. A refused registration
+            // escaping this constructor would be cached permanently by Shared's Lazy
+            // (ExecutionAndPublication caches the factory's exception), and every guidance tone
+            // in the process would then be silent for the entire session.
+            //
+            // The return is still read as belt and braces: free, 0 on today's success path, and
+            // it keeps this correct if a future NAudio ever marks the method PreserveSig — at
+            // which point the branch below stops being unreachable.
             int hr = notifyEnumerator.RegisterEndpointNotificationCallback(notifications);
             if (hr != 0)
             {
                 Log.Warn("Audio", $"Audio device notifications unavailable (0x{hr:X8}); the guidance tones will not follow a device change on their own.");
+
+                // Unregistered BEFORE the dispose. Unreachable today, but disposing alone would
+                // leave a live callback pointing at this object with the only thing that could
+                // take it out already gone — a worse outcome than never registering at all.
+                try { notifyEnumerator.UnregisterEndpointNotificationCallback(notifications); } catch { }
                 try { notifyEnumerator.Dispose(); } catch { }
                 notifyEnumerator = null;
                 notifications = null;

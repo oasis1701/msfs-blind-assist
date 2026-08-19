@@ -590,6 +590,25 @@ public class AudioToneGenerator : IDisposable
             return;
         }
 
+        // Still OUR player? Detaching in Cleanup is not enough on its own. NAudio's
+        // RaisePlaybackStopped captures the handler and then POSTS the call through the
+        // SynchronizationContext captured when the WasapiOut was constructed — which exists for
+        // every tone started on the WinForms UI thread — so a fault raised before Cleanup's
+        // `-=` can be DELIVERED at an arbitrary later moment, by which time RebindTo may already
+        // have opened a healthy session on a different endpoint. Marking that one as needing a
+        // device costs a redundant teardown and restart: roughly the output latency of silence
+        // in a steering cue, immediately after a device change, which is precisely when the
+        // pilot is leaning on it. Not exotic either — one unplug fires BOTH this event and the
+        // router's OnDeviceRemoved, so the notification winning that race is ordinary.
+        //
+        // A plain field read is enough. Reference reads are atomic, and every way this can read
+        // a STALE session resolves toward proceeding — i.e. toward the behaviour before this
+        // guard existed — never toward dropping a genuine fault.
+        if (!ReferenceEquals(sender, session?.Player))
+        {
+            return;
+        }
+
         needsDevice = true;
         Log.Warn("Services", $"Guidance tone output stopped unexpectedly: {e.Exception.Message}");
 
