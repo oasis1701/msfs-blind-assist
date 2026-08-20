@@ -434,13 +434,20 @@ public class SimBriefPlannerForm : Form
             return field;
         }
 
-        Button MakeBtn(string text, string accName, string desc, int y, EventHandler handler)
+        // Deliberately sets no AccessibleName. These buttons toggle their caption between
+        // "Show …" and "Hide …", and ControlAccessibleObject.Name returns an explicitly-set
+        // AccessibleName permanently once set — it does NOT fall back to Text — so a name
+        // pinned here announced "Show Additional Takeoff Info" on a button that would HIDE
+        // the section, and the pilot collapsed the data they were reading. Unset, the name
+        // tracks Text at all four sites that rewrite it, for free. Neither caption contains
+        // a '&', so the Text-derived name reads clean.
+        Button MakeBtn(string text, string desc, int y, EventHandler handler)
         {
             var btn = new Button
             {
                 Text = text, Location = new System.Drawing.Point(6, y),
                 Width = 280, Height = bh,
-                AccessibleName = accName, AccessibleDescription = desc,
+                AccessibleDescription = desc,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             btn.Click += handler;
@@ -456,7 +463,6 @@ public class SimBriefPlannerForm : Form
             y0 + lh + 2, 160, ref _perfTakeoffText!);
         y0 += lh + 2 + 160 + 4;
         _perfTakeoffExpandBtn = MakeBtn(
-            "Show Additional Takeoff Info",
             "Show Additional Takeoff Info",
             "Toggle runway distances and weight data for the planned takeoff runway",
             y0, TakeoffExpandBtn_Click);
@@ -477,7 +483,6 @@ public class SimBriefPlannerForm : Form
             y0 + lh + 2, 160, ref _perfLandingText!);
         y0 += lh + 2 + 160 + 4;
         _perfLandingExpandBtn = MakeBtn(
-            "Show Additional Landing Info",
             "Show Additional Landing Info",
             "Toggle runway length and landing distance data for the planned arrival runway",
             y0, LandingExpandBtn_Click);
