@@ -591,6 +591,9 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         volumeLabel.Enabled = audioEnabled;
         volumeTrackBar.Enabled = audioEnabled;
         volumeValueLabel.Enabled = audioEnabled;
+
+        // Disabling the button also ends a sounding audition: TestTonePlayer stops itself on
+        // its button's EnabledChanged, so no disable site has to remember to Stop() first.
         testToneButton.Enabled = audioEnabled;
     }
 
