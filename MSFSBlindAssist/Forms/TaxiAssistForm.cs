@@ -1257,7 +1257,6 @@ public class TaxiAssistForm : Form
                 : (gateLabels ??= ListDestinations(false));
 
             string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
-            string matchedBy = "name";
 
             // BOTH GATE FALLBACKS RUN HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
             // BELOW THE LOOP. The chain ends with the ARRIVAL RUNWAY — that is the whole
@@ -1278,7 +1277,6 @@ public class TaxiAssistForm : Form
                 match = MatchGateByAlias(offered, candidate.Identifier);
                 if (match != null)
                 {
-                    matchedBy = "alias";
                     substitution = new GateSubstitution(
                         candidate.Identifier!, GateSubstitutionKind.Alias);
                 }
@@ -1287,7 +1285,6 @@ public class TaxiAssistForm : Form
                     match = MatchGateByPosition(offered, published, out double nearestMetres);
                     if (match != null)
                     {
-                        matchedBy = "position";
                         substitution = new GateSubstitution(
                             candidate.Identifier!, GateSubstitutionKind.Position);
                     }
@@ -1325,7 +1322,11 @@ public class TaxiAssistForm : Form
                 probeTrace?.Add($"{probe}=miss(matched '{match}' but the combo no longer lists it)");
                 continue;
             }
-            probeTrace?.Add($"{probe}={matchedBy}");
+            // The step is DERIVED from substitution rather than tracked beside it, so
+            // destProbe and the gateSubstitution field on the same log line can never
+            // disagree about which step seated the stand.
+            probeTrace?.Add($"{probe}={(substitution is not GateSubstitution seated ? "name"
+                : seated.Kind == GateSubstitutionKind.Alias ? "alias" : "position")}");
 
             // Silently: this is the import seating its own destination, not the pilot
             // choosing one, and the import's own summary must not be talked over.

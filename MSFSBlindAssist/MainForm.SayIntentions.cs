@@ -299,8 +299,9 @@ public partial class MainForm
                 // — the form's own search finds stands this resolver cannot (it
                 // matches aliases and partial text), then Calculate.
                 AbortImport(unresolvedArrivalGate != null
-                    ? $"SayIntentions assigned {unresolvedArrivalGate}, but no matching stand " +
-                      $"was found at {icao}. Pick the destination gate in Taxi Assist, then Calculate."
+                    ? ComposeUnresolvedArrivalGateMessage(
+                        unresolvedArrivalGate,
+                        SayIntentionsClearanceParser.ParseDestinationGate(clearance), icao)
                     : "SayIntentions route unavailable. No usable assigned runway or gate found.");
                 return;
             }
@@ -780,6 +781,28 @@ public partial class MainForm
     /// The whole list still goes to the form in ONE call — asking candidate by
     /// candidate re-listed the form's destinations per probe and lost the pilot's
     /// own selection when none resolved.</summary>
+    /// <summary>The spoken failure for a known arrival whose gate seated nothing.
+    /// Names the gate the CONTROLLER said as well as the assigned one when the two
+    /// differ (compared normalized — "Gate A2" and a parsed "A2" are one stand
+    /// spelled two ways, and naming it twice reads as two different gates): a pilot
+    /// sent to search the gate list must search for the stand ATC actually revised
+    /// them to, not only the flight.json record it superseded.</summary>
+    internal static string ComposeUnresolvedArrivalGateMessage(
+        string assignedGate, string? clearanceGate, string icao)
+    {
+        bool clearanceNamedAnother =
+            !string.IsNullOrWhiteSpace(clearanceGate)
+            && !SayIntentionsClearanceParser.NormalizeParkingName(clearanceGate).Equals(
+                SayIntentionsClearanceParser.NormalizeParkingName(assignedGate),
+                StringComparison.OrdinalIgnoreCase);
+
+        string who = clearanceNamedAnother
+            ? $"ATC named gate {clearanceGate} and SayIntentions assigned {assignedGate}"
+            : $"SayIntentions assigned {assignedGate}";
+        return $"{who}, but no matching stand was found at {icao}. " +
+               "Pick the destination gate in Taxi Assist, then Calculate.";
+    }
+
     internal static (List<TaxiAssistForm.ExternalDestination> Candidates, string? ArrivalGateName)
         BuildSayIntentionsDestinationCandidates(
             SayIntentionsFlightContext context, string? parkingName,
@@ -789,11 +812,28 @@ public partial class MainForm
             ? FirstNonEmptySi(context.AssignedGate, parkingName)
             : null;
 
+        // ONE parse feeding both branches: the controller's gate must resolve the
+        // same way whichever side of the fork runs.
+        var clearanceGate = new TaxiAssistForm.ExternalDestination(
+            false, SayIntentionsClearanceParser.ParseDestinationGate(clearance));
+
         if (!string.IsNullOrWhiteSpace(assignedGate))
         {
+            // ACCEPTED RESIDUAL, deliberately undesigned-for: a departure imported
+            // while the PREVIOUS leg's arrival record still stands — a turnaround
+            // before the next SayIntentions flight is filed, or a round-robin plan
+            // whose flight_destination equals the departure airport — lands in this
+            // branch and cannot seat its cleared runway. When flight.json rolls
+            // these fields is UNOBSERVED (the wire-format doc's standing caveat),
+            // and in the normal SI workflow filing the next flight — which a taxi
+            // clearance presupposes — rolls them. The failure here is LOUD (the
+            // abort names the gate; destProbe records every miss), where the
+            // failure this fork removes was a silent confident route onto the
+            // runway just vacated. Revisit only against a live capture showing a
+            // departure clearance alongside a standing arrival record.
             return (new List<TaxiAssistForm.ExternalDestination>
             {
-                new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance)),
+                clearanceGate,
                 new(false, assignedGate, context.AssignedGatePosition)
             }, assignedGate);
         }
@@ -801,7 +841,7 @@ public partial class MainForm
         return (new List<TaxiAssistForm.ExternalDestination>
         {
             new(true, SayIntentionsClearanceParser.ParseDestinationRunway(clearance)),
-            new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance)),
+            clearanceGate,
             new(true, FirstNonEmptySi(
                 context.ClearedForTakeoff, context.DepartureRunway, context.Runway)),
             new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway))

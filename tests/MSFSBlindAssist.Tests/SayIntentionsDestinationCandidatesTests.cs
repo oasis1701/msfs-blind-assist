@@ -128,6 +128,41 @@ public class SayIntentionsDestinationCandidatesTests
     }
 
     [Fact]
+    public void The_failure_message_names_the_gate_the_controller_said_when_it_differs()
+    {
+        // ATC revised the gate on the frequency ("taxi to gate B7") away from
+        // flight.json's assigned "Gate A9". If neither seats, a message naming only
+        // A9 sends the pilot against the controller's actual instruction.
+        string msg = MainForm.ComposeUnresolvedArrivalGateMessage(
+            "Terminal 1 Gate A9", "B7", "KBOS");
+
+        Assert.Contains("B7", msg);
+        Assert.Contains("Terminal 1 Gate A9", msg);
+        Assert.Contains("KBOS", msg);
+    }
+
+    [Fact]
+    public void The_failure_message_does_not_repeat_a_clearance_gate_that_is_the_assigned_one()
+    {
+        // "Gate A2" and the parsed clearance gate "A2" are the same stand spelled
+        // two ways; naming it twice reads as two different gates.
+        string msg = MainForm.ComposeUnresolvedArrivalGateMessage("Gate A2", "A2", "KSTL");
+
+        Assert.Contains("Gate A2", msg);
+        Assert.DoesNotContain("ATC named", msg);
+    }
+
+    [Fact]
+    public void The_failure_message_without_a_clearance_gate_names_only_the_assigned_one()
+    {
+        string msg = MainForm.ComposeUnresolvedArrivalGateMessage(
+            "American Eagle Terminal Gate 52A", null, "KLAX");
+
+        Assert.Contains("American Eagle Terminal Gate 52A", msg);
+        Assert.Contains("KLAX", msg);
+    }
+
+    [Fact]
     public void An_assigned_gate_at_another_airport_never_suppresses_the_runway_chain()
     {
         // The arrival stand belongs to flight_destination; at any other airport
