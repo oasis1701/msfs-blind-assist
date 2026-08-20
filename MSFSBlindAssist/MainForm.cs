@@ -532,6 +532,39 @@ public partial class MainForm : Form
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
 
+        // Guidance-tone routing notices. These arrive on the router's own worker thread, and
+        // ScreenReaderAnnouncer silently no-ops off the UI thread, so this has to marshal.
+        // BeginInvoke, never Invoke: the UI thread can be inside the settings save that asked
+        // for the sweep. Queued Announce (never AnnounceImmediate) so a device notice can
+        // never interrupt a hold-short or landing callout.
+        Services.AudioOutputRouter.Shared.AnnounceRouteChange = message =>
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed)
+                    return;
+
+                BeginInvoke(() =>
+                {
+                    try { announcer.Announce(message); } catch { }
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle destroyed between the check and the post — nothing to announce to.
+            }
+        };
+
+        // The startup BASELINE sweep (AudioOutputRouter.RequestBaselineSweep) is deliberately
+        // NOT requested here, even though the sink above is what it needs: it is requested
+        // from the connect timer's tick, immediately after "Initializing, please wait" —
+        // see MainForm_Load. Requested here, its one startup phrase (a saved device that is
+        // gone at launch) was spoken the instant the message pump started, into the same
+        // first second as NVDA's own window/focus announcements — which cancel in-progress
+        // speech — so the pilot heard it cut off (live report, 2026-08-20). Anchored after
+        // the Initializing announcement it appends behind it in the screen reader's own
+        // queue and is heard whole.
+
         // Note: Diagnostic test removed to prevent test speech on startup
         // Uncomment the next lines if you need to troubleshoot screen reader connections:
         // Log.Debug("MainForm", "[MainForm] Running initial screen reader diagnostic test");
@@ -818,6 +851,25 @@ public partial class MainForm : Form
             connectTimer.Stop();
             connectTimer.Dispose();
             announcer.Announce("Initializing, please wait");
+
+            // The audio router's ONE seeding pass, anchored HERE — after "Initializing,
+            // please wait" and never back in InitializeManagers where the announcement sink
+            // is wired. The sweep seeds the last-target state silently either way, but its
+            // one startup phrase (a saved guidance-tone device that is gone at launch:
+            // "Guidance tone device X is not available…") must land AFTER the Initializing
+            // announcement: requested at manager-init it spoke the moment the message pump
+            // started, into the same first second as NVDA's own window/focus speech — which
+            // cancels in-progress utterances — and the pilot heard it cut off (live report,
+            // 2026-08-20). From here the sweep's notice reaches announcer.Announce a few tens
+            // of milliseconds after the Initializing call, and both use the append-not-
+            // interrupt speak, so the screen reader speaks them in order, each in full. The
+            // sink it needs has been assigned since InitializeManagers, so the ordering
+            // contract (sink first, baseline second) still holds; endpoint notifications in
+            // the first two seconds now run as ordinary sweeps against unseeded state, which
+            // is the documented pre-baseline behaviour for that window and self-heals — every
+            // sweep stores the trio.
+            Services.AudioOutputRouter.Shared.RequestBaselineSweep();
+
             simConnectManager.Connect();
         };
         connectTimer.Start();
@@ -1007,6 +1059,17 @@ public partial class MainForm : Form
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
+
+        // The router owns an IMMNotificationClient COM registration and a background worker;
+        // Dispose unregisters the callback and stops the worker. Cleared first so a sweep that
+        // is already in flight has nothing to marshal an announcement into on the way down.
+        try
+        {
+            Services.AudioOutputRouter.Shared.AnnounceRouteChange = null;
+            Services.AudioOutputRouter.Shared.Dispose();
+        }
+        catch { }
+
         base.OnFormClosing(e);
     }
 }
