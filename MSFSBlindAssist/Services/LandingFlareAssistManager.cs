@@ -2,6 +2,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
@@ -63,6 +64,12 @@ public class LandingFlareAssistManager : IDisposable
     // True while the landing-exit planner's rollout guidance is engaged — raises the
     // rollout handoff speed so our pan tone is gone before the exit-steering tone starts.
     private readonly Func<bool> isLandingExitGuidanceActive;
+    // True once taxi guidance has HANDED OFF to the exit route and its own steering tone
+    // is panning. That handoff (turnBegun at up to 90 kt, exitedLaterally with no speed
+    // cap at all) can fire well above the raised threshold above, so speed alone cannot
+    // keep the two tones apart — and they steer opposite ways, ours back to the runway
+    // centreline while the taxi tone leads onto the exit.
+    private readonly Func<bool> isLandingExitTaxiSteering;
 
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
     // the landing-exit handoff; only the law feeding it changes at touchdown.
@@ -175,12 +182,14 @@ public class LandingFlareAssistManager : IDisposable
     public LandingFlareAssistManager(ScreenReaderAnnouncer screenReaderAnnouncer,
         Func<double> flareAglBiasFtProvider,
         Func<bool> visualGuidanceActiveCheck,
-        Func<bool> landingExitGuidanceActiveCheck)
+        Func<bool> landingExitGuidanceActiveCheck,
+        Func<bool> landingExitTaxiSteeringCheck)
     {
         announcer = screenReaderAnnouncer;
         getFlareAglBiasFt = flareAglBiasFtProvider;
         isVisualGuidanceActive = visualGuidanceActiveCheck;
         isLandingExitGuidanceActive = landingExitGuidanceActiveCheck;
+        isLandingExitTaxiSteering = landingExitTaxiSteeringCheck;
     }
 
     /// <summary>
@@ -211,8 +220,8 @@ public class LandingFlareAssistManager : IDisposable
         phase = Phase.Armed;
         wasAboveFlareBand = false;
 
-        System.Diagnostics.Debug.WriteLine(
-            $"[LandingFlareAssist] Armed: {destinationAirport.ICAO} rwy {runwayLabel}, " +
+        Log.Debug("LandingFlareAssist",
+            $"Armed: {destinationAirport.ICAO} rwy {runwayLabel}, " +
             $"thrElev={thresholdElevationFt:F0} ft, displaced={destinationRunway.ThresholdOffset:F0} ft");
     }
 
@@ -227,7 +236,7 @@ public class LandingFlareAssistManager : IDisposable
 
         if (announce && wasArmed)
             announcer.AnnounceImmediate("Manual landing assist off");
-        System.Diagnostics.Debug.WriteLine("[LandingFlareAssist] Disarmed");
+        Log.Debug("LandingFlareAssist", "Disarmed");
     }
 
     /// <summary>
@@ -370,7 +379,7 @@ public class LandingFlareAssistManager : IDisposable
         }
 
         EngagedChanged?.Invoke(this, true);
-        System.Diagnostics.Debug.WriteLine($"[LandingFlareAssist] Flare engaged (silent={silentFlare})");
+        Log.Debug("LandingFlareAssist", $"Flare engaged (silent={silentFlare})");
     }
 
     /// <summary>
@@ -471,7 +480,7 @@ public class LandingFlareAssistManager : IDisposable
             rolloutAnnounced = true;
             announcer.AnnounceImmediate("Rollout guidance");
         }
-        System.Diagnostics.Debug.WriteLine("[LandingFlareAssist] Rollout engaged");
+        Log.Debug("LandingFlareAssist", "Rollout engaged");
     }
 
     private void UpdateRolloutTone(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
@@ -550,7 +559,12 @@ public class LandingFlareAssistManager : IDisposable
             ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS
             : ROLLOUT_END_GS_KTS;
 
-        if (gs < endGs || turnedOff)
+        // ...but a rapid exit can take the handoff ABOVE that speed, and the moment it
+        // does, the taxi steering tone is already panning toward the exit. Speed is the
+        // wrong question then: end here whatever the groundspeed, or two pan tones give
+        // the pilot opposite steering (worst on a shallow exit, where the heading never
+        // swings the 20 degrees `turnedOff` needs).
+        if (gs < endGs || turnedOff || isLandingExitTaxiSteering())
         {
             StopEngagement(raiseEvents: true);
             announcer.AnnounceImmediate("Rollout guidance complete");

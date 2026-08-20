@@ -296,6 +296,10 @@ public class LandingExitForm : Form
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
         _currentIcao = icao.ToUpperInvariant();
+        // Drop the old graph up front: every exit below (airport absent, no taxi data,
+        // a superseded load) must leave NO graph standing rather than the previous
+        // airport's under the new ICAO.
+        _graph = null;
         cmbRunway.Items.Clear();
         cmbExit.Items.Clear();
         _exits.Clear();
@@ -332,6 +336,10 @@ public class LandingExitForm : Form
             catch { /* offline / fetch failed — fall back to navdata names */ }
 
             if (IsDisposed || Disposing) return;
+            // The pilot can retype during a wait this long (a cache hit for the second
+            // airport finishes first), so anything below would populate THIS airport's
+            // data under the newer ICAO — same re-check RefreshAfterAugmentation makes.
+            if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
         }
 
         var paths = _dataProvider.GetTaxiPaths(icao);
@@ -360,8 +368,11 @@ public class LandingExitForm : Form
                 btnPlan.Enabled = true;
         }
 
-        // Re-check disposed state after the await before touching any controls.
+        // Re-check disposed state after the await before touching any controls, and that
+        // this load is still the current one — a superseded load must not append its
+        // runways to the newer airport's combo or hand it a mismatched graph.
         if (IsDisposed || Disposing) return;
+        if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
 
         _graph = builtGraph;
 

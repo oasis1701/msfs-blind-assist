@@ -2459,7 +2459,11 @@ public class TaxiGraph
         // hsOnlyEnds — run the Normal-node fallback to find usable exits.
         bool hsYieldedNothing = hasHoldShortOnRunway && deduped.Count == 0;
 
-        if (!hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing)
+        // Whether this runway is taking the Normal-node fallback at all. Also decides
+        // whether the strict per-name dedup at the very end applies — see there.
+        bool onFallbackPath = !hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing;
+
+        if (onFallbackPath)
         {
             if (hsOnlyEnds || hsYieldedNothing)
             {
@@ -2605,10 +2609,18 @@ public class TaxiGraph
             }
         }
 
-        // Name dedup, then a COVERAGE GAP FILL. Runs in EVERY path: when no hold-short nodes
-        // exist the main loop already collected the Normal-junction exits into `deduped`;
-        // when they do exist the block above merged the fallback in. `deduped` is sorted by
-        // distance from the threshold at this point (every branch that builds it sorts).
+        // Name dedup on the FALLBACK PATH ONLY, then a COVERAGE GAP FILL in every path.
+        // `deduped` is sorted by distance from the threshold at this point (every branch
+        // that builds it sorts).
+        //
+        // The strict pass is scoped to `onFallbackPath` because that is the scope it has
+        // always had. A runway with usable hold-short markers keeps both junctions of a
+        // same-named taxiway that meets it twice — the case the High-speed dedup comment
+        // above calls "a legitimate pair" (EGLL 09R: S5W at 5659 and 6605 ft, N5E at 5860
+        // and 6771). Running the pass there instead drops the FARTHER junction, and the
+        // coverage fill cannot restore it: it re-admits only exits with no survivor within
+        // EXIT_COVERAGE_GAP_FT, and those pairs sit 900-950 ft apart. RetargetLandingExit's
+        // downfield rescan would then skip past a real turnoff to a farther one.
         //
         // This used to keep only the FIRST occurrence of each taxiway name, unconditionally.
         // That is right when a scenery names its connectors individually (one turnoff = one
@@ -2650,11 +2662,18 @@ public class TaxiGraph
         // hard-won invariant (the EGNX miss). Adding rows is safe; re-typing existing ones
         // in bulk is not.
         var dedupedFinal = new List<LandingExit>(deduped.Count);
-        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in deduped)
+        if (onFallbackPath)
         {
-            if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFinal.Add(e); continue; }
-            if (seenNames.Add(e.TaxiwayName)) dedupedFinal.Add(e);
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in deduped)
+            {
+                if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFinal.Add(e); continue; }
+                if (seenNames.Add(e.TaxiwayName)) dedupedFinal.Add(e);
+            }
+        }
+        else
+        {
+            dedupedFinal.AddRange(deduped);
         }
 
         // Coverage gap fill. `gapFillPool` is distance-sorted (it was snapshotted from a

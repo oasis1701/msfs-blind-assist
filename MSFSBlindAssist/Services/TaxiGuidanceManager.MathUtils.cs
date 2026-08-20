@@ -187,7 +187,10 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private bool IsWithinRolloutRunwayLaterally(double lat, double lon)
     {
-        if (_rolloutRunway == null || _rolloutRunwayHeadingTrue == 0.0) return false;
+        // Null runway is the only "not set" test: the runway and its heading are always
+        // assigned together, and 0.0 is a legitimate heading (a due-north runway), so
+        // treating it as a sentinel would report every frame as off the pavement.
+        if (_rolloutRunway == null) return false;
 
         double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0)
                             * 0.5 / METERS_TO_FEET;

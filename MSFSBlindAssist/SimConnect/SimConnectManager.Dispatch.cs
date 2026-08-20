@@ -720,7 +720,12 @@ public partial class SimConnectManager
                     MagneticVariation = faData.MagneticVariation,
                     GroundSpeedKnots = faData.GroundSpeedKnots,
                     VerticalSpeedFPM = faData.VerticalSpeedFPM,
-                    Altitude = lastKnownPosition?.Altitude ?? 0
+                    // Both are carried by THIS frame — unlike the 506/507 mirrors below,
+                    // whose TakeoffAssistData struct has no altitude to copy and so must
+                    // preserve the previous value. AltitudeMslFt is the same
+                    // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
+                    Altitude = faData.AltitudeMslFt,
+                    SimOnGround = faData.OnGround
                 };
 
                 FlareAssistDataReceived?.Invoke(this, faData);

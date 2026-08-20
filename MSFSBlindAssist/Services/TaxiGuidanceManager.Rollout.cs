@@ -467,6 +467,10 @@ public partial class TaxiGuidanceManager
             if (_rolloutExit != null && _dataProvider != null && _graph != null)
             {
                 int rerouteDest = ResolveExitHandoffDestination(out string rerouteDestSrc);
+                // LoadRoute's fresh-route reset puts this back to true; the verdict
+                // that matters was just computed by the resolver above, so carry it
+                // across (see the re-set below).
+                bool offPavementAtHandoff = _landingExitOffPavement;
                 string exitName = _rolloutExit.TaxiwayName.Length > 0
                     ? $"Taxiway {_rolloutExit.TaxiwayName}"
                     : "exit taxiway";
@@ -485,6 +489,11 @@ public partial class TaxiGuidanceManager
                     // fires the landing-exit-specific "Hold position. Open the taxi
                     // planner..." message instead of the generic "Destination reached".
                     _isLandingExitRoute = true;
+                    // Same for the off-pavement verdict: this route's handoff already
+                    // happened, so LoadRoute's "a new route re-decides this" reset would
+                    // silence the still-on-runway warning on exactly the airports that
+                    // need it (EVRA, EHAM 36C/W8, EFHK 04L/WZ).
+                    _landingExitOffPavement = offPavementAtHandoff;
                 }
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
@@ -924,6 +933,8 @@ public partial class TaxiGuidanceManager
         // (a)-(d) above, plus the RunwayVacateResolver walk that pushes the stop point
         // past the runway-holding position — see ResolveExitHandoffDestination.
         int destNodeId = ResolveExitHandoffDestination(out string destSource);
+        // Carried across LoadRoute's fresh-route reset — see the re-set below.
+        bool offPavementAtHandoff = _landingExitOffPavement;
 
         string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
             ? "exit taxiway"
@@ -1022,6 +1033,10 @@ public partial class TaxiGuidanceManager
         // fires the landing-exit-specific "Hold position. Open the taxi planner..."
         // message instead of the generic "Destination reached".
         _isLandingExitRoute = true;
+        // Likewise the off-pavement verdict the resolver computed for THIS handoff —
+        // LoadRoute's reset would otherwise claim the aircraft ends up clear of the
+        // runway at airports where the graph has no taxiway past the junction.
+        _landingExitOffPavement = offPavementAtHandoff;
 
         SetState(TaxiGuidanceState.Taxiing);
         return true;

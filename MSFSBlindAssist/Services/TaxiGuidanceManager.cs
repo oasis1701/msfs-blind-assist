@@ -893,6 +893,24 @@ public partial class TaxiGuidanceManager : IDisposable
     public TaxiGuidanceState State => _state;
 
     /// <summary>
+    /// True once the landing-exit handoff has completed and the exit route's own
+    /// steering tone is panning the pilot onto the taxiway. Read by the manual-landing
+    /// assist, which must stop its rollout pan tone the moment this turns true — the
+    /// handoff can fire as high as 90 kt (turnBegun) or at any speed at all
+    /// (exitedLaterally), so its speed threshold alone cannot keep the two apart.
+    /// </summary>
+    public bool IsLandingExitTaxiSteering
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
+            }
+        }
+    }
+
+    /// <summary>
     /// The full spoken route-summary text from the most recent successful
     /// LoadRoute, or empty if no route has been loaded. Read by
     /// TaxiAssistForm to populate its read-only summary box. The string is

@@ -647,7 +647,8 @@ public partial class MainForm : Form
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout);
+            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
@@ -925,6 +926,8 @@ public partial class MainForm : Form
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
+        // Owns two tone generators — without this they keep sounding on shutdown.
+        flareAssistManager?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not
         // disposed, the timer keeps a reference to OnTick and prevents the
