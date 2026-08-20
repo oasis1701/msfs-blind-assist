@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
@@ -99,6 +99,7 @@ public class LandingFlareAssistManager : IDisposable
     private bool wasAboveFlareBand;      // must see gearAGL above the latch height before engaging
     private bool toneStarted;            // lateral / pan generator
     private bool verticalToneStarted;    // flare sink-rate generator
+    private bool toneReArmSpent;         // this device outage's one re-arm has run
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
     private double vsSmoothed;
@@ -266,6 +267,9 @@ public class LandingFlareAssistManager : IDisposable
         if (IsEngaged)
         {
             SetMonitoringRequested(true);
+            // 1 Hz is the right cadence for this — the SIM_FRAME path runs 30-60× faster and a
+            // device open there would be a per-frame WASAPI call on the audio hot path.
+            ReArmTonesIfDeviceLost();
             return;
         }
 
@@ -574,6 +578,86 @@ public class LandingFlareAssistManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// What to do about a tone that came back from a routing sweep with no device.
+    /// Pure so the policy can be pinned by <c>LandingFlareToneReArmTests</c> — the manager
+    /// itself owns two real WASAPI generators and cannot be driven from a test.
+    /// </summary>
+    /// <param name="reArmSpent">This outage's one re-arm has already run.</param>
+    internal readonly record struct ToneReArmDecision(
+        bool RestartLateral, bool RestartVertical, bool SpendReArm);
+
+    /// <summary>
+    /// The router rebinds a NeedsDevice generator on its next SWEEP, and a sweep is what a
+    /// device ARRIVING triggers — so a rebind that moves one tone and fails the other leaves
+    /// the failed one silent with nothing scheduled to retry it. That is why this exists.
+    ///
+    /// Restarts ONLY the tone that lost its device, unlike VisualGuidanceManager's re-arm,
+    /// which rebuilds its pair whenever either half dies. VG's two are a reference and a
+    /// follower that mean nothing apart; these two are independent axes, so tearing down a
+    /// healthy one would punch an audible hole in a cue the pilot is actively flying.
+    ///
+    /// Gated on NeedsDevice, never IsPlaying: IsPlaying reads false for the whole duration of
+    /// a HEALTHY in-flight rebind (RebindTo clears it before reopening the device), so a
+    /// 1 Hz sample landing mid-rebind would tear down an about-to-succeed tone. NeedsDevice is
+    /// set only at an open attempt's terminal outcomes, so it never means "attempt in flight".
+    ///
+    /// A tone that is not STARTED is never restarted — the vertical tone is flare-only and is
+    /// legitimately stopped for the whole rollout.
+    /// </summary>
+    internal static ToneReArmDecision DecideToneReArm(
+        bool lateralStarted, bool lateralNeedsDevice,
+        bool verticalStarted, bool verticalNeedsDevice,
+        bool reArmSpent)
+    {
+        bool lateralLost = lateralStarted && lateralNeedsDevice;
+        bool verticalLost = verticalStarted && verticalNeedsDevice;
+
+        // Healthy: clear the latch so a LATER outage on the same approach re-arms once more.
+        if (!lateralLost && !verticalLost)
+            return new ToneReArmDecision(false, false, false);
+
+        // One re-arm per outage. The second and later retries belong to the router's
+        // event-driven sweeps; without this the 1 Hz sampler would attempt a WASAPI open every
+        // tick for the rest of the approach — the retry loop docs/audio.md forbids.
+        if (reArmSpent)
+            return new ToneReArmDecision(false, false, true);
+
+        return new ToneReArmDecision(lateralLost, verticalLost, true);
+    }
+
+    /// <summary>
+    /// 1 Hz while engaged. Restarts a tone whose device went away — see
+    /// <see cref="DecideToneReArm"/> for why the manager cannot leave this to the router.
+    /// </summary>
+    private void ReArmTonesIfDeviceLost()
+    {
+        ToneReArmDecision d = DecideToneReArm(
+            toneStarted, tone.NeedsDevice,
+            verticalToneStarted, verticalTone.NeedsDevice,
+            toneReArmSpent);
+
+        toneReArmSpent = d.SpendReArm;
+
+        if (d.RestartLateral)
+        {
+            Log.Debug("LandingFlareAssist",
+                "Lateral tone needs a device (rebind failed or its endpoint was lost); restarting it");
+            tone.Stop();
+            toneStarted = false;
+            StartLateralToneIfNeeded();
+        }
+
+        if (d.RestartVertical)
+        {
+            Log.Debug("LandingFlareAssist",
+                "Vertical tone needs a device (rebind failed or its endpoint was lost); restarting it");
+            verticalTone.Stop();
+            verticalToneStarted = false;
+            StartVerticalToneIfNeeded();
+        }
+    }
+
     private void StartLateralToneIfNeeded()
     {
         if (toneStarted) return;
@@ -631,6 +715,9 @@ public class LandingFlareAssistManager : IDisposable
         StopVerticalTone();
         phase = Phase.Armed;
         wasAboveFlareBand = false;
+        // Both tones are down, so the next engagement starts its own outage accounting —
+        // a spent latch carried into the next approach would cost it its one re-arm.
+        toneReArmSpent = false;
         silentFlare = false;
         vsSmootherInitialized = false;
         crossTrackRateInitialized = false;
