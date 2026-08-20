@@ -1,4 +1,4 @@
-# Taxi Guidance
+﻿# Taxi Guidance
 
 Turn-by-turn taxi assistance for blind pilots. Combines a continuous stereo-panned steering tone ("taxiway localizer") with spoken announcements for turns, taxiway crossings, hold-shorts, and arrivals. Works on any airport the user's navdatareader database covers, from major hubs down to small GA fields.
 
@@ -92,6 +92,257 @@ Inactive → RouteLoaded → Taxiing → HoldShort → Taxiing → … → Linin
 - `HoldShort` — tone paused, movement must stop. User presses continue (Input > `Y`) to resume.
 - `LiningUp` — final approach to destination runway or gate; tone drives lineup heading.
 - `Arrived` — destination reached; guidance stops.
+- `BacktrackingOnRunway` — landing-side backtaxi to the apron after reaching the runway end without exiting (steer on the reciprocal runway heading).
+- `BacktrackDeparture` — full-length backtrack departure (see below).
+
+### Full-length backtrack departure (opt-in)
+
+Some runways have **no full-length parallel taxiway** — you enter the runway at an intermediate point, backtrack toward the departure threshold, turn around on a pad/loop, and take off the other way (e.g. iniBuilds EGNM 32 via D1, EGGW). This is **opt-in** via the Taxi planner **"Full-length departure (requires backtrack)"** checkbox (runway destinations only, default OFF). **Every non-checked path is unchanged** — the feature is entirely inert unless the box is ticked.
+
+Flow when checked:
+1. **Entrance (geometric, name-independent).** `TaxiAssistForm.OnCalculateClicked` calls `TaxiGraph.FindBacktrackEntryNode(thr, far, halfWidth, aircraft)` to pick the taxiway→runway entrance: the reachable (same connected component) on-runway node **closest to the departure threshold** that has a graph neighbour **off** the runway (a real junction). Measuring "closest" from the departure threshold makes it **direction-aware** — the same airport picks D1 for 32 and A1 for 14. This is deliberately NOT `GetRunwayIntersections`, which keys on taxiway NAMES: backtrack sceneries routinely leave every `taxi_path` name empty (EGNM), so a name-based scan finds nothing. The route's destination node becomes this entrance; the **lineup target stays the full-length threshold**.
+2. **Route + hold-short.** The A* route ends at the entrance, held short (`LoadRoute(..., fullLengthBacktrack: true)` → `_backtrackDeparture`). `TruncateToHoldShort`'s synthetic back-off references the **entrance**, not the far full-length threshold (which is hundreds of metres past the route's end).
+3. **Backtrack (`BacktrackDeparture`).** On Continue, `UpdateBacktrackDeparture` steers along the runway centreline on the **reciprocal** of the takeoff heading toward the departure threshold, using the same cross-track + intercept model as `UpdateLineup`. **This is geometric** (from `RunwayCenterlines`), never A* — the runway pavement is not continuously in the taxi graph (gaps), so it cannot be routed. Never silent: the tone pans to guide the entry turn and hold the centreline.
+4. **Turnaround + handoff.** On reaching the threshold (`BACKTRACK_DEP_HANDOFF_M`), it hands to `LiningUp` at the full-length point. `LiningUp` already pans an arbitrary heading error, so the 180° turnaround, final alignment, "Lined up", and `RequestTakeoffAssistAutoActivate` all reuse the normal full-length-departure machinery. Pad-vs-loop geometry needs no special handling — the pilot uses whichever pad exists; guidance only steers heading + centreline.
+
+**Non-silent turnarounds (both backtracks).** Neither `BacktrackDeparture` nor the landing `BacktrackingOnRunway` goes silent during the 180°. While heading error > 90° the tone tracks the raw error (no low-pass) so it pans hard to whichever side the pilot commits and follows them around; below 90° it low-passes for smooth fine steering as they straighten. The old "silent while > 90° from the backtrack target — direction is ambiguous" gate was removed (user ruling 2026-07: silence reads as "system gave up").
+
+Pinned by `BacktrackEntryTests` (entrance geometry). Everything past the entrance is sim-facing — verify in the sim (turn side and `BACKTRACK_DEP_HANDOFF_M`/`_APPROACH_M` distances are the most likely tuning points).
+
+### Named holding-point departure (opt-in, 2026-07-26)
+
+ATC clearances name PAINTED holding points ("Runway 28, hold short A2" at LSZH) that often do
+not exist as named taxiways anywhere — the designator lives only on the painted line. In OSM
+they are `node[aeroway=holding_position]` refs; in navdata they are nothing (and at MK Studios
+LSZH the entry stubs aren't even named, so the name-keyed intersection-departure list can't
+offer them). Opt-in via the Taxi planner **"Depart from named holding point"** checkbox
+(runway destinations only, mirrors the intersection block: `chkHoldingPoint`/`cmbHoldingPoint`,
+untick + hide on leaving runway mode, repopulate on runway change, fallback announcement +
+auto-untick when the runway has none).
+
+- **Data:** `OsmTaxiSource` fetches `holding_position` nodes (ref, name-tag fallback) into
+  `AirportTaxiData.HoldingPoints`; `AugmentingAirportDataProvider.GetHoldingPoints(icao)` serves
+  them from the per-ICAO cache (no fetch of its own; empty when augmentation is off/uncached —
+  the picker then falls back with a spoken note). OSM-dependent by design: no OSM reachability
+  that session → no named holding points.
+- **Resolution (`TaxiGraph.ResolveHoldingPointEntries`)** is geometric + name-independent,
+  mirroring `FindBacktrackEntryNode`: a point binds to the selected runway within
+  `maxPointPerpMeters` (200 m) of its centerline; its entry is the nearest same-component
+  on-runway node with an off-runway neighbour within 200 m of the point. **The painted point
+  only SELECTS the entry node** — hold-short PLACEMENT on the resulting route stays 100 %
+  navdata-authoritative (`TruncateToHoldShort` and the whole tuned pipeline are untouched); this
+  deliberately does NOT implement the deferred "holding_position sharpening" item.
+- **Corridor pin (2026-08-08 — the EGLL 27R A2/A3 fix).** Selecting the entry node is NOT enough:
+  the path TO it is a free A* choice, so the pilot can be routed up a NEIGHBOURING stub that
+  merges with the chosen one short of the runway. Reported at EGLL 27R — the pilot picked **A2**
+  and was told to hold at **A3**. Reproduced against the owner's navdata: A2 and A3 merge ~130 m
+  before the pavement, so **both painted points resolve to the SAME entry node (1099)**; from the
+  south-west the free route runs up A3, rejoins A2 for its last ~60 m, and reaches the entry
+  exactly as asked — but the only hold line it crosses is A3's (A2's, node 1091, is never on the
+  route). `TruncateToHoldShort` takes the LAST hold node ON THE ROUTE, so guidance stopped at and
+  correctly named A3. The name was right; the corridor was the bug.
+  So `ResolveHoldingPointEntries` now also returns `RunwayIntersection.HoldNodeId` — the painted
+  LINE's own graph node, snapped PER POINT via `NamedHoldingPointResolver.SnapToNode` (extracted
+  from `Resolve` so the two can never drift; per-point, because `Resolve` collapses duplicate
+  names and would answer for the wrong line at an airport with two A4s). `LoadRoute` takes it as
+  `holdingPointHoldNodeId` and `ApplyHoldingPointPin` rebuilds the route as
+  *start → hold line* (clearance-constrained) + *hold line → entry* (unconstrained; the
+  clearance is all behind you by then), joined by `TaxiRouter.Concatenate` — which REBUILDS from
+  the combined node list rather than appending segment lists, so cumulative distances and the
+  turn at the seam are computed rather than inherited. Measured on the real graph: free route
+  422 m holding at A3 node 1123, pinned 620 m holding at A2 node 1091.
+  **The pin degrades to a no-op on every doubt** — node missing/unreachable/equal to the
+  destination, already on the route, either leg unbuildable, or a detour past
+  `HOLD_PIN_MAX_RATIO` (2.0) + `HOLD_PIN_MAX_PAD_M` (500 m, the recalc gate's numbers). It can
+  only make the route match the request, never make a working route worse. A pinned route is
+  EXPECTED to be longer — that is what choosing a stub means — so do not tighten those bounds
+  into a "shortest route wins" rule. The pin is stored in `_holdingPointHoldNodeId` and re-applied
+  by `TryRecalculateRoute` (before its sanity gate, so the gate judges the route actually flown),
+  for the same reason `_preferIlsHold` persists: a recalc that dropped it would quietly hand the
+  pilot back the corridor they didn't choose.
+- **Lineup semantics:** entries past the start-table lineup point (+50 m margin) reuse the
+  intersection-departure machinery unchanged (destination node = entry, lineup target = entry
+  projected onto the centerline → partway lineup, Takeoff Assist auto-activation). Full-length
+  entries — deliberately INCLUDED, unlike the intersection list — keep the start-table lineup
+  target and just force WHICH stub the route uses (the A2-vs-A1 choice). Precedence at
+  Calculate matches the existing pattern: backtrack > intersection > holding point.
+- Confirmation is part of the single post-StartGuidance standstill utterance ("Holding point
+  A2, runway 28. About … of runway ahead."). (That fix also removed the leftover SECOND
+  intersection AnnounceImmediate, which was stomping the joined utterance and silently
+  swallowing the reach warning whenever an intersection was chosen.)
+
+Pinned by `HoldingPointEntryTests` (resolver geometry + `HoldNodeId`) + `TaxiRouterTests`
+(`Concatenate`) + `OsmHoldingPositionParseTests` (parse). The picker/route flow is sim-facing —
+verify in the sim.
+
+#### Anchoring and gates (2026-08-07 — the EGKK 26L pass)
+
+Three defects, all found because EGKK 26L's whole A/M holding area was missing from the picker.
+
+- **`PopulateHoldingPoints` measures against the OUTER ENVELOPE** of the pavement edges
+  (`Runway.Start/End`, i.e. `runway_end`) and the start-table departure lineup points —
+  `TaxiGraph.ChooseHoldingPointExtent`. Neither source alone works, because navdata disagrees
+  with itself in BOTH directions:
+  - EGKK 26L departs 406 m BEYOND its `runway_end`, so the edge anchor put A1/A2/A3/M1/M3 at
+    −237…−406 m along and the `ptAlong < −30` gate dropped the entire A/M holding area.
+  - EGLL 09R and EHAM 36C put the start row 45 m and 480 m INTO the runway, so the lineup
+    anchor dropped the full-length holds behind it — measured against the live navdata + OSM,
+    that cost EGLL 09R its N1/NB1, EGLL 27L its N8/NB8, and EHAM 36C its CAT III hold.
+
+  The envelope only ever grows the window, so no entry either source would have offered can be
+  lost; `LineupAlong` still says where the departure point sits inside it, which is what the
+  Partway (intersection-semantics) test compares against. The far lineup point is found BY
+  DESIGNATOR (`ReciprocalRunwayName`), never by proximity — EGKK's 08L lineup point is nearer to
+  08R's pavement edge than 08R's own is.
+- **`MIN_ALONG_M` is −40 m, not +5.** A full-length entry stub meets the runway at (often just
+  behind) the lineup point. A positive floor filtered that junction out and the full-length points
+  then snapped to the NEXT entrance downfield — at EGKK, M1/M3 resolved to the A entrance 112 m
+  in, so picking "M1" silently routed you to a different stub.
+- **The point-binding gate is the resolver's own `maxPointPerpMeters` (200 m), NOT
+  `HOLDSHORT_RUNWAY_MATCH_M` (150 m).** That constant sizes a different judgement — which runway a
+  hold-short node protects — where tightness matters because EGKK's two centerlines run only
+  ~200 m apart. Here the runway is already chosen and the entry node still has to sit on this
+  centerline, so the gate only has to admit a set-back CAT II/III hold: EGKK A3 is 162 m out.
+  A point whose NAME parses as a runway designator (`08L/26R` — how OSM labels a runway-crossing
+  hold line; since 2026-08-14 also the dash form `36C-18C`, which is how EHAM maps its runway
+  hold lines) is skipped; it is not something ATC clears you to depart from.
+
+#### Behind-threshold holds (2026-08-14 — the EGCC 23L VB1/T1 pass)
+
+Manchester's Runway 2 exposed a THIRD anchoring case: airports that paint their full-length
+departure holds on the lead-in taxiways of a holding/queue area **behind the threshold**. EGCC
+23L's real, ATC-used holds sit 73 m (VB1) to 430 m (T1) behind the pavement edge — and unlike
+EGKK 26L, whose set-back holding area is rescued because its start row sits 406 m back (the
+envelope grows), EGCC's 23L start row sits 96 m INTO the runway, so the envelope stays at the
+pavement edge and the `ptAlong ≥ −30` gate dropped VB1/VB2/VA1/VA2/T1/S1 wholesale while ATC was
+saying "line up 23L via VB1".
+
+A behind-threshold point (−1000 m ≤ ptAlong < −30 m, still within the 200 m perp gate of the
+EXTENDED centerline) is now admitted, but ONLY under three gates, all required — the design goal
+was explicitly "get EGCC's points without showing false points elsewhere":
+
+1. **Kind vouch (opt-in):** the caller must confirm via `behindThresholdEligible` that the
+   point's OSM `holding_position:type` marks a line that GUARDS a runway — `runway` (the normal
+   lineup hold: EGCC VB1/VA1/T1) or `ils` (its set-back CAT II/III twin: VB2/VA2). `intermediate`
+   queue-ladder holds (EGCC V1–V6) and UNTAGGED points (EGCC S1 — a real hold, accepted loss)
+   stay out. Callers without kind data pass null and keep the old behavior byte-for-byte — every
+   pinned test and every non-form caller is unchanged.
+2. **Ownership guard (`AnotherRunwayClaimsPoint`):** no OTHER runway's centerline
+   (`RunwayCenterlines`, self + reciprocal excluded by `runwayName` designator) may be closer to
+   the point (5 m margin against float noise on the collinear self-line). EGCC's V-series sit
+   almost midway between the parallels (197 m vs ~190 m) — without this they'd migrate between
+   lists. The other runway's claim window is its span EXTENDED by the same 1000 m
+   behind-threshold band on both ends — the claim window must equal the admission window, or a
+   point behind BOTH runways' thresholds falls in neither narrow window and the guard never
+   fires (LEMD: Y-1, 36R's hold 82 m from its line, was also admitted to 14L's list at 169 m
+   perp through exactly that gap). Needs `runwayName`; null keeps admission off.
+3. **Threshold-bound binding:** the entry may bind no farther from the point than the threshold
+   anchor itself is (+60 m slack) — `bindCap = max(200, dist(point, thr) + 60)` — so a
+   behind-threshold point can structurally only select the full-length entry (or nearer), never
+   a junction downfield.
+
+Ties: several behind-threshold holds share the full-length entry and tie exactly on along-track,
+so the sort now tie-breaks by the painted line NEAREST its entry (then name, for determinism) —
+that line is "the normal clearance" `AnnounceDefaultHoldingPoint` names (EGCC 23L: VB1 at ~90 m
+beats T1 at ~430 m).
+
+Measured before/after with the real resolver over the owner's fs2020 DB + live OSM at 12
+airports, every runway direction: **zero entries removed anywhere**; additions only at airports
+that genuinely paint set-back holds (EGCC 23L +VB1/VB2/VA1/VA2/T1; EDDF's east/west queue areas;
+EHAM's polderbaan lines, which the dash-designator fix then filters as unnamed-in-AIP). Pinned by
+the behind-threshold block in `HoldingPointEntryTests`.
+
+### Runway centerlines — pairing and bogus start rows (2026-08-07)
+
+`TaxiGraph.RunwayCenterlines` drives "on runway X" in Where-Am-I, runway-led hold-short naming,
+and runway-crossing detection. Two independent failures at EGKK left it EMPTY, then wrong.
+
+- **Pairing runs the reciprocal-DESIGNATOR pass FIRST, then heading for the leftovers.**
+  Designators are reciprocal by definition and the side letter keeps parallels apart (08L pairs
+  only with 26R), whereas `start.heading` is wrong often enough to mis-pair whole airports: EGKK
+  stores 08L and 26R both at 257.6° and 08R and 26L both at ~168° (nothing paired — zero
+  centerlines), and LEMD stores 0° on runways pointing 322°, which made the heading test read 32R
+  as the reciprocal of 18L and 32L as of 18R — two lines drawn DIAGONALLY ACROSS THE AIRFIELD and
+  no correct line at all. The bearing between the two start points is the geometry check (±45°,
+  wide because designators are magnetic and the measured bearing is true).
+
+  The heading pass is still needed second, and not merely as a safety net: it is what rescues the
+  NAME-SWAPPED airports, where the row labelled for one end sits at the other. AYCH's "03" row is
+  at the 21 threshold carrying 21's heading, so the designator pass correctly refuses it (the
+  a→b bearing is 185° from what "03" claims) while the heading pass still finds the true pair.
+
+  Order measured over the whole fs2020 navdata (41.8 k airports, 47.9 k centerlines): swapping
+  changes 10 airports and improves ALL TEN — mis-paired lines fall 662 → 642, LEMD goes from 2
+  wrong lines to 4 right ones, EGXT from 4 bogus to 0. Nothing regresses. NOTE a plain
+  before/after line COUNT reads those improvements as "losses" (EGXT 7 → 5): score by whether
+  `Name2 == ReciprocalRunwayName(Name1)`, not by count.
+- **A runway end can have SEVERAL start rows; take the one furthest back**
+  (`TaxiGraph.PickFullLengthStart`), never whichever the DB returned first. The full-length
+  departure point is by definition the furthest back. 14 airports in the fs2020 navdata carry
+  duplicates and 13 runway ends were picking a worse row — EGLL 09R was lining up 342 m down the
+  runway with a 67 m row sitting right there (now 59 m from the OSM pavement start), VRMM 18 was
+  826 m in versus 28 m, and KBOS 22L/22R/04R/15R were each 200–307 m in.
+- **`TaxiGraph.SnapStartToRunwayCenterline` pulls a laterally-bogus start row back onto the
+  `runway_end` line, keeping its along-track position.** EGKK has three of four rows 99–122 m to
+  the SIDE of their own runway; EGLL, EGCC, EGSS, EGGW, EHAM, LFPG, KJFK, KBOS and LEBL all land
+  within 5 m, so this is a no-op on sound data. Projecting rather than rejecting keeps the reason
+  the start table is used at all — EGKK 26L projects 406 m behind the landing threshold, exactly
+  the full-length point on the starter extension, so **negative along-track is expected**.
+  It repairs the LATERAL error only, and only inside a plausible along-track window (from half a
+  runway behind the landing threshold to midfield); a row more than 250 m off the line, or outside
+  that window, is returned UNCHANGED. Both refusals matter: some airports carry NAME-SWAPPED start
+  rows — AYCH's "03" sits at the 21 threshold with 21's heading, URWW's "05" sits 2854 m away at
+  the 23 end — and projecting those onto their named runway put both of an airport's rows at
+  midfield on top of each other, failing the 200 m separation test and DESTROYING the centerline
+  AYCH already had. Refusing leaves that pre-existing data problem exactly as it was.
+  `Build`/`BuildAsync` take an optional
+  runway list to do this; every production call site passes one, and `PopulateDestinations` snaps
+  the same way for the route destination and the **lineup target** — left alone, EGKK 26L aimed
+  that target ~109 m north of the pavement.
+
+Pinned by `RunwayCenterlinePairingTests`. Verified against the live EGKK navdata + OSM geometry:
+post-fix the centerline endpoints land within 11–37 m of the true runway ends, and every B/C
+hold-short node names the runway an independent OSM-derived calculation agrees with (±2 m).
+
+**Regression sweep (2026-08-07, whole fs2020 navdata — 41,804 airports / 97,546 start rows).**
+Re-run this before touching any of the above:
+
+- centerlines: **EGKK is the only airport that gains any** (0 → 2); **none lose any**
+- snapping: 12,149 rows move at all, only **11** move more than 25 m, and those 11 are confined to
+  six airports (EGKK ×3, NZSP ×2, VRMM ×2, LEMD ×2, FQMA, LFUD). The other ~12,140 are sub-25 m
+  nudges onto a centerline the row was already essentially on
+- the rows this deliberately refuses: 4 beyond the 250 m ceiling (MTDA, C29) and 16 outside the
+  along-track window (the name-swapped airports) — all left byte-identical to today
+- pre-existing and NOT touched by this pass: the heading pass cross-pairs parallel runways at a
+  few GA fields (17OK 20L↔02L, OH45 10R↔28R, KARE 33L↔15L), because their designators read as
+  reciprocal within 15° and the separation check passes. Running the designator pass FIRST would
+  fix those, but it would change pairing at airports that work today, so it was left alone.
+
+**Picker + lineup verification (EGKK, EGLL, EHAM, LEMD against OSM pavement geometry).**
+28 runway ends:
+
+- every lineup target lands **0.3–8.6 m** off the true OSM centerline
+- holding-point names lost versus the old runway_end anchor: **zero**, at every runway
+- EGKK 08R and 26L each gain 8 names (A1/A2/A3, M1/M3, the J and H/G holds); every other runway
+  at all four airports returns an identical name list
+
+**A start row past 40 % of the runway is rejected as a departure point** (`PickFullLengthStart`),
+so the lineup target falls back to the pavement edge. LatinVFR's LEMD parks 32R/32L/18L/18R at
+the runway MIDPOINT (47–48 %) with no taxiway within 220–660 m and, on the 32s, a heading of 0°
+on a runway pointing 322° — selecting 32R as a taxi destination routed to a taxiway a third of
+the way down and aimed the lineup mid-field. Post-fix those four line up 4–15 m from their
+thresholds. The bar comes from the data, not taste: of 97,488 rows, 93.5 % sit in the first 10 %
+of their runway and only 115 (0.12 %) lie past 40 %.
+
+**Still outstanding at LEMD:** its centerlines now pair correctly but are HALF LENGTH (14L/32R is
+1787 m of 3550 m), because the pairing consumes the raw start rows and 32R's is still the
+mid-runway one. Where-Am-I will therefore not report "on runway" in the far half. Fixing it means
+relocating a rejected row to its threshold inside `Build`, which is exactly the move that
+destroyed AYCH's centerline once — re-measure before trying.
+
+Re-run `Verify` + `score.py`/`diff2.py` in the scratchpad harness after touching the anchor — the
+first attempt at this anchored on the lineup point alone, which passed EGKK and silently cost
+EGLL and EHAM their full-length holds.
 
 ### Position tracking
 
@@ -262,7 +513,7 @@ For both runway and gate destinations, taxi guidance and the teleport hotkeys ar
 
 The "Hold position" wording on runway-aligned matches the FAA AIM 5-2-5 / ICAO Doc 4444 / EASA SERA "line up and wait" procedure — align with the centerline and remain stationary awaiting further clearance from ATC. This is the universal stop point for LUAW *and* the spot where you'd briefly stop before applying takeoff thrust under "cleared for takeoff." Either way, that's the convergence target.
 
-**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built directly from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source the gate-teleport dialog uses — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
+**Parking-listing parity with the gate-teleport dialog.** The taxi-assist form's parking dropdown is built from `Services/ParkingSpotSource.GetSelectableGates(...)` — the same resolution the gate-teleport dialog uses, and the SELECTABLE half of the seam whose NAMING half (`GetNamedSpots`) feeds the graph builds and the SayIntentions parked-at-the-right-stand check; the two shapes deliberately return different lists but agree on every stand's name (see "One name for a stand" below) — and labels each entry with `ParkingSpot.ToString()` (which expands to e.g. `"P 21 - Ramp GA Large (Jetway)"`). Earlier the listing was driven off graph nodes that happened to be tagged with a `ParkingName` during graph build, which silently dropped any parking spot whose lat/lon didn't have a nearby graph node — common in third-party scenery (Colombo, KORD payware, etc.) whose taxi-path data lags the parking layout. A pilot given "Parking 21" by ATC would see "Parking 21" in the gate-teleport dialog but NOT in the taxi-assist form. Now the same set of entries appears in both. Each parking spot's actual lat/lon is the lineup convergence target; routing endpoint is the nearest graph node within 100 m (the `MAX_PARKING_TO_GRAPH_M` floor — beyond that, the spot is dropped because there's no realistic taxi path to reach it).
 
 ### Taxiway connectivity in the route form
 
@@ -280,13 +531,23 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 
 FAA AIM 4-3-18 and ICAO Doc 4444 require that an aircraft hold short of *every* runway it crosses on the way to its destination, with explicit ATC clearance for each crossing — controllers issue them one at a time. `TaxiGuidanceManager.InsertRunwayCrossingHoldShorts(route, destinationName)` runs after `LoadRoute` builds the route and after `TruncateToHoldShort` (which owns the destination runway's hold-short separately):
 
-- For each route segment whose **edge** (FromNode→ToNode) crosses a runway centerline — `TaxiGraph.EdgeCrossesRunwayStatic` (a proper segment-vs-centerline-between-thresholds intersection) via `WhichRunwayCrossedByEdge` — tag the segment immediately **before** that crossing edge as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
+- For each route segment whose **edge** (FromNode→ToNode) crosses a runway centerline — `TaxiGraph.EdgeCrossesRunwayStatic` (a proper segment-vs-centerline-between-thresholds intersection) via `WhichRunwayCrossedByEdge` — tag the hold segment resolved by `RouteRunwayCrossings.ResolveCrossingHoldSegment` (see below) as `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`.
 - Skip the destination runway (already handled; the prefixed `"Runway 33L"` is normalized to bare `"33L"` before comparing).
 - Skip duplicate consecutive same-runway tags (`lastTaggedRunway` — a wide runway's entry and exit edges both cross the centerline).
 
 **Why edge intersection, not point-on-pavement.** A taxiway crosses a runway via an edge that *spans* the pavement, with both flanking nodes sitting *off* the runway. The original test ("is the next segment's endpoint within `HalfWidth + 5 m` of the centerline?") therefore silently missed every crossing whose nodes were more than ~half-width+5 m out. Motivating defect (2026-06-20): KBOS taxi to 33L via K/B/C — taxiway C crosses 04L (nearest C node 35 m from the centerline), 04R (26 m → caught), and 27 (86 m); the point test tagged only 04R, and `ApplyUserRunwayHoldShorts` falsely reported *"route does not cross 04L after taxiway C"* for the user's explicit "hold short 04L" pick. Meanwhile the runtime incursion guard (`CheckRunwayIncursion`, which keys on graph `HoldShort` node TYPE + `HoldShortName` — a separate, working path) correctly called out all three crossings, which is why the symptom was "it announced the crossings but never told me to hold short." The edge test catches a crossing regardless of node spacing.
 
 Pilot then gets the standard 300/150/50 ft hold-short countdown approaching each crossed runway, the tone pauses at the line, and pressing `Y` (Continue) crosses. Same flow as ATC-instructed hold-shorts — no separate UI. Driven by the runway-centerline pairs already used by Where-Am-I, so it works on any DB that has enough `start` table rows to pair runway thresholds (vanilla MSFS, Navigraph, third-party scenery — all supported). `TaxiGraph.EdgeCrossesRunwayStatic` is the public geometry primitive (probe-pinned in `tools/ProgressiveTaxiProbe`).
+
+**WHERE the crossing hold-short lands: the scenery's own hold node, not "the node before the crossing edge"** (`RouteRunwayCrossings.ResolveCrossingHoldSegment`, shared by BOTH the auto-detector and the form's explicit per-row "Hold short of runway" picks in `ApplyUserRunwayHoldShorts` — they must resolve identically or one crossing gets two stop points). The crossing is detected against the runway **centerline**, and a taxi network routinely carries nodes ON the pavement (the crossing taxiway meets the runway's own path at a centerline node), so the node before the crossing edge is frequently *inside* the runway. Motivating case (LEBL 24R via D5, 2026-08): D5's nodes run 250 m → **105 m (HSND)** → 51 m → 21 m → centerline, and the old rule held the aircraft **21 m from the centerline of a 60 m-wide runway** — ~9 m inside the pavement edge, with the painted line 105 m back; the "Stop." cue (50 ft floor) then fired essentially at the runway edge. KBOS taxiway C over 04R lands at 25 m against a 25 m half-width, so the shape is not airport-specific.
+
+The resolver walks BACKWARDS along the route from the crossing edge and takes the first segment ending at a `HoldShort` / `ILSHoldShort` node (navdata HS/HSND/IHS/IHSND) within `CrossingHoldLookbackMetres` (150 m), falling back to the old segment-before-the-crossing when the navdata carries no hold node there. Invariants:
+
+- **The walk only ever moves the hold EARLIER along the route**, so a miss degrades to exactly the previous placement and can never park the aircraft closer to the runway than before. Do not "improve" this into a search that can move the hold forward.
+- **First qualifying node wins** — i.e. the one nearest the runway, the full-length hold, matching a normal ATC crossing clearance. The CAT III / ILS hold preference stays a **destination-runway** opt-in (`TruncateToHoldShort` + the planner checkbox) and must not be extended to crossings.
+- **Reciprocal-aware runway gate.** A hold node whose own `HoldShortName` names a *different* runway means the walk stepped past a junction onto another runway's line → stop and keep the fallback. The node is normally named after the *closer* threshold, so a crossing the user picked as "24R" legitimately meets a node named `runway 06L at D5` — the gate must compare against **both** designators (`Reciprocal`), or every mid-runway crossing rejects its own hold line.
+- **Never walk THROUGH an already-tagged hold-short segment** — two runways must never share one stop point.
+- This uses the navdata's own HS/HSND markers only. It is NOT the OSM `holding_position` sharpening that remains banned (taxi-data augmentation stays name-only and must never move hold-short geometry).
 
 **Runway-NAME association uses the centerline, not the threshold.** A hold-short node is named after its runway by `TaxiGraph.MatchHoldShortRunwayName(lat, lon, RunwayCenterlines, HOLDSHORT_RUNWAY_MATCH_M = 150 m)` — the nearest runway *centerline* by clamped perpendicular distance (closer-end designator), which is length-invariant. The previous heuristic (nearest runway *threshold* within 500 m) mislabeled a hold-short where a taxiway crosses a *long* runway far from either threshold with the taxiway name — e.g. KBOS 15R on taxiway N announced "Hold short of N" instead of "runway 15R". The 150 m tolerance sits above a CAT III / code-F holding-position setback (~107 m) yet below major-airport parallel-runway spacing, so a node binds to its own runway; a clamped perpendicular distance also means a node beyond a runway end is not falsely matched. The threshold method remains only as a fallback for navdata with no reciprocal centerline pairs. The matched name is `"runway X at <holdPoint>"` (e.g. `runway 15R at N`), so the crossing/arrival callout reads "Stop. Hold short of runway 15R at N." This must be correct at the source because `InsertRunwayCrossingHoldShorts` (above) does not overwrite a non-empty `HoldShortRunway`. Pure-geometry coverage: `tools/ProgressiveTaxiProbe` (mid-runway match, far-node reject, beyond-end reject).
 
@@ -358,6 +619,19 @@ The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 6. **Nearest node** (≤ 60 m) with at least one taxiway name → `Near taxiway X`.
 
 Perpendicular distance uses equirectangular projection (sub-cm accuracy at taxi scale) and clamps to segment endpoints so the foot of the perpendicular falling outside still counts.
+
+### One name for a stand — where "Gate X" in that readout comes from
+
+Step 1 above ("Parking node within 40 m → `Gate X`") reads `TaxiNode.ParkingName`, which `TaxiGraph.Build`'s parking pass writes from whatever `List<ParkingSpot>` it was handed. **Every graph build in the app now takes that list from `Services/ParkingSpotSource.GetNamedSpots(dataProvider, gateSource, icao)`**: navdata's own parking list with the concourse letter **corrected in place** from the authoritative gate list (`GsxStandNameOverlay`), then `AugmentingAirportDataProvider.AugmentParking` re-run so this scenery's online aliases resolve against the corrected identity. So a stand is called the same thing in the taxi dialog's destination combo, the gate-teleport list, `gate.select`, Where-Am-I and SayIntentions' "are you at your assigned gate" check.
+
+Before that seam, only the dialogs went through `GateDataSource.GetGates`; everything else called `IAirportDataProvider.GetParkingSpots` and got navdata's name. At KJFK Terminal 4 those disagree — GSX says **B 25** (what a controller and SayIntentions say), navdata says **A 25** — and one consumer was not cosmetic: an aircraft parked exactly at B25 was told *"Aircraft appears near A 25, not assigned gate Terminal 4 Gate B25."* See [gsx.md](gsx.md) for the measurement behind the corrected letter.
+
+Four properties worth knowing before touching this:
+
+- **The list handed to `Build` must be navdata's own SET — same spots, same count, same coordinates, same order.** Correcting names in place rather than swapping in the GSX list is not stylistic. The parking pass writes `node.Type = TaxiNodeType.Parking` as well as the name, and unlike `ParkingName` — read only by `DescribeLocation` — `Type` is read by `NamedHoldingPointResolver` (which **skips** parking nodes when snapping a named holding point, a Progressive-Taxi terminator target), by `HoldShortNodeResolver`, and by the route truncation in `TaxiGuidanceManager.Routing`. A different set of spots marks a different set of nodes, so **a hold-short could move** — and that resolver's snap radii are probe-pinned against real navdata and live OSM at six airports precisely so they are not re-tuned by accident. The GSX list is also *smaller*: it excludes Vehicle/Fuel stands and drops stands with no usable heading (230 of KJFK's 231 survive `GateDataSource`), so swapping it in would strip the Where-Am-I label off stands that have one today. **Naming a stand and deciding which nodes are parking are different jobs, and only the first may change.**
+- **`GetNamedSpots` vs `GetSelectableGates`.** The seam has two shapes on purpose. Anything that must *act* on a stand — the destination combo, the gate-teleport list, `gate.select` — needs `GetSelectableGates`, i.e. GSX's own list, because it carries `GsxIdentifier`, the docking stop position, the max wingspan for the fit filter and `TerminalName` for disambiguating identically-named stands. Anything that merely *names* a stand uses `GetNamedSpots`. Both derive the name from the same authority, which is what makes them agree.
+- **The four graph-build sites are `TaxiGuidanceManager.DescribeCurrentLocation` / `TryDetectRunwayUnderAircraft` / `LoadRoute` (its no-prebuilt-graph branch) and the two forms (`TaxiAssistForm`, `LandingExitForm`).** The manager's three go through the injectable `TaxiGuidanceManager.ParkingSpotSupplier`, which **defaults to `dataProvider.GetParkingSpots`** when unwired — that default is what keeps the xUnit suite and any non-MainForm caller byte-identical to the pre-seam behaviour. `LandingExitForm` is in scope despite never speaking a stand name: the graph it builds is handed to `LandingExitPlanner.SetExit`, passed to `LoadRoute` as `prebuiltGraph`, becomes `TaxiGuidanceManager._graph`, and `DescribeCurrentLocation` **prefers** that graph — so it supplies the Where-Am-I stand names for the whole rollout and taxi-in.
+- **It runs off the UI thread.** Where-Am-I and the takeoff-assist runway probe both reach their graph builds from inside a `RequestAircraftPositionAsync` callback, so MainForm's supplier builds a fresh `GateDataSource` per call rather than sharing one with the UI thread (its per-ICAO caches are plain `Dictionary`). That is affordable only because every call site is a graph build — once per airport, then cached. **Never put the supplier on a position update.**
 
 ## Taxi Assist Form (route entry)
 
@@ -550,9 +824,12 @@ When **GSX Pro** is running and has a profile for the airport, it becomes the
 **authoritative** source for gates/stands — GSX's metadata (heavy/jetway/VDGS,
 exact positions) is far more accurate than navdata's, so navdata's own
 heavy/jetway classification is never shown when GSX can answer. GSX availability
-for gate sourcing = `GsxService.CouatlStarted` (running this session) AND a
-matching profile exists. When GSX is absent, everything falls back to navdata
-unchanged.
+for gate sourcing = GSX running this session — `GsxService.CouatlStarted` (the
+Remote API's flag) OR `SimConnectManager.GsxCouatlStartedLVar` (GSX's own
+`L:FSDT_GSX_COUATL_STARTED`, which every GSX build publishes, Remote API or not;
+see [gsx.md](gsx.md)) — AND a matching profile exists. Never the Remote flag alone:
+that silently floored these local-file features at GSX 4.0.1. When GSX is absent,
+everything falls back to navdata unchanged.
 
 ### Gate source (GSX-authoritative overlay)
 
@@ -577,10 +854,16 @@ Both the Gate Teleport and Taxi Assist gate pickers have a type-to-filter box
 filtering — works with or without GSX.
 
 **Per-ICAO gate-list cache.** `TaxiAssistForm` caches the airport's gate list as
-(spot, resolved graph node) pairs per ICAO; the search box and the fitting filter
-then filter **in memory** on each keystroke (matching the `GateTeleportForm`
-pattern). Do not reintroduce per-keystroke directory enumeration + navdata query
-+ per-spot nearest-node resolution on the UI thread.
+(spot, resolved graph node) pairs per (ICAO, gate-list SOURCE token —
+`GateDataSource.GetGateListVersion`, an O(1) compare-only token that moves when GSX
+publishes the airport after the list was built); the search box and the fitting
+filter then filter **in memory** on each keystroke (matching the `GateTeleportForm`
+pattern). The token is re-checked on show and at the top of Calculate, rebuilding only
+on an UPGRADE (fallback → API, or a fresh API publish), never on the downgrade a
+transient GSX drop causes; a chosen stand the rebuilt list no longer carries leaves
+NOTHING selected (never item 0) and is announced. Do not reintroduce per-keystroke
+directory enumeration + navdata query + per-spot nearest-node resolution on the UI
+thread — the token check is a property read, nothing more.
 
 ### "Show only fitting stands" filter
 
@@ -595,49 +878,51 @@ fixed.)
 ### Auto-select gate on Calculate Route
 
 Setting `GsxAutoSelectGateOnRoute` (default on). When Taxi Assist calculates a
-route to a gate and GSX is active, `GsxGateSelector` drives GSX's hierarchical
-parking menu to select that exact stand — structure-agnostic
-(terminal/concourse/flat), text-matching, and **never** chooses a WARP /
-Follow-Me / reposition entry (positive-safe-action-only, abort on uncertainty).
+route to a gate, `GsxRemoteGateSelector` sends GSX's documented `gate.select`
+verb over the Couatl Remote API with the stand's own identifier
+(`ParkingSpot.GsxIdentifier`, taken verbatim from
+`handlerData.airport.parkings` — never a label rebuilt from `Describe()` or
+`Name`/`Number`) — one request, one typed response, no menu interaction of any
+kind. The selector feature-checks the `gate` token in `hello.capabilities`
+first (GSX 4.0.8+); when it's absent, nothing is sent and the pilot still
+routes and taxis the aircraft manually, they just have to select the gate in
+GSX themselves. That last part is SPOKEN, once per dialog session, but only
+when GSX advertised a capability list that simply lacked `gate` — positive
+evidence of a connected 4.0.1-4.0.7 build. An empty list says nothing about
+the version (usually the Remote API isn't connected at all), so it stays
+silent rather than send the pilot after an update they may already have.
 
-The driver (`GsxMenuAutomation` over `GsxService`) is a **backtracking DFS**
-(`GsxGateSelector.TraverseAsync`): at each menu level it matches a gate leaf,
-else drills the best unvisited category (strongest concourse score first) and
-recurses, pressing GSX's "↑ Back" to try the next sibling when a branch misses —
-so it finds stands even when GSX files them under a different apron than their
-letter (e.g. OMDB groups C47–C64 outside "Apron C"). Apron submenus default to a
-filtered view, so the DFS clicks **"Show all positions"** first to reveal stands
-hidden by the size filter. All choices are page-relative and sent only while the
-live menu is on that page. Budget: 600 menu reads / 180 s for very large
-airports. **Changing gates:** when a gate is already selected, the top menu is
-"Change parking or service"; the selector drills its "Change Facility" entry to
-re-open the position selector, then traverses to the new stand.
+GSX's result is interpreted, never guessed. `services_active` (GSX already
+committed at a different gate) retries **exactly once** with
+`revokeServices: true` and is announced, so the pilot knows the previous
+stand's services were torn down. `assigned_to_other` (the stand is AI-occupied)
+is announced and **never** auto-`force`d — overriding it silently would put a
+blind pilot nose-to-nose with an aircraft they cannot see. `ambiguous` (several
+stands matched the identifier) is announced rather than guessed at. A
+`too_small` warning on an otherwise-successful selection is always spoken — it
+is GSX's own verdict on the real airframe, and there is no other route to that
+information. `already_parked`/`already_selected` — GSX had already prepared (or
+you are already parked at) that stand — are SPOKEN too ("GSX is already set up at
+Gate A12."): the vendor guide's "nothing to do" is about not retrying, not about
+not telling the pilot, and silence there is the wrong-stand failure by another
+route (see the invariant in CLAUDE.md and [gsx.md](gsx.md)). Every announcement
+is QUEUED (`Announce`), never immediate, so it can't interrupt a taxi callout. See `GsxGateSelectAnnouncer` for exactly which of
+`gate.select`'s outcomes are spoken and why the rest are deliberately silent.
 
-Success is confirmed by GSX's `FSDT_GSX_SetGate_Name/Number/Suffix` L-vars. These
-update with a lag (and briefly hold the previous gate when changing), so after
-choosing the leaf + the safe servicing action ("Show me this spot and activate",
-which arms the VDGS/marshaller) the selector **polls** the vars up to 6 s until
-they match before announcing success. Tuning lives in one place
-(`GsxMenuClassifier`); the full walk is logged to
-`%APPDATA%\MSFSBlindAssist\logs\gsx-gate-select.log`.
+**Changing gates:** re-running Calculate to a different stand simply sends a
+new `gate.select`; the reentrancy guard SERIALIZES overlapping calls (so two
+Calculate clicks can't have the second call's `revokeServices` race the
+first's) rather than rejecting the second outright — a pilot who spots a wrong
+pick and immediately corrects it gets GSX ending on their last request, not a
+dropped correction behind a busy message.
 
-**Matching and reentrancy hardening:**
-
-- **Bare-number leaf fallback.** A letterless GSX menu leaf ("Parking 209") now
-  matches a navdata-lettered target ("P 209" — the letter was borrowed by the
-  merger for display) on bare number alone. Exact identity match is always tried
-  first; the fallback is logged as `MATCH-BARENUMBER`. Fixes a guaranteed
-  "not found" at EGLL-style airports.
-- **`SelectGateAsync` reentrancy latch** (`Interlocked`). Two Calculate clicks
-  could interleave two DFS traversals on one live GSX menu — the `IsMenuActive`
-  guard reads false during every menu transition, so it cannot prevent the
-  overlap — pressing arbitrary wrong entries. The second call now fails fast.
-- **Classifier ordering** (`GsxMenuClassifier`): the `"(N suitable parkings)"`
-  count-suffix Category check runs **before** the Back check (a group like
-  "Main Apron (12 suitable parkings)" classified as Back made every stand inside
-  unreachable and desynced `BackOutAsync`), and the "main"/"top" back-patterns
-  are full phrases ("main menu" / "back to top") so apron and terminal names
-  cannot false-positive as Back.
+Confirmation is immediate and synchronous, straight off `gate.select`'s own
+result payload — there is no L:var to poll and no lag. See
+[GSX Integration](gsx.md) for the full verb/result shapes, the two
+retained `.ini`/`.py`-parsing paths (remote-airport gate lists; the docking
+stop position, which the Remote API cannot supply), and
+`gsx-gate-select.log`'s per-attempt line (identifier sent, resolved gate,
+warnings, outcome).
 
 ## VDGS / Marshalling Docking
 
@@ -1364,7 +1649,7 @@ Some airports have a mismatch between navdata taxiway names and OSM/apt.dat name
 
 ### Gate / Parking Aliases
 
-Sceneries and online sources spell the same stand differently: navdata may carry a bare `"51"` where OSM and real-world charts say `"A51"`, or `"N3"` where apt.dat spells the MARS position `"N3A"`. Without an alias, a pilot searching for the name ATC used cannot find the stand. An alias only ever RE-LETTERS the same stand — the **number is the identity**, and a differently-numbered stand is a different stand (see the resolver rules below).
+Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-world charts use the stand number (e.g. `"47"`). Without an alias, a pilot looking for gate 47 cannot find it in the Taxi Assist destination dropdown.
 
 **How parking aliases are collected — REWORKED 2026-06-23 (identity-matched, alias-only).** The earlier nearest-within-50 m gate-NAME fill was REMOVED: it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Now the PUBLIC `AugmentingAirportDataProvider.AugmentParking(icao, spots)` flattens the online stands once and, for each authoritative gate, sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — a **pure, idempotent** resolver that:
 
@@ -1379,14 +1664,14 @@ Sceneries and online sources spell the same stand differently: navdata may carry
 
 **How parking aliases are surfaced:**
 
-1. **TaxiAssistForm destination dropdown** — **ONE entry per spot**, labelled `spot.ToString()`, which appends `", also A51 (online)"` when `Aliases.Count > 0`. The pilot reaches an alias through the **gate search box** (`GateSearchFilter`, which matches `ParkingSpot.Aliases`) by typing the name ATC used. A separate combo item per alias was deliberately REMOVED: at airports whose online names differ from the scenery names (e.g. LIMC) it doubled the gate list with a near-identical "online" duplicate of every "scenery" gate.
+1. **TaxiAssistForm destination dropdown** — for each spot with `Aliases.Count > 0`, the normal label (e.g. `"GN 3 - Gate Large"`) is added first, then one additional combo item per alias formatted as `"{alias} ({normalLabel})"` (e.g. `"47 (GN 3 - Gate Large)"`). Both items map to the same spot in `_destinationSpotMap`, so routing is identical regardless of which label the pilot picks. This alias loop runs at both spots where parking spots are added to the dropdown: the deice section and the regular parking section.
 
-2. **GateTeleportForm listbox** — the same `ParkingSpot.ToString()` label, so a screen reader reading the gate list hears the alternative name without a separate selection.
+2. **GateTeleportForm listbox** — `ParkingSpot.ToString()` appends `" (also 47)"` when `Aliases.Count > 0`, so a screen reader reading the gate list hears the alternative name without a separate selection.
 
 **Safety invariants:**
-- Spots with no aliases produce identical behavior (empty `Aliases` list → `ToString()` appends nothing).
+- Spots with no aliases produce identical behavior (empty `Aliases` list → the alias loop is a no-op in TaxiAssistForm; `ToString()` is unchanged in GateTeleportForm).
 - The navdata name is always authoritative; aliases are additive display helpers only.
-- An alias is a searchable label, never a destination of its own: one dropdown entry per spot means there is only ever one routing endpoint to pick.
+- Both dropdown entries for the same spot resolve to the same navdata spot object and therefore the same routing endpoint.
 
 ### Background fetch / deduplication
 
@@ -1444,6 +1729,11 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
 
   **Rollout-phase tone gate and overshoot retarget (`TaxiGuidanceManager.UpdateLandingRollout`).** The handoff from `LandingRollout` to `Taxiing` requires `turnBegun || (atTaxiSpeed && nearExit)`, where `nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT = 500`. The pure `atTaxiSpeed` (GS < 30 kt) condition was wrong — on a long runway the aircraft routinely drops below 30 kt thousands of feet upfield of the planned exit, and resuming the tone there suggested "turn now" while the pilot was still on the runway centerline. **Do not relax the `nearExit` gate back to a speed-only condition.** `turnBegun` is `hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG (15°) && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS (90 kt)`. The speed cap is critical: above 90 kt a heading deviation from runway centerline is touchdown yaw, crosswind crab alignment, or sim physics at wheel contact — not a real runway exit maneuver. Category E rapid-exit taxiways top out at ~90 kt, so legitimate high-speed exit turns are still detected. **Do not remove the `ROLLOUT_TURN_MAX_GS_KTS` guard** — a crabbed approach at KJFK 22L caused the heading to drift 16° from runway heading within 2 seconds of touchdown at 112 kt, falsely triggering the handoff 5,077 ft before the planned exit. On overshoot — aircraft along-runway projection past the chosen exit by ≥ `ROLLOUT_OVERSHOOT_FT = 100` ft AND heading still within `ROLLOUT_TURN_BEGAN_HDG_DEG = 15°` of runway heading — the manager scans `_rolloutAllExits` (cached at `BeginLandingRollout` time from `_graph.GetLandingExits(runway)`, sorted by `DistanceFromThresholdFeet` ascending) for the first exit further downfield and re-`LoadRoute`s in place via `RetargetLandingExit`. If no downfield exit remains, `EnterRunwayEndCountdown` clears `_route` / `_destinationNodeId` and switches into runway-end countdown mode — the route nulling is what prevents `TryRecalculateRoute` from routing back across the runway to the now-passed exit (the original bug). `BeginLandingRollout` now takes `Runway runway` and `List<LandingExit> allExits` parameters; the planner computes the exit list once at touchdown. **`TryEarlyExitHandoff` (at ≤50 kt within 300 ft) only fires for High-speed exits (`ExitType == "High-speed"`, angle < 50°).** For Normal and End exits (angle ≥ 50°) the extension node is too far off the runway heading to give useful tone steering 300 ft before the junction — a 90° exit immediately pans the tone to maximum and the rollout's own 150 ft "turn now" callout is silently lost because state has already moved to Taxiing. Normal exits (50–110°) rely on the 150 ft verbal callout from `UpdateLandingRollout`; at the same moment the verbal fires, the rollout tone switches its desired heading from "bearing to the junction" to `ExitBearingTrue`, giving an immediate hard-pan toward the exit direction. The bearing-to-junction heading fights the turn at this range (junction is still ahead, so heading error flips to the wrong sign as the pilot turns off the runway), whereas `ExitBearingTrue` correctly decreases as the pilot aligns, conveying both direction and "how much more to turn." The heading-error smoother is reset at this transition so the pan is sharp rather than ramping from the near-zero approach residual. The tone continues until `turnBegun` fires (15° heading change), at which point the Taxiing handoff re-routes from the live position to the extension node. End exits are excluded from the ExitBearingTrue switch — a backtaxi requires a ~180° turn whose direction is ambiguous in the heading-error sign; the verbal is sufficient. **Do not restore `TryEarlyExitHandoff` for Normal/End exits** — it caused the EGNX runway 27 / taxiway M (90°) miss: tone went max-left at 300 ft before M junction with no verbal cue, pilot couldn't respond in time. **At every handoff to Taxiing (turnBegun / exitedLaterally / alignedWithExit / atTaxiSpeed&&nearExit), always re-route from the live aircraft position** using the extension-node logic (ApronNodeId if set, else FindExitExtensionNode, else NodeId). This replaces the initial touchdown route — which goes through the taxiway network and gets a false "hold short of runway X" tag from `InsertRunwayCrossingHoldShorts` because the route's destination sits on the runway — with a clean 1–2 segment route. **Do not revert to the ApronNodeId-only re-route** — Normal/End exits have ApronNodeId == NodeId and would keep the bogus initial route. **Post-high-speed-exit `ExitBearingTrue` floor (`_postHighSpeedExitMinBearing`) must release on a wrong-side route.** After `TryEarlyExitHandoff` fires for a high-speed exit, `ExitBearingTrue` is installed as a minimum-pan floor (the `_postHighSpeedExitMinBearing` block in `UpdatePosition`) so the tone stays panned toward the exit side through the shallow ramp. But `ExitBearingTrue` is the exit's first runway-edge bearing, which at some airports points to the OPPOSITE side from where the taxiway actually routes to the apron (CYVR M1 off 26R: first edge heads NW ~305°, but the M1 taxiway curves SOUTH; route bearings 256°→196°→134°→100°). The floor's `Math.Max/Min` clamp then forced the tone the WRONG way (right toward 305°) and snapped ~115° left the instant `turnComplete` released it at heading 305° — a violent L/R reversal on rollout (the reported "took us right, then abruptly left, back right" at CYVR 26R). Fix: the floor is now RELEASED (set to 0, permanently) the moment the live route steers clearly OPPOSITE it — `Math.Sign(headingError) == -Math.Sign(minError) && Math.Abs(headingError) >= FLOOR_OPPOSITE_RELEASE_DEG (10°)`. The opposite-SIGN test (NOT magnitude-vs-floor) is what distinguishes this from the shallow-RET case the floor exists for (EIDW S5, EDDB M3), where the live route runs ~parallel to the runway ON the exit side (same sign as the floor → `routeOpposesFloor` never fires, floor preserved). The 10° margin filters sensor noise so a single jittery frame can't permanently kill a legitimate floor. **Do not gate the release on magnitude-vs-the-floor or restore the unconditional `Math.Max/Min`** — both reintroduce the wrong-side hard pan. There is ONE further sanctioned release, added with the manual-landing work: once the aircraft is laterally CLEAR of the runway pavement (`IsWithinRolloutRunwayLaterally` false — half-width + `RUNWAY_CLEAR_MARGIN_M`), the floor is released unconditionally. This is a POSITION test, not a magnitude one: the distortion the floor exists to bridge (the exit node sitting off to the side of a runway the aircraft is still on) has expired by construction once the pavement is behind, and the CYVR wrong-side case is still caught earlier, on the pavement, by the untouched sign test. Without it the floor kept capping the live route's own steering after the exit — LOWS 15 → E went silent for 380 m at 33 kt with the aircraft on the wrong taxiway. NOTE: the over-eager undershoot retarget that *exposed* this at CYVR (M6→M1 the instant GS dipped below the 50 kt high-speed threshold, while M6 was still comfortably reachable) is a separate, unfixed contributing factor.
 
+  **`TryEarlyExitHandoff` anchors the re-route START on the chosen exit taxiway (2026-07-18).** The early handoff fires while the aircraft is still on the runway *short* of the exit, so re-routing from the live snapped position can grab a NEIGHBOURING exit's node as the nearest. EIDW 28L vacating S6 (reproduced from the user's navdata): at handoff the aircraft was abeam the mouth of **S5** (nearest graph node 26 m away) while committed to **S6**, so `LoadRoute`'s `FindNearestNodeInDirection` snapped onto S5 and A\* routed **S5 → parallel taxiway S → S6** to reach the S6 apron node — a **628 m / 325° hairpin** up to the far apex and back. The apron TARGET node (`ApronNodeId`, ~44 m off the centreline) was CORRECT; only the START snap was wrong. Fix: `TryEarlyExitHandoff` passes `startTaxiwayName: _rolloutExit.TaxiwayName` to `LoadRoute`, which — **only when no `taxiwaySequence` is given** (the new branch is the `else` of the sequence path, so it never fights a clearance) — snaps the start to the nearest node ON that taxiway (`FindNearestNodeOnTaxiway`, `requiredComponentId`-filtered) instead of the nearest node overall. That gives the direct **213 m / 35° route straight up S6**. Still live-position-anchored (it *is* the nearest node on the exit, ~91 m ahead), so the look-ahead tone and the first-segment sanity gate are unaffected; an empty exit name (unnamed exit) → `null` → legacy nearest-node snap. **Only the EARLY handoff is anchored** — the FINAL handoff (`turnBegun`/`exitedLaterally`, line ~485) fires once the aircraft is already ON the exit, so its live snap already lands on the right taxiway; leaving it unchanged keeps the "re-route from live position" invariant intact. `RetargetLandingExit` is likewise unchanged. Needs in-sim re-verification: EIDW 28L → S6 (route now goes straight up S6, log shows `startTwy=S6` and a low `segs=` count, no S5/parallel-S loop); plus a Normal ≥50° exit (verbal-cue path, unaffected) and an End/backtaxi exit (regression).
+
+
+  **The first cleared taxiway's ENTRY node is ranked by GRAPH distance, never Euclidean (`TaxiRouter.FindNearestNodesOnTaxiway`, 2026-08-07).** Same rule `FindNearestNodeOnTaxiwayToTarget` already follows for taxiway EXITS (the KDEN M4 dead-end case) — it just had never been applied to the ENTRY side. Straight-line distance treats a node the aircraft would have to taxi *past* the real junction to reach as equally close, and when it wins by a hair the route enters the cleared taxiway at the wrong end and immediately doubles back. Motivating defect, **EVRA, clearance "taxi to 218 via C then P", 2026-08-07**: taxiway C runs east-west with its junction onto F in the middle and a stub running west to the runway hold. From the aircraft's position the C/F junction was **454.1 m** away in a straight line and C's west end **452.8 m** — 1.3 m closer, so the west end was chosen; the route then ran the pilot 111 m west past the junction to that dead end and 111 m straight back east along C (the live log shows consecutive segment bearings of 275° then 95°). By graph distance the junction wins by the 111 m it actually is nearer, which is the point on C the aircraft genuinely reaches first. Unreachable candidates are kept but ranked behind every reachable one via a **finite** `1e9` offset plus their Euclidean distance — `double.MaxValue + x` is a no-op in floating point, which would tie every unreachable candidate and destroy their ordering. Pinned by `TaxiRouterEntryPointTests`, whose fixture uses the real EVRA coordinates so the 1.3 m near-tie is reproduced exactly rather than approximated.
+
   **Implicit-exit `ExitBearingTrue` shallow-angle override (TaxiGraph.cs).** For airports whose navdata contains no `HS`/`IHS`/`HSND`/`IHSND` markers (every vanilla MSFS 2024 implicit-exit airport — EDDB, LGAV, and most regional fields), `GetLandingExits` falls through to the implicit-exit path. The runway-edge node's only outgoing edge is often a 30-50 m connector stub that runs nearly parallel to the runway before the taxiway curves off, giving a misleading first-edge `ExitBearingTrue` (e.g. EDDB 24L → M3 stub bearing 255.7° / 6.9° off runway, vs. real M3 end-to-end direction ~280° / 31° off). The shallow-angle BFS override block widens the gate from `exitAngle < 5°` to `exitAngle < 20°` to mirror the parallel HS-style override at the next block. **Both override guards (apron forward-direction AND apronAngle > currentAngleFwd) are required** — without the `> currentAngleFwd` guard, an exit whose stub points further off-runway than its eventual apron node would have its bearing *narrowed* by the override, a regression vs. the first-edge value. `ExitAngleDegrees` is intentionally NOT updated here — matches the pre-existing HS-branch pattern; changing the angle would touch `ExitType` classification, the angle-proportional overshoot margin formula at `:1462`, and the `alignedWithExit` heading-delta requirement, each with separate regression risk. EIDW S5 / N4 are unaffected (HS-type, use the parallel branch). EGNX 27/M and other ≥20° normal exits are unaffected (above the gate). LGAV 03R D8/D9 (the airport the post-handoff pastExit guard at `:1448` was added for) is benign — a wider `ExitBearingTrue` makes `alignedWithExit` MORE restrictive, not less, so A/P jitter is even less likely to false-fire alignment than before.
 
   **`exitedLaterally` combined gate (TaxiGuidanceManager.cs).** The primary lateral-exit handoff trigger in `UpdateLandingRollout` is `lateral >= halfWidth + 30 ft AND (distToExitFeet <= 250 OR hdgDeltaAbs >= 8° OR pastExit)`. The bare-lateral version fired too eagerly when the pilot drifted laterally during the rollout silent-tone phase (gs > 50 kt OR dist > 300 ft from exit — the tone is silent here by design to avoid pan-from-crosswind-crab confusion). EDDB 24L → M3 reproduction: 129 ft lateral at distToExit=445 ft / hdgDelta=6.6° triggered handoff BEFORE the 150 ft "turn now" verbal cue, leaving the pilot off the runway with no directional cue. The dist gate catches "close enough that verbal cues have fired or are about to"; the hdgDelta gate (8° = half of turnBegun) catches "pilot has clearly committed to a turn"; the pastExit gate preserves the overshoot-detector path. True shallow RETs (< 8° real exit angle) still trigger via the dist gate as they close to ≤250 ft. **The passive-handoff `exitedLaterallyPH` check in the `_rolloutHandoffActive` block is intentionally NOT gated** — different semantics ("has the pilot committed?" post-check, not a handoff trigger); applying the same gate would delay clearing the overshoot monitor and could cause spurious retarget cascades. Commit b69a03d's pastExit guard handles the analogous A/P-jitter concern for the sibling `alignedWithExitPH` check.
@@ -1469,7 +1759,7 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
 - **TaxiSteeringTone volume refresh every sounding frame.** `SetTone` always calls `_toneGenerator.UpdateVolume(EffectiveVolume())` while sounding, regardless of `_pulseActive`. The previous "only refresh in pulse mode" optimization left the tone stuck at zero volume during a pulse→continuous transition: when the user is stopped-misaligned (pulse fires) and then starts moving, `SetPulse(false)` is called, but if the last pulse cycle had set the volume to 0 (silent half), the next frame in continuous mode skipped UpdateVolume and the tone stayed silent until something else triggered a state change (oversteer / going silent / Pause). Always refreshing the volume on every sounding frame is cheap (one float assign per ~30 Hz tick) and removes the entire class of bug.
 - **Verbal turn direction is computed from aircraft heading, NOT route's static `TurnDirection`.** `ComputeTurnVerbalFromHeading(targetBearing, aircraftHeadingTrue)` derives the spoken "left / slight right / continue" from the angular difference between the aircraft's current true heading and the next segment's bearing — same input the steering tone uses for its pan, so the two always agree. The route's pre-computed `TaxiRouteSegment.TurnDirection` is `nextSeg.bearing - currentSeg.bearing` and assumes the aircraft is exactly on-axis with the current segment. When the aircraft is off-axis (post-pushback rotation, after a wide turn, brief deviation, or starting at the gate before moving) the actual turn it must make to align with the next segment can be the OPPOSITE direction from the route's intent — and the static verbal cue contradicted the (correct) tone. All three spoken sites — advance notice, "now" callout, status query (`GetStatusAnnouncement`) — go through the helper. The `TurnDirection != "straight"` predicates stay on the static field (those just check whether there's *any* turn at the junction; that doesn't depend on aircraft heading).
 - **Parking listing parity with the gate-teleport dialog.** `TaxiAssistForm` (parking destination) builds its dropdown from `IAirportDataProvider.GetParkingSpots(icao)` — the same data source `GateTeleportForm` uses — labelled with `ParkingSpot.ToString()` (e.g. `"P 21 - Ramp GA Large (Jetway)"`). Routing endpoint is the nearest graph node within `MAX_PARKING_TO_GRAPH_M = 100 m`; the parking spot's actual lat/lon is the lineup convergence target, matching `SimConnectManager.TeleportToParkingSpot`. Don't drive the listing off graph parking-tagged nodes — that silently drops parking spots whose lat/lon lacks a nearby graph node (common in third-party scenery whose taxi paths lag the parking layout). **Empty-name gate-type spots render `Gate {n}`, NOT `Spot {n}`** (`ParkingSpot.Describe` → `IsGateType()` covers types 9/10/11/13/14; non-gate empty-name spots still read `Spot {n}`). **Graph-unreachable stands are KEPT, not silently dropped:** a spot with no graph node within `MAX_PARKING_TO_GRAPH_M` is resolved to `nodeId = -1`, listed with a `(no taxi route)` suffix, and `OnCalculateClicked` announces *"No taxi route to X. This stand can't be reached by the taxi network."* and bails instead of routing across non-pavement — so the pilot SEES the stand exists but is never sent onto the grass (anti-grass discoverability). Both added 2026-06-23 (commit `ffb4916f`); the rest of that gate-data-correctness branch is preserved on `gate-data-correctness-salvage`.
-- **Destination runway hold-short — full-length by default, CAT III / ILS hold opt-in (`preferIlsHold`).** `TaxiGuidanceManager.TruncateToHoldShort(route, destinationName, preferIlsHold)` truncates a runway-destination route at the hold-short line and tags it. The index choice is a pure helper — **`Navigation/RunwayHoldShortSelector.Select`** (with `RunwayHoldChoice` and the `SAME_APPROACH_IHS_MAX_M` const), characterization-pinned by `RunwayHoldShortSelectorTests` so the EGKK/OMDB matrix below is CI-enforced. It scans the route backward for the latest `ILSHoldShort` (IHS/IHSND) and latest `HoldShort` (HS/HSND). **DEFAULT (`preferIlsHold == false`): hold at the line CLOSEST to the runway** — `Math.Max(truncateAtIHS, truncateAtHS)`, the full-length line (EGKK A1/M1), matching a normal ATC clearance. **CAT III / LVP (`preferIlsHold == true`): prefer the IHS over the HS ONLY when the two holds are within `SAME_APPROACH_IHS_MAX_M = 150 m` of each other** (the ILS hold genuinely just behind the CAT I hold on the same connector — EGKK A3/C3/M3, measured ~30–40 m behind the full-length line); otherwise it still takes the closest hold. The flag comes from the Taxi planner **"CAT III / low-visibility hold (LVP)"** checkbox (`TaxiAssistForm.chkCatIiiHold`, runway-destinations only), threaded through `LoadRoute(..., preferIlsHold)` and persisted in `_preferIlsHold` so a mid-taxi recalc keeps the same hold preference. **The 150 m same-approach gate is critical in the LVP branch** — an UNCONDITIONAL IHS preference placed the hold a whole taxiway early whenever the cleared route merely *crossed* an ILS-critical-area hold on a transit taxiway before turning onto the final connector (OMDB 30R via N12, fs2024: route runs down taxiway N — which carries IHS nodes ~620 m from N12's hold — then turns onto N12; the N IHS was wrongly picked over N12's real 30R hold). **Do NOT drop the gate, and do NOT make the IHS preference the default again** — the default must stay full-length (user decision 2026-07). Note the AIP hold names (A1/A3/M3) are NOT in the navdata — hold nodes are anonymous `HSND`/`IHSND` markers; MSFSBA names them after the nearest runway centerline ("Hold short of runway 26L"), so the checkbox is a full-length-vs-CAT-III toggle, not a per-named-point picker. **LVP outcome is surfaced in the route summary** (box text + spoken): `RunwayHoldShortSelector.DescribeLvpOutcome` returns "Holding at the CAT three ILS hold." (APPENDED to the summary) when the IHS was honoured, and a "No CAT three ILS hold found …" fallback sentence (PREPENDED, warning-style, so it is heard before the first tactical callout interrupts) when the gate rejected it or the route has no marked holds — a blind pilot has no other way to know which line the route stops at. Wording is speech-first ("CAT three", never the roman numeral, which screen readers mispronounce); an unticked box adds nothing, so the default summary is unchanged. `InsertRunwayCrossingHoldShorts` (below) handles *crossed* runways and is independent (geometry-based), so it won't double-tag.
+- **Destination runway hold-short — full-length by default, CAT III / ILS hold opt-in (`preferIlsHold`).** `TaxiGuidanceManager.TruncateToHoldShort(route, destinationName, preferIlsHold)` truncates a runway-destination route at the hold-short line and tags it. It scans the route backward for the latest `ILSHoldShort` (IHS/IHSND) and latest `HoldShort` (HS/HSND). **DEFAULT (`preferIlsHold == false`): hold at the line CLOSEST to the runway** — `Math.Max(truncateAtIHS, truncateAtHS)`, the full-length line (EGKK A1/M1), matching a normal ATC clearance. **CAT III / LVP (`preferIlsHold == true`): prefer the IHS over the HS ONLY when the two holds are within `SAME_APPROACH_IHS_MAX_M = 150 m` of each other** (the ILS hold genuinely just behind the CAT I hold on the same connector — EGKK A3/C3/M3, measured ~30–40 m behind the full-length line); otherwise it still takes the closest hold. The flag comes from the Taxi planner **"CAT III / low-visibility hold (LVP)"** checkbox (`TaxiAssistForm.chkCatIiiHold`, runway-destinations only), threaded through `LoadRoute(..., preferIlsHold)` and persisted in `_preferIlsHold` so a mid-taxi recalc keeps the same hold preference. **The 150 m same-approach gate is critical in the LVP branch** — an UNCONDITIONAL IHS preference placed the hold a whole taxiway early whenever the cleared route merely *crossed* an ILS-critical-area hold on a transit taxiway before turning onto the final connector (OMDB 30R via N12, fs2024: route runs down taxiway N — which carries IHS nodes ~620 m from N12's hold — then turns onto N12; the N IHS was wrongly picked over N12's real 30R hold). **Do NOT drop the gate, and do NOT make the IHS preference the default again** — the default must stay full-length (user decision 2026-07). Note the AIP hold names (A1/A3/M3) are NOT in the navdata — hold nodes are anonymous `HSND`/`IHSND` markers; MSFSBA names them after the nearest runway centerline ("Hold short of runway 26L"), so the checkbox is a full-length-vs-CAT-III toggle, not a per-named-point picker. `InsertRunwayCrossingHoldShorts` (below) handles *crossed* runways and is independent (geometry-based), so it won't double-tag.
 - **Auto-inserted runway-crossing hold-shorts use EDGE intersection, not point-on-pavement.** `TaxiGuidanceManager.InsertRunwayCrossingHoldShorts(route, destinationName)` runs after `LoadRoute` builds the route, AFTER `TruncateToHoldShort`. For each route segment whose **edge** (FromNode→ToNode) crosses a runway centerline — `TaxiGraph.EdgeCrossesRunwayStatic` (a proper segment-vs-centerline-between-thresholds intersection) via `WhichRunwayCrossedByEdge` — it tags the segment immediately **before** that crossing edge `IsHoldShortPoint = true` with `HoldShortRunway = "runway X"`. Skip the destination runway (already handled by `TruncateToHoldShort`; the prefixed `"Runway 33L"` destinationName is normalized to the bare `"33L"` before comparing) and skip consecutive same-runway tags (`lastTaggedRunway` — a wide runway's entry AND exit edges both cross the centerline). **Do NOT revert to the old "next segment's endpoint lies within half-width of the centerline" test** — a taxiway crosses a runway via an edge that SPANS the pavement, with both flanking nodes sitting OFF the runway, so the point-on-pavement test silently missed every crossing whose nodes were more than ~half-width+5 m out. Motivating defect: KBOS taxi to 33L via K/B/C — taxiway C crosses 04L (nearest C node 35 m from centerline), 04R (26 m → was caught), and 27 (86 m); the old test tagged only 04R and skipped 04L + 27, and `ApplyUserRunwayHoldShorts` (below) falsely reported *"route does not cross 04L after taxiway C"* for the user's explicit pick — even though the runtime incursion guard (`CheckRunwayIncursion`, which keys on graph `HoldShort` node TYPE + `HoldShortName`, a separate working path) correctly called out all three crossings. Pure-geometry coverage in `tools/ProgressiveTaxiProbe`. This implements FAA AIM 4-3-18 / ICAO Doc 4444: explicit hold-short and ATC continue at every runway crossing on the route. Don't disable this — VATSIM controllers expect it, and silently rolling across an active runway is a runway-incursion risk.
 - **Crossings-based taxiway connectivity + full-airport fallback.** `TaxiGraph.GetConnectedTaxiwayNames(name)` BFS counts **named-taxiway crossings** (default `maxCrossings = 2`), not raw graph hops — walking along the seed taxiway and through unnamed connectors is free; only crossing into a different named taxiway consumes the budget. The previous hop-based 4-edge limit silently hid M1 from the M5 dropdown at KSFO (4–6 unnamed connectors physically lie between them) and similar patterns elsewhere. `TaxiAssistForm`'s "Add Taxiway" combo additionally lists every airport taxiway (via `GetAllTaxiwayNames()`) below the connected ones — the heuristic prioritizes the dropdown for the common case while the full list ensures the user can match any ATC-named taxiway even when the heuristic doesn't surface it. The constrained-path router and `FindRunwayBridge` resolve the actual route from any pair of selections. `GetReachableTaxiwayNames(name, maxCrossings)` is public for callers wanting a different budget.
 - **Duplicate taxiways in the entered sequence are intentional.** ATC clearances commonly re-use a taxiway across a runway crossing (e.g., *"via C, hold short 04L, C"* at KBOS). `TaxiAssistForm.OnAddTaxiwayClicked` does not filter the dropdown by already-used taxiways — only the immediately-previous one is hidden, to catch accidental no-op double-picks. The router handles consecutive duplicates as a benign no-op step: `FindBestIntersection` resolves to the current node and the `currentNode == targetNode && !bridgedAcrossRunway` short-circuit at `TaxiRouter.cs` skips the redundant A* pass. The per-row user hold-short is sequence-index-keyed, so a hold-short on the first occurrence still tags the correct segment via `ApplyUserRunwayHoldShorts`. Do NOT add an "already used" filter back to the dropdown — it would break the KBOS-style clearance pattern and any other airport with the same topology. The immediately-previous taxiway is hidden from the dropdown ONLY when the previous slot has no hold-short configured — neither the row's "Hold short" checkbox nor a runway selected in its "Hold short of runway" combo. With a hold-short set, the same-taxiway duplicate is a legitimate "taxi to hold line, resume on far side of runway crossing" clearance (e.g., KBOS *"K, B, N, hold short 15R, N, hold short 22R, N"*) and must remain available. Do NOT restore the unconditional previous-taxiway exclusion — it blocks the very clearance pattern this code was written to handle.
@@ -1480,6 +1770,7 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
 - **Pavement lead-in onto the first cleared taxiway (large gap only).** When a user taxiway sequence is given and the nearest node ON the first cleared taxiway is more than `TaxiLeadIn.TriggerMeters` (75 m) from the aircraft, `LoadRoute` starts the constrained route from the aircraft's nearest *in-component* graph node (`FindNearestNode(..., requiredComponentId: destComponentId)`) instead of pre-snapping onto the taxiway. This lets `TaxiRouter.FindConstrainedPath` build its pavement-following lead-in (the Step-1 `AStarSearch`) onto the taxiway — apron taxilanes — rather than beelining across the apron/grass (CYYZ GB/GC → A: a 297 m beeline + 180° pivot, "in the grass crossing AJ", 2026-06-17). The lead-in is **accepted only** when the router honoured the clearance (`ConstrainedFallbackReason == null`) AND its distance is within `gap × 2.5 + 300 m` (`TaxiLeadIn.IsAcceptable`, a dead-end guard); otherwise the route is rebuilt from the on-taxiway node (today's behaviour) and the summary is prepended with *"Could not compute a path onto taxiway X along the apron; route starts on X."* On success the summary names the lead-in: *"Route to Runway 23 via A, H. First taxi via 4 and AJ to reach A. …"* (`TaxiLeadIn.Clause`). The ≤ 75 m common case (gate on/near its taxiway) is byte-for-byte unchanged, and `TryRecalculateRoute`/unconstrained routes are untouched. Verified in-sim at CYYZ (GB/GC → runway 23 via A, H, 2026-06-17): the route starts at the apron node and the lead-in tracks the AJ taxiway centreline within ~3 m onto A, replacing the earlier ~64 m straight beeline across the grass. Do NOT remove the pre-snap for the common case — it is the LEPA anchoring fix; the lead-in only replaces it when the first taxiway is far.
 - **Taxi-data augmentation (online taxiway NAMES — branch `feat/taxi-data-augmentation`, separate from everything else).** `AugmentingAirportDataProvider` (`Services/TaxiAugment/`) decorates `IAirportDataProvider` BEHIND the interface, so `TaxiGraph.Build` and every consumer (route planning, Progressive Taxi, landing-exit, Where-Am-I, docking) get enriched data transparently — no caller changes. It fetches real-world taxiway names per-airport from **OpenStreetMap (Overpass)** + **X-Plane apt.dat (Gateway)**, geometrically overlays them onto the user's navdata, caches IN-MEMORY per-ICAO (`TaxiDataCache` = `ConcurrentDictionary` + TTL, NO disk → fresh every session), and never blocks `GetTaxiPaths` (returns navdata immediately, fetches in the background, raises `AirportDataUpdated`). **navdata is AUTHORITATIVE**: an existing navdata name is never overwritten (preserves add-on AIP names like OMDB KK/KG); online names only fill UNNAMED segments; online-only geometry is IGNORED (we only attach names to the scenery pavement the pilot actually taxis — never steer on an offset online line). **Works regardless of the user's database / add-ons** (purely additive; sparse navdata gets more, rich navdata stays). **Aliases**: when navdata and online name the SAME pavement differently (scenery "HAWKER" vs ATC "B"), the other name is stored as an alias, surfaced as a SEPARATE labeled dropdown entry ("B (HAWKER)" sits at the "B" position alongside "HAWKER" — not merged), and resolved to the canonical name at route time (`TaxiGraph.ResolveTaxiwayName`, single choke point in `LoadRoute`); names are normalized (`TaxiDataMerger.NormalizeTaxiwayName`: "K 2"="TWY K2"="K2"); a collision guard never remaps a name that is itself a real taxiway. **Freshness**: the active flight's departure + destination are force-fresh (force:true) via the MainForm triggers (nearest-on-ground / `GetDestinationAirport` / geofence ≤50 NM) AND `FlightPlanManager.LoadDeparture/LoadArrival`; geofenced nearby airports use the cache. **Parking/gates (REWORKED 2026-06-23, gate-data-correctness):** gate identity is AUTHORITATIVE from GSX-or-navdata and is NEVER overwritten by online data. The PUBLIC `AugmentParking(icao, spots)` (called for navdata via `GetParkingSpots` AND on the **GSX** list, which bypasses it) attaches online stand names ONLY as searchable `(online)`-tagged **aliases** via the pure, idempotent `GateAliasResolver.ResolveAliases` — an online stand aliases a gate only when their **numbers match AND any letters agree** (so navdata gate 15 never adopts a neighbour's "Gate 11B"; N/S de-ice pads never cross), with a 150 m sanity backstop; only info the identity lacks (concourse letter "A51", MARS suffix "53A") is added — a pure restatement adds nothing. Online **NEVER sets a Name/position and NEVER adds a selectable gate (anti-grass — online data can't move where you taxi)**; `spot.Aliases` is recomputed from scratch each call → idempotent. `StandId` (`Services/StandId.cs`) is the shared label→(letter,number,suffix) parser used by the resolver + `GateSearchFilter`. Empty-name gate-type spots render `Gate {n}` (not `Spot {n}`); a stand with no taxi node within `MAX_PARKING_TO_GRAPH_M` is kept but marked `(no taxi route)` and refused by the Calculate guard (was: silently dropped). **X-Plane apt.dat is the key gate source** (CYYZ "Gate 131", KATL "A12"/"B7"). The OLD nearest-distance gate-NAME fill (which corrupted identity — CYUL gate 15 → 'Gate 11B' from an offset apt.dat ramp) was REMOVED. **Telemetry** (replaces a mass census): each fetch logs a coverage line to `taxi-augment.log`. **Settings**: `UserSettings.TaxiAugmentEnabled` (default on) → `decorator.Enabled`; in-dialog checkbox + ODbL/X-Plane attribution + a "Refresh Taxiway Names" button that announces the names-added count (`GetLastCoverage` → "…: N added"). Internet assumed (MSFS 2024). Pure-logic is probe-tested (`tools/TaxiAugmentProbe`); the core taxi probes (`TaxiGuidanceProbe`/`ProgressiveTaxiProbe`) stay green. **Deep-reviewed (5-pass): no Critical issues; safety invariants (navdata authoritative, online-only geometry ignored, alias never remaps a real name) confirmed.** **Real-time (no manual refresh needed):** `TaxiAssistForm.LoadAirportGraph` AWAITS `PrefetchAsync(icao)` before building the graph (cache hit = instant, so dep/dest are immediate; only a never-fetched airport waits, with a status line), so the taxiway list + gate aliases include augmented names on FIRST open — a graph built on a cache-miss returned navdata-only and never rebuilt for the same airport. `MainForm`'s `AirportDataUpdated` handler calls `TaxiGuidanceManager.OnAirportDataUpdated(icao)`, which drops the cached Where-Am-I graph (`_whereAmICachedGraph`) when it was built pre-augmentation, so Alt+Y picks up fresh names on the next query (a manual Refresh propagates to Where-Am-I too). **Alias dropdown collision skip (OMDB 2026-06):** `TaxiGraph.GetAllTaxiwayNames` NOW implements its long-documented skip — an alias display label (`"Z (K)"`) whose normalized alias form is itself a real taxiway name is NOT surfaced. At rich, junction-dense airports a navdata segment's midpoint geometrically matches a DIFFERENT-named crossing online segment, producing ~hundreds of spurious cross-name aliases (OMDB: navdata `K` "aliased" to J/V1/W/Y/Z…). The `ResolveTaxiwayName` collision guard already routed the bare real name to the real taxiway; the missing dropdown skip meant those mislabeled duplicates still cluttered the list and, if selected, mis-routed. Genuine aliases (a scenery/ATC name NOT present as a navdata taxiway, e.g. "B (HAWKER)") still surface. **Coverage reality (telemetry):** at name-rich navdata airports augmentation adds FEW new NAMES (OMDB: +7 — K12/K21/P2A/P4A/V5/Z8/Z9; LFPG: apt.dat fills 851 unnamed connectors, +osm=0). OSM contributes more where navdata is sparse; apt.dat wins disagreements. Licensing detail for this augmentation feature is covered under "Licensing & data attribution" above.
 - **No-op recalc suppression (taxi guidance, 2026-06).** `TaxiGuidanceManager.TryRecalculateRoute`'s accept block compares the recalculated route's distinct taxiway sequence to the CURRENT remaining sequence; if identical it returns early — current route, the "Route changed. Now via …" callout, the safety-critical countdown-latch resets, and the steering-tone re-slew are all skipped. A sharp turn ONTO a cleared taxiway (cutting the corner) laterally offsets the aircraft from the route's next segment long enough to trip the off-route detector, which then re-plans the IDENTICAL tail — reported live at LFPG as a spurious "Route changed … super sharp right" while turning onto N (route was unchanged: N B BD1 D1). The recalc cooldown is stamped by the caller before the accept block, so the no-op path can't re-fire each frame; a genuine reroute has a different sequence and proceeds as before.
+- **Cold Temperature Altitude Correction (Output Ctrl+Shift+T) — offline calculator, aircraft-agnostic.** `Forms/ColdTemperatureCorrectionForm.cs` re-implements the FlyByWire EFB Performance-page `TemperatureCorrectionWidget` (which is a canvas/SimpleInput page a screen reader can't operate) as a plain accessible dialog. In cold air the pressure altimeter OVER-reads, so published minimum altitudes must be corrected UPWARD to keep obstacle clearance. Inputs: aerodrome field elevation (ft), reported temperature (°C), and a multiline list of published altitudes (one per line). Output: each "Published X ft → corrected Y ft (add Z)" in a read-only results box; a single altitude is also spoken via `AnnounceImmediate`. **Math is the EUROCONTROL Doc-2940 formula transcribed VERBATIM from the FBW source** (`ColdTemperatureCorrectionForm.CorrectedAltitude`, incl. the redundant `- fieldElevation + fieldElevation` term, and round-UP to nearest 10 ft) so the blind pilot gets the IDENTICAL number the sighted EFB gives — warm temps return the published altitude unchanged (never corrected downward). PURE offline arithmetic — no SimVars, no Coherent, no aircraft required, works in planning on the ground on EVERY aircraft. Wired globally as output-mode hotkey **Ctrl+Shift+T** (id 9250, in the offline-actions set; was Alt+T but rebound — Alt+letter global chords get swallowed by the sim/Windows menu handling, Ctrl+Shift is reliable) and listed in all 6 hotkey guides. Cross-checked: −30°C/3000 ft field-0 → +570 ft; +15°C → +0 ft; −40°C/5000 ft → +1210 ft.
 
 ## Related Documentation
 

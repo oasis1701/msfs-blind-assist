@@ -569,16 +569,27 @@ public partial class MainForm
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
-        // AND LandingRollout phases). LandingRollout is critical: BeginLandingRollout
-        // sets state=LandingRollout and UpdateLandingRollout's per-frame logic (auto-
-        // transition to Taxiing on slowdown, distance-based callouts) only runs if
-        // UpdatePosition is fed every frame. Without LandingRollout in this gate, the
-        // touchdown announcement fires once and then the state-machine is silent
-        // until StopGuidance.
+        // LandingRollout AND both backtrack phases). LandingRollout is critical:
+        // BeginLandingRollout sets state=LandingRollout and UpdateLandingRollout's
+        // per-frame logic (auto-transition to Taxiing on slowdown, distance-based
+        // callouts) only runs if UpdatePosition is fed every frame. Without
+        // LandingRollout in this gate, the touchdown announcement fires once and then
+        // the state-machine is silent until StopGuidance.
+        //
+        // EVERY state whose Update* runs per frame must be listed here — this is the
+        // ONLY caller of UpdatePosition. BacktrackingOnRunway (landing-side backtaxi)
+        // and BacktrackDeparture (full-length backtrack departure) each own a per-frame
+        // steering tone, their approach callouts and their handoff out of the state, so
+        // omitting them leaves the pilot on an active runway with no tone, no callouts
+        // and no way out of the state — the frame starvation LogBacktrackFrame exists
+        // to diagnose. A new taxi-guidance state with per-frame logic must be added here
+        // at the same time as its Update* method.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
             (taxiGuidanceManager.State == TaxiGuidanceState.Taxiing ||
              taxiGuidanceManager.State == TaxiGuidanceState.LiningUp ||
-             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout))
+             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackingOnRunway ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackDeparture))
         {
             if (e.PositionData.HasValue)
             {
@@ -1501,9 +1512,18 @@ public partial class MainForm
     /// </summary>
     private void ReadLatestGsxTooltip()
     {
-        if (_gsxService == null || !_gsxService.IsConnected)
+        if (_gsxService == null)
         {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+        if (!_gsxService.IsConnected)
+        {
+            // UnavailableReason names the ACTUAL cause — an older GSX with no
+            // Remote API, a dropped Couatl, or no simulator connection. The old
+            // wording blamed the simulator in all three cases, which sent a
+            // pilot on a recent-enough-GSX hunt in the wrong place entirely.
+            announcer.AnnounceImmediate(_gsxService.UnavailableReason);
             return;
         }
         _gsxService.RefreshTooltip();

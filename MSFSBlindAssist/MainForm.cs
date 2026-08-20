@@ -613,6 +613,36 @@ public partial class MainForm : Form
 
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
+
+        // Name every parking node of the graphs it builds the way the taxi dialog, the
+        // gate-teleport list and gate.select name them, so Where-Am-I cannot say "Gate A 25"
+        // about the stand every other readout calls "Gate B 25" (Services/ParkingSpotSource).
+        // GetNamedSpots, NOT GetSelectableGates: this is navdata's own spot SET with its names
+        // corrected in place, so the same nodes are marked Parking as before and the hold-short
+        // and named-holding-point resolvers see an identical graph.
+        //
+        // The lambda reads `airportDataProvider` and builds its GateDataSource PER CALL rather
+        // than capturing either: the field is reassigned on a database switch (and nulled on
+        // teardown), and a shared GateDataSource instance would be touched from both the UI
+        // thread and the SimConnect position callback that reaches Where-Am-I — its per-ICAO
+        // caches are plain Dictionaries. Affordable because every consumer is a graph build
+        // (once per airport, then cached), never a position update.
+        taxiGuidanceManager.ParkingSpotSupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            return provider == null
+                ? new List<MSFSBlindAssist.Database.Models.ParkingSpot>()
+                : MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, BuildGateDataSource(), icao);
+        };
+
+        // The staleness key for the graphs built from that supplier. Stand names are frozen
+        // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
+        // this airport would otherwise keep navdata's concourse letters for the whole session
+        // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
+        // O(1) by contract (a capability lookup, a dictionary read, a field read), which is why
+        // it is affordable to ask on every Where-Am-I press.
+        taxiGuidanceManager.ParkingSpotVersionSupplier =
+            icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager

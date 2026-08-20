@@ -1,0 +1,1 @@
+ATC often names a painted holding point that exists on no taxiway in the navdata ("Runway 28, hold short A2" at Zurich). Tick "Depart from named holding point" to pick one by name, and the route is taken through that exact line rather than merely aimed at the runway entrance it shares with its neighbours — the Heathrow 27R case where asking for A2 got you held at A3.

@@ -826,9 +826,12 @@ public partial class MainForm
             simConnectManager.ProcessWindowMessage(ref m);
         }
 
-        // Route messages destined for the GSX SimConnect client (distinct
-        // WM_USER id 0x0403). Safe to call unconditionally; it filters on id.
-        _gsxService?.ProcessWindowMessage(ref m);
+        // GSX no longer has a SimConnect client to pump here: the Couatl Remote API
+        // carries menu/tooltip/settings AND (Spec 2) gate selection/list, and the
+        // retained SetGate_* confirmation client that used to need this WndProc route
+        // (WM_USER 0x0403) was deleted along with the menu-walking GsxGateSelector that
+        // was its only consumer — gate.select's own synchronous result payload replaced
+        // the SetGate_* polling entirely.
 
         base.WndProc(ref m);
     }

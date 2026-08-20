@@ -39,13 +39,25 @@ public enum TaxiGuidanceState
     LandingRollout,
     /// <summary>
     /// The pilot reached the runway end without exiting and is backtaxiing
-    /// toward the apron. Steering tone guides on the reciprocal runway heading
-    /// (silent while heading is &gt;90° from backtrack target — turn direction is
-    /// ambiguous for a 180° rotation). Transitions to Taxiing once the aircraft
-    /// is within BACKTRACK_HANDOFF_M of the first taxi-graph connection node,
-    /// or if no connection node was found nearby.
+    /// toward the apron. Steering tone guides on the reciprocal runway heading.
+    /// Transitions to Taxiing once the aircraft is within BACKTRACK_HANDOFF_M of
+    /// the first taxi-graph connection node, or if no connection node was found
+    /// nearby.
     /// </summary>
-    BacktrackingOnRunway
+    BacktrackingOnRunway,
+    /// <summary>
+    /// FULL-LENGTH BACKTRACK DEPARTURE (opt-in via the Taxi planner checkbox).
+    /// The pilot has been cleared onto the runway at an intermediate entrance and
+    /// is backtracking on the reciprocal takeoff heading toward the departure
+    /// threshold. The steering tone keeps them on the centerline (never silent —
+    /// the tone pans to guide the entry turn and the centerline hold). On reaching
+    /// the departure threshold it hands off to <see cref="LiningUp"/> at the
+    /// full-length lineup point, which pans the 180° turnaround and lines up +
+    /// auto-activates Takeoff Assist exactly as a normal full-length departure.
+    /// Entirely separate from <see cref="BacktrackingOnRunway"/> (the landing-side
+    /// backtaxi-to-apron maneuver).
+    /// </summary>
+    BacktrackDeparture
 }
 
 /// <summary>
@@ -123,6 +135,75 @@ public partial class TaxiGuidanceManager : IDisposable
     // a plain lock is fine and keeps the position loop responsive.
     private readonly object _stateLock = new object();
 
+    /// <summary>
+    /// Supplies the parking list every <see cref="TaxiGraph.Build"/> call in this class is fed —
+    /// the ONE place a stand's name is decided app-wide (see <see cref="ParkingSpotSource"/>).
+    /// Wired by <c>MainForm</c> to <see cref="ParkingSpotSource.GetNamedSpots"/>, so Where-Am-I
+    /// calls a stand what the taxi dialog, the gate-teleport list and <c>gate.select</c> call it,
+    /// instead of navdata's BGL parking-name enum (KJFK Terminal 4: "Gate B 25" vs navdata's
+    /// "Gate A 25").
+    ///
+    /// <para>
+    /// <b>It must return navdata's own spot SET, with names corrected in place</b> — same spots,
+    /// same count, same coordinates, same order. Never a different list. <c>TaxiGraph.Build</c>'s
+    /// parking pass writes <c>node.Type = TaxiNodeType.Parking</c> as well as the name, and
+    /// <c>Type</c> is read by <c>NamedHoldingPointResolver</c> (which SKIPS parking nodes when
+    /// snapping a named holding point), <c>HoldShortNodeResolver</c>, and the route truncation in
+    /// <c>TaxiGuidanceManager.Routing</c>. A supplier that returned a different SET would move a
+    /// hold-short and would strip the Where-Am-I label off any stand it omitted. Naming a stand and
+    /// deciding which nodes are parking are different jobs, and only the first may change.
+    /// </para>
+    /// <para>
+    /// <b>Null is the supported default</b>, and it keeps every caller that does not wire it —
+    /// the xUnit suite, anything constructed outside MainForm — byte-identical to the
+    /// pre-seam behaviour: <see cref="ResolveParkingSpots"/> falls straight back to
+    /// <c>dataProvider.GetParkingSpots</c>. Same backward-compatibility shape as
+    /// <see cref="GateDataSource"/>'s own optional constructor parameters.
+    /// </para>
+    /// <para>
+    /// <b>It runs off the UI thread.</b> Where-Am-I and the takeoff-assist runway probe both
+    /// reach their graph builds from inside a <c>RequestAircraftPositionAsync</c> callback, so
+    /// MainForm's wiring must not hand out a <see cref="GateDataSource"/> instance the UI thread
+    /// is also using — its per-ICAO caches are plain Dictionaries. The wiring builds a fresh one
+    /// per call for exactly that reason; that is affordable ONLY because every call site here is
+    /// a graph build (once per airport, then cached), never a position update.
+    /// </para>
+    /// </summary>
+    public Func<string, List<ParkingSpot>>? ParkingSpotSupplier { get; set; }
+
+    /// <summary>
+    /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
+    /// <paramref name="dataProvider"/>'s own when none is wired.
+    ///
+    /// <para>
+    /// The supplier reaches into GSX (a live socket's published JSON, a profile directory, a
+    /// navdata query), so it gets a try/catch the raw provider call never needed: a graph built
+    /// with navdata's names is a slightly worse readout, while no graph at all is a blind pilot
+    /// with no answer to "where am I". An empty list is a legitimate answer (an airport with no
+    /// modelled stands) and is NOT treated as failure — falling back on empty would just re-ask
+    /// the source <see cref="GateDataSource"/> itself already falls through to.
+    /// </para>
+    /// </summary>
+    private List<ParkingSpot> ResolveParkingSpots(IAirportDataProvider dataProvider, string icao)
+    {
+        var supplier = ParkingSpotSupplier;
+        if (supplier != null)
+        {
+            try
+            {
+                var spots = supplier(icao);
+                if (spots != null) return spots;
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("Taxi",
+                    $"parking list: supplier failed for {icao}, falling back to navdata names: {ex.Message}");
+            }
+        }
+
+        return dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+    }
+
     // Retained for recalculation
     private IAirportDataProvider? _dataProvider;
     private int _destinationNodeId;
@@ -140,6 +221,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // gate can legitimately reject the ILS hold, and a blind pilot has no other
     // way to know which line the route stops at.
     private RunwayHoldChoice _lastRunwayHoldChoice = RunwayHoldChoice.None;
+    // Taxi planner "Depart from named holding point" pick for the CURRENT route: the graph
+    // node of the chosen PAINTED hold line (0 = no holding point chosen). Persisted across a
+    // mid-taxi recalc for the same reason as _preferIlsHold — a recalc that dropped the pin
+    // would quietly hand the pilot back the corridor they didn't choose. See
+    // ApplyHoldingPointPin.
+    private int _holdingPointHoldNodeId;
 
     // Route polyline cache for GuidanceGeometry (node k = segment k's FromNode,
     // last entry = final ToNode). Rebuilt lazily whenever _route changes —
@@ -416,6 +503,37 @@ public partial class TaxiGuidanceManager : IDisposable
     // window the 3 s persistence timer accumulated across a slow turn and fired
     // a recalc mid-turn, which re-routed the pilot onto a random shortest path.
     private const double POST_TURN_OFFROUTE_GRACE_SEC = 4.0;
+
+    // Proximity required before AdvanceToNearestSegment may treat "nearest of the next
+    // six segments" as progress. Generous enough to cover a real skip (a 30 kt taxi
+    // covers 15 m per 1 Hz sample, and navdata segments run 5-15 m, so a sparse update
+    // can legitimately jump several), tight enough that an aircraft leaving the route
+    // stops "advancing" along it. See AdvanceToNearestSegment for what happened without it.
+    private const double SEGMENT_ADVANCE_MAX_DIST_M = 100.0;
+
+    // How near the hold-short node the aircraft must be before a skipped hold-short is
+    // ANNOUNCED as reached ("Stop. Hold short of X"). Beyond this the index is clamped to
+    // the hold-short segment instead — never advanced past it, never announced early.
+    private const double HOLD_SHORT_ANNOUNCE_MAX_DIST_M = 40.0;
+
+    // Never-joined escape for the off-route detector. _hasJoinedRoute exists so the taxi
+    // from a gate onto the first cleared taxiway doesn't read as off-route before the
+    // pilot has joined it — but it had no way out: a route the aircraft NEVER joins left
+    // off-route detection disabled for that route's whole life. KBNA 2026-08-08: a gate
+    // route was loaded while the aircraft was still rolling out on 02R having missed its
+    // exit; it then drove 690 m the other way over 50 s at up to 31 kt with the tone
+    // pinned ~170° behind, and neither a recalc nor a single word ever came.
+    // A genuine join moves TOWARD the route, so the escape keys on the range OPENING:
+    // never joined, currently further from the route than the closest approach by this
+    // margin, and beyond the floor.
+    //
+    // Both numbers are deliberately well clear of normal ground manoeuvring. A pushback
+    // runs 60-100 m and an apron repositioning can add more, all of it legitimately
+    // AWAY from a route that starts at the stand — so an 80 m floor would have put a
+    // recalc in the middle of a long pushback. The failures this exists for are not
+    // marginal: KBNA was 690 m. 150 m still fires there within ~15 s at taxi speed.
+    private const double NEVER_JOINED_OPENING_M = 100.0;
+    private const double NEVER_JOINED_FLOOR_M = 150.0;
     // Minimum ground speed before off-route detection can fire. Prevents the
     // spurious "Recalculating…" chain when the aircraft is sitting still at the
     // gate before pushback: the initial position is never exactly on a graph
@@ -471,6 +589,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // Set true the first frame the aircraft is within perp tolerance of the route;
     // reset on LoadRoute / StopGuidance.
     private bool _hasJoinedRoute = false;
+    // Closest the aircraft has come to the route line while it has yet to join it.
+    // Feeds the never-joined escape in the off-route detector; MaxValue = no sample yet.
+    private double _minPerpWhileUnjoinedM = double.MaxValue;
     // Timestamp of the last segment advance (AdvanceSegment or
     // AdvanceToNearestSegment). Used with POST_TURN_OFFROUTE_GRACE_SEC to
     // suppress off-route detection briefly after we cross a turn node.
@@ -596,6 +717,16 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double LINEUP_PULSE_MIN_CROSS_FEET = 10.0;
     private bool _isRunwayLineup = false;  // true = runway (use centerline), false = gate (heading only)
     private bool _hasLineupTarget = false; // explicit flag — safer than (_lineupTargetLat != 0)
+
+    // FULL-LENGTH BACKTRACK DEPARTURE (opt-in, Taxi planner checkbox). When true,
+    // the route ends at an intermediate runway entrance (_destinationNodeId) and
+    // the lineup target (_lineupTargetLat/Lon/_lineupHeadingTrue) is the FULL-LENGTH
+    // departure threshold. After the hold-short Continue, guidance enters
+    // BacktrackDeparture and steers the reciprocal-heading backtrack to the
+    // threshold, then hands to LiningUp for the turnaround. Set in LoadRoute,
+    // reset in StopGuidance; persists across auto-recalcs (like _preferIlsHold).
+    private bool _backtrackDeparture = false;
+    private bool _backtrackDepApproachAnnounced = false; // "approaching runway end" one-shot
     // Non-null while a Progressive Taxi leg is active. Drives the terminal
     // "progressive hold" end-state + announcement and suppresses the auto
     // hold-short on a cleared crossing. Cleared on every LoadRoute (set fresh
@@ -859,6 +990,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double BACKTRACK_TAXI_ANNOUNCE_M = 200.0;
     private const double BACKTRACK_HANDOFF_M        = 25.0;
 
+    // Full-length backtrack DEPARTURE thresholds (distance to the departure
+    // threshold / full-length lineup point).
+    // APPROACH: one-shot "approaching runway end, prepare to turn around" callout.
+    // HANDOFF:  switch from the reciprocal-heading backtrack steer to LiningUp,
+    //           which then pans the 180° turnaround and lines up full length.
+    private const double BACKTRACK_DEP_APPROACH_M = 150.0;
+    private const double BACKTRACK_DEP_HANDOFF_M  = 40.0;
+
     // Lineup thresholds — runway needs degree-level precision because takeoff roll
     // amplifies any heading error; gate is more forgiving since there's no roll.
     private const double LINEUP_HEADING_TOLERANCE_DEG = 5.0;             // gate default
@@ -931,9 +1070,55 @@ public partial class TaxiGuidanceManager : IDisposable
     public int CurrentSegmentIndex => _currentSegmentIndex;
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
-    // the graph on every hotkey press. Keyed by ICAO; invalidated on aircraft/airport change.
+    // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
+    // invalidated on aircraft/airport change.
+    //
+    // The token half exists because stand names are frozen into the graph's nodes at build
+    // time. Keyed on ICAO alone, a Where-Am-I pressed at spawn or on descent — before GSX
+    // published handlerData — cached a graph carrying navdata's BGL parking-enum letters, and
+    // nothing ever invalidated it: OnAirportDataUpdated fires only for the online taxiway-name
+    // fetch, and ClearWhereAmICache has no production caller. Once GSX published, the taxi
+    // dialog and the TCAS "at Gate …" label both moved to GSX's letter while Where-Am-I kept
+    // saying "Gate A 25" about the stand everything else called "Gate B 25" — the
+    // one-stand-two-names defect Services/ParkingSpotSource exists to remove. Its two sibling
+    // caches (GateResolver._parkingCache, TaxiAssistForm._cachedGateSpots) were given this
+    // token; this one was missed.
     private TaxiGraph? _whereAmICachedGraph;
     private string _whereAmICachedIcao = "";
+    private string _whereAmICachedToken = "";
+
+    /// <summary>
+    /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
+    /// at the production call site, wired by <c>MainForm</c> beside
+    /// <see cref="ParkingSpotSupplier"/>. Must be O(1) and must never throw; a failure degrades
+    /// to "none".
+    ///
+    /// <para>
+    /// Null is the supported default and keeps every caller that does not wire it — the xUnit
+    /// suite, anything built outside MainForm — byte-identical to the pre-token behaviour: the
+    /// token is then the constant "none", can never differ, and the cache falls back to its
+    /// original ICAO-only invalidation. Same backward-compatibility shape as
+    /// <see cref="ParkingSpotSupplier"/> itself.
+    /// </para>
+    /// </summary>
+    public Func<string, string>? ParkingSpotVersionSupplier { get; set; }
+
+    /// <summary>
+    /// The gate-list source token for <paramref name="icao"/>, or "none" when no supplier is
+    /// wired. Never throws — a supplier failure degrades to "none", which simply means the
+    /// cache keeps its pre-token ICAO-only behaviour rather than losing the graph.
+    /// </summary>
+    private string ResolveParkingSpotVersion(string icao)
+    {
+        var supplier = ParkingSpotVersionSupplier;
+        if (supplier == null) return "none";
+        try { return supplier(icao) ?? "none"; }
+        catch (Exception ex)
+        {
+            Log.Debug("Taxi", $"parking list: version read failed for {icao}: {ex.Message}");
+            return "none";
+        }
+    }
 
     /// <summary>
     /// Describes the aircraft's current location for the "Where Am I" hotkey.
@@ -962,11 +1147,17 @@ public partial class TaxiGuidanceManager : IDisposable
         // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
         lock (_stateLock)
         {
+            // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
+            // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
+            // survives a reconnect flap. Same treatment the two sibling caches give this token.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
@@ -979,12 +1170,17 @@ public partial class TaxiGuidanceManager : IDisposable
                     if (paths == null || paths.Count == 0)
                         return $"No taxi data available for {icao}.";
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    // Runways let the builder repair laterally-bogus start rows before
+                    // they reach the centerlines this very call is about to query
+                    // (TaxiGraph.SnapStartToRunwayCenterline).
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                            dataProvider.GetRunways(icao));
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {
@@ -1014,6 +1210,7 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
+            _whereAmICachedToken = "";
         }
     }
 
@@ -1034,6 +1231,7 @@ public partial class TaxiGuidanceManager : IDisposable
             {
                 _whereAmICachedGraph = null;
                 _whereAmICachedIcao = "";
+                _whereAmICachedToken = "";
             }
         }
     }
@@ -1121,11 +1319,15 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             TaxiGraph? graph = null;
 
+            // Same cache, same staleness key — see the _whereAmICachedToken field comment.
+            string token = ResolveParkingSpotVersion(icao);
+
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
                 graph = _graph;
             else if (_whereAmICachedGraph != null &&
-                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
+                     string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) &&
+                     !GateDataSource.ShouldRebuildGateList(_whereAmICachedToken, token))
                 graph = _whereAmICachedGraph;
 
             if (graph == null)
@@ -1135,16 +1337,21 @@ public partial class TaxiGuidanceManager : IDisposable
                     var paths = dataProvider.GetTaxiPaths(icao) ?? new List<TaxiPath>();
                     if (paths.Count == 0) return false;
 
-                    var parking = dataProvider.GetParkingSpots(icao) ?? new List<ParkingSpot>();
+                    var parking = ResolveParkingSpots(dataProvider, icao);
                     var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts);
+                    // Runways let the builder repair laterally-bogus start rows before
+                    // they reach the centerlines this very call is about to query
+                    // (TaxiGraph.SnapStartToRunwayCenterline).
+                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                            dataProvider.GetRunways(icao));
                     _whereAmICachedGraph = graph;
                     _whereAmICachedIcao = icao;
+                    _whereAmICachedToken = token;
                 }
                 catch (Exception ex)
                 {
-                    Log.Debug("Taxi", 
+                    Log.Debug("Taxi",
                         $"TryDetectRunwayUnderAircraft graph build failed for {icao}: {ex.Message}");
                     return false;
                 }
@@ -1383,6 +1590,14 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_state == TaxiGuidanceState.BacktrackingOnRunway)
         {
             UpdateBacktracking(lat, lon, headingTrue, groundSpeedKts);
+            return;
+        }
+
+        // Full-length backtrack DEPARTURE: reciprocal-heading centerline steer to
+        // the departure threshold, then hand to LiningUp for the turnaround.
+        if (_state == TaxiGuidanceState.BacktrackDeparture)
+        {
+            UpdateBacktrackDeparture(lat, lon, headingTrue);
             return;
         }
 
@@ -1641,14 +1856,23 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             bool arrived = distToTarget < arrivalRadius;
 
-            // Past-node backstop for plain taxiway-endpoint destinations
-            // (progressive-taxi "end of taxiway X"): no lineup target, no parking
-            // countdown, no docking — so a roll-through at taxi speed can miss the
-            // tight 6 m radius and the tone then chases the now-behind node. Scoped
-            // to !_hasLineupTarget && !_isRunwayLineup so gate parking countdown and
-            // runway lineup are untouched; landing-exit routes are already handled
-            // (and returned) by the branch above. Mirrors that along-track backstop.
-            if (!arrived && !_hasLineupTarget && !_isRunwayLineup)
+            // Past-node backstop for a destination the aircraft can roll THROUGH: a
+            // plain taxiway endpoint (progressive-taxi "end of taxiway X") or a gate.
+            // Both carry a tight ~6 m arrival radius, so a roll-through at taxi speed
+            // can miss the circle entirely and the tone then chases the now-behind node
+            // — the LPPT 02 → U5 failure that the landing-exit captures were widened
+            // for, and which a gate could still hit: its ONLY capture is that 6 m
+            // radius (a LOWS park came within 0.3 m, but nothing guarantees it), and
+            // missing it costs the "Align with gate" instruction as well as the tone.
+            //
+            // The countdown is not lost by including gates: CheckParkingCountdown gets
+            // its final call in the arrived branch below, and by the time the node is
+            // ASTERN the 50/20/10 ft cadence has nothing left to say anyway.
+            //
+            // Runway lineup stays excluded — LiningUp owns that approach and has its own
+            // unreachable-route warning. Landing-exit routes are handled (and returned)
+            // by the branch above.
+            if (!arrived && !_isRunwayLineup)
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
                     out double alongRemEndM, out double crossEndM);
@@ -2019,7 +2243,23 @@ public partial class TaxiGuidanceManager : IDisposable
         // isn't trimmed before the pilot joins it.
         if (perp <= perpTolerance) _hasJoinedRoute = true;
 
-        bool offRouteNow = _hasJoinedRoute && !nearTurn && (perp > perpTolerance || farBehindStart || goingBackward);
+        // Never-joined escape (see NEVER_JOINED_OPENING_M). Track the closest the
+        // aircraft has come to the route while it has yet to join; once it is clearly
+        // opening the range on that, treat it as off-route even though it never joined.
+        // A pilot taxiing off a stand toward the first cleared taxiway is CLOSING, so
+        // this cannot fire on the case _hasJoinedRoute was written to protect.
+        if (!_hasJoinedRoute)
+        {
+            if (perp < _minPerpWhileUnjoinedM) _minPerpWhileUnjoinedM = perp;
+        }
+        bool leavingWithoutJoining =
+            !_hasJoinedRoute
+            && _minPerpWhileUnjoinedM < double.MaxValue
+            && perp > _minPerpWhileUnjoinedM + NEVER_JOINED_OPENING_M
+            && perp > NEVER_JOINED_FLOOR_M;
+
+        bool offRouteNow = (_hasJoinedRoute || leavingWithoutJoining) && !nearTurn
+                           && (perp > perpTolerance || farBehindStart || goingBackward);
 
         // Persistence: off-route must be sustained for N seconds AND the aircraft
         // must actually be moving. This kills two bugs:
@@ -2408,6 +2648,31 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_holdShortAtDestination)
         {
             _holdShortAtDestination = false;
+
+            // Full-length backtrack departure: instead of lining up here (at the
+            // intermediate entrance), enter the backtrack phase — steer the
+            // reciprocal-heading run to the departure threshold, then LiningUp
+            // takes the turnaround. The lineup target is already the FULL-LENGTH
+            // threshold (set in LoadRoute), so nothing to re-anchor.
+            if (_backtrackDeparture)
+            {
+                SetState(TaxiGuidanceState.BacktrackDeparture);
+                _backtrackDepApproachAnnounced = false;
+                _steeringTone.Resume();
+                // Clean smoother — the taxi-phase turn-into-the-runway residual
+                // must not leak into the backtrack tone (same reason as lineup).
+                _smoothedHeadingError = 0.0;
+                _headingErrorInitialized = false;
+
+                double reciprocalHdgMag = (_lineupHeadingMag + 180.0) % 360.0;
+                int backHdg = (int)Math.Round(reciprocalHdgMag);
+                int toHdg   = (int)Math.Round(_lineupHeadingMag);
+                AnnounceInstruction(
+                    $"Entering {_destinationName}. Backtrack to full length, heading {backHdg}, " +
+                    $"then turn around to heading {toHdg}.");
+                return;
+            }
+
             SetState(TaxiGuidanceState.LiningUp);
             _lineupAnnouncedAligned = false;
             _steeringTone.Resume();
@@ -2502,7 +2767,11 @@ public partial class TaxiGuidanceManager : IDisposable
             SetState(TaxiGuidanceState.HoldShort);
 
             string rwy = _destinationName;
-            AnnounceInstruction($"Stop. Hold short of {rwy}. Press continue when cleared.");
+            // Full-length backtrack departure: the pilot will enter here and
+            // backtrack, so make the Continue prompt say so explicitly.
+            AnnounceInstruction(_backtrackDeparture
+                ? $"Stop. Hold short of {rwy}. Press continue when cleared to enter and backtrack."
+                : $"Stop. Hold short of {rwy}. Press continue when cleared.");
             return;
         }
 
@@ -2642,6 +2911,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
         _hasJoinedRoute = false;
+        _minPerpWhileUnjoinedM = double.MaxValue;
         _lastSegmentAdvanceTime = DateTime.MinValue;
         _holdShortAtDestination = false;
         _recentCrossingAnnouncements.Clear();
@@ -2670,6 +2940,8 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd100Announced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
+        _backtrackDeparture = false;
+        _backtrackDepApproachAnnounced = false;
         _postHighSpeedExitMinBearing = 0.0;
         SetState(TaxiGuidanceState.Inactive);
         } // end lock(_stateLock)

@@ -205,7 +205,8 @@ public partial class FlyByWireA380Definition
         p["Recorder and Misc"] = new List<string>
         {
             "A32NX_AVIONICS_COMPLT_ON",
-            "A380X_OVHD_STORM_LT",   // cockpit door video moved to the unified p["Cockpit"]
+            // (Storm light moved to p["Interior Lighting"], next to the flood/ambient
+            // dimmers it overrides. Cockpit door video moved to the unified p["Cockpit"].)
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             // ENGMANSTARTALTN moved to the "Engine FADEC and Manual Start" overhead panel.
             "A32NX_ENTERTAINMENT_CWS_OFF",
@@ -235,6 +236,10 @@ public partial class FlyByWireA380Definition
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
+            // Cockpit dimmers (FBW #10813). The storm light forces both to full, so it
+            // sits alongside them here rather than staying buried in "Recorder and Misc".
+            "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB", "A380X_PED_LIGHTING_AMBIENT_LT_KNOB",
+            "A380X_OVHD_STORM_LT",
             "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE",
             // Passenger-cabin lighting (moved here from the flyPad Quick Controls, which
             // can't be set through the injected agent — see CLAUDE.md flyPad note).

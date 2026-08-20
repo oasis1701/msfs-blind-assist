@@ -1,0 +1,1 @@
+Joining your first cleared taxiway no longer sends you the long way round. The entry point is chosen by how far you actually have to taxi through it, not straight-line distance — which at Riga turned a correct clearance into a 222-metre out-and-back, and at Salzburg opened the route with a hairpin into a dead-end stub.

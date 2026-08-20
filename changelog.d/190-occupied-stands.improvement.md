@@ -1,0 +1,1 @@
+Stands with an aircraft already parked on them are left out of the destination list, with the status line saying how many were hidden. Untick "Hide occupied stands" to get them back — and an arrival gate assigned to you by SayIntentions is always offered, occupied or not.

@@ -1,0 +1,605 @@
+using MSFSBlindAssist.Services.Gsx.Remote;
+
+namespace MSFSBlindAssist.Tests;
+
+public class GsxServiceAnnouncerTests
+{
+    private static GsxServiceState Svc(string id, string state, int? paxDone = null, int? paxTotal = null,
+                                       string display = "", string? busPhase = null, int? bagsPercent = null) =>
+        new()
+        {
+            Id = id, State = state, DisplayName = display == "" ? id : display,
+            PaxDone = paxDone, PaxTotal = paxTotal, BusPhase = busPhase, BagsPercent = bagsPercent,
+            StateText = $"{id} is {state}",
+        };
+
+    private static GsxServiceState Boarding(string statusText, int? paxDone = null) =>
+        new()
+        {
+            Id = "Boarding", State = "performing", DisplayName = "Board",
+            StateText = "Boarding service is being performed",
+            StatusText = statusText, PaxDone = paxDone, PaxTotal = paxDone is null ? null : 93,
+        };
+
+    // ── statusText crew narration ───────────────────────────────────────────
+    // Wiring-level cover for GsxStatusNarration. The pure rules are pinned in
+    // GsxStatusNarrationTests; what matters here is that the phrase actually leaves Update,
+    // survives baselining, and is not starved by the one-phrase-per-tick else-chain.
+
+    [Fact]
+    public void Crew_narration_reaches_the_caller()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader approaching") });
+
+        var said = a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+    }
+
+    [Fact]
+    public void Crew_narration_is_not_starved_by_a_pax_milestone_on_the_same_tick()
+    {
+        // The failure this guards: hanging narration off the else-chain would let the pax
+        // phrase win and silently drop the loader, which is the loss the feature exists to end.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader approaching", paxDone: 10) });
+
+        var said = a.Update(new[] { Boarding("front loader raising belt", paxDone: 20) });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+        Assert.Contains(said, p => p.Contains("20"));
+    }
+
+    [Fact]
+    public void An_unchanged_status_block_stays_quiet()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader raising belt") });
+        a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Empty(a.Update(new[] { Boarding("front loader raising belt") }));
+    }
+
+    [Fact]
+    public void A_ticking_ETA_inside_the_status_block_stays_quiet()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front train on the way, ETA 33 secs") });
+        a.Update(new[] { Boarding("front train on the way, ETA 32 secs") });
+
+        Assert.Empty(a.Update(new[] { Boarding("front train on the way, ETA 31 secs") }));
+    }
+
+    [Fact]
+    public void The_first_update_never_narrates_the_crew()
+    {
+        // Baseline-first, like every other announcer here: joining a session mid-boarding
+        // must not read the whole ramp out at once.
+        var a = new GsxServiceAnnouncer();
+
+        Assert.Empty(a.Update(new[] { Boarding("front loader raising belt\nrear stairs in position") }));
+    }
+
+    [Fact]
+    public void A_new_run_narrates_from_the_top()
+    {
+        // _spoken is dropped on a state change, so flight 2's boarding replays the setup
+        // rather than being silenced by flight 1's identical lines.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Boarding("front loader raising belt") });
+        a.Update(new[] { Boarding("front loader raising belt") });
+
+        a.Update(new[] { new GsxServiceState { Id = "Boarding", State = "completed", DisplayName = "Board" } });
+        var said = a.Update(new[] { Boarding("front loader raising belt") });
+
+        Assert.Contains(said, p => p.Contains("front loader raising belt"));
+    }
+
+    [Fact]
+    public void First_update_is_silent_baseline()
+    {
+        var a = new GsxServiceAnnouncer();
+        var said = a.Update(new[] { Svc("Boarding", "available") });
+        Assert.Empty(said);
+    }
+
+    [Fact]
+    public void State_transition_announces_once()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "available") });
+        var said = a.Update(new[] { Svc("Boarding", "performing") });
+        Assert.Single(said);
+        Assert.Contains("Board", said[0], StringComparison.OrdinalIgnoreCase);
+
+        // same state again -> silence
+        Assert.Empty(a.Update(new[] { Svc("Boarding", "performing") }));
+    }
+
+    [Fact]
+    public void Repeated_identical_progress_is_suppressed()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", 10, 100) });
+        var first = a.Update(new[] { Svc("Boarding", "performing", 20, 100) });
+        Assert.Single(first);
+
+        var repeat = a.Update(new[] { Svc("Boarding", "performing", 20, 100) });
+        Assert.Empty(repeat);
+    }
+
+    [Fact]
+    public void Completion_announces()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Refueling", "performing") });
+        var said = a.Update(new[] { Svc("Refueling", "completed") });
+        Assert.Single(said);
+        Assert.Contains("complete", said[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Bus_phase_change_announces()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Deboarding", "performing", busPhase: "approaching") });
+        var said = a.Update(new[] { Svc("Deboarding", "performing", busPhase: "in position") });
+        Assert.Single(said);
+        Assert.Contains("in position", said[0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_bus_eta_countdown_is_spoken_once_not_every_second()
+    {
+        // LIVE report (2026-08-15): busPhase carries "on the way, ETA 15 secs" and the seconds
+        // count down once a second; each new value used to fire a fresh announcement.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });                               // baseline, no bus yet
+        var first = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 15 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 15 secs.", Assert.Single(first));
+
+        for (int eta = 14; eta >= 1; eta--)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", busPhase: $"on the way, ETA {eta} secs") }));
+
+        // …and the real phase change still speaks.
+        var arrived = a.Update(new[] { Svc("Boarding", "performing", busPhase: "in position") });
+        Assert.Equal("Boarding bus in position.", Assert.Single(arrived));
+    }
+
+    [Fact]
+    public void A_second_bus_run_after_a_gap_is_announced_even_when_only_its_digits_differ()
+    {
+        // The phase slot going blank must FORGET what was last spoken. Run 1 ending on
+        // "on the way, ETA 12 secs" and run 2 opening with "on the way, ETA 55 secs" differ only
+        // in a standalone digit run, so with the pre-gap text still held the gate read run 2's
+        // ONSET as a countdown tick and hushed it. Nothing else rescued it: _spoken.Remove fires
+        // only on a STATE change, and two bus runs inside one performing state never cross one.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });                                 // baseline
+
+        var run1 = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 12 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 12 secs.", Assert.Single(run1));
+
+        // The bus finishes; GSX stops publishing detail.busPhase for a few ticks. State does
+        // NOT change -- the service is still performing throughout.
+        for (int i = 0; i < 3; i++)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing") }));
+
+        var run2 = a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 55 secs") });
+        Assert.Equal("Boarding bus on the way, ETA 55 secs.", Assert.Single(run2));
+    }
+
+    [Fact]
+    public void The_countdown_gate_still_holds_within_one_uninterrupted_bus_run()
+    {
+        // The complement of the test above: clearing on a blank must not weaken the gate while
+        // the phase is continuously published, or the ETA spam it exists to stop comes back.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing") });
+        a.Update(new[] { Svc("Boarding", "performing", busPhase: "on the way, ETA 15 secs") });
+
+        for (int eta = 14; eta >= 1; eta--)
+            Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", busPhase: $"on the way, ETA {eta} secs") }));
+    }
+
+    [Fact]
+    public void Passenger_milestones_still_announce_while_the_bus_eta_ticks()
+    {
+        // The countdown gate is applied to the BUS PHASE only; once the phase has been spoken,
+        // a pax milestone landing on the same tick as an ETA tick must still be spoken (the
+        // quantity is the point there).
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", paxDone: 0, paxTotal: 155, busPhase: "on the way, ETA 15 secs") });   // baseline
+        // First real tick: the bus phase is spoken (first appearance), pax at 2 (no milestone).
+        Assert.Equal("Boarding bus on the way, ETA 14 secs.",
+            Assert.Single(a.Update(new[] { Svc("Boarding", "performing", paxDone: 2, paxTotal: 155, busPhase: "on the way, ETA 14 secs") })));
+        // Next tick: ETA 14 -> 13 is digit-only (suppressed) while pax crosses 10 (a milestone).
+        var said = a.Update(new[] { Svc("Boarding", "performing", paxDone: 10, paxTotal: 155, busPhase: "on the way, ETA 13 secs") });
+        Assert.Equal("pax 10 of 155.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Reset_re_baselines_so_next_update_is_silent()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "available") });
+        a.Reset();
+        Assert.Empty(a.Update(new[] { Svc("Boarding", "performing") }));
+    }
+
+    [Fact]
+    public void Bags_change_alone_announced_when_pax_present()
+    {
+        // Regression: service carries both pax and bags data; when only bags changes,
+        // must announce bags (not the stale pax phrase)
+        var a = new GsxServiceAnnouncer();
+        // Baseline: Deboarding with pax done=150/186 and bags=40%
+        a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 40) });
+
+        // Update: pax unchanged, bags rise to 70%
+        var said = a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 70) });
+        Assert.Single(said);
+        // Must mention bags, not passengers
+        Assert.Contains("bags", said[0], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("passenger", said[0], StringComparison.OrdinalIgnoreCase);
+
+        // Same bags value again -> silence (no repeat announcement)
+        Assert.Empty(a.Update(new[] { Svc("Deboarding", "performing", 150, 186, bagsPercent: 70) }));
+    }
+
+    // ── Progress throttle ────────────────────────────────────────────────────
+    // GSX patches /services at ~1 Hz, so an unthrottled announcer speaks once
+    // PER PASSENGER. The announcements are queued and never interrupt, so they
+    // accumulate: a 186-passenger deboarding buries the pilot's only output
+    // channel for minutes with a backlog that grows the whole time.
+
+    /// <summary>Feeds one passenger per tick and returns every phrase spoken.</summary>
+    private static List<string> DeboardAll(int total, int? bagsPercent = null)
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Deboarding", "performing", 0, total, bagsPercent: bagsPercent) });
+
+        var said = new List<string>();
+        for (int done = 1; done <= total; done++)
+            said.AddRange(a.Update(new[] { Svc("Deboarding", "performing", done, total, bagsPercent: bagsPercent) }));
+        return said;
+    }
+
+    [Fact]
+    public void A_186_passenger_deboarding_does_not_speak_186_times()
+    {
+        var said = DeboardAll(186);
+
+        // 1, then every tenth up to 180 — 19 phrases, not 186.
+        Assert.Equal(19, said.Count);
+        Assert.All(said, p => Assert.Contains("pax ", p, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Passenger_cadence_is_one_then_every_tenth()
+    {
+        var said = DeboardAll(35);
+
+        Assert.Equal(new[]
+        {
+            "pax 1 of 35.",
+            "pax 10 of 35.",
+            "pax 20 of 35.",
+            "pax 30 of 35.",
+        }, said);
+    }
+
+    [Fact]
+    public void Passenger_zero_marks_the_start_when_it_is_the_first_count_seen()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Deboarding", "performing") });          // baseline, no pax yet
+        var said = a.Update(new[] { Svc("Deboarding", "performing", 0, 186) });
+
+        Assert.Equal("pax 0 of 186.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void A_sample_that_skips_the_round_number_still_announces()
+    {
+        // GSX's ~1 Hz sampling routinely jumps a decade boundary (48 -> 53).
+        // Requiring an exact multiple on every announce would silence whole
+        // boardings at speed, so the gate compares BUCKETS once something has
+        // been said.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", 39, 180) });          // baseline
+        Assert.Single(a.Update(new[] { Svc("Boarding", "performing", 40, 180) }));
+        Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", 48, 180) }));   // same bucket
+
+        var said = a.Update(new[] { Svc("Boarding", "performing", 53, 180) });
+        Assert.Equal("pax 53 of 180.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Joining_mid_decade_stays_quiet_until_the_next_milestone()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", 43, 180) });    // baseline
+        Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", 44, 180) }));
+        Assert.Empty(a.Update(new[] { Svc("Boarding", "performing", 49, 180) }));
+        Assert.Single(a.Update(new[] { Svc("Boarding", "performing", 50, 180) }));
+    }
+
+    [Fact]
+    public void A_revised_passenger_total_announces_even_mid_decade()
+    {
+        // "150 of 190" and "150 of 186" are different facts to a blind pilot,
+        // and the count alone would never open the milestone gate. The outer
+        // gate used not to look at PaxTotal at all.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", 153, 190) });
+        var said = a.Update(new[] { Svc("Boarding", "performing", 153, 186) });
+
+        Assert.Equal("pax 153 of 186.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Bags_are_throttled_to_ten_percent_steps()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", bagsPercent: 0) });
+
+        var said = new List<string>();
+        for (int pct = 1; pct <= 100; pct++)
+            said.AddRange(a.Update(new[] { Svc("Boarding", "performing", bagsPercent: pct) }));
+
+        // 10, 20, … 100 — ten phrases out of a hundred ticks, and 100 % is
+        // always among them.
+        Assert.Equal(10, said.Count);
+        Assert.Equal("bags 10 percent.", said[0]);
+        Assert.Equal("bags 100 percent.", said[^1]);
+    }
+
+    [Fact]
+    public void Pax_and_bags_moving_together_stay_bounded()
+    {
+        // The realistic deboarding shape: both counters tick every second.
+        var said = DeboardAll(100, bagsPercent: 50);
+        Assert.True(said.Count <= 12, $"expected a handful of phrases, got {said.Count}");
+    }
+
+    [Fact]
+    public void A_restarted_service_replays_its_milestones_from_zero()
+    {
+        // Turnaround: deboarding finishes, boarding of the same row starts over.
+        // The previous run's high-water mark must not silence the new one.
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { Svc("Boarding", "performing", 90, 100) });
+        Assert.Single(a.Update(new[] { Svc("Boarding", "performing", 100, 100) }));
+        Assert.Single(a.Update(new[] { Svc("Boarding", "completed", 100, 100) }));
+        Assert.Single(a.Update(new[] { Svc("Boarding", "performing", 0, 120) }));   // state change
+        Assert.Single(a.Update(new[] { Svc("Boarding", "performing", 10, 120) }));
+    }
+
+    // ── The pure gates ───────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(1, 1)]
+    [InlineData(9, 1)]
+    [InlineData(10, 2)]
+    [InlineData(19, 2)]
+    [InlineData(20, 3)]
+    [InlineData(180, 19)]
+    // No upper cap: 110/120/130 keep announcing rather than collapsing into a ceiling.
+    [InlineData(1000, 101)]
+    public void Passenger_milestone_buckets(int done, int expected)
+        => Assert.Equal(expected, GsxServiceAnnouncer.PassengerMilestone(done));
+
+    [Theory]
+    [InlineData(0, true)]     // service started, nobody off/on yet
+    [InlineData(1, true)]     // it has actually begun
+    [InlineData(7, false)]    // mid-decade first sight stays quiet
+    [InlineData(20, true)]
+    public void First_sight_of_a_count_announces_only_on_a_boundary(int done, bool expected)
+        => Assert.Equal(expected, GsxServiceAnnouncer.ShouldAnnouncePassengers(done, null));
+
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(37, false)]
+    [InlineData(40, true)]
+    [InlineData(100, true)]
+    public void First_sight_of_a_bag_percentage_announces_only_on_a_step(int percent, bool expected)
+        => Assert.Equal(expected, GsxServiceAnnouncer.ShouldAnnounceBags(percent, null));
+
+    [Theory]
+    [InlineData(45, 4, false)]   // still inside the bucket already spoken
+    [InlineData(52, 4, true)]    // crossed into the next one
+    [InlineData(100, 9, true)]   // completion always lands in its own bucket
+    [InlineData(100, 10, false)] // …and is never repeated
+    public void A_later_bag_percentage_announces_on_a_bucket_change(int percent, int lastSpoken, bool expected)
+        => Assert.Equal(expected, GsxServiceAnnouncer.ShouldAnnounceBags(percent, lastSpoken));
+
+    // ── Operator attribution (restored — the pre-Remote-API transport spoke it) ──────────
+
+    private static GsxServiceState WithOperator(string id, string state, string? op) =>
+        new() { Id = id, DisplayName = id, State = state, Operator = op, StateText = $"{id} is {state}" };
+
+    [Fact]
+    public void A_service_returning_to_available_is_silent()
+    {
+        // GSX flips a finished service back to the requestable "available" state.
+        // That return must NOT be spoken: "Refuel available from United Ground
+        // Express." collides almost verbatim with the invoice announcement
+        // ("Invoice available from United Ground Express.") and is menu info, not
+        // an event. The operator was already carried by "in progress by X".
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { WithOperator("Refuel", "performing", "United Ground Express") });
+        var said = a.Update(new[] { WithOperator("Refuel", "available", "United Ground Express") });
+        Assert.Empty(said);
+    }
+
+    [Fact]
+    public void Performing_names_the_operator_when_gsx_publishes_one()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { WithOperator("Deboard", "available", "OneJet") });
+        var said = a.Update(new[] { WithOperator("Deboard", "performing", "OneJet") });
+        Assert.Equal("Deboard in progress by OneJet.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void A_service_returning_to_available_without_an_operator_is_also_silent()
+    {
+        var a = new GsxServiceAnnouncer();
+        a.Update(new[] { WithOperator("Catering", "performing", null) });
+        var said = a.Update(new[] { WithOperator("Catering", "available", null) });
+        Assert.Empty(said);
+    }
+
+    // ── Fuel quantity — the live wire's detail.fuel {current,target,unit,aircraftTotal} — 30 s throttle ──
+
+    // Shape verified live (progressive refuel, 1 Hz): {"current":2221,"target":2231,"unit":"kg",
+    // "startTotal":3004,"aircraftTotal":5252} — and target ROLLS with current (2231, 2247,
+    // 2263, …), so it is never spoken and never treated as a revision.
+    private static GsxServiceState Fuel(double current, double target, string unit = "lb", double? aircraftTotal = null) => new()
+    {
+        Id = "Refueling", DisplayName = "Refuel", State = "performing",
+        FuelCurrent = current, FuelTarget = target, FuelUnit = unit, FuelAircraftTotal = aircraftTotal,
+        StateText = "Refueling service is being performed",
+    };
+
+    [Fact]
+    public void Fuel_progress_speaks_loaded_and_aircraft_total_with_unit()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 8, "kg", 3004) }, t0);
+        var said = a.Update(new[] { Fuel(2221, 2231, "kg", 5252) }, t0.AddSeconds(2));
+        Assert.Equal("fuel 2221 kg loaded, aircraft 5252 kg.", Assert.Single(said));
+    }
+
+    [Fact]
+    public void Fuel_progress_without_an_aircraft_total_speaks_the_loaded_figure_alone()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 5914) }, t0);
+        Assert.Equal("fuel 820 lb loaded.", Assert.Single(a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2))));
+    }
+
+    [Fact]
+    public void A_rolling_target_never_breaks_the_interval()
+    {
+        // LIVE (2026-08-15): during a progressive refuel GSX's target tracked current on
+        // every 1 Hz patch (2221/2231, 2239/2247, 2255/2263, …). A "revised target speaks
+        // now" rule read the row aloud once a second — the exact spam this pins against.
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(2205, 2215, "kg", 5236) }, t0);
+        Assert.Single(a.Update(new[] { Fuel(2221, 2231, "kg", 5252) }, t0.AddSeconds(1)));
+        for (int i = 2; i <= 29; i++)
+            Assert.Empty(a.Update(new[] { Fuel(2205 + 16 * i, 2215 + 16 * i, "kg", 5236 + 16 * i) }, t0.AddSeconds(i)));
+        Assert.Single(a.Update(new[] { Fuel(2205 + 16 * 31, 2215 + 16 * 31, "kg", 5236 + 16 * 31) }, t0.AddSeconds(31)));
+    }
+
+    [Fact]
+    public void Fuel_progress_parses_from_the_wire_shape_and_rounds_fractional_pounds()
+    {
+        string json = @"[{""id"":""Refueling"",""displayName"":""Refuel"",""state"":""performing"",
+            ""detail"":{""phase"":""hose connected"",""fuel"":{""current"":1234.6,""target"":5914,""unit"":""lb"",""startTotal"":5549,""aircraftTotal"":6783.6}},
+            ""progressText"":""21%""}]";
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var rows = GsxServiceState.ParseList(doc.RootElement.Clone());
+        Assert.Equal(1234.6, rows[0].FuelCurrent);
+        Assert.Equal(5914, rows[0].FuelTarget);
+        Assert.Equal(6783.6, rows[0].FuelAircraftTotal);
+        Assert.Equal("lb", rows[0].FuelUnit);
+
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 5914, "lb", 5549) }, t0);
+        Assert.Equal("fuel 1235 lb loaded, aircraft 6784 lb.", Assert.Single(a.Update(rows, t0.AddSeconds(2))));
+    }
+
+    [Fact]
+    public void Pre_hose_fuel_row_with_no_current_or_target_is_silent()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        var preHose = new GsxServiceState { Id = "Refueling", DisplayName = "Refuel", State = "performing", FuelUnit = "lb" };
+        a.Update(new[] { preHose }, t0);
+        Assert.Empty(a.Update(new[] { preHose }, t0.AddSeconds(5)));
+    }
+
+    [Fact]
+    public void Generic_metered_progress_speaks_current_of_total_with_unit()
+    {
+        var generic = (int c) => new GsxServiceState
+        {
+            Id = "Water", DisplayName = "Water", State = "performing",
+            ProgressCurrent = c, ProgressTotal = 400, ProgressUnit = "l",
+        };
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { generic(0) }, t0);
+        Assert.Equal("Water 120 of 400 l.", Assert.Single(a.Update(new[] { generic(120) }, t0.AddSeconds(2))));
+    }
+
+    [Fact]
+    public void A_pax_unit_progress_row_without_typed_pax_detail_never_uses_the_generic_phrase()
+    {
+        // GSX clamps progress.total to current on pax rows ("181/181" with five still aboard),
+        // so a pax-unit progress row must never reach the generic "X of Y" branch even when
+        // detail.pax is absent — pins the unit guard, which the typed-pax test above does not.
+        var row = (int c) => new GsxServiceState
+        {
+            Id = "Boarding", DisplayName = "Board", State = "performing",
+            ProgressCurrent = c, ProgressTotal = c, ProgressUnit = "pax",
+        };
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { row(100) }, t0);
+        Assert.Empty(a.Update(new[] { row(103) }, t0.AddSeconds(5)));
+        Assert.Empty(a.Update(new[] { row(140) }, t0.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void Fuel_progress_is_throttled_to_the_announcement_interval()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 5914) }, t0);
+        Assert.Single(a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2)));
+
+        // Inside the window: every tick is swallowed, however far the number moves.
+        Assert.Empty(a.Update(new[] { Fuel(1500, 5914) }, t0.AddSeconds(10)));
+        Assert.Empty(a.Update(new[] { Fuel(4000, 5914) }, t0.AddSeconds(31)));
+
+        // At/after the interval since the LAST SPOKEN one: speaks again.
+        var later = a.Update(new[] { Fuel(4800, 5914) },
+            t0.AddSeconds(2) + GsxServiceAnnouncer.ProgressAnnouncementInterval);
+        Assert.Equal("fuel 4800 lb loaded.", Assert.Single(later));
+    }
+
+    [Fact]
+    public void Fuel_progress_that_did_not_move_is_silent_even_after_the_interval()
+    {
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        a.Update(new[] { Fuel(0, 5914) }, t0);
+        a.Update(new[] { Fuel(820, 5914) }, t0.AddSeconds(2));
+        Assert.Empty(a.Update(new[] { Fuel(820, 5914) }, t0.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void Pax_unit_progress_never_uses_the_generic_phrase()
+    {
+        // The pax milestone gate owns passenger counts; the generic branch must not
+        // second-guess it with "181 of 181 pax" (GSX clamps progress.total to current).
+        var a = new GsxServiceAnnouncer();
+        var t0 = new DateTime(2026, 8, 15, 12, 0, 0, DateTimeKind.Utc);
+        var row0 = new GsxServiceState { Id = "Deboarding", DisplayName = "Deboard", State = "performing",
+            PaxDone = 100, PaxTotal = 186, ProgressCurrent = 100, ProgressTotal = 100, ProgressUnit = "pax" };
+        var row1 = new GsxServiceState { Id = "Deboarding", DisplayName = "Deboard", State = "performing",
+            PaxDone = 103, PaxTotal = 186, ProgressCurrent = 103, ProgressTotal = 103, ProgressUnit = "pax" };
+        a.Update(new[] { row0 }, t0);
+        Assert.Empty(a.Update(new[] { row1 }, t0.AddSeconds(5))); // 103 is mid-decade: pax gate silent, generic must be too
+    }
+}
