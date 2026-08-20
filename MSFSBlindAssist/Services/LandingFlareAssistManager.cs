@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Settings;
@@ -99,7 +99,9 @@ public class LandingFlareAssistManager : IDisposable
     private bool wasAboveFlareBand;      // must see gearAGL above the latch height before engaging
     private bool toneStarted;            // lateral / pan generator
     private bool verticalToneStarted;    // flare sink-rate generator
-    private bool toneReArmSpent;         // this device outage's one re-arm has run
+    private bool lateralReArmSpent;      // this outage's one lateral re-arm has run
+    private bool verticalReArmSpent;     // this outage's one vertical re-arm has run
+    private bool verticalCueLostAnnounced; // "sink rate cue unavailable" spoken this engagement
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
     private double vsSmoothed;
@@ -582,10 +584,13 @@ public class LandingFlareAssistManager : IDisposable
     /// What to do about a tone that came back from a routing sweep with no device.
     /// Pure so the policy can be pinned by <c>LandingFlareToneReArmTests</c> — the manager
     /// itself owns two real WASAPI generators and cannot be driven from a test.
+    /// AnnounceVerticalLost: the vertical cue could not be revived and, left alone, would now
+    /// impersonate "on profile" — the caller speaks it (with its own phase gate + once latch).
     /// </summary>
-    /// <param name="reArmSpent">This outage's one re-arm has already run.</param>
     internal readonly record struct ToneReArmDecision(
-        bool RestartLateral, bool RestartVertical, bool SpendReArm);
+        bool RestartLateral, bool RestartVertical,
+        bool SpendLateralReArm, bool SpendVerticalReArm,
+        bool AnnounceVerticalLost);
 
     /// <summary>
     /// The router rebinds a NeedsDevice generator on its next SWEEP, and a sweep is what a
@@ -595,49 +600,68 @@ public class LandingFlareAssistManager : IDisposable
     /// Restarts ONLY the tone that lost its device, unlike VisualGuidanceManager's re-arm,
     /// which rebuilds its pair whenever either half dies. VG's two are a reference and a
     /// follower that mean nothing apart; these two are independent axes, so tearing down a
-    /// healthy one would punch an audible hole in a cue the pilot is actively flying.
+    /// healthy one would punch an audible hole in a cue the pilot is actively flying. The
+    /// one-per-outage latches are per-tone for the same reason: a vertical tone that failed
+    /// permanently must not spend the lateral tone's re-arm — the lateral carries the whole
+    /// rollout and a later, independent outage on it still deserves its restart.
     ///
     /// Gated on NeedsDevice, never IsPlaying: IsPlaying reads false for the whole duration of
     /// a HEALTHY in-flight rebind (RebindTo clears it before reopening the device), so a
-    /// 1 Hz sample landing mid-rebind would tear down an about-to-succeed tone. NeedsDevice is
-    /// set only at an open attempt's terminal outcomes, so it never means "attempt in flight".
+    /// 1 Hz sample landing mid-rebind would tear down an about-to-succeed tone. NeedsDevice
+    /// never means "attempt in flight" on a tone that was healthy — it is set only at an open
+    /// attempt's terminal outcomes. Residual, shared with VG's re-arm: on a tone that ALREADY
+    /// had NeedsDevice, RebindTo leaves the flag up for the whole retry, so a sample landing
+    /// exactly there tears down and reopens a session the router just built — one redundant
+    /// (and inaudible: the tone was silent) teardown, bounded by the latch.
     ///
     /// A tone that is not STARTED is never restarted — the vertical tone is flare-only and is
-    /// legitimately stopped for the whole rollout.
+    /// legitimately stopped for the whole rollout — and never announced: nothing was lost.
+    ///
+    /// A vertical tone still lost AFTER its retry is ANNOUNCED (AnnounceVerticalLost): its
+    /// healthy state is silence, so unlike the lateral tone (continuously audible when
+    /// off-centre, so its death is heard as an absence) it can lie to the pilot — a dead
+    /// sink-rate cue reads as a perfectly flown flare. Same rule as go-around: silence must
+    /// never be mistakable for "on profile". Announced on the tick AFTER the restart attempt,
+    /// not with it — speaking on the same tick would announce an outage the restart may be
+    /// about to cure.
     /// </summary>
     internal static ToneReArmDecision DecideToneReArm(
-        bool lateralStarted, bool lateralNeedsDevice,
-        bool verticalStarted, bool verticalNeedsDevice,
-        bool reArmSpent)
+        bool lateralStarted, bool lateralNeedsDevice, bool lateralReArmSpent,
+        bool verticalStarted, bool verticalNeedsDevice, bool verticalReArmSpent)
     {
         bool lateralLost = lateralStarted && lateralNeedsDevice;
         bool verticalLost = verticalStarted && verticalNeedsDevice;
 
-        // Healthy: clear the latch so a LATER outage on the same approach re-arms once more.
-        if (!lateralLost && !verticalLost)
-            return new ToneReArmDecision(false, false, false);
+        // A healthy tone clears ITS latch so a later outage on the same approach re-arms
+        // again; a still-lost tone keeps its latch — its retries belong to the router's
+        // event-driven sweeps now, or the 1 Hz sampler would attempt a WASAPI open every tick
+        // for the rest of the approach (the retry loop docs/audio.md forbids; a FLAPPING
+        // endpoint — healthy one tick, faulted the next — still re-enters at 1 Hz, the same
+        // bounded residual VG's latch has).
+        bool restartLateral = lateralLost && !lateralReArmSpent;
+        bool restartVertical = verticalLost && !verticalReArmSpent;
 
-        // One re-arm per outage. The second and later retries belong to the router's
-        // event-driven sweeps; without this the 1 Hz sampler would attempt a WASAPI open every
-        // tick for the rest of the approach — the retry loop docs/audio.md forbids.
-        if (reArmSpent)
-            return new ToneReArmDecision(false, false, true);
-
-        return new ToneReArmDecision(lateralLost, verticalLost, true);
+        return new ToneReArmDecision(
+            restartLateral, restartVertical,
+            SpendLateralReArm: lateralLost,
+            SpendVerticalReArm: verticalLost,
+            AnnounceVerticalLost: verticalLost && verticalReArmSpent);
     }
 
     /// <summary>
-    /// 1 Hz while engaged. Restarts a tone whose device went away — see
-    /// <see cref="DecideToneReArm"/> for why the manager cannot leave this to the router.
+    /// ~1 Hz while engaged (driven by the INDICATED_ALTITUDE feed, which is change-gated — a
+    /// perfectly stationary aircraft stops ticking, harmless here since engagement implies
+    /// motion). Restarts a tone whose device went away — see <see cref="DecideToneReArm"/>
+    /// for why the manager cannot leave this to the router.
     /// </summary>
     private void ReArmTonesIfDeviceLost()
     {
         ToneReArmDecision d = DecideToneReArm(
-            toneStarted, tone.NeedsDevice,
-            verticalToneStarted, verticalTone.NeedsDevice,
-            toneReArmSpent);
+            toneStarted, tone.NeedsDevice, lateralReArmSpent,
+            verticalToneStarted, verticalTone.NeedsDevice, verticalReArmSpent);
 
-        toneReArmSpent = d.SpendReArm;
+        lateralReArmSpent = d.SpendLateralReArm;
+        verticalReArmSpent = d.SpendVerticalReArm;
 
         if (d.RestartLateral)
         {
@@ -655,6 +679,18 @@ public class LandingFlareAssistManager : IDisposable
             verticalTone.Stop();
             verticalToneStarted = false;
             StartVerticalToneIfNeeded();
+        }
+
+        // Flare only: in the rollout the vertical tone is legitimately down, and under a
+        // silent flare visual guidance owns the approach audio (and this tone never started).
+        // Once per engagement — the condition holds every tick of a dead-endpoint outage.
+        if (d.AnnounceVerticalLost && phase == Phase.Flare && !silentFlare
+            && !verticalCueLostAnnounced)
+        {
+            verticalCueLostAnnounced = true;
+            Log.Debug("LandingFlareAssist",
+                "Vertical tone still has no device after its restart attempt — speaking the loss");
+            announcer.AnnounceImmediate("Flare sink rate cue unavailable");
         }
     }
 
@@ -716,8 +752,11 @@ public class LandingFlareAssistManager : IDisposable
         phase = Phase.Armed;
         wasAboveFlareBand = false;
         // Both tones are down, so the next engagement starts its own outage accounting —
-        // a spent latch carried into the next approach would cost it its one re-arm.
-        toneReArmSpent = false;
+        // spent latches carried into the next approach would cost it its re-arms, and a stale
+        // announce latch would silence the next approach's warning.
+        lateralReArmSpent = false;
+        verticalReArmSpent = false;
+        verticalCueLostAnnounced = false;
         silentFlare = false;
         vsSmootherInitialized = false;
         crossTrackRateInitialized = false;

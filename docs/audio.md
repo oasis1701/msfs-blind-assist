@@ -235,6 +235,19 @@ and not the other two.
   null-conditionally because it can legitimately be null while the reference is not
   (`StartTonesIfNeeded` starts the follower only if the reference started).
 
+  **`LandingFlareAssistManager` has the same re-arm but a deliberately DIFFERENT policy — do
+  not harmonise the two.** It restarts only the tone that lost its device
+  (`DecideToneReArm`, pinned by `LandingFlareToneReArmTests`), never the pair: VG's two tones
+  are a matched reference/follower that mean nothing apart, while the flare assist's two are
+  independent axes (vertical sink rate, lateral position), so tearing down a healthy one
+  would punch an audible hole in a cue the pilot is actively flying. Its one-per-outage
+  latches are per-tone for the same reason. And because the vertical tone's HEALTHY state is
+  silence ("on profile"), a vertical tone that is still device-less after its one retry is
+  SPOKEN ("Flare sink rate cue unavailable") — a dead sink-rate cue is otherwise
+  indistinguishable from a perfectly flown flare, the same rule that makes its go-around
+  spoken. VG needs no spoken fallback: its healthy tones sound continuously, so their death
+  is audible as an absence.
+
 - **The Test Tone audition sweep must reach BOTH channels at every duration used** (20 / 40 / 60
   ticks — Audio, Taxi Guidance, Hand Fly). `TestTonePan.FullCycle` is shared by all three and
   pinned by `FullCycle_ReachesBothChannelsAtEveryPanelDuration`. The old per-panel
