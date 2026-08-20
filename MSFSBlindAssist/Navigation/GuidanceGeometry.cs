@@ -14,7 +14,14 @@ namespace MSFSBlindAssist.Navigation;
 public static class GuidanceGeometry
 {
     private const double MPD = 111132.0;            // metres per degree latitude
-    private const double DEGENERATE_SEG_M = 0.01;   // skip segments shorter than this
+    // Matches the manager's "len < 1.0 -> bearing 0.0" rule: a sub-metre segment
+    // (a route-start snap stub, a duplicated node) has no usable axis. Projecting
+    // onto one turns the look-ahead walk into on-axis extrapolation: at KLAS
+    // (2026-08-20) a restarted route began with a ~0.5 m snap segment, the walk
+    // interpolated WITHIN it (|t| ~ 100), and the steering target slid around a
+    // few metres from the aircraft instead of leading 50 m up the route — the
+    // pilot orbited it until they gave up. Sub-metre segments are skipped whole.
+    private const double DEGENERATE_SEG_M = 1.0;    // skip segments shorter than this
     private const double DISCRETE_STEP_DEG = 20.0;  // single-junction bend owned by turn announcements
 
     /// <summary>
@@ -58,6 +65,14 @@ public static class GuidanceGeometry
         if (budget <= remaining && segLen >= DEGENERATE_SEG_M)
         {
             double f = t + budget / segLen;
+            // Never target a point BEHIND the segment start. The unclamped t is
+            // what keeps the target continuous through a normal 25 m capture
+            // (aircraft ~25 m behind the new segment with a >=50 m look-ahead,
+            // f stays positive) — but an aircraft further behind the start than
+            // the whole look-ahead drives f negative, and the extrapolated
+            // point steers the pilot backwards along the axis. Clamp to the
+            // start: "go to where the route resumes".
+            if (f < 0.0) f = 0.0;
             return (lats[segIdx] + (lats[segIdx + 1] - lats[segIdx]) * f,
                     lons[segIdx] + (lons[segIdx + 1] - lons[segIdx]) * f);
         }
@@ -79,6 +94,62 @@ public static class GuidanceGeometry
             budget -= len;
         }
         return (lats[^1], lons[^1]);
+    }
+
+    /// <summary>
+    /// True when the aircraft has demonstrably LEFT segment <paramref name="segIdx"/>
+    /// past its far end and is travelling alongside a LATER segment: its along-track
+    /// projection on the current segment sits at/past the end (t ≥ 1 — or the segment
+    /// is degenerate), while its projection onto the next non-degenerate segment is
+    /// interior (0 ≤ t ≤ 1) with cross-track within <paramref name="maxCrossM"/>.
+    ///
+    /// Exists to break the endpoint-tie pin (KLAS 26R, 2026-08-20): the manager's
+    /// nearest-ENDPOINT advance shares the junction node between the passed segment
+    /// and the next one, so the two tie forever and strict-improvement keeps the
+    /// stale index — while on a long (345 m) next segment the aircraft can be
+    /// squarely ON the route yet 150+ m from every endpoint, so neither the 25 m
+    /// capture nor the endpoint scan can ever advance it. The walk target then
+    /// freezes at (stale segment end + look-ahead) and the tone orbits the pilot
+    /// around a fixed point. This projection test is the evidence the endpoint
+    /// scan cannot see.
+    /// </summary>
+    public static bool HasPassedOntoNextSegment(
+        double[] lats, double[] lons, int segIdx,
+        double acLat, double acLon, double maxCrossM)
+    {
+        int segCount = lats.Length - 1;
+        if (segIdx < 0 || segIdx >= segCount) return false;
+
+        // Current segment: only "passed" counts. A degenerate current segment has
+        // no axis to be inside of — treat it as passed (the restarted-route snap
+        // stub) and let the next-segment test carry the evidence.
+        double cosLat = Math.Cos(lats[segIdx] * Math.PI / 180.0);
+        double sx = (lons[segIdx + 1] - lons[segIdx]) * MPD * cosLat;
+        double sy = (lats[segIdx + 1] - lats[segIdx]) * MPD;
+        double segLen = Math.Sqrt(sx * sx + sy * sy);
+        if (segLen >= DEGENERATE_SEG_M)
+        {
+            double ax = (acLon - lons[segIdx]) * MPD * cosLat;
+            double ay = (acLat - lats[segIdx]) * MPD;
+            if ((ax * sx + ay * sy) / (segLen * segLen) < 1.0) return false;
+        }
+
+        // Next non-degenerate segment: interior projection, bounded cross-track.
+        int next = segIdx + 1;
+        while (next < segCount && SegLenM(lats, lons, next) < DEGENERATE_SEG_M) next++;
+        if (next >= segCount) return false;
+
+        double cl = Math.Cos(lats[next] * Math.PI / 180.0);
+        double ex = (lons[next + 1] - lons[next]) * MPD * cl;
+        double ey = (lats[next + 1] - lats[next]) * MPD;
+        double len = Math.Sqrt(ex * ex + ey * ey);
+        double px = (acLon - lons[next]) * MPD * cl;
+        double py = (acLat - lats[next]) * MPD;
+        double t = (px * ex + py * ey) / (len * len);
+        if (t < 0.0 || t > 1.0) return false;
+
+        double crossM = Math.Abs(px * ey - py * ex) / len;
+        return crossM <= maxCrossM;
     }
 
     /// <summary>

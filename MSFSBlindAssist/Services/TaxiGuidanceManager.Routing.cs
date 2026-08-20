@@ -659,6 +659,40 @@ public partial class TaxiGuidanceManager
             }
         }
 
+        // Endpoint-tie pin breaker (KLAS 26R, 2026-08-20). The scan above measures
+        // ENDPOINT distance, and the current segment shares its end node with the
+        // next — so once the aircraft has rolled past that shared node without
+        // passing inside the 25 m capture radius (a wide corner), the two tie
+        // forever, strict-improvement keeps the stale index, and on a long next
+        // segment (B at KLAS is 345 m) the aircraft can be squarely ON the route
+        // yet outside every endpoint's reach. The walk target then freezes at
+        // (stale segment end + look-ahead) and the tone orbits the pilot around a
+        // fixed point. Advance on the evidence the endpoint scan cannot see: the
+        // aircraft's projection is past the current segment's end AND interior on
+        // the next segment within a taxiway-width cross-track bound.
+        //
+        // Runs BEFORE the proximity early-out below — a pilot far along the long
+        // next segment is >SEGMENT_ADVANCE_MAX_DIST_M from every endpoint, which
+        // is exactly the pinned case, not an off-route one. Goes through
+        // AdvanceSegment() so the taxiway announcement and latch resets behave
+        // exactly like every other advance. NEVER fires while the current segment
+        // is a hold-short segment: advancing past an un-announced hold-short is
+        // the runway-incursion direction, and that invariant outranks un-pinning
+        // (the hold-short flow has its own capture handling).
+        if (bestIdx == _currentSegmentIndex
+            && _currentSegmentIndex + 1 < _route.Segments.Count
+            && !_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
+        {
+            var (pinLats, pinLons) = RoutePoints();
+            if (GuidanceGeometry.HasPassedOntoNextSegment(
+                    pinLats, pinLons, _currentSegmentIndex, lat, lon,
+                    SEGMENT_PASS_ADVANCE_MAX_CROSS_M))
+            {
+                AdvanceSegment();
+                return;
+            }
+        }
+
         // Not near any of them — the aircraft is off the route, not progressing along it.
         // Leave the index alone so off-route detection sees an un-refreshed
         // _lastSegmentAdvanceTime and can do its job.
