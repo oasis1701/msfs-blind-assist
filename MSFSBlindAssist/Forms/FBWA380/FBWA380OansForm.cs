@@ -53,7 +53,11 @@ public sealed class FBWA380OansForm : Form
         FormBorderStyle = FormBorderStyle.Sizable;
         ShowInTaskbar = false; KeyPreview = true;
 
-        _status = new Label { Location = new Point(12, 10), Size = new Size(604, 36), Text = "OANS: connecting…", AccessibleName = "OANS status" };
+        // No explicit AccessibleName: this Label's Text IS the message ("OANS: connected", the
+        // full Navigraph instruction), and a Label exposes no Value — so a pinned name would be
+        // the only thing a screen reader ever read. ControlAccessibleObject.Name falls back to
+        // Text when AccessibleName is unset, which is always current.
+        _status = new Label { Location = new Point(12, 10), Size = new Size(604, 36), Text = "OANS: connecting…" };
         _tabs = new TabControl { Location = new Point(12, 50), Size = new Size(604, 504), AccessibleName = "OANS tabs" };
         var tpMap = new TabPage("Map and BTV") { AccessibleName = "Map and BTV" };
         var tpArpt = new TabPage("Airport") { AccessibleName = "Airport" };
@@ -85,7 +89,10 @@ public sealed class FBWA380OansForm : Form
         };
 
         _manualHeader = new Label { Text = "Manual BTV (no Navigraph maps):", Location = new Point(12, 316), Size = new Size(560, 18), Font = new Font(Font, FontStyle.Bold) };
-        _runwayLengthLabel = new Label { Text = "Runway length: —", Location = new Point(12, 338), Size = new Size(560, 18), AccessibleName = "Runway length" };
+        // No explicit AccessibleName — see _status above. UpdateBanner writes the whole label
+        // plus its value ("Runway length: 3,000 m") into Text, and in the manual BTV tier this
+        // is the only place the runway length appears at all.
+        _runwayLengthLabel = new Label { Text = "Runway length: —", Location = new Point(12, 338), Size = new Size(560, 18) };
         var msLabel = new Label { Text = "Stop &distance:", Location = new Point(12, 362), Size = new Size(96, 22) };
         _manualStop = new TextBox { Location = new Point(112, 359), Size = new Size(90, 24), AccessibleName = "Manual BTV stop distance" };
         _manualStopApply = new Button { Text = "&Apply", Location = new Point(208, 358), Size = new Size(80, 26), AccessibleName = "Apply manual stop distance" };
