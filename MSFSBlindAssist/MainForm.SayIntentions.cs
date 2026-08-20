@@ -281,12 +281,27 @@ public partial class MainForm
             form.Show();
             form.BringToFront();
 
+            var destProbe = new List<string>();
             if (!TryResolveSayIntentionsDestination(
                     form, status, clearance, icao,
                     out bool isRunway, out string label,
-                    out TaxiAssistForm.GateSubstitution? gateSubstitution))
+                    out TaxiAssistForm.GateSubstitution? gateSubstitution,
+                    out string? unresolvedArrivalGate, destProbe))
             {
-                AbortImport("SayIntentions route unavailable. No usable assigned runway or gate found.");
+                _siLog.Info($"{icao} destination unresolved. destProbe=[{string.Join("; ", destProbe)}]");
+                // A KNOWN ARRIVAL whose gate could not be matched must say so BY NAME
+                // and stop — never fall back to a runway. Before this fork existed the
+                // chain ended at the flight-plan arrival runway, and a just-landed
+                // aircraft was confidently routed at the runway it had vacated with
+                // the taxiway half of the import perfect (KSTL "Gate A2" → Runway 12R
+                // and KLAX "Gate 52A" → Runway 24R, live, 2026-08-15/19). The honest
+                // failure is actionable: the pilot picks the stand from the gate list
+                // — the form's own search finds stands this resolver cannot (it
+                // matches aliases and partial text), then Calculate.
+                AbortImport(unresolvedArrivalGate != null
+                    ? $"SayIntentions assigned {unresolvedArrivalGate}, but no matching stand " +
+                      $"was found at {icao}. Pick the destination gate in Taxi Assist, then Calculate."
+                    : "SayIntentions route unavailable. No usable assigned runway or gate found.");
                 return;
             }
 
@@ -296,6 +311,7 @@ public partial class MainForm
             // alias, or published coordinate. A future capture that ends up at the wrong
             // stand is diagnosed by knowing which of the three answered for it.
             _siLog.Info($"{icao} dest='{label}' runway={isRunway} " +
+                        $"destProbe=[{string.Join("; ", destProbe)}] " +
                         $"gateSubstitution='{DescribeGateSubstitution(gateSubstitution)}' " +
                         $"source={(source == TaxiwaySource.Geometry ? "geometry" : "clearance")} " +
                         $"disagreed={disagreed} " +
@@ -675,62 +691,121 @@ public partial class MainForm
                + $" and {legs.Count - GeometryLegsWorthNaming} more";
     }
 
-    /// <summary>Destination priority: the clearance's own runway, then its gate, then
-    /// the assigned gate when this airport IS the destination, then the departure
-    /// runway, then the arrival runway. Each candidate must resolve to a real entry
-    /// in the form's destination list to win.
+    /// <summary>Resolves the import's destination against the candidate list from
+    /// <see cref="BuildSayIntentionsDestinationCandidates"/> — see that method for
+    /// the ordering and for the known-arrival fork that keeps runways out of the
+    /// list entirely. Each candidate must resolve to a real entry in the form's
+    /// destination list to win.
     ///
-    /// The assigned gate appears ONCE, behind that airport check. It used to appear a
-    /// second time as an unconditional fallback behind the departure runway, which
-    /// was only safe while the gate was assumed to belong to wherever the aircraft
-    /// was standing. It does not: it is an arrival stand at flight_destination. At the
-    /// departure airport that fallback would route the pilot to whatever local stand
-    /// happened to share the name — and stand names like A9 are common enough that it
-    /// would usually find one and say nothing about it. Nothing is lost by dropping
-    /// it, because a gate at another airport can never be a legitimate taxi target
-    /// here.
+    /// The assigned gate appears ONCE, behind the airport-is-destination check. It
+    /// used to appear a second time as an unconditional fallback behind the
+    /// departure runway, which was only safe while the gate was assumed to belong
+    /// to wherever the aircraft was standing. It does not: it is an arrival stand
+    /// at flight_destination. At the departure airport that fallback would route
+    /// the pilot to whatever local stand happened to share the name — and stand
+    /// names like A9 are common enough that it would usually find one and say
+    /// nothing about it.
     ///
     /// The airport check is against the ICAO the route is actually being built for,
     /// not context.CurrentAirport — flight.json can omit current_airport, in which
     /// case the caller resolves the airport from position, and keying off the empty
     /// field would refuse the gate at the very airport it names.
     ///
-    /// The whole list goes to the form in one call — asking candidate by candidate
-    /// re-listed (and re-selected) the form's destinations on every probe, and left
-    /// the pilot's own destination discarded when none of them resolved.
-    ///
     /// The assigned gate is the one candidate that also carries a POSITION, because
     /// SayIntentions publishes assigned_gate_lat/lon beside the name and a scenery that
-    /// labels the stand differently otherwise sends this whole chain down to the arrival
-    /// runway. The destination check covers the coordinate as much as the name: an
-    /// arrival stand's position is exactly as wrong at the departure airport as its name
-    /// is, and unlike the name it would always find SOMETHING there. No other candidate
-    /// gets one — a runway resolves by designator, and the clearance's gate is a word the
-    /// controller spoke rather than a place SayIntentions published.</summary>
+    /// labels the stand differently otherwise leaves only that coordinate to seat it.
+    /// The destination check covers the coordinate as much as the name: an arrival
+    /// stand's position is exactly as wrong at the departure airport as its name is,
+    /// and unlike the name it would always find SOMETHING there. No other candidate
+    /// gets one — a runway resolves by designator, and the clearance's gate is a word
+    /// the controller spoke rather than a place SayIntentions published.</summary>
     private static bool TryResolveSayIntentionsDestination(
         TaxiAssistForm form, SayIntentionsStatusResult status, string clearance,
         string airportIcao, out bool isRunway, out string label,
-        out TaxiAssistForm.GateSubstitution? gateSubstitution)
+        out TaxiAssistForm.GateSubstitution? gateSubstitution,
+        out string? unresolvedArrivalGate, List<string>? probeTrace = null)
     {
-        var context = status.Context;
+        var (candidates, arrivalGateName) = BuildSayIntentionsDestinationCandidates(
+            status.Context, status.Parking?.Name, clearance, airportIcao);
 
-        var candidates = new List<TaxiAssistForm.ExternalDestination>
+        bool resolved = form.TryResolveExternalDestination(
+            candidates, out isRunway, out label, out gateSubstitution, probeTrace);
+
+        // Non-null exactly when a KNOWN ARRIVAL failed to seat its gate: the caller
+        // must tell the pilot WHICH gate could not be matched, because "route
+        // unavailable" reads as "SayIntentions is not answering" while the truth is
+        // "this scenery has no stand under that label" — a different problem with a
+        // different remedy (pick the stand by hand in the gate list).
+        unresolvedArrivalGate = resolved ? null : arrivalGateName;
+        return resolved;
+    }
+
+    /// <summary>The ordered destination-candidate list the import resolves against —
+    /// and the fork that decides whether a RUNWAY may appear in it at all.
+    ///
+    /// A KNOWN ARRIVAL — the airport being routed at IS flight_destination and
+    /// SayIntentions has assigned an arrival gate (or getParking supplied one) —
+    /// offers GATE candidates only: the clearance's own gate first (the controller's
+    /// word outranks the record), then the assigned gate with its published
+    /// coordinate. No clearance-runway, no departure-runway, no arrival-runway.
+    /// ATC does not taxi an arriving aircraft to a runway, and both runway routes
+    /// out of this list have produced exactly that failure live:
+    ///
+    ///   - The clearance-runway candidate ran FIRST, and an arrival clearance that
+    ///     names the landing runway outside a masked hold-short/crossing span
+    ///     ("runway 24R, exit right at C4, taxi to the gate via …") makes the
+    ///     leftmost-runway parse the destination before any gate is consulted.
+    ///   - When the gate could not seat at all — KSTL labels its A-concourse
+    ///     stands "GA 2" so SayIntentions' "Gate A2" matches nothing, and the KLAX
+    ///     scenery has no 52A anywhere (navdata GZ 52B–H, GSX Z 52B–H) — the chain
+    ///     fell through to the flight-plan ARRIVAL RUNWAY. Both ways, a just-landed
+    ///     aircraft was confidently routed at the runway it had vacated, with the
+    ///     taxiway half of the import perfect so nothing else sounded wrong
+    ///     (KSTL + KLAX, 2026-08-15/19, two presses each).
+    ///
+    /// On a known arrival whose gate candidates all fail, the import must therefore
+    /// FAIL LOUDLY (the ArrivalGateName return names the gate for that message)
+    /// rather than seat anything — an honest "this scenery has no such stand" is
+    /// actionable; a plausible runway is a hazard.
+    ///
+    /// Everywhere else the pre-existing order stands: the clearance's own runway,
+    /// its gate, the departure runway, the arrival runway. At the departure airport
+    /// flight_destination differs, so departures are untouched — and an assigned
+    /// gate is an ARRIVAL stand at flight_destination, never a candidate (and never
+    /// a chain-reorderer) at any other airport; see the destination check's history
+    /// above. An arrival where SayIntentions has not yet published the gate keeps
+    /// the old chain too: nothing marks it as a gate arrival, and the pilot can
+    /// press again once the gate appears.
+    ///
+    /// The whole list still goes to the form in ONE call — asking candidate by
+    /// candidate re-listed the form's destinations per probe and lost the pilot's
+    /// own selection when none resolved.</summary>
+    internal static (List<TaxiAssistForm.ExternalDestination> Candidates, string? ArrivalGateName)
+        BuildSayIntentionsDestinationCandidates(
+            SayIntentionsFlightContext context, string? parkingName,
+            string clearance, string airportIcao)
+    {
+        string? assignedGate = SameIcaoSi(airportIcao, context.Destination)
+            ? FirstNonEmptySi(context.AssignedGate, parkingName)
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(assignedGate))
+        {
+            return (new List<TaxiAssistForm.ExternalDestination>
+            {
+                new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance)),
+                new(false, assignedGate, context.AssignedGatePosition)
+            }, assignedGate);
+        }
+
+        return (new List<TaxiAssistForm.ExternalDestination>
         {
             new(true, SayIntentionsClearanceParser.ParseDestinationRunway(clearance)),
-            new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance))
-        };
-
-        if (SameIcaoSi(airportIcao, context.Destination))
-            candidates.Add(new(false,
-                FirstNonEmptySi(context.AssignedGate, status.Parking?.Name),
-                context.AssignedGatePosition));
-
-        candidates.Add(new(true, FirstNonEmptySi(
-            context.ClearedForTakeoff, context.DepartureRunway, context.Runway)));
-        candidates.Add(new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway)));
-
-        return form.TryResolveExternalDestination(
-            candidates, out isRunway, out label, out gateSubstitution);
+            new(false, SayIntentionsClearanceParser.ParseDestinationGate(clearance)),
+            new(true, FirstNonEmptySi(
+                context.ClearedForTakeoff, context.DepartureRunway, context.Runway)),
+            new(true, FirstNonEmptySi(context.ClearedForLanding, context.ArrivalRunway))
+        }, null);
     }
 
     /// <summary>The gate substitution as sayintentions.log records it: the name that was

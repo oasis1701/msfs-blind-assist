@@ -1213,7 +1213,7 @@ public class TaxiAssistForm : Form
     /// controller did not use.</summary>
     public bool TryResolveExternalDestination(
         IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label,
-        out GateSubstitution? gateSubstitution)
+        out GateSubstitution? gateSubstitution, List<string>? probeTrace = null)
     {
         isRunway = false;
         label = "";
@@ -1245,11 +1245,19 @@ public class TaxiAssistForm : Form
         {
             if (string.IsNullOrWhiteSpace(candidate.Identifier)) continue;
 
+            // sayintentions.log's answer to "why did THIS import end where it did":
+            // one token per probed candidate, saying which step answered or how the
+            // last one missed. The KSTL/KLAX arrival captures could not distinguish
+            // "the runway candidate won first" from "every gate step failed" — four
+            // presses, two airports, and the log recorded only the winner.
+            string probe = $"{(candidate.IsRunway ? "runway" : "gate")}'{candidate.Identifier}'";
+
             var offered = candidate.IsRunway
                 ? (runwayLabels ??= ListDestinations(true))
                 : (gateLabels ??= ListDestinations(false));
 
             string? match = MatchDestinationLabel(offered, candidate.IsRunway, candidate.Identifier);
+            string matchedBy = "name";
 
             // BOTH GATE FALLBACKS RUN HERE, ON THIS CANDIDATE, AND MUST NEVER BE MOVED
             // BELOW THE LOOP. The chain ends with the ARRIVAL RUNWAY — that is the whole
@@ -1270,27 +1278,54 @@ public class TaxiAssistForm : Form
                 match = MatchGateByAlias(offered, candidate.Identifier);
                 if (match != null)
                 {
+                    matchedBy = "alias";
                     substitution = new GateSubstitution(
                         candidate.Identifier!, GateSubstitutionKind.Alias);
                 }
                 else if (candidate.Position is GeoPoint published)
                 {
-                    match = MatchGateByPosition(offered, published);
+                    match = MatchGateByPosition(offered, published, out double nearestMetres);
                     if (match != null)
                     {
+                        matchedBy = "position";
                         substitution = new GateSubstitution(
                             candidate.Identifier!, GateSubstitutionKind.Position);
                     }
+                    else
+                    {
+                        // The one distinction the KLAX capture could not make: was the
+                        // published coordinate near-but-outside a stand (scenery offset
+                        // — the tolerance is the thing to re-examine) or nowhere near
+                        // anything (the coordinate itself is unusable)?
+                        probeTrace?.Add(double.IsNaN(nearestMetres)
+                            ? $"{probe}=miss(position matched no stand)"
+                            : $"{probe}=miss(nearest stand {nearestMetres:F0}m from position)");
+                        continue;
+                    }
+                }
+                else
+                {
+                    probeTrace?.Add($"{probe}=miss(no-position)");
+                    continue;
                 }
             }
 
-            if (match == null) continue;
+            if (match == null)
+            {
+                probeTrace?.Add($"{probe}=miss");
+                continue;
+            }
 
             // The list for this type may have been snapshotted several candidates
             // ago, so switch back to it before selecting.
             SelectDestinationType(candidate.IsRunway);
             int index = cmbDestination.Items.IndexOf(match);
-            if (index < 0) continue;
+            if (index < 0)
+            {
+                probeTrace?.Add($"{probe}=miss(matched '{match}' but the combo no longer lists it)");
+                continue;
+            }
+            probeTrace?.Add($"{probe}={matchedBy}");
 
             // Silently: this is the import seating its own destination, not the pilot
             // choosing one, and the import's own summary must not be talked over.
@@ -1415,7 +1450,8 @@ public class TaxiAssistForm : Form
     /// A gate the maps do not carry is skipped rather than defaulted to (0, 0): a spot
     /// with no known centre cannot be shown to contain anything, and null island is
     /// 150 m from nothing.</summary>
-    private string? MatchGateByPosition(IReadOnlyList<string> gateLabels, GeoPoint published)
+    private string? MatchGateByPosition(
+        IReadOnlyList<string> gateLabels, GeoPoint published, out double nearestMetres)
     {
         const double FeetToMetres = 0.3048;
 
@@ -1434,7 +1470,7 @@ public class TaxiAssistForm : Form
         }
 
         return SayIntentionsGatePositionMatcher.Match(
-            candidates, published.Latitude, published.Longitude);
+            candidates, published.Latitude, published.Longitude, out nearestMetres);
     }
 
     /// <summary>Every label the destination combo offers for one destination type.
