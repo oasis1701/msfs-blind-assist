@@ -338,8 +338,11 @@ public sealed class AudioOutputRouter : IDisposable
 
     /// <summary>
     /// Asks for ONE SILENT sweep that seeds the last-target state from current reality. Called
-    /// exactly once per session, from MainForm, immediately after
-    /// <see cref="AnnounceRouteChange"/> is wired.
+    /// exactly once per session, from MainForm's connect timer — immediately after the
+    /// "Initializing, please wait" announcement (and therefore after
+    /// <see cref="AnnounceRouteChange"/> was wired, which it needs). Not earlier: requested at
+    /// manager-init, its one startup phrase was spoken the instant the message pump started
+    /// and was cut off by the screen reader's own launch speech (see the MainForm call site).
     ///
     /// WHY IT EXISTS: the three ordinary <see cref="RequestSweep"/> callers are a settings save,
     /// an endpoint notification, and a tone losing its device — none of which happens at

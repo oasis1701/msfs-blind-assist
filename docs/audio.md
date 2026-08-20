@@ -18,8 +18,13 @@ different default while the setting is "follow the default" and they follow that
 outcomes is spoken once, *after* the move has happened.
 
 **At startup there is one extra sweep, and it is selectively quiet.** `RequestBaselineSweep`
-runs once, from `MainForm`, right after the announcement sink is wired, and seeds the router's
-last-target state from current reality. It says nothing about a *healthy* opening state — a pilot
+runs once, from `MainForm`'s connect timer, **immediately after the "Initializing, please
+wait" announcement** (and necessarily after the announcement sink was wired in
+`InitializeManagers`), and seeds the router's last-target state from current reality.
+Anchored any earlier, its one startup phrase was spoken the instant the message pump
+started — into the same first second as the screen reader's own window/focus speech, which
+cancels in-progress utterances — and the pilot heard it cut off (live report, 2026-08-20);
+after the Initializing call it appends behind it and is heard whole. It says nothing about a *healthy* opening state — a pilot
 who has just launched the app has changed nothing — but it **does** speak the two notices that
 mean the saved configuration is not being honoured before they have touched anything: the chosen
 device is gone (`FellBackToDefault`), or nothing resolved at all (`NoDeviceAvailable`, i.e. every

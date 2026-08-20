@@ -551,30 +551,15 @@ public partial class MainForm : Form
             }
         };
 
-        // Seed the router's last-target state from current reality, ONCE, and SILENTLY. The
-        // only three things that ask for a sweep are a settings save, a WASAPI endpoint
-        // notification and a tone losing its device — none of which happens at launch — so
-        // without this the session's FIRST real change was judged against a blank history:
-        // with the setting on "Windows default device", the first time the pilot promoted a
-        // different default mid-flight, the planner suppressed the "default device changed"
-        // notice (it could not tell "Windows moved it" from "the pilot just picked it") while
-        // still moving every sounding tone. The tones jumped endpoints with no explanation,
-        // exactly once per session.
-        //
-        // Silent about a HEALTHY opening state — a pilot who has just launched has changed
-        // nothing, and startup chatter is not wanted — but it DOES speak the two that mean the
-        // saved configuration is not being honoured before they touched anything: the chosen
-        // device is gone, or nothing resolved at all (in which case every guidance tone is
-        // silent for the session). Both are otherwise invisible: the only other channel is the
-        // Audio tab's status line, which a blind pilot may never open. Same judgement as the
-        // VATSIM startup plugin check above.
-        //
-        // So this MUST come after the sink is assigned, not merely alongside it: the two
-        // startup phrases have nowhere to go otherwise. Delivery works from here — the handle
-        // is already forced by `new ScreenReaderAnnouncer(this.Handle)` above, and the queued
-        // Announce cannot tick until the message pump runs, which is exactly how the VATSIM
-        // startup notice lands after the form is up.
-        Services.AudioOutputRouter.Shared.RequestBaselineSweep();
+        // The startup BASELINE sweep (AudioOutputRouter.RequestBaselineSweep) is deliberately
+        // NOT requested here, even though the sink above is what it needs: it is requested
+        // from the connect timer's tick, immediately after "Initializing, please wait" —
+        // see MainForm_Load. Requested here, its one startup phrase (a saved device that is
+        // gone at launch) was spoken the instant the message pump started, into the same
+        // first second as NVDA's own window/focus announcements — which cancel in-progress
+        // speech — so the pilot heard it cut off (live report, 2026-08-20). Anchored after
+        // the Initializing announcement it appends behind it in the screen reader's own
+        // queue and is heard whole.
 
         // Note: Diagnostic test removed to prevent test speech on startup
         // Uncomment the next lines if you need to troubleshoot screen reader connections:
@@ -849,6 +834,25 @@ public partial class MainForm : Form
             connectTimer.Stop();
             connectTimer.Dispose();
             announcer.Announce("Initializing, please wait");
+
+            // The audio router's ONE seeding pass, anchored HERE — after "Initializing,
+            // please wait" and never back in InitializeManagers where the announcement sink
+            // is wired. The sweep seeds the last-target state silently either way, but its
+            // one startup phrase (a saved guidance-tone device that is gone at launch:
+            // "Guidance tone device X is not available…") must land AFTER the Initializing
+            // announcement: requested at manager-init it spoke the moment the message pump
+            // started, into the same first second as NVDA's own window/focus speech — which
+            // cancels in-progress utterances — and the pilot heard it cut off (live report,
+            // 2026-08-20). From here the sweep's notice reaches announcer.Announce a few tens
+            // of milliseconds after the Initializing call, and both use the append-not-
+            // interrupt speak, so the screen reader speaks them in order, each in full. The
+            // sink it needs has been assigned since InitializeManagers, so the ordering
+            // contract (sink first, baseline second) still holds; endpoint notifications in
+            // the first two seconds now run as ordinary sweeps against unseeded state, which
+            // is the documented pre-baseline behaviour for that window and self-heals — every
+            // sweep stores the trio.
+            Services.AudioOutputRouter.Shared.RequestBaselineSweep();
+
             simConnectManager.Connect();
         };
         connectTimer.Start();
