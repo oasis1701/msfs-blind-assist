@@ -70,6 +70,14 @@ and not the other two.
   id-only guard silently no-opped whenever the id had not changed, so a fallen-back tone could
   never recover. Do not reintroduce a process-global "last applied device" in any form.
 
+  Two carve-outs on the mismatch half (never on the `NeedsDevice` half): a tone whose
+  `DevicePinned` is set (started with an explicit `deviceIdOverride` — the Audio tab's
+  audition) is not planned on mismatch, because `RebindTo` lets the override win and the "move"
+  is a teardown-and-reopen of the SAME device, an audible gap per sweep that can never
+  converge; and a tone whose bound id is EMPTY while playing (the endpoint's `ID` read failed)
+  is not planned on mismatch either, because it can never compare equal to any target and would
+  be restarted by every sweep forever. Both still move whenever they genuinely need a device.
+
 - **Registration means "alive and its owner has not stopped it", NEVER "currently sounding".**
   `AudioToneGenerator` registers in its constructor and again in `EnsureRegisteredLocked` on a
   start, and unregisters only on `Stop()`/`Dispose()`. A start whose open FAILED stays
@@ -113,15 +121,27 @@ and not the other two.
   endpoint may mix at a different rate and the oscillator's phase step is derived from it.
 
 - **There are exactly four spoken notices, all queued, all spoken AFTER the outcome is known:**
-  fell back to the default / recovered the preferred device / the default changed underneath a
-  "follow the default" setting / no device available at all. They are raised **only from
-  `RunSweep`, only with `Gate` released, and only after that sweep's rebinds have run** — so
-  what the pilot hears has already happened. `OpenFor` never announces: the predecessor spoke
-  "using the Windows default device" from inside the open path, *before* the default endpoint
-  had been tried at all, so it said so even in the case where the default then failed to open
-  and there was no tone. `AudioOutputRouter.Announce` names its cases explicitly with a discard
-  arm, so a new `AudioRouteNotice` member stays silent until someone deliberately gives it a
-  voice.
+  fell back to the default / recovered the preferred device / the default changed underneath
+  the tones / no device available at all. They are raised **only from `RunSweep`, only with
+  `Gate` released, and only after that sweep's rebinds have run** — so what the pilot hears has
+  already happened. `OpenFor` never announces: the predecessor spoke "using the Windows default
+  device" from inside the open path, *before* the default endpoint had been tried at all, so it
+  said so even in the case where the default then failed to open and there was no tone.
+  `AudioOutputRouter.Announce` names its cases explicitly with a discard arm, so a new
+  `AudioRouteNotice` member stays silent until someone deliberately gives it a voice.
+
+  Three refinements on WHICH notice fires, each closing a live gap — do not simplify them away:
+  `DefaultDeviceChanged` keys on the tones **riding the default** (the setting says follow it
+  OR the saved device is missing and they fell back to it), never on the setting alone — keyed
+  on the setting, a fallen-back pilot's tones jumped endpoints silently when Windows promoted a
+  different default. `RecoveredPreferred` additionally requires the **same saved id** as the
+  previous sweep (`_lastSavedDeviceId`) — without that comparison it also fired when the pilot,
+  while fallen back, picked a *different* connected device in Settings: "device X is back" for
+  a device that never went away, spoken over a combo change the screen reader had already
+  announced. And after `NoDeviceAvailable` was the last thing spoken, the first sweep that
+  resolves an endpoint again speaks `DefaultDeviceChanged` ("Guidance tones now on …") — the
+  no-device sweep stores an **empty** target, which otherwise reads as "the session's first
+  resolution" and lets the tones come back in silence after the pilot was told they were dead.
 
 - **The session's first sweep is a baseline, requested once from `MainForm`.**
   `RequestBaselineSweep` seeds `_lastTargetDeviceId`, `_lastFellBack` and
@@ -273,6 +293,28 @@ and not the other two.
   one sweep, so a `DefaultDeviceChanged` or `RecoveredPreferred` in that window goes unspoken.
   The window is a few milliseconds of app startup and was entirely silent before the baseline
   existed, so this is strictly better than what it replaced — but it is not nothing.
+
+- **A saved device that enumerates Active but will not Initialize retries on every sweep.**
+  `IAudioClient.Initialize` runs inside `Init()`, after `OpenFor` has returned, so its failure
+  (an exclusive-mode holder, a driver fault) is invisible to `OpenFor`'s own fallback;
+  `StartLocked` therefore retries ONCE on the explicit default endpoint, so the tones keep
+  sounding instead of going silent for the session. The residual: `Resolve` still reports the
+  saved device present (`FellBack == false`), so every later sweep re-plans the move, re-fails
+  `Init` on it and re-falls back — one failed open plus one teardown-and-reopen of each tone
+  per sweep EVENT (settings save, endpoint notification), for as long as the device stays in
+  that state. Event-driven, so bounded, and audible tones beat silence — but the status line
+  reads "Using X" while the sound comes from the default, and no notice fires (`FellBackToDefault`
+  requires `FellBack`). Distinguishing "present" from "openable" needs an open-outcome fed back
+  into the resolution, which is the same missing feedback as the notice bullet above.
+
+- **A sweep that cannot read the default endpoint while devices exist does nothing.** A
+  transient `GetDefaultAudioEndpoint` failure used to be indistinguishable from "no devices at
+  all": it spoke a false "No audio device available" over tones that were audibly still
+  playing, and seeding the last-target state with the empty id then swallowed the next genuine
+  default-change notice and deduped a later REAL all-devices-gone alarm. Such a sweep now
+  skips — no moves, no store, no speech, one log line — and the next endpoint notification or
+  settings save re-runs it. A baseline skipped this way simply leaves the seed for that later
+  sweep, which is the pre-baseline behaviour.
 
 ## Related documentation
 

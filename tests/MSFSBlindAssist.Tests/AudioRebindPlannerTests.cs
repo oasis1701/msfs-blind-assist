@@ -162,4 +162,113 @@ public class AudioRebindPlannerTests
         Assert.Equal(new[] { 1 }, plan.TokensToRebind);
         Assert.Equal(AudioRouteNotice.None, plan.Notice);
     }
+
+    private const string SecondHeadsetId = "{0.0.0.00000000}.{second-headset}";
+    private const string SecondHeadsetName = "Headphones (Bose USB)";
+
+    // While fallen back from headset A, the pilot picks connected device B in Settings. B was
+    // never absent, and the screen reader already spoke the combo change — announcing
+    // "device B is back" here mislabels a deliberate user action as a hardware recovery.
+    [Fact]
+    public void SwitchingTheSavedDevice_WhileFallenBack_IsNotARecoveryNotice()
+    {
+        var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
+        var pickedSecondHeadset = new AudioDeviceResolution(SecondHeadsetId, SecondHeadsetName, false, $"Using {SecondHeadsetName}.");
+
+        var plan = AudioRebindPlanner.Plan(pickedSecondHeadset, followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: SpeakersId, previouslyFellBack: true, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: SpeakersId,
+            savedDeviceId: SecondHeadsetId, previousSavedDeviceId: HeadsetId);
+
+        Assert.Equal(new[] { 1 }, plan.TokensToRebind);
+        Assert.Equal(AudioRouteNotice.None, plan.Notice);
+    }
+
+    // The same shape with the SAME saved id is the genuine replug and must still speak.
+    [Fact]
+    public void ReplugOfTheSameSavedDevice_IsStillARecoveryNotice()
+    {
+        var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
+
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: SpeakersId, previouslyFellBack: true, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: HeadsetId,
+            savedDeviceId: HeadsetId, previousSavedDeviceId: HeadsetId);
+
+        Assert.Equal(new[] { 1 }, plan.TokensToRebind);
+        Assert.Equal(AudioRouteNotice.RecoveredPreferred, plan.Notice);
+    }
+
+    // Saved device missing, tones riding the default: Windows promoting a DIFFERENT default
+    // moves every tone, and that move must be spoken — the pilot did nothing. The old
+    // condition keyed on the setting alone, so this case moved the tones in silence.
+    [Fact]
+    public void DefaultDeviceChanged_WhileFallenBack_AnnouncesTheMove()
+    {
+        var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false) };
+        var fellBackToSecondDefault = new AudioDeviceResolution(SecondHeadsetId, SecondHeadsetName, true, $"{HeadsetName} is not connected - using Windows default device ({SecondHeadsetName}).");
+
+        var plan = AudioRebindPlanner.Plan(fellBackToSecondDefault, followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: SpeakersId, previouslyFellBack: true, lastNotice: AudioRouteNotice.FellBackToDefault, lastNoticeDeviceId: SpeakersId,
+            savedDeviceId: HeadsetId, previousSavedDeviceId: HeadsetId);
+
+        Assert.Equal(new[] { 1 }, plan.TokensToRebind);
+        Assert.Equal(AudioRouteNotice.DefaultDeviceChanged, plan.Notice);
+        Assert.Equal(SecondHeadsetName, plan.NoticeDeviceName);
+    }
+
+    // After "no audio device available" was spoken, the first sweep that resolves an endpoint
+    // again must say where the tones went — the no-device sweep stored an empty target, which
+    // otherwise reads as "first resolution" and recovers in silence.
+    [Fact]
+    public void RecoveryAfterNoDeviceAvailable_Announces()
+    {
+        var generators = new[] { new AudioGeneratorState(1, "", NeedsDevice: true) };
+
+        var plan = AudioRebindPlanner.Plan(OnSpeakersByChoice(), followingWindowsDefault: true, previouslyFollowingWindowsDefault: true, generators,
+            previousTargetDeviceId: "", previouslyFellBack: false, lastNotice: AudioRouteNotice.NoDeviceAvailable, lastNoticeDeviceId: "",
+            savedDeviceId: "", previousSavedDeviceId: "");
+
+        Assert.Equal(new[] { 1 }, plan.TokensToRebind);
+        Assert.Equal(AudioRouteNotice.DefaultDeviceChanged, plan.Notice);
+        Assert.Equal(SpeakersName, plan.NoticeDeviceName);
+    }
+
+    // A tone started with an explicit device override (the Audio tab's audition) never follows
+    // the sweep target — RebindTo lets the override win — so planning it only tears down and
+    // reopens the SAME device, an audible gap per sweep that can never converge.
+    [Fact]
+    public void PinnedGenerator_OnAnotherEndpoint_IsNotRebound()
+    {
+        var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: false, DevicePinned: true) };
+
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
+
+        Assert.Empty(plan.TokensToRebind);
+    }
+
+    // ...but a pinned tone that actually LOST its device is still retried.
+    [Fact]
+    public void PinnedGenerator_NeedingADevice_IsStillRebound()
+    {
+        var generators = new[] { new AudioGeneratorState(1, SpeakersId, NeedsDevice: true, DevicePinned: true) };
+
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
+
+        Assert.Equal(new[] { 1 }, plan.TokensToRebind);
+    }
+
+    // A playing tone whose bound id could not be read compares unequal to every target
+    // forever; planning it restarts it on every sweep to no effect. It moves only when it
+    // genuinely needs a device.
+    [Fact]
+    public void GeneratorWithUnreadableBoundId_IsNotReboundOnMismatchAlone()
+    {
+        var generators = new[] { new AudioGeneratorState(1, "", NeedsDevice: false) };
+
+        var plan = AudioRebindPlanner.Plan(OnHeadset(), followingWindowsDefault: false, previouslyFollowingWindowsDefault: false, generators,
+            previousTargetDeviceId: HeadsetId, previouslyFellBack: false, lastNotice: AudioRouteNotice.None, lastNoticeDeviceId: "");
+
+        Assert.Empty(plan.TokensToRebind);
+    }
 }

@@ -217,7 +217,16 @@ public sealed class TestTonePlayer : IDisposable
         {
             try
             {
-                for (int i = 0; i < ticks && tone.IsPlaying; i++)
+                // The continue test is "not terminally dead", NEVER bare IsPlaying: a healthy
+                // router rebind holds isPlaying false for the whole WASAPI reopen (the same
+                // window Toggle and AutoStop are deliberately not gated on it), so a 100 ms
+                // tick sampling that window would end the audition seconds early and AutoStop
+                // would then kill the freshly rebound tone. A tone that is not playing AND
+                // flagged NeedsDevice really did lose its device terminally — stop early for
+                // that. A tone the pilot stopped reads (false, false) and keeps ticking
+                // harmlessly (every onTick call no-ops on a stopped generator) until AutoStop's
+                // ownership check no-ops too.
+                for (int i = 0; i < ticks && (tone.IsPlaying || !tone.NeedsDevice); i++)
                 {
                     onTick(tone, i);
                     await Task.Delay(TickIntervalMs).ConfigureAwait(false);

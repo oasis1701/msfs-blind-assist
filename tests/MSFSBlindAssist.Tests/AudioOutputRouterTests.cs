@@ -72,5 +72,17 @@ public class AudioOutputRouterTests
     public void SharedIsAlwaysAvailable()
     {
         Assert.NotNull(AudioOutputRouter.Shared);
+
+        // Torn down AT ONCE, inside the test. Resolving Shared started its worker thread and
+        // registered a live IMMNotificationClient, and nothing else in the run would ever
+        // dispose them — so a real endpoint event minutes later (headset plugged in on a dev
+        // machine) would drive a sweep that reads SettingsManager.Current on a background
+        // thread this class's SettingsManagerGlobalState collection cannot serialize: the
+        // collection serializes test CLASSES, not a worker that outlives them, and
+        // SettingsSeedTests reflectively repoints the settings paths mid-run. Disposing here
+        // closes that window; Dispose is idempotent (pinned above) and the Lazy keeps
+        // returning the same — now inert — instance, so this assertion stays meaningful and
+        // no later test resurrects the worker.
+        AudioOutputRouter.Shared.Dispose();
     }
 }

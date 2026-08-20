@@ -37,6 +37,12 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     private readonly List<AudioOutputDevice> _deviceRows = new();
 
+    // The saved selection LoadFrom ran with, kept so the refresh triggers can rebuild the
+    // same missing-device row; _loaded gates them off until LoadFrom has actually run.
+    private string _savedId = string.Empty;
+    private string _savedName = string.Empty;
+    private bool _loaded;
+
     // Cached by LoadFrom and reused by UpdateStatusText, which fires on every
     // SelectedIndexChanged -- i.e. on every arrow-key press while a screen reader user
     // browses the dropdown. Re-resolving against live WASAPI state per keystroke would go back
@@ -81,6 +87,10 @@ public class AudioPanel : UserControl, ISettingsPanel
             AccessibleDescription = "Choose which audio device plays taxi, takeoff, hand fly, landing guidance and docking tones"
         };
         _deviceCombo.SelectedIndexChanged += (_, _) => UpdateStatusText();
+        // Refresh as the list is about to SHOW (DropDown fires before it opens), so a device
+        // plugged in while this dialog is open is findable without closing and reopening the
+        // dialog — see RefreshDeviceList for why there is no background-event refresh.
+        _deviceCombo.DropDown += (_, _) => RefreshDeviceList();
         Controls.Add(_deviceCombo);
 
         yPos += rowHeight + 10;
@@ -134,11 +144,22 @@ public class AudioPanel : UserControl, ISettingsPanel
 
     public void LoadFrom(UserSettings settings)
     {
-        string savedId = settings.GuidanceToneDeviceId ?? string.Empty;
-        string savedName = settings.GuidanceToneDeviceName ?? string.Empty;
+        _savedId = settings.GuidanceToneDeviceId ?? string.Empty;
+        _savedName = settings.GuidanceToneDeviceName ?? string.Empty;
+        _loaded = true;
 
-        // Enumerated ONCE per load and cached (see the field comments) rather than once here
-        // AND again inside every later UpdateStatusText call.
+        PopulateDeviceList(selectId: _savedId);
+    }
+
+    /// <summary>
+    /// Enumerates the endpoints (once — cached for every later UpdateStatusText call, see the
+    /// field comments) and rebuilds the combo, selecting <paramref name="selectId"/> when it
+    /// is still listed, else the saved device, else the default row. LoadFrom calls this with
+    /// the saved selection; the refresh triggers (tab entry, dropdown open) call it with the
+    /// pilot's CURRENT selection so a refresh never silently discards an uncommitted choice.
+    /// </summary>
+    private void PopulateDeviceList(string selectId)
+    {
         _realDevices = AudioOutputRouter.Shared.Enumerate();
         _defaultEndpoint = AudioOutputRouter.Shared.DefaultEndpointInfo();
 
@@ -152,29 +173,69 @@ public class AudioPanel : UserControl, ISettingsPanel
         // the synthetic default row twice over) was one more place for the two answers to
         // disagree.
         AudioDeviceResolution saved = AudioDeviceSelector.Resolve(
-            savedId, savedName, _realDevices, _defaultEndpoint.Id, _defaultEndpoint.Name);
+            _savedId, _savedName, _realDevices, _defaultEndpoint.Id, _defaultEndpoint.Name);
         bool savedIsMissing = saved.FellBack;
 
         // A saved device that is not connected right now is still listed, so the pilot's
         // choice stays visible and is never silently reset to default behind their back.
+        // The ROW keeps the CLEAN stored name — a blank stays blank, so ApplyTo can never
+        // persist a display placeholder ("Saved device") as though it were the hardware's
+        // name and have the fallback announcement speak it; the placeholder belongs to the
+        // combo's DISPLAY text below, alongside "(not connected)".
         int missingRowIndex = -1;
         if (savedIsMissing)
         {
             missingRowIndex = _deviceRows.Count;
-            _deviceRows.Add(new AudioOutputDevice(savedId, string.IsNullOrWhiteSpace(savedName) ? "Saved device" : savedName));
+            _deviceRows.Add(new AudioOutputDevice(_savedId, _savedName));
         }
 
         _deviceCombo.Items.Clear();
         for (int i = 0; i < _deviceRows.Count; i++)
         {
             AudioOutputDevice row = _deviceRows[i];
-            _deviceCombo.Items.Add(i == missingRowIndex ? $"{row.FriendlyName} (not connected)" : row.FriendlyName);
+            _deviceCombo.Items.Add(i == missingRowIndex
+                ? $"{(string.IsNullOrWhiteSpace(row.FriendlyName) ? "Saved device" : row.FriendlyName)} (not connected)"
+                : row.FriendlyName);
         }
 
-        int index = _deviceRows.FindIndex(d => string.Equals(d.Id, savedId, StringComparison.OrdinalIgnoreCase));
+        int index = _deviceRows.FindIndex(d => string.Equals(d.Id, selectId, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            index = _deviceRows.FindIndex(d => string.Equals(d.Id, _savedId, StringComparison.OrdinalIgnoreCase));
+        }
+
         _deviceCombo.SelectedIndex = index >= 0 ? index : 0;
 
         UpdateStatusText();
+    }
+
+    /// <summary>
+    /// Re-enumerates and rebuilds the device list, keeping the pilot's current selection.
+    /// Wired to the tab becoming visible and to the combo's dropdown OPENING — the two
+    /// moments a screen-reader user goes looking for a device — so a headset plugged in
+    /// while the Settings dialog is already open actually appears (the list used to be
+    /// snapshotted once per dialog open, with no refresh and no staleness hint). Never
+    /// wired to a background device event: rebuilding the combo underneath a user who is
+    /// arrowing it would move their caret, the same rebuild-under-the-caret failure the
+    /// Monitor Manager invariants exist to prevent.
+    /// </summary>
+    private void RefreshDeviceList()
+    {
+        if (!_loaded || _deviceCombo == null || _deviceCombo.IsDisposed)
+        {
+            return;
+        }
+
+        PopulateDeviceList(selectId: SelectedRow().Id);
+    }
+
+    protected override void OnVisibleChanged(EventArgs e)
+    {
+        base.OnVisibleChanged(e);
+        if (Visible)
+        {
+            RefreshDeviceList();
+        }
     }
 
     public bool Validate(out string error, out Control? focus)

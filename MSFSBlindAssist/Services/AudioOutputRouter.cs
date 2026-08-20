@@ -73,6 +73,13 @@ public sealed class AudioOutputRouter : IDisposable
     private string _lastTargetDeviceId = string.Empty;
     private bool _lastFellBack;
 
+    // The saved device id the PREVIOUS sweep ran with. Paired with the current one it lets the
+    // planner tell a replugged device (same saved id, was fallen back — a recovery worth
+    // speaking) from the pilot SWITCHING the setting to a different device while fallen back
+    // (a deliberate combo change the screen reader already spoke). Read and written only under
+    // Gate; seeded by the baseline sweep like the rest of the trio.
+    private string _lastSavedDeviceId = string.Empty;
+
     // Whether the PREVIOUS sweep was following the Windows default (i.e. the saved id was
     // blank then). Initialised false and SEEDED by the startup baseline sweep — see
     // RequestBaselineSweep. Left unseeded (the state before that sweep existed) the very first
@@ -493,6 +500,7 @@ public sealed class AudioOutputRouter : IDisposable
         string previousTargetDeviceId;
         bool previouslyFellBack;
         bool previouslyFollowingWindowsDefault;
+        string previousSavedDeviceId;
         AudioRouteNotice lastNotice;
         string lastNoticeDeviceId;
 
@@ -501,13 +509,14 @@ public sealed class AudioOutputRouter : IDisposable
             foreach ((int token, AudioToneGenerator generator) in PruneLocked())
             {
                 // LOCK-FREE reads by contract — see the LOCK ORDER note on the class.
-                states.Add(new AudioGeneratorState(token, generator.CurrentDeviceId, generator.NeedsDevice));
+                states.Add(new AudioGeneratorState(token, generator.CurrentDeviceId, generator.NeedsDevice, generator.HasDeviceOverride));
                 byToken[token] = generator;
             }
 
             previousTargetDeviceId = _lastTargetDeviceId;
             previouslyFellBack = _lastFellBack;
             previouslyFollowingWindowsDefault = _lastFollowingWindowsDefault;
+            previousSavedDeviceId = _lastSavedDeviceId;
             lastNotice = _lastNotice;
             lastNoticeDeviceId = _lastNoticeDeviceId;
         }
@@ -523,6 +532,21 @@ public sealed class AudioOutputRouter : IDisposable
 
         AudioDeviceResolution target = AudioDeviceSelector.Resolve(savedId, savedName, devices, defaultId, defaultName);
 
+        if (string.IsNullOrWhiteSpace(target.DeviceId) && devices.Count > 0)
+        {
+            // INDETERMINATE, not no-device: endpoints exist but the default-endpoint lookup
+            // failed (a transient COM error, most likely during the very device churn that
+            // triggered this sweep). This sweep cannot tell where the tones belong, so it does
+            // NOTHING — moving tones or speaking "no audio device available" over tones that
+            // are audibly still playing would both be wrong, and storing "" into the
+            // last-target state would make the next GENUINE default change read as a first
+            // resolution (silent) and dedup a later REAL all-devices-gone alarm. The next
+            // endpoint notification or settings save re-runs the sweep; a baseline skipped
+            // here simply leaves the seed for that later sweep (the pre-baseline behaviour).
+            Log.Warn("Audio", "Audio routing sweep skipped: endpoints exist but the default endpoint could not be read");
+            return;
+        }
+
         AudioRebindPlan plan = AudioRebindPlanner.Plan(
             target,
             followingWindowsDefault,
@@ -531,7 +555,9 @@ public sealed class AudioOutputRouter : IDisposable
             previousTargetDeviceId,
             previouslyFellBack,
             lastNotice,
-            lastNoticeDeviceId);
+            lastNoticeDeviceId,
+            savedId,
+            previousSavedDeviceId);
 
         foreach (int token in plan.TokensToRebind)
         {
@@ -571,6 +597,7 @@ public sealed class AudioOutputRouter : IDisposable
             _lastTargetDeviceId = target.DeviceId;
             _lastFellBack = target.FellBack;
             _lastFollowingWindowsDefault = followingWindowsDefault;
+            _lastSavedDeviceId = savedId;
 
             // Only a notice that is about to be SPOKEN updates the dedup pair — the pilot's
             // last-heard state, not the router's last-computed one. The baseline obeys that

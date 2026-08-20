@@ -41,18 +41,22 @@ public class AudioToneGenerator : IDisposable
 
     private AudioOutputSession? session;
 
-    // Last commanded tone state, replayed by RebindTo onto a newly chosen device.
-    private HandFlyWaveType lastWaveType = HandFlyWaveType.Sine;
+    // Last commanded tone state, replayed by RebindTo onto a newly chosen device. Written
+    // lock-free by the command methods and RE-READ lock-free by StartOnSessionLocked's
+    // build/catch-up, so the single-writable ones are volatile; lastVolume is a double (C#
+    // forbids volatile double) and is re-read via Volatile.Read instead.
+    private volatile HandFlyWaveType lastWaveType = HandFlyWaveType.Sine;
     private double lastVolume = 0.5;
     private double lastFrequency = -1.0;
-    private float lastPan;
+    private volatile float lastPan;
 
     // The OWNER's device choice, in OpenFor's three-state encoding (null = the saved setting,
     // "" = explicitly the Windows default, anything else = that endpoint). Written by Start()
     // ONLY — never by StartLocked, and so never by a rebind: a rebind that recorded the
     // sweep's target here would pin the tone to that sweep's endpoint forever, and the next
-    // settings change could no longer move it.
-    private string? lastDeviceIdOverride;
+    // settings change could no longer move it. Volatile because HasDeviceOverride is read by
+    // the router's sweep snapshot lock-free (same contract as CurrentDeviceId/NeedsDevice).
+    private volatile string? lastDeviceIdOverride;
 
     // Whether the chain built by the last successful StartLocked contains the sawtooth
     // low-pass. UpdateWaveType compares against it to notice a change of sawtooth-ness, which
@@ -91,6 +95,13 @@ public class AudioToneGenerator : IDisposable
     /// the next routing sweep always moves it regardless of what it is nominally bound to.
     /// Lock-free by contract — see the field comment.</summary>
     internal bool NeedsDevice => needsDevice;
+
+    /// <summary>True when this tone was started with an explicit device override (the settings
+    /// panel's audition). The planner reads it from the sweep snapshot so it never plans a
+    /// "move" for a tone whose override would win anyway — RebindTo would only tear the tone
+    /// down and reopen the SAME device, an audible gap per sweep for zero routing effect.
+    /// Lock-free by contract — see the field comment.</summary>
+    internal bool HasDeviceOverride => lastDeviceIdOverride != null;
 
     /// <summary>
     /// The router is injectable so tests and future per-feature routing can supply their own;
@@ -215,22 +226,29 @@ public class AudioToneGenerator : IDisposable
     /// <param name="initialPan">Pan to apply to the new chain. <see cref="Start"/> passes 0
     /// (centre); <see cref="RebindTo"/> passes the pan the tone was already at, so a device
     /// change never silently re-centres a steering cue.</param>
-    private void StartLocked(HandFlyWaveType waveType, double volume, double frequency, string? deviceIdOverride, float initialPan)
+    /// <param name="recordCommanded">False on the rebind path ONLY. RebindTo read these very
+    /// fields moments ago, so re-recording its parameters could only overwrite a command that
+    /// landed in between — the lost-command shape the record-before-open otherwise exists to
+    /// prevent, pointed the other way. Start() always records.</param>
+    private void StartLocked(HandFlyWaveType waveType, double volume, double frequency, string? deviceIdOverride, float initialPan, bool recordCommanded = true)
     {
         if (frequency < 0)
             frequency = CenterFrequency;
 
         float pan = Math.Clamp(initialPan, -1.0f, 1.0f);
 
-        // Recorded BEFORE the open is attempted rather than after it succeeds. RebindTo
-        // replays these fields, and the replay that matters most is the one for a start that
-        // FAILED — a tone that never opened has to come back as the tone its owner asked for,
-        // not as the class defaults (Sine, 0.5, centre frequency, centred) that a
-        // bottom-of-method assignment would have left standing.
-        lastWaveType = waveType;
-        lastVolume = volume;
-        lastFrequency = frequency;
-        lastPan = pan;
+        if (recordCommanded)
+        {
+            // Recorded BEFORE the open is attempted rather than after it succeeds. RebindTo
+            // replays these fields, and the replay that matters most is the one for a start that
+            // FAILED — a tone that never opened has to come back as the tone its owner asked for,
+            // not as the class defaults (Sine, 0.5, centre frequency, centred) that a
+            // bottom-of-method assignment would have left standing.
+            lastWaveType = waveType;
+            lastVolume = volume;
+            lastFrequency = frequency;
+            lastPan = pan;
+        }
 
         try
         {
@@ -243,30 +261,63 @@ public class AudioToneGenerator : IDisposable
             // sweep after the first deactivation).
             EnsureRegisteredLocked();
 
-            // The output is chosen first because the oscillator is built at the endpoint's own
-            // mix rate. That is a quality choice, not a correctness one: WASAPI shared mode
-            // always opens with AutoConvertPcm | SrcDefaultQuality and converts whatever we hand
-            // it, so a rate mismatch was never audible -- generating at the endpoint's rate just
-            // keeps the engine's sample-rate converter out of the chain. (NAudio's DMO resampler
-            // is exclusive-mode only and never ran on this path; and the oscillator declares the
-            // same rate it generates at, with Init setting OutputWaveFormat from the provider,
-            // so declared and generated can never diverge -- a mismatched rate could not have
-            // played sharp either.) A rebind still rebuilds the oscillator rather than swapping
-            // the player under it, because the new endpoint may mix at a different rate and the
-            // oscillator's phase step is derived from it.
             AudioOutputSession? opened = router?.OpenFor(deviceIdOverride);
-            if (opened == null)
+            bool started = opened != null && StartOnSessionLocked(opened);
+
+            if (!started && opened != null)
             {
-                // Nothing opened at all. The generator STAYS REGISTERED with needsDevice set,
-                // so the next sweep — a settings save, or a device arriving — names it,
-                // calls RebindTo, and retries the open. Until then it is simply silent,
-                // which is the correct degradation for optional feedback.
+                // The endpoint OPENED but would not START (IAudioClient.Initialize/Play threw
+                // — e.g. another app holding it in exclusive mode while it still enumerates
+                // Active). OpenFor's own fallback only covers the open, so honour the router
+                // contract — "a chosen endpoint that will not open degrades to the default
+                // endpoint" — with ONE explicit-default retry here. When the failed attempt
+                // already WAS the default this repeats it once and fails again — a wasted
+                // ~10 ms on an already-failed start, accepted for simplicity.
+                //
+                // Deliberately NO sweep request on failure: a sweep would re-resolve this same
+                // still-Active endpoint and re-fail, which is the self-sustaining rebind loop
+                // docs/audio.md's known-limitations section exists to warn about. The retry
+                // channel stays external (settings save / endpoint notification / device-lost),
+                // reaching this generator through its registered NeedsDevice flag.
+                AudioOutputSession? fallback = router?.OpenFor(AudioDeviceSelector.FollowWindowsDefaultId);
+                started = fallback != null && StartOnSessionLocked(fallback);
+            }
+
+            if (!started)
+            {
+                // Nothing opened (or started) at all. The generator STAYS REGISTERED with
+                // needsDevice set, so the next sweep — a settings save, or a device arriving —
+                // names it, calls RebindTo, and retries the open. Until then it is simply
+                // silent, which is the correct degradation for optional feedback.
                 needsDevice = true;
                 currentDeviceId = string.Empty;
                 Log.Warn("Audio", "AudioToneGenerator start failed: no audio output device could be opened");
-                return;
             }
+        }
+        catch (Exception ex)
+        {
+            // Log error but don't crash - audio is optional feedback
+            Log.Debug("Audio", $"AudioToneGenerator start failed: {ex.Message}");
+            Cleanup();
 
+            // AFTER Cleanup, so what survives is the failure. Every failure exit from this
+            // method sets this and every success clears it, which is what makes the flag mean
+            // exactly "this generator does not have a working output right now".
+            needsDevice = true;
+        }
+    }
+
+    /// <summary>
+    /// Builds and starts the tone chain on <paramref name="opened"/>. Caller holds
+    /// startStopLock. Returns false — with that session torn back down via <see cref="Cleanup"/>
+    /// — when Init/Play throws, so <see cref="StartLocked"/> can retry on the default endpoint:
+    /// IAudioClient.Initialize runs inside Init(), after OpenFor has already returned, so its
+    /// failure (exclusive-mode holder, driver fault) is invisible to OpenFor's own fallback.
+    /// </summary>
+    private bool StartOnSessionLocked(AudioOutputSession opened)
+    {
+        try
+        {
             session = opened;
             currentDeviceId = opened.DeviceId ?? string.Empty;
 
@@ -276,14 +327,27 @@ public class AudioToneGenerator : IDisposable
             // without this handler an endpoint yanked mid-flight left isPlaying true forever:
             // Start() early-returned, the owner kept feeding a dead stream, and the pilot's
             // only evidence was the absence of a sound they were steering by. Subscribed
-            // BEFORE Init/Play, so a failure in either is still reported through it; Cleanup
-            // detaches it again before the session is disposed.
+            // BEFORE Init/Play; a PLAY-side fault is reported through it (an Init throw is
+            // handled by this method's own catch instead — Initialize failing raises nothing).
+            // Cleanup detaches it again before the session is disposed.
             opened.Player.PlaybackStopped += OnPlaybackStopped;
 
-            oscillator = new PhaseContinuousOscillator(opened.MixSampleRate, waveType, (float)frequency, volume);
+            // The chain is built from a FRESH read of the commanded wave type, not from
+            // StartLocked's parameter: OpenFor (a WASAPI enumerate plus an IAudioClient
+            // activation) is much the slowest part of a start, and a wave-type command landing
+            // during it finds a null oscillator and can only record — so the FIELD, not the
+            // parameter, is what the owner most recently asked for, including the sawtooth
+            // low-pass decision below. (The output is chosen first because the oscillator is
+            // built at the endpoint's own mix rate — a quality choice: shared mode always opens
+            // with AutoConvertPcm and converts anything, but generating at the endpoint's rate
+            // keeps the engine's sample-rate converter out of the chain. A rebind still
+            // rebuilds the oscillator rather than swapping the player under it, because the
+            // oscillator's phase step is derived from that rate.)
+            HandFlyWaveType builtWave = lastWaveType;
+            oscillator = new PhaseContinuousOscillator(opened.MixSampleRate, builtWave, (float)lastFrequency, Volatile.Read(ref lastVolume));
 
             ISampleProvider audioSource = oscillator;
-            bool wantsFilter = waveType == HandFlyWaveType.Sawtooth;
+            bool wantsFilter = builtWave == HandFlyWaveType.Sawtooth;
             if (wantsFilter)
             {
                 // Sawtooth needs cutoff at 1200 Hz due to rich harmonic content.
@@ -300,41 +364,78 @@ public class AudioToneGenerator : IDisposable
                 // cannot reach it. For the taxi steering and takeoff centerline tones a centred
                 // pan IS the "you are on the centreline" cue, so that first buffer would be a
                 // wrong steering command, not a missing one.
-                Pan = pan
+                Pan = lastPan
             };
 
             opened.Player.Init(panningSampleProvider);
+
+            // Cleared AFTER Init and BEFORE Play(), deliberately: the render thread only
+            // starts inside Play, so OnPlaybackStopped's fault write of `needsDevice = true`
+            // is now ordered strictly AFTER this clear and can never be overwritten by it —
+            // the old clear-after-Play could erase a fault delivered inline (worker-thread
+            // sessions have no SynchronizationContext, so NAudio raises the handler
+            // synchronously on the render thread) in the instructions between Play returning
+            // and the clear, leaving a dead tone flagged healthy that no sweep would rebind.
+            // Any throw from Play still lands in the catch, which re-asserts true via
+            // StartLocked's failure path.
+            needsDevice = false;
+
             opened.Player.Play();
 
-            // Both flags flip only once there is a working, playing chain. isPlaying in
-            // particular must not flip early: Cleanup() does not (and must not) reset it, so a
-            // throw after an early set would leave isPlaying == true with session/oscillator
-            // already nulled — an inconsistent state that also permanently blocks Start() from
-            // retrying until an explicit Stop().
-            needsDevice = false;
+            // isPlaying flips only once there is a working, playing chain — it must not flip
+            // early: Cleanup() does not (and must not) reset it, so a throw after an early set
+            // would leave isPlaying == true with session/oscillator already nulled — an
+            // inconsistent state that also permanently blocks Start() from retrying until an
+            // explicit Stop().
             isPlaying = true;
 
-            // CATCH-UP. A command that arrived while OpenFor was constructing the WasapiOut
-            // (a WASAPI enumerate plus an IAudioClient activation -- much the slowest part of
-            // a start) wrote its snapshot field and then found a null oscillator, so the chain
-            // above was built from the PARAMETERS rather than from the latest values. Re-apply
-            // them now. ProximityBeeper's solid stop-tone is the case that cannot self-heal --
-            // it sets the volume once and latches -- so without this the docking tone can come
-            // back silent and stay silent for the rest of the dock. Pan has the same shape but
-            // self-heals, because taxi steering rewrites it every position update.
-            oscillator.SetGain(lastVolume);
-            panningSampleProvider.Pan = lastPan;
+            // CATCH-UP, apply-then-recheck. A command that arrived while OpenFor/Init were
+            // running wrote its field and found a null oscillator, so it must be re-applied
+            // here. ProximityBeeper's solid stop-tone is the case that cannot self-heal — it
+            // sets the volume once and latches — so without this the docking tone can come
+            // back silent and stay silent for the rest of the dock.
+            //
+            // Each apply LOOPS until the field re-read matches what was just applied: a
+            // command that records AND applies between this block's read and its apply would
+            // otherwise be overwritten with the stale pre-rebind value — the inverse of the
+            // lost-command shape, and for a latch writer just as permanent. The loop converges
+            // immediately in practice (writers are 15 ms timers at their fastest).
+            double appliedVolume;
+            do { appliedVolume = Volatile.Read(ref lastVolume); oscillator.SetGain(appliedVolume); }
+            while (appliedVolume != Volatile.Read(ref lastVolume));
+
+            float appliedPan;
+            do { appliedPan = lastPan; panningSampleProvider.Pan = appliedPan; }
+            while (appliedPan != lastPan);
+
+            // Wave type too — the old catch-up replayed only gain and pan, so a wave change
+            // landing mid-open was recorded but never applied, and the NEXT device change then
+            // re-timbred the tone unprompted. A change of sawtooth-ness applied here leaves
+            // the 1200 Hz filter mismatched for a moment (the chain cannot be edited in
+            // place); filterInChain keeps telling the truth about the CHAIN, so the next
+            // UpdateWaveType or rebind reconciles the filter.
+            HandFlyWaveType appliedWave;
+            do
+            {
+                appliedWave = lastWaveType;
+                if (appliedWave != builtWave)
+                {
+                    oscillator.SetWaveType(appliedWave);
+                }
+            }
+            while (appliedWave != lastWaveType);
+
+            return true;
         }
         catch (Exception ex)
         {
-            // Log error but don't crash - audio is optional feedback
-            Log.Debug("Audio", $"AudioToneGenerator start failed: {ex.Message}");
+            // Init/Play (or a provider constructor) threw on THIS endpoint. Tear the partial
+            // chain and the session down and report failure so StartLocked can try the default
+            // endpoint; Cleanup detaches the handler and disposes the session via the `session`
+            // field assigned above.
+            Log.Debug("Audio", $"AudioToneGenerator could not start on the opened endpoint: {ex.Message}");
             Cleanup();
-
-            // AFTER Cleanup, so what survives is the failure. Every failure exit from this
-            // method sets this and every success clears it, which is what makes the flag mean
-            // exactly "this generator does not have a working output right now".
-            needsDevice = true;
+            return false;
         }
     }
 
@@ -421,8 +522,10 @@ public class AudioToneGenerator : IDisposable
             // while this method is tearing the chain down lands in these fields — and a
             // snapshot taken earlier would silently overwrite it with the pre-rebind value.
             // That is the same lost-command shape those methods record-before-null-check for,
-            // one level up.
-            StartLocked(lastWaveType, lastVolume, lastFrequency, deviceIdOverride, lastPan);
+            // one level up. recordCommanded: false for the same reason one step further —
+            // StartLocked re-recording these very values would clobber a command landing
+            // between this read and that write.
+            StartLocked(lastWaveType, Volatile.Read(ref lastVolume), lastFrequency, deviceIdOverride, lastPan, recordCommanded: false);
             return isPlaying;
         }
     }
