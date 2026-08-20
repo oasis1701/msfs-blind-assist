@@ -114,9 +114,15 @@ public sealed class FBWA380OansForm : Form
         _displayAirport.Click += (_, _) => DisplayTyped();
 
         var fp = new Label { Text = "Flight-plan airports:", Location = new Point(12, 46), Size = new Size(560, 18) };
-        _btnOrigin = new Button { Text = "Origin", Location = new Point(12, 68), Size = new Size(170, 28), AccessibleName = "Display origin airport", Enabled = false };
-        _btnDest = new Button { Text = "Destination", Location = new Point(192, 68), Size = new Size(180, 28), AccessibleName = "Display destination airport", Enabled = false };
-        _btnAltn = new Button { Text = "Alternate", Location = new Point(382, 68), Size = new Size(180, 28), AccessibleName = "Display alternate airport", Enabled = false };
+        // No explicit AccessibleName on these three: UpdateArpt writes the ICAO into Text
+        // ("Origin EDDF"), and a pinned name would permanently shadow it — a screen reader
+        // said "Display origin airport" and the pilot could not tell WHICH airport any of the
+        // three would load. A Button's accessible name IS its label, so letting it fall back
+        // to Text keeps it current for free; the verb lives in the description instead, where
+        // it is static and cannot go stale.
+        _btnOrigin = new Button { Text = "Origin", Location = new Point(12, 68), Size = new Size(170, 28), AccessibleDescription = "Display this airport on the OANS map", Enabled = false };
+        _btnDest = new Button { Text = "Destination", Location = new Point(192, 68), Size = new Size(180, 28), AccessibleDescription = "Display this airport on the OANS map", Enabled = false };
+        _btnAltn = new Button { Text = "Alternate", Location = new Point(382, 68), Size = new Size(180, 28), AccessibleDescription = "Display this airport on the OANS map", Enabled = false };
         _btnOrigin.Click += (_, _) => DisplayIcao(_s.FmsOrigin);
         _btnDest.Click += (_, _) => DisplayIcao(_s.FmsDest);
         _btnAltn.Click += (_, _) => DisplayIcao(_s.FmsAltn);
