@@ -592,16 +592,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         volumeTrackBar.Enabled = audioEnabled;
         volumeValueLabel.Enabled = audioEnabled;
 
-        // End a sounding audition BEFORE greying its button out. Switching to a feedback mode
-        // with no audio otherwise takes away the only control that can stop the tone: it kept
-        // sounding over the screen reader for the rest of its run while the button announced
-        // "Stop test tone, unavailable". Stop() is idempotent and non-throwing by contract and
-        // resets the button to its idle label, so the button greys out reading "Test tone".
-        if (!audioEnabled)
-        {
-            testTonePlayer?.Stop();
-        }
-
+        // Disabling the button also ends a sounding audition: TestTonePlayer stops itself on
+        // its button's EnabledChanged, so no disable site has to remember to Stop() first.
         testToneButton.Enabled = audioEnabled;
     }
 

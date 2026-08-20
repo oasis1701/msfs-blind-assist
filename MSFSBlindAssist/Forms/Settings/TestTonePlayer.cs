@@ -93,6 +93,14 @@ public sealed class TestTonePlayer : IDisposable
         _button = button ?? throw new ArgumentNullException(nameof(button));
         _onFailure = onFailure;
         SetButtonState(playing: false);
+
+        // The button is the only control that can stop a sounding audition, so losing it must
+        // end the audition with it: disabled — by its panel or any ancestor — the tone would
+        // play out over the screen reader while its stop control announced "unavailable".
+        // Enforced here so every panel gets it, rather than each disable site remembering to
+        // Stop() first. Safe by construction: same-value Enabled writes raise no event,
+        // EnabledChanged does not fire during dispose, and Stop() never writes Enabled.
+        _button.EnabledChanged += (_, _) => { if (!_button.Enabled) Stop(); };
     }
 
     /// <summary>True while an audition is actually SOUNDING — which is not the same as "this
