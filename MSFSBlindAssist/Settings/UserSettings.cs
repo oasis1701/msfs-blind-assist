@@ -392,6 +392,23 @@ public class UserSettings
         public HandFlyWaveType TaxiGuidanceToneWaveform { get; set; } = HandFlyWaveType.Sine;
         public double TaxiGuidanceToneVolume { get; set; } = 0.05;
 
+        // Guidance tone output device. Applies to EVERY tone MSFS BA generates — taxi
+        // steering, takeoff assist centerline, hand fly, visual landing guidance (both
+        // tones) and the docking proximity beeps — so sim audio can stay on speakers while
+        // the guidance tones go to a headset. Screen-reader speech is unaffected; NVDA and
+        // JAWS own their own output device.
+        //
+        // Empty Id = follow the Windows default device, which is what every build before
+        // this setting existed did, so upgrading users see no change.
+        //
+        // The Id is a WASAPI endpoint ID: stable across reboots and across other devices
+        // being plugged in or removed. (A WaveOut device index is not, which is why one is
+        // not stored here — the index shifts and a saved selection silently starts pointing
+        // at a different device.) The Name is display-only, so the settings status line can
+        // name a device that is currently disconnected instead of showing a raw GUID.
+        public string GuidanceToneDeviceId { get; set; } = "";
+        public string GuidanceToneDeviceName { get; set; } = "";
+
         /// <summary>
         /// When true, inverts the steering tone's stereo pan: a tone in the
         /// right ear means steer LEFT to centre it (rather than right).
@@ -669,6 +686,8 @@ public class UserSettings
             RouteAdvisoryProximityNm = RouteAdvisoryProximityNm,
             TaxiGuidanceToneWaveform = TaxiGuidanceToneWaveform,
             TaxiGuidanceToneVolume = TaxiGuidanceToneVolume,
+            GuidanceToneDeviceId = GuidanceToneDeviceId,
+            GuidanceToneDeviceName = GuidanceToneDeviceName,
             TaxiGuidanceInvertSteeringTone = TaxiGuidanceInvertSteeringTone,
             TaxiGuidanceHardPanTone = TaxiGuidanceHardPanTone,
             TaxiGuidanceAnnounceCrossings = TaxiGuidanceAnnounceCrossings,

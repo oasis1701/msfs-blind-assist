@@ -909,9 +909,10 @@ public sealed class DockingGuidanceManager : IDisposable
     /// <para>
     /// <see cref="SilenceLocked"/> alone would only zero the generator volume — it deliberately
     /// leaves the device alive so a re-engage resumes instantly. That is wrong HERE: a concluded
-    /// park normally sees no further frame and no <c>ResetLocked</c>, so the open WaveOut and its
-    /// timer would idle for the rest of the session. Stopping is safe — <c>EngageLocked</c> calls
-    /// <c>_beeper.Start()</c>, which recreates the generator and re-arms the tick timer.
+    /// park normally sees no further frame and no <c>ResetLocked</c>, so the open audio session
+    /// and its timer would idle for the rest of the session. Stopping is safe —
+    /// <c>EngageLocked</c> calls <c>_beeper.Start()</c>, which recreates the generator and
+    /// re-arms the tick timer.
     /// </para>
     /// </summary>
     private void EndHoldToneLocked()

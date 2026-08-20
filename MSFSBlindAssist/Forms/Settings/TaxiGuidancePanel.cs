@@ -52,7 +52,16 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     // supply augmenting-provider support — the button disables itself in that case.
     private readonly Func<Task>? _onRefreshTaxiwayNames;
 
-    private AudioToneGenerator? testToneGenerator;
+    // Four seconds of tone at TestTonePlayer's 100 ms tick — the steering tone is what the
+    // pilot will be following for a whole taxi, so its preview is deliberately longer than the
+    // Audio tab's device audition.
+    private const int TestToneTicks = 40;
+
+    // One complete left-right-left cycle, built once — the steering tone IS the pan, so the
+    // preview has to exercise both channels. See TestTonePan.FullCycle.
+    private static readonly float[] PanSweep = TestTonePan.FullCycle(TestToneTicks);
+
+    private TestTonePlayer testTonePlayer = null!;
 
     private ProximityBeeper? _dockingBeepTester;
     private CancellationTokenSource? _dockingBeepTestCts;
@@ -140,12 +149,17 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         // Test Tone Button
         testToneButton = new Button
         {
-            Text = "Test Tone",
             Location = new Point(20, 145),
             Size = new Size(120, 35),
-            AccessibleName = "Test Tone",
             AccessibleDescription = "Play a sample steering tone with current settings to preview the sound"
         };
+        // The player owns this button's Text and AccessibleName from here on (it sets the idle
+        // pair in its constructor). Assigning Text alone — which this panel used to do — leaves
+        // a screen reader announcing "Test Tone" on a button that would actually stop one,
+        // because ControlAccessibleObject.Name never falls back to Text once AccessibleName has
+        // been set. This panel has no status readout, so a failure surfaces as the same dialog
+        // it always used.
+        testTonePlayer = new TestTonePlayer(testToneButton, ShowAudioError);
         testToneButton.Click += TestToneButton_Click;
 
         // Invert steering tone direction. Default off (current behaviour:
@@ -496,83 +510,27 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     private void TestToneButton_Click(object? sender, EventArgs e)
     {
-        if (testToneGenerator?.IsPlaying == true)
-        {
-            StopTestTone();
-            testToneButton.Text = "Test Tone";
-        }
-        else
-        {
-            PlayTestTone();
-            testToneButton.Text = "Stop Test";
-        }
+        // TestTonePlayer owns the lifecycle: whether the tone actually sounded (Start degrades
+        // silently by contract), the button's Text/AccessibleName pairing, the stale-session
+        // guard and the auto-stop. This panel supplies only the tone and the pan sweep.
+        testTonePlayer.Toggle(StartTestTone, (tone, i) => tone.SetPan(PanSweep[i]), TestToneTicks);
     }
 
-    private void PlayTestTone()
+    /// <summary>Constructs and starts the steering preview with the settings currently shown.
+    /// Whether it actually sounded is TestTonePlayer's check.</summary>
+    private AudioToneGenerator? StartTestTone()
     {
-        try
-        {
-            var waveType = (HandFlyWaveType)toneTypeCombo.SelectedIndex;
-            double volume = volumeTrackBar.Value / 100.0;
+        var waveType = (HandFlyWaveType)toneTypeCombo.SelectedIndex;
+        double volume = volumeTrackBar.Value / 100.0;
 
-            testToneGenerator = new AudioToneGenerator();
-            testToneGenerator.Start(waveType, volume, 440);
-
-            // Simulate panning left and right to demonstrate steering tone
-            Task.Run(async () =>
-            {
-                for (int i = 0; i < 40 && testToneGenerator?.IsPlaying == true; i++)
-                {
-                    float pan = (float)Math.Sin(i * 0.15) * 0.8f;
-                    testToneGenerator?.SetPan(pan);
-                    await Task.Delay(100);
-                }
-
-                if (testToneGenerator?.IsPlaying == true)
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                    {
-                        try
-                        {
-                            Invoke(() =>
-                            {
-                                StopTestTone();
-                                testToneButton.Text = "Test Tone";
-                            });
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Handle destroyed mid-flight (tab switched/dialog closed) — StopTestTone
-                            // is also called from OnLeaving/Dispose, so the tone still stops.
-                        }
-                    }
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+        var tone = new AudioToneGenerator();
+        tone.Start(waveType, volume, 440);
+        return tone;
     }
 
-    /// <summary>Stops and disposes the steering test-tone generator. Idempotent and
-    /// non-throwing — safe to call whether or not a tone is currently playing.</summary>
-    private void StopTestTone()
+    private void ShowAudioError(string message)
     {
-        try
-        {
-            testToneGenerator?.Stop();
-            testToneGenerator?.Dispose();
-        }
-        catch
-        {
-            // Non-throwing by contract (OnLeaving/Dispose callers must never fail).
-        }
-        finally
-        {
-            testToneGenerator = null;
-        }
+        MessageBox.Show(message, "Audio Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     private async void DockingBeepTestButton_Click(object? sender, EventArgs e)
@@ -748,12 +706,13 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     /// <summary>Stops both the steering test tone and the docking-beep test whenever this tab
     /// is left (tab switch or dialog close on any path — OK, Cancel, or the [X] button), and
-    /// resets the steering Test Tone button's caption back to idle so re-entering the tab
-    /// never shows a stale "Stop Test". Idempotent and non-throwing.</summary>
+    /// resets the steering Test Tone button's caption AND accessible name back to idle so
+    /// re-entering the tab never shows — or announces — a stale "Stop Test". Idempotent and
+    /// non-throwing.</summary>
     public void OnLeaving()
     {
-        StopTestTone();
-        testToneButton.Text = "Test Tone";
+        // Stop() also returns the button to its idle label and accessible name.
+        testTonePlayer?.Stop();
         StopDockingBeepTest();
     }
 
@@ -761,7 +720,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     {
         if (disposing)
         {
-            StopTestTone();
+            testTonePlayer?.Dispose();
             StopDockingBeepTest();
         }
         base.Dispose(disposing);
