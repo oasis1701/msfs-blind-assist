@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -223,6 +223,45 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA, "GROUND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
+
+
+        // Register manual-landing flare/rollout assist data. Own definition (not a reuse of
+        // VISUAL_GUIDANCE_DATA) so the flare assist can run concurrently with — and fully
+        // independent of — visual guidance, and so it gets SIM ON GROUND at frame rate for a
+        // crisp touchdown edge (the continuous-batch SIM_ON_GROUND samples at 1 Hz).
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE LATITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE LONGITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE HEADING DEGREES MAGNETIC", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "MAGVAR", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GROUND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VERTICAL SPEED", "feet per minute",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALT ABOVE GROUND", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE PITCH DEGREES", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "SIM ON GROUND", "Bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        // True MSL altitude — the approach phase measures the glidepath against the runway's
+        // navdata threshold elevation, which AGL (terrain-relative) cannot express.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALTITUDE", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
+        // Bank, for the SPOKEN approach-phase bank callouts (the tones carry no bank
+        // information). Left-positive, as SimConnect returns it — see FlareAssistData.BankDegrees.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE BANK DEGREES", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)10);
+        // Ground track — the approach phase computes its intercept as a TRACK (the geometry is a
+        // path over the ground) and then adds the live drift angle back to speak a heading that is
+        // flyable in HDG SEL. Without this the commanded heading is the drift angle wrong in any
+        // crosswind. Field and struct member must be added/removed TOGETHER.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GPS GROUND TRUE TRACK", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        sc.RegisterDataDefineStruct<FlareAssistData>(DATA_DEFINITIONS.FLARE_ASSIST_DATA);
 
         // Register wind data for wind information
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND DIRECTION", "degrees",

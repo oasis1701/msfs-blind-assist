@@ -443,6 +443,10 @@ public partial class MainForm
         if (e.VarName == "INDICATED_ALTITUDE")
         {
             altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
+            // SIM_FRAME feed when armed + within the approach altitude window. No-op
+            // (single flag compare) when the assist isn't armed.
+            flareAssistManager.ProcessSlowSample(e.Value, _lastOnGround);
         }
 
         // Handle FCU hotkey value announcements

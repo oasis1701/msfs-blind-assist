@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -375,6 +375,50 @@ public partial class SimConnectManager
         catch (Exception ex)
         {
             Log.Debug("SimConnect", $"Error stopping visual guidance monitoring: {ex.Message}");
+        }
+    }
+
+    // Manual-landing flare/rollout assist monitoring. SIM_FRAME rate — the flare
+    // window (50 ft to touchdown) lasts only a few seconds, so 1 Hz is useless here.
+    // Started/stopped by LandingFlareAssistManager via MainForm (armed + below the
+    // approach altitude gate, or engaged), never left running for a whole flight.
+    public void StartFlareAssistMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)508,
+                DATA_DEFINITIONS.FLARE_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            Log.Debug("SimConnect", "Flare assist monitoring started");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error starting flare assist monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopFlareAssistMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)508,
+                DATA_DEFINITIONS.FLARE_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            Log.Debug("SimConnect", "Flare assist monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error stopping flare assist monitoring: {ex.Message}");
         }
     }
 

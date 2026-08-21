@@ -172,6 +172,35 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// True when the aircraft is still laterally within the landing runway's pavement
+    /// (half-width + <see cref="RUNWAY_CLEAR_MARGIN_M"/>). The single answer to "is
+    /// bearing-to-a-node-beside-the-runway still distorted?" — shared by the
+    /// landing-exit arrival gate and the post-exit tone floor, which must agree.
+    ///
+    /// Returns FALSE when there is no rollout runway to measure against: "not known to
+    /// be on the runway" degrades to trusting the live route, which is the safe
+    /// direction for both callers.
+    ///
+    /// Runway.Width is in FEET (as everywhere else in this file), so it is converted
+    /// before comparing against the metre lateral offset — a bare Width * 0.5 read as
+    /// metres makes the band ~3x too wide.
+    /// </summary>
+    private bool IsWithinRolloutRunwayLaterally(double lat, double lon)
+    {
+        // Null runway is the only "not set" test: the runway and its heading are always
+        // assigned together, and 0.0 is a legitimate heading (a due-north runway), so
+        // treating it as a sentinel would report every frame as off the pavement.
+        if (_rolloutRunway == null) return false;
+
+        double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0)
+                            * 0.5 / METERS_TO_FEET;
+        double lateralM = AbsLateralFromRunwayMeters(
+            lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+            _rolloutRunwayHeadingTrue);
+        return lateralM <= halfWidthM + RUNWAY_CLEAR_MARGIN_M;
+    }
+
+    /// <summary>
     /// Perpendicular (cross-track) distance in meters from (plat, plon) to the segment
     /// (a→b), clamped to endpoints so points beyond either end use the nearest endpoint.
     /// Uses equirectangular projection — sub-cm accuracy at taxi scale.
