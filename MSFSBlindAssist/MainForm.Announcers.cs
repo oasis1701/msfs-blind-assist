@@ -156,6 +156,13 @@ public partial class MainForm
         // runs outside this method entirely.
         bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
             Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
+        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
+        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
+        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
+        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
+        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
+            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -169,7 +176,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
