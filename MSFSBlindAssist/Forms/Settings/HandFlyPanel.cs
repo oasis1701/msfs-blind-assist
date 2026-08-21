@@ -24,6 +24,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private Label volumeValueLabel = null!;
 
     private Button testToneButton = null!;
+    private TestTonePlayer testTonePlayer = null!;
 
     private CheckBox monitorHeadingCheckBox = null!;
     private CheckBox monitorVSCheckBox = null!;
@@ -60,7 +61,14 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private CheckBox autoActivateOnLineupCheckBox = null!;
     private CheckBox handFlyAutoActivateOnTakeoffCheckBox = null!;
 
-    private AudioToneGenerator? testToneGenerator;
+    // Six seconds of tone at TestTonePlayer's 100 ms tick — the longest of the three
+    // auditions, because this one demonstrates pitch as well as pan and the pitch sweep is
+    // deliberately slow (see the rate limiter in TestTonePitch).
+    private const int TestToneTicks = 60;
+
+    // One complete left-right-left cycle, built once. Bank drives pan in hand-fly mode, so the
+    // preview has to reach both channels; see TestTonePan.FullCycle.
+    private static readonly float[] PanSweep = TestTonePan.FullCycle(TestToneTicks);
 
     public string TabTitle => "Hand Fly";
 
@@ -185,12 +193,17 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         // Test Tone Button
         testToneButton = new Button
         {
-            Text = "Test Tone",
             Location = new Point(20, 280),
             Size = new Size(120, 35),
-            AccessibleName = "Test Tone",
             AccessibleDescription = "Play a sample tone with current settings"
         };
+        // The player owns this button's Text and AccessibleName from here on (it sets the idle
+        // pair in its constructor). Assigning Text alone — which this panel used to do — leaves
+        // a screen reader announcing "Test Tone" on a button that would actually stop one,
+        // because ControlAccessibleObject.Name never falls back to Text once AccessibleName has
+        // been set. This panel has no status readout, so a failure surfaces as the same dialog
+        // it always used.
+        testTonePlayer = new TestTonePlayer(testToneButton, ShowAudioError);
         testToneButton.Click += TestToneButton_Click;
 
         // Monitor Heading Checkbox
@@ -578,6 +591,9 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         volumeLabel.Enabled = audioEnabled;
         volumeTrackBar.Enabled = audioEnabled;
         volumeValueLabel.Enabled = audioEnabled;
+
+        // Disabling the button also ends a sounding audition: TestTonePlayer stops itself on
+        // its button's EnabledChanged, so no disable site has to remember to Stop() first.
         testToneButton.Enabled = audioEnabled;
     }
 
@@ -606,124 +622,86 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         takeoffVolumeValueLabel.Text = $"{takeoffVolumeTrackBar.Value}%";
     }
 
+    // Pitch demo, rate-limited so the oscillator's frequency never steps far enough between
+    // ticks to crackle. 3 deg/s over TestTonePlayer's 100 ms tick.
+    private const double MaxPitchDeltaPerTick = 3.0 * 0.1;
+
+    // Slow enough that the rate limiter above can still track it to the full ±10° range.
+    //
+    // This deliberately covers only HALF a cycle over the demo's 60 ticks (0..1.5 rad), so the
+    // pitch demo sweeps nose-up only. Do NOT "harmonise" it onto TestTonePan.FullCycle the way
+    // the pan sweep was: a full pitch cycle needs 40° of target travel, and the rate limiter
+    // above only affords 60 × 0.3 = 18°, so the demo would simply fail to track its own curve.
+    // Correcting it means re-tuning MaxPitchDeltaPerTick, which is a crackle-avoidance number
+    // that can only be judged by ear against real hardware.
+    private const double PitchSweepRadPerTick = 0.025;
+
     private void TestToneButton_Click(object? sender, EventArgs e)
     {
-        if (testToneGenerator?.IsPlaying == true)
-        {
-            StopTestTone();
-            testToneButton.Text = "Test Tone";
-        }
-        else
-        {
-            PlayTestTone();
-            testToneButton.Text = "Stop Test";
-        }
-    }
+        // Fresh per press: the pitch demo is rate-limited, so it carries state from one tick to
+        // the next. The closure is per-Toggle, and only one demo loop runs at a time, so this
+        // local is confined to the loop driving it.
+        double currentPitch = 0.0;
 
-    private void PlayTestTone()
-    {
-        try
-        {
-            var waveType = (HandFlyWaveType)waveTypeCombo.SelectedIndex;
-            double volume = volumeTrackBar.Value / 100.0;
-
-            testToneGenerator = new AudioToneGenerator();
-            testToneGenerator.Start(waveType, volume);
-
-            // Simulate varying pitch and bank for demonstration with smooth transitions
-            Task.Run(async () =>
+        // TestTonePlayer owns the lifecycle: whether the tone actually sounded (Start degrades
+        // silently by contract), the button's Text/AccessibleName pairing, the stale-session
+        // guard and the auto-stop. This panel supplies only the tone and what each tick does.
+        testTonePlayer.Toggle(
+            StartTestTone,
+            (tone, i) =>
             {
-                // Rate limiting for smooth transitions (different rates for pitch vs panning)
-                const double MAX_PITCH_RATE_DEG_PER_SEC = 3.0;  // Moderate rate to reach full range
-                const double MAX_BANK_RATE_DEG_PER_SEC = 15.0;  // Fast but smooth panning
-                const double UPDATE_INTERVAL_SEC = 0.1; // 100ms
+                currentPitch = StepPitch(currentPitch, i);
+                tone.UpdatePitch(currentPitch);
 
-                double maxPitchDelta = MAX_PITCH_RATE_DEG_PER_SEC * UPDATE_INTERVAL_SEC;
-                double maxBankDelta = MAX_BANK_RATE_DEG_PER_SEC * UPDATE_INTERVAL_SEC;
-
-                // Track current values for rate limiting
-                double currentPitch = 0.0;
-                double currentBank = 0.0;
-
-                for (int i = 0; i < 60 && testToneGenerator?.IsPlaying == true; i++)
-                {
-                    // Calculate target pitch from -10 to +10 degrees (full 200-800 Hz range)
-                    // Slower sine wave (0.025) allows rate limiting to reach full range
-                    double targetPitch = Math.Sin(i * 0.025) * 10.0;
-
-                    // Calculate target bank from -30 to +30 degrees for full stereo width
-                    // (AudioToneGenerator clamps at ±20° which maps to full left/right panning)
-                    double targetBank = Math.Cos(i * 0.15) * 30.0;
-
-                    // Apply rate limiting to pitch (prevents crackling)
-                    double pitchDelta = targetPitch - currentPitch;
-                    if (Math.Abs(pitchDelta) > maxPitchDelta)
-                    {
-                        pitchDelta = Math.Sign(pitchDelta) * maxPitchDelta;
-                    }
-                    currentPitch += pitchDelta;
-
-                    // Apply gentle rate limiting to bank (prevents jumpy panning)
-                    double bankDelta = targetBank - currentBank;
-                    if (Math.Abs(bankDelta) > maxBankDelta)
-                    {
-                        bankDelta = Math.Sign(bankDelta) * maxBankDelta;
-                    }
-                    currentBank += bankDelta;
-
-                    // Update tone with smoothed values
-                    testToneGenerator?.UpdatePitch(currentPitch);
-                    testToneGenerator?.UpdateBank(currentBank);
-
-                    await Task.Delay(100);
-                }
-
-                // Auto-stop after 6 seconds
-                if (testToneGenerator?.IsPlaying == true)
-                {
-                    if (IsHandleCreated && !IsDisposed)
-                    {
-                        try
-                        {
-                            Invoke(() =>
-                            {
-                                StopTestTone();
-                                testToneButton.Text = "Test Tone";
-                            });
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Handle destroyed mid-flight (tab switched/dialog closed) — StopTestTone
-                            // is also called from OnLeaving/Dispose, so the tone still stops.
-                        }
-                    }
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Failed to play test tone: {ex.Message}", "Audio Error",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
+                // Pan directly rather than through UpdateBank's degrees-to-pan mapping (the two
+                // write the same panner), and with no rate limiter: the shared sweep is already
+                // in pan units and already smoother than the limiter's own threshold, so the
+                // limiter could never bind. Measured — at 60 ticks the sweep's largest step is
+                // 0.084 pan/tick, against a cap of 1.5°/tick which is 0.150 pan/tick once
+                // UpdateBank's ±10° range is applied. Limiting a curve that never exceeds the
+                // limit is dead code, not safety.
+                //
+                // What DOES change is the shape of the extremes: the old cosine-plus-limiter
+                // demo saturated, sitting pegged at full ±1.0 for ticks 6-8, 22-32 and 46-51
+                // (bank trough −17.63° at tick 27, well past the ±10° clamp). It reached both
+                // channels — do not repeat the earlier claim that it never reached full left,
+                // which was a simulation error — it just spent a third of the demo hard against
+                // the stops. The sweep now peaks smoothly at ±0.8 with no plateaus.
+                tone.SetPan(PanSweep[i]);
+            },
+            TestToneTicks);
     }
 
-    /// <summary>Stops and disposes the test-tone generator. Idempotent and non-throwing —
-    /// safe to call whether or not a tone is currently playing.</summary>
-    private void StopTestTone()
+    /// <summary>Constructs and starts the hand-fly preview with the settings currently shown.
+    /// Whether it actually sounded is TestTonePlayer's check.</summary>
+    private AudioToneGenerator? StartTestTone()
     {
-        try
+        var waveType = (HandFlyWaveType)waveTypeCombo.SelectedIndex;
+        double volume = volumeTrackBar.Value / 100.0;
+
+        var tone = new AudioToneGenerator();
+        tone.Start(waveType, volume);
+        return tone;
+    }
+
+    /// <summary>One rate-limited step of the pitch demo: pitch sweeps toward ±10°, which is the
+    /// full 200-800 Hz span of the tone's pitch mapping.</summary>
+    private static double StepPitch(double currentPitch, int tick)
+    {
+        double targetPitch = Math.Sin(tick * PitchSweepRadPerTick) * 10.0;
+
+        double delta = targetPitch - currentPitch;
+        if (Math.Abs(delta) > MaxPitchDeltaPerTick)
         {
-            testToneGenerator?.Stop();
-            testToneGenerator?.Dispose();
+            delta = Math.Sign(delta) * MaxPitchDeltaPerTick;
         }
-        catch
-        {
-            // Non-throwing by contract (OnLeaving/Dispose callers must never fail).
-        }
-        finally
-        {
-            testToneGenerator = null;
-        }
+
+        return currentPitch + delta;
+    }
+
+    private void ShowAudioError(string message)
+    {
+        MessageBox.Show(message, "Audio Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
     }
 
     public void LoadFrom(UserSettings settings)
@@ -800,20 +778,19 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     }
 
     /// <summary>Stops the test tone whenever this tab is left (tab switch or dialog close on
-    /// any path — OK, Cancel, or the [X] button), and resets the Test Tone button's caption
-    /// back to idle so re-entering the tab never shows a stale "Stop Test". Idempotent and
-    /// non-throwing.</summary>
+    /// any path — OK, Cancel, or the [X] button), and resets the Test Tone button's caption AND
+    /// accessible name back to idle so re-entering the tab never shows — or announces — a stale
+    /// "Stop Test". Idempotent and non-throwing.</summary>
     public void OnLeaving()
     {
-        StopTestTone();
-        testToneButton.Text = "Test Tone";
+        testTonePlayer?.Stop();
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            StopTestTone();
+            testTonePlayer?.Dispose();
         }
         base.Dispose(disposing);
     }

@@ -270,6 +270,144 @@ public class GuidanceGeometryTests
         Assert.True(maxJump < 1.0, $"max jump was {maxJump:F2} m (old code jumped 102 m at this boundary)");
     }
 
+    // --- KLAS 2026-08-20 frozen-target replica ------------------------------
+    //
+    // Real geometry from the KLAS 26R departure-taxi incident (taxi_guidance.log
+    // 17:36-17:43): taxiway B's short east piece (55 m, brg 270) ending at the
+    // B/B1/C junction, then the long 345 m westward B segment. The aircraft
+    // missed the 25 m waypoint capture on a wide corner, the segment index
+    // pinned on the short piece, and the walk target froze at junction + 50 m
+    // while the pilot orbited it. Coordinates are the logged ones.
+
+    private static readonly double[] KlasBLats = { 36.0775642, 36.0775642, 36.0775604 };
+    private static readonly double[] KlasBLons = { -115.1216583, -115.1222763, -115.1261063 };
+
+    [Fact]
+    public void HasPassedOntoNextSegment_fires_for_the_KLAS_pinned_aircraft()
+    {
+        // Logged aircraft position 17:40:23 - stopped 45 m past the junction,
+        // ~2 m south of B's centerline, index still on the short east piece.
+        Assert.True(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 0, 36.0775466, -115.1227803, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_fires_for_the_KLAS_orbit_position()
+    {
+        // Logged position 17:39:11, mid-orbit, ~6 m south of the centerline.
+        Assert.True(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 0, 36.0775104, -115.1227790, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_stays_false_mid_current_segment()
+    {
+        // Aircraft squarely inside the short east piece: normal tracking,
+        // the ordinary advance paths own this.
+        Assert.False(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 0, 36.0775642, -115.1219000, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_stays_false_when_cross_track_exceeds_the_bound()
+    {
+        // Past the junction but ~51 m south of B - that is a different taxiway
+        // (B1's mouth), not progress along B. Off-route detection owns it.
+        Assert.False(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 0, 36.0771000, -115.1227803, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_stays_false_before_the_current_segment_start()
+    {
+        Assert.False(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 0, 36.0775642, -115.1214000, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_stays_false_on_the_final_segment()
+    {
+        Assert.False(GuidanceGeometry.HasPassedOntoNextSegment(
+            KlasBLats, KlasBLons, 1, 36.0775604, -115.1262000, 30.0));
+    }
+
+    [Fact]
+    public void HasPassedOntoNextSegment_treats_a_degenerate_current_segment_as_passed()
+    {
+        // Restarted-route shape from the same incident: a sub-metre segment 0
+        // with the aircraft alongside the real segment that follows it.
+        double dLon05 = 0.5 / (MPD * Math.Cos(33.0 * Math.PI / 180.0));
+        double dLon60 = 60.0 / (MPD * Math.Cos(33.0 * Math.PI / 180.0));
+        var lats = new[] { 33.0, 33.0, 33.0 };
+        var lons = new[] { -84.0, -84.0 + dLon05, -84.0 + dLon05 + dLon60 };
+
+        // Aircraft 20 m along the 60 m eastward segment, 3 m north of it.
+        Assert.True(GuidanceGeometry.HasPassedOntoNextSegment(
+            lats, lons, 0, 33.0 + 3.0 / MPD, -84.0 + dLon05 + 20.0 / (MPD * Math.Cos(33.0 * Math.PI / 180.0)), 30.0));
+    }
+
+    [Fact]
+    public void WalkTarget_skips_a_short_snap_segment_instead_of_extrapolating_its_axis()
+    {
+        // Restarted-route failure shape: segment 0 is a 0.5 m snap segment, the
+        // route then turns north. With the aircraft well west of the snap point,
+        // the old walk projected onto the 0.5 m axis (t ~ -110) and interpolated
+        // WITHIN it, returning a phantom target extrapolated behind the route.
+        // A sub-metre segment must be skipped: the walk continues into the real
+        // segment and the target leads 50 m up the northward leg.
+        double cos33 = Math.Cos(33.0 * Math.PI / 180.0);
+        double dLon05 = 0.5 / (MPD * cos33);
+        var lats = new[] { 33.0, 33.0, 33.0 + 100.0 / MPD };
+        var lons = new[] { -84.0, -84.0 + dLon05, -84.0 + dLon05 };
+
+        double acLon = -84.0 - 55.0 / (MPD * cos33); // 55 m west of the snap point
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, 33.0, acLon, 50.0);
+
+        double northOfP1 = (tgt.lat - lats[1]) * MPD;
+        double eastOfP1 = (tgt.lon - lons[1]) * MPD * cos33;
+        Assert.Equal(50.0, northOfP1, 1.0);
+        Assert.Equal(0.0, eastOfP1, 1.0);
+    }
+
+    [Fact]
+    public void WalkTarget_keeps_the_walk_start_at_the_aircraft_when_the_current_segment_is_short()
+    {
+        // The behind-distance must survive a sub-metre CURRENT segment. Forcing t=1
+        // for it (the shape the degenerate ternary has) discards how far behind the
+        // aircraft is, so the whole look-ahead is walked from the segment's far node
+        // and the target steps ~25 m forward in one frame at a capture — the
+        // "clamping the walk start low teleports the target" failure class the
+        // unclamped-t design exists to prevent, just reached through the other door.
+        double cos33 = Math.Cos(33.0 * Math.PI / 180.0);
+        double dLon05 = 0.5 / (MPD * cos33);
+        // A 0.5 m stub, then 200 m of straight route east.
+        var lats = new[] { 33.0, 33.0, 33.0 };
+        var lons = new[] { -84.0, -84.0 + dLon05, -84.0 + dLon05 + 200.0 / (MPD * cos33) };
+
+        // Aircraft 25 m behind the stub — exactly the post-capture geometry.
+        double acLon = -84.0 - 25.0 / (MPD * cos33);
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, 33.0, acLon, 50.0);
+
+        Assert.Equal(50.0, DistM(33.0, acLon, tgt.lat, tgt.lon), 1.5);
+    }
+
+    [Fact]
+    public void WalkTarget_never_returns_a_point_behind_the_current_segment_start()
+    {
+        // Aircraft 80 m behind a 200 m northward segment with a 50 m look-ahead:
+        // the unclamped projection put the target 30 m BEHIND the route start,
+        // steering the pilot backwards. It must clamp at the segment start.
+        var (lats, lons) = BuildPolyline(33.0, -84.0, new (double, double)[] { (0, 200) });
+        double acLat = 33.0 - 80.0 / MPD;
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, acLat, -84.0, 50.0);
+
+        Assert.True(DistM(tgt.lat, tgt.lon, lats[0], lons[0]) < 1.0,
+            $"target was {DistM(tgt.lat, tgt.lon, lats[0], lons[0]):F1} m from the route start");
+    }
+
     // --- ProjectHeadingError (rollout anticipation) -------------------------
 
     [Fact]
