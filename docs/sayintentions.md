@@ -1310,9 +1310,50 @@ against EDDB's own B-pier labels, including that asking for `B1` finds nothing r
 Zero padding was one spelling difference. Sceneries have others — a MARS suffix the
 navdata carries and nobody says, a stand the online data letters differently, a name this
 scenery simply does not have — and every one of them lands in the same place: the name
-matches nothing, destination resolution runs its whole chain, and the last candidate it
-has is the **arrival runway**. The taxiway half of the import is meanwhile perfect, which
-is what makes it dangerous — everything else sounds right.
+matches nothing, and (before the known-arrival fork below) destination resolution ran its
+whole chain to the last candidate it had, the **arrival runway**. The taxiway half of the
+import is meanwhile perfect, which is what makes it dangerous — everything else sounds
+right.
+
+#### On a known arrival, no runway is ever a destination candidate
+
+`BuildSayIntentionsDestinationCandidates` (MainForm.SayIntentions.cs) forks the candidate
+list. On a **known arrival** — the airport being routed at IS `flight_destination` AND an
+assigned gate exists (from `assigned_gate` or the getParking fallback) — the list carries
+GATE candidates only: the clearance's own gate first (the controller's word outranks the
+record), then the assigned gate with its published coordinate. No clearance-runway
+candidate, no departure-runway or arrival-runway fallback. ATC does not taxi an arriving
+aircraft to a runway, and both runway routes out of the old list produced exactly that
+failure live (KSTL "Gate A2" → Runway 12R 2026-08-15, KLAX "American Eagle Terminal Gate
+52A" → Runway 24R 2026-08-19, two presses each): the clearance-runway candidate ran FIRST,
+so an arrival clearance naming the landing runway outside a masked hold-short/cross span
+("runway 24R, exit right at C4, taxi to the gate via …") won before any gate was
+consulted; and when the gate could not seat at all — KSTL labels its A-concourse "GA 2",
+the iniBuilds KLAX has no 52A anywhere (navdata GZ 52B–H, GSX Z 52B–H) — the chain fell
+through to the flight-plan arrival runway.
+
+When neither gate candidate seats on a known arrival, the import **fails loudly** —
+`ComposeUnresolvedArrivalGateMessage` names the gate ATC said as well as the assigned one
+when the two differ (compared normalized, so one stand spelled two ways is not read as
+two gates) and sends the pilot to the form's own gate search, which matches aliases and
+partial text this resolver cannot. Never restore a runway fallback to "help" this case:
+an honest abort is actionable, a plausible runway is the hazard this fork exists to
+remove.
+
+Everywhere else — departures (at the departure airport `flight_destination` differs), and
+an arrival where SayIntentions has not yet published the gate — the pre-existing order
+stands: clearance runway, clearance gate, departure runway, arrival runway.
+
+**Accepted residual, deliberately undesigned-for:** a departure imported while the
+PREVIOUS leg's arrival record still stands (a turnaround before the next SI flight is
+filed, or a round-robin plan whose `flight_destination` equals the departure airport)
+lands in the gate-only branch and cannot seat its cleared runway. When flight.json rolls
+those fields is unobserved (the wire-format caveat above), and in the normal SI workflow
+filing the next flight — which a taxi clearance presupposes — rolls them. The failure is
+loud and diagnosable (the abort names the gate; `destProbe=` in sayintentions.log records
+every candidate and why it missed, including the distance from the published coordinate
+to the nearest stand). Revisit only against a live capture showing a departure clearance
+alongside a standing arrival record.
 
 A gate candidate is resolved in **three steps** — its name, then this scenery's own other
 names for it, then the coordinate SayIntentions published beside the name. Each is weaker
