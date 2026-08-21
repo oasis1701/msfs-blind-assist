@@ -43,11 +43,28 @@ public class VisualGuidanceManager : IDisposable
     private HandFlyWaveType currentToneWaveType = HandFlyWaveType.Sine;
     private double currentToneVolume = 0.05;
     private bool hardPanTone = false;  // see VisualGuidanceHardPanTone setting
+    // The aircraft's dual-tone frequency/pan mapping, set from VisualGuidanceProfile in
+    // Initialize (populated the same way as the other "aircraft-specific tunables" fields
+    // below). Cached here — rather than read once from Initialize's own `profile` parameter —
+    // because ProcessUpdate's tone-pair re-arm (see there) has to replay the same Configure()
+    // call on a freshly reconstructed generator pair, and a method parameter does not survive
+    // past Initialize's return. Defaults are the A320 numbers, matching every other tunable
+    // below when no profile has been applied yet.
+    private VisualGuidanceProfile visualGuidanceProfile = new();
     // Defer audible Start() until the first ProcessUpdate computes real pitch/bank — otherwise
     // the user hears ~33 ms of fused 500 Hz center-pan tone that represents nothing. Both tones
     // are instantiated in Initialize so disposal/lifecycle stays simple; this flag controls
-    // when WaveOut actually fires up.
+    // when the audio output actually fires up.
     private bool tonesNeedStart = false;
+
+    // One re-arm (dispose + rebuild + restart of the tone pair) per device-loss EPISODE. Set
+    // when the re-arm in ProcessUpdate fires; cleared when both tones are playing again (and
+    // on Initialize/DisposeTones). Needed because a failed restart no longer nulls the tones
+    // (they stay registered so the router's next sweep can retry them) — without this latch
+    // the re-arm would see their NeedsDevice again on the very next 1 Hz tick and rebuild the
+    // pair per tick, a per-tick WASAPI open on the UI thread, i.e. the self-sustaining retry
+    // loop docs/audio.md's known-limitations section forbids.
+    private bool toneReArmSpent = false;
 
     // Bank (degrees, standard convention) at which hard-pan mode snaps to full left / right.
     // Below this magnitude the tone stays centered, avoiding twitchy flips around 0°.
@@ -326,6 +343,8 @@ public class VisualGuidanceManager : IDisposable
         flareAltitudeBiasFt = profile.FlareAltitudeBiasFt;
         flareTriggerWheelHeightFt = profile.FlareTriggerWheelHeightFt;
         flareTargetPitchDeg = profile.FlareTargetPitchDeg;
+        // Cached for ProcessUpdate's tone-pair re-arm — see the field comment.
+        visualGuidanceProfile = profile;
 
         // Reset state
         currentPhase = GuidancePhase.NotStarted;
@@ -442,12 +461,22 @@ public class VisualGuidanceManager : IDisposable
             currentAttitudeTone = null;
         }
         tonesNeedStart = false;  // re-armed by next Initialize
+        toneReArmSpent = false;  // a fresh pair starts a fresh episode
     }
 
     /// <summary>
     /// First-call audible-Start for both tones. Honors the "follower starts only if reference
-    /// started" rule from Initialize. After this returns, both tones are either playing (and
-    /// ready to be modulated by UpdatePitch/UpdateBank in the same frame) or null (init failure).
+    /// started" rule from Initialize.
+    ///
+    /// A tone that FAILS to start is KEPT, never disposed or nulled: a failed
+    /// <c>Start</c> leaves the generator registered in the router with <c>NeedsDevice</c> set,
+    /// which is exactly the set the next routing sweep (a device arriving, a settings save)
+    /// retries — it restarts the tone with the wave/volume recorded here. The old
+    /// dispose-and-null gave up on the whole approach after ONE failed attempt: the disposed
+    /// generators left the router's registry, ProcessUpdate's top guard returned on the null
+    /// forever, and audio coming back seconds later found nothing to restore. The follower is
+    /// still not STARTED until the reference plays (a lone follower is a constant drone);
+    /// ProcessUpdate's pair-completion check starts it on the reference's own recovery edge.
     /// </summary>
     private void StartTonesIfNeeded()
     {
@@ -468,15 +497,12 @@ public class VisualGuidanceManager : IDisposable
         }
 
         // If the desired tone failed to actually start (audio device error, driver issue),
-        // dispose it AND skip starting the follower — a current-tone-only setup is useless
-        // (nothing to match against) and would just play a constant 500 Hz background drone.
+        // skip starting the follower — a current-tone-only setup is useless (nothing to match
+        // against) and would just play a constant 500 Hz background drone. Both generators
+        // stay alive and registered so the router can retry the reference; see the class doc.
         if (desiredAttitudeTone == null || !desiredAttitudeTone.IsPlaying)
         {
-            Log.Debug("VisualGuidance", "Desired-attitude tone did not start (or failed); tearing both down");
-            desiredAttitudeTone?.Dispose();
-            desiredAttitudeTone = null;
-            currentAttitudeTone?.Dispose();
-            currentAttitudeTone = null;
+            Log.Debug("VisualGuidance", "Desired-attitude tone did not start; leaving the pair registered for the router's next sweep");
             return;
         }
 
@@ -499,11 +525,11 @@ public class VisualGuidanceManager : IDisposable
             }
             else
             {
-                // Follower failed to start — desired tone still plays alone, which is at least
-                // useful (pilot has the PID commands; just no current-attitude reference).
-                Log.Debug("VisualGuidance", "Current-attitude tone did not start; desired tone running alone");
-                currentAttitudeTone.Dispose();
-                currentAttitudeTone = null;
+                // Follower failed to start — the reference plays alone for the moment, but the
+                // follower stays registered with NeedsDevice set, so the router's next sweep
+                // retries it (the pilot has the PID commands meanwhile; just no
+                // current-attitude reference).
+                Log.Debug("VisualGuidance", "Current-attitude tone did not start; leaving it registered for the router's next sweep");
             }
         }
     }
@@ -598,6 +624,127 @@ public class VisualGuidanceManager : IDisposable
             return;
         }
 
+        // The pair invariant StartTonesIfNeeded enforces at startup has to hold continuously:
+        // a device change rebinds the two generators independently, so EITHER one can die
+        // while the other survives, and a lone tone is useless in both directions. The
+        // follower alone is a constant drone the pilot cannot match anything against; the
+        // reference alone is a commanded attitude with nothing to compare it to, which is the
+        // same silence dressed up as guidance. Re-arming here restores the invariant on the
+        // next update instead of leaving it broken for the rest of the approach.
+        //
+        // WATCHES BOTH TONES, deliberately. Gating on the reference alone covered exactly one
+        // of the two orderings: a sweep that rebound desiredAttitudeTone successfully and then
+        // failed to reopen currentAttitudeTone left the follower registered with NeedsDevice
+        // set and silent, the re-arm never fired, and the pilot flew the rest of the approach
+        // hearing the commanded attitude with nothing to zero-beat it against.
+        // currentAttitudeTone stays null-conditional defensively (Initialize's catch nulls
+        // both tones on a construction failure, and the top guard only checks the reference).
+        //
+        // Gated on NeedsDevice, NOT IsPlaying -- IsPlaying is the wrong signal here and reads
+        // false for the ENTIRE DURATION of a healthy, in-flight rebind, not just a failed one.
+        // AudioToneGenerator.RebindTo sets isPlaying = false BEFORE it reopens the device, and
+        // StartLocked does not set it back to true until the new WasapiOut has actually been
+        // built and Play() has been called -- the WASAPI enumerate, GetDevice, construction and
+        // Init/Play in between all run with isPlaying still false. That rebind happens on the
+        // router's own worker thread with no synchronisation against this UI-thread tick, so a
+        // ProcessUpdate landing mid-rebind would read a healthy, about-to-succeed tone as dead.
+        // DisposeTones's first Stop() blocks on the very startStopLock the router thread is
+        // holding; by the time it is released the router has already reopened a good session,
+        // which this block would then immediately stop and dispose again -- tearing down the
+        // follower too even though ITS rebind may have succeeded cleanly -- for an avoidable
+        // extra teardown/reopen and audio gap during the exact device change the router's
+        // "move it without stopping guidance" sweep exists to make seamless.
+        // NeedsDevice does not have that transient-false window: StartLocked sets it ONLY at
+        // the two genuinely terminal outcomes of an open attempt (opened == null, or the catch
+        // block) and clears it only on that same attempt's full success -- never on an
+        // in-progress one -- and OnPlaybackStopped sets it the instant a live fault is detected.
+        // So NeedsDevice==true always means "as of the last attempt, this generator ended up
+        // with no device," never "an attempt is currently in flight." Do not swap this back to
+        // IsPlaying, and do not require IsPlaying == false in addition to NeedsDevice: the two
+        // can legitimately both be true right after OnPlaybackStopped fires on a still-flagged-
+        // playing session, and requiring IsPlaying too would just delay detection of that case
+        // until some later rebind attempt touches the flag.
+        //
+        // !tonesNeedStart is what stops this from firing on the very first frame after
+        // Initialize -- the tones are constructed there but not yet Start()ed, so NeedsDevice
+        // is still false at that point too (it defaults false and nothing has attempted an open
+        // yet). tonesNeedStart only latches back to false once StartTonesIfNeeded has actually
+        // attempted a Start, so this block cannot see a "not started yet" tone as a "died" tone.
+        // Once it does fire it sets tonesNeedStart back to true and returns -- it does not call
+        // Start itself -- so the very next StartTonesIfNeeded (later in this same call, once the
+        // cached-data guard below has passed) consumes that flag and is the only thing that can
+        // flip it false again.
+        //
+        // ONE re-arm per device-loss episode (toneReArmSpent). A failed restart KEEPS the pair
+        // -- StartTonesIfNeeded no longer disposes or nulls on failure, precisely so the
+        // generators stay in the router's registry with NeedsDevice set and a device arriving
+        // restarts them -- which means NeedsDevice can still read true on the next 1 Hz tick.
+        // Without the latch this block would rebuild the pair per tick (a per-tick WASAPI open
+        // on the UI thread, the retry loop docs/audio.md forbids); with it, the second and
+        // later retries belong to the router's event-driven sweeps. The latch clears once both
+        // tones are playing again, so a LATER outage in the same approach re-arms once more.
+        bool desiredNeedsDevice = desiredAttitudeTone != null && desiredAttitudeTone.NeedsDevice;
+        bool currentNeedsDevice = currentAttitudeTone?.NeedsDevice == true;
+        if (!tonesNeedStart && (desiredNeedsDevice || currentNeedsDevice))
+        {
+            if (!toneReArmSpent)
+            {
+                string which = desiredNeedsDevice && currentNeedsDevice ? "Both attitude tones need"
+                    : desiredNeedsDevice ? "The desired-attitude tone needs"
+                    : "The current-attitude tone needs";
+                Log.Debug("VisualGuidance", $"{which} a device (rebind failed or its endpoint was lost); restarting both tones");
+                DisposeTones();
+                // AFTER DisposeTones, which resets the latch for its other callers
+                // (Stop/Initialize) — set before it, the latch would clear itself and the
+                // re-arm would fire again every tick.
+                toneReArmSpent = true;
+                desiredAttitudeTone = new AudioToneGenerator();
+                currentAttitudeTone = new AudioToneGenerator();
+                desiredAttitudeTone.Configure(visualGuidanceProfile.ToneMinFrequencyHz, visualGuidanceProfile.ToneMaxFrequencyHz,
+                                              visualGuidanceProfile.TonePitchRangeDeg, visualGuidanceProfile.ToneBankRangeDeg);
+                currentAttitudeTone.Configure(visualGuidanceProfile.ToneMinFrequencyHz, visualGuidanceProfile.ToneMaxFrequencyHz,
+                                              visualGuidanceProfile.TonePitchRangeDeg, visualGuidanceProfile.ToneBankRangeDeg);
+                tonesNeedStart = true;
+            }
+            // else: this episode's one re-arm already ran; the registered NeedsDevice
+            // generators are the router's to retry on its next sweep.
+        }
+        else if (!tonesNeedStart
+                 && desiredAttitudeTone?.IsPlaying == true
+                 && currentAttitudeTone != null
+                 && !currentAttitudeTone.IsPlaying
+                 && !currentAttitudeTone.NeedsDevice)
+        {
+            // PAIR COMPLETION. The router healed the reference (it was registered with
+            // NeedsDevice and a sweep restarted it), but the follower was never STARTED --
+            // StartTonesIfNeeded starts it only after the reference plays, so a failed
+            // reference start leaves the follower cold, and a cold tone (no NeedsDevice) is
+            // one the router deliberately refuses to start on its own. Start it here, on the
+            // reference's own recovery edge. Self-limiting: after this call the follower is
+            // either playing (this branch stops matching) or flagged NeedsDevice (the router's
+            // to retry), so it cannot fire per tick.
+            try
+            {
+                currentAttitudeTone.Start(currentToneWaveType, currentToneVolume);
+                Log.Debug("VisualGuidance", currentAttitudeTone.IsPlaying
+                    ? "Current-attitude tone started on the reference's recovery"
+                    : "Current-attitude tone still has no device; leaving it registered for the router's next sweep");
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("VisualGuidance", $"Current-attitude tone Start threw (unexpected): {ex.Message}");
+            }
+        }
+
+        // Both tones sounding again closes the device-loss episode: a later outage in this
+        // same approach gets its own one-shot re-arm.
+        if (toneReArmSpent
+            && desiredAttitudeTone?.IsPlaying == true
+            && currentAttitudeTone?.IsPlaying == true)
+        {
+            toneReArmSpent = false;
+        }
+
         // Ensure we have all required data
         if (!cachedLatitude.HasValue || !cachedLongitude.HasValue ||
             !cachedAGL.HasValue || !cachedAltMSL.HasValue ||
@@ -622,12 +769,13 @@ public class VisualGuidanceManager : IDisposable
             double desiredPitch = CalculateDesiredPitch(lat, lon, agl, altMSL);
             double currentBankStandard = StandardBank(cachedBank ?? 0.0);
 
-            // First-frame deferred Start — by the time WaveOut's 150 ms buffer fills, the
-            // phase-continuous oscillator's portamento has reached the target frequency
-            // (~0.23 ms at 44.1 kHz), so the very first audible note already reflects the
-            // commanded / actual attitude. No fused-tone glitch at session start.
-            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if WaveOut.Init throws
-            // (bad audio device, driver issue). Re-check both tones after this point — the
+            // First-frame deferred Start — by the time the 150 ms WasapiOut buffer fills, the
+            // phase-continuous oscillator's portamento has reached the target frequency (well
+            // under a millisecond, whatever rate the endpoint mixes at), so the very first
+            // audible note already reflects the commanded / actual attitude. No fused-tone
+            // glitch at session start.
+            // NOTE: StartTonesIfNeeded can null out desiredAttitudeTone if no output opens or
+            // Init throws (bad audio device, driver issue). Re-check both tones after this — the
             // early-out at the top of ProcessUpdate only proves they were non-null on entry.
             StartTonesIfNeeded();
 

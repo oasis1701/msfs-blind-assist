@@ -137,6 +137,24 @@ public partial class MainForm
                 out double refLat, out double refLon, out double refHdgTrue,
                 out double refHdgMag, out string refRunwayId, out string refIcao);
 
+            // KNOWN BEHAVIOR, NOT FIXED HERE: Reset() unconditionally clears isActive (stops
+            // the centerline tone, fires TakeoffAssistActiveChanged(false), stops
+            // SimConnect monitoring) with no spoken announcement — so saving Settings while
+            // Takeoff Assist is active silently switches it off, for ANY settings change,
+            // including one as unrelated as the guidance-tone output device added by this
+            // branch (whose own RequestSweep("settings saved") call is now placed at the very
+            // end of this method, deliberately AFTER this block — see the comment there for
+            // why). The root cause predates this branch: this recreate block already went
+            // out of its way to preserve the runway reference across the recreate (see
+            // hadRunwayRef above) but never considered preserving ACTIVE state the same way.
+            // Not fixed here because re-arming activation after the recreate would have to replay
+            // whatever Toggle()'s real activation path does (StartTakeoffAssistMonitoring,
+            // clearing the docking destination gate, stopping taxi guidance, pulling Fenix
+            // V-speeds — see OnTakeoffAssistActiveChanged) and interacts with the
+            // auto-activate-on-lineup one-shot latch invariant (taxi-guidance.md) — that
+            // combination can only be verified against a live sim, which this fix wave
+            // cannot do. If a pilot reports Takeoff Assist going quiet after opening
+            // Settings mid-roll, this is why.
             takeoffAssistManager.Reset();
             takeoffAssistManager.Dispose();
             takeoffAssistManager = new TakeoffAssistManager(announcer,
@@ -204,6 +222,14 @@ public partial class MainForm
         var vatsimInstall = vatsimService?.ApplySettings(settings);
         if (vatsimInstall != null)
             AnnounceVatsimInstallOutcome(vatsimInstall, atStartup: false);
+
+        // Guidance tone output device, LAST: the takeoff-assist recreate above disposes and
+        // replaces its centerline tone, so requesting the sweep before that block paid a full
+        // WASAPI teardown and reopen for a generator that was destroyed moments later. The
+        // sweep is a request, not a blocking call -- the router's worker does the work off the
+        // UI thread, so an unrelated settings save can never gap a tone that is steering the
+        // aircraft.
+        Services.AudioOutputRouter.Shared.RequestSweep("settings saved");
     }
 
     /// <summary>
