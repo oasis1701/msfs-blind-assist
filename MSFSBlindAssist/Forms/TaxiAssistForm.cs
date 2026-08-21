@@ -1213,7 +1213,7 @@ public class TaxiAssistForm : Form
     /// controller did not use.</summary>
     public bool TryResolveExternalDestination(
         IReadOnlyList<ExternalDestination> candidates, out bool isRunway, out string label,
-        out GateSubstitution? gateSubstitution)
+        out GateSubstitution? gateSubstitution, List<string>? probeTrace = null)
     {
         isRunway = false;
         label = "";
@@ -1245,6 +1245,13 @@ public class TaxiAssistForm : Form
         {
             if (string.IsNullOrWhiteSpace(candidate.Identifier)) continue;
 
+            // sayintentions.log's answer to "why did THIS import end where it did":
+            // one token per probed candidate, saying which step answered or how the
+            // last one missed. The KSTL/KLAX arrival captures could not distinguish
+            // "the runway candidate won first" from "every gate step failed" — four
+            // presses, two airports, and the log recorded only the winner.
+            string probe = $"{(candidate.IsRunway ? "runway" : "gate")}'{candidate.Identifier}'";
+
             var offered = candidate.IsRunway
                 ? (runwayLabels ??= ListDestinations(true))
                 : (gateLabels ??= ListDestinations(false));
@@ -1275,22 +1282,51 @@ public class TaxiAssistForm : Form
                 }
                 else if (candidate.Position is GeoPoint published)
                 {
-                    match = MatchGateByPosition(offered, published);
+                    match = MatchGateByPosition(offered, published, out double nearestMetres);
                     if (match != null)
                     {
                         substitution = new GateSubstitution(
                             candidate.Identifier!, GateSubstitutionKind.Position);
                     }
+                    else
+                    {
+                        // The one distinction the KLAX capture could not make: was the
+                        // published coordinate near-but-outside a stand (scenery offset
+                        // — the tolerance is the thing to re-examine) or nowhere near
+                        // anything (the coordinate itself is unusable)?
+                        probeTrace?.Add(double.IsNaN(nearestMetres)
+                            ? $"{probe}=miss(position matched no stand)"
+                            : $"{probe}=miss(nearest stand {nearestMetres:F0}m from position)");
+                        continue;
+                    }
+                }
+                else
+                {
+                    probeTrace?.Add($"{probe}=miss(no-position)");
+                    continue;
                 }
             }
 
-            if (match == null) continue;
+            if (match == null)
+            {
+                probeTrace?.Add($"{probe}=miss");
+                continue;
+            }
 
             // The list for this type may have been snapshotted several candidates
             // ago, so switch back to it before selecting.
             SelectDestinationType(candidate.IsRunway);
             int index = cmbDestination.Items.IndexOf(match);
-            if (index < 0) continue;
+            if (index < 0)
+            {
+                probeTrace?.Add($"{probe}=miss(matched '{match}' but the combo no longer lists it)");
+                continue;
+            }
+            // The step is DERIVED from substitution rather than tracked beside it, so
+            // destProbe and the gateSubstitution field on the same log line can never
+            // disagree about which step seated the stand.
+            probeTrace?.Add($"{probe}={(substitution is not GateSubstitution seated ? "name"
+                : seated.Kind == GateSubstitutionKind.Alias ? "alias" : "position")}");
 
             // Silently: this is the import seating its own destination, not the pilot
             // choosing one, and the import's own summary must not be talked over.
@@ -1415,7 +1451,8 @@ public class TaxiAssistForm : Form
     /// A gate the maps do not carry is skipped rather than defaulted to (0, 0): a spot
     /// with no known centre cannot be shown to contain anything, and null island is
     /// 150 m from nothing.</summary>
-    private string? MatchGateByPosition(IReadOnlyList<string> gateLabels, GeoPoint published)
+    private string? MatchGateByPosition(
+        IReadOnlyList<string> gateLabels, GeoPoint published, out double nearestMetres)
     {
         const double FeetToMetres = 0.3048;
 
@@ -1434,7 +1471,7 @@ public class TaxiAssistForm : Form
         }
 
         return SayIntentionsGatePositionMatcher.Match(
-            candidates, published.Latitude, published.Longitude);
+            candidates, published.Latitude, published.Longitude, out nearestMetres);
     }
 
     /// <summary>Every label the destination combo offers for one destination type.
@@ -1740,6 +1777,27 @@ public class TaxiAssistForm : Form
         string? imported = _importSummary?.Invoke(false);
         _announcer.AnnounceImmediate(
             string.IsNullOrEmpty(imported) ? reason : reason + " " + imported);
+    }
+
+    /// <summary>Records why there is no route, in the two places a pilot can go looking:
+    /// the status line and the route-summary box.
+    ///
+    /// SPEAKS NOTHING. Every caller has already announced the reason — this is the
+    /// re-readable copy, and a second utterance would talk over the first (and break
+    /// the screen-reader rule about announcing what the pilot has already been told).
+    ///
+    /// The summary box exists because speech is heard ONCE and a screen reader
+    /// routinely interrupts it, so it is the only place a blind pilot can re-read what
+    /// happened. That makes a STALE route sitting in it after a failed Calculate worse
+    /// than an empty box: nothing distinguishes last route's summary from one that was
+    /// actually just built. Every exit that leaves the pilot with no route comes
+    /// through here, so the box holds either a real route or the reason there isn't
+    /// one — never a route that was not built.</summary>
+    public void ShowRouteFailure(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return;
+        lblStatus.Text = reason;
+        txtRouteSummary.Text = reason;
     }
 
     /// <summary>Puts every route-shaping control an import does not itself set back to
@@ -3896,7 +3954,9 @@ public class TaxiAssistForm : Form
     {
         if (_graph == null)
         {
-            AnnounceCalculateAbort("No airport loaded. Enter an ICAO code first.");
+            const string noAirport = "No airport loaded. Enter an ICAO code first.";
+            AnnounceCalculateAbort(noAirport);
+            ShowRouteFailure(noAirport);
             return;
         }
 
@@ -3912,7 +3972,7 @@ public class TaxiAssistForm : Form
         if (RefreshDestinationsIfGateSourceChanged())
         {
             AnnounceCalculateAbort(GateListUpdatedMessage);
-            lblStatus.Text = GateListUpdatedMessage;
+            ShowRouteFailure(GateListUpdatedMessage);
             return;
         }
 
@@ -4115,8 +4175,7 @@ public class TaxiAssistForm : Form
             if (progError != null)
             {
                 _announcer.AnnounceImmediate(progError);
-                lblStatus.Text = progError;
-                txtRouteSummary.Text = progError;
+                ShowRouteFailure(progError);
                 return;
             }
 
@@ -4134,15 +4193,21 @@ public class TaxiAssistForm : Form
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
-            AnnounceCalculateAbort("Please select a destination.");
+            const string noDestination = "Please select a destination.";
+            AnnounceCalculateAbort(noDestination);
+            ShowRouteFailure(noDestination);
             return;
         }
 
         if (destNodeId < 0)
         {
-            AnnounceCalculateAbort(
-                $"No taxi route to {destName}. This stand can't be reached by the taxi network.");
-            lblStatus.Text = "Selected stand has no taxi route.";
+            string unreachable =
+                $"No taxi route to {destName}. This stand can't be reached by the taxi network.";
+            AnnounceCalculateAbort(unreachable);
+            // The spoken sentence, not the old terse status line ("Selected stand has no
+            // taxi route."): the box is where the pilot goes to re-read what they heard,
+            // so it must carry the same words, including WHICH stand.
+            ShowRouteFailure(unreachable);
             return;
         }
 
@@ -4278,8 +4343,7 @@ public class TaxiAssistForm : Form
             // and did not get, and the abort's own reason follows it.
             AnnounceCalculateAbort(
                 backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
-            lblStatus.Text = error;
-            txtRouteSummary.Text = error;
+            ShowRouteFailure(error);
             return;
         }
 
