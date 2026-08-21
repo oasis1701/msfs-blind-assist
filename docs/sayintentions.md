@@ -232,9 +232,9 @@ you to roll over, as plain coordinates. Matched against the airport's own taxiwa
 that track names the legs of the route without anyone having to parse the controller's
 phrasing, which is exactly where the text path keeps losing legs: Palma Ground said
 "North" for a taxiway the navdata calls `N`, and that leg silently vanished from the
-route. So when the track **agrees with** what was spoken — every cleared taxiway
-present, in the order it was given — the sequence is taken from the track, and the
-summary says *"Route from SayIntentions ground track."*
+route. So when the track reproduces the clearance exactly, or fills a gap the parser
+can identify, the sequence is taken from the track, and the summary says *"Route from
+SayIntentions ground track."*
 
 When the two disagree, the **clearance wins** and you are told so:
 *"SayIntentions ground track differs from the clearance. Using the clearance."* The
@@ -242,6 +242,14 @@ track is a live plan that exists before any clearance does, so before you have b
 cleared it is SayIntentions' own intended routing rather than a correction to what you
 were actually told. What you heard on the frequency is what gets built, and a route that
 is not the one ATC gave must never be discovered out on the taxiway.
+
+The track may add a taxiway only when the text parser can identify a clearance token it
+could not match to this airport. If every spoken taxiway matched, the clearance is used
+as written even when the track contains it as a subsequence. This prevents named stand
+lead-ins and supplemental connectors from silently becoming part of the clearance (the
+live OMDB failure added `U3`, `Y1`, `Z7` and `K` around the fully parsed clearance
+`U, Y, Z, L4, M, M15A`). An exact track remains valid independent confirmation because
+it adds nothing.
 
 When there is **no clearance at all** — you pressed before requesting taxi, or the
 transmission fetch timed out — the track is still used, because it is the only thing
@@ -999,8 +1007,9 @@ at once before this range check existed).
 ### The route comes from the ground track, when it agrees with the clearance
 
 The imported taxiway sequence is derived from SayIntentions' published `taxi_path`
-geometry, snapped to the airport's own taxiway graph, **whenever that track agrees with
-the spoken clearance**. Otherwise the clearance wins and the disagreement is announced.
+geometry, snapped to the airport's own taxiway graph, **whenever that track reproduces
+the spoken clearance or repairs an identified unmatched token**. Otherwise the clearance
+wins and the disagreement is announced.
 The clearance always owns the destination and the hold-shorts; geometry carries neither.
 
 This exists because deriving the route from the **phrasing** keeps failing on naming
@@ -1089,10 +1098,12 @@ to leave the entire suite green. In order:
    either, so this is the one accepted-geometry case the caller announces:
    *"No cleared taxiways to check it against, so this is SayIntentions' own plan, not
    ATC's."* See [A track nothing checked](#a-track-nothing-checked).
-3. **The clearance runs through the geometry in order, gaps allowed** — a subsequence
-   walk — **and** the track is at most `2n + 1` legs long for `n` cleared legs →
-   **geometry**.
-4. Anything else → **clearance**, and *"SayIntentions ground track differs from the
+3. **The collapsed clearance and geometry are identical** → **geometry**. This is
+   independent confirmation and adds no unspoken taxiway.
+4. **The parser reports at least one unmatched clearance taxiway**, the recognized
+   clearance runs through the geometry in order (a subsequence walk, gaps allowed),
+   **and** the track is at most `2n + 1` legs long for `n` cleared legs → **geometry**.
+5. Anything else → **clearance**, and *"SayIntentions ground track differs from the
    clearance. Using the clearance."* is spoken.
 
 **The walk, and why gaps are the point.** A real track legitimately names legs the
