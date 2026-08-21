@@ -42,6 +42,31 @@ public class SayIntentionsGatePositionMatcherTests
         => SayIntentionsGatePositionMatcher.Match(candidates, PointLat, PointLon);
 
     [Fact]
+    public void A_miss_still_reports_how_near_the_nearest_stand_came()
+    {
+        // Diagnostic overload for sayintentions.log: when the position fallback fails
+        // (the KLAX 52A shape — no stand admissible), the log must be able to say how
+        // far the published point sat from the nearest stand, so the next report
+        // distinguishes "coordinate absent" from "coordinate 38 m off".
+        string? match = SayIntentionsGatePositionMatcher.Match(
+            new[] { Stand("Z 52B", metresAway: 38, radiusMetres: 15) },
+            PointLat, PointLon, out double nearestMetres);
+
+        Assert.Null(match);
+        Assert.Equal(38.0, nearestMetres, 0.5);
+    }
+
+    [Fact]
+    public void The_nearest_distance_is_NaN_when_no_stand_has_a_usable_radius()
+    {
+        SayIntentionsGatePositionMatcher.Match(
+            new[] { Stand("broken", metresAway: 10, radiusMetres: 0) },
+            PointLat, PointLon, out double nearestMetres);
+
+        Assert.True(double.IsNaN(nearestMetres));
+    }
+
+    [Fact]
     public void The_nearest_stand_loses_to_one_whose_own_scale_reaches_the_point()
     {
         // This is the whole design in one case. Nearest-centre alone picks the GA spot,

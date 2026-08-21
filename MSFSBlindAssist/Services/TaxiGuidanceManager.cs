@@ -511,6 +511,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // stops "advancing" along it. See AdvanceToNearestSegment for what happened without it.
     private const double SEGMENT_ADVANCE_MAX_DIST_M = 100.0;
 
+    // Cross-track bound for the endpoint-tie pin breaker in AdvanceToNearestSegment
+    // (GuidanceGeometry.HasPassedOntoNextSegment): the aircraft must be within this
+    // of the NEXT segment's centerline to count as travelling along it. One full
+    // wide-taxiway width (KLAS B is 98 ft ≈ 30 m) — tight enough that a parallel
+    // taxiway (typically 60 m+ apart) can never satisfy it, loose enough to cover
+    // the whole orbit the KLAS pilot flew (max ~20 m off centerline).
+    private const double SEGMENT_PASS_ADVANCE_MAX_CROSS_M = 30.0;
+
     // How near the hold-short node the aircraft must be before a skipped hold-short is
     // ANNOUNCED as reached ("Stop. Hold short of X"). Beyond this the index is clamped to
     // the hold-short segment instead — never advanced past it, never announced early.
