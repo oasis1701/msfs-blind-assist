@@ -1,15 +1,7 @@
-﻿// PMDG 777 stabiliser trim: degrees -> units.
-//
-// The FMC TAKEOFF page asks for a trim setting in units and the control-stand indicator is
-// marked in units, but the stock ELEVATOR TRIM POSITION SimVar the app reads is in degrees. A
-// pilot handed degrees has to convert under time pressure during the takeoff setup, and getting
-// it wrong is an over-rotation — which is exactly what happened repeatedly before the offset was
-// worked out. The 737 never had this problem: PMDG publishes its trim as an L-var already in
-// units, so nothing needed converting.
-//
-// The offset is MEASURED, not derived — the stabiliser run to both stops with the SimVar read at
-// each end — and independently validated by flying takeoffs at (FMC units - 3.75).
+﻿// PMDG 777 stabiliser trim: degrees -> units. Why, and how the offset was measured, lives on
+// Pmdg777StabTrim (class doc + UnitsOffset) — this file only pins the behaviour.
 
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
@@ -24,13 +16,27 @@ public class Pmdg777StabTrimTests
         Assert.Equal(14.50, Pmdg777StabTrim.UnitsFromDegrees(10.75), 1e-9);
     }
 
-    [Fact]
-    public void The_bottom_stop_never_speaks_a_negative_zero()
+    [Theory]
+    [InlineData(-3.75)]   // the stop itself: the sum is exactly +0.0
+    [InlineData(-3.76)]   // a hair under it: the raw snap is -0.0, which "F2" renders as "-0.00"
+    [InlineData(-3.80)]
+    public void At_and_just_below_the_bottom_stop_the_phrase_never_carries_a_minus(double degrees)
     {
-        // -0.0 == 0.0 compares true but formats as "-0.00", which at the bottom stop would
-        // announce a negative trim on a scale whose lowest graduation is zero.
-        Assert.DoesNotContain("-", Pmdg777StabTrim.Describe(-3.75));
-        Assert.Equal("Trim 0.00 units", Pmdg777StabTrim.Describe(-3.75));
+        // -0.0 == 0.0 compares true but formats as "-0.00"; only a reading just BELOW -3.75
+        // reaches that path, so the stop alone cannot pin the normalisation.
+        Assert.Equal("Trim 0.00 units", Pmdg777StabTrim.Describe(degrees));
+        Assert.False(double.IsNegative(Pmdg777StabTrim.UnitsFromDegrees(degrees)));
+    }
+
+    [Fact]
+    public void Past_the_bottom_stop_is_clamped_to_zero_but_the_top_is_left_raw()
+    {
+        // A scale that starts at zero must never speak a negative trim, whatever the SimVar does
+        // past the nose-down stop; a reading past 14.50 is deliberately left visible (it is the one
+        // signal that PMDG's stop or the offset has moved).
+        Assert.Equal(0.00, Pmdg777StabTrim.UnitsFromDegrees(-4.00), 1e-9);
+        Assert.Equal("Trim 0.00 units", Pmdg777StabTrim.Describe(-11.0));
+        Assert.Equal(14.75, Pmdg777StabTrim.UnitsFromDegrees(11.00), 1e-9);
     }
 
     [Theory]
@@ -93,24 +99,100 @@ public class Pmdg777StabTrimTests
         Assert.DoesNotContain("down", phrase, StringComparison.OrdinalIgnoreCase);
     }
 
-    [Fact]
-    public void A_quarter_unit_step_is_a_new_announcement_and_less_is_not()
+    [Theory]
+    [InlineData("de-DE")]   // comma decimal separator
+    [InlineData("fr-FR")]   // comma decimal separator
+    [InlineData("en-US")]   // the CI default, kept so the invariant case is still covered
+    public void The_phrase_is_invariant_formatted(string cultureName)
     {
-        // The debounce keys on the value this returns, so quantising here is what makes the
-        // callout step a quarter at a time instead of speaking every hundredth of a degree.
+        // Under en-US this passes with or without InvariantCulture, so the culture MUST be swapped
+        // for the assertion to mean anything (same idiom as GsxBillingTests): a de-DE pilot would
+        // otherwise hear "Trim 5,25 units", and this suite would be red on a de-DE dev machine.
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
+            string phrase = Pmdg777StabTrim.Describe(1.50);
+            Assert.Equal("Trim 5.25 units", phrase);
+            Assert.DoesNotContain(",", phrase, StringComparison.Ordinal);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public void Staying_inside_a_quarter_is_silent_but_crossing_a_boundary_announces_however_small_the_move()
+    {
+        // The debounce keys on the value this returns: the spoken VALUE always steps by a
+        // quarter, but the TRIGGER is a rounding-boundary crossing — there is no deadband, so a
+        // 0.01° move across 0.125° is a new callout while 0.05° inside a bin is not.
         double at = Pmdg777StabTrim.UnitsFromDegrees(0.00);
         Assert.Equal(at, Pmdg777StabTrim.UnitsFromDegrees(0.05), 1e-9);   // still the same quarter
-        Assert.NotEqual(at, Pmdg777StabTrim.UnitsFromDegrees(0.25));      // a genuine step
+        Assert.NotEqual(at, Pmdg777StabTrim.UnitsFromDegrees(0.25));      // a full quarter: always new
+        Assert.Equal(3.75, Pmdg777StabTrim.UnitsFromDegrees(0.12), 1e-9); // just below the 0.125° boundary
+        Assert.Equal(4.00, Pmdg777StabTrim.UnitsFromDegrees(0.13), 1e-9); // 0.01° later: a new callout
     }
 
     [Fact]
     public void The_offset_and_step_are_the_only_knobs()
     {
-        // Both are stated as constants precisely so a future correction is a one-line change.
-        // The offset has since been checked against the indicator at 3.75, 4.00, 4.50 and 6.00
-        // and agreed at every one, which rules out the 4.0 reading PMDG's config comment might
-        // have suggested; this is still where a correction lands if that is ever contradicted.
+        // Pinned to their literals so a correction is a deliberate two-file edit (the provenance
+        // and the indicator check that rule out 4.0 live on Pmdg777StabTrim.UnitsOffset).
         Assert.Equal(3.75, Pmdg777StabTrim.UnitsOffset);
         Assert.Equal(0.25, Pmdg777StabTrim.UnitsStep);
+    }
+
+    // ---- the seam: what ProcessSimVarUpdate actually receives ---------------------------------
+    // The debounce itself runs inside ProcessSimVarUpdate against a real ScreenReaderAnnouncer and
+    // is sim-verified; the protected virtual it keys on is pure, so probe subclasses pin it here.
+
+    private sealed class Probe777 : PMDG777Definition
+    {
+        public (double Key, string Phrase) Trim(double degrees) => DescribeElevatorTrim(degrees);
+    }
+
+    private sealed class ProbeDefault : PMDG737Definition   // does NOT override the seam
+    {
+        public (double Key, string Phrase) Trim(double degrees) => DescribeElevatorTrim(degrees);
+    }
+
+    [Fact]
+    public void The_777_keys_its_debounce_on_the_quantised_units_it_speaks()
+    {
+        // Dropping the override (CS0114 is only a warning) would silently revert the 777 to
+        // degrees; keying on raw degrees would re-speak "Trim 4.00 units" on every hundredth.
+        var probe = new Probe777();
+        var (key, phrase) = probe.Trim(0.34);
+        Assert.Equal(Pmdg777StabTrim.UnitsFromDegrees(0.34), key, 1e-9);
+        Assert.Equal(4.00, key, 1e-9);
+        Assert.Equal("Trim 4.00 units", phrase);
+        Assert.Equal(key, probe.Trim(0.37).Key, 1e-9);      // same quarter -> same key -> silent
+        Assert.Equal(4.25, probe.Trim(0.50).Key, 1e-9);     // next quarter -> new key
+        Assert.Equal("Trim 4.25 units", probe.Trim(0.50).Phrase);
+    }
+
+    [Fact]
+    public void Every_other_aircraft_still_speaks_rounded_degrees_with_a_direction_word()
+    {
+        // The base default is the pre-PR behaviour, byte for byte: Math.Round(deg, 2) as the key,
+        // "Trim up/down N.NN" as the phrase (-0.0 reads "up 0.00"). Pinned under the invariant
+        // culture because that phrase, unlike the 777's, still formats with the ambient culture.
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            var probe = new ProbeDefault();
+            Assert.Equal((1.23, "Trim up 1.23"), probe.Trim(1.234));
+            Assert.Equal((-2.5, "Trim down 2.50"), probe.Trim(-2.5));
+            var (key, phrase) = probe.Trim(-0.004);
+            Assert.Equal(0.0, key);
+            Assert.Equal("Trim up 0.00", phrase);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
     }
 }

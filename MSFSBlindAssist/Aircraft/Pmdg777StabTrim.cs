@@ -21,51 +21,51 @@ public static class Pmdg777StabTrim
     /// takeoffs at (FMC units − 3.75) until the over-rotation stopped.
     ///
     /// <para>
-    /// PMDG's own <c>flight_model.cfg</c> corroborates the RANGE — <c>elevator_trim_limit = 11.0
-    /// // 4/11 Code controlled</c>, i.e. the stabiliser travels −4° to +11°, with the measured
-    /// stops sitting a quarter degree inside each end exactly as "code controlled" implies. Note
-    /// that 4 is DEGREES, not units; the two numbers are in different currencies and conflating
-    /// them is what made this hard to pin down in the first place.
-    /// </para>
-    /// <para>
-    /// A quarter-unit ambiguity was open for a while — 3.75 against the 4 in PMDG's comment,
-    /// which would make every announcement a quarter unit light — and it has since been CLOSED
-    /// against the indicator itself: the gauge was read at four settings spanning the useful
-    /// range (3.75, 4.00, 4.50, 6.00) and agreed with the announced units at every one. 3.75 and
-    /// 4.50 carry the weight, because both fall BETWEEN whole graduations, and an offset of 4.0
-    /// would have shown 4.00 against a gauge reading 4.25.
-    /// </para>
-    /// <para>
-    /// Weigh that for what it is: an enlarged screenshot read by image analysis, not an
-    /// instrument calibration. It is strong corroboration of the offset and it is not proof.
-    /// Should better evidence ever contradict it, this is still the ONE constant to change.
+    /// PMDG's own <c>flight_model.cfg</c> (<c>elevator_trim_limit = 11.0 // 4/11 Code controlled</c>)
+    /// fixes only the TRAVEL — a code-controlled −4° to +11° — and cannot settle the offset: that
+    /// range fits 3.75 (stops a quarter degree inside each end) and the rival 4.0 (a clean 0–15
+    /// scale) equally well. Note that 4 is DEGREES, not units; conflating the two currencies is
+    /// what made this hard to pin down in the first place. What discriminates is the two stop
+    /// readings above plus the indicator itself, read at 3.75, 4.00, 4.50 and 6.00 units and
+    /// agreeing with the announced value at every one — 3.75 and 4.50 carry the weight, because
+    /// both fall BETWEEN whole graduations, and an offset of 4.0 would have shown 4.00 against a
+    /// gauge reading 4.25. That read is an enlarged screenshot interpreted by image analysis:
+    /// strong corroboration, not an instrument calibration. Should better evidence ever
+    /// contradict it, this is the ONE constant to change (the stop tests pin it, so they follow).
     /// </para>
     /// </summary>
     public const double UnitsOffset = 3.75;
 
-    /// <summary>
-    /// Announcement granularity, in units. The indicator is graduated in quarter units, so a
-    /// finer step would speak changes the aircraft does not display and turn a slow trim wheel
-    /// into a stream of speech. Quantising here rather than debouncing on degrees is also what
-    /// makes the callout land on the same values the FMC quotes.
-    /// </summary>
+    /// <summary>Announcement granularity: the indicator is graduated in quarter units.</summary>
     public const double UnitsStep = 0.25;
 
-    /// <summary>Stabiliser trim in units, snapped to <see cref="UnitsStep"/>.</summary>
+    /// <summary>
+    /// Stabiliser trim in units, snapped to the nearest <see cref="UnitsStep"/> — the spoken
+    /// value always lands on a graduation, and any degree change that crosses a quarter-unit
+    /// boundary is a new value, however small (there is no deadband). Clamped at the bottom: a
+    /// reading a hair under −3.75° rounds to −0.0, and one past the nose-down stop would otherwise
+    /// speak a negative trim on a scale that has no negative end. The top is deliberately NOT
+    /// clamped — a reading past 14.50 is the one signal that PMDG's stop, or this offset, has moved.
+    /// </summary>
     public static double UnitsFromDegrees(double degrees)
     {
         double units = Math.Round((degrees + UnitsOffset) / UnitsStep,
                                   MidpointRounding.AwayFromZero) * UnitsStep;
-        // Normalise negative zero: -0.0 == 0.0 compares true but formats as "-0.00", which at the
-        // bottom stop would announce a negative trim on a scale that has no negative end.
-        return units == 0.0 ? 0.0 : units;
+        return Math.Max(0.0, units); // +0.0 beats -0.0 here (IEEE 754 maximum), so "-0.00" cannot escape
     }
 
     /// <summary>
     /// The spoken phrase. No "up"/"down": the sign is already in the number on a 0–14.5 scale,
     /// and a direction word invites the pilot to hear it as a relative change rather than the
-    /// absolute position the FMC and the indicator both state.
+    /// absolute position the FMC and the indicator both state. Invariant culture, like every other
+    /// tested spoken-number formatter in this app — "5,25" is a different number through a screen
+    /// reader. (The PMDG 737's own callout is "Trim 5.3": one decimal for its 0.1-unit step and no
+    /// unit word; the 777 carries two decimals for its quarter-unit step and the word "units" — a
+    /// per-type wording, not a fleet convention.)
     /// </summary>
-    public static string Describe(double degrees)
-        => $"Trim {UnitsFromDegrees(degrees):F2} units";
+    public static string Describe(double degrees) => DescribeUnits(UnitsFromDegrees(degrees));
+
+    /// <summary>Formats an already-snapped units value, so a caller keys its debounce on the very value it speaks.</summary>
+    public static string DescribeUnits(double units)
+        => FormattableString.Invariant($"Trim {units:F2} units");
 }
