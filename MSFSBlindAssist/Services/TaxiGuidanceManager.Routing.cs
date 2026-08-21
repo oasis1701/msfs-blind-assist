@@ -679,7 +679,17 @@ public partial class TaxiGuidanceManager
         // is a hold-short segment: advancing past an un-announced hold-short is
         // the runway-incursion direction, and that invariant outranks un-pinning
         // (the hold-short flow has its own capture handling).
-        if (bestIdx == _currentSegmentIndex
+        //
+        // Fires in EITHER situation where the endpoint scan cannot advance: the
+        // shared-node tie (bestIdx unmoved — the KLAS shape), OR the scan picking a
+        // later segment that is still out of proximity range. The second is the far
+        // half of the same long segment: once past its midpoint the far endpoint
+        // wins the scan (no tie) but can still sit beyond SEGMENT_ADVANCE_MAX_DIST_M,
+        // so gating on the tie alone left a window — ~73 m of the KLAS B segment,
+        // more on a longer one — where the index stayed stale with the target
+        // frozen behind the aircraft. The projection test is the evidence either
+        // way; which endpoint happened to be nearest is not part of it.
+        if ((bestIdx == _currentSegmentIndex || bestDist > SEGMENT_ADVANCE_MAX_DIST_M)
             && _currentSegmentIndex + 1 < _route.Segments.Count
             && !_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
         {

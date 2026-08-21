@@ -43,6 +43,20 @@ public static class GuidanceGeometry
         if (segIdx >= segCount) return (lats[^1], lons[^1]);
         if (lookAheadM < 0.0) lookAheadM = 0.0;   // negative look-ahead would extrapolate behind the polyline
 
+        // Skip degenerate segments BEFORE projecting, so the projection always has a
+        // real axis to run along. A sub-metre segment is a point: it has no direction
+        // to project onto, and the two ways of pretending otherwise both break the
+        // walk. Projecting ONTO it extrapolates along a phantom axis (|t| in the
+        // hundreds), which is how a restarted route's snap stub produced a target
+        // sliding a few metres from the aircraft instead of leading up the route.
+        // Forcing t = 1 for it instead discards the aircraft's behind-distance, so
+        // the whole look-ahead is walked from the stub's far node and the target
+        // steps ~25 m in one frame — the same "the walk start teleported" failure
+        // the unclamped-t rule below exists to prevent. Advancing past it and
+        // projecting onto the next REAL segment does neither.
+        while (segIdx < segCount && SegLenM(lats, lons, segIdx) < DEGENERATE_SEG_M) segIdx++;
+        if (segIdx >= segCount) return (lats[^1], lons[^1]);
+
         // Project the aircraft onto the current segment's axis. Clamp the
         // UPPER bound only: when the manager advances the segment at the
         // 25 m capture radius the aircraft is still BEHIND the new segment's
@@ -50,19 +64,13 @@ public static class GuidanceGeometry
         // that behind-distance — the walk start stays at the aircraft, and the
         // target is continuous through every capture. Clamping t to 0 would
         // teleport the walk start to the node and step the target ~25 m.
-        double cosLat = Math.Cos(lats[segIdx] * Math.PI / 180.0);
-        double ax = (acLon - lons[segIdx]) * MPD * cosLat;
-        double ay = (acLat - lats[segIdx]) * MPD;
-        double sx = (lons[segIdx + 1] - lons[segIdx]) * MPD * cosLat;
-        double sy = (lats[segIdx + 1] - lats[segIdx]) * MPD;
-        double segLen = Math.Sqrt(sx * sx + sy * sy);
-        double t = segLen < DEGENERATE_SEG_M ? 1.0
-                 : Math.Min((ax * sx + ay * sy) / (segLen * segLen), 1.0);
+        Project(lats, lons, segIdx, acLat, acLon, out double t, out _, out double segLen);
+        t = Math.Min(t, 1.0);
 
         double budget = lookAheadM;
         double remaining = (1.0 - t) * segLen;
 
-        if (budget <= remaining && segLen >= DEGENERATE_SEG_M)
+        if (budget <= remaining)
         {
             double f = t + budget / segLen;
             // Never target a point BEHIND the segment start. The unclamped t is
@@ -123,15 +131,12 @@ public static class GuidanceGeometry
         // Current segment: only "passed" counts. A degenerate current segment has
         // no axis to be inside of — treat it as passed (the restarted-route snap
         // stub) and let the next-segment test carry the evidence.
-        double cosLat = Math.Cos(lats[segIdx] * Math.PI / 180.0);
-        double sx = (lons[segIdx + 1] - lons[segIdx]) * MPD * cosLat;
-        double sy = (lats[segIdx + 1] - lats[segIdx]) * MPD;
-        double segLen = Math.Sqrt(sx * sx + sy * sy);
-        if (segLen >= DEGENERATE_SEG_M)
+        // (Project returning false IS the degenerate case, so the short-circuit
+        // falls through to the next-segment test exactly as intended.)
+        if (Project(lats, lons, segIdx, acLat, acLon, out double curT, out _, out _)
+            && curT < 1.0)
         {
-            double ax = (acLon - lons[segIdx]) * MPD * cosLat;
-            double ay = (acLat - lats[segIdx]) * MPD;
-            if ((ax * sx + ay * sy) / (segLen * segLen) < 1.0) return false;
+            return false;
         }
 
         // Next non-degenerate segment: interior projection, bounded cross-track.
@@ -139,17 +144,41 @@ public static class GuidanceGeometry
         while (next < segCount && SegLenM(lats, lons, next) < DEGENERATE_SEG_M) next++;
         if (next >= segCount) return false;
 
-        double cl = Math.Cos(lats[next] * Math.PI / 180.0);
-        double ex = (lons[next + 1] - lons[next]) * MPD * cl;
-        double ey = (lats[next + 1] - lats[next]) * MPD;
-        double len = Math.Sqrt(ex * ex + ey * ey);
-        double px = (acLon - lons[next]) * MPD * cl;
-        double py = (acLat - lats[next]) * MPD;
-        double t = (px * ex + py * ey) / (len * len);
-        if (t < 0.0 || t > 1.0) return false;
+        if (!Project(lats, lons, next, acLat, acLon, out double t, out double crossM, out _))
+            return false;
 
-        double crossM = Math.Abs(px * ey - py * ex) / len;
-        return crossM <= maxCrossM;
+        return t >= 0.0 && t <= 1.0 && crossM <= maxCrossM;
+    }
+
+    /// <summary>Projects the aircraft onto segment <paramref name="i"/>'s axis:
+    /// UNCLAMPED along-track fraction (negative behind the start, &gt;1 past the end),
+    /// absolute cross-track metres, and the segment's own length. False — with every
+    /// out zeroed — when the segment is too short to have an axis at all, which is
+    /// the one case no caller may treat as a position on the route.
+    ///
+    /// One projection, four callers (this file had four hand-rolled copies of the
+    /// same cos/dx/dy/dot block): a correction to the equirectangular math now lands
+    /// everywhere at once rather than in whichever copy someone remembered.</summary>
+    private static bool Project(
+        double[] lats, double[] lons, int i, double acLat, double acLon,
+        out double t, out double crossM, out double lenM)
+    {
+        double cl = Math.Cos(lats[i] * Math.PI / 180.0);
+        double ex = (lons[i + 1] - lons[i]) * MPD * cl;
+        double ey = (lats[i + 1] - lats[i]) * MPD;
+        lenM = Math.Sqrt(ex * ex + ey * ey);
+        if (lenM < DEGENERATE_SEG_M)
+        {
+            t = 0.0;
+            crossM = 0.0;
+            return false;
+        }
+
+        double px = (acLon - lons[i]) * MPD * cl;
+        double py = (acLat - lats[i]) * MPD;
+        t = (px * ex + py * ey) / (lenM * lenM);
+        crossM = Math.Abs(px * ey - py * ex) / lenM;
+        return true;
     }
 
     /// <summary>
@@ -169,25 +198,23 @@ public static class GuidanceGeometry
         if (segCount < 2 || segIdx >= segCount) return 0.0;
         if (segIdx < 0) segIdx = 0;
 
+        // Skip degenerate segments before projecting, for the same reason WalkTarget
+        // does (see there): a sub-metre segment is a point, with neither an axis to
+        // project onto nor a bearing to diff against. This also makes the window
+        // start honest for an aircraft sitting BEHIND such a stub — forcing t = 1
+        // reported travelled = 0 and began the window at the stub's far node.
+        while (segIdx < segCount && SegLenM(lats, lons, segIdx) < DEGENERATE_SEG_M) segIdx++;
+        if (segIdx >= segCount) return 0.0;
+
         // Distance from the aircraft's projection to the end of the current
         // segment — junctions are only counted within windowM of route ahead.
         // Same upper-bound-only clamp as WalkTarget (see comment there).
-        double cosLat = Math.Cos(lats[segIdx] * Math.PI / 180.0);
-        double ax = (acLon - lons[segIdx]) * MPD * cosLat;
-        double ay = (acLat - lats[segIdx]) * MPD;
-        double sx = (lons[segIdx + 1] - lons[segIdx]) * MPD * cosLat;
-        double sy = (lats[segIdx + 1] - lats[segIdx]) * MPD;
-        double segLen = Math.Sqrt(sx * sx + sy * sy);
-        double t = segLen < DEGENERATE_SEG_M ? 1.0
-                 : Math.Min((ax * sx + ay * sy) / (segLen * segLen), 1.0);
+        Project(lats, lons, segIdx, acLat, acLon, out double t, out _, out double segLen);
+        t = Math.Min(t, 1.0);
 
         double travelled = (1.0 - t) * segLen;   // route distance to first junction
 
-        // Reference bearing: first non-degenerate segment at/after segIdx —
-        // a zero-length joint has no meaningful bearing to diff against.
         int b0 = segIdx;
-        while (b0 < segCount && SegLenM(lats, lons, b0) < DEGENERATE_SEG_M) b0++;
-        if (b0 >= segCount) return 0.0;
         double prevBearing = BearingDeg(lats, lons, b0);
         double sum = 0.0;
 

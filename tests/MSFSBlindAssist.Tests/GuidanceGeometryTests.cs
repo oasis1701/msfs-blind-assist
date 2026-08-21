@@ -371,6 +371,29 @@ public class GuidanceGeometryTests
     }
 
     [Fact]
+    public void WalkTarget_keeps_the_walk_start_at_the_aircraft_when_the_current_segment_is_short()
+    {
+        // The behind-distance must survive a sub-metre CURRENT segment. Forcing t=1
+        // for it (the shape the degenerate ternary has) discards how far behind the
+        // aircraft is, so the whole look-ahead is walked from the segment's far node
+        // and the target steps ~25 m forward in one frame at a capture — the
+        // "clamping the walk start low teleports the target" failure class the
+        // unclamped-t design exists to prevent, just reached through the other door.
+        double cos33 = Math.Cos(33.0 * Math.PI / 180.0);
+        double dLon05 = 0.5 / (MPD * cos33);
+        // A 0.5 m stub, then 200 m of straight route east.
+        var lats = new[] { 33.0, 33.0, 33.0 };
+        var lons = new[] { -84.0, -84.0 + dLon05, -84.0 + dLon05 + 200.0 / (MPD * cos33) };
+
+        // Aircraft 25 m behind the stub — exactly the post-capture geometry.
+        double acLon = -84.0 - 25.0 / (MPD * cos33);
+
+        var tgt = GuidanceGeometry.WalkTarget(lats, lons, 0, 33.0, acLon, 50.0);
+
+        Assert.Equal(50.0, DistM(33.0, acLon, tgt.lat, tgt.lon), 1.5);
+    }
+
+    [Fact]
     public void WalkTarget_never_returns_a_point_behind_the_current_segment_start()
     {
         // Aircraft 80 m behind a 200 m northward segment with a 50 m look-ahead:
