@@ -155,6 +155,21 @@ public partial class MainForm
             {
                 _siLog.Info($"Import aborted: {reason}");
                 announcer.AnnounceImmediate(reason);
+
+                // The re-readable copy. Speech is heard once and a screen reader
+                // routinely interrupts it, so without this the pilot's only way back to
+                // the reason is the log file — and the route-summary box meanwhile still
+                // shows the PREVIOUS route, which reads exactly like a route that was
+                // just built for them. ONE call covers all six abort sites because they
+                // all funnel through here, the same reason the log line does.
+                //
+                // ONLY when the form is already up. Three of those sites fire before the
+                // form is shown at all (no database, no current airport, no taxi data),
+                // and opening a window for an error the pilot has just HEARD costs them a
+                // focus change and an Escape to buy nothing. Form closed => today's
+                // behaviour, unchanged.
+                if (taxiAssistForm is { IsDisposed: false, Visible: true })
+                    taxiAssistForm.ShowRouteFailure(reason);
             }
 
             if (airportDataProvider == null || !airportDataProvider.DatabaseExists)

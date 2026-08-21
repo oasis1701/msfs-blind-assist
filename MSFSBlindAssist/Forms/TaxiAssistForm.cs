@@ -1779,6 +1779,27 @@ public class TaxiAssistForm : Form
             string.IsNullOrEmpty(imported) ? reason : reason + " " + imported);
     }
 
+    /// <summary>Records why there is no route, in the two places a pilot can go looking:
+    /// the status line and the route-summary box.
+    ///
+    /// SPEAKS NOTHING. Every caller has already announced the reason — this is the
+    /// re-readable copy, and a second utterance would talk over the first (and break
+    /// the screen-reader rule about announcing what the pilot has already been told).
+    ///
+    /// The summary box exists because speech is heard ONCE and a screen reader
+    /// routinely interrupts it, so it is the only place a blind pilot can re-read what
+    /// happened. That makes a STALE route sitting in it after a failed Calculate worse
+    /// than an empty box: nothing distinguishes last route's summary from one that was
+    /// actually just built. Every exit that leaves the pilot with no route comes
+    /// through here, so the box holds either a real route or the reason there isn't
+    /// one — never a route that was not built.</summary>
+    public void ShowRouteFailure(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason)) return;
+        lblStatus.Text = reason;
+        txtRouteSummary.Text = reason;
+    }
+
     /// <summary>Puts every route-shaping control an import does not itself set back to
     /// its default, so the imported clearance is the WHOLE route.
     ///
@@ -3933,7 +3954,9 @@ public class TaxiAssistForm : Form
     {
         if (_graph == null)
         {
-            AnnounceCalculateAbort("No airport loaded. Enter an ICAO code first.");
+            const string noAirport = "No airport loaded. Enter an ICAO code first.";
+            AnnounceCalculateAbort(noAirport);
+            ShowRouteFailure(noAirport);
             return;
         }
 
@@ -3949,7 +3972,7 @@ public class TaxiAssistForm : Form
         if (RefreshDestinationsIfGateSourceChanged())
         {
             AnnounceCalculateAbort(GateListUpdatedMessage);
-            lblStatus.Text = GateListUpdatedMessage;
+            ShowRouteFailure(GateListUpdatedMessage);
             return;
         }
 
@@ -4152,8 +4175,7 @@ public class TaxiAssistForm : Form
             if (progError != null)
             {
                 _announcer.AnnounceImmediate(progError);
-                lblStatus.Text = progError;
-                txtRouteSummary.Text = progError;
+                ShowRouteFailure(progError);
                 return;
             }
 
@@ -4171,15 +4193,21 @@ public class TaxiAssistForm : Form
         string? destName = cmbDestination.SelectedItem?.ToString();
         if (string.IsNullOrEmpty(destName) || !_destinationNodeMap.TryGetValue(destName, out int destNodeId))
         {
-            AnnounceCalculateAbort("Please select a destination.");
+            const string noDestination = "Please select a destination.";
+            AnnounceCalculateAbort(noDestination);
+            ShowRouteFailure(noDestination);
             return;
         }
 
         if (destNodeId < 0)
         {
-            AnnounceCalculateAbort(
-                $"No taxi route to {destName}. This stand can't be reached by the taxi network.");
-            lblStatus.Text = "Selected stand has no taxi route.";
+            string unreachable =
+                $"No taxi route to {destName}. This stand can't be reached by the taxi network.";
+            AnnounceCalculateAbort(unreachable);
+            // The spoken sentence, not the old terse status line ("Selected stand has no
+            // taxi route."): the box is where the pilot goes to re-read what they heard,
+            // so it must carry the same words, including WHICH stand.
+            ShowRouteFailure(unreachable);
             return;
         }
 
@@ -4315,8 +4343,7 @@ public class TaxiAssistForm : Form
             // and did not get, and the abort's own reason follows it.
             AnnounceCalculateAbort(
                 backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
-            lblStatus.Text = error;
-            txtRouteSummary.Text = error;
+            ShowRouteFailure(error);
             return;
         }
 
