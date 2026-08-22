@@ -52,7 +52,18 @@ so the xUnit suite can pin every rule.
 |---|---|
 | `gs > ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS` (50) | `Silent` |
 | `distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT` (300) | `ExitBearing` |
+| `distToExit <= TurnWindowFeet` and the deviation is ≥ `DriftToneSilentDeg` toward a KNOWN exit side | `Silent` |
 | otherwise | `DriftCorrection` |
+
+The third row was added after this doc was first written (the drift-tone-conflict fix).
+Heading alone cannot separate a crosswind drift toward the exit from the pre-turn onto
+it, so the tone stays quiet rather than opposing a turn `IsExitTurnBegun` is about to
+accept. Accepted cost: a genuine toward-exit drift in this band is uncued until 15°, the
+300 ft `ExitBearing` takeover, or `exitedLaterally`.
+
+The shipped signature is therefore
+`SelectToneMode(groundSpeedKts, distToExitFeet, headingDeltaSignedDeg, exitRelativeBearingDeg)`
+— four parameters, not the two this section originally described.
 
 `Silent` and `ExitBearing` reproduce today's behaviour exactly. `DriftCorrection` is new
 and fills the gap that was silent.

@@ -360,7 +360,7 @@ public partial class TaxiGuidanceManager
         // this the same as turnBegun — the exit has been taken.
         // halfRunwayWidthFt is no longer a gate threshold — the lateral trigger below
         // uses the shared IsWithinRolloutRunwayLaterally predicate instead. It is kept
-        // solely because the handoff diagnostic further down reports it.
+        // solely because the overshoot diagnostic further down reports it.
         double halfRunwayWidthFt = (_rolloutRunway?.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
         // Use the runway start as the reference point for lateral measurement, NOT
         // the exit node. Exit nodes (especially HS/IHS hold-short markers) can be
