@@ -69,10 +69,6 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
-        // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
-        // half as it arrives (ProcessSimVarUpdate has no SimConnect handle to read the
-        // partner) and recompute the per-side position so the "… Position" readout is live
-        // (rendered from _wiperState* in TryGetDisplayOverride). Never spoken (return true).
         // ND option filter — ONE selection per side, fed by its three lights. Stored as they
         // arrive (ProcessSimVarUpdate has no SimConnect handle to read the siblings) and
         // rendered from _ndFilter* in TryGetDisplayOverride. Silent (return true): the combo
@@ -96,6 +92,10 @@ public partial class FlyByWireA380Definition
             }
         }
 
+        // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
+        // half as it arrives (ProcessSimVarUpdate has no SimConnect handle to read the
+        // partner) and recompute the per-side position so the "… Position" readout is live
+        // (rendered from _wiperState* in TryGetDisplayOverride). Never spoken (return true).
         switch (varName)
         {
             case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
@@ -656,10 +656,6 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // Stock-altimeter MB mirrors: consumed by MainForm's A380 STD-flag watchdog
-        // (the def's ProcessSimVarUpdate has no SimConnect manager to write with —
-        // same split as the engine-mode-selector watchdog). Never announce the raw value.
-        if (varName is "BARO_MB_WATCH_L" or "BARO_MB_WATCH_R") return true;
         // EFIS baro STD (PUSH) / QNH (PULL) — announce the mode change.
         if (varName == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varName == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
         {

@@ -2154,54 +2154,49 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // setting is non-visual; spoken on change, deduped to whole hPa).
         MonNum("A32NX_FCU_LEFT_EIS_BARO_HPA", "Captain Altimeter", "hectopascals");
         MonNum("A32NX_FCU_RIGHT_EIS_BARO_HPA", "First Officer Altimeter", "hectopascals");
-        // STD(PUSH)/QNH(PULL) per side — note the A380's knob events are the OPPOSITE
-        // of the A32NX's (live-verified 2026-06-11 in the installed fcu.js: onPush →
-        // Std, onPull → leave Std). Dev FBW removed the *_EIS_BARO_IS_STD L:vars as
-        // inputs; the FCU writes the stock KOHLSMAN SETTING STD:n simvar on every
-        // mode TRANSITION (MsfsBaroManager.setupSyncToMsfs), which is the readback
-        // here. That write is transition-only, so a session that starts with STD
-        // already engaged can read stale 0 — the MB watchdog below back-fills it.
-        // Keys keep the old names so the panel lists, window, hotkey readout and
-        // announce branch stay stable.
+        // STD(PUSH)/QNH(PULL) per side — the A380's knob events are the OPPOSITE of the
+        // A32NX's; BaroModeEvent owns the set path and the evidence for that polarity.
+        //
+        // ⚠️ The STATE is the FCU's own per-frame L:var, NOT the stock altimeter simvar.
+        // FBW #10855 deleted MsfsBaroManager.ts, whose setupSyncToMsfs was the only writer
+        // of `KOHLSMAN SETTING STD:{1,2}`; the WASM now registers those read-only and
+        // force-writes only :4 (the sim altimeter it pins to STD because it computes the
+        // displayed altitude itself). Reading the stock flag therefore returned the same
+        // value forever — reported live as "the altimeter won't switch between standard and
+        // QNH, it is stuck on QNH", with the events working fine underneath. The replacement
+        // is written every frame from the FCU's baro_std output.
+        //
+        // Keys keep the old names so the panel lists, window, hotkey readout and announce
+        // branch stay stable.
         var baroStd = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" };
-        vars["A32NX_FCU_LEFT_EIS_BARO_IS_STD"] = new SimVarDefinition
-        {
-            Name = "KOHLSMAN SETTING STD:1", DisplayName = "Capt Altimeter STD",
-            Type = SimVarType.SimVar, Units = "bool",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-            ValueDescriptions = baroStd
-        };
-        vars["A32NX_FCU_RIGHT_EIS_BARO_IS_STD"] = new SimVarDefinition
-        {
-            Name = "KOHLSMAN SETTING STD:2", DisplayName = "F/O Altimeter STD",
-            Type = SimVarType.SimVar, Units = "bool",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-            ValueDescriptions = baroStd
-        };
-        // Stock-altimeter MB mirrors — drive the STD-flag watchdog (the FCU forces
-        // the stock altimeter to exactly 1013.25 hPa while STD; in QNH it applies
-        // the preselect). Announce-suppressed in ProcessSimVarUpdate.
-        vars["BARO_MB_WATCH_L"] = new SimVarDefinition
-        {
-            Name = "KOHLSMAN SETTING MB:1", DisplayName = "Baro MB Captain",
-            Type = SimVarType.SimVar, Units = "millibars",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
-        };
-        vars["BARO_MB_WATCH_R"] = new SimVarDefinition
-        {
-            Name = "KOHLSMAN SETTING MB:2", DisplayName = "Baro MB First Officer",
-            Type = SimVarType.SimVar, Units = "millibars",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true
-        };
+        foreach (var (key, side, who) in new[]
+                 {
+                     ("A32NX_FCU_LEFT_EIS_BARO_IS_STD", "L", "Capt"),
+                     ("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "R", "F/O")
+                 })
+            vars[key] = new SimVarDefinition
+            {
+                Name = $"A32NX_FCU_EFIS_{side}_DISPLAY_BARO_IS_STD", DisplayName = $"{who} Altimeter STD",
+                Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
+                ValueDescriptions = baroStd
+            };
+        // (The BARO_MB_WATCH_* stock-altimeter MB mirrors and the STD-flag watchdog they
+        //  fed are GONE. They existed only because the old readback — the stock KOHLSMAN
+        //  SETTING STD:n — was written on TRANSITIONS only, so a session starting in STD
+        //  read a stale 0 and had to be back-filled. The STD flag is now the FCU's own
+        //  per-frame L:var, which is never stale. Do not reinstate the watchdog: with
+        //  nothing reading the stock flag its back-fill write converges on nothing, so a
+        //  genuine QNH of 1013 would make it retry every 2 s for the rest of the flight.)
         // Silent caches — never spoken individually (TCAS detail speech rides the
-        // A32NX_TCAS_STATE monitor entry; CG feeds the W/Shift+W readouts; the BARO
-        // MB mirrors only drive the STD-flag watchdog) — hide from the Ctrl+M list.
+        // A32NX_TCAS_STATE monitor entry; CG feeds the W/Shift+W readouts) — hide from
+        // the Ctrl+M list.
         foreach (var k in new[] {
             "A32NX_TCAS_VSPEED_GREEN:1", "A32NX_TCAS_VSPEED_GREEN:2",
             "A32NX_TCAS_VSPEED_RED:1", "A32NX_TCAS_VSPEED_RED:2",
             "A32NX_TCAS_RA_CORRECTIVE", "A32NX_TCAS_RA_UP_ADVISORY_STATUS",
             "A32NX_TCAS_RA_DOWN_ADVISORY_STATUS", "A32NX_TCAS_RA_RATE_TO_MAINTAIN",
-            "A32NX_AIRFRAME_GW_CG_PERCENT_MAC", "BARO_MB_WATCH_L", "BARO_MB_WATCH_R" })
+            "A32NX_AIRFRAME_GW_CG_PERCENT_MAC" })
             vars[k].ExcludeFromMonitorManager = true;
         // End-to-end MobiFlight probe target: MainForm calc-writes a nonce here and
         // reads it back via the data-def path — the only reliable "calc path alive"

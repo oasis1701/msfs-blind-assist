@@ -229,9 +229,6 @@ public partial class MainForm : Form
     // per app session. Manual refresh (force:true) bypasses it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
 
-    // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
-    private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
-
     // MobiFlight end-to-end bridge probe state (see BridgeProbeTimer_Tick).
     private System.Windows.Forms.Timer? _bridgeProbeTimer;
 
