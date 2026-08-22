@@ -185,7 +185,7 @@ pavement junction by up to `lateralTolerance / tan(exitAngle)`, where `lateralTo
 is `halfWidth + 15 m` (`TaxiGraph.GetLandingExits`). `turnBegun` can only fire for an
 exit the aircraft can deviate 15° onto, so `exitAngle >= 15°`. The worst case is a 200 ft
 runway: `(30.5 + 15) / tan(15°)` = 170 m = **558 ft**. Add the app's own notion of "at the
-exit" — the 300 ft tone-arm distance plus the 150 ft "turn now" cue — for 858 ft, rounded
+exit" — the 300 ft tone-arm distance plus the 150 ft "turn now" cue — for 1,008 ft, rounded
 to 1,000. A tighter 500 ft would block legitimate turns at shallow-RET airports whose
 exits derive from hold-short nodes.
 
