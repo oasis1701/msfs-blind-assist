@@ -778,7 +778,7 @@ namespace MSFSBlindAssist.Tests;
 
 public class HandoffRouteReachabilityTests
 {
-    private const double JWidthFt = 82.0;   // KSEA taxiway J — half-width 12.5 m
+    private const double JWidthFt = 82.0;   // KSEA taxiway J — half-width 12.4968 m (82 ft * 0.3048 / 2)
 
     // A handoff taken while still on the runway is the normal case for every exit type
     // and is never refused, however far the first segment is.
@@ -791,7 +791,7 @@ public class HandoffRouteReachabilityTests
     }
 
     // KSEA regression: off the runway, 53.9 m from an 82 ft segment. Threshold is
-    // 12.5 + 15 = 27.5 m, so this is refused and guidance concludes instead of panning.
+    // 12.4968 + 15 = 27.4968 m, so this is refused and guidance concludes instead of panning.
     [Fact]
     public void Ksea34L_OffTheRunwayAndFiftyFourMetresFromTaxiwayJ_IsNotReachable()
     {
@@ -807,12 +807,17 @@ public class HandoffRouteReachabilityTests
         Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 5.0, JWidthFt));
     }
 
-    // Boundary: half-width (12.5 m) + margin (15 m) = 27.5 m, inclusive.
+    // Boundary: half-width (12.4968 m) + margin (15 m) = 27.4968 m, inclusive. Derived from
+    // the real constants (not a rounded literal) so this pins the exact boundary the
+    // production method computes, and asserts at the next representable double above it so
+    // a strict-inequality mutation (<= -> <) is actually caught.
     [Fact]
     public void BoundaryIsHalfWidthPlusFifteenMetres()
     {
-        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 27.5, JWidthFt));
-        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, 27.6, JWidthFt));
+        double threshold = JWidthFt * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, threshold, JWidthFt));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(threshold), JWidthFt));
     }
 
     // Missing PathWidth falls back to a GENEROUS 25 m half-width. This guard ENDS
