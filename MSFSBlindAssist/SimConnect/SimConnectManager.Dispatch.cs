@@ -202,6 +202,58 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FO_ALTITUDE_AGL:
+                SingleValue foAltAglData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ALTITUDE_AGL",
+                    Value = foAltAglData.value,
+                    Description = $"{foAltAglData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_AIRSPEED_IAS:
+                SingleValue foIasData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_AIRSPEED_IAS",
+                    Value = foIasData.value,
+                    Description = $"{foIasData.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG1_N2:
+                SingleValue foEng1N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG1_N2",
+                    Value = foEng1N2Data.value,
+                    Description = $"{foEng1N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_ENG2_N2:
+                SingleValue foEng2N2Data = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_ENG2_N2",
+                    Value = foEng2N2Data.value,
+                    Description = $"{foEng2N2Data.value:0}"
+                });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_CENTER_FUEL_LBS:
+                // gallons x pounds-per-gallon -> pounds (see RequestFOCenterFuelLbs).
+                DoubleValuePair foCtrFuel = (DoubleValuePair)data.dwData[0];
+                double foCtrFuelLbs = foCtrFuel.value1 * foCtrFuel.value2;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "FO_CENTER_FUEL_LBS",
+                    Value = foCtrFuelLbs,
+                    Description = $"{foCtrFuelLbs:0}"
+                });
+                break;
+
             case DATA_REQUESTS.REQUEST_AIRSPEED_TAS:
                 SingleValue tasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

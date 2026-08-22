@@ -565,6 +565,13 @@ public partial class MainForm
                                 return;
                             }
 
+                            // NOTE (2026-07-12): for the FBW A32NX, every exterior-light key in this
+                            // branch is now handled ABOVE by FlyByWireA320Definition.HandleUIVariableSet
+                            // (the single source of truth, shared with the First Officer executor), so
+                            // the fallthrough mechanisms below no longer run for the A32NX. They remain
+                            // only as a generic fallback for any aircraft whose def does NOT claim these
+                            // keys. If you change a light's actuator, edit HandleUIVariableSet, not here.
+
                             // Send the main LVar
                             simConnectManager?.SetLVar(capturedVarKey, selectedValue);
                             currentSimVarValues[capturedVarKey] = selectedValue;
