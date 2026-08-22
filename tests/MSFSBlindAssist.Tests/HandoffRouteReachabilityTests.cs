@@ -70,33 +70,38 @@ public class HandoffRouteReachabilityTests
 
     // Some navdata rows report absurd widths (thousands of feet, aprons mis-tagged as taxi
     // paths). Uncapped, a 4,000 ft row bought a ~625 m corridor and the guard passed at any
-    // cross-track -- defeating itself on exactly the airports with the dirtiest navdata.
-    // The cap is the same 300 ft the off-route perpendicular check has always applied.
+    // cross-track -- defeating itself on exactly the airports with the dirtiest navdata. The
+    // half-width is clamped to the same 25 m a MISSING width gets, so the widest corridor any
+    // segment can buy is 40 m.
     [Fact]
-    public void AbsurdPathWidth_IsCappedAtThreeHundredFeet()
+    public void AbsurdPathWidth_IsClampedToTheGenerousFallbackHalfWidth()
     {
-        double cappedThreshold =
-            RolloutExitGate.MaxTrustedPathWidthFeet * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+        double maxCorridor =
+            RolloutExitGate.HandoffReachDefaultHalfWidthM + RolloutExitGate.HandoffReachMarginM;
 
-        // A 4,000 ft row must behave exactly like a 300 ft one.
-        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, cappedThreshold, 4000.0));
-        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(cappedThreshold), 4000.0));
-
-        // The capped corridor (60.72 m) is still bounded, not infinite: the KSEA regression's
-        // 53.9 m cross-track sits inside it (unlike the pre-fix ~625 m corridor, which accepted
-        // literally any cross-track). A cross-track beyond the capped threshold -- the assertion
-        // above -- is still refused even under a mis-tagged 4,000 ft row.
-        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 53.9, 4000.0));
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, maxCorridor, 4000.0));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(maxCorridor), 4000.0));
     }
 
-    // The cap is one-sided: a width at or below it is used as-is, so ordinary taxiways are
-    // completely unaffected.
+    // The KSEA regression must stay refused even if its segment were mis-tagged absurdly
+    // wide -- this is the case the guard exists for, and the pre-clamp code admitted it.
     [Fact]
-    public void WidthBelowTheCap_IsUsedUnchanged()
+    public void Ksea34L_IsStillRefused_EvenWhenTheSegmentIsMisTaggedWide()
+    {
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, 53.9, 4000.0));
+    }
+
+    // The clamp is one-sided: any real taxiway is narrower than the 25 m clamp point
+    // (164 ft), so its own width is used unchanged.
+    [Fact]
+    public void RealTaxiwayWidth_IsUsedUnchanged()
     {
         double jThreshold = JWidthFt * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
 
         Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, jThreshold, JWidthFt));
         Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(jThreshold), JWidthFt));
+        // Well inside the clamp point, so this is nowhere near the 40 m ceiling.
+        Assert.True(jThreshold < RolloutExitGate.HandoffReachDefaultHalfWidthM
+                                 + RolloutExitGate.HandoffReachMarginM);
     }
 }

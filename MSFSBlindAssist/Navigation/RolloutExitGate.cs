@@ -117,20 +117,6 @@ public static class RolloutExitGate
     public const double HandoffReachMarginM = 15.0;
 
     /// <summary>
-    /// Widest <c>PathWidth</c> this guard will believe, in FEET.
-    ///
-    /// <para>Some navdata rows report absurd widths — thousands of feet where an apron or a
-    /// combined surface is mis-tagged as a taxi path. Uncapped, one such row on a handoff
-    /// route's first segment bought a ~625 m acceptance corridor, so the guard passed at any
-    /// cross-track and defeated itself on exactly the airports with the dirtiest navdata.</para>
-    ///
-    /// <para>Canonical here; <c>TaxiGuidanceManager.OFF_ROUTE_PERP_WIDTH_CAP_FT</c>, which has
-    /// applied the same 300 ft cap to off-route detection since long before this guard
-    /// existed, initialises from it.</para>
-    /// </summary>
-    public const double MaxTrustedPathWidthFeet = 300.0;
-
-    /// <summary>
     /// Half-width assumed when a segment carries no <c>PathWidth</c>. Deliberately generous:
     /// this guard ENDS guidance, so missing navdata width must never cause a false refusal.
     /// </summary>
@@ -389,13 +375,14 @@ public static class RolloutExitGate
     {
         if (!aircraftOffRunway) return true;
 
-        // Clamp before trusting: a mis-tagged apron row would otherwise widen the corridor
-        // until this guard could never refuse anything. One-sided — a narrow width is used
-        // as-is, and an absent one still gets the generous default below, because refusing
-        // ENDS guidance and thin navdata must never cause a false refusal.
-        double trustedWidthFt = Math.Min(firstSegmentPathWidthFeet, MaxTrustedPathWidthFeet);
-        double halfWidthM = trustedWidthFt > 0.0
-            ? trustedWidthFt * 0.3048 * 0.5
+        // Clamp to the same generous half-width a MISSING width gets: a width we do not
+        // believe is treated no better than a width we do not have. Navdata reports
+        // thousands of feet where an apron is mis-tagged as a taxi path, and uncapped that
+        // widened the corridor until this guard could never refuse anything — including the
+        // 53.9 m KSEA 34L case it was written for. 25 m of half-width is a 164 ft taxiway,
+        // wider than any real one, so no genuine segment is narrowed by this.
+        double halfWidthM = firstSegmentPathWidthFeet > 0.0
+            ? Math.Min(firstSegmentPathWidthFeet * 0.3048 * 0.5, HandoffReachDefaultHalfWidthM)
             : HandoffReachDefaultHalfWidthM;
 
         return crossTrackToFirstSegmentMetres <= halfWidthM + HandoffReachMarginM;
