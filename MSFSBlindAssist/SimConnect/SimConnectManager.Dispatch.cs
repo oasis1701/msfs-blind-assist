@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -763,6 +763,31 @@ public partial class SimConnectManager
                     Value = vgData.AGL,
                     Description = ""
                 });
+                break;
+
+            case (DATA_REQUESTS)508: // Manual-landing flare/rollout assist — consolidated frame
+                FlareAssistData faData = (FlareAssistData)data.dwData[0];
+
+                // Mirror to lastKnownPosition so cross-feature consumers (TCAS,
+                // WeatherRadarForm, LandingExitPlanner) stay fresh during a manual
+                // approach where no other position-bearing monitor is running.
+                lastKnownPosition = new AircraftPosition
+                {
+                    Latitude = faData.Latitude,
+                    Longitude = faData.Longitude,
+                    HeadingMagnetic = faData.HeadingMagnetic,
+                    MagneticVariation = faData.MagneticVariation,
+                    GroundSpeedKnots = faData.GroundSpeedKnots,
+                    VerticalSpeedFPM = faData.VerticalSpeedFPM,
+                    // Both are carried by THIS frame — unlike the 506/507 mirrors below,
+                    // whose TakeoffAssistData struct has no altitude to copy and so must
+                    // preserve the previous value. AltitudeMslFt is the same
+                    // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
+                    Altitude = faData.AltitudeMslFt,
+                    SimOnGround = faData.OnGround
+                };
+
+                FlareAssistDataReceived?.Invoke(this, faData);
                 break;
 
             case (DATA_REQUESTS)507: // Taxi Guidance - Position Data (reuses TakeoffAssistData struct)

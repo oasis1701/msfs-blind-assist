@@ -6452,6 +6452,14 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return true;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Stabiliser UNITS, keyed on the quantised value it speaks — see <see cref="Pmdg777StabTrim"/>.</remarks>
+    protected override (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double units = Pmdg777StabTrim.UnitsFromDegrees(degrees);
+        return (units, Pmdg777StabTrim.DescribeUnits(units));
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         if (base.ProcessSimVarUpdate(varName, value, announcer))

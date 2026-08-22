@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -67,6 +67,16 @@ public class LandingExitForm : Form
     private List<Runway> _runways = new();
     private List<LandingExit> _exits = new();
 
+    // The augmentation decorator, when the app wired one up (null when the feature is
+    // off or the provider isn't decorated — tests pass a bare provider). Held typed so
+    // the load path can AWAIT its fetch and so a late fetch can refresh the exit list.
+    private readonly Services.TaxiAugment.AugmentingAirportDataProvider? _augProvider;
+    private Action<string>? _augUpdatedHandler;
+    // Re-entrancy latch for the late-augmentation refresh: the fetch can raise
+    // AirportDataUpdated more than once (one per source) and each refresh awaits a
+    // graph build, so two pushes could otherwise interleave two builds onto _graph.
+    private bool _refreshingAfterAugment;
+
     public LandingExitForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
@@ -83,7 +93,29 @@ public class LandingExitForm : Form
         _gateSource = gateSource;
         _presetIcao = presetIcao;
         _presetRunway = presetRunway;
+        _augProvider = dataProvider as Services.TaxiAugment.AugmentingAirportDataProvider;
         InitializeFormControls();
+
+        // A fetch slower than the bounded wait in LoadAirportAsync still lands eventually.
+        // Without this the exit list would stay on the navdata-only reading for the whole
+        // life of the form (LoadAirportAsync early-returns on the same ICAO once _graph is
+        // built), which at an airport whose navdata names nothing — LSZH names 0 of 1407
+        // taxi segments — is the difference between 0-2 exits per runway and 3-9.
+        if (_augProvider != null)
+        {
+            _augUpdatedHandler = OnAirportDataUpdated;
+            _augProvider.AirportDataUpdated += _augUpdatedHandler;
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _augProvider != null && _augUpdatedHandler != null)
+        {
+            _augProvider.AirportDataUpdated -= _augUpdatedHandler;
+            _augUpdatedHandler = null;
+        }
+        base.Dispose(disposing);
     }
 
     private void InitializeFormControls()
@@ -278,6 +310,10 @@ public class LandingExitForm : Form
         if (icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase) && _graph != null) return;
 
         _currentIcao = icao.ToUpperInvariant();
+        // Drop the old graph up front: every exit below (airport absent, no taxi data,
+        // a superseded load) must leave NO graph standing rather than the previous
+        // airport's under the new ICAO.
+        _graph = null;
         cmbRunway.Items.Clear();
         cmbExit.Items.Clear();
         _exits.Clear();
@@ -286,6 +322,38 @@ public class LandingExitForm : Form
         {
             lblStatus.Text = $"Airport {icao} not found in database.";
             return;
+        }
+
+        // Fetch online taxiway-name augmentation BEFORE building the graph, exactly as
+        // TaxiAssistForm does. GetLandingExits only ever returns a node whose edges carry a
+        // taxiway NAME, so an airport whose navdata names nothing yields almost no exits until
+        // the merge has landed (LSZH: 0 of 1407 segments named → 0-2 exits per runway raw,
+        // 3-9 once merged). MainForm's prefetch is fire-and-forget and only runs for an ILS
+        // destination that hasn't been prefetched this session, so a typed ICAO reached here
+        // with nothing fetched at all — and the graph never rebuilds for the same airport
+        // (early return above), so the pilot saw the navdata-only list for the whole session
+        // of the form.
+        if (_augProvider != null && _augProvider.Enabled)
+        {
+            lblStatus.Text = $"{icao}: fetching taxiway names…";
+            // BOUND the wait, same reasoning as TaxiAssistForm: a cache hit returns instantly,
+            // and a slow Overpass mirror must never hold the planner shut. If the fetch hasn't
+            // landed we build from navdata now; the shared in-flight task keeps running and
+            // OnAirportDataUpdated refreshes the list when it does.
+            const int prefetchWaitMs = 8000;
+            try
+            {
+                var prefetch = _augProvider.PrefetchAsync(icao);
+                await System.Threading.Tasks.Task.WhenAny(
+                    prefetch, System.Threading.Tasks.Task.Delay(prefetchWaitMs));
+            }
+            catch { /* offline / fetch failed — fall back to navdata names */ }
+
+            if (IsDisposed || Disposing) return;
+            // The pilot can retype during a wait this long (a cache hit for the second
+            // airport finishes first), so anything below would populate THIS airport's
+            // data under the newer ICAO — same re-check RefreshAfterAugmentation makes.
+            if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
         }
 
         var paths = _dataProvider.GetTaxiPaths(icao);
@@ -317,8 +385,11 @@ public class LandingExitForm : Form
                 btnPlan.Enabled = true;
         }
 
-        // Re-check disposed state after the await before touching any controls.
+        // Re-check disposed state after the await before touching any controls, and that
+        // this load is still the current one — a superseded load must not append its
+        // runways to the newer airport's combo or hand it a mismatched graph.
         if (IsDisposed || Disposing) return;
+        if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
 
         _graph = builtGraph;
 
@@ -339,7 +410,11 @@ public class LandingExitForm : Form
             cmbRunway.SelectedIndex = 0;
     }
 
-    private void RepopulateExits()
+    /// <param name="announce">
+    /// False when the caller composes its own announcement (the late-augmentation refresh
+    /// says WHY the list changed; a bare "9 exit options" arriving unprompted would not).
+    /// </param>
+    private void RepopulateExits(bool announce = true)
     {
         cmbExit.Items.Clear();
         _exits.Clear();
@@ -359,18 +434,126 @@ public class LandingExitForm : Form
             // is older than the sim's scenery.
             string msg = $"No usable exits found on runway {rwy.RunwayID} in the database. Try another runway or update your navdata.";
             lblStatus.Text = msg;
-            _announcer.Announce(msg);
+            if (announce) _announcer.Announce(msg);
             return;
+        }
+
+        // Flag exits the rollout handoff would not be able to get clear of the runway.
+        // Same resolution the handoff runs (LandingExitDestination), so the pre-flight
+        // warning and the in-flight behaviour cannot disagree. At a few airports the
+        // navdata maps no taxiway past the junction at all — better to learn that while
+        // choosing than at 60 knots on the rollout.
+        int unusable = 0;
+        foreach (var exit in _exits)
+        {
+            Navigation.LandingExitDestination.Resolve(
+                _graph, exit, _exits, rwy, rwy.Heading,
+                out _, out double endLateralM, out _);
+            exit.VacatesRunway = Navigation.RunwayVacateResolver.IsOffPavement(endLateralM, rwy);
+            if (!exit.VacatesRunway) unusable++;
         }
 
         foreach (var exit in _exits)
             cmbExit.Items.Add(exit);
 
-        cmbExit.SelectedIndex = 0;
-        lblStatus.Text = $"{_exits.Count} exit(s) on runway {rwy.RunwayID}.";
+        // Select a usable exit by default rather than blindly the first one — the
+        // flagged ones stay in the list (at some airports they are ALL that exists, so
+        // hiding them would leave nothing to pick), they just aren't the default.
+        int firstUsable = _exits.FindIndex(e => e.VacatesRunway);
+        cmbExit.SelectedIndex = firstUsable >= 0 ? firstUsable : 0;
 
-        _announcer.Announce(
-            $"{_exits.Count} exit option{(_exits.Count == 1 ? "" : "s")} for runway {rwy.RunwayID}.");
+        string warnSuffix = unusable > 0
+            ? $" {unusable} of them ha{(unusable == 1 ? "s" : "ve")} no taxiway mapped clear of the runway."
+            : "";
+        lblStatus.Text = $"{_exits.Count} exit(s) on runway {rwy.RunwayID}.{warnSuffix}";
+
+        if (announce)
+            _announcer.Announce(
+                $"{_exits.Count} exit option{(_exits.Count == 1 ? "" : "s")} for runway {rwy.RunwayID}.{warnSuffix}");
+    }
+
+    /// <summary>
+    /// Raised by the augmentation decorator on a background thread when an online fetch for
+    /// an airport completes. Marshals to the UI thread; ignores every airport but the one on
+    /// screen.
+    /// </summary>
+    private void OnAirportDataUpdated(string icao)
+    {
+        if (string.IsNullOrEmpty(icao)) return;
+        if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
+        SafeBeginInvoke(() => RefreshAfterAugmentation(icao));
+    }
+
+    // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+    // The bare IsHandleCreated check alone races a concurrent handle-destroy (the pilot closing
+    // the planner while the fetch lands); without the guard the throw would be unobserved on the
+    // marshalling thread.
+    private void SafeBeginInvoke(Action action)
+    {
+        try { if (IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
+    }
+
+    /// <summary>
+    /// Rebuilds the graph and the exit list after a late augmentation fetch. Keeps the pilot's
+    /// current exit selection by NAME when that taxiway survives, and speaks only when the
+    /// option count actually changed — a silent list that grew is the failure this fixes, but
+    /// an unprompted recital of an unchanged list is noise.
+    /// </summary>
+    private async void RefreshAfterAugmentation(string icao)
+    {
+        try
+        {
+            if (IsDisposed || Disposing) return;
+            if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
+            if (_graph == null) return;               // nothing built yet; the load path will do it
+            if (_refreshingAfterAugment) return;
+            _refreshingAfterAugment = true;
+            try
+            {
+                var paths = _dataProvider.GetTaxiPaths(icao);
+                if (paths.Count == 0) return;
+                var parking = _dataProvider.GetParkingSpots(icao);
+                var starts = _dataProvider.GetRunwayStarts(icao);
+                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts);
+
+                // The form can be closed, or the pilot can have typed another ICAO, during the
+                // build — re-check both before touching _graph or any control.
+                if (IsDisposed || Disposing) return;
+                if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
+
+                _graph = rebuilt;
+
+                int before = _exits.Count;
+                string? selectedName = (cmbExit.SelectedItem as LandingExit)?.TaxiwayName;
+
+                RepopulateExits(announce: false);
+
+                // Restore the pilot's pick when that taxiway is still offered. Matching by name
+                // (not index) because the merge can insert exits ahead of it in the list.
+                if (!string.IsNullOrEmpty(selectedName))
+                {
+                    int idx = _exits.FindIndex(e =>
+                        string.Equals(e.TaxiwayName, selectedName, StringComparison.OrdinalIgnoreCase));
+                    if (idx >= 0) cmbExit.SelectedIndex = idx;
+                }
+
+                if (_exits.Count != before && cmbRunway.SelectedItem is RunwayChoice choice)
+                    _announcer.Announce(
+                        $"Taxiway names updated for {icao}. Now {_exits.Count} exit" +
+                        $"{(_exits.Count == 1 ? "" : "s")} for runway {choice.Runway.RunwayID}.");
+            }
+            finally
+            {
+                _refreshingAfterAugment = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void: nothing may escape to the UI message pump.
+            if (!IsDisposed && !Disposing)
+                lblStatus.Text = $"Could not refresh exits for {icao}: {ex.Message}";
+        }
     }
 
     private void OnPlanClicked(object? sender, EventArgs e)

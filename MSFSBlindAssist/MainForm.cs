@@ -169,6 +169,10 @@ public partial class MainForm : Form
 
     private TakeoffAssistManager takeoffAssistManager = null!;
 
+    // Manual-landing flare + rollout tone assist. Armed by the "Manual landing assist"
+    // checkbox in the destination-runway dialog (unchecked by default → feature inert).
+    private LandingFlareAssistManager flareAssistManager = null!;
+
     private HandFlyManager handFlyManager = null!;
 
     private VisualGuidanceManager visualGuidanceManager = null!;
@@ -756,6 +760,19 @@ public partial class MainForm : Form
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
         landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
 
+        // Manual-landing flare + rollout assist. Armed from the destination-runway
+        // dialog's checkbox; sleeps until on approach (see ProcessSlowSample gate).
+        // Delegates read live state so aircraft swaps and guidance-mode changes after
+        // arming are always honored.
+        flareAssistManager = new LandingFlareAssistManager(announcer,
+            () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
+            () => visualGuidanceManager.IsActive,
+            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
+        flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
+        flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
+        simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
+
         // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
         // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
@@ -932,6 +949,28 @@ public partial class MainForm : Form
     // consumed-once (+ the generic one value-matched), so a wider window does not eat
     // genuine later changes.
     private const int UiSetEchoSuppressMs = 3000;
+    // The flare assist only wants its SIM_FRAME feed while it is armed and on approach —
+    // see LandingFlareAssistManager.ProcessSlowSample, which raises this at 1 Hz off
+    // INDICATED_ALTITUDE. Running it for a whole flight would be pure waste.
+    private void OnFlareAssistMonitoringRequestChanged(object? sender, bool wanted)
+    {
+        if (wanted)
+            simConnectManager.StartFlareAssistMonitoring();
+        else
+            simConnectManager.StopFlareAssistMonitoring();
+    }
+
+    private void OnFlareAssistEngagedChanged(object? sender, bool engaged)
+    {
+        // Same interplay as visual guidance: the flare/rollout tone and HandFly's
+        // attitude tone share the frequency-coded audio channel, so mute HandFly for
+        // the duration. Resume only if VG isn't also holding the suppression.
+        if (engaged)
+            handFlyManager.SuppressAudio();
+        else if (!visualGuidanceManager.IsActive)
+            handFlyManager.ResumeAudio();
+    }
+
     private void MarkUiSet(string? varName, double value)
     {
         if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
@@ -1029,6 +1068,8 @@ public partial class MainForm : Form
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
+        // Owns two tone generators — without this they keep sounding on shutdown.
+        flareAssistManager?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not
         // disposed, the timer keeps a reference to OnTick and prevents the

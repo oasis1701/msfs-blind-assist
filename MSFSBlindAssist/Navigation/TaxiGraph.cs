@@ -2817,6 +2817,21 @@ public class TaxiGraph
         // taxiway name are collapsed to a single entry.
         const double DEDUP_WINDOW_FT = 50.0;
 
+        // Coverage window for the gap fill (the final block below). An exit dropped by one of
+        // the name dedups is re-admitted only when no surviving exit lies within this
+        // distance of it — i.e. only where it is the sole option for that stretch of runway.
+        //
+        // Measured, not guessed. Sweeping 266 runway directions across 39 airports, every
+        // row a gap fill would add outside KBNA sits within 1309 ft of an exit already in
+        // the list (median 672, p95 968) — those are the far ends of RET arcs, the same
+        // physical turnoff the pilot already has. KBNA's genuinely missing turnoffs start at
+        // 1481 ft. 1400 ft sits in that gap: it adds nothing at any of the other 38 airports
+        // and recovers KBNA's lost exits.
+        // Shared with the early-vacate matcher, which answers the same question from the
+        // other direction ("is this exit close enough behind me to be the one I turned at?").
+        // A local const initialised from the gate's, so the two cannot drift.
+        const double EXIT_COVERAGE_GAP_FT = RolloutExitGate.EarlyVacateMaxPassedFeet;
+
         double maxDistFt = rwy.Length - END_BUFFER_FT;
         if (maxDistFt < MIN_DIST_FT) return exits;
 
@@ -3164,6 +3179,27 @@ public class TaxiGraph
                 }
             }
 
+            // Handoff destination must be a node genuinely CLEAR of the runway.
+            // implicitApronNodeId is only computed in the shallow-angle branch above
+            // (the one that runs ExitPathLeavesCorridor when the first named edge is
+            // < MIN_FALLBACK_EXIT_ANGLE_DEG off the runway axis). For an implicit exit
+            // whose first stub already turns off at ≥ 20° — e.g. LPFR taxiway F, whose
+            // stub leaves the centreline at ~23° — that branch is skipped, so
+            // implicitApronNodeId stays -1. With no ApronNodeId the LandingRollout →
+            // Taxiing handoff falls back to FindExitExtensionNode, which returns the
+            // FIRST adjacent node; on a taxiway modelled from the runway centreline
+            // outward that node can still sit inside the runway half-width (LPFR F's
+            // node ~12 m off a 22.6 m half-width). The route then "arrives" (Stop) with
+            // the aircraft still on the runway — the pilot never gets guided fully off
+            // (LPFR 28→F: Alt+Y reported "runway 10", ATC "not vacated"). Compute the
+            // corridor-exit node here for every implicit exit so ApronNodeId always
+            // points off the pavement. Kept SEPARATE from implicitApronNodeId so the
+            // ExitBearingTrue overrides above see the exact value they always have.
+            int implicitApronForHandoff = implicitApronNodeId;
+            if (!isHoldShortNode && implicitApronForHandoff <= 0)
+                implicitApronForHandoff = ExitPathLeavesCorridor(
+                    node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
+
             // End-of-runway classification: if the exit is within the last 15% of the
             // runway, label it "End" regardless of angle — exiting there means rolling
             // out the full length.
@@ -3185,10 +3221,12 @@ public class TaxiGraph
                 // Exception: shallow HS exits on curved RETs — BFS found a corridor-exit node
                 // further along the curve (hsApronNodeId > 0). That node is used instead so
                 // the Taxiing-handoff re-route drives A* through the actual curve geometry.
-                // Fallback Normal exits: BFS result stored in implicitApronNodeId.
+                // Fallback Normal exits: corridor-exit node (implicitApronForHandoff),
+                // computed for EVERY implicit exit — not just the shallow-angle ones —
+                // so the handoff destination is always clear of the runway pavement.
                 ApronNodeId = isHoldShortNode
                     ? (hsApronNodeId > 0 ? hsApronNodeId : node.NodeId)
-                    : implicitApronNodeId,
+                    : implicitApronForHandoff,
                 Latitude = node.Latitude,
                 Longitude = node.Longitude,
                 DistanceFromThresholdFeet = distFromLandingThresholdFt,
@@ -3234,6 +3272,14 @@ public class TaxiGraph
             if (!merged) deduped.Add(e);
         }
 
+        // Candidate pool for the coverage gap fill at the very end. Snapshotted HERE, before
+        // the two name dedups below, because those are where a genuinely separate turnoff
+        // sharing a name gets thrown away — at KBNA 20L the High-speed dedup immediately
+        // below is what removes the forward RETs at 4497 and 6155 ft, leaving the gap fill
+        // nothing but backward-peeling End nodes to work with. The 50 ft window dedup above
+        // has already run, so co-located duplicates never enter the pool.
+        var gapFillPool = new List<LandingExit>(deduped);
+
         // High-speed RET dedup: a curved RET whose navdata has multiple HS/IHS nodes
         // along its arc (common in third-party scenery) generates one High-speed entry
         // per node, all more than 50 ft apart — the window above doesn't catch them.
@@ -3277,7 +3323,11 @@ public class TaxiGraph
         // hsOnlyEnds — run the Normal-node fallback to find usable exits.
         bool hsYieldedNothing = hasHoldShortOnRunway && deduped.Count == 0;
 
-        if (!hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing)
+        // Whether this runway is taking the Normal-node fallback at all. Also decides
+        // whether the strict per-name dedup at the very end applies — see there.
+        bool onFallbackPath = !hasHoldShortOnRunway || hsOnlyEnds || hsYieldedNothing;
+
+        if (onFallbackPath)
         {
             if (hsOnlyEnds || hsYieldedNothing)
             {
@@ -3411,21 +3461,112 @@ public class TaxiGraph
                         }
                         if (!wasMerged) deduped.Add(e);
                     }
+
+                    // These arrived after the pool snapshot above, so add them or a runway
+                    // WITH hold-short markers could never gap-fill from its Normal-junction
+                    // exits. KBNA 13 is that case: 11031 ft of runway whose last listed exit
+                    // was at 4988 ft. Duplicates against already-kept entries are harmless —
+                    // the coverage test measures zero distance to itself.
+                    gapFillPool.AddRange(fallbackExits);
+                    gapFillPool.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
                 }
             }
-
-            // Name dedup: keep only first (threshold-nearest) occurrence per taxiway name.
-            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var dedupedFallback = new List<LandingExit>(deduped.Count);
-            foreach (var e in deduped)
-            {
-                if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFallback.Add(e); continue; }
-                if (seenNames.Add(e.TaxiwayName)) dedupedFallback.Add(e);
-            }
-            return dedupedFallback;
         }
 
-        return deduped;
+        // Name dedup on the FALLBACK PATH ONLY, then a COVERAGE GAP FILL in every path.
+        // `deduped` is sorted by distance from the threshold at this point (every branch
+        // that builds it sorts).
+        //
+        // The strict pass is scoped to `onFallbackPath` because that is the scope it has
+        // always had. A runway with usable hold-short markers keeps both junctions of a
+        // same-named taxiway that meets it twice — the case the High-speed dedup comment
+        // above calls "a legitimate pair" (EGLL 09R: S5W at 5659 and 6605 ft, N5E at 5860
+        // and 6771). Running the pass there instead drops the FARTHER junction, and the
+        // coverage fill cannot restore it: it re-admits only exits with no survivor within
+        // EXIT_COVERAGE_GAP_FT, and those pairs sit 900-950 ft apart. RetargetLandingExit's
+        // downfield rescan would then skip past a real turnoff to a farther one.
+        //
+        // This used to keep only the FIRST occurrence of each taxiway name, unconditionally.
+        // That is right when a scenery names its connectors individually (one turnoff = one
+        // name, and the repeats are extra nodes along one RET arc), and it is what stops a
+        // curved RET modelled as eight nodes becoming eight list entries. But it silently
+        // assumes "one name = one turnoff", and some sceneries give an entire side of a
+        // runway a single name.
+        //
+        // Motivating defect (reported 2026-08-08): KBNA 20L offered ONE exit. That scenery
+        // has just eight taxiway names at the whole airport (A-H, 1486 of 2437 segments
+        // unnamed, zero numbered connectors), and every segment touching 02R/20L is named
+        // "G". The runway's five real turnoffs — measured at ~1813, 3719, 4497, 6155 and
+        // 7812 ft — therefore collapsed to one, and the survivor was the threshold-nearest
+        // node, which is a backward-peeling arc (angle forced to NORMAL_MAX_DEG + 20) at
+        // 1467 ft: a 130-degree turn 1500 ft down a 7991 ft runway. 02R is the mirror image.
+        // Airports whose connectors carry distinct names (KBOS, EGLL, KJFK, EIDW ...) never
+        // showed the bug because their name dedup only ever collapsed arcs.
+        //
+        // The strict pass below is therefore KEPT EXACTLY AS IT WAS, and a second pass only
+        // fills GAPS: an exit either name dedup dropped is re-admitted when — and only when —
+        // no surviving exit lies within EXIT_COVERAGE_GAP_FT of it, so it is the sole option
+        // for that stretch of runway. A dropped exit that merely duplicates coverage the
+        // pilot already has stays dropped, which is what keeps well-named airports untouched.
+        //
+        // Why COVERAGE and not "split same-name runs by distance": splitting runs was tried
+        // first and is far too broad — measured across 266 runway directions in 39 airports
+        // it changed 145 of them and added 212 rows, because a link taxiway commonly meets a
+        // runway at two junctions a few hundred feet apart (EGLL 09R: S5W at 5659 and 6605
+        // ft, N5E at 5860 and 6771, S4E at 7707 and 8140). Those are real junctions but not
+        // turnoffs the pilot was missing, and a list with three duplicated names is worse
+        // than the list they have today. Coverage is the property that separates the two
+        // populations cleanly — see EXIT_COVERAGE_GAP_FT for the measurement.
+        //
+        // Deliberately NOT done here: swapping a run's representative for a later
+        // forward-peeling one. It reads like an improvement (it would replace KBNA's
+        // backward 130-degree entries with the forward High-speed nodes behind them) but it
+        // re-typed 118 exits from End to High-speed across the same sweep, and ExitType
+        // drives TryEarlyExitHandoff, which fires for High-speed exits ONLY and has its own
+        // hard-won invariant (the EGNX miss). Adding rows is safe; re-typing existing ones
+        // in bulk is not.
+        var dedupedFinal = new List<LandingExit>(deduped.Count);
+        if (onFallbackPath)
+        {
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in deduped)
+            {
+                if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFinal.Add(e); continue; }
+                if (seenNames.Add(e.TaxiwayName)) dedupedFinal.Add(e);
+            }
+        }
+        else
+        {
+            dedupedFinal.AddRange(deduped);
+        }
+
+        // Coverage gap fill. `gapFillPool` is distance-sorted (it was snapshotted from a
+        // sorted list), so candidates are offered threshold-first and one that is admitted
+        // becomes coverage for the next — an arc of many nodes still contributes at most one
+        // entry per EXIT_COVERAGE_GAP_FT. Reference identity is the right "already kept"
+        // test: every LandingExit instance flows through the pipeline by reference, never
+        // copied.
+        bool addedAny = false;
+        foreach (var e in gapFillPool)
+        {
+            bool covered = false;
+            foreach (var kept in dedupedFinal)
+            {
+                if (ReferenceEquals(kept, e)
+                    || Math.Abs(kept.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) <= EXIT_COVERAGE_GAP_FT)
+                { covered = true; break; }
+            }
+            if (covered) continue;
+            dedupedFinal.Add(e);
+            addedAny = true;
+        }
+
+        // Callers (LandingExitPlanner's downfield scan, the planner form's default
+        // selection, RetargetLandingExit) all rely on nearest-first ordering.
+        if (addedAny)
+            dedupedFinal.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+
+        return dedupedFinal;
     }
 
     private static bool HasLetterAndDigit(string s)

@@ -241,6 +241,11 @@ public partial class MainForm
             _liftoffHandoffTimer?.Stop();
             _liftoffHandoffConfirmToken++;
 
+            // The flare assist's SIM_FRAME request died with the connection: silence
+            // any tone still sounding on its last frame, and clear the latched
+            // monitoring flag so the first slow sample after reconnect re-issues it.
+            flareAssistManager?.OnConnectionLost();
+
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
