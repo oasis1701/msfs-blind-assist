@@ -48,17 +48,12 @@ public partial class FlyByWireA380Definition
                 ShowTrackedWindow(() => new Forms.FBWA380.FBWA380AutopilotWindow(this, simConnect, announcer), w => w.ShowForm());
                 return true;
 
-            // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull). Drive the FCU via
-            // the legacy cockpit H-events `A320_Neo_FCU_<axis>_PUSH/PULL` — the same
-            // path the physical knob uses. The A380X FCU is a self-contained instrument
-            // whose managers listen to these H-events (verified live: firing
-            // A320_Neo_FCU_HDG_PUSH/PULL and _ALT_PUSH/PULL on the FCU bus moves the
-            // autopilot slot index 1<->2; SPEED/VS names confirmed from the FBW FCU
-            // source). The previously-fired `A32NX.FCU_TO_AP_*` events were the FCU's
-            // *internal* downstream events and do NOT route to the autopilot via
-            // TransmitClientEvent — a live probe confirmed A32NX.FCU_TO_AP_HDG_PUSH left
-            // the slot unchanged while the H-event moved it. Fired via the calculator
-            // (>H:) path (same as the clock CHR H-event and other cockpit controls).
+            // FCU knob push/pull (Shift+1..4 push, Ctrl+1..4 pull).
+            //
+            // (HISTORY, superseded — kept so the dead end isn't re-explored: these once fired
+            // the legacy cockpit H-events `A320_Neo_FCU_<axis>_PUSH/PULL`, on the theory that
+            // the A380X FCU was a self-contained instrument listening to them. That is no
+            // longer how the FCU is driven; see the CRITICAL note below, which is operative.)
             //
             // NO readback here (Fenix-style): the managed<->selected RESULT is announced
             // by the always-on managed-state monitor (Mon "…_MANAGED…" -> "Heading Mode:
@@ -73,8 +68,8 @@ public partial class FlyByWireA380Definition
             // single push actually fires. readback:false keeps the actuation SILENT (Fenix-style)
             // — only the managed-state monitor speaks, and only on a real Managed<->Selected
             // transition. (The FCU value-entry windows still pass readback:true.)
-            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_TO_AP_HDG_PUSH", simConnect, announcer, readback: false); return true;
-            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_TO_AP_HDG_PULL", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUHeadingPush: FireFCUButton("A32NX.FCU_HDG_PUSH", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUHeadingPull: FireFCUButton("A32NX.FCU_HDG_PULL", simConnect, announcer, readback: false); return true;
             case HotkeyAction.FCUSpeedPush: FireFCUButton("A32NX.FCU_SPD_PUSH", simConnect, announcer, readback: false); return true;
             case HotkeyAction.FCUSpeedPull: FireFCUButton("A32NX.FCU_SPD_PULL", simConnect, announcer, readback: false); return true;
             case HotkeyAction.FCUAltitudePush: FireFCUButton("A32NX.FCU_ALT_PUSH", simConnect, announcer, readback: false); return true;
@@ -82,7 +77,7 @@ public partial class FlyByWireA380Definition
             // The A380X V/S knob is pull-to-engage (managed vertical is armed via the ALT knob),
             // so VS push is a no-op on the jet; fire the K-event anyway for consistency.
             case HotkeyAction.FCUVSPush: FireFCUButton("A32NX.FCU_VS_PUSH", simConnect, announcer, readback: false); return true;
-            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_TO_AP_VS_PULL", simConnect, announcer, readback: false); return true;
+            case HotkeyAction.FCUVSPull: FireFCUButton("A32NX.FCU_VS_PULL", simConnect, announcer, readback: false); return true;
 
             case HotkeyAction.ReadFlaps:
             {
@@ -285,14 +280,14 @@ public partial class FlyByWireA380Definition
     {
         switch (varKey)
         {
-            case "A32NX.FCU_TO_AP_HDG_PUSH":
-            case "A32NX.FCU_TO_AP_HDG_PULL": RequestFCUHeadingWithStatus(simConnect); break;
+            case "A32NX.FCU_HDG_PUSH":
+            case "A32NX.FCU_HDG_PULL": RequestFCUHeadingWithStatus(simConnect); break;
             case "A32NX.FCU_SPD_PUSH":
             case "A32NX.FCU_SPD_PULL": RequestFCUSpeedWithStatus(simConnect); break;
             case "A32NX.FCU_ALT_PUSH":
             case "A32NX.FCU_ALT_PULL": RequestFCUAltitudeWithStatus(simConnect); break;
             case "A32NX.FCU_VS_PUSH":
-            case "A32NX.FCU_TO_AP_VS_PULL": RequestFCUVSWithStatus(simConnect); break;
+            case "A32NX.FCU_VS_PULL": RequestFCUVSWithStatus(simConnect); break;
             // SPD/MACH toggle: re-read the speed — the read-out already says
             // "mach 0.78" vs "280 knots", so it announces the new mode.
             case "A32NX.FCU_SPD_MACH_TOGGLE_PUSH": RequestFCUSpeedWithStatus(simConnect); break;

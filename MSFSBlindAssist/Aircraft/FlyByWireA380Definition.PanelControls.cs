@@ -301,10 +301,10 @@ public partial class FlyByWireA380Definition
             "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
             "A32NX_TRK_FPA_MODE_ACTIVE",
             // Genuine momentary knob push/pulls stay as buttons.
-            "A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PULL",
+            "A32NX.FCU_HDG_PUSH", "A32NX.FCU_HDG_PULL",
             "A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PULL",
             "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT",
-            "A32NX.FCU_VS_PUSH", "A32NX.FCU_TO_AP_VS_PULL",
+            "A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PULL",
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
             "A32NX_METRIC_ALT_TOGGLE"
@@ -670,6 +670,10 @@ public partial class FlyByWireA380Definition
         {
             "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_LATERAL_ARMED",
+            // ALT CRZ / ALT CRZ* — decoded from PRIM FG discrete word 3 bit 29 in
+            // TryGetDisplayOverride. Listed HERE is what makes it reachable: it is OnRequest
+            // and not announced, so with no panel carrying it the decoder never runs.
+            "FMA_CRUISE_ALT_MODE",
             "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS",
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
             "PLANE PITCH DEGREES", "PLANE BANK DEGREES", "PLANE HEADING DEGREES MAGNETIC",

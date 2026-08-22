@@ -1937,14 +1937,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // from FG/FMA status vars. See tools/a380-fcu-vars.md.
 
         // Knob / pushbutton events (FCU panel buttons; also reached by hotkeys).
-        Evt("A32NX.FCU_TO_AP_HDG_PUSH", "A32NX.FCU_TO_AP_HDG_PUSH", "Heading Push");
-        Evt("A32NX.FCU_TO_AP_HDG_PULL", "A32NX.FCU_TO_AP_HDG_PULL", "Heading Pull");
+        Evt("A32NX.FCU_HDG_PUSH", "A32NX.FCU_HDG_PUSH", "Heading Push");
+        Evt("A32NX.FCU_HDG_PULL", "A32NX.FCU_HDG_PULL", "Heading Pull");
         Evt("A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PUSH", "Speed Push");
         Evt("A32NX.FCU_SPD_PULL", "A32NX.FCU_SPD_PULL", "Speed Pull");
         Evt("A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PUSH", "Altitude Push");
         Evt("A32NX.FCU_ALT_PULL", "A32NX.FCU_ALT_PULL", "Altitude Pull");
         Evt("A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PUSH", "Vertical Speed Push");
-        Evt("A32NX.FCU_TO_AP_VS_PULL", "A32NX.FCU_TO_AP_VS_PULL", "Vertical Speed Pull");
+        Evt("A32NX.FCU_VS_PULL", "A32NX.FCU_VS_PULL", "Vertical Speed Pull");
         Evt("A32NX.FCU_AP_1_PUSH", "A32NX.FCU_AP_1_PUSH", "Autopilot 1");
         Evt("A32NX.FCU_AP_2_PUSH", "A32NX.FCU_AP_2_PUSH", "Autopilot 2");
         Evt("A32NX.FCU_ATHR_PUSH", "A32NX.FCU_ATHR_PUSH", "Autothrust");
@@ -2229,10 +2229,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
 
-        // (STD/QNH is the KOHLSMAN-backed combo above, driven by the
-        //  H:A380X_EFIS_CP_BARO_PULL/PUSH_{n} events in HandleUIVariableSet — the
-        //  supported dev-FBW path per MsfsBaroManager.ts. An earlier live test on an
-        //  older build judged those H-events non-functional; dev FBW consumes them.)
+        // (STD/QNH is the KOHLSMAN-backed combo above, driven by the FCU's own
+        //  A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL} K-events — see BaroModeEvent in
+        //  .UiVariableSet.cs for the name and the push=STD polarity. FBW #10855 deleted
+        //  the H:A380X_EFIS_CP_BARO_* events this used to fire, together with the
+        //  MsfsBaroManager.ts that consumed them.)
 
         // (The legacy stock-COM "Radios" registrations — COM_STANDBY_FREQUENCY_SET:{n},
         //  COM{n}_RADIO_SWAP, COM_*_FREQUENCY:{n} — were removed: the FBW A380 IGNORES
