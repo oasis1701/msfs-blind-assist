@@ -105,6 +105,128 @@ public class RouteRunwayCrossingsTests
         Assert.Equal("runway 28L", RouteRunwayCrossings.ComposeCrossingLabel("runway 28R at Q", "28L"));
     }
 
+    // --- ResolveCrossingHoldSegment ----------------------------------------
+    //
+    // Placement of a runway-crossing hold-short. The crossing is detected as the
+    // edge straddling the runway CENTERLINE, so the node before it is routinely
+    // ON the pavement — the resolver walks back to the scenery's own hold node.
+    // Shape below is LEBL D5 over 24R (2026-08): 250 m → 105 m HSND → 51 m →
+    // 21 m → centerline, with the hold node named after the nearer end (06L).
+
+    private static TaxiRouteSegment Leg(
+        double distanceM,
+        TaxiNodeType endType = TaxiNodeType.Normal,
+        string? endHoldName = null,
+        bool alreadyHold = false) => new TaxiRouteSegment
+        {
+            FromNode = new TaxiNode(),
+            ToNode = new TaxiNode { Type = endType, HoldShortName = endHoldName },
+            DistanceMeters = distanceM,
+            IsHoldShortPoint = alreadyHold,
+        };
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_walks_back_to_the_scenery_hold_node()
+    {
+        var segs = new List<TaxiRouteSegment>
+        {
+            Leg(112),                                                            // 0: → 105 m out
+            Leg(54, TaxiNodeType.HoldShort, "runway 06L at D5"),                  // 1: → HSND
+            Leg(29),                                                             // 2: → 51 m out
+            Leg(23),                                                             // 3: → 21 m out (old pick)
+            Leg(23),                                                             // 4: crossing edge
+        };
+
+        // Either designator of the crossed pavement resolves to the same node.
+        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 4, "24R"));
+        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 4, "06L"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_accepts_an_ils_hold_node()
+    {
+        var segs = new List<TaxiRouteSegment>
+        {
+            Leg(40, TaxiNodeType.ILSHoldShort, "runway 02 at S"),
+            Leg(30),
+            Leg(25),
+        };
+
+        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 2, "02"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_accepts_an_unnamed_hold_node()
+    {
+        var segs = new List<TaxiRouteSegment> { Leg(40, TaxiNodeType.HoldShort), Leg(30), Leg(25) };
+
+        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 2, "24R"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_falls_back_when_there_is_no_hold_node()
+    {
+        var segs = new List<TaxiRouteSegment> { Leg(60), Leg(29), Leg(23), Leg(23) };
+
+        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_falls_back_when_the_hold_node_is_beyond_the_lookback()
+    {
+        var segs = new List<TaxiRouteSegment>
+        {
+            Leg(50, TaxiNodeType.HoldShort, "runway 24R"),   // 0: too far back
+            Leg(200),                                        // 1: blows the 150 m budget
+            Leg(23),                                         // 2
+            Leg(23),                                         // 3: crossing edge
+        };
+
+        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_stops_at_a_hold_node_guarding_another_runway()
+    {
+        var segs = new List<TaxiRouteSegment>
+        {
+            Leg(30, TaxiNodeType.HoldShort, "runway 24R at D5"),  // 0: the one we want…
+            Leg(20, TaxiNodeType.HoldShort, "runway 02 at D5"),   // 1: …behind another runway's line
+            Leg(23),                                             // 2
+            Leg(23),                                             // 3: crossing edge
+        };
+
+        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_never_walks_through_an_existing_hold_short()
+    {
+        var segs = new List<TaxiRouteSegment>
+        {
+            Leg(30, TaxiNodeType.HoldShort, "runway 24R"),
+            Leg(20, alreadyHold: true),                           // another crossing's stop point
+            Leg(23),
+            Leg(23),                                             // crossing edge
+        };
+
+        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
+    }
+
+    [Fact]
+    public void ResolveCrossingHoldSegment_always_returns_an_indexable_segment()
+    {
+        var segs = new List<TaxiRouteSegment> { Leg(23), Leg(23) };
+
+        // Crossing on the first segment — there is nothing before it.
+        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 0, "24R"));
+        // Out-of-range index clamps into the route rather than handing the
+        // caller an index that would throw on Segments[...].
+        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 99, "24R"));
+        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(
+            new List<TaxiRouteSegment>(), 3, "24R"));
+    }
+
     // --- Describe: KSFO 2026-07-01 incident shape --------------------------
 
     [Fact]

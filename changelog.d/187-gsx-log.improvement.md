@@ -1,0 +1,1 @@
+If GSX announcements ever misbehave — something you expected never spoken, or something repeated at you — MSFS Blind Assist now records what it decided, and why, in `%APPDATA%\MSFSBlindAssist\logs\gsx.log`. Attaching that file to a bug report is usually enough to pin the cause down.

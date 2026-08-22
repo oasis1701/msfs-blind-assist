@@ -434,13 +434,18 @@ public class SimBriefPlannerForm : Form
             return field;
         }
 
-        Button MakeBtn(string text, string accName, string desc, int y, EventHandler handler)
+        // Deliberately sets no AccessibleName: a pinned name would shadow Text permanently
+        // (the WinForms rule is documented on TestTonePlayer's class doc). It announced "Show
+        // Additional Takeoff Info" on a button that would HIDE the section, and the pilot
+        // collapsed the data they were reading. Unset, the name tracks Text at all four sites
+        // that rewrite it, for free. Neither caption contains a '&', so it reads clean.
+        Button MakeBtn(string text, string desc, int y, EventHandler handler)
         {
             var btn = new Button
             {
                 Text = text, Location = new System.Drawing.Point(6, y),
                 Width = 280, Height = bh,
-                AccessibleName = accName, AccessibleDescription = desc,
+                AccessibleDescription = desc,
                 Anchor = AnchorStyles.Top | AnchorStyles.Left
             };
             btn.Click += handler;
@@ -456,7 +461,6 @@ public class SimBriefPlannerForm : Form
             y0 + lh + 2, 160, ref _perfTakeoffText!);
         y0 += lh + 2 + 160 + 4;
         _perfTakeoffExpandBtn = MakeBtn(
-            "Show Additional Takeoff Info",
             "Show Additional Takeoff Info",
             "Toggle runway distances and weight data for the planned takeoff runway",
             y0, TakeoffExpandBtn_Click);
@@ -477,7 +481,6 @@ public class SimBriefPlannerForm : Form
             y0 + lh + 2, 160, ref _perfLandingText!);
         y0 += lh + 2 + 160 + 4;
         _perfLandingExpandBtn = MakeBtn(
-            "Show Additional Landing Info",
             "Show Additional Landing Info",
             "Toggle runway length and landing distance data for the planned arrival runway",
             y0, LandingExpandBtn_Click);
@@ -679,6 +682,16 @@ public class SimBriefPlannerForm : Form
         // Reset immediately so stale data from a prior fetch can never bleed through.
         _ofp = null;
         _navLogGrid.Nodes.Clear();
+        // The perf expand buttons rebuild their ListBox from _ofp, so they must not stay
+        // pressable across a fetch: a FAILED fetch leaves _ofp null, and a leftover "Hide …"
+        // button pressed then rebuilt from nothing — wiping the previous plan's still-readable
+        // performance data. PopulateViewTabs re-enables them on success.
+        _perfTakeoffExpanded = false;
+        _perfLandingExpanded = false;
+        _perfTakeoffExpandBtn.Enabled = false;
+        _perfLandingExpandBtn.Enabled = false;
+        _perfTakeoffExpandBtn.Text = "Show Additional Takeoff Info";
+        _perfLandingExpandBtn.Text = "Show Additional Landing Info";
         _fetchButton.Enabled = false;
         _viewStatus.Text = "Fetching flight plan...";
 
@@ -765,12 +778,15 @@ public class SimBriefPlannerForm : Form
         SetListText(_fuelText,    BuildFuelText());
         SetListText(_weightsText, BuildWeightsText());
 
-        // Reset expand state on fresh load
+        // Reset expand state on fresh load. Each button is enabled only when ITS OWN TLR
+        // section actually yields the expanded block: one shared TlrText check enabled a
+        // button whose section failed a parse guard (SimBrief OFP layouts vary), so the press
+        // flipped the caption — and with it the announced name — to "Hide …" over content
+        // that never changed.
         _perfTakeoffExpanded = false;
         _perfLandingExpanded = false;
-        bool hasTlr = !string.IsNullOrEmpty(_ofp.TlrText);
-        _perfTakeoffExpandBtn.Enabled = hasTlr;
-        _perfLandingExpandBtn.Enabled = hasTlr;
+        _perfTakeoffExpandBtn.Enabled = !string.IsNullOrEmpty(FormatTlrTakeoff(true));
+        _perfLandingExpandBtn.Enabled = !string.IsNullOrEmpty(FormatTlrLanding(true));
         _perfTakeoffExpandBtn.Text = "Show Additional Takeoff Info";
         _perfLandingExpandBtn.Text = "Show Additional Landing Info";
 

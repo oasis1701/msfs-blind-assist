@@ -15,8 +15,15 @@
     <Product>MSFS Blind Assist</Product>
     <Description>MSFS Blind Assist - Accessible Multi-Aircraft Control for Microsoft Flight Simulator</Description>
     <Copyright>Copyright © 2025</Copyright>
-    <Version>2.1.1.0</Version>
-    <FileVersion>2.1.1.0</FileVersion>
+    <!-- Version is set by CI from the git tag: .github/workflows/release.yml passes
+         -p:Version=<tag without the leading v> to the Release build, which the SDK
+         derives AssemblyVersion / FileVersion / InformationalVersion from. The value
+         below is ONLY the fallback for local builds, so it is deliberately 0.0.0 —
+         an unmistakable "this is not a release" marker. Do NOT hardcode FileVersion
+         (or AssemblyVersion) here: an explicit value overrides the derivation and
+         silently pins that field while the others follow the tag, which is exactly
+         how FileVersion sat at a stale 2.1.1.0 through every release up to v7.0.0. -->
+    <Version>0.0.0</Version>
     <Guid>a1b2c3d4-e5f6-4321-8765-432109876543</Guid>
 
     <!-- Modern C# Features -->
@@ -67,8 +74,16 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The vPilot pipe protocol, compiled from ONE source into both this app and the
+         net48 vPilot plugin. Linked, never copied — the two ends of the wire must not
+         be able to drift. Same pattern as tools/PMDGDispatchTester and PMDGNG3DataStruct.cs. -->
+    <Compile Include="..\plugins\MSFSBlindAssist.VPilotPlugin\VPilotWireFormat.cs" Link="Services\VPilot\VPilotWireFormat.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- NuGet Packages -->
     <PackageReference Include="GeoTimeZone" Version="6.1.0" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
     <PackageReference Include="NAudio" Version="2.3.0" />
@@ -114,6 +129,9 @@
     <None Update="HotkeyGuides\HS787_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\iFly_737MAX8_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- Checklist Files -->
     <None Update="Checklists\FBW_A320_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
@@ -127,10 +145,17 @@
     <None Update="Checklists\FBW_A380_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Checklists\iFly_737MAX8_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
          hotkey lists' "see Guides\..." references resolve next to the exe, and any
          future per-aircraft manual added here ships automatically. -->
     <None Update="Guides\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- navdatareader config: stock, plus the GSX World of Jetways exclusion. -->
+    <None Update="Resources\navdatareader.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Coherent in-page agents (injected at runtime via the remote debugger) -->
@@ -194,7 +219,43 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory (skip if not present)&#xD;&#xA;if exist &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\&quot; (&#xD;&#xA;  if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.3\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;  xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;)" />
+    <Exec Command="REM Copy both versioned SimConnect DLLs to output directory&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2020.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\SimConnect_msfs_2024.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)Libraries\Tolk.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;xcopy /Y &quot;$(ProjectDir)..\nvda_controllerClient\x64\nvdaControllerClient.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;&#xD;&#xA;REM Copy navdatareader and all its dependencies to output directory (skip if not present)&#xD;&#xA;if exist &quot;$(ProjectDir)..\Navdatareader-win-1.2.4\&quot; (&#xD;&#xA;  if not exist &quot;$(TargetDir)navdatareader\&quot; mkdir &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  xcopy /Y /E /I &quot;$(ProjectDir)..\Navdatareader-win-1.2.4\*&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;  REM Copy SimConnect.cfg to navdatareader directory for FS2024 SimConnect support&#xD;&#xA;  xcopy /Y &quot;$(ProjectDir)SimConnect.cfg&quot; &quot;$(TargetDir)navdatareader\&quot;&#xD;&#xA;)" />
+  </Target>
+
+  <ItemGroup>
+    <!-- Build-order only. ReferenceOutputAssembly=false because a net10 project cannot
+         reference a net48 assembly; SkipGetTargetFrameworkProperties stops MSBuild from
+         rejecting the cross-framework reference outright. Nothing is linked — the copy
+         below is what actually ships the DLL.
+
+         SetPlatform="Platform=AnyCPU" is REQUIRED, not decorative — do not remove it.
+         Platform is a command-line global property, and MSBuild passes a referencing
+         project's global properties straight through to its ProjectReferences unless a
+         ProjectReference overrides them. The plugin project only ever builds
+         Any CPU (see its <Platforms>AnyCPU</Platforms> and the Debug|x64 -> Debug|Any CPU
+         mapping in MSFSBlindAssist.sln), so without this override, building this csproj
+         directly with an explicit platform — e.g.
+         `dotnet build MSFSBlindAssist.csproj -c Debug -p:Platform=x64`, a command CLAUDE.md
+         explicitly sanctions as an alternative to building the .sln — passes Platform=x64
+         straight through to the plugin project too. That sends the plugin's output to
+         bin\x64\Debug\net48\ instead of bin\Debug\net48\, a folder the Copy target below
+         never looks at, so the copy below silently no-ops: either an empty vPilotPlugin\
+         folder ships, or a stale DLL that never updates again. SetPlatform pins the
+         plugin's build to Any CPU regardless of what platform this project is building as,
+         so both build paths land in the same, predictable folder. -->
+    <ProjectReference Include="..\plugins\MSFSBlindAssist.VPilotPlugin\MSFSBlindAssist.VPilotPlugin.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" SetPlatform="Platform=AnyCPU" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyVPilotPlugin" AfterTargets="Build">
+    <!-- Lands in $(OutDir), so it follows whichever output tree is being built and the
+         release zip (which archives the whole output folder) picks it up with no
+         workflow change. VPilotPluginInstaller reads it from here at run time.
+
+         Deliberately NO Condition="Exists(...)" guard on the Copy below: a missing
+         source must fail the build loudly (MSBuild's own "could not find file" error)
+         rather than silently skipping the copy and reporting "Build succeeded" while
+         either shipping an empty vPilotPlugin\ folder or leaving a stale DLL in place. -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\plugins\MSFSBlindAssist.VPilotPlugin\bin\$(Configuration)\net48\MSFSBlindAssist.VPilotPlugin.dll" DestinationFolder="$(OutDir)vPilotPlugin" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

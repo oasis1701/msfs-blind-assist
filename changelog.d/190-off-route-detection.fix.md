@@ -1,0 +1,1 @@
+Guidance is harder to lose. Driving away from your route no longer counts as progress along it (which also silenced the off-route warning), a route you never joined can now still report you off-route, and rolling through a gate no longer leaves the tone chasing a point behind you.

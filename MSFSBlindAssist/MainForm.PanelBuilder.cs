@@ -668,13 +668,19 @@ public partial class MainForm
                     combo.Name = varKey;
                     combo.AccessibleName = varDef.DisplayName;
 
-                    // Add items in order (reverse if ReverseDisplayOrder is set)
+                    // Add items in order (reverse if ReverseDisplayOrder is set).
+                    // Each distinct label is added ONCE: a composite-encoded field
+                    // (e.g. the iFly ACP receiver switches, whose raw 0-5 value folds
+                    // a redundant lamp state onto a 2-position switch) collapses to
+                    // fewer combo positions by giving several keys the same label,
+                    // while every raw key still resolves for the read-back paths.
                     var sortedValues = varDef.ReverseDisplayOrder
                         ? varDef.ValueDescriptions.OrderByDescending(x => x.Key).ToList()
                         : varDef.ValueDescriptions.OrderBy(x => x.Key).ToList();
                     foreach (var kvp in sortedValues)
                     {
-                        combo.Items.Add(kvp.Value);
+                        if (!combo.Items.Contains(kvp.Value))
+                            combo.Items.Add(kvp.Value);
                     }
                     
                     // Set initial value from sim if we have it
@@ -707,7 +713,12 @@ public partial class MainForm
                     {
                         if (!updatingFromSim && !_buildingPanel && combo.SelectedIndex >= 0)
                         {
-                            var selectedValue = sortedValues[combo.SelectedIndex].Key;
+                            // Items are per-LABEL (duplicates collapsed at add time), so the
+                            // item index cannot index sortedValues; resolve the selected label
+                            // to its first key in display order. Identical to the old
+                            // positional lookup when every label is unique.
+                            string selectedText = (string)combo.SelectedItem!;
+                            var selectedValue = sortedValues.First(kv => kv.Value == selectedText).Key;
                             // Echo-suppress under varKey — the monitor's VarName is the dict key,
                             // not varDef.Name (fixes double-announce on key!=Name combos like the
                             // A380 seat-belt sign / "CABIN SEATBELTS ALERT SWITCH").

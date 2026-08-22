@@ -32,7 +32,15 @@ public partial class MainForm
             HotkeyAction.ShowFenixMCDU,
             HotkeyAction.ShowPMDGEFB,
             HotkeyAction.ShowPMDGEFBFirstOfficer,
-            HotkeyAction.TaxiStatus
+            HotkeyAction.TaxiStatus,
+            // The two SayIntentions readouts only touch flight.json and the SAPI
+            // endpoints. Building a taxi route is NOT offline — it needs a position.
+            HotkeyAction.SayIntentionsLastTransmission,
+            HotkeyAction.SayIntentionsAssignedStatus,
+            // Muting VATSIM chatter has nothing to do with the simulator. Without this
+            // the pilot gets "Not connected to simulator, please wait" while trying to
+            // silence a busy frequency.
+            HotkeyAction.ToggleVatsimAnnouncements
         };
 
         // Guard clause: Block SimConnect-dependent actions if not fully connected
@@ -219,6 +227,11 @@ public partial class MainForm
                 {
                     ShowHS787FMCDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
+                {
+                    // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
+                    ShowIFlyCDUDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
                     // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
@@ -243,6 +256,11 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
+                {
+                    // iFly SP1 EFB — served over HTTP by the iFly EFB process, hosted in WebView2.
+                    ShowIFlyEfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
@@ -397,6 +415,31 @@ public partial class MainForm
             case HotkeyAction.ReadGsxTooltip:
                 ReadLatestGsxTooltip();
                 break;
+            // Fire-and-forget by design: each of these owns a top-level try/catch and
+            // reports its own failure, so nothing escapes unobserved.
+            case HotkeyAction.SayIntentionsLastTransmission:
+                _ = AnnounceSayIntentionsLastTransmissionAsync();
+                break;
+            case HotkeyAction.SayIntentionsAssignedStatus:
+                _ = AnnounceSayIntentionsAssignedStatusAsync();
+                break;
+            case HotkeyAction.SayIntentionsBuildTaxiRoute:
+                _ = BuildTaxiRouteFromSayIntentionsAsync();
+                break;
+            case HotkeyAction.ToggleVatsimAnnouncements:
+            {
+                if (vatsimService == null || !vatsimService.IsEnabled)
+                {
+                    // Say why nothing happened rather than being a silent dead key.
+                    announcer.AnnounceImmediate("VATSIM announcements are turned off in Settings");
+                    break;
+                }
+                bool muted = vatsimService.ToggleMute();
+                announcer.AnnounceImmediate(muted
+                    ? "VATSIM announcements muted"
+                    : "VATSIM announcements unmuted");
+                break;
+            }
             // Note: FCU push/pull, autopilot toggles, FCU set value dialogs, and A32NX-specific hotkeys
             // are now handled by the aircraft definition via HandleHotkeyAction()
         }
@@ -694,7 +737,12 @@ public partial class MainForm
 
             // Resume HandFly's tone if HandFly is still active and its feedback mode wants
             // tones. Idempotent — no-op if HandFly is off or in announcements-only mode.
-            handFlyManager.ResumeAudio();
+            // EXCEPT while the manual-landing flare assist is engaged: VG auto-deactivates
+            // on the touchdown edge while the flare assist's rollout pan tone is running,
+            // and unmuting HandFly's tone there would stack a second tone on the rollout.
+            // The flare assist's own EngagedChanged(false) resumes HandFly when it ends.
+            if (!flareAssistManager.IsEngaged)
+                handFlyManager.ResumeAudio();
         }
     }
 
@@ -805,9 +853,12 @@ public partial class MainForm
             simConnectManager.ProcessWindowMessage(ref m);
         }
 
-        // Route messages destined for the GSX SimConnect client (distinct
-        // WM_USER id 0x0403). Safe to call unconditionally; it filters on id.
-        _gsxService?.ProcessWindowMessage(ref m);
+        // GSX no longer has a SimConnect client to pump here: the Couatl Remote API
+        // carries menu/tooltip/settings AND (Spec 2) gate selection/list, and the
+        // retained SetGate_* confirmation client that used to need this WndProc route
+        // (WM_USER 0x0403) was deleted along with the menu-walking GsxGateSelector that
+        // was its only consumer — gate.select's own synchronous result payload replaced
+        // the SetGate_* polling entirely.
 
         base.WndProc(ref m);
     }

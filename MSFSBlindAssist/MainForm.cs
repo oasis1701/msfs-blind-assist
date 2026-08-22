@@ -10,6 +10,7 @@ using MSFSBlindAssist.Forms.PMDG777;
 using MSFSBlindAssist.Forms.HS787;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.SimConnect;
@@ -137,7 +138,19 @@ public partial class MainForm : Form
     // On-demand EICAS alert window (Alt+E), fed by hs787CasClient.GetAlertsText().
     private Forms.HS787.HS787EicasForm? hs787EicasForm;
 
+    // iFly 737 MAX8: CDU window (renders the SDK shared-memory screen) + the SP1
+    // HTTP EFB tablet hosted in WebView2. The SDK client itself lives on the def.
+    private Forms.IFly737.IFly737CDUForm? iflyCduForm;
+
+    private Forms.IFly737.IFlyEfbForm? iflyEfbForm;
+
+    private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+
     private TakeoffAssistManager takeoffAssistManager = null!;
+
+    // Manual-landing flare + rollout tone assist. Armed by the "Manual landing assist"
+    // checkbox in the destination-runway dialog (unchecked by default → feature inert).
+    private LandingFlareAssistManager flareAssistManager = null!;
 
     private HandFlyManager handFlyManager = null!;
 
@@ -162,6 +175,8 @@ public partial class MainForm : Form
     // (silent fallback), so users without AS see/hear no change.
     private MSFSBlindAssist.Services.ActiveSkyWeatherMonitor? activeSkyWeatherMonitor;
 
+    private MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService? vatsimService;
+
     private Forms.WeatherRadarForm? weatherRadarForm;
 
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
@@ -177,6 +192,7 @@ public partial class MainForm : Form
     private LandingExitPlanner landingExitPlanner = null!;
 
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+    private SayIntentionsService sayIntentionsService = null!;
 
     // Access GSX integration — owns its own SimConnect client (distinct
     // WM_USER id 0x0403). The form is created lazily on first hotkey use and
@@ -422,6 +438,11 @@ public partial class MainForm : Form
 
         // Set up form after load
         this.Load += MainForm_Load;
+
+        // The update check runs off Shown, not Load: the window is already up, so the
+        // dialog has a parent and the message pump is running for the queued announcer.
+        // It never blocks startup — the HTTP call is awaited after the form is visible.
+        this.Shown += MainForm_Shown;
     }
 
     private void MainForm_Load(object? sender, EventArgs e)
@@ -466,12 +487,83 @@ public partial class MainForm : Form
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
 
+        // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
+        // it works whenever the sim + iFly plugin are running). Generic announcements
+        // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
+        StartIFlySdkBridge();
+
         // Don't set focus - let default tab order handle it for proper menu accessibility
+    }
+
+    /// <summary>
+    /// Fires once, the first time the window is displayed. The bool is belt and braces:
+    /// Shown is documented as first-display only, and a second update check would be
+    /// harmless but pointless.
+    /// </summary>
+    private bool _startupUpdateCheckDone;
+
+    private void MainForm_Shown(object? sender, EventArgs e)
+    {
+        if (_startupUpdateCheckDone) return;
+        _startupUpdateCheckDone = true;
+
+        if (!SettingsManager.Current.CheckForUpdatesOnStartup) return;
+
+        // A local build reports 0.0.0 (the csproj's placeholder — CI passes the real
+        // -p:Version), which loses to every published tag, so without this every
+        // developer launch would open the update dialog. The MANUAL check still offers
+        // the update, which is the documented behaviour for a dev build.
+        var current = Services.AppVersion.Current;
+        if (current is null || (current.Major == 0 && current.Minor == 0 && current.Patch == 0))
+        {
+            // Logged because RunUpdateCheckAsync never runs here, so without this line the
+            // skip is indistinguishable in debug.log from a check that silently failed.
+            Log.Debug("Updates",
+                $"Startup update check skipped: dev build (version {Services.AppVersion.DisplayString}).");
+            return;
+        }
+
+        // Deliberately not awaited: startup must not wait on a network round-trip.
+        // RunUpdateCheckAsync swallows everything when userInitiated is false.
+        _ = RunUpdateCheckAsync(userInitiated: false);
     }
 
     private void InitializeManagers()
     {
         announcer = new ScreenReaderAnnouncer(this.Handle);
+
+        // Guidance-tone routing notices. These arrive on the router's own worker thread, and
+        // ScreenReaderAnnouncer silently no-ops off the UI thread, so this has to marshal.
+        // BeginInvoke, never Invoke: the UI thread can be inside the settings save that asked
+        // for the sweep. Queued Announce (never AnnounceImmediate) so a device notice can
+        // never interrupt a hold-short or landing callout.
+        Services.AudioOutputRouter.Shared.AnnounceRouteChange = message =>
+        {
+            try
+            {
+                if (!IsHandleCreated || IsDisposed)
+                    return;
+
+                BeginInvoke(() =>
+                {
+                    try { announcer.Announce(message); } catch { }
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle destroyed between the check and the post — nothing to announce to.
+            }
+        };
+
+        // The startup BASELINE sweep (AudioOutputRouter.RequestBaselineSweep) is deliberately
+        // NOT requested here, even though the sink above is what it needs: it is requested
+        // from the connect timer's tick, immediately after "Initializing, please wait" —
+        // see MainForm_Load. Requested here, its one startup phrase (a saved device that is
+        // gone at launch) was spoken the instant the message pump started, into the same
+        // first second as NVDA's own window/focus announcements — which cancel in-progress
+        // speech — so the pilot heard it cut off (live report, 2026-08-20). Anchored after
+        // the Initializing announcement it appends behind it in the screen reader's own
+        // queue and is heard whole.
 
         // Note: Diagnostic test removed to prevent test speech on startup
         // Uncomment the next lines if you need to troubleshoot screen reader connections:
@@ -555,6 +647,37 @@ public partial class MainForm : Form
         // Initialize taxi guidance manager
         taxiGuidanceManager = new TaxiGuidanceManager(announcer);
 
+        // Name every parking node of the graphs it builds the way the taxi dialog, the
+        // gate-teleport list and gate.select name them, so Where-Am-I cannot say "Gate A 25"
+        // about the stand every other readout calls "Gate B 25" (Services/ParkingSpotSource).
+        // GetNamedSpots, NOT GetSelectableGates: this is navdata's own spot SET with its names
+        // corrected in place, so the same nodes are marked Parking as before and the hold-short
+        // and named-holding-point resolvers see an identical graph.
+        //
+        // The lambda reads `airportDataProvider` and builds its GateDataSource PER CALL rather
+        // than capturing either: the field is reassigned on a database switch (and nulled on
+        // teardown), and a shared GateDataSource instance would be touched from both the UI
+        // thread and the SimConnect position callback that reaches Where-Am-I — its per-ICAO
+        // caches are plain Dictionaries. Affordable because every consumer is a graph build
+        // (once per airport, then cached), never a position update.
+        taxiGuidanceManager.ParkingSpotSupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            return provider == null
+                ? new List<MSFSBlindAssist.Database.Models.ParkingSpot>()
+                : MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, BuildGateDataSource(), icao);
+        };
+
+        // The staleness key for the graphs built from that supplier. Stand names are frozen
+        // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
+        // this airport would otherwise keep navdata's concourse letters for the whole session
+        // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
+        // O(1) by contract (a capability lookup, a dictionary read, a field read), which is why
+        // it is affordable to ask on every Where-Am-I press.
+        taxiGuidanceManager.ParkingSpotVersionSupplier =
+            icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
+        sayIntentionsService = new SayIntentionsService();
+
         // Initialize docking guidance manager
         dockingGuidanceManager = new DockingGuidanceManager(announcer);
 
@@ -579,6 +702,19 @@ public partial class MainForm : Form
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
         // to the pre-selected exit taxiway. Opens via MainForm menu / hotkey.
         landingExitPlanner = new LandingExitPlanner(announcer, taxiGuidanceManager);
+
+        // Manual-landing flare + rollout assist. Armed from the destination-runway
+        // dialog's checkbox; sleeps until on approach (see ProcessSlowSample gate).
+        // Delegates read live state so aircraft swaps and guidance-mode changes after
+        // arming are always honored.
+        flareAssistManager = new LandingFlareAssistManager(announcer,
+            () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
+            () => visualGuidanceManager.IsActive,
+            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
+        flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
+        flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
+        simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
 
         // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
         // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
@@ -665,6 +801,21 @@ public partial class MainForm : Form
         activeSkyWeatherMonitor.Enabled = MSFSBlindAssist.Services.ActiveSkyWeatherMonitor
             .ShouldRun(MSFSBlindAssist.Settings.SettingsManager.Current);
 
+        // VATSIM announcements from vPilot. Constructed always so the settings dialog can
+        // start it live via ApplyRuntimeSettings; ApplySettings is what installs the
+        // plugin and starts the pipe server, and it does nothing at all while the master
+        // switch is off (which is the default).
+        vatsimService = new MSFSBlindAssist.Services.VPilot.VatsimAnnouncementService(announcer, this);
+        var vatsimStartupInstall = vatsimService.ApplySettings(MSFSBlindAssist.Settings.SettingsManager.Current);
+        if (vatsimStartupInstall != null)
+        {
+            // atStartup: only the outcomes the pilot could not otherwise notice. Dropping
+            // the result here entirely — as this line used to — meant an app update that
+            // shipped a new plugin while vPilot happened to be running went through as
+            // Locked in total silence, and the pilot flew the whole leg on the old plugin.
+            AnnounceVatsimInstallOutcome(vatsimStartupInstall, atStartup: true);
+        }
+
         // Initialize event batching timer for high-volume variable updates
         // Timer runs on UI thread, draining the event queue in controlled batches
         eventBatchTimer = new System.Windows.Forms.Timer();
@@ -700,6 +851,25 @@ public partial class MainForm : Form
             connectTimer.Stop();
             connectTimer.Dispose();
             announcer.Announce("Initializing, please wait");
+
+            // The audio router's ONE seeding pass, anchored HERE — after "Initializing,
+            // please wait" and never back in InitializeManagers where the announcement sink
+            // is wired. The sweep seeds the last-target state silently either way, but its
+            // one startup phrase (a saved guidance-tone device that is gone at launch:
+            // "Guidance tone device X is not available…") must land AFTER the Initializing
+            // announcement: requested at manager-init it spoke the moment the message pump
+            // started, into the same first second as NVDA's own window/focus speech — which
+            // cancels in-progress utterances — and the pilot heard it cut off (live report,
+            // 2026-08-20). From here the sweep's notice reaches announcer.Announce a few tens
+            // of milliseconds after the Initializing call, and both use the append-not-
+            // interrupt speak, so the screen reader speaks them in order, each in full. The
+            // sink it needs has been assigned since InitializeManagers, so the ordering
+            // contract (sink first, baseline second) still holds; endpoint notifications in
+            // the first two seconds now run as ordinary sweeps against unseeded state, which
+            // is the documented pre-baseline behaviour for that window and self-heals — every
+            // sweep stores the trio.
+            Services.AudioOutputRouter.Shared.RequestBaselineSweep();
+
             simConnectManager.Connect();
         };
         connectTimer.Start();
@@ -722,10 +892,47 @@ public partial class MainForm : Form
     // consumed-once (+ the generic one value-matched), so a wider window does not eat
     // genuine later changes.
     private const int UiSetEchoSuppressMs = 3000;
+    // The flare assist only wants its SIM_FRAME feed while it is armed and on approach —
+    // see LandingFlareAssistManager.ProcessSlowSample, which raises this at 1 Hz off
+    // INDICATED_ALTITUDE. Running it for a whole flight would be pure waste.
+    private void OnFlareAssistMonitoringRequestChanged(object? sender, bool wanted)
+    {
+        if (wanted)
+            simConnectManager.StartFlareAssistMonitoring();
+        else
+            simConnectManager.StopFlareAssistMonitoring();
+    }
+
+    private void OnFlareAssistEngagedChanged(object? sender, bool engaged)
+    {
+        // Same interplay as visual guidance: the flare/rollout tone and HandFly's
+        // attitude tone share the frequency-coded audio channel, so mute HandFly for
+        // the duration. Resume only if VG isn't also holding the suppression.
+        if (engaged)
+            handFlyManager.SuppressAudio();
+        else if (!visualGuidanceManager.IsActive)
+            handFlyManager.ResumeAudio();
+    }
+
     private void MarkUiSet(string? varName, double value)
     {
         if (!string.IsNullOrEmpty(varName)) _uiSetEcho[varName] = (value, Environment.TickCount64);
     }
+
+    /// <summary>
+    /// Public wrapper over <see cref="MarkUiSet"/> for hotkey windows that live outside
+    /// MainForm (the PMDG Ctrl+P autopilot window) and set panel-monitored variables
+    /// directly. Without it those windows triple-announce: the screen reader announces
+    /// the click, the refreshed button label announces on focus, and the background
+    /// monitor announces the change.
+    /// <para>
+    /// Pass the EXPECTED RESULTING value, not the press parameter. The generic
+    /// _uiSetEcho gate is value-matched, so marking a momentary press with 1 would
+    /// suppress an engage but let the matching DISENGAGE (annunciator 1 -> 0) leak
+    /// through as a duplicate announcement.
+    /// </para>
+    /// </summary>
+    public void SuppressUiEcho(string varKey, double expectedValue) => MarkUiSet(varKey, expectedValue);
 
     /// <summary>
     /// Cached <c>currentAircraft.GetPanelDisplayVariables()</c> (see the cache fields for why:
@@ -801,6 +1008,8 @@ public partial class MainForm : Form
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
+        // Owns two tone generators — without this they keep sounding on shutdown.
+        flareAssistManager?.Dispose();
 
         // Clean up the PROG-page monitor (owns a Windows-Forms timer; if not
         // disposed, the timer keeps a reference to OnTick and prevents the
@@ -814,6 +1023,9 @@ public partial class MainForm : Form
 
         // Clean up ActiveSky weather-update monitor
         activeSkyWeatherMonitor?.Dispose();
+
+        // Clean up the VATSIM pipe server (owns a background listener thread)
+        vatsimService?.Dispose();
 
         // Clean up A380X Coherent clients
         coherentClient?.Dispose();
@@ -834,10 +1046,30 @@ public partial class MainForm : Form
         hs787CasClient?.Dispose();
         hs787CasClient = null;
 
+        // Clean up the iFly SDK client (otherwise only shut down on aircraft swap — a
+        // quit with the iFly active would leave the 250 ms poll + off-sweep timers
+        // firing into the teardown, the same leak class as the PMDG EFB clients above).
+        if (currentAircraft is IFly737MAXDefinition iflyExitDef)
+        {
+            iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            iflyExitDef.Shutdown();
+        }
+
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();
         announcer?.Cleanup();
+
+        // The router owns an IMMNotificationClient COM registration and a background worker;
+        // Dispose unregisters the callback and stops the worker. Cleared first so a sweep that
+        // is already in flight has nothing to marshal an announcement into on the way down.
+        try
+        {
+            Services.AudioOutputRouter.Shared.AnnounceRouteChange = null;
+            Services.AudioOutputRouter.Shared.Dispose();
+        }
+        catch { }
+
         base.OnFormClosing(e);
     }
 }

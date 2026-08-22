@@ -164,6 +164,46 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
             spot.Aliases = GateAliasResolver.ResolveAliases(spot, online);
     }
 
+    /// <summary>
+    /// Named painted holding points (OSM aeroway=holding_position refs, e.g. LSZH "A2") from the
+    /// cached online sources for this airport. NAME + position only — the Taxi planner uses them
+    /// to label and select a runway ENTRY; hold-short placement stays authoritative from navdata.
+    /// Rides the per-ICAO cache GetTaxiPaths populates; never triggers its own fetch. Empty when
+    /// disabled or uncached. Points are returned raw (no per-runway filtering) — the caller
+    /// associates them with a runway geometrically (TaxiGraph.ResolveHoldingPointEntries).
+    /// </summary>
+    public List<(string Name, double Lat, double Lon)> GetHoldingPoints(string icao)
+    {
+        var result = new List<(string Name, double Lat, double Lon)>();
+        if (!Enabled) return result;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return result;
+
+        foreach (var src in sources)
+            foreach (var (name, hLat, hLon, _) in src.HoldingPoints)
+                if (!string.IsNullOrWhiteSpace(name))
+                    result.Add((name.Trim(), hLat, hLon));
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the NAMED holding points (OSM <c>aeroway=holding_position</c> nodes with a
+    /// designator — VIKAS, N2E, A11…) for this airport from the cached online sources, as raw
+    /// online coordinates INCLUDING the holding_position:type kind tag. Rides the same per-ICAO
+    /// cache GetTaxiPaths populates; never triggers its own fetch. Empty when disabled or
+    /// uncached. Callers must resolve each point onto navdata graph geometry
+    /// (<c>Navigation.NamedHoldingPointResolver</c>) before routing to it — the online
+    /// coordinate itself is never a route target (anti-grass rule).
+    /// </summary>
+    public List<(string Name, double Lat, double Lon, string Kind)> GetNamedHoldingPoints(string icao)
+    {
+        var result = new List<(string, double, double, string)>();
+        if (!Enabled) return result;
+        if (!_cache.TryLoad(icao, out var sources) || sources == null) return result;
+        foreach (var src in sources)
+            result.AddRange(src.HoldingPoints);
+        return result;
+    }
+
     // ── The enriching member ────────────────────────────────────────────────
     /// <summary>
     /// Returns taxi paths for the given airport, enriching unnamed segments with

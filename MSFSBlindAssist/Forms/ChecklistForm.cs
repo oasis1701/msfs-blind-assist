@@ -83,6 +83,17 @@ public partial class ChecklistForm : Form
         // Handle form closing to hide instead of dispose
         FormClosing += (sender, e) =>
         {
+            // Let real app/OS shutdown through: Application.Exit raises FormClosing on
+            // every open form (hidden included) and ABORTS the whole exit if any form
+            // cancels — an unconditional cancel here left the auto-updater stalled
+            // against a still-running exe. Everything else still hides.
+            if (e.CloseReason is CloseReason.ApplicationExitCall
+                or CloseReason.WindowsShutDown
+                or CloseReason.TaskManagerClosing)
+            {
+                return;
+            }
+
             // Cancel the close and hide instead
             e.Cancel = true;
             Hide();
@@ -103,7 +114,8 @@ public partial class ChecklistForm : Form
             { "A320", "FBW_A320_Checklist.txt" },
             { "HW_A330", "FBW_A330_Checklist.txt" },
             { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
-            { "FBW_A380", "FBW_A380_Checklist.txt" }
+            { "FBW_A380", "FBW_A380_Checklist.txt" },
+            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
         };
 
         // Determine which file to load

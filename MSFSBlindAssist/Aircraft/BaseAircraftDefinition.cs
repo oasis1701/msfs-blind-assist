@@ -18,9 +18,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Toggle is protected so aircraft that source trim from a custom variable
     // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
     // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
-    // gate from their own ProcessSimVarUpdate.
+    // gate from their own ProcessSimVarUpdate. An aircraft that keeps the stock
+    // var but speaks its own scale overrides DescribeElevatorTrim instead; the
+    // last-announced KEY below is whatever that override returns (stabiliser
+    // units on the PMDG 777, rounded degrees by default).
     protected bool _trimAnnouncementsEnabled = true;
-    private double _lastAnnouncedTrimDeg = double.NaN;
+    private double _lastAnnouncedTrimKey = double.NaN;
 
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
@@ -558,6 +561,24 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
+    /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
+    /// spoken phrase and the key the debounce compares — the two must move together, or a type
+    /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
+    /// The key is compared EXACTLY against the last announced key (no tolerance), so it must
+    /// already be quantised to the announcement step (a <c>Math.Round</c> product), never raw.
+    /// <para>
+    /// The default is degrees with an up/down word, which is the only thing a generic aircraft
+    /// can say; an airframe with its own trim scale overrides it (e.g. <see cref="PMDG777Definition"/>).
+    /// </para>
+    /// </summary>
+    protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double rounded = Math.Round(degrees, 2);
+        string direction = rounded >= 0 ? "up" : "down";
+        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+    }
+
+    /// <summary>
     /// Processes variable updates with custom logic.
     /// Handles altitude thousand-foot crossing announcements for all aircraft.
     /// Aircraft with additional complex variable processing logic should override and call base.ProcessSimVarUpdate() first.
@@ -576,27 +597,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
+        // Elevator trim — rendered by DescribeElevatorTrim, debounced on the value it reports
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 2);
+            var (key, phrase) = DescribeElevatorTrim(value);
 
             // First update: store silently, don't announce initial value on app load
-            if (double.IsNaN(_lastAnnouncedTrimDeg))
+            if (double.IsNaN(_lastAnnouncedTrimKey))
             {
-                _lastAnnouncedTrimDeg = rounded;
+                _lastAnnouncedTrimKey = key;
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
-                return true; // Debounce — skip if less than 0.01 degree change
+            // Exact compare, not a tolerance: the key is already quantised by DescribeElevatorTrim
+            // (a Math.Round product — equal decimals are bit-identical, and -0.0 == 0.0), so
+            // "unchanged" is simply "same key". A tolerance here would silently swallow genuine
+            // steps of an override that keys on a finer scale.
+            if (key == _lastAnnouncedTrimKey)
+                return true; // Debounce — skip when the reported value has not moved
 
-            _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
+            _lastAnnouncedTrimKey = key;
+            announcer.Announce(phrase);
             return true;
         }
 
@@ -752,12 +776,21 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
     }
 
-    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
+    // ---- the PMDG Ctrl+P autopilot window). ----
     // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
-    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
-    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
-    // keep live windows (and the E/WD window's refresh timer) running against the
-    // new aircraft.
+    // stacking a duplicate (HS787 _autopilotWindow pattern).
+    //
+    // DisposeTrackedWindows() is called UNCONDITIONALLY on the outgoing def by
+    // MainForm.SwitchAircraft — that call is the authoritative teardown for EVERY def,
+    // present and future, not just the two FBW ones that also call it from their own
+    // StopAllMotion(). It must stay unconditional: a discarded def instance that keeps a
+    // live window running against the new aircraft is not merely stale UI, it is a
+    // mis-actuation hazard. The window's buttons still dispatch into the OLD def's
+    // HandleUIVariableSet, and the PMDG 737 and 777 EventIds tables use different
+    // event_base + N numberings — so a surviving 777 window can actuate an arbitrary
+    // wrong control on a loaded 737 (and renders the new aircraft's CDA data under the
+    // old aircraft's labels). The refresh timers keep ticking too.
     private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
 
     protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
@@ -773,7 +806,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         show(form);
     }
 
-    protected void DisposeTrackedWindows()
+    /// <summary>
+    /// Closes and disposes every tracked window this def instance created. Public because
+    /// MainForm.SwitchAircraft calls it on the outgoing def for every aircraft type.
+    /// Idempotent: it skips already-disposed forms and clears the dictionary, so the
+    /// second call (the FBW defs also reach it via StopAllMotion()) iterates nothing.
+    /// </summary>
+    public void DisposeTrackedWindows()
     {
         foreach (var f in _trackedWindows.Values.ToList())
         {
@@ -786,6 +825,42 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             catch { /* best-effort teardown on aircraft swap */ }
         }
         _trackedWindows.Clear();
+    }
+
+    /// <summary>
+    /// Shows the PMDG Ctrl+P autopilot engage-cluster window. Shared by the 737 and 777,
+    /// which differ only in their row table and window title — the binder, the echo
+    /// suppression and the tracked-window lifecycle are identical, so they live here
+    /// rather than being duplicated across both defs.
+    /// </summary>
+    protected void ShowPMDGAutopilotWindow(
+        IReadOnlyList<ApRowSpec> rows,
+        string title,
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.Announce("Not connected to simulator");
+            return;
+        }
+
+        // Bind inside the factory: on the reuse path (window already open, second
+        // Ctrl+P) the existing instance keeps its original closures, so binding
+        // eagerly here would do the work only to discard it.
+        ShowTrackedWindow(
+            () =>
+            {
+                var (buttons, selectors) = Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+                    rows,
+                    GetVariables(),
+                    simConnect,
+                    (key, expected) => (parentForm as MainForm)?.SuppressUiEcho(key, expected),
+                    (key, value, varDef) => HandleUIVariableSet(key, value, varDef, simConnect, announcer));
+                return new Forms.PMDG.PMDGAutopilotWindow(title, buttons, selectors);
+            },
+            w => w.ShowForm());
     }
 
     // Momentary L:var pulse: write 1 then auto-release to 0 (~250 ms) via the calc path so the

@@ -149,6 +149,20 @@ public partial class MainForm
         // them. Suppress right here, exactly like the HS787.
         bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
             Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
+        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
+        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
+        // reason. The def's off-sweep timer still checks the list itself because it
+        // runs outside this method entirely.
+        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
+        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
+        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
+        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
+        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
+        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
+            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -162,7 +176,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -189,7 +203,24 @@ public partial class MainForm
             // which can interfere with aircraft-specific processing — we tried it and combo
             // programmatic updates appear to trigger the user-action SIC handler despite the
             // updatingFromSim flag for HS787 vars whose write handler toggles state).
-            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            //
+            // iFly self-announced BUTTON vars (the 14 MCP mode lights): their
+            // ProcessSimVarUpdate returns true, which skips Step 4's control refresh, so
+            // an open panel's button labels froze on background state changes. The Button
+            // branch of UpdateControlFromSimVar is a pure label update — no user-action
+            // handler can fire (the combo caveat in the comment above is combo-specific),
+            // so refreshing it here is safe. Everything else keeps the StateVariable-only
+            // path.
+            if (currentAircraft is IFly737MAXDefinition &&
+                currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
+                iflyBtnDef.RenderAsButton)
+            {
+                UpdateControlFromSimVar(e.VarName, e.Value);
+            }
+            else
+            {
+                UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
@@ -280,6 +311,45 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
+                // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
+                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // itself. This gate covers the plain switch/selector combos that announce
+                // on the generic path.
+                if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+                    Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Suppress the generic announce for a var the iFly autopilot window
+                // JUST wrote: the focused button's label rename is the screen-reader
+                // feedback (NVDA reads the name change), so the Step-6 announce would
+                // speak the same state twice. Time-window echo, same philosophy as
+                // _uiSetEcho; Steps 3-4 already ran, so the panel combo stays fresh.
+                if (currentAircraft is IFly737MAXDefinition iflyEchoDef &&
+                    iflyEchoDef.WindowEchoActive(e.VarName))
+                {
+                    // Update the baseline silently, same as the _uiSetEcho gate below —
+                    // otherwise a later genuine change BACK to the pre-click value is
+                    // swallowed because the monitor still holds the stale pre-echo baseline.
+                    simVarMonitor.SetBaseline(e.VarName, e.Value);
+                    return;
+                }
+
+                // A held master LIGHTS TEST shifts the composite switch+light combo values
+                // (start levers, EEC, fire switches, cargo arm/discharge, high-altitude
+                // landing) with no real switch movement — this generic path would speak every
+                // row on the press AND the release. Swallow WITHOUT SetBaseline (unlike the
+                // echo gates above): the release edge reverts each value to the held baseline
+                // and stays silent, while a REAL switch change during the test still
+                // announces once the test releases.
+                if (currentAircraft is IFly737MAXDefinition iflyLtDef &&
+                    iflyLtDef.SuppressGenericAnnounceDuringLightsTest(e.VarName))
+                {
+                    return;
+                }
+
                 // For PMDG variables, build the description from ValueDescriptions
                 // since PMDG events don't carry description strings like SimConnect does
                 string description = e.Description;
@@ -308,9 +378,13 @@ public partial class MainForm
                 // Suppress the duplicate echo of a value the user JUST set via the UI (the
                 // screen reader already spoke the combo). Update the baseline silently so a
                 // later change to this var from any OTHER source still announces. Consumed
-                // once; only a value matching what the user set within the window is dropped.
+                // once; only a value matching what the user set within the window is dropped —
+                // UNLESS the def opts into UiEchoMatchesAnyValue (composite switch+light combos
+                // whose readback legitimately lands on a sibling encoding of the picked value,
+                // e.g. a guard bit or arm light folded into the same field), in which case the
+                // time window alone is enough (PR #163, minor 15).
                 if (_uiSetEcho.TryGetValue(e.VarName, out var echo)
-                    && Math.Abs(echo.value - e.Value) < 0.001
+                    && (Math.Abs(echo.value - e.Value) < 0.001 || varDef.UiEchoMatchesAnyValue)
                     && Environment.TickCount64 - echo.tick < UiSetEchoSuppressMs)
                 {
                     _uiSetEcho.Remove(e.VarName);
@@ -376,6 +450,10 @@ public partial class MainForm
         if (e.VarName == "INDICATED_ALTITUDE")
         {
             altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
+            // SIM_FRAME feed when armed + within the approach altitude window. No-op
+            // (single flag compare) when the assist isn't armed.
+            flareAssistManager.ProcessSlowSample(e.Value, _lastOnGround);
         }
 
         // Handle FCU hotkey value announcements
@@ -498,16 +576,27 @@ public partial class MainForm
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
-        // AND LandingRollout phases). LandingRollout is critical: BeginLandingRollout
-        // sets state=LandingRollout and UpdateLandingRollout's per-frame logic (auto-
-        // transition to Taxiing on slowdown, distance-based callouts) only runs if
-        // UpdatePosition is fed every frame. Without LandingRollout in this gate, the
-        // touchdown announcement fires once and then the state-machine is silent
-        // until StopGuidance.
+        // LandingRollout AND both backtrack phases). LandingRollout is critical:
+        // BeginLandingRollout sets state=LandingRollout and UpdateLandingRollout's
+        // per-frame logic (auto-transition to Taxiing on slowdown, distance-based
+        // callouts) only runs if UpdatePosition is fed every frame. Without
+        // LandingRollout in this gate, the touchdown announcement fires once and then
+        // the state-machine is silent until StopGuidance.
+        //
+        // EVERY state whose Update* runs per frame must be listed here — this is the
+        // ONLY caller of UpdatePosition. BacktrackingOnRunway (landing-side backtaxi)
+        // and BacktrackDeparture (full-length backtrack departure) each own a per-frame
+        // steering tone, their approach callouts and their handoff out of the state, so
+        // omitting them leaves the pilot on an active runway with no tone, no callouts
+        // and no way out of the state — the frame starvation LogBacktrackFrame exists
+        // to diagnose. A new taxi-guidance state with per-frame logic must be added here
+        // at the same time as its Update* method.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
             (taxiGuidanceManager.State == TaxiGuidanceState.Taxiing ||
              taxiGuidanceManager.State == TaxiGuidanceState.LiningUp ||
-             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout))
+             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackingOnRunway ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackDeparture))
         {
             if (e.PositionData.HasValue)
             {
@@ -541,10 +630,15 @@ public partial class MainForm
         // taxi-scoped: OnTaxiGuidanceStateChanged stops position monitoring when taxi
         // reaches Arrived/Inactive, so docking gets NO frames after that point. That is
         // fine by design — arrival ownership is engage-latched (docking has either already
-        // finished, or never engaged and taxi announced the arrival), the parked solid
-        // tone is self-sustaining until the pilot presses Stop, and stale docking state is
-        // cleared at the next flight boundary (takeoff-assist / LandingRollout) or healed
-        // by the absolute-distance disengage on the next route's frames.
+        // finished, or never engaged and taxi announced the arrival), and stale docking
+        // state is cleared at the next flight boundary (takeoff-assist / LandingRollout)
+        // or healed by the absolute-distance disengage on the next route's frames.
+        // CRITICAL for anything scheduled inside DockingGuidanceManager: completing a dock
+        // raises DockingCompleted → StopGuidance() → Inactive → StopTaxiGuidanceMonitoring()
+        // below, so the completing frame is normally the LAST frame docking ever sees. Its
+        // concluded-park hold tone therefore fades on a one-shot Timer, NOT a per-frame
+        // countdown (that first attempt left the tone sounding forever). Any future
+        // "N seconds after the park" behaviour must be timer-based for the same reason.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;
@@ -1361,8 +1455,16 @@ public partial class MainForm
         // made the first switch/flap movement after load silent (only the 2nd worked). The
         // 5-second announcement grace period (EnableAnnouncements) already suppresses the
         // cold-and-dark startup snapshot, so treating the A380 like PMDG here is safe.
+        // The iFly 737 MAX is a third case with the same shape: IFlySdkClient fires its
+        // startup sweep as IsInitialSnapshot, which OnSimVarUpdated returns on BEFORE
+        // reaching simVarMonitor — so no baseline is ever seeded and every switch's first
+        // movement of the session was silent (the whole cold-and-dark flow: fuel pumps,
+        // generators, hydraulics). Its lights announce from ProcessSimVarUpdate and were
+        // never affected, which is why only the combo-backed switches went quiet.
         bool isPMDG = currentAircraft is IPMDGAircraft;
-        bool announceInitialChange = isPMDG || currentAircraft?.AircraftCode == "FBW_A380";
+        bool announceInitialChange = isPMDG
+            || currentAircraft?.AircraftCode == "FBW_A380"
+            || currentAircraft?.AircraftCode == "IFLY_737MAX8";
         bool shouldAnnounce = announceInitialChange ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
@@ -1417,9 +1519,18 @@ public partial class MainForm
     /// </summary>
     private void ReadLatestGsxTooltip()
     {
-        if (_gsxService == null || !_gsxService.IsConnected)
+        if (_gsxService == null)
         {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+        if (!_gsxService.IsConnected)
+        {
+            // UnavailableReason names the ACTUAL cause — an older GSX with no
+            // Remote API, a dropped Couatl, or no simulator connection. The old
+            // wording blamed the simulator in all three cases, which sent a
+            // pilot on a recent-enough-GSX hunt in the wrong place entirely.
+            announcer.AnnounceImmediate(_gsxService.UnavailableReason);
             return;
         }
         _gsxService.RefreshTooltip();

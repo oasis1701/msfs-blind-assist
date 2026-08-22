@@ -674,6 +674,29 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Slider("SUNSHADE_FWD_RH", "Forward sunshade right");
         Slider("AFT_LH_SUNSHADE_OPENING", "Aft sunshade left");
         Slider("AFT_RH_SUNSHADE_OPENING", "Aft sunshade right");
+        // Cockpit lighting dimmers added by FBW #10813 (the same PR that made the storm
+        // light functional). Both are `FBW_Stepless_Potentiometer` knobs whose L:var is the
+        // INPUT; the sim's Update loop copies each into its `..._LT_LEVEL` twin and pushes
+        // that to the stock LIGHT POTENTIOMETER (83 = main-panel flood, 7 = ambient). Expose
+        // the KNOBs only — the `_LEVEL` vars are computed outputs (and the storm light forces
+        // BOTH to 100), so a control bound to one would fight the aircraft.
+        //
+        // ⚠️ UNITS: the pristine, never-yet-written L:var holds a 0..1 RATIO (0.85 = 85 %) and
+        // only reads back as 0..100 through a `, percent` suffix. Writing it raw — which the
+        // slider ramp does — permanently re-registers it 1:1 for the session, after which
+        // raw == percent and the Update loop's `(L:KNOB, percent)` read yields the 0..100 we
+        // wrote. 0..100 is therefore the correct slider range — but a PRISTINE knob read raw
+        // would seed the thumb at ~1 % while the cockpit is really at 85 %, and the thumb
+        // writes its ABSOLUTE position, so the pilot's first "brighten" nudge would darken
+        // the flood to ~2 %. OnDisplayPanelShown (Displays.cs) therefore self-normalizes
+        // both knobs with the idempotent "(L:KNOB, percent) (>L:KNOB)" when the Interior
+        // Lighting panel opens, before the pilot can reach the sliders. (Normalising inside
+        // the shared slider code for one aircraft's quirk would be the wrong altitude, and
+        // MainForm's slider paths never call TryGetDisplayOverride, so this is the one hook.)
+        // Live-verified 2026-08-16: 0 / 50 / 100 each drove LIGHT POTENTIOMETER:83 to the
+        // same percentage, ambient moved :7 independently.
+        Slider("A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB", "Main Panel Flood Light");
+        Slider("A380X_PED_LIGHTING_AMBIENT_LT_KNOB", "Ambient (Side Console) Light");
         SeatBtn("SEATBTN_CPT_UP", "Captain seat up");
         SeatBtn("SEATBTN_CPT_DOWN", "Captain seat down");
         SeatBtn("SEATBTN_CPT_FWD", "Captain seat forward");
@@ -795,13 +818,17 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- RECORDER / MISC OVERHEAD ----
         OnOff("A32NX_AVIONICS_COMPLT_ON", "Avionics Compartment Light");
-        // Storm Light — a real 2-position ON/OFF switch (correct shape + polarity:
-        // A380X_OVHD_STORM_LT 0=Off/1=On, live-verified settable + held). NOTE: the
-        // FBW A380 build models it as a DUMMY switch (SWITCH_OVHD_INTLT_STORM =
-        // A32NX_GT_Switch_Dummy, empty CODE_POS, "TODO … Requires lighting logic to
-        // be added"), so the position holds but drives NO light yet — toggling it has
-        // no visible effect until FBW implements the storm-light lighting. Not an
-        // MSFSBA bug: the switch is faithfully represented; the effect is FBW's TODO.
+        // Storm Light — a real 2-position ON/OFF switch (A380X_OVHD_STORM_LT 0=Off/1=On).
+        // It NOW DRIVES REAL LIGHT: FBW #10813 (2026-07) added the lighting logic this
+        // comment previously recorded as a standing TODO. ON pins both cockpit dimmers to
+        // full — LIGHT POTENTIOMETER:83 (main-panel flood) and :7 (ambient) — ignoring their
+        // knobs; OFF hands both back to the knob positions. Live-verified 2026-08-16 at the
+        // potentiometers, not just the L:var: ON drove 50 %-set knobs to 100/100, OFF
+        // returned them to 50. The knobs themselves are the two dimmer sliders registered
+        // above, so all three controls now sit together on the Interior Lighting panel.
+        // (The switch template is still A32NX_GT_Switch_Dummy with an empty CODE_POS — the
+        // function lives in the cockpit Update loop, so "dummy template" no longer implies
+        // "does nothing". Don't re-derive the old verdict from the template alone.)
         OnOff("A380X_OVHD_STORM_LT", "Storm Light");
         OnOff("A32NX_OVHD_COCKPITDOORVIDEO_TOGGLE", "Cockpit Door Video");
         // Niche overhead/misc toggles (settable L:vars via the calculator catch-all;
@@ -2154,12 +2181,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // altimeters together. Key ends "_SET" -> MainForm renders a numeric box.
         vars["CAPT_QNH_SET"] = new SimVarDefinition
         {
-            Name = "CAPT_QNH_SET", DisplayName = "Set QNH (in Capt unit)",
+            // No "Set" in the display name — MainForm renders the numeric box as a
+            // "<name> value" textbox + "Set <name>" button, so it would double up.
+            Name = "CAPT_QNH_SET", DisplayName = "QNH (in Capt unit)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
         vars["FO_QNH_SET"] = new SimVarDefinition
         {
-            Name = "FO_QNH_SET", DisplayName = "Set QNH (in F/O unit)",
+            Name = "FO_QNH_SET", DisplayName = "QNH (in F/O unit)",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest, Units = "number"
         };
 
