@@ -1103,6 +1103,12 @@ public partial class TaxiGuidanceManager
     /// Returns true and transitions to Taxiing on success; returns false and
     /// leaves state in LandingRollout on any failure so the caller's
     /// bearing-to-junction fallback tone can take over.
+    ///
+    /// ONE failure returns TRUE, deliberately: when the reachability guard refuses the
+    /// route, guidance has CONCLUDED (HandleArrival has run and the state is Arrived, not
+    /// Taxiing) and the caller must stop processing the frame. Returning false there would
+    /// run the rest of UpdateLandingRollout — tone selection, overshoot detection, the
+    /// 150 ft verbal — against a concluded session. Do not "tidy" it to false.
     /// </summary>
     private bool TryEarlyExitHandoff(double lat, double lon, double headingTrue)
     {
@@ -1278,7 +1284,13 @@ public partial class TaxiGuidanceManager
                     $"segment {_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
                     $"aircraft off the runway — concluding rather than steering across it");
                 // Same reason split as the guard's other site: only claim "short of X" when
-                // an early vacate was actually established.
+                // an early vacate was actually established. From HERE that name is always
+                // null — the LoadRoute above nulls it and this path never restores it, unlike
+                // the UpdateLandingRollout site which deliberately carries it across — so
+                // every refusal here takes _landingExitRouteUnreachable, whose closure makes
+                // no positional claim. That is the correct closure for this path: the early
+                // handoff fires short of the exit, where "short of X" would be unearned. The
+                // dead branch is kept so the two sites stay one rule, not two.
                 if (_landingExitVacatedEarlyPlannedName != null)
                     _landingExitVacatedEarly = true;
                 else

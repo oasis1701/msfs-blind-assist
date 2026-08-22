@@ -142,8 +142,11 @@ public static class RolloutExitGate
     /// <para>One spelling of that <c>+30 ft</c> deliberately survives: <c>exitedLaterallyPH</c>
     /// in <c>TaxiGuidanceManager.UpdatePosition</c>'s post-handoff overshoot monitor. It is
     /// behaviourally inert — the overshoot branch it guards additionally requires
-    /// <c>lateralFtPH &lt; 30</c> ft, so the 0.856 m disagreement can never change an outcome —
-    /// and it was left alone rather than churn a tuned safety path for no effect. So "exactly
+    /// <c>lateralFtPH &lt; 30</c> ft, which the <c>+30 ft</c> arm can never satisfy, so the
+    /// 0.856 m disagreement cannot change the outcome of the branch it guards. (Strictly, it
+    /// disarms the monitor 0.856 m of lateral travel earlier, which could only matter for an
+    /// excursion peaking inside that band and returning to the centreline.) It was left alone
+    /// rather than churn a tuned safety path for no effect. So "exactly
     /// ONE definition" is true of every site that can DECIDE anything, not of every occurrence
     /// of the number in the tree.</para>
     /// </summary>
