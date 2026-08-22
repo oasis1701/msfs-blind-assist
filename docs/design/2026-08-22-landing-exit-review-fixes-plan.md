@@ -594,10 +594,10 @@ Expected: **PASS**, 11 tests (6 theory cases + 5 facts).
 
 In `MSFSBlindAssist/Navigation/RolloutExitGate.cs`:
 
-**(a)** In the `ExitSideMinBearingDeg` doc (~lines 86-88), replace:
+**(a)** In the `ExitSideMinBearingDeg` doc (~lines 86-87), replace these two lines:
 
 ```csharp
-    /// <c>straight ahead. <c>ExitBearingTrue == 0.0</c> — the "unknown" sentinel used throughout
+    /// straight ahead. <c>ExitBearingTrue == 0.0</c> — the "unknown" sentinel used throughout
     /// the rollout code — normalises into this band, which is the intended degradation.
 ```
 
@@ -609,7 +609,9 @@ with:
     /// which would place it at <c>-runwayHeadingTrue</c> and fabricate a side.
 ```
 
-(Match the exact existing text when editing; the surrounding lines are unchanged.)
+The two lines above are the full extent of the change; lines 82-85 and the closing
+`/// </summary>` are unchanged. If the text does not match byte-for-byte, re-read the file
+and match what is actually there rather than forcing this quote.
 
 **(b)** In the `HasKnownExitSide` doc (~lines 171-173), replace:
 
