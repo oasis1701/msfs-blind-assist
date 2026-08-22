@@ -6,6 +6,30 @@ namespace MSFSBlindAssist.Aircraft;
 
 public partial class FlyByWireA380Definition
 {
+    /// <summary>
+    /// The FCU input event that selects STD (<paramref name="standard"/>) or QNH on one side's
+    /// EFIS baro knob, or null when <paramref name="varKey"/> is not a baro STD selector.
+    ///
+    /// ⚠️ PUSH = STD, PULL = QNH — the OPPOSITE of the A32NX knob, and deliberate. Do not
+    /// "harmonise" the two jets. A380FcuComputer.cpp:2142-2150 clears std_active on a PULL and
+    /// sets it on a PUSH; the `pulled && !std_active` arm toggles QNH/QFE but is immediately
+    /// overridden because pin_prog_qfe_avail is hardcoded false, which is what keeps PULL
+    /// idempotent and lets the caller fire either event unconditionally.
+    ///
+    /// FBW #10855 deleted the H-events this used to fire (H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{n})
+    /// along with MsfsBaroManager.ts and the FCU cockpit behaviour that consumed them, so the
+    /// old form was a silent no-op: the combo kept reporting the true state (it reads the stock
+    /// KOHLSMAN SETTING STD:n) while selecting Standard or QNH did nothing at all.
+    /// </summary>
+    public static string? BaroModeEvent(string varKey, bool standard)
+    {
+        string side;
+        if (varKey == "A32NX_FCU_LEFT_EIS_BARO_IS_STD") side = "L";
+        else if (varKey == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD") side = "R";
+        else return null;
+        return $"A32NX.FCU_EFIS_{side}_BARO_{(standard ? "PUSH" : "PULL")}";
+    }
+
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
@@ -428,17 +452,24 @@ public partial class FlyByWireA380Definition
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
             return true;
         }
-        // EFIS baro STD/QNH — LIVE-VERIFIED 2026-06-11 against the installed dev
-        // build's fcu.js (MsfsBaroManager): H:A380X_EFIS_CP_BARO_PUSH_{n} = STD
-        // (onPush sets Std) and PULL_{n} = QNH (onPull leaves Std) — the OPPOSITE of
-        // the A32NX's A32NX.FCU_EFIS_*_BARO_PULL=STD knob events; do NOT "harmonise"
-        // the two jets. Fired UNCONDITIONALLY: both are idempotent directional mode
-        // sets on this build, so no toggle-if-differs guard (a stale readback would
-        // wedge it — the original "combo bounces back to QNH" bug). Index 1=Capt, 2=F/O.
-        if (varKey == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varKey == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
+        // ND option filter: ONE selection, so a change is ONE press. There is no "off" button
+        // — clearing re-presses whatever is active. NdFilterSelection owns that mapping and
+        // the evidence for it; the state comes from the live lights via ProcessSimVarUpdate.
+        if (varKey == "ND_FILTER_L" || varKey == "ND_FILTER_R")
         {
-            int side = varKey.Contains("LEFT") ? 1 : 2;
-            simConnect.SendEvent($"H:A380X_EFIS_CP_BARO_{(value > 0.5 ? "PUSH" : "PULL")}_{side}", 0);
+            string side = varKey == "ND_FILTER_L" ? "L" : "R";
+            int current = varKey == "ND_FILTER_L" ? _ndFilterL : _ndFilterR;
+            if (NdFilterSelection.PushEvent(side, current, (int)Math.Round(value)) is { } ndEvt)
+                simConnect.SendEvent(ndEvt);
+            return true;
+        }
+        // EFIS baro STD/QNH. Event name + the push=STD polarity live in BaroModeEvent above —
+        // read its remarks before touching either. Fired UNCONDITIONALLY: both are idempotent
+        // directional mode sets, so no toggle-if-differs guard (a stale readback would wedge
+        // it — the original "combo bounces back to QNH" bug).
+        if (BaroModeEvent(varKey, value > 0.5) is { } baroEvt)
+        {
+            simConnect.SendEvent(baroEvt);
             return true;
         }
         // Set QNH: the entered value is in the side's current unit (hPa or inHg).

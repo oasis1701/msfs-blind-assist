@@ -125,7 +125,7 @@ public partial class SimConnectManager
         Log.Debug("SimConnect", $"Sending event: {eventName} with data: {data}");
 
         // Two FlyByWire event classes prefer the MobiFlight calculator path:
-        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — these have NO
+        //   1. "H:" gauge/HTML events (e.g. H:A32NX_CHRONO_RST) — these have NO
         //      TransmitClientEvent transport AT ALL (main never sent H: via SendEvent; its
         //      SendHVar was MobiFlight-only too), so they always go to the MobiFlight
         //      channel, queued during the brief connect window.
@@ -187,17 +187,34 @@ public partial class SimConnectManager
             SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
     }
 
+    // Ever-increasing discriminator for the calc-path event strings. Interlocked because
+    // SendEvent is reached from the UI thread, hotkey handling and background timers alike.
+    private long calcEventSeq;
+
+    /// <summary>
+    /// The RPN the MobiFlight command channel is given for one H: or dotted event.
+    ///
+    /// ⚠️ The leading "<paramref name="seq"/> 0 *" is LOAD-BEARING, not decoration. That channel
+    /// DEDUPS byte-identical consecutive commands, so without a per-call discriminator every
+    /// TOGGLE event reached through SendEvent could be fired once and then never again: an EFIS
+    /// filter or LOC/APPR switched on could not be switched off, because "on" and "off" are the
+    /// same event and therefore the same string. The prefix pushes seq, pushes 0 and multiplies
+    /// to an inert 0 which is left on the stack and discarded — so a (>K:) still pops the data
+    /// value that follows it, and a (>H:) still sees no argument. Same idiom, same reason, as
+    /// the A320/A380 SD-page writes, the A380 RMP keypresses and the A380 seat-motor ramp.
+    /// </summary>
+    public static string BuildCalcEventCode(string eventName, uint data, long seq) =>
+        eventName.StartsWith("H:", StringComparison.Ordinal)
+            ? $"{seq} 0 * (>{eventName})"
+            : $"{seq} 0 * {data} (>K:{eventName})";
+
     // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
     // dotted custom events take the data param. Callers route here once the verdict/connection
     // gates have been applied (the H: flush may fire during the brief connect window —
     // ExecuteCalculatorCode drops safely if the module object is gone).
-    private void FireCalcEvent(string eventName, uint data)
-    {
-        if (eventName.StartsWith("H:", StringComparison.Ordinal))
-            ExecuteCalculatorCode($"(>{eventName})");
-        else
-            ExecuteCalculatorCode($"{data} (>K:{eventName})");
-    }
+    private void FireCalcEvent(string eventName, uint data) =>
+        ExecuteCalculatorCode(
+            BuildCalcEventCode(eventName, data, System.Threading.Interlocked.Increment(ref calcEventSeq)));
 
     // Flush events queued while the calc-path verdict was pending. Called from
     // MarkCalcPathVerified (flush via calc) and MarkCalcPathProbeConcluded (flush

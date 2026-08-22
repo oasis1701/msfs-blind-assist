@@ -69,6 +69,29 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
+        // ND option filter — ONE selection per side, fed by its three lights. Stored as they
+        // arrive (ProcessSimVarUpdate has no SimConnect handle to read the siblings) and
+        // rendered from _ndFilter* in TryGetDisplayOverride. Silent (return true): the combo
+        // speaks the selection, so announcing the lights too would say it twice on every
+        // change — once for the filter switching off, once for the new one coming on.
+        if (varName.StartsWith("A32NX_FCU_EFIS_", StringComparison.Ordinal)
+            && varName.EndsWith("_LIGHT_ON", StringComparison.Ordinal))
+        {
+            bool isLeft = varName["A32NX_FCU_EFIS_".Length] == 'L';
+            var lights = isLeft ? _ndLightsL : _ndLightsR;
+            string button = varName.Substring("A32NX_FCU_EFIS_X_".Length,
+                varName.Length - "A32NX_FCU_EFIS_X_".Length - "_LIGHT_ON".Length);
+            if (button is "WPT" or "VORD" or "NDB")
+            {
+                lights[button] = value > 0.5;
+                int filter = NdFilterSelection.FromLights(
+                    lights.GetValueOrDefault("WPT"), lights.GetValueOrDefault("VORD"),
+                    lights.GetValueOrDefault("NDB"));
+                if (isLeft) _ndFilterL = filter; else _ndFilterR = filter;
+                return true;
+            }
+        }
+
         // Wipers — OFF/SLOW/FAST is a two-var state (circuit switch + power). Store each
         // half as it arrives (ProcessSimVarUpdate has no SimConnect handle to read the
         // partner) and recompute the per-side position so the "… Position" readout is live
@@ -283,6 +306,33 @@ public partial class FlyByWireA380Definition
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName)
                 && arDesc.TryGetValue(st, out var sdesc))
                 announcer.Announce($"{arDef.DisplayName}: {sdesc}");
+            return true;
+        }
+        // FMA mode alerts (FBW #10855 moved both into the PRIM FG bus). ONE registered var —
+        // PRIM FG discrete word 5 — decoded into TWO spoken alerts: bit 29 "V/S Target not
+        // held" (what the PFD's own inSpeedProtection uses) = Speed Protection, and bit 28
+        // "AP/FD Mode Reversion" = FMA Reversion. Registering one key per condition would
+        // duplicate the same L:var in the continuous batch and risk data-definition position
+        // drift, so the split happens here instead.
+        //
+        // SSM-gated: a word that is not Normal Operation / Functional Test announces NOTHING
+        // rather than a false "off". The first sample only baselines (no announce on connect),
+        // matching every other MSFSBA monitor. Ctrl+M mutes both alerts together via the
+        // single FMA_FG_ALERTS entry.
+        if (varName == "FMA_FG_ALERTS")
+        {
+            var fgWord = new Arinc429Word(value);
+            if (!fgWord.IsNormalOperation && !fgWord.IsFunctionalTest) return true;
+            bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
+            foreach (var (bit, label) in new[] { (29, "Speed Protection"), (28, "FMA Reversion") })
+            {
+                bool bitOn = fgWord.BitValueOr(bit, false);
+                string stateKey = $"{varName}:{bit}";
+                bool hadPrev = _fmaFgBitState.TryGetValue(stateKey, out var prevOn);
+                _fmaFgBitState[stateKey] = bitOn;
+                if (hadPrev && bitOn != prevOn && !muted)
+                    announcer.Announce($"{label}: {(bitOn ? "active" : "off")}");
+            }
             return true;
         }
         // Keep the live current state of the FCU engage/mode toggles so their
@@ -606,10 +656,6 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // Stock-altimeter MB mirrors: consumed by MainForm's A380 STD-flag watchdog
-        // (the def's ProcessSimVarUpdate has no SimConnect manager to write with —
-        // same split as the engine-mode-selector watchdog). Never announce the raw value.
-        if (varName is "BARO_MB_WATCH_L" or "BARO_MB_WATCH_R") return true;
         // EFIS baro STD (PUSH) / QNH (PULL) — announce the mode change.
         if (varName == "A32NX_FCU_LEFT_EIS_BARO_IS_STD" || varName == "A32NX_FCU_RIGHT_EIS_BARO_IS_STD")
         {
@@ -709,16 +755,12 @@ public partial class FlyByWireA380Definition
         // through so the FCU panel's display readouts work normally.
         if (_reqHdg && (varName == "A32NX_AUTOPILOT_HEADING_SELECTED" || varName == "A32NX_FCU_HDG_MANAGED_DASHES"))
         {
-            // SimConnect's native L-var read returns this ANGULAR var in RADIANS
-            // (verified live: 250° reads 4.363, 300° reads 5.236) — non-angular FCU
-            // vars like VS/speed come through unscaled. Convert to degrees only when
-            // the magnitude is in the radian range (<= 2pi), so a future build/path
-            // that returns degrees directly is handled correctly too.
-            if (varName.EndsWith("HEADING_SELECTED"))
-            {
-                double hv = Math.Abs(value) <= (Math.PI * 2 + 0.05) ? value * 180.0 / Math.PI : value;
-                _pHdgVal = ((hv % 360) + 360) % 360;
-            }
+            // ⚠️ FBW #10855 turned the FCU value L:vars into display-unit shims
+            // (idFcuShimHdgValue2 <- selectedFcuAfs.hdg_trk_value), so this arrives in
+            // DEGREES, not the radians older builds wrote. Verified live: FCU 345 reads
+            // 345.0. Do NOT re-add a "looks like radians" guess — it would mangle any
+            // selected heading of 006° or less. Requires the A380X build in docs/a380x.md.
+            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = ((value % 360) + 360) % 360;
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
@@ -768,13 +810,12 @@ public partial class FlyByWireA380Definition
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
                        varName == "A32NX_TRK_FPA_MODE_ACTIVE"))
         {
-            // V/S is a RATE, so the SimConnect L:var read returns it in m/s (SI),
-            // NOT feet/min (verified live: MobiFlight=2000 fpm reads as 10.16 here).
-            // Convert m/s -> fpm (x196.85) and round to the FCU's 100-fpm step.
-            if (varName.EndsWith("VS_SELECTED")) _pVsVal = Math.Round(value * 196.8503937 / 100.0) * 100.0;
-            // FPA is angular, so SimConnect returns it in radians (like heading);
-            // convert when the magnitude is in the radian range (FPA maxes at ~9.9°).
-            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value;
+            // ⚠️ Same #10855 shim as heading: both come from selectedFcuAfs.vs_fpa_value,
+            // so V/S is already FEET PER MINUTE and FPA already DEGREES. Verified live:
+            // FCU 500 fpm reads 500.0 (the old ×196.85 m/s conversion spoke "98400").
+            // The 100-fpm rounding just snaps to the FCU's detent step.
+            if (varName.EndsWith("VS_SELECTED")) _pVsVal = Math.Round(value / 100.0) * 100.0;
+            else if (varName.EndsWith("FPA_SELECTED")) _pFpaVal = value;
             else _pVsMode = value;
             if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
             {
