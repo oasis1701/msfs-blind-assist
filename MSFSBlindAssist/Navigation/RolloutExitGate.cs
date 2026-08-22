@@ -187,4 +187,75 @@ public static class RolloutExitGate
         if (Math.Abs(exitRelativeBearingDeg) < ExitSideMinBearingDeg) return true;
         return Math.Sign(headingDeltaSignedDeg) == Math.Sign(exitRelativeBearingDeg);
     }
+
+    /// <summary>
+    /// Which exit did the pilot actually turn onto, when the handoff fires away from the
+    /// planned one?
+    ///
+    /// <para>Returns null when nothing qualifies. The caller must then CONCLUDE exit guidance
+    /// with a spoken closure — never fall back to the planned exit. At KSEA 34L that fallback
+    /// produced a 1,678 m route up the parallel taxiway and back down toward the runway,
+    /// because the taxi graph carries no runway edges and that is the only path between the
+    /// two exits.</para>
+    ///
+    /// <para>Selection is "the last exit actually reached": you cannot vacate at an exit you
+    /// have not got to yet. <see cref="EarlyVacateForwardSlackFeet"/> of tolerance allows for
+    /// an exit node that reads forward of its own pavement junction.</para>
+    /// </summary>
+    /// <param name="signedAlongPastFeet">
+    /// Along-runway distance from each exit to the aircraft, in FEET, POSITIVE when the
+    /// aircraft is PAST that exit. Supplied by the caller — usually
+    /// <c>SignedAlongRunwayMeters(aircraftLat, aircraftLon, exit.Latitude, exit.Longitude,
+    /// runwayHeadingTrue) * METERS_TO_FEET</c>.
+    ///
+    /// Measured PER EXIT and never against a threshold, which is what makes this immune to
+    /// displaced thresholds. <c>LandingExit.DistanceFromThresholdFeet</c> is measured from the
+    /// LANDING threshold including <c>ThresholdOffset</c> (KJFK 13R 2,055 ft, KJFK 22R
+    /// 3,438 ft, EGLL 27R 1,004 ft), while the natural way to compute an aircraft's
+    /// along-runway position measures from the physical runway start; comparing the two picks
+    /// the wrong exit at every displaced-threshold runway. Do not reintroduce it.
+    /// </param>
+    /// <param name="aircraftLateralSignedMetres">
+    /// Signed lateral offset of the aircraft from the runway axis, POSITIVE = right of the
+    /// runway direction, matching <c>LandingExit.ExitSide</c> == "Right".
+    /// </param>
+    public static LandingExit? MatchEarlyVacateExit(
+        IReadOnlyList<LandingExit> allExits,
+        LandingExit plannedExit,
+        Func<LandingExit, double> signedAlongPastFeet,
+        double aircraftLateralSignedMetres)
+    {
+        if (allExits == null || plannedExit == null || signedAlongPastFeet == null) return null;
+
+        string side = aircraftLateralSignedMetres >= 0.0 ? "Right" : "Left";
+
+        LandingExit? best = null;
+        double bestRank = double.MaxValue;
+
+        foreach (var candidate in allExits)
+        {
+            if (candidate == null) continue;
+            if (candidate.NodeId == plannedExit.NodeId) continue;
+
+            // A blank ExitSide means the graph could not determine a side, NOT that the exit
+            // is on the wrong one. Rank it on distance instead of dropping it — excluding it
+            // would strand the pilot at exactly the airports whose navdata is already thin.
+            if (candidate.ExitSide.Length > 0
+                && !string.Equals(candidate.ExitSide, side, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            double passed = signedAlongPastFeet(candidate);
+            if (passed < -EarlyVacateForwardSlackFeet) continue;  // still ahead of the aircraft
+            if (passed > EarlyVacateMaxPassedFeet) continue;      // too far behind to be this turnoff
+
+            double rank = Math.Abs(passed);
+            if (best == null || rank < bestRank)
+            {
+                best = candidate;
+                bestRank = rank;
+            }
+        }
+
+        return best;
+    }
 }
