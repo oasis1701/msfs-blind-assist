@@ -63,6 +63,8 @@ public class EarlyVacateExitMatcherTests
 
     // The forward slack exists because a hold-short-marker exit node can read forward of
     // the pavement junction the pilot actually turned at. 600 ft is the boundary.
+    // The planned exit is deliberately far off (the KSEA -2,232 ft) so the nearer-than-planned
+    // guard cannot be what decides these assertions.
     [Fact]
     public void ForwardSlackBoundaryIsSixHundredFeet()
     {
@@ -70,12 +72,15 @@ public class EarlyVacateExitMatcherTests
         var planned = Exit(2, "Z", "Right");
 
         Assert.Same(near, RolloutExitGate.MatchEarlyVacateExit(
-            new[] { near, planned }, planned, _ => -600.0, 51.2));
+            new[] { near, planned }, planned,
+            ex => ex.NodeId == 1 ? -600.0 : -2232.0, 51.2));
         Assert.Null(RolloutExitGate.MatchEarlyVacateExit(
-            new[] { near, planned }, planned, _ => -600.1, 51.2));
+            new[] { near, planned }, planned,
+            ex => ex.NodeId == 1 ? -600.1 : -2232.0, 51.2));
     }
 
     // Beyond 1,400 ft behind, an exit is no longer the same physical turnoff.
+    // Planned exit deliberately far off, as above, so only the max-passed cap can decide.
     [Fact]
     public void MaxPassedBoundaryIsFourteenHundredFeet()
     {
@@ -83,9 +88,11 @@ public class EarlyVacateExitMatcherTests
         var planned = Exit(2, "Z", "Right");
 
         Assert.Same(behind, RolloutExitGate.MatchEarlyVacateExit(
-            new[] { behind, planned }, planned, _ => 1400.0, 51.2));
+            new[] { behind, planned }, planned,
+            ex => ex.NodeId == 1 ? 1400.0 : -2232.0, 51.2));
         Assert.Null(RolloutExitGate.MatchEarlyVacateExit(
-            new[] { behind, planned }, planned, _ => 1400.1, 51.2));
+            new[] { behind, planned }, planned,
+            ex => ex.NodeId == 1 ? 1400.1 : -2232.0, 51.2));
     }
 
     // A runway with exits on both sides: the side the aircraft actually moved to decides.
@@ -107,6 +114,7 @@ public class EarlyVacateExitMatcherTests
     // A blank ExitSide (bearing unknown at graph-build time) must not be excluded —
     // it is ranked on distance alone. Excluding it would strand the pilot at exactly
     // the airports whose navdata is already thin.
+    // Planned exit deliberately far off, so only the blank-side permissiveness can decide.
     [Fact]
     public void BlankExitSide_IsRankedNotRejected()
     {
@@ -114,7 +122,8 @@ public class EarlyVacateExitMatcherTests
         var planned = Exit(2, "Z", "Right");
 
         Assert.Same(blank, RolloutExitGate.MatchEarlyVacateExit(
-            new[] { blank, planned }, planned, _ => 810.0, 51.2));
+            new[] { blank, planned }, planned,
+            ex => ex.NodeId == 1 ? 810.0 : -2232.0, 51.2));
     }
 
     // The planned exit is never its own early-vacate match.
@@ -138,6 +147,40 @@ public class EarlyVacateExitMatcherTests
 
         Assert.Same(near, RolloutExitGate.MatchEarlyVacateExit(
             new[] { far, near, planned }, planned, ex => passedM[ex.NodeId], 51.2));
+    }
+
+    // A candidate BEYOND the planned exit must never win: the callout would say "left the
+    // runway short of P, now following R" with R past P. Reachable since the early-vacate
+    // branch began entering at 350 ft short rather than 1,000 ft.
+    [Fact]
+    public void CandidateBeyondThePlannedExit_IsNotChosen()
+    {
+        var planned = Exit(1, "P", "Right");
+        var beyond = Exit(2, "R", "Right");
+
+        // Aircraft is 400 ft short of P; R sits 200 ft further on, i.e. 600 ft ahead.
+        double Along(LandingExit e) => e.NodeId == 1 ? -400.0 : -600.0;
+
+        Assert.Null(RolloutExitGate.MatchEarlyVacateExit(
+            new[] { planned, beyond }, planned, Along, 51.2));
+    }
+
+    // The motivating case still works: the neighbour the pilot actually turned onto is much
+    // nearer along-track than the planned exit, so it wins.
+    [Fact]
+    public void NeighbourNearerThanThePlannedExit_IsStillChosen()
+    {
+        var planned = Exit(1, "Z", "Right");
+        var neighbour = Exit(2, "J", "Right");
+
+        // Aircraft is 800 ft short of Z and essentially at J's throat.
+        double Along(LandingExit e) => e.NodeId == 1 ? -800.0 : 0.0;
+
+        var picked = RolloutExitGate.MatchEarlyVacateExit(
+            new[] { planned, neighbour }, planned, Along, 51.2);
+
+        Assert.NotNull(picked);
+        Assert.Equal("J", picked!.TaxiwayName);
     }
 
     // Empty and null inputs degrade to "no match", which the caller turns into a spoken

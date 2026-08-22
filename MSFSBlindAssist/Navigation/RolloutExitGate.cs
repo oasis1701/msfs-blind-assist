@@ -371,7 +371,9 @@ public static class RolloutExitGate
     /// not the smallest positive "last exit reached". <see cref="EarlyVacateForwardSlackFeet"/>
     /// of tolerance allows a candidate to read slightly ahead of the aircraft (an exit node
     /// forward of its own pavement junction), and nearest-by-absolute-value is what lets that
-    /// still-ahead-but-close candidate win over one that reads further behind.</para>
+    /// still-ahead-but-close candidate win over one that reads further behind. A candidate must
+    /// also be strictly NEARER along-track than the planned exit — see the guard's own comment
+    /// for the self-contradicting callout that admits otherwise.</para>
     /// </summary>
     /// <param name="signedAlongPastFeet">
     /// Along-runway distance from each exit to the aircraft, in FEET, POSITIVE when the
@@ -400,6 +402,14 @@ public static class RolloutExitGate
 
         string side = aircraftLateralSignedMetres >= 0.0 ? "Right" : "Left";
 
+        // A substitute must be nearer along-track than the planned exit itself. Without this
+        // a candidate inside the forward slack can win while sitting BEYOND the planned exit,
+        // and the callout contradicts itself: "Left the runway short of taxiway P. Now
+        // following taxiway R." with R past P. That was unreachable while the branch was only
+        // entered 1,000 ft short (any forward-slack candidate was then between the aircraft
+        // and the planned exit) and became reachable when the entry moved to 350 ft.
+        double plannedPassed = Math.Abs(signedAlongPastFeet(plannedExit));
+
         LandingExit? best = null;
         double bestRank = double.MaxValue;
 
@@ -420,6 +430,8 @@ public static class RolloutExitGate
             if (passed > EarlyVacateMaxPassedFeet) continue;      // too far behind to be this turnoff
 
             double rank = Math.Abs(passed);
+            if (rank >= plannedPassed) continue;
+
             if (best == null || rank < bestRank)
             {
                 best = candidate;
