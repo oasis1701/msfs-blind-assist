@@ -100,11 +100,15 @@ public static class RolloutExitGate
     public const double EarlyVacateForwardSlackFeet = 600.0;
 
     /// <summary>
-    /// How far BEHIND the aircraft an exit may be and still be the one vacated at. This is
-    /// the same value as <c>EXIT_COVERAGE_GAP_FT</c> in <c>TaxiGraph.GetLandingExits</c>,
-    /// which that comment records as measured across 266 runway directions at 39 airports as
-    /// the distance beyond which two nodes stop describing the same physical turnoff. That
-    /// constant is method-local and cannot be referenced; keep the two in step.
+    /// How far BEHIND the aircraft an exit may be and still be the one vacated at.
+    ///
+    /// <para>Canonical here, and <c>EXIT_COVERAGE_GAP_FT</c> in
+    /// <c>TaxiGraph.GetLandingExits</c> initialises from it, so the two cannot drift. The
+    /// value was MEASURED there — across 266 runway directions at 39 airports, as the
+    /// distance beyond which two nodes stop describing the same physical turnoff — and that
+    /// provenance comment stays with the measurement. The direction of the reference is
+    /// deliberate: this module promises no dependency on the graph, so the graph reads the
+    /// gate rather than the reverse.</para>
     /// </summary>
     public const double EarlyVacateMaxPassedFeet = 1400.0;
 

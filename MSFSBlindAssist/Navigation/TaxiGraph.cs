@@ -2827,7 +2827,10 @@ public class TaxiGraph
         // physical turnoff the pilot already has. KBNA's genuinely missing turnoffs start at
         // 1481 ft. 1400 ft sits in that gap: it adds nothing at any of the other 38 airports
         // and recovers KBNA's lost exits.
-        const double EXIT_COVERAGE_GAP_FT = 1400.0;
+        // Shared with the early-vacate matcher, which answers the same question from the
+        // other direction ("is this exit close enough behind me to be the one I turned at?").
+        // A local const initialised from the gate's, so the two cannot drift.
+        const double EXIT_COVERAGE_GAP_FT = RolloutExitGate.EarlyVacateMaxPassedFeet;
 
         double maxDistFt = rwy.Length - END_BUFFER_FT;
         if (maxDistFt < MIN_DIST_FT) return exits;
