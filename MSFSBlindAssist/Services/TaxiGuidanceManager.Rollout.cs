@@ -164,6 +164,22 @@ public partial class TaxiGuidanceManager
             // departure-airport segments.
             _route = null;
 
+            // Same class of leak, same reason. This entry point is only ever reached AFTER a
+            // failed LoadRoute — which is precisely the path that skips LoadRoute's own
+            // fresh-route reset block (it sits after every failure return). Without these,
+            // landing 1's flags survive into landing 2 when no StopGuidance and no successful
+            // LoadRoute intervene: landing 2's handoff captures a stale
+            // _landingExitVacatedEarlyPlannedName, the reachability guard takes its != null
+            // branch, and the pilot is told "You have left the runway short of Taxiway X"
+            // naming a taxiway from a previous flight. Values match LoadRoute's reset block
+            // exactly — note _landingExitOffPavement resets to TRUE (a new route re-decides
+            // it at its own handoff), not false.
+            _landingExitOffPavement = true;
+            _landingExitMissed = false;
+            _landingExitVacatedEarly = false;
+            _landingExitVacatedEarlyPlannedName = null;
+            _landingExitRouteUnreachable = false;
+
             // Precondition: a prior LoadRoute (even one that failed at route
             // construction) must have populated _graph, _dataProvider, and _icao.
             // The handoff re-route in UpdateLandingRollout reads these directly.
@@ -1228,6 +1244,57 @@ public partial class TaxiGuidanceManager
         // LoadRoute's reset would otherwise claim the aircraft ends up clear of the
         // runway at airports where the graph has no taxiway past the junction.
         _landingExitOffPavement = offPavementAtHandoff;
+
+        // Reachability guard — the LAST ungated landing-exit handoff re-route. This method
+        // builds a route, arms the post-handoff monitor and moves to Taxiing exactly like
+        // the handoff in UpdateLandingRollout, so CLAUDE.md's "IsHandoffRouteReachable must
+        // gate every landing-exit handoff re-route" was simply not true of it. Its only
+        // route sanity check is the first segment's BEARING (above); the KSEA 34L failure
+        // lived on the DISTANCE axis — a segment 53.9 m of cross-track away, with the
+        // aircraft 17.8 m outside the runway edge, that the tone panned 79° at.
+        //
+        // Placed after _isLandingExitRoute / _landingExitOffPavement are restored so the
+        // closure below speaks the landing-exit wording, and read at _currentSegmentIndex
+        // (0 here — LoadRoute anchors a fresh route at its start) so it tests the segment
+        // the tone is ACTUALLY about to steer at.
+        //
+        // Concluding is the safe direction: the alternative is pointing the steering tone
+        // at a segment the aircraft is not on. Near-no-op for the normal case — the early
+        // handoff fires while still on the runway, and an on-runway handoff makes the guard
+        // return true unchanged.
+        if (_route != null && _currentSegmentIndex >= 0
+            && _currentSegmentIndex < _route.Segments.Count)
+        {
+            var firstSeg = _route.Segments[_currentSegmentIndex];
+            double crossToFirstM = TaxiGraph.PerpendicularDistanceMetersStatic(
+                lat, lon,
+                firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
+                firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
+
+            if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
+                    !IsWithinRolloutRunwayLaterally(lat, lon), crossToFirstM, firstSeg.PathWidth))
+            {
+                RolloutDiag($"TryEarlyExitHandoff: route unreachable — {crossToFirstM:F0} m from " +
+                    $"segment {_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
+                    $"aircraft off the runway — concluding rather than steering across it");
+                // Same reason split as the guard's other site: only claim "short of X" when
+                // an early vacate was actually established.
+                if (_landingExitVacatedEarlyPlannedName != null)
+                    _landingExitVacatedEarly = true;
+                else
+                    _landingExitRouteUnreachable = true;
+                _rolloutHandoffActive = false;
+                SetState(TaxiGuidanceState.Taxiing);
+                HandleArrival();
+                // TRUE, not false: false means "handoff declined, keep flying the rollout"
+                // and the caller falls through to the bearing-to-junction fallback tone and
+                // the rest of UpdateLandingRollout. Guidance has CONCLUDED here, so the
+                // caller must return. Its _steeringTone.Resume() on this path is inert —
+                // HandleArrival's landing-exit closure already called Stop(), and Resume()
+                // only clears the paused flag on a disposed generator.
+                return true;
+            }
+        }
 
         SetState(TaxiGuidanceState.Taxiing);
         return true;

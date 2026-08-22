@@ -138,6 +138,14 @@ public static class RolloutExitGate
     /// 2026-08-22 the rollout's lateral handoff trigger carried its own <c>+30 ft</c>
     /// (9.144 m) spelling of the same idea, leaving a 0.856 m band in which the handoff
     /// fired while every guard still read the aircraft as on the runway.</para>
+    ///
+    /// <para>One spelling of that <c>+30 ft</c> deliberately survives: <c>exitedLaterallyPH</c>
+    /// in <c>TaxiGuidanceManager.UpdatePosition</c>'s post-handoff overshoot monitor. It is
+    /// behaviourally inert — the overshoot branch it guards additionally requires
+    /// <c>lateralFtPH &lt; 30</c> ft, so the 0.856 m disagreement can never change an outcome —
+    /// and it was left alone rather than churn a tuned safety path for no effect. So "exactly
+    /// ONE definition" is true of every site that can DECIDE anything, not of every occurrence
+    /// of the number in the tree.</para>
     /// </summary>
     public const double RunwayClearMarginM = 10.0;
 

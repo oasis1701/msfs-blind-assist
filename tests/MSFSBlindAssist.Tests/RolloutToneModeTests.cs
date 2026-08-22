@@ -84,9 +84,11 @@ public class RolloutToneModeTests
     }
 
     // Same heading deviation and window as the toward-exit case, but the exit's side is
-    // UNKNOWN (the ExitBearingTrue == 0.0 sentinel normalises to a relative bearing of
-    // 0.0). A drift and an exit turn are indistinguishable here, so the drift tone must
-    // keep working rather than going silent.
+    // UNKNOWN. The 0.0 relative bearing is what RolloutExitGate.ExitRelativeBearingDeg
+    // MAPS the ExitBearingTrue == 0.0 sentinel to — not something normalisation lands on
+    // by itself (see ExitRelativeBearingTests, which disproves that). A drift and an exit
+    // turn are indistinguishable here, so the drift tone must keep working rather than
+    // going silent.
     [Fact]
     public void UnknownExitSide_InsideWindow_StaysDriftCorrection()
     {

@@ -89,8 +89,11 @@ public class RolloutExitTurnGateTests
         Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 89.9, 150.0, false, 13.6));
     }
 
-    // ExitBearingTrue == 0.0 is the rollout code's "unknown bearing" sentinel and
-    // normalises into the sub-3° band. Unknown side must NOT block the handoff —
+    // ExitBearingTrue == 0.0 is the rollout code's "unknown bearing" sentinel. The 0.0
+    // relative bearing arriving here is what RolloutExitGate.ExitRelativeBearingDeg MAPS
+    // the sentinel to — it is not where normalisation happens to land (plain
+    // NormalizeAngle(0 - runwayHeading) yields a real-looking side; that is exactly what
+    // ExitRelativeBearingTests disproves). Unknown side must NOT block the handoff —
     // degrade to the old direction-blind behaviour rather than stranding the pilot.
     [Fact]
     public void UnknownExitSide_SkipsTheDirectionTest()
