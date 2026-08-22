@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -454,10 +454,10 @@ public partial class TaxiGuidanceManager
             // pavement the pilot is now crossing. The re-route gives A* a fresh start from
             // wherever the aircraft actually is at handoff time.
             //
-            // Destination priority (same as TryEarlyExitHandoff):
-            //   (a) ApronNodeId — shallow-exit BFS node outside the runway corridor
-            //   (b) FindExitExtensionNode — first graph node in the exit direction
-            //   (c) NodeId — the junction itself (last resort)
+            // Destination comes from the shared ResolveExitHandoffDestination —
+            // the same priority list TryEarlyExitHandoff uses, followed by the
+            // RunwayVacateResolver walk that pushes the stop point past the
+            // runway-holding position.
             //
             // A side-effect of always re-routing: the initial route's false "hold short of
             // runway X" tag (inserted by InsertRunwayCrossingHoldShorts because the route's
@@ -466,19 +466,11 @@ public partial class TaxiGuidanceManager
             bool handoffRerouted = false;
             if (_rolloutExit != null && _dataProvider != null && _graph != null)
             {
-                int rerouteDest;
-                string rerouteDestSrc;
-                if (_rolloutExit.ApronNodeId > 0 && _rolloutExit.ApronNodeId != _rolloutExit.NodeId)
-                {
-                    rerouteDest = _rolloutExit.ApronNodeId;
-                    rerouteDestSrc = "apronNode";
-                }
-                else
-                {
-                    int extNode = FindExitExtensionNode(_rolloutExit.NodeId, _rolloutExit.ExitBearingTrue);
-                    rerouteDest = extNode > 0 ? extNode : _rolloutExit.NodeId;
-                    rerouteDestSrc = extNode > 0 ? "extNode" : "nodeId";
-                }
+                int rerouteDest = ResolveExitHandoffDestination(out string rerouteDestSrc);
+                // LoadRoute's fresh-route reset puts this back to true; the verdict
+                // that matters was just computed by the resolver above, so carry it
+                // across (see the re-set below).
+                bool offPavementAtHandoff = _landingExitOffPavement;
                 string exitName = _rolloutExit.TaxiwayName.Length > 0
                     ? $"Taxiway {_rolloutExit.TaxiwayName}"
                     : "exit taxiway";
@@ -497,6 +489,11 @@ public partial class TaxiGuidanceManager
                     // fires the landing-exit-specific "Hold position. Open the taxi
                     // planner..." message instead of the generic "Destination reached".
                     _isLandingExitRoute = true;
+                    // Same for the off-pavement verdict: this route's handoff already
+                    // happened, so LoadRoute's "a new route re-decides this" reset would
+                    // silence the still-on-runway warning on exactly the airports that
+                    // need it (EVRA, EHAM 36C/W8, EFHK 04L/WZ).
+                    _landingExitOffPavement = offPavementAtHandoff;
                 }
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
@@ -933,39 +930,11 @@ public partial class TaxiGuidanceManager
         //     aircraft arrives.
         //
         // (d) NodeId — last resort if graph has no adjacent exit node (dead-end junction).
-        int destNodeId;
-        if (_rolloutExit.ApronNodeId > 0 && _rolloutExit.ApronNodeId != _rolloutExit.NodeId)
-        {
-            destNodeId = _rolloutExit.ApronNodeId;
-        }
-        else
-        {
-            // Try furthest same-named node for multi-segment RETs.
-            int furthestSameNamed = -1;
-            if (!string.IsNullOrEmpty(_rolloutExit.TaxiwayName))
-            {
-                var furtherExit = _rolloutAllExits
-                    .Where(e => string.Equals(e.TaxiwayName, _rolloutExit.TaxiwayName,
-                                              StringComparison.OrdinalIgnoreCase)
-                                && e.NodeId != _rolloutExit.NodeId
-                                && e.DistanceFromThresholdFeet > _rolloutExit.DistanceFromThresholdFeet
-                                && e.ExitType != "End")
-                    .OrderByDescending(e => e.DistanceFromThresholdFeet)
-                    .FirstOrDefault();
-                furthestSameNamed = furtherExit?.NodeId ?? -1;
-            }
-
-            if (furthestSameNamed > 0)
-            {
-                destNodeId = furthestSameNamed;
-            }
-            else
-            {
-                // Single-junction exit: find adjacent node in exit direction.
-                int extNode = FindExitExtensionNode(_rolloutExit.NodeId, _rolloutExit.ExitBearingTrue);
-                destNodeId = extNode > 0 ? extNode : _rolloutExit.NodeId;
-            }
-        }
+        // (a)-(d) above, plus the RunwayVacateResolver walk that pushes the stop point
+        // past the runway-holding position — see ResolveExitHandoffDestination.
+        int destNodeId = ResolveExitHandoffDestination(out string destSource);
+        // Carried across LoadRoute's fresh-route reset — see the re-set below.
+        bool offPavementAtHandoff = _landingExitOffPavement;
 
         string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
             ? "exit taxiway"
@@ -1049,10 +1018,11 @@ public partial class TaxiGuidanceManager
             return false;
         }
 
-        string destSrc = destNodeId == _rolloutExit.ApronNodeId ? "apron"
-                       : destNodeId == _rolloutExit.NodeId     ? "junction-only"
-                       : $"ext:{destNodeId}";
-        RolloutDiag($"TryEarlyExitHandoff OK: destNodeId={destNodeId} ({destSrc}) " +
+        // destSource comes from the shared ResolveExitHandoffDestination, which
+        // knows about the vacate walk and the same-named-RET branch that main's
+        // local apron/junction comparison could not express; startTwy is main's
+        // start-anchor field, kept as-is.
+        RolloutDiag($"TryEarlyExitHandoff OK: destNodeId={destNodeId} ({destSource}) " +
             $"startTwy={startTwy ?? "(nearest)"} firstSeg={firstBearing:F1}° segs={_route.Segments.Count}");
 
         // Reset the heading-error smoother so the taxi tone starts clean rather
@@ -1074,6 +1044,10 @@ public partial class TaxiGuidanceManager
         // fires the landing-exit-specific "Hold position. Open the taxi planner..."
         // message instead of the generic "Destination reached".
         _isLandingExitRoute = true;
+        // Likewise the off-pavement verdict the resolver computed for THIS handoff —
+        // LoadRoute's reset would otherwise claim the aircraft ends up clear of the
+        // runway at airports where the graph has no taxiway past the junction.
+        _landingExitOffPavement = offPavementAtHandoff;
 
         SetState(TaxiGuidanceState.Taxiing);
         return true;
@@ -1086,23 +1060,72 @@ public partial class TaxiGuidanceManager
     /// can continue around the corner and start panning the tone before the junction.
     /// Returns -1 if no suitable node is found.
     /// </summary>
-    private int FindExitExtensionNode(int junctionNodeId, double exitBearingTrue)
+    /// <summary>
+    /// Picks the destination node for a LandingRollout → Taxiing re-route. Shared by
+    /// BOTH handoff paths (<see cref="TryEarlyExitHandoff"/> for high-speed exits and
+    /// the turnBegun / exitedLaterally / trulyStopped handoff in
+    /// <c>UpdateLandingRollout</c>) so the two can never drift apart — they picked the
+    /// destination with two hand-copied blocks before, and only one of them carried
+    /// the multi-segment-RET branch.
+    ///
+    /// Priority:
+    ///   (a) ApronNodeId — corridor-exit node computed by GetLandingExits' BFS.
+    ///   (b) Furthest same-named non-End exit — multi-segment RETs (LEMD L5).
+    ///   (c) FindExitExtensionNode — first adjacent node in the exit direction.
+    ///   (d) NodeId — the junction itself (dead-end).
+    ///
+    /// Then — unconditionally, whichever branch won —
+    /// <see cref="RunwayVacateResolver.ExtendClearOfRunway"/> walks the destination
+    /// on down the exit taxiway until the aircraft would be past the runway-holding
+    /// position. None of (a)-(d) guarantees that on its own: (a)'s corridor tolerance
+    /// only means "off the pavement" (half-width + 15 m) and it is not computed for
+    /// every exit-classification branch, while (c) returns whatever node happens to be
+    /// adjacent. At EVRA 18 → B that adjacent node was 33 m from the centreline
+    /// (half-width 22.6 m, hold line at 106 m), so guidance said "hold position" with
+    /// the aircraft still occupying the runway strip and tower unable to clear a
+    /// departure — the defect this stage exists to prevent.
+    /// </summary>
+    private int ResolveExitHandoffDestination(out string source)
     {
-        if (_graph == null) return -1;
-        if (!_graph.Adjacency.TryGetValue(junctionNodeId, out var edges)) return -1;
-        int best = -1;
-        double bestDiff = 60.0; // must be within 60° of exit bearing
-        foreach (var e in edges)
+        source = "none";
+        if (_rolloutExit == null) return 0;
+
+        int destNodeId = Navigation.LandingExitDestination.Resolve(
+            _graph, _rolloutExit, _rolloutAllExits,
+            _rolloutRunway, _rolloutRunwayHeadingTrue,
+            out double startLateralM, out double endLateralM, out source);
+
+        // Remember whether the aircraft actually ends up off the concrete, so the
+        // arrival callout can tell the pilot the truth. At a handful of airports the
+        // navdata simply has no taxiway mapped past the junction (EVRA's unnamed
+        // exits, EHAM 36C/W8, EFHK 04L/WZ — one graph edge, pointing back at the
+        // runway), and no routing can invent one. Saying "stop and hold position"
+        // there parks a blind pilot on an active runway.
+        _landingExitOffPavement = RunwayVacateResolver.IsOffPavement(endLateralM, _rolloutRunway);
+
+        if (source.EndsWith("+vacate", StringComparison.Ordinal))
         {
-            if (e.PathType == "R") continue; // skip runway edges
-            double diff = Math.Abs(NormalizeAngle(e.BearingDegrees - exitBearingTrue));
-            if (diff < bestDiff)
-            {
-                bestDiff = diff;
-                best = e.ToNodeId;
-            }
+            RolloutDiag($"Vacate-extend: {source} ({startLateralM:F0} m from " +
+                $"runway axis) → {destNodeId} ({endLateralM:F0} m)");
         }
-        return best;
+        else if (endLateralM < RunwayVacateResolver.VacatedClearanceMetres)
+        {
+            // Walked as far as the graph allows and still short of the holding
+            // position — better than before but worth a line when a report says
+            // "it stopped me too early".
+            RolloutDiag($"Vacate-extend: {source}={destNodeId} stays at " +
+                $"{endLateralM:F0} m from the runway axis (target " +
+                $"{RunwayVacateResolver.VacatedClearanceMetres:F0} m) — no further node");
+        }
+
+        if (!_landingExitOffPavement)
+        {
+            RolloutDiag($"Vacate-extend: STOP POINT STILL ON THE RUNWAY — {endLateralM:F0} m " +
+                $"from the axis at exit '{_rolloutExit.TaxiwayName}'. Arrival callout will " +
+                $"tell the pilot to continue ahead rather than hold position.");
+        }
+
+        return destNodeId;
     }
 
     /// <summary>
@@ -1599,6 +1622,7 @@ public partial class TaxiGuidanceManager
         _originalTaxiwaySequence = null;
         _rolloutExit = null;
         _isLandingExitRoute = false; // no exit route — runway-end countdown
+        _landingExitOffPavement = true;
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.
         _rolloutAllExits = new List<Navigation.LandingExit>();
         ResetRolloutApproachLatches();

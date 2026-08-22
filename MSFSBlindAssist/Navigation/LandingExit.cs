@@ -77,12 +77,27 @@ public class LandingExit
     /// </summary>
     public string ExitSide { get; set; } = "";
 
+    /// <summary>
+    /// False when the taxi graph offers NO route from this exit that gets the aircraft
+    /// clear of the runway pavement — the navdata maps nothing past the junction (one
+    /// graph edge, pointing back at the runway). Set by the Landing Exit form using the
+    /// same <see cref="LandingExitDestination"/> resolution the rollout handoff runs, so
+    /// the warning shown before the flight matches what actually happens on rollout.
+    /// <para>Defaults TRUE — an exit is presumed usable unless the check has been run
+    /// and failed, so nothing is ever labelled as bad merely because it wasn't tested.</para>
+    /// </summary>
+    public bool VacatesRunway { get; set; } = true;
+
     public override string ToString()
     {
         string dist = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(DistanceFromThresholdFeet, shortForm: true, round: false);
         int angle = (int)Math.Round(ExitAngleDegrees);
         string nameLabel = string.IsNullOrEmpty(TaxiwayName) ? "(unnamed)" : TaxiwayName;
         string sideLabel = string.IsNullOrEmpty(ExitSide) ? "" : $", {ExitSide.ToLower()}";
-        return $"{nameLabel} — {dist} from threshold ({ExitType}{sideLabel}, {angle}°)";
+        // The warning goes at the END so the screen reader speaks the identity of the
+        // exit first — a blind pilot arrowing through the list needs the name and
+        // distance immediately, not a caution prefix repeated on every bad entry.
+        string warn = VacatesRunway ? "" : " — WARNING: no taxiway mapped clear of the runway";
+        return $"{nameLabel} — {dist} from threshold ({ExitType}{sideLabel}, {angle}°){warn}";
     }
 }

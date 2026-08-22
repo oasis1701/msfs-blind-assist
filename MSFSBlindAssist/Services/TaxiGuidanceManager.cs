@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -263,6 +263,19 @@ public partial class TaxiGuidanceManager : IDisposable
     // terminates at a runway exit, not a gate) — drives the post-exit arrival
     // announcement in HandleArrival.
     private bool _isLandingExitRoute = false;
+    // Whether the landing-exit handoff actually ended up off the runway pavement.
+    // Set by ResolveExitHandoffDestination from the vacate walk's final lateral
+    // offset; read by the arrival callout, which must not tell a pilot to hold
+    // position while they are still on the concrete. Defaults true so any path that
+    // never reaches the handoff keeps the original wording.
+    private bool _landingExitOffPavement = true;
+    // Missed-vacate backstop state (landing-exit routes only). The closest the
+    // aircraft has come to the exit's hold-clear node on the final segment, the
+    // moment the "it's behind us" test started holding, and the latch that makes
+    // HandleArrival say so instead of claiming a normal vacate.
+    private double _landingExitMinDistToTargetM = double.MaxValue;
+    private DateTime _missedVacateSince = DateTime.MinValue;
+    private bool _landingExitMissed = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -334,6 +347,20 @@ public partial class TaxiGuidanceManager : IDisposable
     // backstop for a wide pass (drew abeam/past the node but >25 m to the side).
     private const double LANDING_EXIT_ARRIVAL_RADIUS_M = 25.0;
     private const double LANDING_EXIT_ARRIVAL_CROSS_M = 60.0;
+
+    // Missed-vacate backstop — the case where NEITHER capture above can fire because
+    // the aircraft never came near the hold-clear node (took the wrong branch at the
+    // exit junction). Deliberately conservative: the aircraft must have got within
+    // MISSED_VACATE_APPROACH_M of the node at some point (so this can only fire on a
+    // vacate that was genuinely under way), must now be further off the segment than
+    // the arrival cross gate allows, and must be either astern of the node or opening
+    // the range on it by a clear margin, held for MISSED_VACATE_PERSISTENCE_SEC while
+    // moving. A normal vacate passes within the 25 m radius and arrives long before
+    // any of this is true.
+    private const double MISSED_VACATE_ASTERN_M = 25.0;
+    private const double MISSED_VACATE_OPENING_M = 50.0;
+    private const double MISSED_VACATE_APPROACH_M = 150.0;
+    private const double MISSED_VACATE_PERSISTENCE_SEC = 2.0;
 
     // Plain taxiway-endpoint arrival backstop (progressive-taxi "end of taxiway X").
     // These destinations carry the tight ~6 m gate radius but have NO lineup target,
@@ -1011,6 +1038,24 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double METERS_TO_NM = 0.000539957;
 
     public TaxiGuidanceState State => _state;
+
+    /// <summary>
+    /// True once the landing-exit handoff has completed and the exit route's own
+    /// steering tone is panning the pilot onto the taxiway. Read by the manual-landing
+    /// assist, which must stop its rollout pan tone the moment this turns true — the
+    /// handoff can fire as high as 90 kt (turnBegun) or at any speed at all
+    /// (exitedLaterally), so its speed threshold alone cannot keep the two apart.
+    /// </summary>
+    public bool IsLandingExitTaxiSteering
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
+            }
+        }
+    }
 
     /// <summary>
     /// The full spoken route-summary text from the most recent successful
@@ -1746,22 +1791,8 @@ public partial class TaxiGuidanceManager : IDisposable
             // arrival fires normally. If the node is already behind while still on the
             // runway (degenerate on-runway extension node), fall through and arrive
             // rather than risk the tone chasing a passed node back across the runway.
-            bool stillOnRunway = false;
-            if (_rolloutRunway != null && _rolloutRunwayHeadingTrue != 0.0 && alongRemainingM > 0.0)
-            {
-                // Runway.Width is in FEET (matches the halfWidthFt usages elsewhere in
-                // this file, e.g. the overshoot-gate lateral check); convert to a metre
-                // half-width before comparing against the metre lateral offset. A bare
-                // Width * 0.5 treated as metres made the band ~3x too wide and suppressed
-                // the "off the runway" arrival long after the aircraft had cleared.
-                // Fallback 200 ft ≈ 60 m, same as the sibling code.
-                double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0)
-                                    * 0.5 / METERS_TO_FEET;
-                double lateralM = AbsLateralFromRunwayMeters(
-                    lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
-                    _rolloutRunwayHeadingTrue);
-                stillOnRunway = lateralM <= halfWidthM + RUNWAY_CLEAR_MARGIN_M;
-            }
+            bool stillOnRunway = alongRemainingM > 0.0
+                                 && IsWithinRolloutRunwayLaterally(lat, lon);
 
             if (!stillOnRunway && (distToTarget < LANDING_EXIT_ARRIVAL_RADIUS_M || pastNode))
             {
@@ -1769,6 +1800,63 @@ public partial class TaxiGuidanceManager : IDisposable
                     $"alongRemaining={alongRemainingM:F0}m cross={crossM:F0}m pastNode={pastNode}");
                 HandleArrival();
                 return;
+            }
+
+            // Missed-vacate backstop. The two captures above both require the aircraft
+            // to end up NEAR the extension node — within 25 m, or past it by no more
+            // than LANDING_EXIT_ARRIVAL_CROSS_M off to the side. A pilot who takes the
+            // wrong branch at the exit junction satisfies neither and gets NOTHING:
+            // the tone keeps panning at a node that is now behind them, and the
+            // off-route recalc that would normally catch it is suppressed on the final
+            // segment (TryRecalculateRoute's final-segment guard) — which, on a
+            // landing-exit route, is nearly the whole route. LOWS 15 → E, 2026-08-16:
+            // 380 m past the vacate point at 33 kt, in silence, before the pilot
+            // worked it out and turned round.
+            //
+            // Conclude guidance instead of guiding at a node behind the aircraft:
+            // there is nothing left of an exit route once the exit has been missed,
+            // and the taxi planner is the next step either way.
+            if (!stillOnRunway)
+            {
+                if (distToTarget < _landingExitMinDistToTargetM)
+                    _landingExitMinDistToTargetM = distToTarget;
+
+                // Two independent "it's behind us" indicators — the node is astern
+                // along the segment axis, OR the range to it is opening well beyond
+                // the closest approach. Either alone is enough; the mandatory
+                // conjuncts are that the aircraft got near the node at all, is
+                // further off it than the arrival capture allows, and is moving.
+                bool nodeAstern = alongRemainingM <= -MISSED_VACATE_ASTERN_M;
+                bool openingRange = distToTarget
+                    >= _landingExitMinDistToTargetM + MISSED_VACATE_OPENING_M;
+                bool missed = _landingExitMinDistToTargetM <= MISSED_VACATE_APPROACH_M
+                              && Math.Abs(crossM) > LANDING_EXIT_ARRIVAL_CROSS_M
+                              && (nodeAstern || openingRange)
+                              && groundSpeedKts >= OFF_ROUTE_MIN_GS_KTS;
+
+                if (!missed)
+                {
+                    _missedVacateSince = DateTime.MinValue;
+                }
+                else
+                {
+                    if (_missedVacateSince == DateTime.MinValue)
+                        _missedVacateSince = DateTime.UtcNow;
+
+                    if ((DateTime.UtcNow - _missedVacateSince).TotalSeconds
+                        >= MISSED_VACATE_PERSISTENCE_SEC)
+                    {
+                        RolloutDiag($"Landing-exit MISSED: distToTarget={distToTarget:F0}m " +
+                            $"min={_landingExitMinDistToTargetM:F0}m " +
+                            $"alongRemaining={alongRemainingM:F0}m cross={crossM:F0}m " +
+                            $"astern={nodeAstern} opening={openingRange}");
+                        _missedVacateSince = DateTime.MinValue;
+                        // HandleArrival owns the wording (one utterance, not two).
+                        _landingExitMissed = true;
+                        HandleArrival();
+                        return;
+                    }
+                }
             }
         }
 
@@ -1911,14 +1999,34 @@ public partial class TaxiGuidanceManager : IDisposable
                 headingError = minError >= 0.0 ? Math.Max(headingError, minError)
                                                : Math.Min(headingError, minError);
             }
-            else
+            else if (IsWithinRolloutRunwayLaterally(lat, lon))
             {
                 // _rolloutHandoffActive already cleared (turnBegunPH at 15°) but
-                // turnComplete not yet fired. bearing-to-target is still distorted
-                // (exit node sits north of the runway). Use ExitBearingTrue directly
-                // so the tone decays smoothly to zero rather than jumping to a large
+                // turnComplete not yet fired. While the aircraft is STILL OVER THE
+                // RUNWAY PAVEMENT bearing-to-target is distorted (the exit node sits
+                // off to the side of the runway), so use ExitBearingTrue directly:
+                // the tone decays smoothly to zero rather than jumping to a large
                 // bearing-to-node error for the brief gap between the two releases.
                 headingError = minError;
+            }
+            else
+            {
+                // Clear of the pavement — the distortion this override exists for is
+                // over, bearing-to-target is trustworthy again, and the live route is
+                // authoritative. RELEASE, unconditionally.
+                //
+                // This branch used to be the `else` above with no lateral gate, which
+                // made the "floor" a hard REPLACEMENT of the route error for as long
+                // as neither release test fired — and neither can fire when the route
+                // wants a much LARGER pan the SAME way: turnComplete needs the heading
+                // to cross ExitBearingTrue, routeOpposesFloor needs opposite SIGNS.
+                // LOWS 15 → E, 2026-08-16: E curves 167° → 246° but ExitBearingTrue is
+                // its first runway-edge bearing, 193.5°. The aircraft settled on 192.8°,
+                // the floor reported a 0.7° error ("on profile") while the route was
+                // asking for +123°, and the pilot ran 380 m down the wrong taxiway at
+                // 33 kt in a silence that means "you are on it". The floor is a
+                // MINIMUM; it must never cap the route.
+                _postHighSpeedExitMinBearing = 0.0;
             }
         }
 
@@ -2729,9 +2837,34 @@ public partial class TaxiGuidanceManager : IDisposable
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
             string exitName = _route?.DestinationName ?? "the exit";
-            AnnounceInstruction(
-                $"Off the runway at {exitName}. Stop and hold position. " +
-                $"Open the taxi planner to set a route to your gate.");
+            if (_landingExitMissed)
+            {
+                // Reached here from the missed-vacate backstop, not from a capture:
+                // the aircraft is clear of the runway but nowhere near the exit's
+                // hold-clear node. Never call that "off the runway at E" — it would
+                // read as a normal, successful vacate.
+                AnnounceInstruction(
+                    $"You have passed the {exitName} vacate point. Exit guidance ended. " +
+                    $"Stop and hold position, then open the taxi planner to set a route " +
+                    $"to your gate.");
+            }
+            else if (_landingExitOffPavement)
+            {
+                AnnounceInstruction(
+                    $"Off the runway at {exitName}. Stop and hold position. " +
+                    $"Open the taxi planner to set a route to your gate.");
+            }
+            else
+            {
+                // The route ended with the aircraft still within the runway pavement
+                // because the navdata maps no taxiway beyond this junction. "Hold
+                // position" here would stop a blind pilot on an active runway, so say
+                // what is actually true and let them keep rolling clear.
+                AnnounceInstruction(
+                    $"Taxiway data ends at {exitName}. You may still be on the runway — " +
+                    $"continue ahead until clear, then open the taxi planner to set a " +
+                    $"route to your gate.");
+            }
         }
         else if (!_dockingActive)
         {
@@ -2801,6 +2934,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
+        _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
+        _landingExitMissed = false;
+        _landingExitMinDistToTargetM = double.MaxValue;
+        _missedVacateSince = DateTime.MinValue;
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         ResetRolloutApproachLatches();
