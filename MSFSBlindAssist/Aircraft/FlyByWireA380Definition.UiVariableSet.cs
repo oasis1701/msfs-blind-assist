@@ -150,7 +150,7 @@ public partial class FlyByWireA380Definition
         {
             if (value > 0.5)   // only the "Activate" option fires
             {
-                simConnect.ExecuteCalculatorCode($"(>H:{varKey})");
+                simConnect.ExecuteCalculatorCodeUnique($"(>H:{varKey})");
                 announcer.Announce(varKey == "A32NX_CHRONO_RST" ? "Chronometer reset" : "Chronometer start stop");
             }
             return true;
@@ -180,7 +180,7 @@ public partial class FlyByWireA380Definition
         {
             if (value > 0.5)
             {
-                simConnect.ExecuteCalculatorCode("(>K:RUDDER_TRIM_RESET)");
+                simConnect.ExecuteCalculatorCodeUnique("(>K:RUDDER_TRIM_RESET)");
                 announcer.Announce("Rudder trim reset");
             }
             return true;

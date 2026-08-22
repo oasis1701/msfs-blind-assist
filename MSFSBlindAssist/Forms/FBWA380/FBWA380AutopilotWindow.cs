@@ -31,9 +31,9 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         var apDisc = new Button { Text = "AP disconnect", Location = new Point(20, 155), Size = new Size(180, 35), TabIndex = 6, AccessibleName = "Autopilot disconnect" };
         // Same A380-new-FCU K-event family as the mode buttons (the dotted H-event is inert).
         // NOTE: not fire-tested live (would disconnect the AP in flight) — verify on the ground.
-        apDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_AP_DISCONNECT_PUSH)"); RefreshStates(); };
+        apDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_AP_DISCONNECT_PUSH"); RefreshStates(); };
         var athrDisc = new Button { Text = "A/THR disconnect", Location = new Point(210, 155), Size = new Size(180, 35), TabIndex = 7, AccessibleName = "Autothrust disconnect" };
-        athrDisc.Click += (s, e) => { simConnect.ExecuteCalculatorCode("(>K:A32NX.FCU_ATHR_DISCONNECT_PUSH)"); RefreshStates(); };
+        athrDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_ATHR_DISCONNECT_PUSH"); RefreshStates(); };
 
         fdLabel = new Label { Location = new Point(20, 205), Size = new Size(370, 20), AccessibleName = "Flight Director status", Text = "Flight Director: ..." };
 

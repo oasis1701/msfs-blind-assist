@@ -47,7 +47,7 @@ public partial class FlyByWireA380Definition
     public void SendTransponderIdent(SimConnectManager s)
     {
         if (s == null || !s.IsConnected) return;
-        s.ExecuteCalculatorCode("(>K:XPNDR_IDENT_ON)");
+        s.ExecuteCalculatorCodeUnique("(>K:XPNDR_IDENT_ON)");
     }
 
     /// <summary>Press a single RMP keypad key WITHOUT releasing it. Pair with
