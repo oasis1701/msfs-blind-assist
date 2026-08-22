@@ -2872,22 +2872,26 @@ public partial class TaxiGuidanceManager : IDisposable
             // simply going quiet reads as "broken" rather than "done, your
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
-            // _landingExitVacatedEarlyPlannedName, when set, is the exit the pilot was
-            // actually steered toward and missed — captured before the early-vacate swap
-            // repointed _rolloutExit (and therefore _route.DestinationName) at a substitute
-            // exit. Without it, a substitute whose own handoff route then failed the
-            // reachability guard would have this closure name the substitute the pilot is
-            // standing on/near, not the exit they left the runway short of.
-            string exitName = _landingExitVacatedEarlyPlannedName ?? _route?.DestinationName ?? "the exit";
+            string exitName = _route?.DestinationName ?? "the exit";
             if (_landingExitVacatedEarly)
             {
+                // _landingExitVacatedEarlyPlannedName, when set, is the exit the pilot was
+                // actually steered toward and missed — captured before the early-vacate swap
+                // repointed _rolloutExit (and therefore _route.DestinationName) at a substitute
+                // exit. Without it, a substitute whose own handoff route then failed the
+                // reachability guard would have this closure name the substitute the pilot is
+                // standing on/near, not the exit they left the runway short of. Scoped to this
+                // branch only — the other three closures below describe a SUCCESSFUL arrival at
+                // whatever _rolloutExit/_route now name, and applying the planned-exit override
+                // there would misname the substitute exit the pilot actually reached.
+                string vacatedEarlyExitName = _landingExitVacatedEarlyPlannedName ?? exitName;
                 // The aircraft is off the runway but not at the planned exit, and nothing
                 // could be matched to where it actually went. Never route back to the
                 // planned exit from here: at KSEA 34L that produced a 1,678 m loop up the
                 // parallel taxiway and back down toward the runway, because the taxi graph
                 // carries no runway edges and that is the only path between two exits.
                 AnnounceInstruction(
-                    $"You have left the runway short of {exitName}. Exit guidance ended. " +
+                    $"You have left the runway short of {vacatedEarlyExitName}. Exit guidance ended. " +
                     $"Stop and hold position, then open the taxi planner to set a route " +
                     $"to your gate.");
             }

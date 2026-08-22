@@ -501,10 +501,18 @@ public partial class TaxiGuidanceManager
                     // (RetargetLandingExit, the undershoot retarget below) — silently
                     // repointing the tone at a different exit left the pilot's first notice
                     // of it at the arrival callout, with no warning the tone had moved.
+                    // Both clauses use the same lowercase "taxiway X" mid-sentence form
+                    // RetargetLandingExit's "Missed taxiway X. Retargeting taxiway Y…" uses —
+                    // plannedName stays capitalized ("Taxiway X") because that is the format
+                    // _landingExitVacatedEarlyPlannedName must carry to match _route.DestinationName
+                    // for the HandleArrival closures above.
+                    string plannedNameSpoken = _rolloutExit.TaxiwayName.Length > 0
+                        ? $"taxiway {_rolloutExit.TaxiwayName}"
+                        : "exit taxiway";
                     string vacatedName = string.IsNullOrEmpty(vacatedAt.TaxiwayName)
                         ? "exit taxiway"
                         : $"taxiway {vacatedAt.TaxiwayName}";
-                    AnnounceInstruction($"Left the runway short of {plannedName}. Now following {vacatedName}.");
+                    AnnounceInstruction($"Left the runway short of {plannedNameSpoken}. Now following {vacatedName}.");
 
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
@@ -546,6 +554,13 @@ public partial class TaxiGuidanceManager
                 // that matters was just computed by the resolver above, so carry it
                 // across (see the re-set below).
                 bool offPavementAtHandoff = _landingExitOffPavement;
+                // Same carry for the vacated-early planned-exit name: when the early-vacate
+                // branch above matched a substitute exit, it captured the PLANNED exit's
+                // name into this field (see the comment there) precisely so a later
+                // reachability-guard failure can still name it to the pilot. LoadRoute's
+                // fresh-route reset nulls the field before that guard runs, which would
+                // silently defeat the capture — carry it across the same way.
+                string? vacatedEarlyPlannedNameAtHandoff = _landingExitVacatedEarlyPlannedName;
                 string exitName = _rolloutExit.TaxiwayName.Length > 0
                     ? $"Taxiway {_rolloutExit.TaxiwayName}"
                     : "exit taxiway";
@@ -569,6 +584,9 @@ public partial class TaxiGuidanceManager
                     // silence the still-on-runway warning on exactly the airports that
                     // need it (EVRA, EHAM 36C/W8, EFHK 04L/WZ).
                     _landingExitOffPavement = offPavementAtHandoff;
+                    // And for the planned-exit name — restored so the reachability guard
+                    // below, if it fires, has it available for HandleArrival.
+                    _landingExitVacatedEarlyPlannedName = vacatedEarlyPlannedNameAtHandoff;
                 }
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
