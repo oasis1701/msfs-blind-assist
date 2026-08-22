@@ -122,14 +122,19 @@ public static class RolloutExitGate
     /// <c>halfWidth + <see cref="RunwayClearMarginM"/></c> (10 m) — so the node corridor
     /// extends exactly 5 m beyond the clear boundary. An aircraft that is laterally clear, on
     /// an exit path leaving the axis at angle θ, gains lateral offset at <c>tan θ</c> per unit
-    /// of along-track, so its OWN exit's node can be at most <c>5 m / tan θ</c> ahead:
-    /// 95.4 m = 313 ft at the <see cref="ExitSideMinBearingDeg"/> (3°) floor, 61 ft at the
-    /// 15° minimum <see cref="IsExitTurnBegun"/> can fire for. 350 rounds up the worst case.</para>
+    /// of along-track, so its OWN exit's node can be at most <c>5 m / tan θ</c> ahead. θ is the
+    /// AIRCRAFT'S OWN track angle away from the axis, NOT an exit-angle constant:
+    /// <c>GetLandingExits</c> enforces no minimum exit angle for hold-short-derived nodes, and
+    /// <see cref="ExitSideMinBearingDeg"/> is a side-KNOWABILITY floor, not a geometric one. At
+    /// a 3° track that is 95.4 m = 313 ft; at the 15° <see cref="IsExitTurnBegun"/> needs, 61 ft.
+    /// 350 rounds up the worst case.</para>
     ///
-    /// <para>The empirical companion: distinct turnoffs are measured 430–970 ft apart (266
-    /// runway directions across 39 airports; median 672, p95 968). The "own exit" population
-    /// tops out at 313 ft and the "different exit" population starts around 430 ft, so this is
-    /// a separation between two populations rather than a threshold tuned to one case.</para>
+    /// <para>No empirical spacing floor between DISTINCT exits is claimed, and none should be
+    /// read into <c>TaxiGraph.GetLandingExits</c>'s coverage-gap sweep — that measures the far
+    /// ends of RET arcs, i.e. the SAME turnoff, not the spacing between different ones. The one
+    /// real datum about close-together distinct exits is the closest same-name pair kept on the
+    /// hold-short path, EGLL 09R S4E at 433 ft. The derivation above is what carries this
+    /// threshold; do not raise it on the strength of a floor that was never measured.</para>
     ///
     /// <para>This does NOT contradict <see cref="TurnWindowFeet"/>. That 558 ft derivation is
     /// for an aircraft ON THE CENTRELINE, which is where <see cref="IsExitTurnBegun"/> fires;

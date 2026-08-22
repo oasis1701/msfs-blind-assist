@@ -5,13 +5,21 @@
 // caller's own conjunct), and that is what makes the 350 ft threshold sound rather than
 // tuned. GetLandingExits refuses any exit node more than halfWidth + 15 m off the axis,
 // while "clear of the runway" is halfWidth + 10 m — so the node corridor extends exactly
-// 5 m past the clear boundary. An aircraft off the pavement on its OWN exit, leaving the
-// axis at angle theta, can therefore be at most 5 m / tan(theta) short of that exit's
-// node: 313 ft at the 3-degree floor, 61 ft at 15 degrees. Distinct turnoffs are measured
-// 430-970 ft apart, so the two populations do not overlap.
+// 5 m past the clear boundary. An aircraft off the pavement on its OWN exit, whose own
+// track leaves the axis at angle theta, can therefore be at most 5 m / tan(theta) short of
+// that exit's node: 313 ft at a 3-degree track, 61 ft at 15 degrees. Theta is the
+// AIRCRAFT'S track angle, not an exit-angle constant — GetLandingExits enforces no minimum
+// exit angle for hold-short-derived nodes. 350 rounds up that worst case, and the
+// derivation alone is what carries it: no spacing floor between DISTINCT exits is claimed,
+// the one real datum being the closest same-name pair kept, EGLL 09R S4E at 433 ft.
 //
 // signedAlongPastPlannedFeet is POSITIVE when the aircraft is PAST the exit, so "short of
 // the exit" is NEGATIVE.
+//
+// The straight-line distances below are consistent with an aircraft ~150 ft off the axis —
+// genuinely clear of a 200 ft runway, which is the precondition under which this rule is
+// ever asked — and stay under TurnWindowFeet (1,000) so each case isolates the along-track
+// clause. FarOffToTheSide_IsCaughtByTheStraightLineClause is the deliberate exception.
 
 using MSFSBlindAssist.Navigation;
 
@@ -28,7 +36,7 @@ public class EarlyVacateAlongTrackGateTests
         Assert.True(RolloutExitGate.IsVacateAwayFromPlannedExit(
             pastPlannedExit: false,
             signedAlongPastPlannedFeet: -800.0,
-            distToPlannedExitFeet: 805.0));
+            distToPlannedExitFeet: 814.0));   // 800 along + 150 lateral
     }
 
     // A genuine turn onto the PLANNED exit. Once laterally clear, a 15-degree exit's node
@@ -40,18 +48,19 @@ public class EarlyVacateAlongTrackGateTests
         Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(
             pastPlannedExit: false,
             signedAlongPastPlannedFeet: -61.0,
-            distToPlannedExitFeet: 70.0));
+            distToPlannedExitFeet: 162.0));   // 61 along + 150 lateral
     }
 
-    // The worst admissible case: a 3-degree exit, the shallowest angle that has a side at
-    // all, puts its own node at most 313 ft ahead. Still inside the threshold.
+    // The worst practical case: a 3-degree track off the axis, the shallowest worth
+    // tabulating, puts the aircraft's own exit node at most 313 ft ahead. Inside the
+    // threshold.
     [Fact]
     public void ShallowestAdmissibleExit_AtItsGeometricLimit_IsNotAwayFromIt()
     {
         Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(
             pastPlannedExit: false,
             signedAlongPastPlannedFeet: -313.0,
-            distToPlannedExitFeet: 320.0));
+            distToPlannedExitFeet: 347.0));   // 313 along + 150 lateral
     }
 
     // Boundary, both sides. Asserted at the next representable double so a strict/inclusive
@@ -61,9 +70,11 @@ public class EarlyVacateAlongTrackGateTests
     {
         double atThreshold = -RolloutExitGate.VacatedShortAlongTrackFeet;
 
-        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, atThreshold, 360.0));
+        // 350 along + 150 lateral, and well under TurnWindowFeet so only the along-track
+        // clause can decide.
+        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, atThreshold, 381.0));
         Assert.True(RolloutExitGate.IsVacateAwayFromPlannedExit(
-            false, Math.BitDecrement(atThreshold), 360.0));
+            false, Math.BitDecrement(atThreshold), 381.0));
     }
 
     // Past the exit short-circuits regardless of the other two arguments — the overshoot
@@ -80,7 +91,7 @@ public class EarlyVacateAlongTrackGateTests
     [Fact]
     public void PositiveAlongTrack_NeverReadsAsShortOfTheExit()
     {
-        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, 800.0, 805.0));
+        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, 800.0, 814.0));
     }
 
     // The straight-line clause is NOT redundant. An aircraft that has driven a long way off
@@ -98,8 +109,8 @@ public class EarlyVacateAlongTrackGateTests
     // Sanity: with both clauses false the answer is false, so the branch stays closed on an
     // ordinary near-exit handoff.
     [Fact]
-    public void NearTheExitAndOnAxis_IsNotAVacateAwayFromIt()
+    public void NearTheExit_IsNotAVacateAwayFromIt()
     {
-        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, -20.0, 25.0));
+        Assert.False(RolloutExitGate.IsVacateAwayFromPlannedExit(false, -20.0, 152.0));
     }
 }

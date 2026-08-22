@@ -76,7 +76,7 @@ Both inputs are already computed in `UpdateLandingRollout` before the handoff bl
 `halfWidthM + RunwayClearMarginM` (10.0). Both read the same `halfWidth` from the same
 `Runway.Width`, so **the exit-node corridor extends exactly 5 m beyond the clear boundary.**
 
-An aircraft that is laterally clear, on an exit path leaving the axis at local angle θ, gains
+An aircraft that is laterally clear, whose own track leaves the axis at local angle θ, gains
 lateral offset at `tan θ` per unit of along-track. Its own exit's node cannot be further ahead
 than the point at which that node would leave the corridor:
 
@@ -84,21 +84,30 @@ than the point at which that node would leave the corridor:
 alongTrackShortOfOwnNode  ≤  (halfW + 15 − (halfW + 10)) / tan θ  =  5 m / tan θ
 ```
 
-| θ | Max along-track you can be short of **your own** exit while off the pavement |
+θ here is the **aircraft's own track angle** away from the axis as it leaves — not an
+exit-angle constant. `GetLandingExits` enforces no minimum exit angle for HS/IHS nodes, and
+`ExitSideMinBearingDeg` (3°) is a side-*knowability* floor, not a geometric one; it appears
+below only as the shallowest track worth tabulating.
+
+| θ (aircraft's own track off the axis) | Max along-track you can be short of **your own** exit while off the pavement |
 |---|---|
-| 3° (`ExitSideMinBearingDeg` — below this an exit has no side at all) | 95.4 m = **313 ft** |
+| 3° | 95.4 m = **313 ft** |
 | 5° | 187 ft |
 | 7° (the EDDB 24L M3 / LGAV D8 shallow-stub cases) | 134 ft |
-| 15° (shallowest angle `IsExitTurnBegun` can fire for) | 61 ft |
+| 15° (shallowest deviation `IsExitTurnBegun` can fire for) | 61 ft |
 | 90° | 16 ft |
 
-313 ft is the worst case across the whole admissible angle range; 350 rounds it up.
+313 ft is the worst case across the whole practical angle range; 350 rounds it up, and that
+derivation alone is what carries the threshold.
 
-The empirical companion: distinct turnoffs are measured at 430–970 ft apart (266 runway
-directions across 39 airports; median 672, p95 968; the closest same-name pair kept is EGLL
-09R S4E at 433 ft). **The "own exit" population tops out at 313 ft and the "different exit"
-population starts around 430 ft.** They do not overlap, which is what makes this a
-separation rather than a tuned threshold.
+**No empirical spacing floor between distinct exits is claimed.** `TaxiGraph`'s coverage-gap
+sweep (266 runway directions across 39 airports) measures the distance from a gap-fill
+candidate to an exit *already in the list* — the far ends of RET arcs, i.e. the **same**
+physical turnoff — so its figures say nothing about how far apart two *different* turnoffs
+sit, and real spacing at large airports routinely exceeds 1,000 ft (which is exactly why the
+straight-line clause is still needed). The one real datum on close-together distinct exits is
+the closest same-name pair kept on the hold-short path, **EGLL 09R S4E at 433 ft**. Do not
+raise 350 toward it on the strength of a floor that was never measured.
 
 Degenerate case, checked: when `Runway.Width == 0` the two paths use *different* fallbacks —
 75 ft half-width for the node corridor, 200 ft for the clear test — giving negative slack. A
