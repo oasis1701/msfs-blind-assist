@@ -276,6 +276,12 @@ public partial class TaxiGuidanceManager : IDisposable
     private double _landingExitMinDistToTargetM = double.MaxValue;
     private DateTime _missedVacateSince = DateTime.MinValue;
     private bool _landingExitMissed = false;
+    // Set when the handoff concludes because the aircraft left the runway somewhere other
+    // than the planned exit and no exit could be matched to where it actually went — or
+    // the route that was built is not one the aircraft is on. HandleArrival renders a
+    // distinct closure: this is the OPPOSITE failure to _landingExitMissed, which means
+    // "you rolled past the vacate point", so the two must never share wording.
+    private bool _landingExitVacatedEarly = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -2858,7 +2864,19 @@ public partial class TaxiGuidanceManager : IDisposable
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
             string exitName = _route?.DestinationName ?? "the exit";
-            if (_landingExitMissed)
+            if (_landingExitVacatedEarly)
+            {
+                // The aircraft is off the runway but not at the planned exit, and nothing
+                // could be matched to where it actually went. Never route back to the
+                // planned exit from here: at KSEA 34L that produced a 1,678 m loop up the
+                // parallel taxiway and back down toward the runway, because the taxi graph
+                // carries no runway edges and that is the only path between two exits.
+                AnnounceInstruction(
+                    $"You have left the runway short of {exitName}. Exit guidance ended. " +
+                    $"Stop and hold position, then open the taxi planner to set a route " +
+                    $"to your gate.");
+            }
+            else if (_landingExitMissed)
             {
                 // Reached here from the missed-vacate backstop, not from a capture:
                 // the aircraft is clear of the runway but nowhere near the exit's
@@ -2957,6 +2975,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _isLandingExitRoute = false;
         _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
         _landingExitMissed = false;
+        _landingExitVacatedEarly = false;
         _landingExitMinDistToTargetM = double.MaxValue;
         _missedVacateSince = DateTime.MinValue;
         _rolloutRunway = null;

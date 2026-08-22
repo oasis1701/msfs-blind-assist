@@ -172,6 +172,29 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// Signed perpendicular offset (metres) of a point from the runway axis, POSITIVE =
+    /// RIGHT of the runway direction. Companion to <see cref="SignedAlongRunwayMeters"/>,
+    /// using the perpendicular component of the same equirectangular projection.
+    ///
+    /// <para>The sign convention matches <c>LandingExit.ExitSide</c>: the graph assigns
+    /// "Right" when <c>NormalizeAngle(exitBearingTrue - runwayHeadingTrue) &gt;= 0</c>, which
+    /// for a due-north runway puts a right-hand exit east of the axis — positive here.</para>
+    /// </summary>
+    internal static double SignedLateralFromRunwayMeters(
+        double pointLat, double pointLon,
+        double refLat, double refLon,
+        double runwayHeadingTrueDeg)
+    {
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
+        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
+        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
+        double dE = (pointLon - refLon) * metersPerDegLon;
+        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
+        return dE * Math.Cos(hdgRad) - dN * Math.Sin(hdgRad);
+    }
+
+    /// <summary>
     /// True when the aircraft is still laterally within the landing runway's pavement
     /// (half-width + <see cref="RUNWAY_CLEAR_MARGIN_M"/>). The single answer to "is
     /// bearing-to-a-node-beside-the-runway still distorted?" — shared by the
