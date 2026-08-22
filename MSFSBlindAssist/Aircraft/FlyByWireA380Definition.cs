@@ -1031,17 +1031,29 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             // (efis-cp.xml: INDICATOR_CODE = L:A32NX_FCU_EFIS_#SIDE#_#NAME#_LIGHT_ON).
             // Read-only state; the set fires *_PUSH via _fcuToggleEvents.
             //
-            // ⚠️ WPT / VORD / NDB are INDEPENDENT toggles, NOT a single-select filter.
-            // The old A380X_EFIS_*_ACTIVE_FILTER combo (Off/Waypoints/VOR-DME/NDB) modelled
-            // them as mutually exclusive, which is wrong: live-verified 2026-08-18 that WPT,
-            // VORD and NDB can all be lit at the same time. Three separate On/Off controls
-            // is the faithful shape, and a blind pilot gets the same reach as a sighted one.
+            // V/V, CSTR and ARPT are genuinely INDEPENDENT toggles (T flip-flops in
+            // A380FcuComputer.cpp), so they stay as separate On/Off controls.
             OnOff($"A32NX_FCU_EFIS_{side}_VV_LIGHT_ON", $"{who} V/V");
             OnOff($"A32NX_FCU_EFIS_{side}_CSTR_LIGHT_ON", $"{who} Constraints");
             OnOff($"A32NX_FCU_EFIS_{side}_ARPT_LIGHT_ON", $"{who} Airport");
-            OnOff($"A32NX_FCU_EFIS_{side}_WPT_LIGHT_ON", $"{who} Waypoints");
-            OnOff($"A32NX_FCU_EFIS_{side}_VORD_LIGHT_ON", $"{who} VOR/DME");
-            OnOff($"A32NX_FCU_EFIS_{side}_NDB_LIGHT_ON", $"{who} NDB");
+            // ⚠️ WPT / VORD / NDB are NOT independent — they are ONE selection, and offering
+            // them as three switches is the defect a test pilot reported ("turn Waypoints on,
+            // then NDB on, and Waypoints turns off"). The FCU holds a single pEfisFilter enum;
+            // see NdFilterSelection for the evidence and the press mapping. The three lights
+            // are silent state FEEDERS for that combo — consumed in ProcessSimVarUpdate, never
+            // announced individually, or one filter change would speak twice (old off, new on).
+            foreach (var btn in new[] { "WPT", "VORD", "NDB" })
+                vars[$"A32NX_FCU_EFIS_{side}_{btn}_LIGHT_ON"] = new SimVarDefinition
+                {
+                    Name = $"A32NX_FCU_EFIS_{side}_{btn}_LIGHT_ON", DisplayName = $"{who} {btn} light",
+                    Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+                    IsAnnounced = true, ExcludeFromMonitorManager = true
+                };
+            Act($"ND_FILTER_{side}", $"{who} ND Filter", new Dictionary<double, string>
+            {
+                [NdFilterSelection.Off] = "Off", [NdFilterSelection.Waypoints] = "Waypoints",
+                [NdFilterSelection.VorDme] = "VOR/DME", [NdFilterSelection.Ndb] = "NDB"
+            });
             Sel($"A32NX_EFIS_{side}_ND_MODE", $"{who} ND Mode",
                 new Dictionary<double, string> { [0] = "Rose ILS", [1] = "Rose VOR", [2] = "Rose Nav", [3] = "Arc", [4] = "Plan" });
             Sel($"A32NX_EFIS_{side}_ND_RANGE", $"{who} ND Range",
@@ -2921,6 +2933,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
     // Per-var last announced state for the ARINC429 enum guard.
     private readonly Dictionary<string, int> _arincEnumState = new();
+    // ND option-filter state per side, plus the raw lights it is derived from (see
+    // ProcessSimVarUpdate). One selection, never three independent flags — NdFilterSelection.
+    private readonly Dictionary<string, bool> _ndLightsL = new(), _ndLightsR = new();
+    private int _ndFilterL, _ndFilterR;
+
     // Last announced bit state for the two FMA monitors that share PRIM FG discrete word 5
     // (see ProcessSimVarUpdate). Absent key = not yet sampled, so the first read baselines
     // silently instead of announcing on connect.
@@ -3204,22 +3221,20 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ["A32NX_FCU_APPR_LIGHT_ON"] = "A32NX.FCU_APPR_PUSH",
         // (No EXPED entry — the A380 FCU has no EXPED button; A32NX.FCU_EXPED_PUSH does
         // not exist on this airframe either. See the registration block for the evidence.)
-        // EFIS control-panel buttons, per side. Same shape as LOC/APPR: the *_LIGHT_ON
-        // var is read-only FCU output (the cockpit's own INDICATOR_CODE reads it) and the
-        // set fires the matching push event. All twelve live-verified 0->1->0 individually
-        // on a380x-dev.1bbd304, 2026-08-18.
+        // EFIS control-panel toggle buttons, per side. Same shape as LOC/APPR: the
+        // *_LIGHT_ON var is read-only FCU output (the cockpit's own INDICATOR_CODE reads it)
+        // and the set fires the matching push event.
+        //
+        // ⚠️ ONLY the three genuinely independent buttons live here. WPT / VORD / NDB are one
+        // mutually-exclusive selection, driven through the ND_FILTER_{side} combo instead —
+        // putting them here would offer three switches the aircraft cannot honour. See
+        // NdFilterSelection.
         ["A32NX_FCU_EFIS_L_ARPT_LIGHT_ON"] = "A32NX.FCU_EFIS_L_ARPT_PUSH",
         ["A32NX_FCU_EFIS_L_CSTR_LIGHT_ON"] = "A32NX.FCU_EFIS_L_CSTR_PUSH",
         ["A32NX_FCU_EFIS_L_VV_LIGHT_ON"] = "A32NX.FCU_EFIS_L_VV_PUSH",
-        ["A32NX_FCU_EFIS_L_WPT_LIGHT_ON"] = "A32NX.FCU_EFIS_L_WPT_PUSH",
-        ["A32NX_FCU_EFIS_L_VORD_LIGHT_ON"] = "A32NX.FCU_EFIS_L_VORD_PUSH",
-        ["A32NX_FCU_EFIS_L_NDB_LIGHT_ON"] = "A32NX.FCU_EFIS_L_NDB_PUSH",
         ["A32NX_FCU_EFIS_R_ARPT_LIGHT_ON"] = "A32NX.FCU_EFIS_R_ARPT_PUSH",
         ["A32NX_FCU_EFIS_R_CSTR_LIGHT_ON"] = "A32NX.FCU_EFIS_R_CSTR_PUSH",
         ["A32NX_FCU_EFIS_R_VV_LIGHT_ON"] = "A32NX.FCU_EFIS_R_VV_PUSH",
-        ["A32NX_FCU_EFIS_R_WPT_LIGHT_ON"] = "A32NX.FCU_EFIS_R_WPT_PUSH",
-        ["A32NX_FCU_EFIS_R_VORD_LIGHT_ON"] = "A32NX.FCU_EFIS_R_VORD_PUSH",
-        ["A32NX_FCU_EFIS_R_NDB_LIGHT_ON"] = "A32NX.FCU_EFIS_R_NDB_PUSH",
     };
     private readonly Dictionary<string, double> _fcuStateCache = new();
 

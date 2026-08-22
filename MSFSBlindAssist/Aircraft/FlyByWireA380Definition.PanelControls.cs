@@ -261,12 +261,11 @@ public partial class FlyByWireA380Definition
         p["EFIS Captain"] = new List<string>
         {
             "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_L_TRAF_BUTTON_IS_ON",
-            // V/V, CSTR, ARPT + the three ND-filter buttons now come from the FCU EFIS-CP
-            // lights (FBW #10855). WPT/VORD/NDB replace the old single-select ND Filter
-            // combo — they are independent toggles, not mutually exclusive.
+            // V/V, CSTR and ARPT come from the FCU EFIS-CP lights (FBW #10855) and are
+            // independent toggles. The ND filter is ONE selection (Off/Waypoints/VOR-DME/NDB),
+            // not three switches — see NdFilterSelection.
             "A32NX_FCU_EFIS_L_VV_LIGHT_ON", "A32NX_FCU_EFIS_L_CSTR_LIGHT_ON",
-            "A32NX_FCU_EFIS_L_ARPT_LIGHT_ON", "A32NX_FCU_EFIS_L_WPT_LIGHT_ON",
-            "A32NX_FCU_EFIS_L_VORD_LIGHT_ON", "A32NX_FCU_EFIS_L_NDB_LIGHT_ON",
+            "A32NX_FCU_EFIS_L_ARPT_LIGHT_ON", "ND_FILTER_L",
             "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
             "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
@@ -280,12 +279,11 @@ public partial class FlyByWireA380Definition
         p["EFIS First Officer"] = new List<string>
         {
             "A380X_EFIS_R_LS_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
-            // V/V, CSTR, ARPT + the three ND-filter buttons now come from the FCU EFIS-CP
-            // lights (FBW #10855). WPT/VORD/NDB replace the old single-select ND Filter
-            // combo — they are independent toggles, not mutually exclusive.
+            // V/V, CSTR and ARPT come from the FCU EFIS-CP lights (FBW #10855) and are
+            // independent toggles. The ND filter is ONE selection (Off/Waypoints/VOR-DME/NDB),
+            // not three switches — see NdFilterSelection.
             "A32NX_FCU_EFIS_R_VV_LIGHT_ON", "A32NX_FCU_EFIS_R_CSTR_LIGHT_ON",
-            "A32NX_FCU_EFIS_R_ARPT_LIGHT_ON", "A32NX_FCU_EFIS_R_WPT_LIGHT_ON",
-            "A32NX_FCU_EFIS_R_VORD_LIGHT_ON", "A32NX_FCU_EFIS_R_NDB_LIGHT_ON",
+            "A32NX_FCU_EFIS_R_ARPT_LIGHT_ON", "ND_FILTER_R",
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
             "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
@@ -619,8 +617,8 @@ public partial class FlyByWireA380Definition
         // text ("1013 hPa" / "29.92 inHg" / "Standard"), so the same value the
         // pilot hears auto-announced now also reads in the panel. (The preselect QNH
         // read-out was removed — see the baro-preselect note above.)
-        d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA" };
-        d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA" };
+        d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA", "ND_FILTER_L" };
+        d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA", "ND_FILTER_R" };
         // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
         // in d["RMP"] (FBW L:vars) and the RMP window.
         d["Transponder"] = new List<string> { "XPNDR_CODE", "XPNDR_STATE", "A32NX_DCDU_ATC_MSG_WAITING" };

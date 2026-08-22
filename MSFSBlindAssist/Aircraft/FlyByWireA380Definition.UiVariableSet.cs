@@ -452,6 +452,17 @@ public partial class FlyByWireA380Definition
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
             return true;
         }
+        // ND option filter: ONE selection, so a change is ONE press. There is no "off" button
+        // — clearing re-presses whatever is active. NdFilterSelection owns that mapping and
+        // the evidence for it; the state comes from the live lights via ProcessSimVarUpdate.
+        if (varKey == "ND_FILTER_L" || varKey == "ND_FILTER_R")
+        {
+            string side = varKey == "ND_FILTER_L" ? "L" : "R";
+            int current = varKey == "ND_FILTER_L" ? _ndFilterL : _ndFilterR;
+            if (NdFilterSelection.PushEvent(side, current, (int)Math.Round(value)) is { } ndEvt)
+                simConnect.SendEvent(ndEvt);
+            return true;
+        }
         // EFIS baro STD/QNH. Event name + the push=STD polarity live in BaroModeEvent above —
         // read its remarks before touching either. Fired UNCONDITIONALLY: both are idempotent
         // directional mode sets, so no toggle-if-differs guard (a stale readback would wedge

@@ -73,6 +73,29 @@ public partial class FlyByWireA380Definition
         // half as it arrives (ProcessSimVarUpdate has no SimConnect handle to read the
         // partner) and recompute the per-side position so the "… Position" readout is live
         // (rendered from _wiperState* in TryGetDisplayOverride). Never spoken (return true).
+        // ND option filter — ONE selection per side, fed by its three lights. Stored as they
+        // arrive (ProcessSimVarUpdate has no SimConnect handle to read the siblings) and
+        // rendered from _ndFilter* in TryGetDisplayOverride. Silent (return true): the combo
+        // speaks the selection, so announcing the lights too would say it twice on every
+        // change — once for the filter switching off, once for the new one coming on.
+        if (varName.StartsWith("A32NX_FCU_EFIS_", StringComparison.Ordinal)
+            && varName.EndsWith("_LIGHT_ON", StringComparison.Ordinal))
+        {
+            bool isLeft = varName["A32NX_FCU_EFIS_".Length] == 'L';
+            var lights = isLeft ? _ndLightsL : _ndLightsR;
+            string button = varName.Substring("A32NX_FCU_EFIS_X_".Length,
+                varName.Length - "A32NX_FCU_EFIS_X_".Length - "_LIGHT_ON".Length);
+            if (button is "WPT" or "VORD" or "NDB")
+            {
+                lights[button] = value > 0.5;
+                int filter = NdFilterSelection.FromLights(
+                    lights.GetValueOrDefault("WPT"), lights.GetValueOrDefault("VORD"),
+                    lights.GetValueOrDefault("NDB"));
+                if (isLeft) _ndFilterL = filter; else _ndFilterR = filter;
+                return true;
+            }
+        }
+
         switch (varName)
         {
             case "WIPER_L_SW":  _wiperSwL = value;  _wiperStateL = WiperPosition.FromCircuit(_wiperSwL, _wiperPwrL); return true;
