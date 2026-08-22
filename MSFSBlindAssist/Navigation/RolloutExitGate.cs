@@ -83,8 +83,9 @@ public static class RolloutExitGate
     /// Below this relative bearing an exit has no meaningful side and the direction test is
     /// skipped. Matches the existing <c>ExitAngleDegrees >= 3.0</c> gate in
     /// <c>alignedWithExit</c>: below 3° an exit is geometrically indistinguishable from
-    /// straight ahead. <c>ExitBearingTrue == 0.0</c> — the "unknown" sentinel used throughout
-    /// the rollout code — normalises into this band, which is the intended degradation.
+    /// straight ahead. The <c>ExitBearingTrue == 0.0</c> "unknown" sentinel is mapped into
+    /// this band by <see cref="ExitRelativeBearingDeg"/> — NOT by the subtraction itself,
+    /// which would place it at <c>-runwayHeadingTrue</c> and fabricate a side.
     /// </summary>
     public const double ExitSideMinBearingDeg = 3.0;
 
@@ -214,8 +215,9 @@ public static class RolloutExitGate
     /// <summary>
     /// Does the exit have a knowable side, per the same <see cref="ExitSideMinBearingDeg"/>
     /// floor <see cref="IsTurnTowardExit"/> degrades on? False for the
-    /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel (which normalises to a relative
-    /// bearing of 0.0) and for any exit close enough to dead-ahead to be geometrically
+    /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel (which
+    /// <see cref="ExitRelativeBearingDeg"/> maps to 0.0) and for any exit close enough to
+    /// dead-ahead to be geometrically
     /// indistinguishable from straight.
     /// </summary>
     public static bool HasKnownExitSide(double exitRelativeBearingDeg)
@@ -237,9 +239,10 @@ public static class RolloutExitGate
     /// heading test can fake.</para>
     /// </summary>
     /// <param name="exitRelativeBearingDeg">
-    /// <c>NormalizeAngle(exit.ExitBearingTrue - runwayHeadingTrue)</c>. The
-    /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel lands inside
-    /// <see cref="ExitSideMinBearingDeg"/> and disables the direction test.
+    /// From <see cref="ExitRelativeBearingDeg"/> — never a hand-written
+    /// <c>NormalizeAngle(exit.ExitBearingTrue - runwayHeadingTrue)</c>, which does not
+    /// degrade the <c>ExitBearingTrue == 0.0</c> "unknown" sentinel and would hand this
+    /// method a fabricated exit side on every runway not aligned near 360°.
     /// </param>
     public static bool IsExitTurnBegun(
         double headingDeltaSignedDeg,
@@ -386,5 +389,34 @@ public static class RolloutExitGate
             : HandoffReachDefaultHalfWidthM;
 
         return crossTrackToFirstSegmentMetres <= halfWidthM + HandoffReachMarginM;
+    }
+
+    /// <summary>
+    /// Decode a <c>LandingExit.ExitBearingTrue</c> into a bearing relative to the runway,
+    /// POSITIVE = RIGHT, handling the <c>0.0</c> "unknown" sentinel.
+    ///
+    /// <para>The ONE owner of that sentinel. A plain
+    /// <c>NormalizeAngle(exitBearingTrue - runwayHeadingTrue)</c> does NOT degrade safely:
+    /// for the sentinel it yields <c>NormalizeAngle(-runwayHeadingTrue)</c> — −20° on a 020°
+    /// runway, +90° on a 270° runway — which <see cref="HasKnownExitSide"/> accepts as a real
+    /// side, so the direction test then compares a live heading against a fabricated one.
+    /// Returning 0.0 puts it inside <see cref="ExitSideMinBearingDeg"/>, which is what
+    /// actually disables the direction test.</para>
+    /// </summary>
+    public static double ExitRelativeBearingDeg(double exitBearingTrue, double runwayHeadingTrue)
+        => exitBearingTrue != 0.0
+            ? NormalizeAngle(exitBearingTrue - runwayHeadingTrue)
+            : 0.0;
+
+    /// <summary>
+    /// Fold an angle into [−180, 180]. Private to keep this module free of the Services and
+    /// graph dependencies its class doc promises — the same choice
+    /// <see cref="LandingExitDestination"/> and <see cref="RunwayVacateResolver"/> make.
+    /// </summary>
+    private static double NormalizeAngle(double angle)
+    {
+        while (angle > 180) angle -= 360;
+        while (angle < -180) angle += 360;
+        return angle;
     }
 }

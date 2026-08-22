@@ -311,11 +311,10 @@ public partial class TaxiGuidanceManager
         bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
         bool pastExit = signedAlongPastFt > 0.0;
         // Relative bearing of the chosen exit from the runway heading, same sign convention.
-        // ExitBearingTrue == 0.0 is the "unknown" sentinel and normalises into the sub-3°
-        // band that disables the direction test — the intended degradation.
-        double exitRelBearingDeg = _rolloutExit.ExitBearingTrue != 0.0
-            ? NormalizeAngle(_rolloutExit.ExitBearingTrue - _rolloutRunwayHeadingTrue)
-            : 0.0;
+        // The decoder owns the ExitBearingTrue == 0.0 "unknown" sentinel — see its doc for
+        // why the bare subtraction fabricates a side instead of degrading.
+        double exitRelBearingDeg = Navigation.RolloutExitGate.ExitRelativeBearingDeg(
+            _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue);
 
         // Speed-gated: above ROLLOUT_TURN_MAX_GS_KTS a heading deviation is touchdown yaw /
         // crab alignment, not a deliberate runway exit turn. Direction- and proximity-gated

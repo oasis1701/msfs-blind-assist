@@ -1663,9 +1663,8 @@ public partial class TaxiGuidanceManager : IDisposable
         {
             double hdgDeltaSignedPH = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
             double hdgDeltaAbsPH = Math.Abs(hdgDeltaSignedPH);
-            double exitRelBearingPH = _rolloutExit.ExitBearingTrue != 0.0
-                ? NormalizeAngle(_rolloutExit.ExitBearingTrue - _rolloutRunwayHeadingTrue)
-                : 0.0;
+            double exitRelBearingPH = Navigation.RolloutExitGate.ExitRelativeBearingDeg(
+                _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue);
             // Direction test only, NOT the distance window IsExitTurnBegun applies. This
             // block runs AFTER handoff, when the aircraft is already near or past the exit,
             // so a proximity gate would be wrong here. But a wrong-way turn clearing the
