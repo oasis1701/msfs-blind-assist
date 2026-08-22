@@ -136,4 +136,55 @@ public static class RolloutExitGate
         if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
         return RolloutToneMode.DriftCorrection;
     }
+
+    /// <summary>
+    /// Has the pilot begun the turn onto the selected exit?
+    ///
+    /// <para>Every argument is signed relative to the runway heading, POSITIVE = RIGHT.</para>
+    ///
+    /// <para>The direction and distance clauses are the 2026-08 fix. The gate used to be
+    /// <c>Math.Abs(headingDelta) >= 15 &amp;&amp; gs &lt; 90</c>, which at KSEA 34L read a
+    /// 15.1° LEFT deceleration drift, 2,232 ft short of an exit lying 13.6° to the RIGHT,
+    /// as the exit turn. The handoff that followed pointed the steering tone at a graph node
+    /// 54 m away and 17.8 m outside the runway edge.</para>
+    ///
+    /// <para>A genuine early turn-off at a DIFFERENT exit is not this method's job and is not
+    /// lost by tightening it: <c>exitedLaterally</c> catches that from position, which no
+    /// heading test can fake.</para>
+    /// </summary>
+    /// <param name="exitRelativeBearingDeg">
+    /// <c>NormalizeAngle(exit.ExitBearingTrue - runwayHeadingTrue)</c>. The
+    /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel lands inside
+    /// <see cref="ExitSideMinBearingDeg"/> and disables the direction test.
+    /// </param>
+    public static bool IsExitTurnBegun(
+        double headingDeltaSignedDeg,
+        double groundSpeedKts,
+        double distToExitFeet,
+        bool pastExit,
+        double exitRelativeBearingDeg)
+    {
+        if (Math.Abs(headingDeltaSignedDeg) < TurnBegunHeadingDeg) return false;
+        if (groundSpeedKts >= TurnMaxGroundSpeedKts) return false;
+        if (!pastExit && distToExitFeet > TurnWindowFeet) return false;
+        return IsTurnTowardExit(headingDeltaSignedDeg, exitRelativeBearingDeg);
+    }
+
+    /// <summary>
+    /// Is a heading deviation on the same side as the exit?
+    ///
+    /// <para>Exposed separately from <see cref="IsExitTurnBegun"/> because the post-handoff
+    /// overshoot monitor needs the direction test WITHOUT the distance window — it runs when
+    /// the aircraft is already near or past the exit, where a window would be wrong.</para>
+    ///
+    /// <para>Returns true when the exit has no meaningful side, so an unknown bearing degrades
+    /// to the old direction-blind behaviour rather than stranding the pilot. Callers always
+    /// pass a deviation of at least <see cref="TurnBegunHeadingDeg"/>, so
+    /// <c>Math.Sign(headingDeltaSignedDeg)</c> is never zero here.</para>
+    /// </summary>
+    public static bool IsTurnTowardExit(double headingDeltaSignedDeg, double exitRelativeBearingDeg)
+    {
+        if (Math.Abs(exitRelativeBearingDeg) < ExitSideMinBearingDeg) return true;
+        return Math.Sign(headingDeltaSignedDeg) == Math.Sign(exitRelativeBearingDeg);
+    }
 }
