@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -99,6 +99,7 @@ public partial class MainForm
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
+            "TFDI_MD11" => new TFDiMD11Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -163,6 +164,16 @@ public partial class MainForm
                     pmdgProgPageMonitor = null;
                 }
                 EnsurePMDGProgPageMonitor();
+            }
+
+            else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+            {
+                // The MD-11 is NOT an IPMDGAircraft, but it still reads a SimConnect client data
+                // area — its MCDU text export. InitializePMDG is the shared client-data hook (it
+                // registers the MD11MCDU manager); without this call the manager is never created
+                // and all three CDUs stay blank. No PMDGDataManager/PROG-monitor wiring here —
+                // those are PMDG-only and InitializePMDG leaves PMDGDataManager null for the MD-11.
+                simConnectManager.InitializePMDG(currentAircraft);
             }
 
             // Automatically switch database if simulator version doesn't match
@@ -607,6 +618,14 @@ public partial class MainForm
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
 
+        // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
+        // into L:CEVENT. Left running it would keep actuating controls on whatever aircraft is
+        // loaded NEXT (the sim stays connected across a switch), which is the same failure the
+        // A380 motion-timer teardown above exists to prevent — except CEVENT ids are meaningless
+        // on another airframe, so the writes would be arbitrary. Dispose drains and stops it.
+        if (oldAircraft is TFDiMD11Definition oldMd11 && !ReferenceEquals(oldAircraft, newAircraft))
+            oldMd11.Dispose();
+
         // An armed liftoff → Hand Fly handoff must not survive the switch — its
         // confirm could otherwise fire against the new aircraft in the middle of
         // the re-registration churn below (same hygiene as the disconnect path
@@ -763,6 +782,29 @@ public partial class MainForm
             pmdgCDUForm = null;
         }
 
+        // Dispose the MD-11 MCDU form on swap. It holds a poll timer and the outgoing definition
+        // (its key-press target), so leaving it alive would tick against a disposed aircraft.
+        if (md11McduForm != null && !md11McduForm.IsDisposed)
+        {
+            md11McduForm.Dispose();
+            md11McduForm = null;
+        }
+
+        // The MD-11 EFB client holds the ONE inspector socket Coherent allows for that view —
+        // leaving it open would block the page for the rest of the process, so the next aircraft
+        // (or a re-loaded MD-11) could never connect to its EFB again.
+        if (md11EfbForm != null && !md11EfbForm.IsDisposed)
+        {
+            md11EfbForm.Dispose();
+            md11EfbForm = null;
+        }
+        if (coherentMd11Efb != null)
+        {
+            coherentMd11Efb.Stop();
+            coherentMd11Efb.Dispose();
+            coherentMd11Efb = null;
+        }
+
         // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
         // their state-update wiring so the next aircraft doesn't get cross-talk.
         if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
@@ -851,7 +893,11 @@ public partial class MainForm
         }
 
         // PMDG data manager lifecycle
-        if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
+        // The MD-11 rides the same hook (InitializePMDG registers its MD11MCDU client-data
+        // manager) even though it is not an IPMDGAircraft — otherwise a switch INTO the MD-11
+        // lands in the else branch and disposes the manager, leaving all three CDUs blank.
+        if ((newAircraft is IPMDGAircraft || newAircraft?.AircraftCode == "TFDI_MD11")
+            && simConnectManager.IsConnected)
         {
             simConnectManager.InitializePMDG(newAircraft);
             if (simConnectManager.PMDGDataManager != null)
@@ -964,11 +1010,16 @@ public partial class MainForm
         horizonSim787MenuItem.Checked = false;
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
+        tfdiMd11MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
         // be tested BEFORE the A320 (a derived instance also matches the base type).
-        if (currentAircraft is HeadwindA330Definition)
+        if (currentAircraft is TFDiMD11Definition)
+        {
+            tfdiMd11MenuItem.Checked = true;
+        }
+        else if (currentAircraft is HeadwindA330Definition)
         {
             headwindA330MenuItem.Checked = true;
         }

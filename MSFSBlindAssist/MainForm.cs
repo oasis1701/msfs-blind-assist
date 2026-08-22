@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -143,6 +143,20 @@ public partial class MainForm : Form
     private Forms.IFly737.IFly737CDUForm? iflyCduForm;
 
     private Forms.IFly737.IFlyEfbForm? iflyEfbForm;
+
+    // TFDi MD-11: all three MCDUs (Left/Center/Right) in one window, fed by the MD11MCDU
+    // client data area. The form reads SimConnectManager for the live manager, so it survives
+    // being opened before the sim connects.
+    private Forms.MD11.Md11McduForm? md11McduForm;
+
+    // TFDi MD-11 EFB — the shared FbwEfbForm over the Coherent debugger, pointed at the MD-11's
+    // own EFB view. One tablet, so unlike PMDG there is no Captain/FO pair.
+    private CoherentPmdgEfbClient? coherentMd11Efb;
+    private Forms.FBWA380.FbwEfbForm? md11EfbForm;
+
+    // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
+    // them individually is not a nicety here.
+    private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
 

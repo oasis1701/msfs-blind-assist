@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Settings;
@@ -315,6 +315,20 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> IFlyDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Monitor Manager (Ctrl+M, Md11MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated
+        // when AircraftCode == "TFDI_MD11" — both at the generic gate AND via the Suppressed wrap,
+        // because the MD-11 announces its flap read-out from INSIDE ProcessSimVarUpdate (the HS787
+        // pattern) where the generic gate never runs.
+        //
+        // This matters more on the MD-11 than on most aircraft: it registers 532 announcing
+        // annunciator lamps, which is the whole point (a blind pilot cannot see a lamp light) but
+        // is also a lot of voice in a busy phase. Persisted across sessions.
+        public List<string> Md11DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="Md11DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
 
@@ -537,6 +551,7 @@ public class UserSettings
         HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
+        Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
     }
 
     /// <summary>
