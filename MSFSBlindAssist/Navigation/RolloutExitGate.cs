@@ -178,9 +178,14 @@ public static class RolloutExitGate
     /// the aircraft is already near or past the exit, where a window would be wrong.</para>
     ///
     /// <para>Returns true when the exit has no meaningful side, so an unknown bearing degrades
-    /// to the old direction-blind behaviour rather than stranding the pilot. Callers always
-    /// pass a deviation of at least <see cref="TurnBegunHeadingDeg"/>, so
-    /// <c>Math.Sign(headingDeltaSignedDeg)</c> is never zero here.</para>
+    /// to the old direction-blind behaviour rather than stranding the pilot. Both current
+    /// callers — <see cref="IsExitTurnBegun"/> and the post-handoff overshoot monitor's
+    /// <c>turnBegunPH</c> — guard <c>headingDeltaSignedDeg</c> to at least
+    /// <see cref="TurnBegunHeadingDeg"/> before calling here, but that guard is theirs, not
+    /// this method's: nothing here enforces it. Called directly with a zero delta, this method
+    /// returns false whenever the exit has a real side — the safe answer, since a zero
+    /// deviation cannot be a turn toward anything — and true only when the exit has no
+    /// meaningful side to disagree with.</para>
     /// </summary>
     public static bool IsTurnTowardExit(double headingDeltaSignedDeg, double exitRelativeBearingDeg)
     {

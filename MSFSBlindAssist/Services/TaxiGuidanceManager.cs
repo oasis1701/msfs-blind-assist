@@ -1644,8 +1644,19 @@ public partial class TaxiGuidanceManager : IDisposable
         if (_rolloutHandoffActive && _rolloutExit != null && _rolloutRunway != null)
         {
             double hdgDeltaAbsPH = Math.Abs(NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue));
+            double hdgDeltaSignedPH = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
+            double exitRelBearingPH = _rolloutExit.ExitBearingTrue != 0.0
+                ? NormalizeAngle(_rolloutExit.ExitBearingTrue - _rolloutRunwayHeadingTrue)
+                : 0.0;
+            // Direction test only, NOT the distance window IsExitTurnBegun applies. This
+            // block runs AFTER handoff, when the aircraft is already near or past the exit,
+            // so a proximity gate would be wrong here. But a wrong-way turn clearing the
+            // overshoot monitor is the same hole one level down: turnBegunPH sets
+            // _rolloutHandoffActive = false under the comment "Pilot has taken the exit".
             bool turnBegunPH = hdgDeltaAbsPH >= ROLLOUT_TURN_BEGAN_HDG_DEG
-                               && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+                               && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
+                               && Navigation.RolloutExitGate.IsTurnTowardExit(
+                                      hdgDeltaSignedPH, exitRelBearingPH);
 
             double halfWidthFtPH = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
             double lateralFtPH = AbsLateralFromRunwayMeters(

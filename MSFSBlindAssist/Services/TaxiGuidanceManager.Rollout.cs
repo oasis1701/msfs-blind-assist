@@ -290,9 +290,10 @@ public partial class TaxiGuidanceManager
             TaxiGraph.FastDistanceMeters(lat, lon, _rolloutExit.Latitude, _rolloutExit.Longitude)
             * METERS_TO_FEET;
 
-        // Heading deviation from runway centerline. Positive sign matters
-        // less than magnitude here — the question is whether the pilot has
-        // started turning yet.
+        // Heading deviation from the runway centreline, signed, POSITIVE = RIGHT.
+        // The SIGN is load-bearing: a deviation away from the exit's own side is drift,
+        // not the exit turn (KSEA 34L 2026-08-21). hdgDeltaAbs is still what the lateral
+        // and overshoot gates below want.
         double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
         double hdgDeltaAbs = Math.Abs(hdgDelta);
 
@@ -309,10 +310,18 @@ public partial class TaxiGuidanceManager
         bool atTaxiSpeed = groundSpeedKts < ROLLOUT_TAXI_GS_KTS;
         bool nearExit = distToExitFeet < ROLLOUT_NEAR_EXIT_FT;
         bool pastExit = signedAlongPastFt > 0.0;
-        // Speed-gated: above ROLLOUT_TURN_MAX_GS_KTS a heading deviation is
-        // touchdown yaw / crab alignment, not a deliberate runway exit turn.
-        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
-                         && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+        // Relative bearing of the chosen exit from the runway heading, same sign convention.
+        // ExitBearingTrue == 0.0 is the "unknown" sentinel and normalises into the sub-3°
+        // band that disables the direction test — the intended degradation.
+        double exitRelBearingDeg = _rolloutExit.ExitBearingTrue != 0.0
+            ? NormalizeAngle(_rolloutExit.ExitBearingTrue - _rolloutRunwayHeadingTrue)
+            : 0.0;
+
+        // Speed-gated: above ROLLOUT_TURN_MAX_GS_KTS a heading deviation is touchdown yaw /
+        // crab alignment, not a deliberate runway exit turn. Direction- and proximity-gated
+        // since 2026-08: see Navigation/RolloutExitGate.IsExitTurnBegun.
+        bool turnBegun = Navigation.RolloutExitGate.IsExitTurnBegun(
+            hdgDelta, groundSpeedKts, distToExitFeet, pastExit, exitRelBearingDeg);
         // Effectively stopped before reaching the exit — e.g. pilot braked
         // hard after an undershoot retarget left the exit 500+ ft away.
         // The atTaxiSpeed&&nearExit gate intentionally doesn't fire this far
