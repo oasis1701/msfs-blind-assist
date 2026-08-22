@@ -401,7 +401,13 @@ public partial class TaxiGuidanceManager
         // aircraft closes to <=250 ft of the exit — no regression. 90° normal
         // exits: turnBegun fires almost immediately upon turn, before the lateral
         // gate is relevant. No behavioral change for the common case.
-        bool exitedLaterally = lateralFromCenterlineFt >= halfRunwayWidthFt + 30.0
+        // The lateral term is the SHARED predicate, not a local threshold. It used to be
+        // `lateralFromCenterlineFt >= halfRunwayWidthFt + 30.0` (9.144 m), which sat 0.856 m
+        // inside IsWithinRolloutRunwayLaterally's 10 m margin — so the handoff fired on a
+        // frame that every downstream guard still read as ON the runway, skipping the
+        // early-vacate retarget and passing the reachability guard unconditionally
+        // (PR #204 review). The trigger now moves 0.856 m later, the conservative direction.
+        bool exitedLaterally = !IsWithinRolloutRunwayLaterally(lat, lon)
                                && (distToExitFeet <= 250.0
                                    || hdgDeltaAbs >= 8.0
                                    || pastExit);

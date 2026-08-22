@@ -207,6 +207,11 @@ public partial class TaxiGuidanceManager
     /// Runway.Width is in FEET (as everywhere else in this file), so it is converted
     /// before comparing against the metre lateral offset — a bare Width * 0.5 read as
     /// metres makes the band ~3x too wide.
+    ///
+    /// The half-width/margin comparison itself lives in
+    /// <see cref="Navigation.RolloutExitGate.IsLaterallyClearOfRunway"/> so the rollout's
+    /// lateral handoff trigger cannot spell it differently — it did, and the 0.856 m
+    /// disagreement silently disabled the early-vacate retarget (PR #204 review).
     /// </summary>
     private bool IsWithinRolloutRunwayLaterally(double lat, double lon)
     {
@@ -215,12 +220,11 @@ public partial class TaxiGuidanceManager
         // treating it as a sentinel would report every frame as off the pavement.
         if (_rolloutRunway == null) return false;
 
-        double halfWidthM = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0)
-                            * 0.5 / METERS_TO_FEET;
         double lateralM = AbsLateralFromRunwayMeters(
             lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
             _rolloutRunwayHeadingTrue);
-        return lateralM <= halfWidthM + RUNWAY_CLEAR_MARGIN_M;
+        return !Navigation.RolloutExitGate.IsLaterallyClearOfRunway(
+            lateralM, _rolloutRunway.Width);
     }
 
     /// <summary>

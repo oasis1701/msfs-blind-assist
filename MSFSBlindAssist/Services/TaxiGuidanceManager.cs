@@ -398,7 +398,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // runway; Where-Am-I correctly reported the aircraft was still on 12R/30L). While
     // still on the runway we suppress the arrival and keep guiding toward the
     // off-runway extension node, so the "stop" is spoken only once genuinely clear.
-    private const double RUNWAY_CLEAR_MARGIN_M = 10.0;
+    // One source of truth — see Navigation/RolloutExitGate.RunwayClearMarginM, which the
+    // lateral handoff trigger and the early-vacate guards also read through
+    // IsLaterallyClearOfRunway.
+    private const double RUNWAY_CLEAR_MARGIN_M = Navigation.RolloutExitGate.RunwayClearMarginM;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     // Steering-tone look-ahead: target = the point this many metres ahead
     // along the route polyline (continuous walk — see GuidanceGeometry).

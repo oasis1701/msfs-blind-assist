@@ -122,6 +122,52 @@ public static class RolloutExitGate
     /// </summary>
     public const double HandoffReachDefaultHalfWidthM = 25.0;
 
+    // ---- Runway lateral clearance.
+
+    /// <summary>
+    /// Margin beyond a runway's half-width inside which the aircraft still counts as being
+    /// ON the pavement.
+    ///
+    /// <para>Canonical here so there is exactly ONE definition of "off the runway".
+    /// <c>TaxiGuidanceManager.RUNWAY_CLEAR_MARGIN_M</c> initialises from this. Before
+    /// 2026-08-22 the rollout's lateral handoff trigger carried its own <c>+30 ft</c>
+    /// (9.144 m) spelling of the same idea, leaving a 0.856 m band in which the handoff
+    /// fired while every guard still read the aircraft as on the runway.</para>
+    /// </summary>
+    public const double RunwayClearMarginM = 10.0;
+
+    /// <summary>
+    /// Width assumed for a runway whose navdata carries none. Matches the long-standing
+    /// fallback in the rollout code.
+    /// </summary>
+    public const double DefaultRunwayWidthFeet = 200.0;
+
+    /// <summary>
+    /// Has the aircraft left the runway pavement laterally?
+    ///
+    /// <para>The single authority for that question. Both the rollout's lateral handoff
+    /// trigger and the early-vacate / reachability guards route through it, so they cannot
+    /// disagree about the same aircraft position.</para>
+    ///
+    /// <para>Strictly greater-than, so "exactly at the margin" is still ON the runway —
+    /// the conservative direction for every caller.</para>
+    /// </summary>
+    /// <param name="absLateralMetres">
+    /// Absolute perpendicular offset from the runway axis, metres — from
+    /// <c>AbsLateralFromRunwayMeters</c> measured against a point ON the centreline
+    /// (the runway start), never against an exit node.
+    /// </param>
+    /// <param name="runwayWidthFeet">
+    /// The runway's width in FEET. Zero or negative means "not recorded" and falls back to
+    /// <see cref="DefaultRunwayWidthFeet"/>.
+    /// </param>
+    public static bool IsLaterallyClearOfRunway(double absLateralMetres, double runwayWidthFeet)
+    {
+        double widthFt = runwayWidthFeet > 0.0 ? runwayWidthFeet : DefaultRunwayWidthFeet;
+        double halfWidthM = widthFt * 0.3048 * 0.5;
+        return absLateralMetres > halfWidthM + RunwayClearMarginM;
+    }
+
     /// <summary>
     /// Which steering-tone behaviour applies this frame.
     ///
