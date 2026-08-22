@@ -151,7 +151,9 @@ public partial class SimConnectManager
         }
         if (eventName.Contains('.') && mobiFlightWasm != null)
         {
-            if (CalcPathVerified)
+            // FBW FCU buttons never wait on the probe — see IsFbwFcuEvent for why a false
+            // negative there silently kills them rather than degrading them.
+            if (CalcPathVerified || IsFbwFcuEvent(eventName))
             {
                 FireCalcEvent(eventName, data);
                 return;
@@ -207,6 +209,26 @@ public partial class SimConnectManager
         eventName.StartsWith("H:", StringComparison.Ordinal)
             ? $"{seq} 0 * (>{eventName})"
             : $"{seq} 0 * {data} (>K:{eventName})";
+
+    /// <summary>
+    /// FlyByWire FCU button events, which MUST go down the calculator path and must NOT wait on
+    /// the <see cref="CalcPathVerified"/> probe.
+    ///
+    /// ⚠️ The FBW FCU consumes these strictly as calculator K-events; the TransmitClientEvent
+    /// fallback reaches it not at all. So a probe FALSE NEGATIVE — path alive, read-back broken —
+    /// does not degrade these, it kills them outright. That is not hypothetical: measured
+    /// 2026-08-22 on a live machine, MSFSBA_BRIDGE_PROBE held the exact nonce written (so the
+    /// calc WRITE was fine) while the data-def read-back never arrived, leaving the path forever
+    /// unverified and every A32NX.FCU_* sent through SendEvent silently discarded. Reported as
+    /// "the FCU won't accept". FireFCUButton had always bypassed this by calling
+    /// ExecuteCalculatorCode directly, which is exactly why the knob buttons kept working while
+    /// the combos did not — the inconsistency hid the fault for months.
+    ///
+    /// Deliberately narrow: only the FCU family. Stock events still want the legacy transport,
+    /// and other dotted events keep the probe gate.
+    /// </summary>
+    public static bool IsFbwFcuEvent(string eventName) =>
+        eventName.StartsWith("A32NX.FCU_", StringComparison.Ordinal);
 
     // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
     // dotted custom events take the data param. Callers route here once the verdict/connection

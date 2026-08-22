@@ -233,6 +233,7 @@ public partial class MainForm : Form
     private System.Windows.Forms.Timer? _bridgeProbeTimer;
 
     private int _bridgeProbeNonce = (Environment.TickCount & 0x3FFF) + 1; // 1..16384, never 0
+    private int _bridgeProbePrevNonce;                                    // 0 = nothing written yet
 
     private int _bridgeProbeAttempts;
 

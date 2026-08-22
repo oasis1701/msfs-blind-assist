@@ -48,4 +48,33 @@ public class CalcEventCodeTests
         Assert.Equal("2 0 * (>H:A32NX.SOME_H_EVENT)",
             SimConnectManager.BuildCalcEventCode("H:A32NX.SOME_H_EVENT", 0, seq: 2));
     }
+
+    // ---- FBW FCU events bypass the calc-path PROBE -----------------------------------------
+    //
+    // SendEvent only uses the calculator path once the MSFSBA_BRIDGE_PROBE round-trip has
+    // verified it, and otherwise falls back to TransmitClientEvent. The FlyByWire FCU does not
+    // receive that fallback — it consumes A32NX.FCU_* strictly as calculator K-events.
+    //
+    // Measured on a live machine 2026-08-22: the probe writes its nonce fine (the L:var held the
+    // exact value) but the read-back never arrives, so the path is never verified and every
+    // A32NX.FCU_* routed through SendEvent silently went nowhere — reported as "the FCU won't
+    // accept". FireFCUButton had always sidestepped this by calling ExecuteCalculatorCode
+    // directly, which is why the knob buttons worked while the combos did not.
+    [Theory]
+    [InlineData("A32NX.FCU_EFIS_L_BARO_PUSH")]
+    [InlineData("A32NX.FCU_LOC_PUSH")]
+    [InlineData("A32NX.FCU_EFIS_R_NDB_PUSH")]
+    public void Fbw_fcu_events_are_routed_around_the_probe(string eventName)
+    {
+        Assert.True(SimConnectManager.IsFbwFcuEvent(eventName));
+    }
+
+    [Theory]
+    [InlineData("AUTO_THROTTLE_ARM")]     // stock event — the legacy transport is correct
+    [InlineData("KOHLSMAN_SET")]
+    [InlineData("A32NX.SOMETHING_ELSE")]  // dotted but not an FCU button; leave it gated
+    public void Everything_else_keeps_the_normal_routing(string eventName)
+    {
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName));
+    }
 }
