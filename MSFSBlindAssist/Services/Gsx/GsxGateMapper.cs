@@ -9,6 +9,14 @@ public static class GsxGateMapper
     // LittleNavMap's enum (gates 9..14). Map between them. VERIFY against maxwingspan
     // on real stands (Task 7) before trusting; if GSX "type" is unreliable, derive
     // size from MaxWingspanMeters instead.
+    //
+    // The two EXTRA classes are SWAPPED between the enums: GSX numbers RAMP_GA_EXTRA 14 and
+    // GATE_EXTRA 15 (published verbatim on every Remote API parking -- 238/238 in the KJFK
+    // capture), while ParkingSpot.GetParkingType reads 14 as "Gate Extra" and 15 as "Ramp GA
+    // Extra". Neither had a case here, so an A380-class GATE_EXTRA stand fell through to 0
+    // and rendered as "Spot N - Unknown" -- outside IsGateType, in the teleport
+    // dialog's "Other" bucket, and out of its gate count. FUEL(12)/VEHICLE(13) stay unmapped on
+    // purpose: they are never selectable stands and are excluded before this is ever reached.
     public static int MapGsxTypeToNavdataType(int gsxType) => gsxType switch
     {
         1 => 2,   // Ramp GA
@@ -22,6 +30,8 @@ public static class GsxGateMapper
         9 => 10,  // Gate Medium
         10 => 13, // Gate Heavy
         11 => 12, // Dock GA
+        14 => 15, // Ramp GA Extra (GSX RAMP_GA_EXTRA -> navdata 15; note the swap)
+        15 => 14, // Gate Extra    (GSX GATE_EXTRA    -> navdata 14; note the swap)
         _ => 0
     };
 

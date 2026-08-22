@@ -57,6 +57,9 @@ public partial class SimConnectManager
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
+    // assist. Fired only while StartFlareAssistMonitoring is active.
+    public event EventHandler<FlareAssistData>? FlareAssistDataReceived;
     /// <summary>
     /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
     /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
@@ -106,6 +109,21 @@ public partial class SimConnectManager
     public bool IsConnected { get; private set; }
     public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
+
+    /// <summary>
+    /// GSX's own <c>L:FSDT_GSX_COUATL_STARTED</c>, read over the main SimConnect
+    /// connection (DEF_GSX_COUATL_STARTED, once per second — DEFAULT flag, not
+    /// CHANGED, see RegisterGsxCouatlStartedDefinition). This is the
+    /// signal every GSX build publishes — Remote API or not — and it is what gates the
+    /// GSX <c>.ini</c> gate overlay, the deice pads and the profile stop positions:
+    /// local-file features that never needed GSX's WebSocket. Before the Remote API
+    /// migration <c>GsxService.CouatlStarted</c> WAS this L:var; afterwards it came
+    /// only from Remote-API frames, which silently switched those file-parsing
+    /// features off for any GSX build older than 4.0.1 (a floor docs/gsx.md says they
+    /// must not have). MainForm's gate-availability predicate ORs the two.
+    /// False whenever disconnected.
+    /// </summary>
+    public bool GsxCouatlStartedLVar { get; private set; }
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
     // Aircraft-detection retry. RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE;
@@ -367,6 +385,8 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
+        // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
+        REQUEST_GSX_COUATL_STARTED = 340,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -396,6 +416,8 @@ public partial class SimConnectManager
         TAKEOFF_ASSIST_DATA = 15,
         // Ambient weather data (on-request)
         WEATHER_DATA = 16,
+        // Manual-landing flare/rollout assist consolidated data (SIM_FRAME while engaged)
+        FLARE_ASSIST_DATA = 17,
         // Hotkey readout definitions (one-shot, used by aircraft definitions)
         DEF_HEADING = 300,
         DEF_SPEED = 301,
@@ -423,6 +445,8 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
+        // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
+        DEF_GSX_COUATL_STARTED = 340,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -568,6 +592,39 @@ public partial class SimConnectManager
         // 5 kt actual GS and "10 kt" at 15-20 kt actual. Takeoff-assist still
         // reads IAS for its V-speed callouts (separate field, intentional).
         public double GroundVelocityKnots;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FlareAssistData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double HeadingMagnetic;      // degrees (requested in degrees, unlike TakeoffAssistData)
+        public double MagneticVariation;    // degrees, East positive
+        public double GroundSpeedKnots;
+        public double VerticalSpeedFPM;
+        public double AGL;                  // PLANE ALT ABOVE GROUND — aircraft DATUM height, feet.
+                                            // Subtract the aircraft's FlareAltitudeBiasFt for gear height.
+        public double PitchRadians;         // body axis: negative = nose up (SimConnect convention)
+        public double OnGround;             // SIM ON GROUND (bool as double) — fresh at SIM_FRAME rate,
+                                            // unlike the 1 Hz continuous-batch SIM_ON_GROUND sample.
+        public double AltitudeMslFt;        // PLANE ALTITUDE — TRUE MSL datum altitude, feet. Used by the
+                                            // approach phase to measure the glidepath against the runway's
+                                            // navdata threshold ELEVATION. AGL cannot do this job: it follows
+                                            // the terrain under the aircraft, so rising/falling ground on the
+                                            // approach path would bend the reference glidepath with it.
+        public double BankDegrees;          // PLANE BANK DEGREES — SimConnect convention: POSITIVE = LEFT.
+                                            // Spoken (not toned) during the approach phase only; formatted by
+                                            // HandFlyManager.FormatBankAnnouncement, which expects this raw
+                                            // left-positive sign. Do NOT pass it to any tone/pan API without
+                                            // converting — those are right-positive.
+        public double GroundTrackTrue;      // GPS GROUND TRUE TRACK — the direction the aircraft is actually
+                                            // MOVING over the ground, degrees TRUE. Differenced against the
+                                            // true heading to get the live drift angle, which turns the
+                                            // approach phase's track-space intercept back into a heading the
+                                            // pilot can dial into HDG SEL. Not interchangeable with heading:
+                                            // in a crosswind they differ by exactly the error this exists to
+                                            // remove.
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -727,6 +784,7 @@ public partial class SimConnectManager
         catch (COMException)
         {
             IsConnected = false;
+            GsxCouatlStartedLVar = false;
 
             // Only announce disconnection if we were previously connected
             if (wasConnected)
@@ -1110,6 +1168,7 @@ public partial class SimConnectManager
 
         IsConnected = false;
         IsFullyConnected = false;
+        GsxCouatlStartedLVar = false;
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)

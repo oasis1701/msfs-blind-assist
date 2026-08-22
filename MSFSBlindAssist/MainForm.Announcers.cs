@@ -156,6 +156,13 @@ public partial class MainForm
         // runs outside this method entirely.
         bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
             Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
+        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
+        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
+        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
+        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
+        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
+            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -174,7 +181,7 @@ public partial class MainForm
         // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
         bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
             Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || md11Muted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -457,6 +464,10 @@ public partial class MainForm
         if (e.VarName == "INDICATED_ALTITUDE")
         {
             altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
+            // SIM_FRAME feed when armed + within the approach altitude window. No-op
+            // (single flag compare) when the assist isn't armed.
+            flareAssistManager.ProcessSlowSample(e.Value, _lastOnGround);
         }
 
         // Handle FCU hotkey value announcements
@@ -579,16 +590,27 @@ public partial class MainForm
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
-        // AND LandingRollout phases). LandingRollout is critical: BeginLandingRollout
-        // sets state=LandingRollout and UpdateLandingRollout's per-frame logic (auto-
-        // transition to Taxiing on slowdown, distance-based callouts) only runs if
-        // UpdatePosition is fed every frame. Without LandingRollout in this gate, the
-        // touchdown announcement fires once and then the state-machine is silent
-        // until StopGuidance.
+        // LandingRollout AND both backtrack phases). LandingRollout is critical:
+        // BeginLandingRollout sets state=LandingRollout and UpdateLandingRollout's
+        // per-frame logic (auto-transition to Taxiing on slowdown, distance-based
+        // callouts) only runs if UpdatePosition is fed every frame. Without
+        // LandingRollout in this gate, the touchdown announcement fires once and then
+        // the state-machine is silent until StopGuidance.
+        //
+        // EVERY state whose Update* runs per frame must be listed here — this is the
+        // ONLY caller of UpdatePosition. BacktrackingOnRunway (landing-side backtaxi)
+        // and BacktrackDeparture (full-length backtrack departure) each own a per-frame
+        // steering tone, their approach callouts and their handoff out of the state, so
+        // omitting them leaves the pilot on an active runway with no tone, no callouts
+        // and no way out of the state — the frame starvation LogBacktrackFrame exists
+        // to diagnose. A new taxi-guidance state with per-frame logic must be added here
+        // at the same time as its Update* method.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
             (taxiGuidanceManager.State == TaxiGuidanceState.Taxiing ||
              taxiGuidanceManager.State == TaxiGuidanceState.LiningUp ||
-             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout))
+             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackingOnRunway ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackDeparture))
         {
             if (e.PositionData.HasValue)
             {
@@ -1511,9 +1533,18 @@ public partial class MainForm
     /// </summary>
     private void ReadLatestGsxTooltip()
     {
-        if (_gsxService == null || !_gsxService.IsConnected)
+        if (_gsxService == null)
         {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+        if (!_gsxService.IsConnected)
+        {
+            // UnavailableReason names the ACTUAL cause — an older GSX with no
+            // Remote API, a dropped Couatl, or no simulator connection. The old
+            // wording blamed the simulator in all three cases, which sent a
+            // pilot on a recent-enough-GSX hunt in the wrong place entirely.
+            announcer.AnnounceImmediate(_gsxService.UnavailableReason);
             return;
         }
         _gsxService.RefreshTooltip();

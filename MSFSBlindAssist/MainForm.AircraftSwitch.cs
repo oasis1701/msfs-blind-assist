@@ -248,6 +248,11 @@ public partial class MainForm
             _liftoffHandoffTimer?.Stop();
             _liftoffHandoffConfirmToken++;
 
+            // The flare assist's SIM_FRAME request died with the connection: silence
+            // any tone still sounding on its last frame, and clear the latched
+            // monitoring flag so the first slow sample after reconnect re-issues it.
+            flareAssistManager?.OnConnectionLost();
+
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
@@ -1117,6 +1122,36 @@ public partial class MainForm
         {
             electronicFlightBagForm.Close();
             electronicFlightBagForm = null;
+        }
+
+        // Same for the TCAS window, and for the same reason: its GateResolver is built ONCE in
+        // OpenTcasWindow from DatabaseSelector.SelectProvider() and captures that provider in a
+        // readonly field, plus a GateDataSource built over it and a per-ICAO cache of that
+        // database's parking spots. Nothing else invalidates any of it — GateResolver.ClearCache
+        // has no production caller, and could not help here anyway since it does not (and cannot)
+        // replace the readonly provider. The gate-list staleness token does not move on a
+        // database switch either, so without this the traffic list kept naming stands from the
+        // PREVIOUS simulator's scenery for the rest of the session. Rebuilding the window is the
+        // only correct invalidation; OpenTcasWindow already recreates it when tcasForm is null.
+        if (tcasForm != null && !tcasForm.IsDisposed)
+        {
+            tcasForm.Close();
+            tcasForm = null;
+        }
+
+        // And the Taxi Assist window, for the same reason as the two above: it captures
+        // IAirportDataProvider in a readonly field at construction (MainForm.Dialogs.cs), so
+        // a rebuilt or switched database never reaches an already-open window — it keeps
+        // naming stands from the previous database for the rest of the session.
+        //
+        // Dispose() rather than Close(): TaxiAssistForm cancels its own FormClosing and
+        // hides instead, so Close() would leave the stale instance alive and merely
+        // invisible. GetOrCreateTaxiAssistForm already rebuilds it when the field is null
+        // or disposed.
+        if (taxiAssistForm != null && !taxiAssistForm.IsDisposed)
+        {
+            taxiAssistForm.Dispose();
+            taxiAssistForm = null;
         }
 
         UpdateDatabaseStatusDisplay();

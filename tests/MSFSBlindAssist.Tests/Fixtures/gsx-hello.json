@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "type": "hello",
+  "ts": 1786562269,
+  "protocol": 1,
+  "engine": "couatl",
+  "sim": "MSFS",
+  "gsxRunning": true,
+  "authRequired": false,
+  "capabilities": [
+    "state",
+    "services",
+    "menu",
+    "prompts",
+    "billing",
+    "settings",
+    "handlerData",
+    "handlerSet",
+    "gate"
+  ]
+}

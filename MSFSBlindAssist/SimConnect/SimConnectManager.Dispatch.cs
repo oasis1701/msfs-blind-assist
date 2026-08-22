@@ -303,6 +303,13 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED:
+                // Delivered every second (SECOND + DEFAULT — a CHANGED delivery could
+                // be drained before SetupEvents attached this handler); no event, no
+                // announcement — MainForm's gate-list predicate polls the property.
+                GsxCouatlStartedLVar = ((SingleValue)data.dwData[0]).value != 0;
+                break;
+
             case DATA_REQUESTS.REQUEST_SQUAWK_CODE:
                 SingleValue squawkData = (SingleValue)data.dwData[0];
                 int bcd = (int)squawkData.value;
@@ -704,6 +711,31 @@ public partial class SimConnectManager
                     Value = vgData.AGL,
                     Description = ""
                 });
+                break;
+
+            case (DATA_REQUESTS)508: // Manual-landing flare/rollout assist — consolidated frame
+                FlareAssistData faData = (FlareAssistData)data.dwData[0];
+
+                // Mirror to lastKnownPosition so cross-feature consumers (TCAS,
+                // WeatherRadarForm, LandingExitPlanner) stay fresh during a manual
+                // approach where no other position-bearing monitor is running.
+                lastKnownPosition = new AircraftPosition
+                {
+                    Latitude = faData.Latitude,
+                    Longitude = faData.Longitude,
+                    HeadingMagnetic = faData.HeadingMagnetic,
+                    MagneticVariation = faData.MagneticVariation,
+                    GroundSpeedKnots = faData.GroundSpeedKnots,
+                    VerticalSpeedFPM = faData.VerticalSpeedFPM,
+                    // Both are carried by THIS frame — unlike the 506/507 mirrors below,
+                    // whose TakeoffAssistData struct has no altitude to copy and so must
+                    // preserve the previous value. AltitudeMslFt is the same
+                    // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
+                    Altitude = faData.AltitudeMslFt,
+                    SimOnGround = faData.OnGround
+                };
+
+                FlareAssistDataReceived?.Invoke(this, faData);
                 break;
 
             case (DATA_REQUESTS)507: // Taxi Guidance - Position Data (reuses TakeoffAssistData struct)

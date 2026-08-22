@@ -16,13 +16,14 @@ public sealed class AirportTaxiData
     public List<(string Name, double Lat, double Lon)> Parking { get; } = new();
 
     /// <summary>
-    /// NAMED holding points (OSM <c>aeroway=holding_position</c> nodes that carry a
-    /// ref/name — VIKAS, N2E, A11…). Kind is the OSM <c>holding_position:type</c> tag
-    /// ("runway", "ILS", "intermediate") or "" when untagged. Unnamed painted hold
-    /// lines are never collected. Consumed alias-style by
-    /// <c>Navigation.NamedHoldingPointResolver</c>: the name attaches to the nearest
-    /// navdata graph node; the online coordinate itself is NEVER routed to (anti-grass
-    /// rule — we only steer on navdata geometry).
+    /// Painted NAMED holding points (OSM <c>aeroway=holding_position</c> nodes that carry a
+    /// ref/name — LSZH "A2", EGLL VIKAS/N2E…). Kind is the OSM <c>holding_position:type</c>
+    /// tag ("runway", "ILS", "intermediate") or "" when untagged. Unnamed painted hold lines
+    /// are never collected. NAME + position only, consumed two ways: as runway-ENTRY
+    /// selectors (TaxiGraph.ResolveHoldingPointEntries) and as Progressive Taxi hold
+    /// targets (Navigation.NamedHoldingPointResolver — the name attaches to the nearest
+    /// navdata graph node). Never feeds hold-short placement, and the online coordinate is
+    /// never itself a route target (the augmentation anti-geometry rule).
     /// </summary>
     public List<(string Name, double Lat, double Lon, string Kind)> HoldingPoints { get; } = new();
 }

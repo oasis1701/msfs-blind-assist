@@ -99,7 +99,19 @@ public static class SayIntentionsGatePositionMatcher
     /// pier, so the second half of the rule carries as much weight as the first.</summary>
     public static string? Match(
         IReadOnlyList<GatePositionCandidate> candidates, double latitude, double longitude)
+        => Match(candidates, latitude, longitude, out _);
+
+    /// <summary>As above, additionally reporting the centre distance to the NEAREST
+    /// candidate with a usable radius — admissible or not — purely for diagnostics.
+    /// On a miss, sayintentions.log can then say whether the published point was
+    /// 38 m from the nearest stand or nowhere near anything, which is the difference
+    /// between "loosen nothing, the scenery is offset" and "the coordinate is junk".
+    /// NaN when no candidate carried a usable radius. Never feeds a decision.</summary>
+    public static string? Match(
+        IReadOnlyList<GatePositionCandidate> candidates, double latitude, double longitude,
+        out double nearestMetres)
     {
+        nearestMetres = double.NaN;
         if (candidates == null || candidates.Count == 0) return null;
 
         string? best = null;
@@ -115,6 +127,7 @@ public static class SayIntentionsGatePositionMatcher
             double metres = TaxiGeo.HaversineMeters(
                 candidate.Latitude, candidate.Longitude, latitude, longitude);
             if (double.IsNaN(metres)) continue;
+            if (double.IsNaN(nearestMetres) || metres < nearestMetres) nearestMetres = metres;
             if (metres > Math.Min(candidate.RadiusMetres * NoseStopRadiusFactor, MaxMatchMetres))
                 continue;
 

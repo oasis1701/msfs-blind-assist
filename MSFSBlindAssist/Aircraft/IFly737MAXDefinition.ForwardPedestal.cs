@@ -67,10 +67,11 @@ public partial class IFly737MAXDefinition
         Disp(P, "Hydraulic_Brake_Pressure_Status", "Hydraulic Brake Pressure PSI");
 
         // Guarded switch: combo state from the _Mode field (1 = ALT, 2 = NORM);
-        // GEAR_STEERING_SWITCH_SET Value2 is 0 = ALT, 1 = NORM → map v-1.
+        // GEAR_STEERING_SWITCH_SET Value2 is 0 = ALT, 1 = NORM → map v-1. No working
+        // Value3 guard-bypass — the first send only opens the guard → doubleSend.
         Sw(P, "Nose_Wheel_Steering_Mode", "Nose Wheel Steering",
             IFlyKeyCommand.GEAR_STEERING_SWITCH_SET, new[] { "Alternate", "Normal" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
     }
 
     // =========================================================================
@@ -104,12 +105,16 @@ public partial class IFly737MAXDefinition
         Sw(P, "CAPT_Display_Selector_Switch_Status", "Captain Display Selector",
             IFlyKeyCommand.INSTRUMENT_CAPT_DISP_SEL_SET, new[] { "Outboard", "Normal", "Inboard" });
 
-        // ⚠ ENCODING TRAP: the FO STATUS field is 0 INBD / 1 NORMAL / 2 OUTBD, but
-        // FO_DISP_SEL_SET Value2 is 0 OUTBD / 1 NORMAL / 2 INBD (same order as the
-        // captain command, NOT the FO status) → map 2 - v.
+        // ⚠ THE SDK DOCS CONTRADICT EACH OTHER HERE and the live plugin settles
+        // the map (probe-verified 2026-08-18): FO_DISP_SEL_SET Value2 lands the
+        // SAME status number (v2=0 → status 0, v2=2 → status 2), so SET == STATUS
+        // and the old `2 - v` map (built from the doc contradiction) inverted the
+        // switch. Which doc's LABELS are right is not externally observable (the
+        // status doc says 0 INBD like the real 737's mirrored FO knob, the SET
+        // doc says 0 OUTBD like the Captain's) — labels follow the STATUS doc;
+        // identity map keeps pick and readback self-consistent either way.
         Sw(P, "FO_Display_Selector_Switch_Status", "First Officer Display Selector",
-            IFlyKeyCommand.INSTRUMENT_FO_DISP_SEL_SET, new[] { "Inboard", "Normal", "Outboard" },
-            map: v => 2 - v);
+            IFlyKeyCommand.INSTRUMENT_FO_DISP_SEL_SET, new[] { "Inboard", "Normal", "Outboard" });
 
         Btn(P, "BTN_MFD_ENG", "MFD Engine", IFlyKeyCommand.INSTRUMENT_MFD_ENG);
         Btn(P, "BTN_MFD_SYS", "MFD System", IFlyKeyCommand.INSTRUMENT_MFD_SYS);
@@ -147,7 +152,7 @@ public partial class IFly737MAXDefinition
 
         // Guarded inhibit switches. Status: 0 cover CLOSED / 1 open+INHIBIT / 2 open+NORM.
         // WARNING_GPWS_*_INHIBIT_SET Value2: 0 = INHIBIT, 1 = NORMAL (no guard-ignore
-        // Value3 documented; the SET operates the switch regardless of the cover).
+        // Value3 documented; the first send only OPENS the guard → doubleSend).
         // Selecting "Guard closed, normal" commands NORMAL (the cover state itself
         // can't be commanded).
         void Inhibit(string field, string display, IFlyKeyCommand set) =>
@@ -158,7 +163,7 @@ public partial class IFly737MAXDefinition
                     [1] = "Inhibit",
                     [2] = "Normal",
                 },
-                map: v => v == 1 ? 0 : 1);
+                map: v => v == 1 ? 0 : 1, doubleSend: true);
 
         Inhibit("Flap_Inhibit_Switch_Status", "Flap Inhibit", IFlyKeyCommand.WARNING_GPWS_FLAP_INHIBIT_SET);
         Inhibit("Gear_Inhibit_Switch_Status", "Gear Inhibit", IFlyKeyCommand.WARNING_GPWS_GEAR_INHIBIT_SET);
@@ -202,13 +207,32 @@ public partial class IFly737MAXDefinition
         Btn(P, $"BTN_EFIS_{tag}_CTR", "Center Display",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_CTR, IFlyKeyCommand.INSTRUMENT_EFIS_R_CTR));
 
-        // ⚠ ENCODING TRAP: the ND_Range_Status struct comment says "0~2", but the
-        // RANGE_SET command doc is authoritative: Value2 0..10 = 0.5 / 1 / 2 / 5 /
-        // 10 / 20 / 40 / 80 / 160 / 320 / 640 nautical miles. Positions follow it.
-        Sw(P, $"ND_Range_Status{sfx}", "Navigation Display Range",
-            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_SET, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_SET),
-            new[] { "0.5 miles", "1 mile", "2 miles", "5 miles", "10 miles", "20 miles",
-                    "40 miles", "80 miles", "160 miles", "320 miles", "640 miles" });
+        // ⚠ RANGE_SET IS DEAD and the old 11-position combo was wrong (probe-verified
+        // 2026-08-18): the SET command is a no-op for EVERY Value2 (0, 1, 2, 5, 8 all
+        // left the knob unmoved), while INC/DEC step normally and the status field
+        // wraps modulo 3 (six INC clicks from 0 land back on 0) — so the struct
+        // comment's "0~2" is what the field really does and the command doc's 0..10
+        // never was. Whether the underlying knob has 3 detents or 11 with a mod-3
+        // status mirror is not observable blind, so the range is exposed as the two
+        // step buttons (the physical knob's own interface) instead of a dead combo
+        // claiming absolute ranges the write path cannot deliver.
+        Btn(P, $"BTN_EFIS_{tag}_RANGE_DEC", "Navigation Display Range Decrease",
+            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_DEC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_DEC));
+        Btn(P, $"BTN_EFIS_{tag}_RANGE_INC", "Navigation Display Range Increase",
+            C(IFlyKeyCommand.INSTRUMENT_EFIS_L_RANGE_INC, IFlyKeyCommand.INSTRUMENT_EFIS_R_RANGE_INC));
+        // Read-only readback of the mod-3 status ring beside the buttons — without it
+        // the range would be WRITE-only (no announcement, no panel row, no Ctrl+M
+        // entry) for a blind pilot. The raw ring position is all the SDK exposes
+        // (which absolute range each position means is not observable — see above),
+        // so the labels claim no mileage; each INC/DEC press announces the new
+        // position as a background change.
+        SwD(P, $"ND_Range_Status{sfx}", "Navigation Display Range", set: null,
+            descriptions: new Dictionary<double, string>
+            {
+                [0] = "Position 1 of 3",
+                [1] = "Position 2 of 3",
+                [2] = "Position 3 of 3",
+            });
         Btn(P, $"BTN_EFIS_{tag}_TFC", "Traffic",
             C(IFlyKeyCommand.INSTRUMENT_EFIS_L_TFC, IFlyKeyCommand.INSTRUMENT_EFIS_R_TFC));
 
@@ -736,14 +760,15 @@ public partial class IFly737MAXDefinition
 
         // Guarded cutout/override switches: combo state from the _Mode fields
         // (1-based), commands' Value2 is 0-based in the same order → map v-1.
-        //   STAB_TRIM_PRI_SET / BU_SET:   Value2 0 NORMAL / 1 CUTOFF (no guard Value3 documented)
+        //   STAB_TRIM_PRI_SET / BU_SET:   Value2 0 NORMAL / 1 CUTOFF (no guard Value3 —
+        //                                 the first send only opens the guard → doubleSend)
         //   STAB_TRIM_OVERRIDE_SET:       Value2 0 OVERRIDE / 1 NORMAL, Value3 1 = ignore guard
         Sw(P, "Stab_Trim_Primary_Mode", "Stabilizer Trim Primary Cutout",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_PRI_SET, new[] { "Normal", "Cutoff" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
         Sw(P, "Stab_Trim_Backup_Mode", "Stabilizer Trim Backup Cutout",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_BU_SET, new[] { "Normal", "Cutoff" },
-            map: v => v - 1, valueBase: 1);
+            map: v => v - 1, valueBase: 1, doubleSend: true);
         Sw(P, "Stabilizer_Trim_Override_Mode", "Stabilizer Trim Override",
             IFlyKeyCommand.FLTCTRL_STAB_TRIM_OVERRIDE_SET, new[] { "Override", "Normal" },
             map: v => v - 1, valueBase: 1, value3: 1);
@@ -804,7 +829,12 @@ public partial class IFly737MAXDefinition
     {
         const string P = "Control Stand";
 
-        // FLTCTRL_FLAP_SET Value2 0-8 = lever detents UP..40 — matches FLAP_Status.
+        // ⚠ FLTCTRL_FLAP_SET IS DEAD (probe-verified 2026-08-18: v2=1 with 6 s dwell
+        // moved nothing, hydraulics powered) — but the iFly tracks the STOCK flap
+        // events: FLAPS_INCR/FLAPS_DECR step the lever (FLAPS_SET, the stock axis
+        // event, is also dead). HandleUIVariableSet intercepts FLAP_Status and walks
+        // the stock events from the current detent; the SET registered here is never
+        // actually sent. Detents 0-8 = UP..40 per FLAP_Status.
         // DisplayName "Flaps" gives the fleet-parity wording on the GENERIC combo
         // path ("Flaps: 5" / "Flaps: Up" — the colon form this branch already uses
         // for the parking brake). Deliberately NOT self-announced from
