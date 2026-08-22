@@ -112,6 +112,63 @@ public static class RolloutExitGate
     /// </summary>
     public const double EarlyVacateMaxPassedFeet = 1400.0;
 
+    /// <summary>
+    /// How far SHORT of the planned exit, measured ALONG the runway, the aircraft must be
+    /// before leaving the pavement counts as vacating somewhere else.
+    ///
+    /// <para>Derived, not fitted. <c>TaxiGraph.GetLandingExits</c> refuses any exit node more
+    /// than <c>halfWidth + 15 m</c> off the runway axis, while
+    /// <see cref="IsLaterallyClearOfRunway"/> puts the pavement boundary at
+    /// <c>halfWidth + <see cref="RunwayClearMarginM"/></c> (10 m) — so the node corridor
+    /// extends exactly 5 m beyond the clear boundary. An aircraft that is laterally clear, on
+    /// an exit path leaving the axis at angle θ, gains lateral offset at <c>tan θ</c> per unit
+    /// of along-track, so its OWN exit's node can be at most <c>5 m / tan θ</c> ahead:
+    /// 95.4 m = 313 ft at the <see cref="ExitSideMinBearingDeg"/> (3°) floor, 61 ft at the
+    /// 15° minimum <see cref="IsExitTurnBegun"/> can fire for. 350 rounds up the worst case.</para>
+    ///
+    /// <para>The empirical companion: distinct turnoffs are measured 430–970 ft apart (266
+    /// runway directions across 39 airports; median 672, p95 968). The "own exit" population
+    /// tops out at 313 ft and the "different exit" population starts around 430 ft, so this is
+    /// a separation between two populations rather than a threshold tuned to one case.</para>
+    ///
+    /// <para>This does NOT contradict <see cref="TurnWindowFeet"/>. That 558 ft derivation is
+    /// for an aircraft ON THE CENTRELINE, which is where <see cref="IsExitTurnBegun"/> fires;
+    /// this gate only ever runs once the aircraft is OFF the pavement, which has already
+    /// consumed all but 5 m of the same corridor. Two lateral states, two correct numbers.</para>
+    /// </summary>
+    public const double VacatedShortAlongTrackFeet = 350.0;
+
+    /// <summary>
+    /// Did the pilot leave the runway somewhere OTHER than the exit they picked?
+    ///
+    /// <para>The caller must additionally require the aircraft to be laterally CLEAR of the
+    /// runway. That conjunct is not incidental — it is what makes
+    /// <see cref="VacatedShortAlongTrackFeet"/>'s derivation valid, and it is independently
+    /// what keeps a legitimate turn begun 800 ft out ON the runway from reaching this rule at
+    /// all.</para>
+    ///
+    /// <para>The straight-line clause is kept beside the along-track one and is NOT redundant:
+    /// the caller places no upper bound on lateral offset, so an aircraft that has driven a
+    /// long way off the side can read a small along-track distance while being nowhere near
+    /// the exit.</para>
+    /// </summary>
+    /// <param name="pastPlannedExit">
+    /// True once the aircraft is beyond the planned exit along the runway. The overshoot
+    /// detector owns that case, so this rule always answers false for it.
+    /// </param>
+    /// <param name="signedAlongPastPlannedFeet">
+    /// Along-runway distance from the planned exit to the aircraft, FEET, POSITIVE when the
+    /// aircraft is PAST the exit. "Short of the exit" is therefore negative.
+    /// </param>
+    /// <param name="distToPlannedExitFeet">Straight-line distance to the planned exit, feet.</param>
+    public static bool IsVacateAwayFromPlannedExit(
+        bool pastPlannedExit,
+        double signedAlongPastPlannedFeet,
+        double distToPlannedExitFeet)
+        => !pastPlannedExit
+           && (distToPlannedExitFeet > TurnWindowFeet
+               || -signedAlongPastPlannedFeet > VacatedShortAlongTrackFeet);
+
     // ---- Handoff route reachability.
 
     /// <summary>
