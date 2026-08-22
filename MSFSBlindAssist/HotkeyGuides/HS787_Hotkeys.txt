@@ -82,12 +82,13 @@ Cockpit Display Read-outs:
   Alt+S      System Synoptic Display (HYD, ELEC, FUEL, AIR, APU, OXYGEN, status
              messages) - opens a live, navigable text window (arrow keys to read,
              F5 refreshes, Escape closes). No API key needed.
-  Alt+N      Read the Navigation Display via AI vision (requires a Gemini API key
-             in File > Gemini Settings; use the Ctrl+2 cockpit view first). The
+  Alt+N      Read the Navigation Display via AI vision (requires an AI API key —
+             Gemini or Claude — in File > Settings > AI tab; use the Ctrl+2
+             cockpit view first). The
              waypoint/distance data is also on D / Shift+D / W / Ctrl+W.
-  Alt+P      Read PFD via AI vision (Gemini key + Ctrl+2 view). Airspeed, altitude,
+  Alt+P      Read PFD via AI vision (AI key + Ctrl+2 view). Airspeed, altitude,
              heading and baro are also on B / Shift+S / Shift+H / A / Q.
-  Alt+I      Read the standby instrument via AI vision (Gemini key + Ctrl+2 view).
+  Alt+I      Read the standby instrument via AI vision (AI key + Ctrl+2 view).
   Alt+D      Describe outside scene (AI vision)
 
 Displays and Windows:
@@ -132,6 +133,16 @@ Hand Fly Mode Hotkeys:
 Visual Guidance Mode Hotkeys:
   F          Read Target VS
 
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
 INPUT MODE - Press [ to activate
 
 Teleport:
@@ -156,6 +167,14 @@ Autopilot Panel:
 
 FMC / CDU Windows:
   Shift+M    Open 787 FMC Window (no mod required; reads the FMC live)
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
 
 General:
   Escape     Exit active hotkey mode

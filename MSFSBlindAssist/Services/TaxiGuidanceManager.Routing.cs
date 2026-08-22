@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -42,7 +42,32 @@ public partial class TaxiGuidanceManager
         // type/target; drives the progressive-hold end announcement and (for
         // AfterCrossingRunway) suppresses the auto hold-short on the cleared
         // crossing. Task 4 consumes this for the terminal state machine.
-        Navigation.ProgressiveTerminator? progressiveTerminator = null)
+        Navigation.ProgressiveTerminator? progressiveTerminator = null,
+        // When true (Taxi planner "CAT III / low-visibility hold" checkbox), a
+        // runway-destination route holds at the CAT III / ILS hold-short (further
+        // back) instead of the default full-length hold. See TruncateToHoldShort.
+        bool preferIlsHold = false,
+        // Landing-exit EARLY handoff only (TryEarlyExitHandoff). When set — and only
+        // when no taxiwaySequence is given — the route START is snapped to the nearest
+        // node ON THIS taxiway instead of the nearest node overall. The early handoff
+        // fires while the aircraft is still on the runway, possibly abeam a NEIGHBOURING
+        // exit; without this anchor the start snaps to that neighbour and A* routes a long
+        // hairpin up it and across the parallel taxiway to reach the target (EIDW 28L S6
+        // via S5+S, ~600 m — reproduced from the navdata). Null keeps the legacy snap.
+        string? startTaxiwayName = null,
+        // FULL-LENGTH BACKTRACK DEPARTURE (opt-in, Taxi planner checkbox). When true,
+        // destinationNodeId is an INTERMEDIATE runway ENTRANCE (found by the form via
+        // TaxiGraph.FindBacktrackEntryNode) while destinationThresholdLat/Lon stays the
+        // FULL-LENGTH departure threshold. The route holds short of the entrance; after
+        // Continue, guidance backtracks to the threshold and lines up full length. See
+        // the BacktrackDeparture state.
+        bool fullLengthBacktrack = false,
+        // NAMED-HOLDING-POINT DEPARTURE (Taxi planner "Depart from named holding point").
+        // The graph node the chosen painted hold LINE sits on
+        // (TaxiGraph.RunwayIntersection.HoldNodeId), while destinationNodeId stays that
+        // point's runway ENTRY node. The route is pinned through it so the pilot taxis up
+        // the stub they named — see ApplyHoldingPointPin. Null/0 for every other route.
+        int? holdingPointHoldNodeId = null)
     {
         lock (_stateLock)
         {
@@ -54,6 +79,12 @@ public partial class TaxiGuidanceManager
             _destinationName = destinationName;
             _icao = icao ?? "";
             _originalTaxiwaySequence = taxiwaySequence;
+            _preferIlsHold = preferIlsHold;
+            _backtrackDeparture = fullLengthBacktrack;
+            _backtrackDepApproachAnnounced = false;
+            // Assigned unconditionally (0 when absent) so a plain route can never inherit
+            // the previous route's holding-point pin through the recalc path.
+            _holdingPointHoldNodeId = holdingPointHoldNodeId ?? 0;
 
             // Store lineup target data (runway threshold or gate position) for lineup phase
             _isRunwayLineup = isRunwayDestination;
@@ -94,10 +125,12 @@ public partial class TaxiGuidanceManager
                 if (paths.Count == 0)
                     return "No taxi path data available for this airport.";
 
-                var parking = dataProvider.GetParkingSpots(icao!);
+                var parking = ResolveParkingSpots(dataProvider, icao!);
                 var starts = dataProvider.GetRunwayStarts(icao!);
 
-                _graph = TaxiGraph.Build(paths, parking, starts);
+                // Runways let the builder repair laterally-bogus start rows before they
+                // reach the centerlines (TaxiGraph.SnapStartToRunwayCenterline).
+                _graph = TaxiGraph.Build(paths, parking, starts, dataProvider.GetRunways(icao!));
             }
 
             if (_graph.Nodes.Count == 0)
@@ -148,8 +181,8 @@ public partial class TaxiGuidanceManager
 
             string? firstCleared = (taxiwaySequence is { Count: > 0 }) ? taxiwaySequence[0] : null;
             TaxiNode? firstTwNode = firstCleared != null
-                ? _graph.FindNearestNodeOnTaxiway(
-                    aircraftLat, aircraftLon, firstCleared, requiredComponentId: destComponentId)
+                ? SelectFirstTaxiwayEntry(
+                    aircraftLat, aircraftLon, firstCleared, destComponentId, destinationNodeId)
                 : null;
 
             bool attemptLeadIn = false;
@@ -178,6 +211,24 @@ public partial class TaxiGuidanceManager
                     startNode = firstTwNode;  // common case: gate on/near its taxiway
                 }
             }
+            else if (!string.IsNullOrEmpty(startTaxiwayName)
+                     && _graph.FindNearestNodeOnTaxiway(
+                            aircraftLat, aircraftLon, startTaxiwayName!,
+                            requiredComponentId: destComponentId) is { } exitStartNode)
+            {
+                // Landing-exit early handoff: anchor the start on the CHOSEN exit taxiway
+                // rather than the nearest node overall. When the early handoff fires the
+                // aircraft is still on the runway, short of the exit, and the nearest graph
+                // node can belong to a NEIGHBOURING exit — EIDW 28L abeam S5 while committed
+                // to S6. Snapping there sends A* up the wrong exit and across the parallel
+                // taxiway to reach the target: a 600 m+ hairpin (verified against the DB).
+                // Snapping to the nearest node ON the chosen exit gives the direct
+                // up-the-exit route. Still anchored to the live position — it is the nearest
+                // node on the exit — so the look-ahead tone is measured from where the
+                // aircraft actually is. Only reached when taxiwaySequence is null (this
+                // branch is the else of the sequence path), so it never fights a clearance.
+                startNode = exitStartNode;
+            }
             else
             {
                 startNode = _graph.FindNearestNodeInDirection(
@@ -190,6 +241,11 @@ public partial class TaxiGuidanceManager
             // Calculate route
             var router = new TaxiRouter(_graph);
             TaxiRoute? route;
+            // The node the surviving route was actually built from. Diverges from
+            // startNode.NodeId only in the lead-in fallback below; the holding-point pin
+            // must rebuild its first leg from the SAME start or it would silently undo
+            // that fallback.
+            int routeStartNodeId = startNode.NodeId;
 
             if (taxiwaySequence != null && taxiwaySequence.Count > 0)
                 route = router.FindConstrainedPath(startNode.NodeId, destinationNodeId, taxiwaySequence,
@@ -221,6 +277,7 @@ public partial class TaxiGuidanceManager
                     route = router.FindConstrainedPath(
                         firstTwNode!.NodeId, destinationNodeId, taxiwaySequence!,
                         destinationIsRunway: isRunwayDestination);
+                    routeStartNodeId = firstTwNode!.NodeId;
                     leadIn = default;
                     leadInFallback = true;
                 }
@@ -228,6 +285,21 @@ public partial class TaxiGuidanceManager
 
             if (route == null || route.Segments.Count == 0)
                 return "Could not calculate a route to the destination.";
+
+            // Named-holding-point departure: make the pilot's chosen stub the one they
+            // actually taxi. Runs BEFORE TruncateToHoldShort, which is the whole point —
+            // truncation takes the LAST hold node ON THE ROUTE, so the corridor decides
+            // which painted line the pilot stops at and which name is announced.
+            if (_holdingPointHoldNodeId != 0 &&
+                ApplyHoldingPointPin(router, route, routeStartNodeId, destinationNodeId,
+                                     taxiwaySequence) is { } pinnedRoute)
+            {
+                route = pinnedRoute;
+                // The lead-in note in the summary describes the surviving route, so
+                // re-measure it against the pinned one (same first cleared taxiway).
+                if (attemptLeadIn && !leadInFallback && firstCleared != null)
+                    leadIn = TaxiLeadIn.Extract(route, firstCleared);
+            }
 
             string? constrainedLengthWarning = null;
 
@@ -274,7 +346,7 @@ public partial class TaxiGuidanceManager
             // radius of the threshold, which is often PAST the hold-short markings
             // (real hold-short lines sit ~150-200 ft / 46-61 m back from the threshold).
             if (isRunwayDestination)
-                TruncateToHoldShort(route, destinationName);
+                TruncateToHoldShort(route, destinationName, preferIlsHold);
 
             // Auto-insert hold-shorts for INTERMEDIATE runway crossings.
             // FAA AIM 4-3-18 & ICAO Doc 4444: an aircraft must hold short of every
@@ -379,6 +451,13 @@ public partial class TaxiGuidanceManager
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
+            _landingExitOffPavement = true;   // a new route re-decides this at its own handoff
+            _landingExitMissed = false;
+            _landingExitVacatedEarly = false;
+            _landingExitVacatedEarlyPlannedName = null;
+            _landingExitRouteUnreachable = false;
+            _landingExitMinDistToTargetM = double.MaxValue;
+            _missedVacateSince = DateTime.MinValue;
             _approachAnnounced = false;
             _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;
@@ -409,6 +488,7 @@ public partial class TaxiGuidanceManager
             _lastIncursionWarningTime = DateTime.MinValue;
             _offRouteSince = DateTime.MinValue;
             _hasJoinedRoute = false;
+            _minPerpWhileUnjoinedM = double.MaxValue;
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
@@ -438,6 +518,19 @@ public partial class TaxiGuidanceManager
                 string summary = BuildRouteSummary(route, isRunwayDestination, leadIn, firstCleared);
                 if (!string.IsNullOrEmpty(runwayHoldShortWarning))
                     summary = summary + " " + runwayHoldShortWarning;
+                // LVP hold feedback: when the CAT III / low-visibility hold was
+                // requested, say which hold line the route actually stops at —
+                // navdata hold coverage is patchy and the same-approach gate can
+                // legitimately reject the ILS hold, and a blind pilot has no
+                // other way to know. The honoured confirmation rides at the
+                // tail; a fallback is warning-like and goes FIRST (same
+                // interrupt reasoning as the length advisory below).
+                string? lvpNote = RunwayHoldShortSelector.DescribeLvpOutcome(
+                    isRunwayDestination && preferIlsHold, _lastRunwayHoldChoice);
+                if (lvpNote != null)
+                    summary = _lastRunwayHoldChoice == RunwayHoldChoice.IlsHold
+                        ? summary + " " + lvpNote
+                        : lvpNote + " " + summary;
                 // The length advisory goes FIRST, not last. The summary is plain
                 // queued speech, and the first AnnounceImmediate tactical callout
                 // after the pilot starts rolling INTERRUPTS it — a warning at the
@@ -525,6 +618,27 @@ public partial class TaxiGuidanceManager
     /// <summary>
     /// Advances _currentSegmentIndex to the segment closest to the aircraft's current position.
     /// Only moves forward (never backward). Handles segment skipping when updates are sparse.
+    ///
+    /// PROXIMITY IS REQUIRED (<see cref="SEGMENT_ADVANCE_MAX_DIST_M"/>). "Nearest of the next
+    /// six" is only evidence of progress if the aircraft is actually NEAR the winner —
+    /// without that gate an aircraft driving AWAY from the route still advanced along it,
+    /// because as it moves some other segment endpoint keeps becoming marginally nearest.
+    /// Measured across three guidance logs: 13 of 981 advances happened while the steering
+    /// tone was pointing more than 90° away from the aircraft's heading, including a
+    /// 0 → 3 jump at 179° (three segments consumed in one frame, exactly reversed) and
+    /// five consecutive advances over 9 s at EIDW while the error grew 103° → 139°.
+    ///
+    /// Three things went wrong, all of them silent:
+    ///   1. the route consumed itself, so turning back resumed from the wrong place;
+    ///   2. every advance stamps <c>_lastSegmentAdvanceTime</c>, which forces
+    ///      <c>nearTurn</c> true for POST_TURN_OFFROUTE_GRACE_SEC and SUPPRESSES off-route
+    ///      detection — being off-route caused advances, and the advances switched off the
+    ///      thing that would have noticed (KBNA 2026-08-08: 690 m away over 50 s at up to
+    ///      31 kt, tone pinned ~170° behind, not one recalc and not one word);
+    ///   3. the hold-short skip loop below fired <see cref="HandleHoldShort"/> at ANY
+    ///      distance — which pauses the tone and says "Stop. Hold short of runway X" for a
+    ///      runway that may be hundreds of metres away, AND moves the index past it so the
+    ///      real crossing never announces. That is the runway-incursion direction.
     /// </summary>
     private void AdvanceToNearestSegment(double lat, double lon)
     {
@@ -552,22 +666,95 @@ public partial class TaxiGuidanceManager
             }
         }
 
+        // Endpoint-tie pin breaker (KLAS 26R, 2026-08-20). The scan above measures
+        // ENDPOINT distance, and the current segment shares its end node with the
+        // next — so once the aircraft has rolled past that shared node without
+        // passing inside the 25 m capture radius (a wide corner), the two tie
+        // forever, strict-improvement keeps the stale index, and on a long next
+        // segment (B at KLAS is 345 m) the aircraft can be squarely ON the route
+        // yet outside every endpoint's reach. The walk target then freezes at
+        // (stale segment end + look-ahead) and the tone orbits the pilot around a
+        // fixed point. Advance on the evidence the endpoint scan cannot see: the
+        // aircraft's projection is past the current segment's end AND interior on
+        // the next segment within a taxiway-width cross-track bound.
+        //
+        // Runs BEFORE the proximity early-out below — a pilot far along the long
+        // next segment is >SEGMENT_ADVANCE_MAX_DIST_M from every endpoint, which
+        // is exactly the pinned case, not an off-route one. Goes through
+        // AdvanceSegment() so the taxiway announcement and latch resets behave
+        // exactly like every other advance. NEVER fires while the current segment
+        // is a hold-short segment: advancing past an un-announced hold-short is
+        // the runway-incursion direction, and that invariant outranks un-pinning
+        // (the hold-short flow has its own capture handling).
+        //
+        // Fires in EITHER situation where the endpoint scan cannot advance: the
+        // shared-node tie (bestIdx unmoved — the KLAS shape), OR the scan picking a
+        // later segment that is still out of proximity range. The second is the far
+        // half of the same long segment: once past its midpoint the far endpoint
+        // wins the scan (no tie) but can still sit beyond SEGMENT_ADVANCE_MAX_DIST_M,
+        // so gating on the tie alone left a window — ~73 m of the KLAS B segment,
+        // more on a longer one — where the index stayed stale with the target
+        // frozen behind the aircraft. The projection test is the evidence either
+        // way; which endpoint happened to be nearest is not part of it.
+        if ((bestIdx == _currentSegmentIndex || bestDist > SEGMENT_ADVANCE_MAX_DIST_M)
+            && _currentSegmentIndex + 1 < _route.Segments.Count
+            && !_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
+        {
+            var (pinLats, pinLons) = RoutePoints();
+            if (GuidanceGeometry.HasPassedOntoNextSegment(
+                    pinLats, pinLons, _currentSegmentIndex, lat, lon,
+                    SEGMENT_PASS_ADVANCE_MAX_CROSS_M))
+            {
+                AdvanceSegment();
+                return;
+            }
+        }
+
+        // Not near any of them — the aircraft is off the route, not progressing along it.
+        // Leave the index alone so off-route detection sees an un-refreshed
+        // _lastSegmentAdvanceTime and can do its job.
+        if (bestDist > SEGMENT_ADVANCE_MAX_DIST_M) return;
+
         if (bestIdx > _currentSegmentIndex)
         {
-            // Check for hold-short points we might be skipping
+            // Check for hold-short points we might be skipping. A hold-short is never
+            // passed silently — that is the whole point of this block — but it is only
+            // ANNOUNCED when the aircraft is genuinely at it. "Stop. Hold short of
+            // runway 09L" for a line 90 m away is both a false stop (it pauses the tone
+            // and waits for a Continue press) and a lost one, because the index moves
+            // past the segment and the real crossing then gets nothing.
             for (int i = _currentSegmentIndex; i < bestIdx; i++)
             {
-                if (_route.Segments[i].IsHoldShortPoint)
+                if (!_route.Segments[i].IsHoldShortPoint) continue;
+
+                double distToHold = TaxiGraph.FastDistanceMeters(
+                    lat, lon,
+                    _route.Segments[i].ToNode.Latitude,
+                    _route.Segments[i].ToNode.Longitude);
+
+                if (distToHold <= HOLD_SHORT_ANNOUNCE_MAX_DIST_M)
                 {
                     _currentSegmentIndex = i + 1;
-                    _lastSegmentAdvanceTime = DateTime.Now;
+                    _lastSegmentAdvanceTime = DateTime.UtcNow;
                     HandleHoldShort(_route.Segments[i]);
-                    return;
                 }
+                else
+                {
+                    // Too far to call it reached. Hold the index ON the hold-short
+                    // segment rather than stepping over it, so the normal
+                    // 300/150/50 ft countdown still runs when the aircraft actually
+                    // arrives. Never advance past an un-announced hold-short.
+                    if (i > _currentSegmentIndex)
+                    {
+                        _currentSegmentIndex = i;
+                        _lastSegmentAdvanceTime = DateTime.UtcNow;
+                    }
+                }
+                return;
             }
 
             _currentSegmentIndex = bestIdx;
-            _lastSegmentAdvanceTime = DateTime.Now;
+            _lastSegmentAdvanceTime = DateTime.UtcNow;
 
             var newSeg = _route.Segments[_currentSegmentIndex];
             if (!string.IsNullOrEmpty(newSeg.TaxiwayName) &&
@@ -584,13 +771,57 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// Picks the node on the FIRST cleared taxiway that the route should be anchored
+    /// on (the LEPA pre-snap). Ranks by the total graph cost of the route through the
+    /// candidate — (aircraft → entry) + (entry → destination) — via
+    /// <see cref="TaxiRouter.FindBestEntryNodeOnTaxiway"/>, so an entry the route
+    /// would have to reverse out of loses to the junction it hangs off.
+    ///
+    /// The Euclidean-nearest node this replaces picked a 15 m dead-end stub at LOWS
+    /// (2026-08-16, progressive taxi "L" off the runway 15 vacate point): the route
+    /// opened with a 15 m leg the wrong way and a 170° hairpin, and because the
+    /// pre-snap becomes the A* start node the router could not recover from it.
+    ///
+    /// Falls back to the Euclidean-nearest node whenever the cost ranking can't run
+    /// (no graph node near the aircraft, taxiway absent from the destination's
+    /// component) or picks something beyond the Euclidean search radius the caller
+    /// has always been bounded by — so this can only ever change WHICH near node is
+    /// chosen, never widen the search.
+    /// </summary>
+    private TaxiNode? SelectFirstTaxiwayEntry(
+        double aircraftLat, double aircraftLon, string taxiwayName,
+        int destComponentId, int destinationNodeId)
+    {
+        var euclideanNearest = _graph!.FindNearestNodeOnTaxiway(
+            aircraftLat, aircraftLon, taxiwayName, requiredComponentId: destComponentId);
+        if (euclideanNearest == null) return null;
+
+        // Dijkstra needs a node to start from; the aircraft sits between nodes, so
+        // use the nearest one. The hop from the aircraft onto it is the same for
+        // every candidate, so it can't affect the ranking.
+        var anchor = _graph.FindNearestNode(
+            aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+        if (anchor == null) return euclideanNearest;
+
+        int bestId = new TaxiRouter(_graph)
+            .FindBestEntryNodeOnTaxiway(anchor.NodeId, taxiwayName, destinationNodeId);
+        if (bestId == -1 || !_graph.Nodes.TryGetValue(bestId, out var best))
+            return euclideanNearest;
+
+        const double MAX_PRESNAP_M = 800.0;   // matches FindNearestNodeOnTaxiway's default
+        double gap = TaxiGraph.FastDistanceMeters(
+            aircraftLat, aircraftLon, best.Latitude, best.Longitude);
+        return gap <= MAX_PRESNAP_M ? best : euclideanNearest;
+    }
+
+    /// <summary>
     /// Attempts to recalculate the route from the current position to the destination.
     /// </summary>
     private void TryRecalculateRoute(double lat, double lon, double headingTrue)
     {
         if (_graph == null) return;
 
-        if ((DateTime.Now - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
+        if ((DateTime.UtcNow - _lastRecalculationTime).TotalSeconds < RECALCULATION_COOLDOWN_SEC)
             return;
 
         // Final-segment guard. At the destination hold-short there's nothing
@@ -619,7 +850,7 @@ public partial class TaxiGuidanceManager
                 return;
         }
 
-        _lastRecalculationTime = DateTime.Now;
+        _lastRecalculationTime = DateTime.UtcNow;
 
         // Position-aware sequence trim. Walk the original ATC sequence from
         // the LAST taxiway backwards, asking "is there a node on this taxiway
@@ -696,6 +927,16 @@ public partial class TaxiGuidanceManager
             return;
         }
 
+        // Re-apply the named-holding-point pin, so a recalc keeps routing the pilot to the
+        // painted line they chose. Deliberately BEFORE the sanity gate below: the gate must
+        // judge the route we would actually fly, not an intermediate one.
+        if (_holdingPointHoldNodeId != 0 &&
+            ApplyHoldingPointPin(router, newRoute, nearestNode.NodeId, _destinationNodeId,
+                                 remainingSequence) is { } pinnedRecalc)
+        {
+            newRoute = pinnedRecalc;
+        }
+
         // Post-recalc sanity gate. Two failure modes are rejected here:
         //
         //  A. Length blow-up: the new route is dramatically longer than what
@@ -768,7 +1009,7 @@ public partial class TaxiGuidanceManager
         // after an auto-recalc the pilot would roll straight onto the runway instead
         // of stopping at the hold-short line.
         if (_isRunwayLineup)
-            TruncateToHoldShort(newRoute, _destinationName);
+            TruncateToHoldShort(newRoute, _destinationName, _preferIlsHold);
 
         // Re-probe reachability for the recalculated route (the recalc routes to
         // the same _destinationNodeId, so this measures the destination node, not
@@ -887,13 +1128,13 @@ public partial class TaxiGuidanceManager
             // and a single lateral-deviation sample at the stop line can
             // trigger a spurious recalc the instant the pilot presses
             // Continue.
-            _lastSegmentAdvanceTime = DateTime.Now;
+            _lastSegmentAdvanceTime = DateTime.UtcNow;
             HandleHoldShort(completedSeg);
             return;
         }
 
         _currentSegmentIndex++;
-        _lastSegmentAdvanceTime = DateTime.Now;
+        _lastSegmentAdvanceTime = DateTime.UtcNow;
         _approachAnnounced = false;
         _turnImminentAnnounced = false;
         _crossingAnnounced = false;
@@ -914,6 +1155,80 @@ public partial class TaxiGuidanceManager
         }
     }
 
+    // Bounds on the detour a holding-point pin may add. A pinned route is EXPECTED to be
+    // longer than the free-choice one — the pilot asked for a specific stub and that is the
+    // feature, so these are deliberately loose (they match the recalc sanity gate). They
+    // exist only to reject a pin so large the snapped hold node cannot be the line the
+    // pilot meant, in which case the un-pinned route is the safer answer.
+    private const double HOLD_PIN_MAX_RATIO = 2.0;
+    private const double HOLD_PIN_MAX_PAD_M = 500.0;
+
+    /// <summary>
+    /// Re-routes a named-holding-point departure THROUGH the painted hold line the pilot
+    /// chose, so the stub they named is the stub they taxi. Returns the pinned route, or
+    /// null to keep the caller's original.
+    /// <para>Selecting a holding point fixes only the runway ENTRY node; the corridor to it
+    /// is a free A* choice. At EGLL 27R (2026-08-08) a pilot who picked A2 was routed up the
+    /// neighbouring A3 stub — the two merge just short of the runway, so the route rejoined
+    /// A2 for its final 60 m and reached the entry as asked, but the aircraft crossed A3's
+    /// painted line and never A2's. TruncateToHoldShort takes the LAST hold node on the
+    /// route, so guidance correctly named the line it stopped at: "A3", contradicting the
+    /// pilot's choice. Pinning the corridor is what makes the two agree.</para>
+    /// <para>The pin degrades to a no-op on every doubt — node missing, unreachable, either
+    /// leg unbuildable, or a detour beyond <see cref="HOLD_PIN_MAX_RATIO"/>/
+    /// <see cref="HOLD_PIN_MAX_PAD_M"/>. It can only ever make the route match the request;
+    /// it must never be able to make a working route worse.</para>
+    /// </summary>
+    private TaxiRoute? ApplyHoldingPointPin(
+        TaxiRouter router, TaxiRoute route, int startNodeId, int destinationNodeId,
+        List<string>? taxiwaySequence)
+    {
+        int holdNodeId = _holdingPointHoldNodeId;
+        if (_graph == null || holdNodeId == 0) return null;
+        if (!_graph.Nodes.ContainsKey(holdNodeId)) return null;
+        // Pinning to the destination itself is meaningless (and would make leg B empty).
+        if (holdNodeId == destinationNodeId || holdNodeId == startNodeId) return null;
+
+        // Already on the chosen corridor — the free route happens to pass the painted line,
+        // which is the common case at an airport whose stubs don't merge. Nothing to do.
+        foreach (var seg in route.Segments)
+            if (seg.FromNode.NodeId == holdNodeId || seg.ToNode.NodeId == holdNodeId)
+                return null;
+
+        // Leg A keeps the clearance (the pilot's taxiways still constrain the way there);
+        // destinationIsRunway is false because the hold node is NOT the runway — the
+        // last-cleared-taxiway-as-terminus rule belongs to the runway leg, which is leg B.
+        var legA = taxiwaySequence is { Count: > 0 }
+            ? router.FindConstrainedPath(startNodeId, holdNodeId, taxiwaySequence,
+                                         destinationIsRunway: false)
+            : router.FindShortestPath(startNodeId, holdNodeId);
+        // Leg B is the stub itself: hold line → runway entry, a few nodes, no constraint to
+        // apply (the clearance's taxiways are all behind us by here).
+        var legB = router.FindShortestPath(holdNodeId, destinationNodeId);
+        if (legA is not { Segments.Count: > 0 } || legB is not { Segments.Count: > 0 })
+            return null;
+
+        var pinned = router.Concatenate(legA, legB);
+        if (pinned == null || pinned.Segments.Count == 0) return null;
+
+        if (pinned.TotalDistanceMeters >
+            route.TotalDistanceMeters * HOLD_PIN_MAX_RATIO + HOLD_PIN_MAX_PAD_M)
+        {
+            _guidanceLog.Info(
+                $"Holding-point pin REJECTED (node {holdNodeId}): pinned " +
+                $"{pinned.TotalDistanceMeters:F0} m vs free {route.TotalDistanceMeters:F0} m.");
+            return null;
+        }
+
+        // Surface leg A's clearance verdict — the pinned route IS leg A up to the hold line,
+        // so a fallback there is the fallback the pilot needs told about.
+        pinned.ConstrainedFallbackReason = legA.ConstrainedFallbackReason;
+        _guidanceLog.Info(
+            $"Holding-point pin applied via node {holdNodeId}: {pinned.TotalDistanceMeters:F0} m " +
+            $"(free route {route.TotalDistanceMeters:F0} m).");
+        return pinned;
+    }
+
     /// <summary>
     /// Marks hold-short points at the end of each user-specified taxiway in the route.
     /// </summary>
@@ -924,8 +1239,9 @@ public partial class TaxiGuidanceManager
     /// on the runway itself, and gets the 300/150/50 ft countdown on approach.
     /// Safe to call multiple times — idempotent when already truncated.
     /// </summary>
-    private void TruncateToHoldShort(TaxiRoute route, string destinationName)
+    private void TruncateToHoldShort(TaxiRoute route, string destinationName, bool preferIlsHold = false)
     {
+        _lastRunwayHoldChoice = RunwayHoldChoice.None;
         if (route.Segments.Count == 0) return;
 
         // Pass 1: find the latest (closest-to-runway) ILS hold-short and plain
@@ -941,40 +1257,25 @@ public partial class TaxiGuidanceManager
             if (truncateAtIHS >= 0 && truncateAtHS >= 0) break;
         }
 
-        // Prefer the IHS over the HS ONLY when both sit on the SAME final approach
-        // — i.e. the ILS hold is just behind the CAT I hold on the same connector
-        // (the safer "clear the ILS critical area" stop). The old code preferred
-        // the IHS UNCONDITIONALLY, which broke at airports where the route merely
-        // CROSSES an ILS-critical-area hold on a transit taxiway before turning
-        // onto the final connector to the runway: that transit IHS was picked over
-        // the real runway hold, stopping the pilot a whole taxiway early.
-        //   OMDB 30R via N12 (fs2024): the cleared route runs down taxiway N —
-        //   which carries its own IHS nodes ~620 m from N12's HSND hold — then
-        //   turns onto the short N12 connector. The N IHS hijacked the truncation,
-        //   so guidance announced the hold-short on N instead of N12 (the actual
-        //   30R hold). Reported by the user.
-        // Geometric proximity, NOT route-segment count, gates "same approach": a
-        // real CAT II/III hold sits only tens of metres behind the CAT I line,
-        // whereas a transit hold on the prior taxiway is hundreds of metres away.
-        const double SAME_APPROACH_IHS_MAX_M = 150.0;
-        int truncateAt;
-        if (truncateAtIHS >= 0 && truncateAtHS >= 0 && truncateAtIHS < truncateAtHS)
+        // Hold-line selection between the full-length hold (HS, closest to the
+        // runway) and the CAT III / ILS hold (IHS, further back to protect the
+        // ILS critical area) is delegated to RunwayHoldShortSelector — the pure
+        // decision core that carries the full rationale (default full-length =
+        // user decision 2026-07; the 150 m same-approach gate = the OMDB
+        // 30R-via-N12 transit-IHS fix) and is pinned by
+        // RunwayHoldShortSelectorTests. The separation between the two holds is
+        // only consulted in the LVP branch, when the IHS sits behind the HS.
+        double holdSepM = double.MaxValue;
+        if (truncateAtIHS >= 0 && truncateAtHS >= 0)
         {
-            // IHS is further from the runway than the HS. Honour it only when the
-            // two holds are physically close (same final approach); otherwise the
-            // HS on the final connector is the real runway hold.
             var ihsNode = route.Segments[truncateAtIHS].ToNode!;
             var hsNode  = route.Segments[truncateAtHS].ToNode!;
-            double holdSep = TaxiGraph.FastDistanceMeters(
+            holdSepM = TaxiGraph.FastDistanceMeters(
                 ihsNode.Latitude, ihsNode.Longitude, hsNode.Latitude, hsNode.Longitude);
-            truncateAt = holdSep <= SAME_APPROACH_IHS_MAX_M ? truncateAtIHS : truncateAtHS;
         }
-        else
-        {
-            // No IHS, no HS, or the IHS is already the closest hold to the runway
-            // → take whichever hold-short is latest in the route.
-            truncateAt = Math.Max(truncateAtIHS, truncateAtHS);
-        }
+        var (truncateAt, holdChoice) = RunwayHoldShortSelector.Select(
+            truncateAtIHS, truncateAtHS, holdSepM, preferIlsHold);
+        _lastRunwayHoldChoice = holdChoice;
 
         // Pass 2 (universal-DB fallback): if the graph has no HS/IHS nodes on
         // this runway at all (common at small airports, new-numbered runways,
@@ -986,6 +1287,19 @@ public partial class TaxiGuidanceManager
         // middle ground that keeps the aircraft off the runway for any code
         // short of a full CAT II/III ILS hold.
         const double SYNTHETIC_BACKOFF_M = 60.0;
+        // Backoff reference: normally the runway lineup point. For a FULL-LENGTH
+        // BACKTRACK departure the lineup point is the FAR (full-length) threshold
+        // — hundreds of metres past the route's actual end (the intermediate
+        // entrance) — so backing off from it would never truncate and would tag a
+        // segment on the runway. Back off from the ENTRANCE (the destination node)
+        // instead, so the hold-short sits just before the pilot enters to backtrack.
+        double backoffRefLat = _lineupTargetLat, backoffRefLon = _lineupTargetLon;
+        if (_backtrackDeparture && _destinationNodeId != 0 && _graph != null &&
+            _graph.Nodes.TryGetValue(_destinationNodeId, out var entryNode))
+        {
+            backoffRefLat = entryNode.Latitude;
+            backoffRefLon = entryNode.Longitude;
+        }
         if (truncateAt < 0 && _hasLineupTarget)
         {
             for (int i = route.Segments.Count - 1; i >= 0; i--)
@@ -993,7 +1307,7 @@ public partial class TaxiGuidanceManager
                 var to = route.Segments[i].ToNode;
                 if (to == null) continue;
                 double d = TaxiGraph.FastDistanceMeters(
-                    to.Latitude, to.Longitude, _lineupTargetLat, _lineupTargetLon);
+                    to.Latitude, to.Longitude, backoffRefLat, backoffRefLon);
                 if (d >= SYNTHETIC_BACKOFF_M)
                 {
                     truncateAt = i;
@@ -1089,9 +1403,14 @@ public partial class TaxiGuidanceManager
             if (crossedRwy.Equals(lastTaggedRunway, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // The crossing edge is segment i; hold short at the node BEFORE the
-            // runway, which is the end of segment i-1.
-            var holdSeg = route.Segments[i - 1];
+            // The crossing edge is segment i; hold short at the scenery's own
+            // hold line before it (falling back to the end of segment i-1 when
+            // the navdata carries no hold node within reach — see
+            // RouteRunwayCrossings.ResolveCrossingHoldSegment; the node before
+            // the crossing edge is routinely ON the runway pavement, because
+            // the crossing is detected against the CENTERLINE).
+            var holdSeg = route.Segments[
+                RouteRunwayCrossings.ResolveCrossingHoldSegment(route.Segments, i, crossedRwy)];
             holdSeg.IsHoldShortPoint = true;
             // Label policy lives in RouteRunwayCrossings.ComposeCrossingLabel
             // (pure, probe-tested): empty → tagged; bare DB names upgraded to
@@ -1269,9 +1588,13 @@ public partial class TaxiGuidanceManager
                 continue;
             }
 
-            // Tag the segment immediately BEFORE the crossing edge (so the
-            // aircraft stops at the hold-short line, not on the runway).
-            int holdSegIdx = Math.Max(crossingSeg - 1, 0);
+            // Tag the segment ending at the scenery's own hold line before the
+            // crossing (the segment immediately before the crossing edge when
+            // there is none) — the crossing edge straddles the CENTERLINE, so
+            // its start node is routinely on the pavement itself. See
+            // RouteRunwayCrossings.ResolveCrossingHoldSegment.
+            int holdSegIdx = RouteRunwayCrossings.ResolveCrossingHoldSegment(
+                route.Segments, crossingSeg, runwayId);
             var holdSeg = route.Segments[holdSegIdx];
             holdSeg.IsHoldShortPoint = true;
             // User intent wins on the label.

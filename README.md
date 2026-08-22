@@ -123,7 +123,15 @@ Full accessibility support for the FlyByWire A380X — the free, high-fidelity A
 - Automatic announcements: Master Warning/Caution, the full **FMA**, autopilot, approach capability, **spoken TCAS guidance** (traffic/resolution advisories with the "what to fly" vertical-speed instruction), ROW/ROP runway-overrun protection, and **OANS + Brake-To-Vacate (BTV)** with dry/wet stopping distance and rollout call-outs.
 - Honours the A380's own units in MSFSBA's read-outs: **metric altitude** (FCU MTRS — every altitude reads, and the FCU altitude input is entered, in metres) and **kg/lb weight**; the clock chronometer and elapsed-time counter; pitch/rudder trim; fuel pumps; and the audio control panel.
 - All our shared features are integrated as well, including taxi guidance, the landing exit planner, route viewer, gate/runway teleport, METAR report, location info and text-based map.
-- A complete screen-reader-first manual ships in `docs/a380-manual.html`.
+- A complete screen-reader-first manual ships in the `Guides` folder (`Guides/a380-manual.html`).
+
+## VATSIM (vPilot)
+
+MSFS Blind Assist can announce VATSIM network activity reported by [vPilot](https://vpilot.rosscarlson.dev/) through your screen reader: connections and disconnections, private messages, radio chatter on the frequencies you're tuned to, and SELCAL alerts.
+
+It's off by default. Turn it on from **Settings → VATSIM**: tick the master switch and press OK, and MSFS Blind Assist finds your vPilot installation and installs the plugin for you — you just need to restart vPilot afterwards so it picks the plugin up. Mute announcements for the rest of a flight at any time with **Output mode > Alt+V**, without opening Settings.
+
+If you used the older standalone `vPilot-to-TTS` tray application, its vPilot plugin is removed automatically the first time this feature installs its own — you only need to uninstall the old tray application yourself.
 
 ## Discord
 Please join us on discord for support or to hang out with us:
@@ -160,6 +168,9 @@ Navdata Reader command-line tool by Alexander Barthel to build the airport and n
 
 ## Usage and Documentation
 MSFS Blind Assist is available to download in the releases page. It is currently in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.
+
+## Contributing
+Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
 
 ## Donations
 Consider donating to support me and my project! Every bit helps, and it would be extremely helpful. Thank you!

@@ -1,0 +1,1 @@
+The holding-point list now offers lines it used to miss: the A and M holds at Gatwick 26L, the full-length holds at Heathrow 09R and Schiphol 36C, and the queue-area holds Manchester paints behind the 23L threshold.

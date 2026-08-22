@@ -70,13 +70,18 @@ public partial class SimConnectManager
     /// Useful for atomic read-modify-write operations on LVars.
     /// Example: "(L:E_FCU_EFIS1_BARO) 5 + (>L:E_FCU_EFIS1_BARO)"
     /// </summary>
-    public void ExecuteCalculatorCode(string rpnCode)
+    /// <param name="quiet">
+    /// Pass true only from an identified high-rate (per-frame timer) caller -- e.g. the A380
+    /// seat-motor/slider-ramp ticks -- to skip the per-command debug log line. Default false
+    /// preserves existing logging for every other caller.
+    /// </param>
+    public void ExecuteCalculatorCode(string rpnCode, bool quiet = false)
     {
         if (!IsConnected || mobiFlightWasm == null) return;
 
         try
         {
-            mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}");
+            mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}", quiet);
         }
         catch (Exception ex)
         {

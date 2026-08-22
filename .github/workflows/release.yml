@@ -14,26 +14,44 @@ jobs:
 
     steps:
       - name: Checkout
+        # Full history AND tags: the changelog step's `git describe` needs the previous
+        # tag, and the default shallow clone fetches only the tagged commit — which
+        # would silently produce an empty range and a release with no written notes.
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
+      # The git tag is the single source of truth for the shipped version.
+      # v8.0.0 -> 8.0.0, which -p:Version below hands to every project in the
+      # solution; the SDK derives AssemblyVersion, FileVersion and
+      # InformationalVersion from it. A prerelease tag works too: v8.0.0-rc1
+      # gives InformationalVersion 8.0.0-rc1 with Assembly/FileVersion 8.0.0.0.
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
         shell: bash
 
+      # Do NOT drop -p:Version. Without it the build falls back to the csproj's
+      # local-only <Version>0.0.0</Version> and every release ships as 0.0.0 —
+      # the app's update check compares its own AssemblyVersion against the
+      # latest GitHub tag, so a 0.0.0 release would offer itself as an update.
       - name: Build
         run: dotnet build MSFSBlindAssist.sln -c Release -p:Version=${{ steps.version.outputs.VERSION }}
 
+      # Keep the Navdatareader version in sync with preview.yml's identical step.
+      # BUMPING THIS PIN REQUIRES re-deriving MSFSBlindAssist/Resources/navdatareader.cfg
+      # from the new release's own config/navdatareader.cfg (re-copy stock, re-apply the
+      # single MSFSBA *_jetways.bgl line). navdatareader-config.yml fails the PR otherwise.
       - name: Download Navdatareader
         run: |
-          gh release download v1.2.3 -R albar965/navdatareader -p "Navdatareader-win-1.2.3.zip"
-          Expand-Archive -Path Navdatareader-win-1.2.3.zip -DestinationPath temp-navdata
-          Move-Item temp-navdata\Navdatareader-win-1.2.3 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
+          gh release download v1.2.4 -R albar965/navdatareader -p "Navdatareader-win-1.2.4.zip"
+          Expand-Archive -Path Navdatareader-win-1.2.4.zip -DestinationPath temp-navdata
+          Move-Item temp-navdata\Navdatareader-win-1.2.4 MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader
           Copy-Item MSFSBlindAssist\SimConnect.cfg MSFSBlindAssist\bin\x64\Release\net10.0-windows\navdatareader\
         shell: pwsh
         env:
@@ -44,8 +62,65 @@ jobs:
           Compress-Archive -Path MSFSBlindAssist\bin\x64\Release\net10.0-windows\* -DestinationPath MSFSBA.zip
         shell: pwsh
 
+      - name: Build release notes from changelog fragments
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # KNOWN LIMITATION, documented not handled: `$TAG^` is this tag's parent
+          # commit, so if TAG is a prerelease (e.g. v8.0.0-rc1), PREV resolves to
+          # whatever tag sits on/before that parent — not necessarily the previous FULL
+          # release — so the WRITTEN notes below can cover only since the rc. GitHub's
+          # own generated half (`generate_release_notes: true` further down, requested
+          # with no `previous_tag`) still compares against the previous full release, so
+          # the two halves of one release body would describe different ranges. This has
+          # never happened (20 tags, all full releases). If an rc is ever cut: either
+          # pass `previous_tag` explicitly to softprops/action-gh-release below so both
+          # halves agree, or accept the narrower written range deliberately.
+          # --match 'v*' is REQUIRED. The rolling `preview` tag (preview.yml) lives on
+          # main, and a bare `git describe --tags` can return IT instead of the previous
+          # release — verified: with a tag planted between v7.0.0 and v8.0.0,
+          # `git describe --tags --abbrev=0 v8.0.0^` returns the planted tag. The range
+          # would then silently omit every fragment added before it.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' "$TAG^" 2>/dev/null || true)
+          # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
+          # makes the builder exit 1 if it reaches it.
+          if [ -z "$PREV" ]; then
+            echo "No previous tag found; taking every fragment."
+            git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          else
+            echo "Fragments added between $PREV and $TAG:"
+            git diff --name-only --diff-filter=A "$PREV..$TAG" \
+              -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          fi
+          cat fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the release — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt --contributors contributors.txt
+          echo "--- release notes ---"
+          cat release-notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # v3 is the Node 24 runtime line; v2 targets the deprecated Node 20 and was
+      # only still working because the runner force-ran it on 24. v3.0.0 changed
+      # nothing but the runtime -- the inputs below are unchanged from v2.
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: MSFSBA.zip
+          # body_path is PREPENDED to the generated notes (per the action's docs), so
+          # the written entries lead and the full PR list follows below them.
+          body_path: release-notes.md
           generate_release_notes: true
+
+      # Cosmetic, and deliberately best-effort. Without it the Releases page shows a
+      # preview claiming e.g. 8.0.1-pre.42 next to a newer v8.1.0 until the next merge.
+      # Preview users behave correctly either way — the selector takes the highest version
+      # and offers them the real release — so this must never fail a release.
+      # The name "preview" must match preview.yml's tag_name.
+      - name: Retire the rolling preview
+        shell: bash
+        run: gh release delete preview --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ github.token }}

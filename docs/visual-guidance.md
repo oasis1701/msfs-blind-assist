@@ -12,8 +12,8 @@ The visual guidance system uses a **PID controller** to generate pitch and bank 
 - `MSFSBlindAssist/Aircraft/IAircraftDefinition.cs` — `VisualGuidanceProfile` (per-aircraft tunables incl. tone frequency range)
 - `MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs` — default A320 profile
 - `MSFSBlindAssist/Settings/UserSettings.cs` — `VisualGuidanceToneWaveform/Volume`, `VisualGuidanceCurrentToneWaveform/Volume`, `VisualGuidanceHardPanTone`
-- `MSFSBlindAssist/Forms/HandFlyOptionsForm.cs` — UI for all visual-guidance audio settings
-- `MSFSBlindAssist/MainForm.cs` (≈line 720) — `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
+- `MSFSBlindAssist/Forms/Settings/HandFlyPanel.cs` — UI for all visual-guidance audio settings
+- `MSFSBlindAssist/MainForm.Announcers.cs` — `HandleSpecialAnnouncements` method contains the `SIM_ON_GROUND` handler that auto-deactivates visual guidance on touchdown
 
 ## Dual-Tone Audio Cue
 
@@ -74,7 +74,7 @@ Also: the PID math, phase machine, and lateral arc-capture logic are untouched b
 
 ### Settings
 
-All exposed in the Hand Fly Options dialog (`Forms/HandFlyOptionsForm.cs`):
+All exposed in the Hand Fly Options dialog (`Forms/Settings/HandFlyPanel.cs`):
 
 | Setting | Default | Purpose |
 |---|---|---|
@@ -89,7 +89,7 @@ Both tones always play when visual guidance is active; there is no single-tone m
 ### Lifecycle
 
 - **Auto-deactivation on touchdown:** when `SIM_ON_GROUND` transitions from airborne to on-ground, visual guidance deactivates automatically (`MainForm.cs` SIM_ON_GROUND handler). From that moment the landing-exit planner / taxi guidance take over — keeping the dual-tone running would compete audibly with the taxi steering tone and serve no useful purpose. Manual activation on the ground (preflight test, etc.) is still allowed; the auto-deactivation fires only on the airborne→on-ground edge.
-- **Deferred Start:** Initialize() instantiates both `AudioToneGenerator` instances but does NOT call `Start()`. The first ProcessUpdate computes real attitude commands and then starts both tones at the correct initial frequencies via `StartTonesIfNeeded`. The phase-continuous oscillator's portamento (~0.23 ms at 44.1 kHz) is well under WaveOut's 150 ms buffer, so the first *audible* note already reflects the airplane's state — no fused-tone glitch at session start. Concretely: without the deferral, both tones would start immediately at the centre 500 Hz (no real attitude command exists yet), producing an audible fused-tone glitch before the first real command arrives — do not re-add a `Start()` call inside `Initialize`.
+- **Deferred Start:** Initialize() instantiates both `AudioToneGenerator` instances but does NOT call `Start()`. The first ProcessUpdate computes real attitude commands and then starts both tones at the correct initial frequencies via `StartTonesIfNeeded`. The phase-continuous oscillator's portamento reaches the target frequency in well under a millisecond, far inside the 150 ms `WasapiOut` buffer that first note is written into (the tone is generated at the endpoint's own mix rate, whatever that endpoint mixes at), so the first *audible* note already reflects the airplane's state — no fused-tone glitch at session start. Concretely: without the deferral, both tones would start immediately at the centre 500 Hz (no real attitude command exists yet), producing an audible fused-tone glitch before the first real command arrives — do not re-add a `Start()` call inside `Initialize`.
 - **Start the current (follower) tone only if the desired tone started.** Without a reference, the follower plays a constant centre-pan tone forever — annoying and meaningless. `StartTonesIfNeeded` enforces this; don't reorder its try blocks.
 - **Idempotent Initialize:** if Initialize is called while existing tones are still running (defensive against future callers that bypass `Stop`), Initialize tears them down first before creating new instances. Today's Toggle flow always Stops first, but the guard prevents future leaks.
 

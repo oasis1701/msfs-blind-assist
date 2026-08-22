@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -49,64 +49,6 @@ public partial class SimConnectManager
     
     private void SimConnect_OnRecvSimobjectData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
     {
-        // Check if this is a specific LVar request (400-499 range)
-        if ((int)data.dwRequestID >= 400 && (int)data.dwRequestID < 500)
-        {
-            SingleValue specificValue = (SingleValue)data.dwData[0];
-
-            // Look up which variable this was
-            if (pendingRequests.TryRemove((int)data.dwRequestID, out string? varKey))
-            {
-                // FlyByWire A32NX ECAM variable tracking for display window
-                // These hardcoded checks are safe - other aircraft (Fenix, PMDG) use different variable names
-                // so these conditions won't trigger. Each aircraft's warning/caution announcements work via
-                // the continuous monitoring system (UpdateFrequency.Continuous + IsAnnounced in their definition).
-                if (varKey == "A32NX_MASTER_WARNING")
-                {
-                    ecamMasterWarning = specificValue.value;
-                    Log.Debug("SimConnect", $"ECAM Master Warning updated: {specificValue.value}");
-                }
-                else if (varKey == "A32NX_MASTER_CAUTION")
-                {
-                    ecamMasterCaution = specificValue.value;
-                    Log.Debug("SimConnect", $"ECAM Master Caution updated: {specificValue.value}");
-                }
-                else if (varKey == "A32NX_STALL_WARNING")
-                {
-                    ecamStallWarning = specificValue.value;
-                    Log.Debug("SimConnect", $"ECAM Stall Warning updated: {specificValue.value}");
-                }
-
-                // Format the description based on variable type
-                string description = $"{specificValue.value:F1}";
-                var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-                if (variables.ContainsKey(varKey))
-                {
-                    var varDef = variables[varKey];
-
-                    // For LED variables, use the DisplayName with On/Off state
-                    if (varKey.StartsWith("A32NX_ECP_LIGHT_"))
-                    {
-                        string state = specificValue.value > 0 ? "On" : "Off";
-                        description = $"{varDef.DisplayName} {state}";
-                    }
-                    else if (varDef.Units == "volts")
-                    {
-                        description = $"{specificValue.value:F1}V";
-                    }
-                }
-
-                // Send update with the actual variable key
-                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
-                {
-                    VarName = varKey,
-                    Value = specificValue.value,
-                    Description = description
-                });
-            }
-            return;
-        }
-        
         // Handle responses from individual variable registrations
         if ((int)data.dwRequestID >= (int)DATA_REQUESTS.INDIVIDUAL_VARIABLE_BASE)
         {
@@ -359,6 +301,13 @@ public partial class SimConnectManager
                     Value = oatData.value,
                     Description = $"{oatData.value:0} degrees Celsius"
                 });
+                break;
+
+            case DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED:
+                // Delivered every second (SECOND + DEFAULT — a CHANGED delivery could
+                // be drained before SetupEvents attached this handler); no event, no
+                // announcement — MainForm's gate-list predicate polls the property.
+                GsxCouatlStartedLVar = ((SingleValue)data.dwData[0]).value != 0;
                 break;
 
             case DATA_REQUESTS.REQUEST_SQUAWK_CODE:
@@ -764,6 +713,31 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case (DATA_REQUESTS)508: // Manual-landing flare/rollout assist — consolidated frame
+                FlareAssistData faData = (FlareAssistData)data.dwData[0];
+
+                // Mirror to lastKnownPosition so cross-feature consumers (TCAS,
+                // WeatherRadarForm, LandingExitPlanner) stay fresh during a manual
+                // approach where no other position-bearing monitor is running.
+                lastKnownPosition = new AircraftPosition
+                {
+                    Latitude = faData.Latitude,
+                    Longitude = faData.Longitude,
+                    HeadingMagnetic = faData.HeadingMagnetic,
+                    MagneticVariation = faData.MagneticVariation,
+                    GroundSpeedKnots = faData.GroundSpeedKnots,
+                    VerticalSpeedFPM = faData.VerticalSpeedFPM,
+                    // Both are carried by THIS frame — unlike the 506/507 mirrors below,
+                    // whose TakeoffAssistData struct has no altitude to copy and so must
+                    // preserve the previous value. AltitudeMslFt is the same
+                    // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
+                    Altitude = faData.AltitudeMslFt,
+                    SimOnGround = faData.OnGround
+                };
+
+                FlareAssistDataReceived?.Invoke(this, faData);
+                break;
+
             case (DATA_REQUESTS)507: // Taxi Guidance - Position Data (reuses TakeoffAssistData struct)
                 TakeoffAssistData taxiData = (TakeoffAssistData)data.dwData[0];
                 AircraftPosition taxiPos = new AircraftPosition
@@ -859,7 +833,7 @@ public partial class SimConnectManager
     /// <summary>
     /// Unpack waypoint name from FlyByWire encoded format
     /// </summary>
-    private string UnpackWaypointName(double ident0, double ident1)
+    internal string UnpackWaypointName(double ident0, double ident1)
     {
         double[] values = { ident0, ident1 };
         string result = "";

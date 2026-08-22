@@ -1,6 +1,6 @@
 param(
   [string]$Title = "A380X_MFD",
-  [string]$AgentFile = "C:/Users/franc/Documents/development/MSFSBA/msfs-blind-assist/MSFSBlindAssist/Resources/coherent-a380-agent.js",
+  [string]$AgentFile = (Join-Path $PSScriptRoot "../MSFSBlindAssist/Resources/coherent-a380-agent.js"),
   [int]$Mcdu = 1, [string]$From = "VCBI", [string]$To = "VOMM"
 )
 $ErrorActionPreference = "Stop"

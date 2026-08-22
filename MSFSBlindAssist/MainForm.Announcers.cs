@@ -141,7 +141,28 @@ public partial class MainForm
         // updates still run, only the speech is dropped.
         bool hs787 = currentAircraft!.AircraftCode == "HS_787";
         bool hs787Muted = hs787 &&
-            Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName);
+            Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
+        // Same silent-no-op class for the A32NX family: the A320 (EFIS baro) and the
+        // Headwind A330 (stock-Kohlsman altimeter) announce those vars from INSIDE
+        // ProcessSimVarUpdate, which returns true and exits before the generic
+        // A32NXDisabledMonitorVariables gate below — so a Ctrl+M un-tick never muted
+        // them. Suppress right here, exactly like the HS787.
+        bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
+            Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
+        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
+        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
+        // reason. The def's off-sweep timer still checks the list itself because it
+        // runs outside this method entirely.
+        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
+        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
+        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
+        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
+        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
+        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
+        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
+            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -155,7 +176,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || uiEcho;
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -176,13 +197,30 @@ public partial class MainForm
             // Update window title if flight phase changed (for aircraft that track flight phases)
             if (!string.IsNullOrEmpty(currentAircraft.CurrentFlightPhase))
             {
-                this.Text = $"MSFS BA - {currentAircraft.CurrentFlightPhase} phase active";
+                this.Text = $"MSFS Blind Assist - {currentAircraft.CurrentFlightPhase} phase active";
             }
             // Check StateVariable reverse lookup only (don't call full UpdateControlFromSimVar
             // which can interfere with aircraft-specific processing — we tried it and combo
             // programmatic updates appear to trigger the user-action SIC handler despite the
             // updatingFromSim flag for HS787 vars whose write handler toggles state).
-            UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            //
+            // iFly self-announced BUTTON vars (the 14 MCP mode lights): their
+            // ProcessSimVarUpdate returns true, which skips Step 4's control refresh, so
+            // an open panel's button labels froze on background state changes. The Button
+            // branch of UpdateControlFromSimVar is a pure label update — no user-action
+            // handler can fire (the combo caveat in the comment above is combo-specific),
+            // so refreshing it here is safe. Everything else keeps the StateVariable-only
+            // path.
+            if (currentAircraft is IFly737MAXDefinition &&
+                currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
+                iflyBtnDef.RenderAsButton)
+            {
+                UpdateControlFromSimVar(e.VarName, e.Value);
+            }
+            else
+            {
+                UpdateButtonStateFromStateVariable(e.VarName, e.Value);
+            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
@@ -235,7 +273,7 @@ public partial class MainForm
 
                 // Check if disabled in Fenix Monitor Manager
                 if (currentAircraft.AircraftCode == "FENIX_A320CEO" &&
-                    Settings.SettingsManager.Current.FenixDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.FenixDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -245,30 +283,71 @@ public partial class MainForm
                 // a single prefix check covers any future PMDG additions
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
-                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the A380 Monitor Manager.
                 if (currentAircraft.AircraftCode == "FBW_A380" &&
-                    Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
-                // Check if disabled in the A32NX Monitor Manager.
-                if (currentAircraft.AircraftCode == "A320" &&
-                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariables.Contains(e.VarName))
+                // Check if disabled in the A32NX Monitor Manager. The Headwind A330
+                // is an A32NX fork that reuses the same monitor-manager form and the
+                // same A32NXDisabledMonitorVariables setting.
+                if ((currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
+                    Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
 
                 // Check if disabled in the HS787 Monitor Manager.
                 if (currentAircraft.AircraftCode == "HS_787" &&
-                    Settings.SettingsManager.Current.HS787DisabledMonitorVariables.Contains(e.VarName))
+                    Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
+                // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
+                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // itself. This gate covers the plain switch/selector combos that announce
+                // on the generic path.
+                if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
+                    Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Suppress the generic announce for a var the iFly autopilot window
+                // JUST wrote: the focused button's label rename is the screen-reader
+                // feedback (NVDA reads the name change), so the Step-6 announce would
+                // speak the same state twice. Time-window echo, same philosophy as
+                // _uiSetEcho; Steps 3-4 already ran, so the panel combo stays fresh.
+                if (currentAircraft is IFly737MAXDefinition iflyEchoDef &&
+                    iflyEchoDef.WindowEchoActive(e.VarName))
+                {
+                    // Update the baseline silently, same as the _uiSetEcho gate below —
+                    // otherwise a later genuine change BACK to the pre-click value is
+                    // swallowed because the monitor still holds the stale pre-echo baseline.
+                    simVarMonitor.SetBaseline(e.VarName, e.Value);
+                    return;
+                }
+
+                // A held master LIGHTS TEST shifts the composite switch+light combo values
+                // (start levers, EEC, fire switches, cargo arm/discharge, high-altitude
+                // landing) with no real switch movement — this generic path would speak every
+                // row on the press AND the release. Swallow WITHOUT SetBaseline (unlike the
+                // echo gates above): the release edge reverts each value to the held baseline
+                // and stays silent, while a REAL switch change during the test still
+                // announces once the test releases.
+                if (currentAircraft is IFly737MAXDefinition iflyLtDef &&
+                    iflyLtDef.SuppressGenericAnnounceDuringLightsTest(e.VarName))
+                {
+                    return;
                 }
 
                 // For PMDG variables, build the description from ValueDescriptions
@@ -299,9 +378,13 @@ public partial class MainForm
                 // Suppress the duplicate echo of a value the user JUST set via the UI (the
                 // screen reader already spoke the combo). Update the baseline silently so a
                 // later change to this var from any OTHER source still announces. Consumed
-                // once; only a value matching what the user set within the window is dropped.
+                // once; only a value matching what the user set within the window is dropped —
+                // UNLESS the def opts into UiEchoMatchesAnyValue (composite switch+light combos
+                // whose readback legitimately lands on a sibling encoding of the picked value,
+                // e.g. a guard bit or arm light folded into the same field), in which case the
+                // time window alone is enough (PR #163, minor 15).
                 if (_uiSetEcho.TryGetValue(e.VarName, out var echo)
-                    && Math.Abs(echo.value - e.Value) < 0.001
+                    && (Math.Abs(echo.value - e.Value) < 0.001 || varDef.UiEchoMatchesAnyValue)
                     && Environment.TickCount64 - echo.tick < UiSetEchoSuppressMs)
                 {
                     _uiSetEcho.Remove(e.VarName);
@@ -347,6 +430,19 @@ public partial class MainForm
         // NOTE: Aircraft-specific ProcessSimVarUpdate() is now called in the main flow (line 206)
         // to avoid duplicate calls. Flight phase window title updates happen there.
 
+        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
+        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
+        // HOISTED to the top of this ladder: G_FORCE is registered HighFrequency=true
+        // (BaseAircraftDefinition), i.e. it fires on every SIM_FRAME — every branch below
+        // this one otherwise re-tests its own (much lower frequency) VarName first on every
+        // single frame for no reason. Pure reorder; none of the string-equality checks below
+        // can also match "G_FORCE", so moving this first changes no other branch's behavior.
+        if (e.VarName == "G_FORCE")
+        {
+            landingRateAnnouncer.ProcessG(e.Value);
+            return true;
+        }
+
         // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
         // this is a NON-terminal feed (no early return) — processing continues so the
         // display box still updates. The var is registered IsAnnounced=false (per aircraft),
@@ -354,6 +450,10 @@ public partial class MainForm
         if (e.VarName == "INDICATED_ALTITUDE")
         {
             altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
+            // 1 Hz gate for the manual-landing flare assist: starts/stops its dedicated
+            // SIM_FRAME feed when armed + within the approach altitude window. No-op
+            // (single flag compare) when the assist isn't armed.
+            flareAssistManager.ProcessSlowSample(e.Value, _lastOnGround);
         }
 
         // Handle FCU hotkey value announcements
@@ -377,14 +477,6 @@ public partial class MainForm
             // destination (the airports you actually taxi at, both force-fresh) plus on demand when
             // you type an ICAO into the gate-teleport dialog. The old 50 NM geofence scan was removed
             // — it added background fetching for airports you never taxi at, with no benefit.
-            return true;
-        }
-
-        // Feed g-force to the landing-rate tracker so it can capture the peak touchdown g
-        // inside the post-touchdown window (the ReadLastLandingPeakG hotkey). Not announced.
-        if (e.VarName == "G_FORCE")
-        {
-            landingRateAnnouncer.ProcessG(e.Value);
             return true;
         }
 
@@ -484,16 +576,27 @@ public partial class MainForm
         }
 
         // Handle taxi guidance position updates (active during Taxiing, LiningUp,
-        // AND LandingRollout phases). LandingRollout is critical: BeginLandingRollout
-        // sets state=LandingRollout and UpdateLandingRollout's per-frame logic (auto-
-        // transition to Taxiing on slowdown, distance-based callouts) only runs if
-        // UpdatePosition is fed every frame. Without LandingRollout in this gate, the
-        // touchdown announcement fires once and then the state-machine is silent
-        // until StopGuidance.
+        // LandingRollout AND both backtrack phases). LandingRollout is critical:
+        // BeginLandingRollout sets state=LandingRollout and UpdateLandingRollout's
+        // per-frame logic (auto-transition to Taxiing on slowdown, distance-based
+        // callouts) only runs if UpdatePosition is fed every frame. Without
+        // LandingRollout in this gate, the touchdown announcement fires once and then
+        // the state-machine is silent until StopGuidance.
+        //
+        // EVERY state whose Update* runs per frame must be listed here — this is the
+        // ONLY caller of UpdatePosition. BacktrackingOnRunway (landing-side backtaxi)
+        // and BacktrackDeparture (full-length backtrack departure) each own a per-frame
+        // steering tone, their approach callouts and their handoff out of the state, so
+        // omitting them leaves the pilot on an active runway with no tone, no callouts
+        // and no way out of the state — the frame starvation LogBacktrackFrame exists
+        // to diagnose. A new taxi-guidance state with per-frame logic must be added here
+        // at the same time as its Update* method.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" &&
             (taxiGuidanceManager.State == TaxiGuidanceState.Taxiing ||
              taxiGuidanceManager.State == TaxiGuidanceState.LiningUp ||
-             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout))
+             taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackingOnRunway ||
+             taxiGuidanceManager.State == TaxiGuidanceState.BacktrackDeparture))
         {
             if (e.PositionData.HasValue)
             {
@@ -527,10 +630,15 @@ public partial class MainForm
         // taxi-scoped: OnTaxiGuidanceStateChanged stops position monitoring when taxi
         // reaches Arrived/Inactive, so docking gets NO frames after that point. That is
         // fine by design — arrival ownership is engage-latched (docking has either already
-        // finished, or never engaged and taxi announced the arrival), the parked solid
-        // tone is self-sustaining until the pilot presses Stop, and stale docking state is
-        // cleared at the next flight boundary (takeoff-assist / LandingRollout) or healed
-        // by the absolute-distance disengage on the next route's frames.
+        // finished, or never engaged and taxi announced the arrival), and stale docking
+        // state is cleared at the next flight boundary (takeoff-assist / LandingRollout)
+        // or healed by the absolute-distance disengage on the next route's frames.
+        // CRITICAL for anything scheduled inside DockingGuidanceManager: completing a dock
+        // raises DockingCompleted → StopGuidance() → Inactive → StopTaxiGuidanceMonitoring()
+        // below, so the completing frame is normally the LAST frame docking ever sees. Its
+        // concluded-park hold tone therefore fades on a one-shot Timer, NOT a per-frame
+        // countdown (that first attempt left the tone sounding forever). Any future
+        // "N seconds after the park" behaviour must be timer-based for the same reason.
         if (e.VarName == "TAXI_GUIDANCE_POSITION" && e.PositionData.HasValue)
         {
             var pos = e.PositionData.Value;
@@ -569,11 +677,24 @@ public partial class MainForm
         {
             bool onGround = e.Value >= 0.5;
             bool justTouchedDown = onGround && !_lastOnGround;
+            bool justLiftedOff = !onGround && _lastOnGround;
             _lastOnGround = onGround;
             // Mirror to SimConnectManager so other components (LandingExitForm,
             // etc.) that have a SimConnectManager reference can read the latest
             // air/ground state without a separate MainForm dependency.
             simConnectManager.LastKnownOnGround = onGround;
+
+            // Turnaround re-baseline for the route-advisory proximity announcements:
+            // a liftoff after landing + ≥5 min on the ground is a NEW flight — reset so
+            // flight 2 gets its full cycle (approach/enter/leave) even for an advisory
+            // key that survived the turnaround in the AS feed. Touch-and-goes and
+            // bounce flickers never fire (dwell gate inside the detector).
+            if (_turnaroundDetector.ObserveEdge(justTouchedDown, justLiftedOff, DateTime.UtcNow))
+            {
+                _routeAdvisoryProximity.Reset();
+                _emptyRouteFeedTicks = 0;
+                Log.Debug("MainForm", "route-advisory proximity reset (turnaround liftoff)");
+            }
 
             // Auto-deactivate visual guidance on touchdown: from this moment on,
             // the landing-exit planner / taxi guidance take over the rollout and
@@ -594,6 +715,43 @@ public partial class MainForm
             {
                 landingRateAnnouncer.OnTouchdown(
                     simConnectManager.GetCachedVariableValue("G_FORCE") ?? 1.0);
+            }
+
+            // A touchdown edge cancels any pending liftoff handoff — this is the
+            // flicker-settled case (the aircraft came back to ground inside the
+            // confirm window), so the roll-bump never hands off. The token bump
+            // also invalidates an already-requested fresh-position confirm.
+            if (justTouchedDown)
+            {
+                _liftoffHandoffTimer?.Stop();
+                _liftoffHandoffConfirmToken++;
+            }
+
+            // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
+            // Assist is running, hand control to Hand Fly mode (deactivate TA,
+            // activate HandFly) so guidance continues seamlessly from centerline-
+            // tracking to attitude hand-flying. We do NOT act on the raw edge — a
+            // spurious airborne sample would otherwise drop centerline guidance
+            // during the roll. Gate on the setting + TA active + a minimum ground
+            // speed (rejects low-speed false-airborne; GROUND_VELOCITY is a cached
+            // continuous base var, read like G_FORCE above — fail OPEN if it's
+            // null, the debounce backstops it), then ARM the debounce timer.
+            // PerformLiftoffHandoffIfValid runs ~1.5 s later and re-checks every
+            // gate against a FRESH one-shot position read — the 1 Hz cache can
+            // miss a settle-back in the last second before the tick.
+            // HandFly-already-active is deliberately NOT a gate: a pilot who
+            // pre-armed Hand Fly during the roll still needs Takeoff Assist (and
+            // its centerline tone) shut off at liftoff — the handoff then only
+            // skips the redundant HandFly activation.
+            // Naturally one-shot: the handoff turns TA off, so it can't re-fire until
+            // TA is re-armed on the ground.
+            if (justLiftedOff
+                && SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+                && takeoffAssistManager.IsActive
+                && (simConnectManager.GetCachedVariableValue("GROUND_VELOCITY") ?? double.MaxValue) >= LIFTOFF_HANDOFF_MIN_GS_KTS)
+            {
+                _liftoffHandoffTimer?.Stop();   // reset the debounce interval
+                _liftoffHandoffTimer?.Start();
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -810,6 +968,116 @@ public partial class MainForm
         }
 
         return false; // Not a special case, continue normal processing
+    }
+
+    /// <summary>
+    /// Fired by <c>_liftoffHandoffTimer</c> after the liftoff edge has been
+    /// sustained for <c>LIFTOFF_HANDOFF_CONFIRM_MS</c>. Runs on the UI thread
+    /// (WinForms Timer tick), as does the confirm callback (SimConnect WndProc)
+    /// — the same context the SIM_ON_GROUND handler and the Toggle calls rely
+    /// on. Pre-checks the cheap gates on cached state, then re-checks EVERY
+    /// gate against a fresh one-shot position read before performing the
+    /// Takeoff Assist → Hand Fly handoff.
+    /// </summary>
+    private void PerformLiftoffHandoffIfValid()
+    {
+        _liftoffHandoffTimer?.Stop(); // one-shot
+
+        // Cheap pre-gates on cached state — each can only ABORT (fail closed).
+        // _lastOnGround true means a canceling ground sample already arrived.
+        // IsConnected matches the manual ToggleHandFlyMode gate — a disconnect
+        // inside the confirm window must not activate Hand Fly against a dead
+        // sim (its monitoring would silently never register).
+        if (_lastOnGround
+            || !simConnectManager.IsConnected
+            || !SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+            || !takeoffAssistManager.IsActive)
+        {
+            return;
+        }
+
+        // Authoritative confirm via a FRESH one-shot position read (~33 ms
+        // roundtrip). Do NOT trust the cached _lastOnGround for the final
+        // decision: SIM_ON_GROUND arrives on the 1 Hz continuous batch, so a
+        // bounce that settled back onto the runway in the last second before
+        // the tick is invisible to the cache — trusting it would kill
+        // centerline guidance mid-rollout (and speak a false "Airborne")
+        // during a rejected takeoff. Same fresh-read-at-the-decision-point
+        // pattern as the landing-exit planner's SIM_ON_GROUND handler above.
+        // If the response never arrives (disconnect in flight), the handoff
+        // simply never happens — the safe direction.
+        int confirmToken = ++_liftoffHandoffConfirmToken;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            // Stale-callback guard: the one-shot AircraftPositionReceived
+            // handler leaks if this request's response never arrives, and a
+            // leaked handler fires on the next position response from ANY
+            // requester — see the token field's comment. Every voiding event
+            // (touchdown, disconnect, aircraft switch, TA off) bumps the token.
+            if (confirmToken != _liftoffHandoffConfirmToken) return;
+
+            // Re-check every gate against fresh state — the sim (and the
+            // pilot) can change between tick and response. Fresh SimOnGround
+            // closes the settle-back blind gap; the fresh GS floor re-rejects
+            // slew/replay artifacts at fire time. HandFly being active does
+            // NOT abort — TA must still be shut off; see the arm-site comment.
+            if (p.SimOnGround >= 0.5
+                || p.GroundSpeedKnots < LIFTOFF_HANDOFF_MIN_GS_KTS
+                || !simConnectManager.IsConnected
+                || !SettingsManager.Current.HandFlyAutoActivateOnTakeoff
+                || !takeoffAssistManager.IsActive)
+            {
+                return;
+            }
+
+            // Toggle()'s deactivation branch ignores its position args (the !isActive
+            // path of TakeoffAssistManager.Toggle reads none of lat/lon/heading/magVar),
+            // so 0s are correct here.
+            takeoffAssistManager.Toggle(0, 0, 0, 0);   // "Takeoff assist off" (clipped below)
+
+            // Activate HandFly only if the pilot didn't already pre-arm it on the
+            // ground — Toggle() here would otherwise turn it OFF.
+            bool activatedHandFly = !handFlyManager.IsActive;
+            if (activatedHandFly)
+            {
+                handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
+            }
+
+            // The Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
+            // ONE clean breadcrumb LAST to supersede them. The pilot pressed no key, so
+            // this single cue is the spoken source of truth for the handoff. The Toggles'
+            // non-speech side effects (tone stop/start, monitoring start/stop, hotkey
+            // registration, ActiveChanged events) all still run.
+            //
+            // The grace call is what makes the breadcrumb audible at all: HandFly's
+            // first post-activation pitch/bank/heading callouts pass their announce
+            // gates within one sim frame (thresholds reset / first-sample-always-
+            // announce) and would interrupt the breadcrumb after a syllable. Mute
+            // the callout stream (never the tone) until the breadcrumb has finished;
+            // this covers the pre-armed case too, where the stream is already running.
+            // Ordering: the grace MUST be set AFTER handFlyManager.Toggle() — the
+            // activation branch clears any stale grace window.
+            handFlyManager.SuppressAnnouncementsFor(LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS);
+
+            // Fold the quick-access-keys warning into the single breadcrumb when
+            // this handoff's own activation failed to register them (a bare-letter
+            // key held by another app, or output mode active at fire time). The
+            // handler's standalone warning (OnHandFlyModeActiveChanged) is spoken
+            // WITHOUT interrupt, so the breadcrumb's AnnounceImmediate — which
+            // cancels pending speech on all three backends — would silently
+            // swallow it and the pilot would never learn the quick-access keys
+            // are dead. Pre-armed case excluded: OnHandFlyModeActiveChanged did
+            // not fire during this handoff, and the warning already played in
+            // full when the pilot armed Hand Fly manually on the ground.
+            string breadcrumb = activatedHandFly
+                ? "Airborne. Takeoff assist off, hand fly active."
+                : "Airborne. Takeoff assist off.";
+            if (activatedHandFly && !_handFlyQuickKeysRegistered)
+            {
+                breadcrumb += " Quick access keys unavailable. Use output mode for H, V, Q.";
+            }
+            announcer.AnnounceImmediate(breadcrumb);
+        });
     }
 
     /// <summary>
@@ -1187,8 +1455,16 @@ public partial class MainForm
         // made the first switch/flap movement after load silent (only the 2nd worked). The
         // 5-second announcement grace period (EnableAnnouncements) already suppresses the
         // cold-and-dark startup snapshot, so treating the A380 like PMDG here is safe.
+        // The iFly 737 MAX is a third case with the same shape: IFlySdkClient fires its
+        // startup sweep as IsInitialSnapshot, which OnSimVarUpdated returns on BEFORE
+        // reaching simVarMonitor — so no baseline is ever seeded and every switch's first
+        // movement of the session was silent (the whole cold-and-dark flow: fuel pumps,
+        // generators, hydraulics). Its lights announce from ProcessSimVarUpdate and were
+        // never affected, which is why only the combo-backed switches went quiet.
         bool isPMDG = currentAircraft is IPMDGAircraft;
-        bool announceInitialChange = isPMDG || currentAircraft?.AircraftCode == "FBW_A380";
+        bool announceInitialChange = isPMDG
+            || currentAircraft?.AircraftCode == "FBW_A380"
+            || currentAircraft?.AircraftCode == "IFLY_737MAX8";
         bool shouldAnnounce = announceInitialChange ? !updatingFromSim : (!e.IsInitialValue && !updatingFromSim);
 
         if (shouldAnnounce && !string.IsNullOrEmpty(e.Description))
@@ -1243,9 +1519,18 @@ public partial class MainForm
     /// </summary>
     private void ReadLatestGsxTooltip()
     {
-        if (_gsxService == null || !_gsxService.IsConnected)
+        if (_gsxService == null)
         {
-            announcer.AnnounceImmediate("Access GSX: not connected to the simulator.");
+            announcer.AnnounceImmediate("Access GSX: service not initialized.");
+            return;
+        }
+        if (!_gsxService.IsConnected)
+        {
+            // UnavailableReason names the ACTUAL cause — an older GSX with no
+            // Remote API, a dropped Couatl, or no simulator connection. The old
+            // wording blamed the simulator in all three cases, which sent a
+            // pilot on a recent-enough-GSX hunt in the wrong place entirely.
+            announcer.AnnounceImmediate(_gsxService.UnavailableReason);
             return;
         }
         _gsxService.RefreshTooltip();
@@ -1312,8 +1597,13 @@ public partial class MainForm
     {
         string js = LoadA32NXFlightInfoJs();
         if (string.IsNullOrEmpty(js)) { announcer.AnnounceImmediate("Flight info unavailable."); return; }
+        // The Headwind A330 hosts the MCDU in the "A339X_MCDU" Coherent view; the A32NX
+        // uses "A32NX_MCDU". The flight-info JS queries both <a32nx-mcdu>/<a339x-mcdu>
+        // elements, so only the view needle changes per airframe.
+        string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView
+            ?? "A32NX_MCDU";
         string raw = "";
-        try { raw = await SimConnect.CoherentEvalClient.EvalAsync("A32NX_MCDU", js); }
+        try { raw = await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js); }
         catch (Exception ex) { Log.Debug("MainForm", $"{ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }
@@ -1715,22 +2005,42 @@ public partial class MainForm
 
         try
         {
-            // Get current wind from SimConnect (synchronously for now)
+            // Current wind. #129: when the user has OPTED INTO ActiveSky (Weather
+            // settings tab) read the AS ambient wind + gust — under AS the SimConnect
+            // ambient wind can diverge (AS wind smoothing), and the radar's "wind at
+            // altitude" reads AS, so the two must match. When the switch is off,
+            // TryGetActiveSkyConditionsAsync returns null INSTANTLY (the central gate
+            // in ActiveSkyClient.IsRunningAsync — no probe, no ~1.2 s floor) and the
+            // SimConnect path below is authoritative.
             string currentWind = "unavailable";
-            bool currentWindReceived = false;
-
-            simConnectManager.RequestWindInfo(currentWindData =>
+            var asConditions = await TryGetActiveSkyConditionsAsync();
+            // AS opted-in but unreachable (not running / fetch failed): say so BEFORE the
+            // SimConnect wind, so a user whose ActiveSky quietly isn't running learns it
+            // here instead of trusting a silently-degraded readout. Prefixed into the ONE
+            // utterance below — a second AnnounceImmediate would cut the first one off.
+            string sourceNotice = "";
+            if (asConditions == null && MSFSBlindAssist.Settings.SettingsManager.Current.ActiveSkyEnabled)
+                sourceNotice = "ActiveSky not responding, using simulator wind. ";
+            if (asConditions != null)
             {
-                currentWind = FormatWindData(currentWindData);
-                currentWindReceived = true;
-            });
-
-            // Wait briefly for current wind data
-            var timeout = DateTime.Now.AddSeconds(2);
-            while (!currentWindReceived && DateTime.Now < timeout)
+                currentWind = FormatActiveSkyWind(asConditions, _lastOnGround);
+            }
+            else
             {
-                await Task.Delay(50);
-                Application.DoEvents();
+                bool currentWindReceived = false;
+                simConnectManager.RequestWindInfo(currentWindData =>
+                {
+                    currentWind = FormatWindData(currentWindData);
+                    currentWindReceived = true;
+                });
+
+                // Wait briefly for current wind data
+                var timeout = DateTime.Now.AddSeconds(2);
+                while (!currentWindReceived && DateTime.Now < timeout)
+                {
+                    await Task.Delay(50);
+                    Application.DoEvents();
+                }
             }
 
             // Check if destination airport is set
@@ -1746,11 +2056,11 @@ public partial class MainForm
                 var destinationWindData = await VATSIMService.GetAirportWindAsync(destinationAirport?.ICAO ?? "");
                 string destinationWind = VATSIMService.FormatWind(destinationWindData);
 
-                announcer.AnnounceImmediate($"{currentWind}, {destinationWind}");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, {destinationWind}");
             }
             else
             {
-                announcer.AnnounceImmediate($"{currentWind}, no destination");
+                announcer.AnnounceImmediate($"{sourceNotice}{currentWind}, no destination");
             }
         }
         catch (Exception ex)
@@ -1773,15 +2083,46 @@ public partial class MainForm
         return $"{direction:000} at {speed}";
     }
 
+    /// <summary>Best-effort ActiveSky conditions for the wind readout; null if AS is off
+    /// or the fetch fails (caller falls back to SimConnect). Cheap on repeat (cached port).</summary>
+    private async Task<MSFSBlindAssist.Services.ActiveSkyClient.Conditions?> TryGetActiveSkyConditionsAsync()
+    {
+        try
+        {
+            if (!await weatherActiveSky.IsRunningAsync()) return null;
+            return await weatherActiveSky.GetCurrentConditionsAsync();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>ActiveSky wind for output+I — matches the Weather Radar's
+    /// "Wind (at altitude)" line. The surface gust (#129) is appended only when the
+    /// aircraft is ON the ground: AS's Ambient* and Surface* field groups are
+    /// independent quantities (at-altitude vs ground level below the aircraft), so
+    /// airborne the surface gust doesn't belong to the wind being read out — at
+    /// FL360 it produced "061 at 11 gusting 21" mixing cruise wind with the ground
+    /// gust six miles below. Internal for tests (WindReadoutGustTests).</summary>
+    internal static string FormatActiveSkyWind(MSFSBlindAssist.Services.ActiveSkyClient.Conditions c, bool onGround)
+    {
+        int direction = (int)Math.Round(c.AmbientWindDirection);
+        int speed = (int)Math.Round(c.AmbientWindSpeed);
+        if (speed == 0) return "calm";
+        string text = $"{direction:000} at {speed}";
+        if (onGround && c.SurfaceGustSpeed > 0)
+            text += $", gusting {(int)Math.Round(c.SurfaceGustSpeed)}";
+        return text;
+    }
+
     private async void DescribeSceneAsync()
     {
         try
         {
             announcer.AnnounceImmediate("Capturing scene...");
 
-            // Create screenshot and Gemini services
+            // Resolve the AI provider fresh per call (same as ReadDisplay and the EFB route
+            // briefing) so a provider switch in Settings applies to the very next scene read.
             var screenshotService = new ScreenshotService();
-            var geminiService = new GeminiService();
+            var aiProvider = AiProviderFactory.Create();
 
             // Check if MSFS window is available
             if (!screenshotService.IsMsfsWindowAvailable())
@@ -1798,8 +2139,8 @@ public partial class MainForm
                 return;
             }
 
-            // Analyze scene with Gemini
-            string analysis = await geminiService.AnalyzeSceneAsync(screenshot);
+            // Analyze scene with the selected AI provider
+            string analysis = await aiProvider.AnalyzeSceneAsync(screenshot);
 
             // Show result in form (independent window with synchronous focus)
             var resultForm = new DisplayReadingResultForm("Scene", analysis, "Description");
@@ -1809,7 +2150,7 @@ public partial class MainForm
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.AnnounceImmediate("Gemini API key not configured. Please configure it in File menu, Gemini Settings.");
+            announcer.AnnounceImmediate("AI provider API key not configured. Please configure it in File menu, Settings, AI tab.");
         }
         catch (Exception ex)
         {
@@ -1876,54 +2217,120 @@ public partial class MainForm
         if (settings.WeatherAutoAnnounceEnabled)
             CheckAmbientWeatherChanges();
 
-        if (settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled)
+        if ((settings.SigmetProximityAlertsEnabled || settings.PirepProximityAlertsEnabled) && !_proximityCheckRunning)
             _ = CheckWeatherProximityAsync(settings.SigmetProximityRangeNm,
                     settings.SigmetProximityAlertsEnabled, settings.PirepProximityAlertsEnabled);
+
+        if (settings.AnnounceRouteAdvisoriesEnabled && !_routeAdvisoryCheckRunning)
+            _ = CheckRouteAdvisoriesAsync();
     }
 
-    private void CheckAmbientWeatherChanges()
+    private async void CheckAmbientWeatherChanges()
     {
-        simConnectManager.RequestWeatherInfo(data =>
+        // SimConnect ambient (cloud in/out, visibility, and the precip fallback when AS is off).
+        // The timeout resolves to NULL, never default(AmbientWeatherData): an all-zeros struct
+        // reads as "left cloud, visibility 0 m, precip stopped" and would false-announce all
+        // three AND corrupt the change baselines whenever the sim stalls past 3 s (loading
+        // screen, menu pause). No data = skip this pass entirely; the next tick retries.
+        var tcs = new TaskCompletionSource<MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData?>();
+        simConnectManager.RequestWeatherInfo(d => tcs.TrySetResult(d));
+        _ = Task.Delay(3000).ContinueWith(_ => tcs.TrySetResult(null));
+        var maybeData = await tcs.Task;
+        if (maybeData is not { } data) return;
+
+        // #129: under ActiveSky the SimConnect AMBIENT PRECIP STATE bitmask sticks, so
+        // when AS is running source precip from the METAR. Use the SAME precedence as the
+        // AS decoded-weather monitor AND the Weather Radar — closest-station METAR first,
+        // position METAR fallback — so all three features agree. null = AS not active
+        // (fall back to SimConnect); "" = AS says no precip.
+        string? asPrecip = null;
+        try
         {
-            if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data)); return; }
-            AnnounceAmbientChanges(data);
-        });
+            if (await weatherActiveSky.IsRunningAsync())
+            {
+                string? metar = await weatherActiveSky.GetClosestStationMetarAsync();
+                if (string.IsNullOrWhiteSpace(metar))
+                    metar = await weatherActiveSky.GetPositionMetarAsync();
+                if (!string.IsNullOrWhiteSpace(metar))
+                    asPrecip = MSFSBlindAssist.Services.WeatherRadarFormPrecipShim.ParsePrecipFromMetar(metar);
+            }
+        }
+        catch { asPrecip = null; }
+
+        if (IsDisposed) return;
+        if (InvokeRequired) { BeginInvoke(() => AnnounceAmbientChanges(data, asPrecip)); return; }
+        AnnounceAmbientChanges(data, asPrecip);
     }
 
-    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data)
+    private void AnnounceAmbientChanges(MSFSBlindAssist.SimConnect.SimConnectManager.AmbientWeatherData data,
+        string? asPrecip = null)
     {
-        // Cloud entry/exit
+        // Cloud entry/exit — always from SimConnect (AS doesn't expose in-cloud).
         double inCloud = data.InCloud;
         if (_prevInCloud >= 0 && Math.Abs(inCloud - _prevInCloud) > 0.5)
             announcer.Announce(inCloud >= 0.5 ? "Entering cloud" : "Leaving cloud");
         _prevInCloud = inCloud;
 
-        // Precipitation — announce on start, stop, and intensity tier changes
-        double precipState = data.PrecipState;
-        double precipRate = data.PrecipRate;
-        bool wasRaining = _prevPrecipState > 0.5;
-        bool isRaining = precipState > 0.5;
-
-        if (_prevPrecipState >= 0)
+        // Ice accretion (generic, sim-truth). Aircraft with their own tuned icing
+        // announcer (HasOwnIcingAnnouncer, e.g. the FBW A380's ice stick) are skipped
+        // entirely so one icing episode never speaks twice. A NaN/negative sample is
+        // SKIPPED, not clamped — clamping to 0 mid-episode would speak a phantom
+        // "Icing conditions cleared" and re-announce on the next good sample.
+        if (MSFSBlindAssist.Settings.SettingsManager.Current.AnnounceIcingEnabled
+            && currentAircraft?.HasOwnIcingAnnouncer != true
+            && !double.IsNaN(data.StructuralIcePct) && data.StructuralIcePct >= 0)
         {
-            if (!wasRaining && isRaining)
-            {
-                // Started
-                announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
-            }
-            else if (wasRaining && !isRaining)
-            {
-                // Stopped
-                announcer.Announce("Precipitation stopped");
-            }
-            else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
-            {
-                // Intensity changed tier (light → moderate, moderate → heavy, etc.)
-                announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
-            }
+            string? icing = _iceAccretionTracker.Observe(data.StructuralIcePct);
+            if (icing != null)
+                announcer.Announce(icing);
         }
-        _prevPrecipState = precipState;
-        _prevPrecipRate = precipRate;
+
+        if (asPrecip != null)
+        {
+            // ActiveSky path — announce on start / stop / phrase change. Trim + case-
+            // insensitive compare so an unchanged phrase NEVER repeats ("light rain" ->
+            // "light rain" stays silent; only a different phrase re-announces).
+            string cur = asPrecip.Trim();
+            if (_prevAsPrecip != null && !string.Equals(cur, _prevAsPrecip, StringComparison.OrdinalIgnoreCase))
+            {
+                bool wasNone = _prevAsPrecip.Length == 0;
+                bool isNone = cur.Length == 0;
+                if (wasNone && !isNone)
+                    announcer.Announce($"Precipitation started: {cur}");
+                else if (!wasNone && isNone)
+                    announcer.Announce("Precipitation stopped");
+                else
+                    announcer.Announce($"Precipitation now {cur}");
+            }
+            _prevAsPrecip = cur;
+            // Keep the SimConnect precip baseline in step so switching back (AS closed
+            // mid-flight) doesn't fire a spurious change.
+            _prevPrecipState = data.PrecipState;
+            _prevPrecipRate = data.PrecipRate;
+        }
+        else
+        {
+            // SimConnect path (AS not running). Reset the AS baseline so AS re-baselines
+            // silently if it comes back.
+            _prevAsPrecip = null;
+
+            double precipState = data.PrecipState;
+            double precipRate = data.PrecipRate;
+            bool wasRaining = _prevPrecipState > 0.5;
+            bool isRaining = precipState > 0.5;
+
+            if (_prevPrecipState >= 0)
+            {
+                if (!wasRaining && isRaining)
+                    announcer.Announce($"Precipitation started: {DescribePrecipIntensity(precipRate)}");
+                else if (wasRaining && !isRaining)
+                    announcer.Announce("Precipitation stopped");
+                else if (isRaining && _prevPrecipRate >= 0 && IntensityTier(precipRate) != IntensityTier(_prevPrecipRate))
+                    announcer.Announce($"Precipitation now {DescribePrecipIntensity(precipRate)}");
+            }
+            _prevPrecipState = precipState;
+            _prevPrecipRate = precipRate;
+        }
 
         // Visibility — announce crossing the 1500 m threshold in either direction
         double vis = data.Visibility;
@@ -1957,6 +2364,7 @@ public partial class MainForm
 
     private async Task CheckWeatherProximityAsync(int rangeNm, bool checkSigmets, bool checkPireps)
     {
+        _proximityCheckRunning = true;
         try
         {
             var lastPos = simConnectManager.LastKnownPosition;
@@ -1990,7 +2398,9 @@ public partial class MainForm
                     string msg = $"{adv.AdvisoryType}: {adv.HazardLabel}";
                     if (!string.IsNullOrEmpty(adv.AltitudeRange)) msg += $", {adv.AltitudeRange}";
                     msg += $", bearing {adv.BearingDeg:F0} degrees, {adv.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: WeatherAnnouncementTimer_Tick fires on the UI thread and
+                    // WeatherService has no ConfigureAwait(false), so the await above resumes here.
+                    announcer.Announce(msg);
                 }
             }
 
@@ -2012,13 +2422,109 @@ public partial class MainForm
                     int fl = p.AltitudeFt / 100;
                     string msg = $"Pilot report: {p.HazardSummary} at FL{fl:D3}";
                     msg += $", bearing {p.BearingDeg:F0} degrees, {p.DistanceNm:F0} nautical miles";
-                    Invoke(() => announcer.Announce(msg));
+                    // No marshal needed: see comment above (advisories loop).
+                    announcer.Announce(msg);
                 }
             }
         }
         catch (Exception ex)
         {
             Log.Debug("MainForm", $"Weather proximity check error: {ex.Message}");
+        }
+        finally
+        {
+            _proximityCheckRunning = false;
+        }
+    }
+
+    /// <summary>
+    /// Proximity-event route advisories (design 2026-07-14, distance made a setting
+    /// 2026-07-14 same-day revision): every 30 s tick, fetch + parse the on-route advisories,
+    /// compute a location fact per advisory, and let the proximity zone tracker decide what to
+    /// say. An advisory announces when the aircraft first comes within the configured approach
+    /// ring (<see cref="MSFSBlindAssist.Settings.UserSettings.RouteAdvisoryProximityNm"/>,
+    /// default 100 nm, clamped 10-500) of its area (ahead), when it Enters, and when it
+    /// Leaves — nothing else repeats (no more 15-minute reminder, no re-announce of areas
+    /// behind or of hourly SIGMET re-issues beyond the ring). Independent of
+    /// <see cref="MSFSBlindAssist.Settings.UserSettings.SigmetProximityRangeNm"/> — the two
+    /// settings must never be folded together. Gates unchanged: AnnounceRouteAdvisories
+    /// setting (caller) + the central ActiveSky gate below.
+    /// </summary>
+    private async Task CheckRouteAdvisoriesAsync()
+    {
+        _routeAdvisoryCheckRunning = true;
+        try
+        {
+            // Central AS gate: instant false when the switch is off — this check
+            // costs nothing for non-AS users despite riding every 30 s tick.
+            if (!await weatherActiveSky.IsRunningAsync()) return;
+
+            // Fire-and-forget position refresh (same pattern as GroundTrafficMonitor.OnTick):
+            // nothing else refreshes LastKnownPosition during quiet cruise, so without this it
+            // goes stale and silently breaks the 100 nm proximity triggers below — a null cache
+            // freezes every tick, even AnnounceOnce. Never awaited: keeps the cache at most one
+            // 30 s tick stale (same lesson as the Landing Exit Planner invariant — LastKnownPosition
+            // can be stale from a prior mode) without delaying this tick's own read.
+            if (simConnectManager.IsConnected) simConnectManager.RequestAircraftPosition();
+
+            string? raw = await weatherActiveSky.GetRouteAdvisoriesTextAsync();
+            if (raw == null) return;                              // failed fetch: tracker untouched (frozen tick)
+
+            var advisories = MSFSBlindAssist.Services.ActiveSkyFormatting.ParseRouteAdvisories(raw);
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            // M3 (final review): a single successfully-fetched empty feed ("No airmet/sigmet…")
+            // must not prune every tracked zone in one tick — symmetric with LeaveConfirmTicks, a
+            // 1-tick feed flap (e.g. ActiveSky reloading its flight plan) can't wipe zone state
+            // and re-announce everything nearby as first-sight; two consecutive empty ticks
+            // confirm a genuine plan change. The frozen branch returns before Observe is ever
+            // called, so the tracker's live state is untouched (same "freeze the tick" contract
+            // as the other guards above/below).
+            if (advisories.Count == 0)
+            {
+                if (++_emptyRouteFeedTicks < 2) return;   // one flap: frozen tick, wait for confirmation
+                // else: fall through — confirmed empty; Observe(empty facts) below prunes for real.
+            }
+            else
+            {
+                _emptyRouteFeedTicks = 0;
+            }
+
+            // Proximity facts for EVERY advisory (spec 2026-07-14 §4-5). Anything short of a
+            // COMPLETE fact set (unusable position, or a partial dict from a mid-loop failure)
+            // freezes the tick — Observe would PRUNE any key missing from the dict, losing its
+            // zone state and re-announcing it as first-sight next tick. Only an exact-match
+            // fact set may advance the tracker; a CONFIRMED empty feed (0 == 0, past the
+            // _emptyRouteFeedTicks guard above) still prunes.
+            Dictionary<string, MSFSBlindAssist.Services.LocationFact> facts = new();
+            if (simConnectManager.LastKnownPosition is { } locPos)
+                facts = await MSFSBlindAssist.Services.RouteAdvisoryLocator.ComputeFactsAsync(
+                    weatherActiveSky, advisories, locPos);
+            if (facts.Count != advisories.Count) return;
+
+            if (!IsHandleCreated || IsDisposed) return;
+
+            // Clamp defensively: the NumericUpDown enforces 10-500 in the settings UI, but a
+            // hand-edited settings JSON must not hand the tracker a 0/negative or absurd ring.
+            double approachNm = Math.Clamp(MSFSBlindAssist.Settings.SettingsManager.Current.RouteAdvisoryProximityNm, 10, 500);
+
+            var byKey = advisories.ToDictionary(a => a.Key, a => a, StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, evt, dist) in _routeAdvisoryProximity.Observe(facts, approachNm))
+            {
+                if (!byKey.TryGetValue(key, out var adv)) continue;   // defensive; facts derive from advisories
+                string phrase = MSFSBlindAssist.Services.ActiveSkyFormatting.BuildProximityAnnouncement(evt, adv, dist);
+                Log.Debug("MainForm", $"route advisory {evt}: \"{key}\" -> \"{phrase}\"");
+                announcer.Announce(phrase);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("MainForm", $"Route advisory check error: {ex.Message}");
+        }
+        finally
+        {
+            _routeAdvisoryCheckRunning = false;
         }
     }
 

@@ -122,6 +122,96 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// How far back along the route the hold-short walk may look for the
+    /// scenery's own hold line. Real hold lines sit 40-150 m from the
+    /// centerline (FAA minimum 125 ft ≈ 38 m; CAT II/III lines further out),
+    /// and the walk starts from a node already close to the pavement, so this
+    /// budget reaches every realistic hold line while staying short enough
+    /// that it cannot step back through a junction onto another taxiway's.
+    /// </summary>
+    public const double CrossingHoldLookbackMetres = 150.0;
+
+    /// <summary>
+    /// Picks the route segment to tag as the hold-short for a runway crossing:
+    /// the last segment ending at the scenery's own hold-short node (navdata
+    /// HS/HSND/IHS/IHSND → <see cref="TaxiNodeType.HoldShort"/> /
+    /// <see cref="TaxiNodeType.ILSHoldShort"/>) before the crossing, falling
+    /// back to the segment immediately before the crossing edge when no such
+    /// node is within <see cref="CrossingHoldLookbackMetres"/>.
+    ///
+    /// Why: the crossing is detected as the edge that straddles the runway
+    /// CENTERLINE, and a taxi network commonly carries nodes ON the pavement
+    /// (the crossing taxiway meets the runway's own path at a centerline node),
+    /// so "the node before the crossing edge" can sit INSIDE the runway. LEBL
+    /// D5 over 24R (2026-08): nodes run 250 m → 105 m (HSND) → 51 m → 21 m →
+    /// centerline, and the fallback rule held the aircraft 21 m from the
+    /// centerline of a 60 m-wide runway — ~9 m inside the pavement edge, with
+    /// the painted line 105 m back. KBOS taxiway C over 04R lands at 25 m with
+    /// a 25 m half-width; the shape is not airport-specific.
+    ///
+    /// Safety property: the walk only ever moves the hold EARLIER along the
+    /// route, so it can never place a hold closer to the runway than today's
+    /// rule — a miss degrades to exactly the previous behaviour.
+    ///
+    /// Guards, in walk order:
+    ///  - a hold node whose own <see cref="TaxiNode.HoldShortName"/> names a
+    ///    DIFFERENT runway (reciprocal-aware) means the walk has stepped past a
+    ///    junction onto another runway's hold line → stop, keep the fallback;
+    ///  - an already-tagged hold-short segment means another hold line owns
+    ///    that stretch → stop rather than merge two runways onto one stop point.
+    ///
+    /// The FIRST qualifying node wins, i.e. the one nearest the runway — the
+    /// full-length hold, matching the default ATC clearance. The CAT III / ILS
+    /// hold preference is a destination-runway opt-in (TruncateToHoldShort) and
+    /// deliberately does not apply to crossings.
+    ///
+    /// Pure (segments in, index out) so the placement rule is unit-testable.
+    /// </summary>
+    /// <param name="segments">The route's segments.</param>
+    /// <param name="crossingSegIndex">Index of the segment whose edge straddles the runway centerline.</param>
+    /// <param name="crossedRunway">Designator of the runway being crossed (either end).</param>
+    public static int ResolveCrossingHoldSegment(
+        IReadOnlyList<TaxiRouteSegment> segments, int crossingSegIndex, string? crossedRunway)
+    {
+        if (segments == null || segments.Count == 0) return 0;
+
+        // Always a VALID index — callers index straight into the route with it.
+        int fallback = Math.Clamp(crossingSegIndex - 1, 0, segments.Count - 1);
+        if (crossingSegIndex <= 0 || crossingSegIndex >= segments.Count)
+            return fallback;
+
+        string crossed = NormalizeDesignator(crossedRunway ?? "");
+        string recip = Reciprocal(crossed);
+
+        double walked = 0.0;
+        for (int i = crossingSegIndex - 1; i >= 0; i--)
+        {
+            var seg = segments[i];
+
+            // Never walk back THROUGH an existing hold-short (the fallback
+            // segment itself may already carry this crossing's own tag).
+            if (i < crossingSegIndex - 1 && seg.IsHoldShortPoint) break;
+
+            var node = seg.ToNode;
+            if (node != null &&
+                (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort))
+            {
+                string? guards = ExtractRunwayDesignator(node.HoldShortName);
+                if (guards == null ||
+                    guards.Equals(crossed, StringComparison.OrdinalIgnoreCase) ||
+                    guards.Equals(recip, StringComparison.OrdinalIgnoreCase))
+                    return i;
+                break;
+            }
+
+            walked += seg.DistanceMeters;
+            if (walked > CrossingHoldLookbackMetres) break;
+        }
+
+        return fallback;
+    }
+
+    /// <summary>
     /// Scans the hold-short-tagged segments and splits them into runway crossings
     /// (composed into a spoken clause) and plain hold-short points (returned as a
     /// count for the existing "N hold short points" wording).

@@ -1,6 +1,3 @@
-using MSFSBlindAssist.Database.Models;
-using MSFSBlindAssist.SimConnect;
-
 namespace MSFSBlindAssist.Navigation;
 public class NavigationCalculator
 {

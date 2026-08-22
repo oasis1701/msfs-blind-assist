@@ -34,10 +34,76 @@ public class ParkingSpot
     public double? GateDistanceThreshold { get; set; }
 
     /// <summary>
+    /// GSX's own identifier for this stand — the raw <c>uiGateName</c> value from
+    /// <c>handlerData.airport.parkings</c> (Remote API), carried verbatim by
+    /// <c>GsxRemoteParkingReader</c> alongside the parsed <see cref="Name"/>/<see cref="Number"/>/
+    /// <see cref="Suffix"/>. Null for navdata-only spots and for any GSX spot the reader could
+    /// not resolve one for.
+    /// <para>
+    /// <c>GsxRemoteGateSelector</c> sends THIS value to <c>gate.select</c> verbatim — never a
+    /// label rebuilt from <see cref="Describe"/> or from <see cref="Name"/>/<see cref="Number"/>/
+    /// <see cref="Suffix"/>. A round-trip through our own formatting is exactly how the wrong
+    /// stand gets selected (spec ruling, docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md).
+    /// </para>
+    /// </summary>
+    public string? GsxIdentifier { get; set; }
+
+    /// <summary>
+    /// The terminal/concourse this stand belongs to, as GSX's Remote API publishes it
+    /// (<c>uiTerminalName</c> — e.g. "Terminal 4 - Concourse B"). Null/empty for navdata and
+    /// <c>.ini</c>-sourced spots, which carry no such field.
+    /// <para>
+    /// It exists because GSX's <c>uiGateName</c> ALONE collides across terminals at a real
+    /// airport — at KJFK "Gate 2" names five physically different stands across five terminals
+    /// — while <c>(uiTerminalName, uiGateName)</c> pairs never do. Without it the dropdown
+    /// would offer one entry where five stands exist (labels are de-duplicated by text), so a
+    /// blind pilot could not reach four of them at all.
+    /// </para>
+    /// <para>
+    /// It is a SEPARATE field, and must never be folded back into <see cref="Name"/>: every
+    /// stand-identity consumer in the app reads <see cref="Name"/> as the concourse LETTER
+    /// (<c>GateAliasResolver</c> parses it with <c>StandId.Parse</c>;
+    /// <c>SayIntentionsClearanceParser.NormalizeParkingName</c> compares it against a
+    /// controller's "B25"). Terminal prose there matches no stand-id shape, so aliases stop
+    /// resolving and SayIntentions' assigned-gate lookup falls through its whole chain to the
+    /// ARRIVAL RUNWAY. <see cref="Describe"/> renders it AFTER the first spaced dash, which is
+    /// exactly the part those two consumers discard.
+    /// </para>
+    /// <para>
+    /// It is DATA, and is kept on every API-sourced stand (the concourse-letter filler reads it);
+    /// whether it is SPOKEN is decided by <see cref="TerminalNameDisambiguates"/>.
+    /// </para>
+    /// </summary>
+    public string? TerminalName { get; set; }
+
+    /// <summary>
+    /// True when another stand in the same list shares this stand's identity (letter, number,
+    /// suffix), so the terminal is the ONLY thing telling the two apart and
+    /// <see cref="Describe"/> must speak it. Set by <c>GsxTerminalDisambiguator</c> at the end of
+    /// <c>GateDataSource</c>'s Remote API path, once the concourse letter is final; false for
+    /// every other stand and on every non-API path.
+    /// <para>
+    /// The terminal is a DISAMBIGUATOR, not a decoration. GSX's <c>uiTerminalName</c> is whatever
+    /// the profile author wrote as the section header: at KJFK "Terminal 4 - Concourse B" (and
+    /// five stands share "Gate 2", so it is essential there); at EHAM "A-Platform =&lt; Medium ",
+    /// "D-Pier =&gt; Heavy ", "K/M-Platform buffer overflow (TD) N/A " — size hints and notes,
+    /// on stands whose names are unique. Rendered unconditionally that made a unique EHAM stand
+    /// read "A 42 - Gate Small, A-Platform =&lt; Medium" — a screen reader says "equals less
+    /// than" — for no information at all.
+    /// </para>
+    /// </summary>
+    public bool TerminalNameDisambiguates { get; set; }
+
+    /// <summary>
     /// Alternative names for this parking spot discovered from online sources (OSM / X-Plane
     /// apt.dat) when those sources use a different label than the navdata <see cref="Name"/>.
-    /// For example, navdata might use "GN 3" while ATC/OSM uses "47" — both refer to the
-    /// same physical stand.
+    /// An alias only ever RE-LETTERS the same stand: bare navdata gate "51" picks up the
+    /// concourse letter OSM spells out ("A51"); navdata "N3" picks up a MARS suffix ("N3A") but
+    /// never "A3", because a letter the navdata name already carries has to agree too.
+    /// <see cref="Number"/> IS the identity — <c>GateAliasResolver</c> rejects any candidate
+    /// whose number differs (and a spot with no number gets no aliases at all). A
+    /// differently-numbered stand is a DIFFERENT stand: letting one lend its label would attach
+    /// the number a pilot searched for to the wrong spot and taxi a blind pilot there.
     /// <para>
     /// In-memory only — never persisted to the database. Empty list when no alias is known.
     /// Navdata <see cref="Name"/> is always authoritative; aliases only ADD extra selectable
@@ -172,6 +238,25 @@ public class ParkingSpot
         else
             baseDescription = $"Parking - {GetParkingType()}";
 
+        // The terminal goes HERE — after the type, before the equipment notes — and both
+        // halves of that placement are deliberate.
+        //   AFTER the first spaced dash (the " - " above), because that is the boundary
+        //   SayIntentionsClearanceParser.NormalizeParkingName cuts at: everything from it
+        //   onward is discarded before a stand id is compared, so the terminal can never
+        //   corrupt gate matching the way putting it in Name did.
+        //   BEFORE "(Jetway)"/"[VDGS]", because at a colliding stand name the terminal is
+        //   the ONLY thing telling two entries apart, and a screen reader speaks a combo
+        //   item from the start: KJFK's "Gate 2" at Terminal 4 - Concourse A and at
+        //   Terminal 8 - Concourse B are otherwise identical for ~40 characters.
+        // …and ONLY when it disambiguates (see TerminalNameDisambiguates), spoken through
+        // SpeakableTerminalName so GSX's section-header size hints do not reach the pilot.
+        if (TerminalNameDisambiguates && !string.IsNullOrWhiteSpace(TerminalName))
+        {
+            string spoken = SpeakableTerminalName(TerminalName);
+            if (spoken.Length > 0)
+                baseDescription += $", {spoken}";
+        }
+
         if (HasJetway)
             baseDescription += " (Jetway)";
 
@@ -180,6 +265,30 @@ public class ParkingSpot
             baseDescription += $" [{vdgs}]";
 
         return baseDescription;
+    }
+
+    /// <summary>
+    /// GSX's <c>uiTerminalName</c> as it should be SPOKEN: trimmed, with the size-hint tail a
+    /// GSX profile author writes into a section header removed ("A-Platform =&lt; Medium " →
+    /// "A-Platform", "D-Pier =&gt; Heavy " → "D-Pier") and a trailing "N/A" dropped ("Gates
+    /// N/A " → "Gates"). The size class already reaches the pilot through the stand type and
+    /// max wingspan, and "=&lt;" is unspeakable. Deliberately NARROW — only those two tails,
+    /// only at the END — so real terminal prose ("Terminal 4 - Concourse B", "R-Platform P
+    /// stands") passes untouched. Pure; pinned by ParkingSpotDescribeTests.
+    /// </summary>
+    public static string SpeakableTerminalName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+        string s = raw.Trim();
+        // "=< Medium", "=> Heavy", "<= Small", ">= Large" … at the end of the header.
+        s = System.Text.RegularExpressions.Regex.Replace(
+            s, @"\s*(?:=<|=>|<=|>=|<|>)\s*(?:Small|Medium|Large|Heavy|Extra|[A-F])\s*$", string.Empty,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        // A trailing "N/A" (GSX's own "not applicable" note on a header).
+        s = System.Text.RegularExpressions.Regex.Replace(
+            s, @"\s+N/A\s*$", string.Empty,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return s.Trim();
     }
 
     public override string ToString()

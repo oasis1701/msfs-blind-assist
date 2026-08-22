@@ -184,7 +184,7 @@ public class TcasForm : Form
 
     // ── List rebuild ──────────────────────────────────────────────────────────
 
-    private static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic, GateResolver? gateResolver)
+    internal static void RebuildList(ListBox list, IReadOnlyList<TcasTraffic> traffic, GateResolver? gateResolver)
     {
         string? selectedKey = (list.SelectedItem as AircraftItem)?.Traffic
             .Let(t => TrafficKey(t));
@@ -210,7 +210,7 @@ public class TcasForm : Form
 
     // ── Item text builder ─────────────────────────────────────────────────────
 
-    private static string BuildItemText(TcasTraffic t, GateResolver? gateResolver)
+    internal static string BuildItemText(TcasTraffic t, GateResolver? gateResolver)
     {
         string id   = string.IsNullOrEmpty(t.Callsign)
             ? $"unknown {t.ObjectId}"
@@ -257,7 +257,7 @@ public class TcasForm : Form
     /// <summary>
     /// Formats origin→destination route string. Returns empty if neither is available.
     /// </summary>
-    private static string FormatRoute(string from, string to)
+    internal static string FormatRoute(string from, string to)
     {
         bool hasFrom = !string.IsNullOrEmpty(from);
         bool hasTo   = !string.IsNullOrEmpty(to);
@@ -267,7 +267,7 @@ public class TcasForm : Form
         return "";
     }
 
-    private static string TrafficKey(TcasTraffic t) =>
+    internal static string TrafficKey(TcasTraffic t) =>
         string.IsNullOrEmpty(t.Callsign) ? t.ObjectId.ToString() : t.Callsign;
 
     /// <summary>
@@ -275,7 +275,7 @@ public class TcasForm : Form
     /// so NVDA reads "UAL 123" instead of spelling "U-A-L-1-2-3".
     /// Leaves registrations (N12345, G-ABCD) and already-spaced strings unchanged.
     /// </summary>
-    private static string FormatCallsign(string raw)
+    internal static string FormatCallsign(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return raw;
         raw = raw.Trim();
@@ -289,7 +289,7 @@ public class TcasForm : Form
     /// <summary>
     /// Converts an aircraft type string to a concise ICAO identifier.
     /// </summary>
-    private static string ShortenAircraftType(string raw)
+    internal static string ShortenAircraftType(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "";
         raw = raw.Trim();

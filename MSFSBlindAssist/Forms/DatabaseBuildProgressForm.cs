@@ -19,14 +19,25 @@ public partial class DatabaseBuildProgressForm : Form
     private readonly string simulatorVersion;
     private readonly string outputPath;
     private CancellationTokenSource cancellationTokenSource;
+    private readonly ScreenReaderAnnouncer announcer;
 
     private bool buildCompleted;
     private bool buildSucceeded;
+    private bool userCancelled;
+    private string completionMessage = "";
+
+    /// <summary>
+    /// The builder's final message. The dialog is disposed as soon as it closes, so without
+    /// this the failure text died with it — and DatabaseSettingsForm told the pilot to
+    /// "check the error message for details" when no error message existed any more.
+    /// </summary>
+    public string CompletionMessage => completionMessage;
 
     public bool BuildSucceeded => buildSucceeded;
 
     public DatabaseBuildProgressForm(string simulatorVersion, ScreenReaderAnnouncer announcer)
     {
+        this.announcer = announcer;
         this.simulatorVersion = simulatorVersion;
         this.builder = new NavdataReaderBuilder();
         // Always build to the canonical location, even if a legacy DB exists.
@@ -191,12 +202,39 @@ public partial class DatabaseBuildProgressForm : Form
 
     private void Builder_ProgressUpdated(object? sender, BuildProgressEventArgs e)
     {
-        // Update UI on main thread
+        // Update UI on main thread. Must be a non-blocking BeginInvoke, never a blocking
+        // Invoke: NavdataReaderBuilder's flush barrier (_process.WaitForExit(), hit right
+        // after navdatareader's final output line) blocks the UI thread until the
+        // redirected stdout/stderr reader callbacks finish delivering. A blocking Invoke
+        // here would make the reader thread wait for the UI thread to pump this call
+        // while the UI thread sits in that same non-pumping wait for the reader to
+        // finish — deadlock, at the end of every build. An IsHandleCreated check alone
+        // isn't a safe guard either (races a concurrent handle-destroy on dialog close),
+        // so this is wrapped in try/catch instead.
         if (InvokeRequired)
         {
-            Invoke(new Action(() => Builder_ProgressUpdated(sender, e)));
+            try
+            {
+                BeginInvoke(new Action(() => Builder_ProgressUpdated(sender, e)));
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle was destroyed concurrently (dialog closing) — nothing to update.
+            }
             return;
         }
+
+        // Drop a progress line that arrives after the build has already finished. BeginInvoke
+        // POSTS, while the completion handler runs directly on the UI thread (InvokeRequired is
+        // false there), so a line published during the flush barrier is still queued when the
+        // final status is written and would then overwrite it with a stale mid-build message.
+        //
+        // The guard belongs HERE, not in UpdateStatus: buildCompleted is set BEFORE the
+        // completion handler's own UpdateStatus calls, so guarding there would suppress the
+        // final status itself. userCancelled is checked for the same reason — CancelButton_Click
+        // writes "Build cancelled" and a queued line must not paint over it either.
+        if (buildCompleted || userCancelled)
+            return;
 
         UpdateStatus(e.PercentComplete, e.StatusMessage, e.DetailMessage);
     }
@@ -212,13 +250,24 @@ public partial class DatabaseBuildProgressForm : Form
 
         buildCompleted = true;
         buildSucceeded = e.Success;
+        completionMessage = e.Message ?? "";
+
+        // Success is announced by DatabaseSettingsForm once the dialog closes. A failure was
+        // announced nowhere at all, so a blind pilot heard confirmation on the good path and
+        // silence on the bad one. User-initiated cancellation is not a failure to announce —
+        // the pilot already confirmed the cancel and the status box already says "Build cancelled".
+        if (!userCancelled && !e.Success)
+        {
+            announcer?.AnnounceImmediate(completionMessage);
+        }
 
         if (e.Success)
         {
             UpdateStatus(100, "Build completed successfully!", e.Message);
         }
-        else
+        else if (!userCancelled)
         {
+            // Skip the "Build failed" relabel on user cancel; CancelButton_Click already set it to "Build cancelled".
             UpdateStatus(0, "Build failed", e.Message);
         }
 
@@ -240,16 +289,21 @@ public partial class DatabaseBuildProgressForm : Form
         // Update status text (if provided)
         if (status != null)
         {
-            statusTextBox.Text = status;
+            // A full Text assignment throws the screen reader's review cursor back to the
+            // start. During a build this fires several times a second, which made the box
+            // unreadable exactly while it was the only feedback available. There is also
+            // nothing to scroll to — the text is replaced, never appended.
+            DisplayText.SetPreserveCaret(statusTextBox, status);
         }
 
         // Update details text (if provided)
         if (details != null)
         {
-            detailsTextBox.Text = details;
-            // Auto-scroll to bottom for multiline updates
-            detailsTextBox.SelectionStart = detailsTextBox.Text.Length;
-            detailsTextBox.ScrollToCaret();
+            // A full Text assignment throws the screen reader's review cursor back to the
+            // start. During a build this fires several times a second, which made the box
+            // unreadable exactly while it was the only feedback available. There is also
+            // nothing to scroll to — the text is replaced, never appended.
+            DisplayText.SetPreserveCaret(detailsTextBox, details);
         }
     }
 
@@ -263,6 +317,11 @@ public partial class DatabaseBuildProgressForm : Form
 
         if (result == DialogResult.Yes)
         {
+            // Cancellation is user-triggered, so don't announce it as a failure. The builder will
+            // call OnBuildCompleted(false, ...) with the same channel as a genuine error, but we
+            // suppress both the announcement and the "Build failed" relabel.
+            userCancelled = true;
+
             cancellationTokenSource.Cancel();
             builder.CancelBuild();
 

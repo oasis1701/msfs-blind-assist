@@ -166,7 +166,7 @@ public partial class LocationInfoForm : Form
         {
             try
             {
-                Invoke(action);
+                BeginInvoke(action);
             }
             catch (ObjectDisposedException)
             {

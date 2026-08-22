@@ -1,0 +1,10 @@
+{
+  "name": "a380-flightinfo-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom harness + regression tests for A.flightInfo() in coherent-a380-agent.js (the FMS flight-progress readout for the A380 D / Shift+D hotkeys). Stubs the fsInstrument/fmcService/guidanceController object graph directly (no DOM-scrape fixtures needed — flightInfo reads JS objects, not the rendered MFD DOM).",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": { "jsdom": "^24.1.0" }
+}

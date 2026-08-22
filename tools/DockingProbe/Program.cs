@@ -105,7 +105,7 @@ Check("stop tolerance 0.3m: IsStop(0.3) true", DockingGeometry.IsStop(0.3));
 Check("stop tolerance 0.3m: IsStop(0.5) false", !DockingGeometry.IsStop(0.5));
 Check("BeepNearMetres == StopToleranceMetres (no plateau)", DockingGeometry.BeepNearMetres == DockingGeometry.StopToleranceMetres);
 Check("slow-down zone const", DockingGeometry.SlowDownMetres == 6.0);
-Check("SlowDownSpeedKts == 5.0", DockingGeometry.SlowDownSpeedKts == 5.0);
+Check("SlowDownSpeedKts == 3.0", DockingGeometry.SlowDownSpeedKts == 3.0);
 Check("EngageRangeMetres == 50.0", DockingGeometry.EngageRangeMetres == 50.0);
 Check("BeepFarMetres == 30.0", DockingGeometry.BeepFarMetres == 30.0);
 

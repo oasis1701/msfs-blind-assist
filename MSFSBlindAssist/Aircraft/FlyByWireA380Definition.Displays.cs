@@ -38,13 +38,18 @@ public partial class FlyByWireA380Definition
     {
         displayText = "";
         // Passengers on board: A32NX_FMS_PAX_NUMBER only reflects the MFD FUEL&LOAD page
-        // entry (0 when boarding via the flyPad), so show the real boarded total summed
-        // from the per-station seat bitmasks (cached in ProcessSimVarUpdate).
+        // entry (0 when boarding via the flyPad), so show the planned total summed from the
+        // per-station *_DESIRED* seat bitmasks (cached in ProcessSimVarUpdate) — the number
+        // the flyPad headline and GSX report; the boarded set lags under GSX boarding.
         if (varKey == "A32NX_FMS_PAX_NUMBER")
         {
             displayText = _paxOnBoard.ToString();
             return true;
         }
+        // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
+        // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
+        if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
+        if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
         // state + live level ("Icing, 30 percent" / "None") instead of a raw "0.3".
         if (varKey == "A32NX_ICING_STATE_ICING_STICK_INDICATOR")
@@ -91,6 +96,27 @@ public partial class FlyByWireA380Definition
             displayText = $"{value / 1_000_000.0:0.000} MHz";
             return true;
         }
+        // The RMP panel readouts use the reliable STOCK COM simvars, already in MHz.
+        // Without a display override the raw double dropped the fraction, so a whole-MHz
+        // freq like 137.000 read as bare "137". Force the full 3-decimal VHF format.
+        if (varKey.StartsWith("COM_ACTIVE_", StringComparison.Ordinal)
+            || varKey.StartsWith("COM_STANDBY_", StringComparison.Ordinal))
+        {
+            displayText = value >= 118.0 && value <= 137.0 ? $"{value:0.000} MHz" : "---.--- MHz";
+            return true;
+        }
+        // ND nav-radio frequencies — label the units so an ADF freq isn't a bare "890"
+        // (890 kHz is correct, just ambiguous). VOR in MHz, ADF in kHz; 0 = not tuned.
+        if (varKey == "ND_VOR1_FREQ" || varKey == "ND_VOR2_FREQ")
+        {
+            displayText = value >= 108.0 && value <= 118.0 ? $"{value:0.00} MHz" : "--- (not tuned)";
+            return true;
+        }
+        if (varKey == "ND_ADF1_FREQ" || varKey == "ND_ADF2_FREQ")
+        {
+            displayText = value >= 150.0 && value <= 1800.0 ? $"{value:0.0} kHz" : "--- (not tuned)";
+            return true;
+        }
         // Beta-target (sideslip target). Only valid when _ACTIVE (cached in ProcessSimVarUpdate).
         if (varKey == "A32NX_BETA_TARGET")
         {
@@ -122,6 +148,13 @@ public partial class FlyByWireA380Definition
             displayText = value < 0.05 ? "Retracted" : value > 0.95 ? "Full" : $"{(int)Math.Round(value * 100)} percent";
             return true;
         }
+        // (No display override for the cockpit flood/ambient dimmers: they render as
+        // RenderAsSlider TrackBars, and MainForm's slider paths — PanelBuilder's initial
+        // position and Announcers' sim-side refresh — both map the raw value with
+        // (value - SliderMin) / span * 100 and never consult TryGetDisplayOverride. An
+        // override here would be dead code. The pristine-0..1-ratio quirk is instead
+        // fixed sim-side: OnDisplayPanelShown below self-normalizes both knob L:vars
+        // when the Interior Lighting panel opens.)
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
         if (varKey == "A32NX_NOSE_WHEEL_POSITION")
         {
@@ -150,9 +183,9 @@ public partial class FlyByWireA380Definition
         {
             var w = new SimConnect.Arinc429Word(value);
             if (!w.IsNormalOperation && !w.IsFunctionalTest) displayText = "none";
-            else if (w.BitValueOr(25, false)) displayText = "LAND3 dual";
-            else if (w.BitValueOr(24, false)) displayText = "LAND3 single";
-            else if (w.BitValueOr(23, false)) displayText = "LAND2";
+            else if (w.BitValueOr(25, false)) displayText = "LAND 3 dual";
+            else if (w.BitValueOr(24, false)) displayText = "LAND 3 single";
+            else if (w.BitValueOr(23, false)) displayText = "LAND 2";
             else displayText = "none";
             return true;
         }
@@ -309,13 +342,14 @@ public partial class FlyByWireA380Definition
                     : $"{hpa:0} hPa";
                 return true;
             }
-            case "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE":
-            case "A32NX_FM1_DECISION_HEIGHT":
+            case "AIRLINER_MINIMUM_DESCENT_ALTITUDE": // baro MDA — plain feet; unset when <= 0
             {
-                var w = new Arinc429Word(value);
-                int ft = (w.IsNormalOperation || w.IsFunctionalTest)
-                    ? (int)(Math.Round(w.Value / 10.0) * 10) : -1;
-                displayText = ft > 0 ? $"{ft} feet" : "Not set";
+                displayText = ApproachMinimums.DisplayText(isDecisionHeight: false, value);
+                return true;
+            }
+            case "AIRLINER_DECISION_HEIGHT": // radio DH — plain feet; unset < 0 (0 = valid CAT III)
+            {
+                displayText = ApproachMinimums.DisplayText(isDecisionHeight: true, value);
                 return true;
             }
             case "A32NX_SEC_1_RUDDER_ACTUAL_POSITION":
@@ -359,16 +393,15 @@ public partial class FlyByWireA380Definition
                 displayText = $"{we.Value:0} degrees celsius";
                 return true;
             }
-            case "A32NX_TO_PITCH_TRIM":
+            case "A32NX_FM1_TO_PITCH_TRIM":
             {
-                // ARINC429 degrees; the FMS-computed takeoff trim. Positive = nose
-                // UP. Reads "Not computed" until the FMS has perf data.
+                // ARINC429 word = the takeoff "THS FOR" value = takeoff CG in %MAC (NOT
+                // degrees — the FWS compares it straight to the gross-weight CG percent and
+                // the PERF field is a PercentageFormat). Reads "Not computed" (NCD) until the
+                // pilot enters it on the MFD PERF T.O page.
                 var w = new Arinc429Word(value);
                 if (!(w.IsNormalOperation || w.IsFunctionalTest)) { displayText = "Not computed"; return true; }
-                double deg = w.Value;
-                displayText = Math.Abs(deg) < 0.05
-                    ? "Neutral"
-                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                displayText = $"{w.Value:0.0} percent";
                 return true;
             }
             case "ELEVATOR_TRIM":
@@ -680,6 +713,24 @@ public partial class FlyByWireA380Definition
     public override void OnDisplayPanelShown(string panelKey, SimConnectManager simConnect)
     {
         if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
+        // Interior Lighting: self-normalize the two PED dimmer knobs BEFORE the pilot can
+        // touch their sliders. A pristine (never-written) knob L:var holds a 0..1 RATIO
+        // (0.85 = 85 %), which would seed the slider thumb at ~1 % — and because the thumb
+        // writes its ABSOLUTE position, the pilot's first "brighten" nudge would then write
+        // ~2 and drop a really-85 % flood light to 2 %. "(L:X, percent) (>L:X)" is
+        // idempotent: pristine, it reads 85 via the percent conversion and the raw write
+        // re-registers the var 1:1 at 85; already normalized, it rewrites the current value
+        // unchanged. The forced re-read then lands the 0..100 value in the cache, and the
+        // sim-refresh path repositions the thumb from it.
+        if (panelKey == "Interior Lighting" && simConnect.IsConnected)
+        {
+            foreach (string knob in new[] { "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB",
+                                            "A380X_PED_LIGHTING_AMBIENT_LT_KNOB" })
+            {
+                simConnect.ExecuteCalculatorCode($"(L:{knob}, percent) (>L:{knob})");
+                simConnect.RequestVariable(knob, forceUpdate: true);
+            }
+        }
         if (panelKey != "ECAM Control Panel" || !simConnect.IsConnected) return;
         int idx = (int)Math.Round(simConnect.GetCachedVariableValue("A32NX_ECAM_SD_CURRENT_PAGE_INDEX") ?? -1);
         RefreshSdPageDisplayAsync(simConnect, idx, ewd: idx == 16);

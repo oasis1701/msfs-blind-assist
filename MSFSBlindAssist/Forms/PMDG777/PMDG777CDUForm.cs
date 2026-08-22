@@ -50,8 +50,22 @@ public partial class PMDG777CDUForm : Form
 
         FormClosing += (s, e) =>
         {
-            e.Cancel = true;
+            // Stop the poll on every close path (hide AND real shutdown) before the
+            // exit-reason gate below can return early.
             _pollTimer.Stop();
+
+            // Let real app/OS shutdown through: Application.Exit raises FormClosing on
+            // every open form (hidden included) and ABORTS the whole exit if any form
+            // cancels — an unconditional cancel here left the auto-updater stalled
+            // against a still-running exe. Everything else still hides.
+            if (e.CloseReason is CloseReason.ApplicationExitCall
+                or CloseReason.WindowsShutDown
+                or CloseReason.TaskManagerClosing)
+            {
+                return;
+            }
+
+            e.Cancel = true;
             Hide();
 
             if (_previousWindow != IntPtr.Zero)

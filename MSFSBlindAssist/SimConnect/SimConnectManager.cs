@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -56,8 +56,10 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
-    public event EventHandler<ECAMDataEventArgs>? ECAMDataReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
+    // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
+    // assist. Fired only while StartFlareAssistMonitoring is active.
+    public event EventHandler<FlareAssistData>? FlareAssistDataReceived;
     /// <summary>
     /// Fires when the loaded aircraft's ICAO type designator becomes known (on connect / aircraft change).
     /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
@@ -65,12 +67,63 @@ public partial class SimConnectManager
     public event EventHandler<string>? AircraftIcaoTypeDetected;
 
     // Aircraft definition
-    public IAircraftDefinition? CurrentAircraft { get; set; }
+    private IAircraftDefinition? _currentAircraft;
+    public IAircraftDefinition? CurrentAircraft
+    {
+        get => _currentAircraft;
+        set
+        {
+            _currentAircraft = value;
+            RebuildLedVarMap();
+        }
+    }
+
+    // Cache of LedVariable -> owning SimVarDefinition for the current aircraft, rebuilt whenever
+    // CurrentAircraft changes. Replaces a per-event `variables.Values.FirstOrDefault(v =>
+    // v.LedVariable == e.VariableName)` LINQ scan over the full (~400-700 entry) variable set --
+    // one MobiFlight default-channel push can raise up to 64 LVar events, each of which used to pay
+    // for a fresh scan + closure. Built with TryAdd (first-wins in variables.Values enumeration
+    // order) to replicate FirstOrDefault's semantics if two defs ever share a LedVariable; as of
+    // this writing only FlyByWireA320Definition sets LedVariable and every value there is unique,
+    // so this is a defensive equivalence guarantee rather than an observed collision.
+    private Dictionary<string, SimVarDefinition> ledVarToDef = new();
+
+    private void RebuildLedVarMap()
+    {
+        var map = new Dictionary<string, SimVarDefinition>();
+        var variables = _currentAircraft?.GetVariables();
+        if (variables != null)
+        {
+            foreach (var v in variables.Values)
+            {
+                if (!string.IsNullOrEmpty(v.LedVariable))
+                {
+                    map.TryAdd(v.LedVariable, v);
+                }
+            }
+        }
+        ledVarToDef = map;
+    }
 
     // Connection state
     public bool IsConnected { get; private set; }
     public bool IsFullyConnected { get; private set; } // Set to true after aircraft detection completes
     public double AircraftWingSpan { get; private set; } // Wing span in feet, populated on connect
+
+    /// <summary>
+    /// GSX's own <c>L:FSDT_GSX_COUATL_STARTED</c>, read over the main SimConnect
+    /// connection (DEF_GSX_COUATL_STARTED, once per second — DEFAULT flag, not
+    /// CHANGED, see RegisterGsxCouatlStartedDefinition). This is the
+    /// signal every GSX build publishes — Remote API or not — and it is what gates the
+    /// GSX <c>.ini</c> gate overlay, the deice pads and the profile stop positions:
+    /// local-file features that never needed GSX's WebSocket. Before the Remote API
+    /// migration <c>GsxService.CouatlStarted</c> WAS this L:var; afterwards it came
+    /// only from Remote-API frames, which silently switched those file-parsing
+    /// features off for any GSX build older than 4.0.1 (a floor docs/gsx.md says they
+    /// must not have). MainForm's gate-availability predicate ORs the two.
+    /// False whenever disconnected.
+    /// </summary>
+    public bool GsxCouatlStartedLVar { get; private set; }
     private bool wasConnected = false; // Track if we've already announced connection state
     private System.Windows.Forms.Timer reconnectTimer = null!;
     // Aircraft-detection retry. RequestAircraftInfo() fires once at Connect() with PERIOD.ONCE;
@@ -164,9 +217,6 @@ public partial class SimConnectManager
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
     private int ecamStringsReceived = 0;
     private int ecamTotalStringsExpected = 14;
-    private double ecamMasterWarning = 0;
-    private double ecamMasterCaution = 0;
-    private double ecamStallWarning = 0;
     private Dictionary<string, string> ecamAnnouncementData = new Dictionary<string, string>();  // ECAM messages with color for announcements
     private HashSet<string> previousECAMMessages = new HashSet<string>();  // Track previous message set for change detection
 
@@ -185,7 +235,11 @@ public partial class SimConnectManager
 
     // Variable tracking for individual registrations
     private ConcurrentDictionary<string, int> variableDataDefinitions = new ConcurrentDictionary<string, int>();  // Maps variable keys to data definition IDs
-    private ConcurrentDictionary<int, string> pendingRequests = new ConcurrentDictionary<int, string>();  // Track pending requests
+    // Reverse of variableDataDefinitions (data definition/request ID -> variable key), kept in exact
+    // sync at every add/remove/clear site of variableDataDefinitions. Lets the per-frame individual-var
+    // response dispatch (ProcessIndividualVariableResponse, fired at up to SIM_FRAME rate for
+    // HighFrequency vars like G_FORCE) do an O(1) TryGetValue instead of an O(n) FirstOrDefault scan.
+    private ConcurrentDictionary<int, string> requestIdToVarKey = new ConcurrentDictionary<int, string>();
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
     // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
     // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
@@ -200,6 +254,27 @@ public partial class SimConnectManager
     // Multi-batch system: Maps variable key -> (batchNumber, indexWithinBatch)
     // batchNumber: 1-5, indexWithinBatch: 0-99
     private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
+
+    // Prebuilt per-batch arrays mirroring continuousVariableIndexMap, built once in
+    // StartContinuousMonitoring (SimConnectManager.Setup.cs) and reused by every 1 Hz batch
+    // delivery in ProcessContinuousBatchImpl (SimConnectManager.VarCache.cs). Avoids scanning the
+    // whole ~700-var map 5x/second (skipping the 4 batches that aren't the current one) AND
+    // re-resolving each SimVarDefinition via variables.TryGetValue per var — the varDef is
+    // pre-resolved into the tuple instead. Indexed directly by batchNum (1-5, matching
+    // continuousVariableIndexMap's batchNum); index 0 is unused padding so callers can index with
+    // batchVarArrays[batchNum] without a -1 offset. continuousVariableIndexMap itself is kept —
+    // other consumers (e.g. RequestVariable's ContainsKey check in DataRequests.cs) read it
+    // independently of the batch loop. Cleared in lockstep with continuousVariableIndexMap:
+    // rebuilt in StartContinuousMonitoring, reset to empty in Disconnect.
+    private (string key, int index, SimVarDefinition def)[][] batchVarArrays =
+    {
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // index 0 (unused)
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 1
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 2
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 3
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 4
+        Array.Empty<(string key, int index, SimVarDefinition def)>(), // batch 5
+    };
 
     // Event handling
     private Dictionary<string, uint> eventIds = new Dictionary<string, uint>();
@@ -303,6 +378,8 @@ public partial class SimConnectManager
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
+        // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
+        REQUEST_GSX_COUATL_STARTED = 340,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -332,6 +409,8 @@ public partial class SimConnectManager
         TAKEOFF_ASSIST_DATA = 15,
         // Ambient weather data (on-request)
         WEATHER_DATA = 16,
+        // Manual-landing flare/rollout assist consolidated data (SIM_FRAME while engaged)
+        FLARE_ASSIST_DATA = 17,
         // Hotkey readout definitions (one-shot, used by aircraft definitions)
         DEF_HEADING = 300,
         DEF_SPEED = 301,
@@ -359,6 +438,8 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
+        // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
+        DEF_GSX_COUATL_STARTED = 340,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -507,6 +588,39 @@ public partial class SimConnectManager
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FlareAssistData
+    {
+        public double Latitude;
+        public double Longitude;
+        public double HeadingMagnetic;      // degrees (requested in degrees, unlike TakeoffAssistData)
+        public double MagneticVariation;    // degrees, East positive
+        public double GroundSpeedKnots;
+        public double VerticalSpeedFPM;
+        public double AGL;                  // PLANE ALT ABOVE GROUND — aircraft DATUM height, feet.
+                                            // Subtract the aircraft's FlareAltitudeBiasFt for gear height.
+        public double PitchRadians;         // body axis: negative = nose up (SimConnect convention)
+        public double OnGround;             // SIM ON GROUND (bool as double) — fresh at SIM_FRAME rate,
+                                            // unlike the 1 Hz continuous-batch SIM_ON_GROUND sample.
+        public double AltitudeMslFt;        // PLANE ALTITUDE — TRUE MSL datum altitude, feet. Used by the
+                                            // approach phase to measure the glidepath against the runway's
+                                            // navdata threshold ELEVATION. AGL cannot do this job: it follows
+                                            // the terrain under the aircraft, so rising/falling ground on the
+                                            // approach path would bend the reference glidepath with it.
+        public double BankDegrees;          // PLANE BANK DEGREES — SimConnect convention: POSITIVE = LEFT.
+                                            // Spoken (not toned) during the approach phase only; formatted by
+                                            // HandFlyManager.FormatBankAnnouncement, which expects this raw
+                                            // left-positive sign. Do NOT pass it to any tone/pan API without
+                                            // converting — those are right-positive.
+        public double GroundTrackTrue;      // GPS GROUND TRUE TRACK — the direction the aircraft is actually
+                                            // MOVING over the ground, degrees TRUE. Differenced against the
+                                            // true heading to get the live drift angle, which turns the
+                                            // approach phase's track-space intercept back into a heading the
+                                            // pilot can dial into HDG SEL. Not interchangeable with heading:
+                                            // in a crosswind they differ by exactly the error this exists to
+                                            // remove.
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
     public struct WindData
     {
         public double Direction;
@@ -523,6 +637,7 @@ public partial class SimConnectManager
         public double Temperature;     // AMBIENT TEMPERATURE, Celsius
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
+        public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -662,6 +777,7 @@ public partial class SimConnectManager
         catch (COMException)
         {
             IsConnected = false;
+            GsxCouatlStartedLVar = false;
 
             // Only announce disconnection if we were previously connected
             if (wasConnected)
@@ -795,10 +911,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.VariableName);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.VariableName, out var varDef);
 
             if (varDef != null)
             {
@@ -824,10 +938,8 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the corresponding variable definition
-            var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-            var varDef = variables.Values.FirstOrDefault(v =>
-                v.LedVariable == e.LedVariable);
+            // Find the corresponding variable definition via the cached LED-var lookup
+            ledVarToDef.TryGetValue(e.LedVariable, out var varDef);
 
             // Fallback: route a one-shot MobiFlight read by var KEY when no def
             // declares it as a LedVariable. Used for FCU readouts (e.g. the VS
@@ -835,7 +947,8 @@ public partial class SimConnectManager
             // ReadLedVariable(key) can deliver the correct MobiFlight value under
             // the var's own name without setting LedVariable (which would make
             // MainForm re-request it over the unreliable SimConnect path).
-            if (varDef == null && variables.TryGetValue(e.LedVariable, out var byKey))
+            var variables = CurrentAircraft?.GetVariables();
+            if (varDef == null && variables != null && variables.TryGetValue(e.LedVariable, out var byKey))
             {
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -1024,9 +1137,11 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
-        pendingRequests.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         eventIds.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         ecamStringData.Clear();
@@ -1036,6 +1151,7 @@ public partial class SimConnectManager
 
         IsConnected = false;
         IsFullyConnected = false;
+        GsxCouatlStartedLVar = false;
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)
@@ -1101,27 +1217,6 @@ public class SimVarUpdateEventArgs : EventArgs
     /// requests) always leave this false.
     /// </summary>
     public bool IsInitialSnapshot { get; set; }
-}
-
-public class ECAMDataEventArgs : EventArgs
-{
-    public string LeftLine1 { get; set; } = string.Empty;
-    public string LeftLine2 { get; set; } = string.Empty;
-    public string LeftLine3 { get; set; } = string.Empty;
-    public string LeftLine4 { get; set; } = string.Empty;
-    public string LeftLine5 { get; set; } = string.Empty;
-    public string LeftLine6 { get; set; } = string.Empty;
-    public string LeftLine7 { get; set; } = string.Empty;
-    public string RightLine1 { get; set; } = string.Empty;
-    public string RightLine2 { get; set; } = string.Empty;
-    public string RightLine3 { get; set; } = string.Empty;
-    public string RightLine4 { get; set; } = string.Empty;
-    public string RightLine5 { get; set; } = string.Empty;
-    public string RightLine6 { get; set; } = string.Empty;
-    public string RightLine7 { get; set; } = string.Empty;
-    public bool MasterWarning { get; set; }
-    public bool MasterCaution { get; set; }
-    public bool StallWarning { get; set; }
 }
 
 public class TakeoffRunwayReferenceEventArgs : EventArgs

@@ -97,6 +97,8 @@ public partial class MainForm
             "FBW_A380" => new FlyByWireA380Definition(),
             "PMDG_737" => new PMDG737Definition(),
             "HS_787" => new HorizonSim787Definition(),
+            "HW_A330" => new HeadwindA330Definition(),
+            "IFLY_737MAX8" => new IFly737MAXDefinition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -200,9 +202,18 @@ public partial class MainForm
             _prevInCloud = -1;
             _prevVisibility = -1;
             _prevVisLow = false;
+            _prevAsPrecip = null;
+            _iceAccretionTracker.Reset();
+            // Same rationale as the ice reset: flight 1 can end in moderate turbulence;
+            // without a reconnect re-baseline, flight 2's first calm poll would announce
+            // a phantom "Smooth air" transition.
+            activeSkyWeatherMonitor?.ResetTurbulenceTracker();
             _announcedSigmetKeys.Clear();
             _announcedPirepKeys.Clear();
             _sigmetKeysClearedAt = DateTime.UtcNow;
+            _routeAdvisoryProximity.Reset();
+            _emptyRouteFeedTicks = 0;
+            _turnaroundDetector.Reset();
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
@@ -216,6 +227,21 @@ public partial class MainForm
             // Stop weather auto-announcement timer
             weatherAnnouncementTimer?.Stop();
 
+            // A disconnect voids any pending liftoff → Hand Fly handoff. The
+            // fire-time gates would abort anyway (IsConnected check), but don't
+            // leave a dead timer pending across a reconnect — and bump the
+            // confirm token: a fresh-position confirm whose response was lost
+            // to this disconnect leaks its one-shot handler, which would
+            // otherwise fire on the NEXT flight's first position response and
+            // bypass the debounce.
+            _liftoffHandoffTimer?.Stop();
+            _liftoffHandoffConfirmToken++;
+
+            // The flare assist's SIM_FRAME request died with the connection: silence
+            // any tone still sounding on its last frame, and clear the latched
+            // monitoring flag so the first slow sample after reconnect re-issues it.
+            flareAssistManager?.OnConnectionLost();
+
             // Clear event queue and reset counters
             while (eventQueue.TryDequeue(out _)) { }
             queuedEventCount = 0;
@@ -227,6 +253,10 @@ public partial class MainForm
             this.Text = "MSFS Blind Assist";
             // Disable announcements when disconnected
             simVarMonitor.Reset();
+            // The iFly keeps feeding over shared memory through a SimConnect drop — re-arm
+            // the announce grace so its combo announcements resume instead of going silent
+            // while the def's self-announced lights keep speaking (PR #163 review).
+            if (currentAircraft is IFly737MAXDefinition) StartIFlyAnnouncementGrace();
             // Reset ECAM suppression flag for next connection
             simConnectManager.SuppressECAMAnnouncements = true;
 
@@ -359,7 +389,7 @@ public partial class MainForm
 
     /// <summary>
     /// Public accessor for the PROG-page monitor. PMDG777Definition's distance
-    /// handlers read its <see cref="PMDGProgPageMonitor.LastProgData"/> when
+    /// handlers call its <see cref="PMDGProgPageMonitor.ReadProgPageAsync"/> when
     /// Enhanced distance mode is on. Returns null when the monitor isn't
     /// running (non-PMDG aircraft or Enhanced mode off).
     /// </summary>
@@ -423,7 +453,7 @@ public partial class MainForm
         {
             // Honour the Ctrl+M / Ctrl+E ECAM-monitor mute (same sentinel the
             // SimVar EWD memo path consults), so the user can silence E/WD chatter.
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             // Audio dedup: skip a memo the FwsFailureClient already calls out as an active
@@ -443,7 +473,7 @@ public partial class MainForm
         coherentFwsFailureClient = new CoherentFwsFailureClient();
         coherentFwsFailureClient.FailureAnnounced += line =>
         {
-            if (Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(
+            if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(
                     Forms.FBWA380.FBWA380MonitorManagerForm.EcamMemosKey))
                 return;
             announcer.Announce(line);
@@ -534,7 +564,7 @@ public partial class MainForm
         return sb.ToString();
     }
 
-    // Dispose the HS787 CDU / SimBrief / EFB windows + the IRS monitor (e.g. on aircraft swap)
+    // Dispose the HS787 CDU / EFB windows + the IRS monitor (e.g. on aircraft swap)
     // so their Coherent debugger connections close. There is no HTTP bridge to stop.
     private void DisposeHS787Forms()
     {
@@ -542,12 +572,6 @@ public partial class MainForm
         {
             hs787FMCForm.Dispose();
             hs787FMCForm = null;
-        }
-
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
         }
 
         hs787IrsClient?.Dispose();
@@ -567,13 +591,29 @@ public partial class MainForm
         var oldAircraft = currentAircraft;
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
-        // Both FBW defs' StopAllMotion also dispose their TCAS RA compose timer and
-        // any tracked hotkey windows (FCU/Baro/E/WD) the old def instance created.
+        // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.
         (oldAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (oldAircraft as FlyByWireA320Definition)?.StopAllMotion();
         // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
         // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
         (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
+        // Every def's tracked hotkey windows (FBW FCU/Baro/E/WD, PMDG Ctrl+P autopilot).
+        // UNCONDITIONAL on purpose — a per-type line here is how the PMDG autopilot window
+        // slipped through: it was the first ShowTrackedWindow user outside the FBW pair,
+        // whose StopAllMotion happened to cover them. A surviving window keeps its 500 ms
+        // refresh timer alive AND stays clickable against the OLD def's HandleUIVariableSet,
+        // so e.g. a stale 777 window can fire 777 event IDs at a loaded 737 (the two
+        // EventIds tables use different event_base + N numberings) and actuate an arbitrary
+        // wrong control. Idempotent, so the FBW double-call above is a no-op.
+        (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
+
+        // An armed liftoff → Hand Fly handoff must not survive the switch — its
+        // confirm could otherwise fire against the new aircraft in the middle of
+        // the re-registration churn below (same hygiene as the disconnect path
+        // in OnConnectionStatusChanged). The token bump also invalidates an
+        // already-in-flight confirm callback.
+        _liftoffHandoffTimer?.Stop();
+        _liftoffHandoffConfirmToken++;
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
@@ -605,6 +645,14 @@ public partial class MainForm
         // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
+
+        // Hazard announcers re-baseline on switch — stale category/ice baselines
+        // from the previous airframe must not announce as "changes".
+        activeSkyWeatherMonitor?.ResetTurbulenceTracker();
+        _iceAccretionTracker.Reset();
+        _routeAdvisoryProximity.Reset();
+        _emptyRouteFeedTicks = 0;
+        _turnaroundDetector.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
@@ -640,6 +688,7 @@ public partial class MainForm
             gracePeriodTimer.Start();
             Log.Debug("MainForm", "Aircraft switch grace period started (5 seconds)");
         }
+        else if (newAircraft is IFly737MAXDefinition) { StartIFlyAnnouncementGrace(); }
 
         // Update window title
         this.Text = "MSFS Blind Assist";
@@ -801,12 +850,6 @@ public partial class MainForm
             hs787FMCForm = null;
         }
 
-        if (hs787SimBriefForm != null && !hs787SimBriefForm.IsDisposed)
-        {
-            hs787SimBriefForm.Dispose();
-            hs787SimBriefForm = null;
-        }
-
         // PMDG data manager lifecycle
         if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
         {
@@ -854,6 +897,18 @@ public partial class MainForm
             StartHS787IrsMonitor();
         else
             DisposeHS787Forms();
+
+        // The iFly def owns the shared-memory SDK client — stop its poll and close the
+        // mapping so it doesn't keep firing events at the new aircraft.
+        if (oldAircraft is IFly737MAXDefinition oldIFly && oldAircraft != newAircraft)
+        {
+            oldIFly.Sdk.VariableChanged -= OnIFlyVariableChanged;
+            oldIFly.Shutdown();
+            DisposeIFlyForms();
+        }
+
+        // Starting the SDK bridge is a no-op unless the new aircraft is the iFly.
+        StartIFlySdkBridge();
 
         // Rebuild sections from new aircraft structure
         foreach (var section in currentAircraft.GetPanelStructure().Keys)
@@ -907,9 +962,17 @@ public partial class MainForm
         flyByWireA380MenuItem.Checked = false;
         pmdg737MenuItem.Checked = false;
         horizonSim787MenuItem.Checked = false;
+        headwindA330MenuItem.Checked = false;
+        ifly737MaxMenuItem.Checked = false;
 
-        // Set the check on the current aircraft's menu item
-        if (currentAircraft is FlyByWireA320Definition)
+        // Set the check on the current aircraft's menu item.
+        // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
+        // be tested BEFORE the A320 (a derived instance also matches the base type).
+        if (currentAircraft is HeadwindA330Definition)
+        {
+            headwindA330MenuItem.Checked = true;
+        }
+        else if (currentAircraft is FlyByWireA320Definition)
         {
             flyByWireA320MenuItem.Checked = true;
         }
@@ -932,6 +995,10 @@ public partial class MainForm
         else if (currentAircraft is HorizonSim787Definition)
         {
             horizonSim787MenuItem.Checked = true;
+        }
+        else if (currentAircraft is IFly737MAXDefinition)
+        {
+            ifly737MaxMenuItem.Checked = true;
         }
     }
 
@@ -1004,6 +1071,36 @@ public partial class MainForm
         {
             electronicFlightBagForm.Close();
             electronicFlightBagForm = null;
+        }
+
+        // Same for the TCAS window, and for the same reason: its GateResolver is built ONCE in
+        // OpenTcasWindow from DatabaseSelector.SelectProvider() and captures that provider in a
+        // readonly field, plus a GateDataSource built over it and a per-ICAO cache of that
+        // database's parking spots. Nothing else invalidates any of it — GateResolver.ClearCache
+        // has no production caller, and could not help here anyway since it does not (and cannot)
+        // replace the readonly provider. The gate-list staleness token does not move on a
+        // database switch either, so without this the traffic list kept naming stands from the
+        // PREVIOUS simulator's scenery for the rest of the session. Rebuilding the window is the
+        // only correct invalidation; OpenTcasWindow already recreates it when tcasForm is null.
+        if (tcasForm != null && !tcasForm.IsDisposed)
+        {
+            tcasForm.Close();
+            tcasForm = null;
+        }
+
+        // And the Taxi Assist window, for the same reason as the two above: it captures
+        // IAirportDataProvider in a readonly field at construction (MainForm.Dialogs.cs), so
+        // a rebuilt or switched database never reaches an already-open window — it keeps
+        // naming stands from the previous database for the rest of the session.
+        //
+        // Dispose() rather than Close(): TaxiAssistForm cancels its own FormClosing and
+        // hides instead, so Close() would leave the stale instance alive and merely
+        // invisible. GetOrCreateTaxiAssistForm already rebuilds it when the field is null
+        // or disposed.
+        if (taxiAssistForm != null && !taxiAssistForm.IsDisposed)
+        {
+            taxiAssistForm.Dispose();
+            taxiAssistForm = null;
         }
 
         UpdateDatabaseStatusDisplay();

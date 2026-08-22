@@ -14,12 +14,11 @@ public class SimVarMonitor
 
     public void ProcessUpdate(string varName, double newValue, string description)
     {
-        bool isNewValue = !previousValues.ContainsKey(varName);
-        bool hasChanged = isNewValue || Math.Abs(previousValues[varName] - newValue) > 0.001;
+        bool isNewValue = !previousValues.TryGetValue(varName, out double oldValue);
+        bool hasChanged = isNewValue || Math.Abs(oldValue - newValue) > 0.001;
 
         if (hasChanged)
         {
-            double oldValue = isNewValue ? 0 : previousValues[varName];
             previousValues[varName] = newValue;
 
             // Only fire ValueChanged event if announcements are enabled

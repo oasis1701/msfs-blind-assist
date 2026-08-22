@@ -1,0 +1,1 @@
+Add-on airport stands are no longer replaced by default stands when GSX World of Jetways is installed — a gate the sim and ATC call Gate 20 is no longer announced as "G 6". This applies to databases built for MSFS 2020; rebuild your database from Database Settings to pick it up, since an existing database keeps its old stand names until you do.

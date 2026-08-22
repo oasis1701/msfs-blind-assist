@@ -13,43 +13,43 @@ namespace MSFSBlindAssist.Services;
 ///    is called, a Windows Forms Timer ticks at <see cref="InitTickMs"/>
 ///    until the right CDU returns parsable rows. If the CDU is unpowered
 ///    the timer slows to <see cref="InitRetryMs"/> (30 s) until power
-///    returns. Once we have rows, the monitor either parses PROG (if the
-///    CDU is already on it) or sends a single <c>EVT_CDU_R_PROG</c> to
+///    returns. Once we have rows, the monitor either leaves the CDU alone
+///    (it is already on PROG) or sends a single <c>EVT_CDU_R_PROG</c> to
 ///    move it there, then stops the timer. After init, the monitor sits
 ///    idle — no more ticks, no more events, no fighting the user when
 ///    they navigate the right CDU somewhere else.
 ///
 /// 2. <b>On-demand reads (<see cref="ReadProgPageAsync"/>).</b> Called
-///    from the Output D / Shift+D distance handlers. Reuses a recently
-///    cached <see cref="LastProgData"/> when fresh; otherwise probes the
-///    CDU live. If the user has navigated away from PROG, the probe sends
-///    <c>EVT_CDU_R_PROG</c>, waits for the page to render, requests a
-///    fresh CDU snapshot, parses, and returns. Worst-case latency
-///    (cold-cache, off-PROG) is ~400-500 ms; warm-cache reads are
-///    instant.
+///    from the Output D / Shift+D distance handlers. ALWAYS probes the
+///    CDU live — the press IS the poll. (An earlier 30-second reuse of a
+///    cached snapshot made cruise distances update in ~3-4 nm jumps at
+///    jet ground speeds while the FMC ticked every mile; the ~150 ms
+///    live-read latency is imperceptible next to that.) If the user has
+///    navigated away from PROG, the probe sends <c>EVT_CDU_R_PROG</c>,
+///    waits for the page to render, requests a fresh CDU snapshot,
+///    parses, and returns. Worst-case latency (off-PROG) is ~400-500 ms;
+///    on-PROG reads are ~150 ms. Concurrent callers share one in-flight
+///    probe rather than racing two page-switches at the same CDU.
 ///
 /// <para><b>Why we still init.</b></para>
 ///
 /// Pressing D for the first time while the CDU is on MENU or LEGS would
 /// otherwise pay the full ~500 ms penalty. The init pass primes the CDU
-/// onto PROG before any user input arrives, so the typical first press
-/// gets cached data with zero latency. Init is also the right place to
-/// honor the user's spec: "retry every 30 s if the power is off until
-/// the page is displayed."
+/// onto PROG before any user input arrives, so the typical press takes
+/// the fast on-PROG path. Init is also the right place to honor the
+/// user's spec: "retry every 30 s if the power is off until the page is
+/// displayed."
 /// </summary>
 public class PMDGProgPageMonitor : IDisposable
 {
     /// <summary>Right CDU. PMDG SDK indexes: 0=Captain (left), 1=F/O (right), 2=Observer (center).</summary>
     private const int RIGHT_CDU = 1;
 
-    /// <summary>Init-phase tick when the CDU is up. Fast — we're racing to prime the cache before the user asks.</summary>
+    /// <summary>Init-phase tick when the CDU is up. Fast — we're racing to prime the page before the user asks.</summary>
     private const int InitTickMs = 1_000;
 
     /// <summary>Init-phase tick when the CDU is unpowered. User's spec: retry every 30 s.</summary>
     private const int InitRetryMs = 30_000;
-
-    /// <summary>How long a cached <see cref="LastProgData"/> can be reused without re-probing.</summary>
-    private const int CacheValiditySeconds = 30;
 
     /// <summary>Time to wait for PMDG to render PROG after sending <c>EVT_CDU_R_PROG</c>.</summary>
     private const int PageRenderDelayMs = 250;
@@ -60,12 +60,15 @@ public class PMDGProgPageMonitor : IDisposable
     private readonly PMDG777DataManager _dataManager;
     private readonly System.Windows.Forms.Timer _initTimer;
 
+    /// <summary>Guards <see cref="_inFlightProbe"/> so a burst of presses shares one probe.</summary>
+    private readonly object _probeLock = new();
+
+    /// <summary>The probe currently running, or null / already-completed when idle.</summary>
+    private Task<PMDGProgPageReader.ProgPageData?>? _inFlightProbe;
+
     /// <summary>True once init completes successfully (CDU readable; PROG either visible or requested).</summary>
     private bool _initialized;
     private bool _disposed;
-
-    /// <summary>Most recent successfully-parsed PROG-page snapshot, or null.</summary>
-    public PMDGProgPageReader.ProgPageData? LastProgData { get; private set; }
 
     /// <summary>Last error string, surfaced to the UI / logs. Empty when healthy.</summary>
     public string LastError { get; private set; } = "";
@@ -97,10 +100,8 @@ public class PMDGProgPageMonitor : IDisposable
     /// <summary>
     /// Stops the init timer and clears the initialized flag so a future
     /// <see cref="Start"/> redoes the init pass. Used by MainForm when
-    /// the user toggles Enhanced mode off or swaps aircraft. Does NOT
-    /// clear <see cref="LastProgData"/> — a recently-stopped monitor's
-    /// cache is still useful for one final stale read; consumers that
-    /// care about freshness check <see cref="PMDGProgPageReader.ProgPageData.LastUpdated"/>.
+    /// the user toggles Enhanced mode off or swaps aircraft. The monitor
+    /// holds no snapshot state to clear — every read is live.
     /// </summary>
     public void Stop()
     {
@@ -134,12 +135,7 @@ public class PMDGProgPageMonitor : IDisposable
             // activity until the user requests data.
             LastError = "";
 
-            if (PMDGProgPageReader.IsProgPage(rows))
-            {
-                var parsed = PMDGProgPageReader.Parse(rows);
-                if (parsed != null) LastProgData = parsed;
-            }
-            else
+            if (!PMDGProgPageReader.IsProgPage(rows))
             {
                 // Send PROG once and let the page render. We don't wait or
                 // re-fetch — the next user-driven ReadProgPageAsync call
@@ -169,11 +165,17 @@ public class PMDGProgPageMonitor : IDisposable
     }
 
     /// <summary>
-    /// On-demand probe used by the Output D / Shift+D handlers. Reuses
-    /// <see cref="LastProgData"/> if it was updated within
-    /// <see cref="CacheValiditySeconds"/>; otherwise lives-fetches.
+    /// On-demand probe used by the Output D / Shift+D handlers. Always
+    /// live-fetches — the press is the poll; no staleness window. See the
+    /// class doc for why the old 30 s cache was removed.
     ///
-    /// Live-fetch flow:
+    /// Concurrent callers share one probe: a press arriving while another
+    /// probe is still running joins it instead of starting a second one,
+    /// so a burst (D then Shift+D a moment later) never puts two competing
+    /// page-switches on the same CDU. Once a probe finishes, the next press
+    /// starts a genuinely fresh one — sharing never serves stale data.
+    ///
+    /// Live-fetch flow (<see cref="ProbeProgPageAsync"/>):
     ///   1. Request a fresh CDU 1 snapshot, wait <see cref="SnapshotDelayMs"/>
     ///      for SimConnect to deliver it.
     ///   2. If still null → CDU is off → return null (caller falls back to SDK).
@@ -185,63 +187,96 @@ public class PMDGProgPageMonitor : IDisposable
     /// This is the only place we re-trigger PMDG navigation outside of
     /// init — keeping it user-driven means we never fight the user when
     /// they're working on a different page.
+    ///
+    /// Never throws. Returns null for every failure — unpowered CDU, page
+    /// that wouldn't render, or an unexpected exception — which is the
+    /// callers' signal to announce the SDK readout instead.
     /// </summary>
-    public async Task<PMDGProgPageReader.ProgPageData?> ReadProgPageAsync()
+    public Task<PMDGProgPageReader.ProgPageData?> ReadProgPageAsync()
     {
-        if (_disposed) return null;
+        if (_disposed) return Task.FromResult<PMDGProgPageReader.ProgPageData?>(null);
 
-        // Cache reuse: rapid back-to-back D / Shift+D presses don't re-probe.
-        if (LastProgData != null
-            && LastProgData.IsValid
-            && (DateTime.Now - LastProgData.LastUpdated).TotalSeconds < CacheValiditySeconds)
+        lock (_probeLock)
         {
-            return LastProgData;
-        }
-
-        // Step 1 — fresh snapshot of whatever the right CDU is currently showing.
-        _dataManager.RequestCDUScreen(RIGHT_CDU);
-        await Task.Delay(SnapshotDelayMs);
-        var rows = _dataManager.GetCDURows(RIGHT_CDU);
-        if (rows == null)
-        {
-            LastError = "Right CDU not powered";
-            return null;
-        }
-
-        // Step 2 — if not on PROG, switch and re-fetch.
-        if (!PMDGProgPageReader.IsProgPage(rows))
-        {
-            if (!PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
+            if (_inFlightProbe != null && !_inFlightProbe.IsCompleted)
             {
-                LastError = "EVT_CDU_R_PROG event id missing";
-                return null;
+                return _inFlightProbe;
             }
-            // CDA path (parameter 1 = pressed) — same as PMDG777CDUForm's
-            // PROG button. See init-tick comment.
-            _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
-            await Task.Delay(PageRenderDelayMs);
+
+            _inFlightProbe = ProbeProgPageAsync();
+            return _inFlightProbe;
+        }
+    }
+
+    /// <summary>
+    /// The live probe itself. Always entered through
+    /// <see cref="ReadProgPageAsync"/>, which serializes concurrent callers
+    /// onto a single run — do not call this directly.
+    ///
+    /// Never throws: every failure, including an unexpected exception out
+    /// of SimConnect, is reported as null so the caller takes its SDK
+    /// fallback. See the catch block for why that matters.
+    /// </summary>
+    private async Task<PMDGProgPageReader.ProgPageData?> ProbeProgPageAsync()
+    {
+        try
+        {
+            // Step 1 — fresh snapshot of whatever the right CDU is currently showing.
             _dataManager.RequestCDUScreen(RIGHT_CDU);
             await Task.Delay(SnapshotDelayMs);
-            rows = _dataManager.GetCDURows(RIGHT_CDU);
+            var rows = _dataManager.GetCDURows(RIGHT_CDU);
             if (rows == null)
             {
-                LastError = "Right CDU went unpowered mid-probe";
+                LastError = "Right CDU not powered";
                 return null;
             }
+
+            // Step 2 — if not on PROG, switch and re-fetch.
             if (!PMDGProgPageReader.IsProgPage(rows))
             {
-                // PMDG didn't switch in time — could be a ground-event
-                // suppression, could be slow rendering. Caller falls back
-                // to the SDK readout.
-                LastError = "PROG page did not render in time";
-                return null;
+                if (!PMDG777Definition.EventIds.TryGetValue("EVT_CDU_R_PROG", out int progEventId))
+                {
+                    LastError = "EVT_CDU_R_PROG event id missing";
+                    return null;
+                }
+                // CDA path (parameter 1 = pressed) — same as PMDG777CDUForm's
+                // PROG button. See init-tick comment.
+                _dataManager.SendEvent("EVT_CDU_R_PROG", (uint)progEventId, 1);
+                await Task.Delay(PageRenderDelayMs);
+                _dataManager.RequestCDUScreen(RIGHT_CDU);
+                await Task.Delay(SnapshotDelayMs);
+                rows = _dataManager.GetCDURows(RIGHT_CDU);
+                if (rows == null)
+                {
+                    LastError = "Right CDU went unpowered mid-probe";
+                    return null;
+                }
+                if (!PMDGProgPageReader.IsProgPage(rows))
+                {
+                    // PMDG didn't switch in time — could be a ground-event
+                    // suppression, could be slow rendering. Caller falls back
+                    // to the SDK readout.
+                    LastError = "PROG page did not render in time";
+                    return null;
+                }
             }
-        }
 
-        var parsed = PMDGProgPageReader.Parse(rows);
-        if (parsed != null) LastProgData = parsed;
-        LastError = "";
-        return parsed;
+            var parsed = PMDGProgPageReader.Parse(rows);
+            LastError = "";
+            return parsed;
+        }
+        catch (Exception ex)
+        {
+            // Degrade to the SDK readout, never to silence. The handlers
+            // announce their fallback when we return null, but a thrown
+            // exception would fault their fire-and-forget task instead and
+            // the pilot would hear nothing at all from the press. Shared
+            // callers all observe this null, so one failure can't fault a
+            // probe that other presses are waiting on either.
+            LastError = $"PROG probe: {ex.GetType().Name}: {ex.Message}";
+            Log.Debug("Services", $"{LastError}");
+            return null;
+        }
     }
 
     public void Dispose()

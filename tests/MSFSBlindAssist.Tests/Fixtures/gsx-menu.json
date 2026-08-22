@@ -1,0 +1,43 @@
+{
+  "title": "Activate Services at KJFK/Kennedy Intl",
+  "entries": [
+    "Request Deboarding",
+    "Request Catering service",
+    "Request Refueling",
+    "Request Boarding",
+    "Prepare for Push-back and Departure",
+    "Operate Jetway",
+    "Stairs disabled",
+    "Additional Services ▶",
+    "Customize this Parking position",
+    "Reposition Aircraft"
+  ],
+  "stateClass": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "gsx-state-completed",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "disabled": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "header": "Activate Services at KJFK/Kennedy Intl",
+  "subtitle": "Terminal 4 - Concourse B|Gate 20A ☹",
+  "layout": "t9",
+  "document": ""
+}

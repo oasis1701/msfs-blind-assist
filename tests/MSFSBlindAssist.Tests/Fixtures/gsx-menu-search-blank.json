@@ -1,0 +1,43 @@
+{
+  "title": "Type a gate, terminal or number",
+  "entries": [
+    " Gate A15 with Safedock© - Heavy - 1x  /J ",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "Back"
+  ],
+  "stateClass": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ],
+  "disabled": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+  ],
+  "header": "Type a gate, terminal or number",
+  "subtitle": "",
+  "layout": "list",
+  "document": ""
+}

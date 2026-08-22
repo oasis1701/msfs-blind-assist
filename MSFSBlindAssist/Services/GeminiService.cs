@@ -9,12 +9,12 @@ namespace MSFSBlindAssist.Services;
 /// <summary>
 /// Service for analyzing cockpit displays using Google Gemini AI.
 /// </summary>
-public class GeminiService
+public class GeminiService : IAiProvider
 {
     private static readonly HttpClient httpClient = new HttpClient();
 
     // The model is user-selectable (UserSettings.GeminiModel, populated from a live fetch in the
-    // Gemini Settings dialog). DEFAULT_MODEL is a rolling alias that always resolves to a current
+    // Settings dialog's AI tab). DEFAULT_MODEL is a rolling alias that always resolves to a current
     // Flash model, so a fresh install / failed fetch still has a working default.
     private const string API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
     private const string DEFAULT_MODEL = "gemini-flash-latest";
@@ -38,33 +38,20 @@ public class GeminiService
             : SettingsManager.Current.GeminiApiKey;
     }
 
-    /// <summary>A Gemini model usable for generateContent, for the settings dropdown.</summary>
-    public sealed class GeminiModelInfo
-    {
-        public string Id { get; }
-        public string DisplayName { get; }
-        public GeminiModelInfo(string id, string displayName)
-        {
-            Id = id;
-            DisplayName = displayName;
-        }
-        public override string ToString() => DisplayName;
-    }
-
     /// <summary>
     /// Fetches the account's available models, filtered to generateContent-capable Gemini
     /// chat/vision models, collapsed to one (latest) entry per family, sorted newest-first.
     /// Throws on HTTP/network failure (caller falls back to a curated
     /// list). Does not retry — this is an interactive, best-effort dialog populate.
     /// </summary>
-    public async Task<IReadOnlyList<GeminiModelInfo>> ListAvailableModelsAsync()
+    public async Task<IReadOnlyList<AiModelInfo>> ListAvailableModelsAsync()
     {
         if (string.IsNullOrEmpty(apiKey))
         {
             throw new InvalidOperationException("Gemini API key is not configured.");
         }
 
-        var models = new List<GeminiModelInfo>();
+        var models = new List<AiModelInfo>();
         string? pageToken = null;
         do
         {
@@ -91,7 +78,7 @@ public class GeminiService
                     string displayName = string.IsNullOrWhiteSpace(m.DisplayName) ? id : m.DisplayName!;
                     if (IsNonChatModel(id, displayName)) continue;
 
-                    models.Add(new GeminiModelInfo(id, displayName));
+                    models.Add(new AiModelInfo(id, displayName));
                 }
             }
             pageToken = list?.NextPageToken;
@@ -99,7 +86,7 @@ public class GeminiService
 
         // Collapse every variant of a model line (dated snapshots, -preview, -exp) to ONE
         // representative per family so the picker isn't flooded with snapshots.
-        List<GeminiModelInfo> result = SelectFamilyRepresentatives(models);
+        List<AiModelInfo> result = SelectFamilyRepresentatives(models);
 
         // Newest-first: descending by the leading version number parsed from the id; unversioned
         // ids (rolling aliases like gemini-flash-latest) sort last; ties broken alphabetically.
@@ -121,9 +108,9 @@ public class GeminiService
     /// stable snapshot > newest preview/experimental. The rolling "*-latest" aliases are their
     /// own families and are kept.
     /// </summary>
-    private static List<GeminiModelInfo> SelectFamilyRepresentatives(List<GeminiModelInfo> models)
+    private static List<AiModelInfo> SelectFamilyRepresentatives(List<AiModelInfo> models)
     {
-        var byFamily = new Dictionary<string, GeminiModelInfo>(StringComparer.OrdinalIgnoreCase);
+        var byFamily = new Dictionary<string, AiModelInfo>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in models)
         {
             string family = FamilyKey(m.Id);
@@ -132,7 +119,7 @@ public class GeminiService
                 byFamily[family] = m;
             }
         }
-        return new List<GeminiModelInfo>(byFamily.Values);
+        return new List<AiModelInfo>(byFamily.Values);
     }
 
     /// <summary>
@@ -228,7 +215,11 @@ public class GeminiService
         PFD737,        // Primary Flight Display (Boeing 737 NG3)
         ND737,         // Navigation Display (Boeing 737 NG3)
         ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
-        EICAS737       // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        EICAS737,      // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        PFDiFly,       // Primary Flight Display (iFly 737 MAX 8)
+        NDiFly,        // Navigation Display (iFly 737 MAX 8)
+        ISFDiFly,      // Integrated Standby Flight Display (iFly 737 MAX 8)
+        EICASiFly      // Engine indications + crew alerts, "EICAS-equivalent" (iFly 737 MAX 8)
     }
 
     /// <summary>
@@ -268,7 +259,7 @@ public class GeminiService
     /// <summary>
     /// Generates a prompt for scene description focused on the visual experience.
     /// </summary>
-    private string GetScenePrompt()
+    internal static string GetScenePrompt()
     {
         return @"You are describing the visual flight simulator scene for a blind pilot.
 
@@ -320,7 +311,7 @@ Describe what you see directly and factually, helping someone understand the vis
     /// <summary>
     /// Generates an appropriate prompt for each display type.
     /// </summary>
-    private string GetPromptForDisplay(DisplayType displayType)
+    internal static string GetPromptForDisplay(DisplayType displayType)
     {
         return displayType switch
         {
@@ -505,6 +496,53 @@ Skip normal colors (green, white) — only mention warning/alert colors (amber, 
 Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
+            DisplayType.PFDiFly => @"You are reading the Primary Flight Display (PFD) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the display showing the artificial-horizon attitude indicator with a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine indications, the ISFD standby, the flight-information/data page, and the CDU.
+Report in this order:
+Flight Mode Annunciator (FMA) across the top, left to right: autothrottle mode (e.g. N1, RETARD, ARM, FMC SPD), roll mode (e.g. LNAV, HDG SEL, VOR/LOC, LOC), pitch mode (e.g. VNAV PTH, VNAV SPD, ALT, V/S, G/S, FLARE), and AFDS status (FD, CMD, or single/dual channel).
+Airspeed: current indicated airspeed, the selected/MCP speed if shown, and any relevant speed bugs.
+Attitude: pitch and bank only if unusual (otherwise say wings level).
+Altitude: current altitude, the selected altitude, and the barometric setting (e.g. 29.71 IN, 1013 HPA, or STD).
+Vertical speed if shown.
+Heading and track at the bottom, plus the selected heading.
+Radio altitude if displayed.
+Localizer and glideslope deviation if an approach is shown.
+Any flags, failure flags, or amber/red annunciations.
+Skip normal colors (green, white, magenta); only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain what things mean. Just state the data.",
+
+            DisplayType.NDiFly => @"You are reading the Navigation Display (ND) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the ND — the display showing the compass arc or map with the aircraft symbol. Engine indications may appear on the same physical display unit, to the right of the map; do NOT report engine data — describe only the navigation/map portion.
+Report in this order:
+Mode and range (e.g. MAP 5, VOR, PLAN, APP; range in nautical miles).
+Current track and heading (e.g. TRK 008 MAG); ground speed and true airspeed if shown.
+Active waypoint: name, distance, and time or ETA (e.g. TIKNI 51.8 NM).
+Next waypoints along the magenta route line, in order, if legible.
+Wind: direction and speed.
+Weather radar returns: whether any are painted, their intensity (green, amber/yellow, red), and rough bearing and distance.
+Terrain: any terrain shading and its color.
+Traffic (TCAS): any traffic symbols, with relative bearing, range, and relative altitude if shown.
+VOR/ADF pointers and tuned stations if shown.
+RNP/ANP figures and any navigation flags or messages.
+Skip normal colors; only call out amber and red. Put each item on its own line. Do not use markdown. Do not explain. Just state the data.",
+
+            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument on the right side of the main panel, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
+Report: airspeed; attitude (pitch and bank only if unusual); altitude; barometric setting (e.g. 1013 HPA, 29.71 IN, or STD); and any mode annunciations (e.g. APP, ILS) or flags.
+Skip normal colors; only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain. Just state the data.",
+
+            DisplayType.EICASiFly => @"You are reading the engine indications and crew-alert messages of an iFly Boeing 737 MAX 8 for a screen reader user. On the 737 MAX these appear on the inboard display unit, to the right of the navigation display. The image may contain several displays. Describe ONLY the engine indications and the crew-alert message text; ignore the PFD attitude, the ND map, the ISFD, and the CDU.
+Important: on the 737 MAX the engine display shows N1, N2, EGT, fuel flow, and oil indications together (unlike the 737 NG, where N2 is on a separate lower display). Report all of them.
+Report in this order:
+Thrust mode label if shown (e.g. TO, R-TO, CLB, CLB1, CLB2, CON, CRZ, GA).
+TAT and SAT if shown, in degrees Celsius.
+For each engine, ENG 1 then ENG 2 (left then right):
+  N1 percent, and the N1 reference/limit bug value if shown.
+  EGT in degrees Celsius.
+  N2 percent.
+  Fuel flow (e.g. 2.26 meaning 2260 pounds per hour).
+  Oil pressure, oil temperature, oil quantity, and vibration if shown.
+Flap position and landing-gear indications if shown on this display.
+Fuel quantity: left, center, right, and total if shown, in thousands of pounds.
+Then, most important, the crew alert messages: read every caution (amber) and warning (red) message line exactly as written, top to bottom. If there are none, say ""No alerts"".
+Skip normal colors (green, white); call out amber and red. Put the thrust mode first, then TAT/SAT, then each engine on its own line, then flaps/gear, then fuel, then the alerts. Do not use markdown. Do not explain. Just state the data.",
+
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };
     }
@@ -592,7 +630,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     {
         if (string.IsNullOrEmpty(apiKey))
         {
-            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Gemini Settings.");
+            throw new InvalidOperationException("Gemini API key is not configured. Please configure it in File > Settings > AI tab.");
         }
 
         string model = SettingsManager.Current.GeminiModel;
@@ -663,7 +701,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
                 string errorContent = await response.Content.ReadAsStringAsync();
                 response.Dispose();
                 string message = status == System.Net.HttpStatusCode.NotFound
-                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Gemini Settings. ({errorContent})"
+                    ? $"Gemini model '{model}' is unavailable — choose a different model in File > Settings > AI tab. ({errorContent})"
                     : $"Gemini API request failed with status {code}: {errorContent}";
                 throw new HttpRequestException(message);
             }
@@ -740,7 +778,7 @@ Do not use markdown formatting. Do not explain what things mean. Just state the 
     /// <summary>
     /// Generates the prompt for route description.
     /// </summary>
-    private string GetRouteDescriptionPrompt(string flightData)
+    internal static string GetRouteDescriptionPrompt(string flightData)
     {
         return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
 

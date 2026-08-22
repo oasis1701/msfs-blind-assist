@@ -340,6 +340,10 @@ namespace MSFSBlindAssist.SimConnect
         public bool GPWS_annunGND_PROX_top;                   // c_bool
         [MarshalAs(UnmanagedType.U1)]
         public bool GPWS_annunGND_PROX_bottom;                // c_bool
+        // 0: RTO  1: OFF  2: DISARM  3: "1"  4: "2"  5: "3"  6: "4"  7: MAX AUTO
+        // (SDK PMDG_777X_SDK.h line 272; index 7 confirmed against hardware 2026-08-01.)
+        // The DISARM detent at 2 is a 777 position the 737 NG does NOT have — never
+        // harmonize this table with MAIN_AutobrakeSelector's six.
         public byte BRAKES_AutobrakeSelector;                 // c_ubyte
         [MarshalAs(UnmanagedType.U1)]
         public bool ISFD_Baro_Sw_Pushed;                      // c_bool

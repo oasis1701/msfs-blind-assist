@@ -252,9 +252,9 @@ Leave these alone. (Details in `CLAUDE.md` → Build Commands.)
 | `AppDomain.CurrentDomain.UnhandledException` | Background-thread faults: SimConnect receive pump, `Task.Run` poll loops | Logs the cause (with `IsTerminating`). The CLR still tears the process down — this can't *prevent* the crash, only record it. |
 | `TaskScheduler.UnobservedTaskException` | A faulted `Task` whose exception was never awaited | Observes it (prevents a finalizer-time crash) and logs. |
 
-**The startup log DOES capture managed crashes.** `Utils/StartupLogger.Log` writes each line with **`File.AppendAllText`**, which opens→writes→closes per call — i.e. it **flushes to disk on every line**. So if a crash is a managed .NET exception on any of the three channels above, its stack trace **is** on disk at the moment of death.
-
-- **Log location:** `%TEMP%\MSFSBlindAssist_Startup_<yyyyMMdd_HHmmss>.log` (one per launch). Get the exact path at runtime from `StartupLogger.GetLogFilePath()`; it's also shown in the startup-error dialog.
+Startup diagnostics go through the app-wide logging facade: `Log.Channel("startup", truncateOnLaunch: true)`
+(wired in `Program.Main`) writes `%APPDATA%\MSFSBlindAssist\logs\startup.log`, truncated on each launch.
+To diagnose a startup crash, ask for that file (Windows+R → `%APPDATA%\MSFSBlindAssist\logs`).
 
 ### Why a crash can still leave "nothing useful" in the log
 
@@ -266,7 +266,7 @@ If the log shows no exception before the process vanished, the crash was almost 
 
 ### How to diagnose the next occurrence
 
-1. **Read the per-launch log first.** `%TEMP%\MSFSBlindAssist_Startup_*.log` (newest). A logged `Unhandled …exception` line with a stack trace = a **managed** crash → fix at the source named in the trace.
+1. **Read the per-launch log first.** `%APPDATA%\MSFSBlindAssist\logs\startup.log`. A logged `Unhandled …exception` line with a stack trace = a **managed** crash → fix at the source named in the trace.
 2. **No exception line, log ends mid-stream = native crash.** Correlate with **Windows Event Viewer → Windows Logs → Application** for an *Application Error* / *.NET Runtime* / *Faulting module* entry at the crash timestamp. The faulting module name (e.g. `WebView2Loader.dll`, `EmbeddedBrowserWebView.dll`, a Coherent module, `SimConnect.dll`) points at the native culprit.
 3. **Note the activity context** the reporter gave (panel nav / idle / flyPad open / another window opening) and check whether it lines up with a WebView2/Coherent lifecycle event (form open/close, aircraft swap disposing a Coherent client, a poll firing while a view is being torn down).
 4. **Reproduce under a debugger** if possible: run the Debug x64 build from Visual Studio so a native first-chance exception breaks instead of vanishing.
@@ -368,4 +368,4 @@ To ground the "flyPad agent serves both FBW jets" claim, this session drove the 
 - **Touch the flyPad reconcile** → mirror `tools/flypad-shell-test/`.
 - **A control "doesn't work"** → STOP. Read the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` (calculator-path write-stick test, write-mechanism decision tree, the case studies) before concluding anything.
 - **"Can I reuse this scraper for another aircraft?"** → §9: transport + generic scrape core are universal; the aircraft-specific selector/nav/input layer must be re-derived (recipe in §9.3).
-- **Crash** → §8: read `%TEMP%\MSFSBlindAssist_Startup_*.log`, then Event Viewer for native faults.
+- **Crash** → §8: read `%APPDATA%\MSFSBlindAssist\logs\startup.log`, then Event Viewer for native faults.

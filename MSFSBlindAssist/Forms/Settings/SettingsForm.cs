@@ -13,7 +13,8 @@ public class SettingsForm : Form
     private readonly List<ISettingsPanel> _panels = new();
     private ISettingsPanel? _currentPanel;
 
-    public SettingsForm(Func<Task>? refreshTaxiwayNames = null)
+    public SettingsForm(Func<Task>? refreshTaxiwayNames = null,
+                        Func<Services.VPilot.VatsimStatus?>? vatsimStatus = null)
     {
         Text = "Settings";
         StartPosition = FormStartPosition.CenterParent;
@@ -28,13 +29,17 @@ public class SettingsForm : Form
         { if (_tabs.SelectedIndex >= 0 && _tabs.SelectedIndex < _panels.Count) _currentPanel = _panels[_tabs.SelectedIndex]; };
 
         // Panels are added here in FINAL TAB ORDER:
-        // Announcements, GeoNames, SimBrief, Gemini, HandFly, TaxiGuidance.
+        // Announcements, Weather, VATSIM, GeoNames, SimBrief, Gemini, Audio, HandFly, TaxiGuidance, Updates.
         AddPanel(new AnnouncementsPanel());
+        AddPanel(new WeatherPanel());
+        AddPanel(new VatsimPanel(vatsimStatus));
         AddPanel(new GeoNamesPanel());
         AddPanel(new SimBriefPanel());
-        AddPanel(new GeminiPanel());
+        AddPanel(new AiSettingsPanel());
+        AddPanel(new AudioPanel());
         AddPanel(new HandFlyPanel());
         AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
+        AddPanel(new UpdatesPanel());
 
         var ok = new Button { Text = "OK", AccessibleName = "OK", AutoSize = true };
         var cancel = new Button { Text = "Cancel", AccessibleName = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };

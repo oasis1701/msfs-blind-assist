@@ -6,6 +6,10 @@ namespace MSFSBlindAssist.Aircraft;
 
 public partial class FlyByWireA380Definition
 {
+    // Flaps-handle detent names (index = A32NX_FLAPS_HANDLE_INDEX) for the ReadFlaps
+    // hotkey handler below — hoisted out of the handler so it isn't allocated per call.
+    private static readonly string[] ReadFlapsDetents = { "Up", "1", "2", "3", "Full" };
+
     public override bool HandleHotkeyAction(
         HotkeyAction action, SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
         System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
@@ -89,9 +93,8 @@ public partial class FlyByWireA380Definition
                 double? fv = simConnect.GetCachedVariableValue("A32NX_FLAPS_HANDLE_INDEX");
                 if (fv.HasValue)
                 {
-                    string[] detents = { "Up", "1", "2", "3", "Full" };
                     int i = (int)Math.Round(fv.Value);
-                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < detents.Length ? detents[i] : fv.Value.ToString()));
+                    announcer.AnnounceImmediate("Flaps " + (i >= 0 && i < ReadFlapsDetents.Length ? ReadFlapsDetents[i] : fv.Value.ToString()));
                 }
                 else if (simConnect.IsConnected) { _reqFlaps = true; simConnect.RequestVariable("A32NX_FLAPS_HANDLE_INDEX", forceUpdate: true); }
                 return true;
@@ -167,7 +170,7 @@ public partial class FlyByWireA380Definition
             // repurpose the waypoint key). The MCDU/MFD covers waypoint data.
             case HotkeyAction.ReadWaypointInfo: // W -> "Gross weight N pounds, center of gravity X% MAC"
                 announcer.AnnounceImmediate(_gwKgCache > 0
-                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase()}"
+                    ? $"Gross weight {_gwKgCache * 2.204625:0} pounds{CgMacPhrase(_gwCgMac)}"
                     : "Gross weight not available");
                 return true;
             case HotkeyAction.ReadAltimeter:
@@ -193,7 +196,7 @@ public partial class FlyByWireA380Definition
                 return true;
             case HotkeyAction.ReadGrossWeightKg: // Shift+W -> "Gross weight N kilograms, center of gravity X% MAC"
                 announcer.AnnounceImmediate(_gwKgCache > 0
-                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase()}"
+                    ? $"Gross weight {_gwKgCache:0} kilograms{CgMacPhrase(_gwCgMac)}"
                     : "Gross weight not available");
                 return true;
             case HotkeyAction.ReadHeading: RequestFCUHeadingWithStatus(simConnect); return true;
@@ -411,11 +414,18 @@ public partial class FlyByWireA380Definition
     {
         _sliderRampSim = simConnect;
         target = Math.Max(rangeMin, Math.Min(rangeMax, target));
+        bool rampInFlight = _sliderTarget.ContainsKey(lvar);
         _sliderTarget[lvar] = target;
         // Step scales with the var's range so a 0-1 slider ramps over the same ~1.3 s
         // as a 0-100 one (fixed 3.0 snapped 0-1 sliders to the target in one tick).
         _sliderStep[lvar] = Math.Max(0.0005, (rangeMax - rangeMin) * 0.03);
-        if (!_sliderCurrent.ContainsKey(lvar))
+        // Re-seed the ramp's start from the sim whenever no ramp is in flight for this
+        // lvar — NOT only on first use. Some slider vars are also moved OUTSIDE MSFSBA
+        // (the PED dimmer knobs: cockpit knob, FBW lighting presets), and ramping from a
+        // stale remembered value snaps the light back to it (flood 90 -> ~23) before
+        // ramping toward the new target. A mid-ramp retarget keeps its in-flight position.
+        // (The completed-ramp force re-read in SliderRampTick keeps the cache current.)
+        if (!rampInFlight || !_sliderCurrent.ContainsKey(lvar))
             _sliderCurrent[lvar] = simConnect.GetCachedVariableValue(lvar) ?? target;
         if (_sliderRampTimer == null)
         {
@@ -434,10 +444,15 @@ public partial class FlyByWireA380Definition
             double step = _sliderStep.TryGetValue(lvar, out var st) ? st : 3.0;
             double target = _sliderTarget[lvar];
             double cur = _sliderCurrent.TryGetValue(lvar, out var c) ? c : target;
-            if (Math.Abs(target - cur) <= step) { cur = target; _sliderTarget.Remove(lvar); }
+            bool reached = Math.Abs(target - cur) <= step;
+            if (reached) { cur = target; _sliderTarget.Remove(lvar); }
             else cur += Math.Sign(target - cur) * step;
             _sliderCurrent[lvar] = cur;
-            sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")");
+            sim.ExecuteCalculatorCode(cur.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture) + " (>L:" + lvar + ")", quiet: true);   // per-frame writer (40ms timer) -- skip per-command debug log
+            // On completion, refresh the cache to the just-written value (after the write,
+            // so the read can't race ahead of it on the shared SimConnect pipe) — the next
+            // ramp's re-seed and the panel thumb then start from reality.
+            if (reached) sim.RequestVariable(lvar, forceUpdate: true);
         }
         if (_sliderTarget.Count == 0) StopSliderRamp();
     }
@@ -527,7 +542,7 @@ public partial class FlyByWireA380Definition
             string expr = _seatMotorDir[v] > 0
                 ? seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " + 100 min (>L:" + v + ")"
                 : seq + " 0 * (L:" + v + ") " + step.ToString(inv) + " - 0 max (>L:" + v + ")";
-            sim.ExecuteCalculatorCode(expr);
+            sim.ExecuteCalculatorCode(expr, quiet: true);   // per-frame writer (20ms timer) -- skip per-command debug log
             double pos = Math.Max(0.0, Math.Min(100.0, (_seatMotorPos.TryGetValue(v, out var p) ? p : 50.0) + _seatMotorDir[v] * step));
             _seatMotorPos[v] = pos;
             if (pos <= 0.01 || pos >= 99.99 || hitSafety) { _seatMotorDir.Remove(v); AnnounceSeatPosition(v); }
@@ -574,10 +589,5 @@ public partial class FlyByWireA380Definition
         s.ExecuteCalculatorCode($"{(_metricAlt ? 0 : 1)} (>L:A32NX_METRIC_ALT_TOGGLE)");
     }
 
-    // Set the FCU altitude increment (100 or 1000 ft).
-    public void SetAltIncrement(int inc, SimConnectManager s)
-    {
-        if (!s.IsConnected) return;
-        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
-    }
+    // SetAltIncrement moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 }

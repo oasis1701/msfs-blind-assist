@@ -322,4 +322,12 @@ public interface IAircraftDefinition
     /// barely at all. 0 disables the projection.
     /// </summary>
     double TaxiTurnLeadSeconds { get; }
+
+    /// <summary>
+    /// True when this aircraft announces its own ice accretion (e.g. the FBW A380's
+    /// ice-stick announcer). MainForm's generic STRUCTURAL ICE PCT announcer is
+    /// skipped entirely for such aircraft so an icing episode never speaks twice —
+    /// the same one-condition-one-call-out rule as the PB-light/ECAM-memo invariant.
+    /// </summary>
+    bool HasOwnIcingAnnouncer { get; }
 }

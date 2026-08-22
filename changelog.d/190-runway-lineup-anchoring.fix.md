@@ -1,0 +1,1 @@
+Runway lineup points are read more carefully from the navigation database, so a route to a runway takes you to its threshold rather than partway down it. Airports where the database lists several start points per runway (Heathrow 09R), or parks them at the midpoint (LatinVFR Madrid) or off to the side (Gatwick), are all fixed.

@@ -62,6 +62,15 @@ namespace MSFSBlindAssist.SimConnect
         private DateTime _lastGoodScrapeUtc = DateTime.MinValue;
         private bool _connectedPushSent;
         private string _lastElementsHash = "";
+        // Set whenever _lastElementsHash is reset for the SetActive(true)/get_display_elements
+        // force-refresh contract, so a reactivation still fills the form in promptly even when
+        // PollOnce's dirty-gate short-circuit (result.unchanged) fires before the hash check ever
+        // runs. Cleared once the forced push has actually happened (from cache or a full scrape).
+        private bool _forceNextPush = true;
+        // The last Dictionary<string,string> payload raised as "fbw_efb_elements" — by definition
+        // still current whenever the agent reports unchanged:true, so a forced re-push can reuse it
+        // without needing a full scrape.
+        private Dictionary<string, string>? _lastElementsData;
         private bool _disposed;
 
         public bool IsBridgeConnected =>
@@ -129,7 +138,7 @@ namespace MSFSBlindAssist.SimConnect
         public void SetActive(bool active)
         {
             _active = active;
-            if (active) { _lastElementsHash = ""; }
+            if (active) { _lastElementsHash = ""; _forceNextPush = true; }
         }
 
         // ---- IMcduBridge command surface --------------------------------
@@ -156,6 +165,7 @@ namespace MSFSBlindAssist.SimConnect
                     // Force the next poll to re-push the current elements even if
                     // nothing changed, so a form opened mid-session fills in.
                     _lastElementsHash = "";
+                    _forceNextPush = true;
                     return null;
                 case "click_display_element":
                     return $"window.__MSFSBA_PMDG_EFB && __MSFSBA_PMDG_EFB.clickElement({JsInt(Idx())})";
@@ -361,6 +371,34 @@ namespace MSFSBlindAssist.SimConnect
                 Raise("fbw_efb_connected", new Dictionary<string, string>());
             }
 
+            // Dirty-gate short-circuit: the agent's own MutationObserver saw no page change since
+            // its last full scrape, so it skipped both full-tree traversals entirely and returned
+            // no elements/page at all — keep whatever FbwEfbForm is already showing and skip the
+            // parse/diff/hash work below untouched. The agent always does the FIRST scrape after
+            // (re)injection in full (its own _everScraped latch), so this can only ever be true
+            // once a real element set has already been pushed at least once this connection.
+            //
+            // EXCEPT when SetActive(true)/get_display_elements requested a forced re-fill
+            // (_forceNextPush): that contract promises the form fills in immediately on
+            // reactivation, so this can't just early-return and wait for the next dirty poll (up
+            // to the ~6s FORCE_FULL_EVERY net). The cached elements are by definition still current
+            // (the agent just told us nothing changed), so re-push them via the exact same
+            // event/callback used for a real diff — no full scrape needed.
+            if (result.unchanged)
+            {
+                if (_forceNextPush && _lastElementsData != null)
+                {
+                    Raise("fbw_efb_elements", _lastElementsData);
+                    _forceNextPush = false;
+                    return;
+                }
+                if (!_forceNextPush) return;
+                // _forceNextPush is set but no element set has ever been cached on this connection
+                // (e.g. a reactivation racing the very first scrape) — fall through instead of
+                // early-returning so this poll's (possibly empty) result still gets processed and
+                // _lastElementsHash mismatches, guaranteeing a push once real data does arrive.
+            }
+
             var elements = result.elements ?? new List<ScrapeElement>();
             var sb = new StringBuilder((result.page ?? "") + "|" + elements.Count + "|");
             foreach (var e in elements)
@@ -406,6 +444,8 @@ namespace MSFSBlindAssist.SimConnect
                     if (elements[i].step is { } sp) data[$"items.{i}.step"] = sp.ToString(inv);
                 }
                 Raise("fbw_efb_elements", data);
+                _lastElementsData = data;
+                _forceNextPush = false;
             }
         }
 
@@ -545,6 +585,10 @@ namespace MSFSBlindAssist.SimConnect
         private sealed class ScrapeResult
         {
             public bool ok { get; set; }
+            // Dirty-gate short-circuit token from the agent's MutationObserver: true means the page
+            // has not changed since the last full scrape, so `elements`/`page` are intentionally
+            // absent — see the check in PollOnce.
+            public bool unchanged { get; set; }
             public string? page { get; set; }
             public string? error { get; set; }
             public List<ScrapeElement>? elements { get; set; }

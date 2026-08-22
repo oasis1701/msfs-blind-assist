@@ -1,0 +1,160 @@
+name: Changelog
+
+# labeled/unlabeled are load-bearing: without them, applying skip-changelog leaves this
+# required check red until someone pushes an unrelated commit to re-run it.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+concurrency:
+  group: changelog-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Changelog fragment
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        # Full history: the merge-base diff below needs the base branch.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Find fragments added by this PR
+        id: added
+        shell: bash
+        run: |
+          # fetch-depth: 0 above already brings the base branch down, but fetch it
+          # explicitly by refspec so the ref is guaranteed present. (`--depth=0` is not
+          # valid fetch syntax — do not "simplify" this back to it.)
+          git fetch --no-tags --prune origin \
+            "+refs/heads/$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          # Three dots = compare from the MERGE BASE. Two dots would also match
+          # fragments merged into the base since this branch diverged, so a PR that
+          # added none would pass on somebody else's file.
+          # The README documents the convention and is not a fragment — it fails the
+          # filename grammar, so leaving it in makes the builder exit 1.
+          #
+          # Two lists, on purpose — do not collapse them back into one:
+          #   added.txt   (diff-filter=A)  additions only. Drives the "did this PR add
+          #     a fragment" gate below — editing an existing fragment is not a new
+          #     entry, so an edit-only PR must not satisfy that gate.
+          #   changed.txt (diff-filter=AM) added OR modified. Drives validation, so an
+          #     edit to an existing unreleased fragment (e.g. one that empties it) is
+          #     caught here, not at tag time in release.yml — after the build and zip,
+          #     with the tag already pushed.
+          git diff --name-only --diff-filter=A \
+            "origin/$GITHUB_BASE_REF...HEAD" \
+            -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > added.txt
+          git diff --name-only --diff-filter=AM \
+            "origin/$GITHUB_BASE_REF...HEAD" \
+            -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > changed.txt
+          echo "count=$(grep -c . added.txt || true)" >> "$GITHUB_OUTPUT"
+          echo "changed_count=$(grep -c . changed.txt || true)" >> "$GITHUB_OUTPUT"
+          cat added.txt
+
+      - name: Validate the fragments this PR touches
+        if: steps.added.outputs.changed_count != '0'
+        shell: bash
+        run: dotnet run --project tools/ChangelogBuilder -- --out preview.md --from-file changed.txt
+
+      - name: Check the PR number prefix on fragments added by this PR
+        if: steps.added.outputs.count != '0'
+        shell: bash
+        run: |
+          # The builder (ChangelogFragment.cs) validates SHAPE only — is there a numeric
+          # prefix at all — because it has no git access and cannot know which PR is
+          # actually running. Checking the prefix VALUE against the real PR number is
+          # this workflow's job alone.
+          #
+          # added.txt ONLY — never changed.txt. A later PR legitimately edits an older
+          # PR's fragment (e.g. #183 editing 182-foo.fix.md), and that fragment's prefix
+          # correctly still names #182, the PR it belongs to, not #183.
+          pr="${{ github.event.pull_request.number }}"
+          fail=0
+          while IFS= read -r file || [ -n "$file" ]; do
+            [ -z "$file" ] && continue
+            base="$(basename "$file")"
+            if [[ "$base" != "$pr"-* ]]; then
+              fail=1
+              suggested="$(echo "$base" | sed -E 's/^[0-9]+-//')"
+              echo "::error::Changelog fragment is missing the PR number prefix.%0ARun:%0A  git mv $file changelog.d/$pr-$suggested"
+            fi
+          done < added.txt
+          exit $fail
+
+      - name: Require a fragment or the skip-changelog label
+        if: steps.added.outputs.count == '0' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+        shell: bash
+        run: |
+          # %0A folds the full guidance into ONE ::error:: annotation so it's visible on
+          # the PR checks UI without opening the raw log — a plain stdout echo after the
+          # first ::error:: line is invisible there.
+          echo "::error::This PR adds no changelog fragment.%0AAdd changelog.d/<pr>-<slug>.<category>.md (pr = this PR's own number) describing the user-facing change. Categories: aircraft, feature, improvement, fix, internal. See changelog.d/README.md.%0AFor a change with nothing to announce, use an 'internal' fragment or apply the skip-changelog label."
+          exit 1
+
+      - name: Summary
+        shell: bash
+        run: |
+          if [ "${{ steps.added.outputs.count }}" != "0" ]; then
+            {
+              echo "### Changelog preview"
+              echo
+              cat preview.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No fragment; skip-changelog label present." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  preview:
+    name: Preview unreleased notes
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        # Full history AND tags: git describe --match 'v*' needs the previous release tag.
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Render everything unreleased
+        shell: bash
+        run: |
+          # ':(exclude)…README.md' on BOTH branches — the README is not a fragment and
+          # makes the builder exit 1 if it reaches it.
+          # --match 'v*': the rolling `preview` tag from preview.yml lives on main and
+          # would otherwise be picked as the previous release, truncating this preview.
+          PREV=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$PREV" ]; then
+            echo "No previous tag; taking every fragment."
+            git ls-files 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          else
+            echo "Fragments added since $PREV:"
+            git diff --name-only --diff-filter=A "$PREV..HEAD" \
+              -- 'changelog.d/*.md' ':(exclude)changelog.d/README.md' > fragments.txt
+          fi
+          cat fragments.txt
+          # Attribution: opener + commit authors per fragment PR, resolved via gh. The
+          # script never fails the run — an unresolvable PR renders unattributed.
+          bash tools/changelog-contributors.sh fragments.txt contributors.txt
+          dotnet run --project tools/ChangelogBuilder -- --out release-notes.md --from-file fragments.txt --contributors contributors.txt
+          {
+            echo "### Unreleased notes (preview — nothing published)"
+            echo
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}

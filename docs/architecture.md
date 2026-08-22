@@ -199,7 +199,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[YourAircraft] Error requesting FCU heading: {ex.Message}");
+                Log.Error("Aircraft", $"Error requesting FCU heading: {ex.Message}");
             }
         }
     }
@@ -545,13 +545,6 @@ Dual-mode hotkey system:
 - Custom Windows Forms control optimized for screen reader navigation
 - Implements three-level navigation: Sections → Panels → Controls
 
-### AirportDatabase
-**File:** `Database/AirportDatabase.cs`
-
-- SQLite-based airport and runway data management
-- Stores ICAO codes, airport names, runway data, and parking spots
-- Supports teleport destination lookup and validation
-
 ### DatabaseBuilder
 **File:** `Database/DatabaseBuilder.cs`
 
@@ -578,7 +571,7 @@ Dual-mode hotkey system:
 See [Access GSX](gsx.md) for the full reference.
 
 ### TaxiGuidance subsystem
-**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/TaxiGuidanceOptionsForm.cs`
+**Files:** `Services/TaxiGuidanceManager.cs`, `Services/TaxiSteeringTone.cs`, `Navigation/TaxiGraph.cs`, `Navigation/TaxiRouter.cs`, `Database/Models/TaxiPath.cs` + `TaxiNode.cs` + `TaxiRoute.cs` + `StartPosition.cs`, `Forms/TaxiAssistForm.cs`, `Forms/Settings/TaxiGuidancePanel.cs`
 
 - Turn-by-turn taxi assistance using the navdatareader `taxi_path` / `start` / `parking` tables
 - `TaxiGraph` merges path endpoints within ~1 m into shared nodes, indexes edges by taxiway name
@@ -595,7 +588,7 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 
 - **Decorator pattern** on `IAirportDataProvider`: `AugmentingAirportDataProvider` wraps the `LittleNavMapProvider` returned by `DatabaseSelector.SelectProvider()` and is transparent to all downstream consumers (`TaxiGraph`, `TaxiGuidanceManager`, etc.)
 - `GetTaxiPaths(icao)` enriches unnamed navdata segments with real-world taxiway names from OSM (Overpass API) and the X-Plane apt.dat gateway via geometric midpoint + bearing matching
-- `GetParkingSpots(icao)` calls the public `AugmentParking(icao, spots)`, which assigns online stands to navdata spots **1:1, nearest-pair-first, within 50 m** (each online stand used at most once — no two gates get the same name): an empty navdata name adopts the online name; a named spot whose name differs collects a **parking alias** (`ParkingSpot.Aliases`, e.g. navdata `"GN 3"` / online `"47"`; X-Plane apt.dat supplies real gate numbers many navdata sets lack, e.g. CYYZ "Gate 131"). `AugmentParking` is **public** so the GSX gate path (which bypasses `GetParkingSpots`) gets the same aliases. Aliases surface as separate labeled dropdown entries — navdata name is always authoritative
+- `GetParkingSpots(icao)` calls the public `AugmentParking(icao, spots)`, which sets `spot.Aliases = GateAliasResolver.ResolveAliases(spot, online)` — matching by **IDENTITY, not distance**: the numbers must match and any letters must agree, so an alias only ever RE-LETTERS the same stand (bare `"51"` gains OSM's `"A51"`; `"N3"` gains the MARS `"N3A"` but never `"A3"`). A 150 m Haversine value is a sanity *backstop*, NOT the matcher. The earlier nearest-pair-within-50 m gate-NAME fill was **REMOVED 2026-06-23** — it corrupted gate identity at dense terminals (CYUL gate 15 adopted "Gate 11B" from an offset apt.dat ramp). Online data never sets a Name or position and never adds a selectable gate (anti-grass); X-Plane apt.dat supplies real gate numbers many navdata sets lack (CYYZ "Gate 131"). `AugmentParking` is **public** so the GSX gate path (which bypasses `GetParkingSpots`) gets the same aliases. An alias surfaces as a searchable label on the spot's ONE dropdown entry, never as an entry of its own — navdata name is always authoritative. Full rules: [taxi-guidance.md](taxi-guidance.md)
 - Cache is **in-memory only** (`ConcurrentDictionary` + TTL, no disk) — fresh every session; departure/destination force-fresh, geofenced nearby airports ride the in-session cache
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss

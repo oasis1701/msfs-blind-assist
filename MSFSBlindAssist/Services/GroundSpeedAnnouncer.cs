@@ -74,14 +74,21 @@ public class GroundSpeedAnnouncer
         if (!onGround)
             return;  // airborne — GS callouts are on-ground only; baseline left frozen
 
+        // Snapshot once per tick (SV-5) instead of two separate Current reads —
+        // avoids acquiring SettingsManager's static lock twice per sample.
+        // UserSettings is mutated in place by the settings dialog, so this
+        // snapshot observes the same live-applied values a repeated Current
+        // read would; live-apply keeps working tick-to-tick.
+        var settings = SettingsManager.Current;
+
         // Resolve the effective cadence. While Takeoff Assist is active the takeoff setting
         // wins; its -1 sentinel means "same as taxi" (so existing users keep roll callouts),
         // 0 means silence the roll, 5/10 override the cadence.
-        int taxiInterval = SettingsManager.Current.TaxiGuidanceGroundSpeedAnnounceInterval;
+        int taxiInterval = settings.TaxiGuidanceGroundSpeedAnnounceInterval;
         int interval;
         if (takeoffAssistActive)
         {
-            int takeoffInterval = SettingsManager.Current.TakeoffAssistGroundSpeedAnnounceInterval;
+            int takeoffInterval = settings.TakeoffAssistGroundSpeedAnnounceInterval;
             interval = takeoffInterval < 0 ? taxiInterval : takeoffInterval;
         }
         else

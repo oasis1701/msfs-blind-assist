@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -11,14 +12,18 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 {
     // Cached dictionaries for performance (avoid recreating large dictionaries on every call)
     private Dictionary<string, List<string>>? _cachedPanelControls;
+    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
 
     // Elevator trim announcement toggle and debounce.
     // Toggle is protected so aircraft that source trim from a custom variable
     // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
     // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
-    // gate from their own ProcessSimVarUpdate.
+    // gate from their own ProcessSimVarUpdate. An aircraft that keeps the stock
+    // var but speaks its own scale overrides DescribeElevatorTrim instead; the
+    // last-announced KEY below is whatever that override returns (stabiliser
+    // units on the PMDG 777, rounded degrees by default).
     protected bool _trimAnnouncementsEnabled = true;
-    private double _lastAnnouncedTrimDeg = double.NaN;
+    private double _lastAnnouncedTrimKey = double.NaN;
 
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
@@ -33,7 +38,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual string? CurrentFlightPhase => null;
 
-    public abstract Dictionary<string, SimConnect.SimVarDefinition> GetVariables();
+    public Dictionary<string, SimConnect.SimVarDefinition> GetVariables() => _cachedVariables ??= BuildVariables();
+    protected abstract Dictionary<string, SimConnect.SimVarDefinition> BuildVariables();
     public abstract Dictionary<string, List<string>> GetPanelStructure();
 
     /// <summary>
@@ -593,6 +599,24 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
+    /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
+    /// spoken phrase and the key the debounce compares — the two must move together, or a type
+    /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
+    /// The key is compared EXACTLY against the last announced key (no tolerance), so it must
+    /// already be quantised to the announcement step (a <c>Math.Round</c> product), never raw.
+    /// <para>
+    /// The default is degrees with an up/down word, which is the only thing a generic aircraft
+    /// can say; an airframe with its own trim scale overrides it (e.g. <see cref="PMDG777Definition"/>).
+    /// </para>
+    /// </summary>
+    protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double rounded = Math.Round(degrees, 2);
+        string direction = rounded >= 0 ? "up" : "down";
+        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+    }
+
+    /// <summary>
     /// Processes variable updates with custom logic.
     /// Handles altitude thousand-foot crossing announcements for all aircraft.
     /// Aircraft with additional complex variable processing logic should override and call base.ProcessSimVarUpdate() first.
@@ -611,27 +635,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
+        // Elevator trim — rendered by DescribeElevatorTrim, debounced on the value it reports
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 2);
+            var (key, phrase) = DescribeElevatorTrim(value);
 
             // First update: store silently, don't announce initial value on app load
-            if (double.IsNaN(_lastAnnouncedTrimDeg))
+            if (double.IsNaN(_lastAnnouncedTrimKey))
             {
-                _lastAnnouncedTrimDeg = rounded;
+                _lastAnnouncedTrimKey = key;
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
-                return true; // Debounce — skip if less than 0.01 degree change
+            // Exact compare, not a tolerance: the key is already quantised by DescribeElevatorTrim
+            // (a Math.Round product — equal decimals are bit-identical, and -0.0 == 0.0), so
+            // "unchanged" is simply "same key". A tolerance here would silently swallow genuine
+            // steps of an override that keys on a finer scale.
+            if (key == _lastAnnouncedTrimKey)
+                return true; // Debounce — skip when the reported value has not moved
 
-            _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
+            _lastAnnouncedTrimKey = key;
+            announcer.Announce(phrase);
             return true;
         }
 
@@ -652,6 +679,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     // UI Variable Setting Methods - Default implementations (generic handling)
     // Aircraft with special UI value setting logic should override
+
+    /// <summary>
+    /// Whether this panel variable's control should be shown when a panel is built.
+    /// Default: always visible. Aircraft whose panel content depends on the loaded
+    /// VARIANT (e.g. the PMDG 777 freighter cargo temp knobs vs the passenger cabin
+    /// temp knob) override this to hide controls that don't exist on the running
+    /// airframe. Called on every panel (re)build, so the answer may change as
+    /// variant detection completes — return true when the variant is still unknown
+    /// (a control that appears is better than one that never does; the
+    /// HandleUIVariableSet guards still protect a hidden-should-have-been control
+    /// that got built before detection).
+    /// </summary>
+    public virtual bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
+    {
+        return true;
+    }
 
     /// <summary>
     /// Default implementation returns false (use generic handling).
@@ -690,6 +733,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 
+    public virtual bool HasOwnIcingAnnouncer => false;
+
     /// <summary>
     /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
     /// Shared by all aircraft definitions that support Gemini display capture.
@@ -704,7 +749,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             announcer.Announce($"Capturing {displayName}...");
 
             var screenshotService = new Services.ScreenshotService();
-            var geminiService = new Services.GeminiService();
+            var aiProvider = Services.AiProviderFactory.Create();
 
             if (!screenshotService.IsMsfsWindowAvailable())
             {
@@ -719,7 +764,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return;
             }
 
-            string analysis = await geminiService.AnalyzeDisplayAsync(screenshot, displayType);
+            string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
 
             var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
             resultForm.ShowForm();
@@ -728,13 +773,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            announcer.Announce("Gemini API key not configured. Please go to File menu, Gemini Settings.");
+            announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
             System.Windows.Forms.MessageBox.Show(
                 parentForm,
-                "Gemini API key is not configured.\n\n" +
-                "Please configure your API key in:\n" +
-                "File > Gemini Settings\n\n" +
-                "Get a free API key at: https://aistudio.google.com/apikey",
+                "AI provider API key is not configured.\n\n" +
+                "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
+                "File > Settings > AI tab",
                 "API Key Required",
                 System.Windows.Forms.MessageBoxButtons.OK,
                 System.Windows.Forms.MessageBoxIcon.Warning);
@@ -751,12 +795,21 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
     }
 
-    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out). ----
+    // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
+    // ---- the PMDG Ctrl+P autopilot window). ----
     // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
-    // stacking a duplicate (HS787 _autopilotWindow pattern). All tracked windows are
-    // disposed on aircraft swap via StopAllMotion() so a discarded def instance can't
-    // keep live windows (and the E/WD window's refresh timer) running against the
-    // new aircraft.
+    // stacking a duplicate (HS787 _autopilotWindow pattern).
+    //
+    // DisposeTrackedWindows() is called UNCONDITIONALLY on the outgoing def by
+    // MainForm.SwitchAircraft — that call is the authoritative teardown for EVERY def,
+    // present and future, not just the two FBW ones that also call it from their own
+    // StopAllMotion(). It must stay unconditional: a discarded def instance that keeps a
+    // live window running against the new aircraft is not merely stale UI, it is a
+    // mis-actuation hazard. The window's buttons still dispatch into the OLD def's
+    // HandleUIVariableSet, and the PMDG 737 and 777 EventIds tables use different
+    // event_base + N numberings — so a surviving 777 window can actuate an arbitrary
+    // wrong control on a loaded 737 (and renders the new aircraft's CDA data under the
+    // old aircraft's labels). The refresh timers keep ticking too.
     private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
 
     protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
@@ -772,7 +825,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         show(form);
     }
 
-    protected void DisposeTrackedWindows()
+    /// <summary>
+    /// Closes and disposes every tracked window this def instance created. Public because
+    /// MainForm.SwitchAircraft calls it on the outgoing def for every aircraft type.
+    /// Idempotent: it skips already-disposed forms and clears the dictionary, so the
+    /// second call (the FBW defs also reach it via StopAllMotion()) iterates nothing.
+    /// </summary>
+    public void DisposeTrackedWindows()
     {
         foreach (var f in _trackedWindows.Values.ToList())
         {
@@ -787,6 +846,42 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         _trackedWindows.Clear();
     }
 
+    /// <summary>
+    /// Shows the PMDG Ctrl+P autopilot engage-cluster window. Shared by the 737 and 777,
+    /// which differ only in their row table and window title — the binder, the echo
+    /// suppression and the tracked-window lifecycle are identical, so they live here
+    /// rather than being duplicated across both defs.
+    /// </summary>
+    protected void ShowPMDGAutopilotWindow(
+        IReadOnlyList<ApRowSpec> rows,
+        string title,
+        SimConnect.SimConnectManager simConnect,
+        ScreenReaderAnnouncer announcer,
+        System.Windows.Forms.Form parentForm)
+    {
+        if (!simConnect.IsConnected)
+        {
+            announcer.Announce("Not connected to simulator");
+            return;
+        }
+
+        // Bind inside the factory: on the reuse path (window already open, second
+        // Ctrl+P) the existing instance keeps its original closures, so binding
+        // eagerly here would do the work only to discard it.
+        ShowTrackedWindow(
+            () =>
+            {
+                var (buttons, selectors) = Forms.PMDG.PMDGAutopilotRowBinder.Bind(
+                    rows,
+                    GetVariables(),
+                    simConnect,
+                    (key, expected) => (parentForm as MainForm)?.SuppressUiEcho(key, expected),
+                    (key, value, varDef) => HandleUIVariableSet(key, value, varDef, simConnect, announcer));
+                return new Forms.PMDG.PMDGAutopilotWindow(title, buttons, selectors);
+            },
+            w => w.ShowForm());
+    }
+
     // Momentary L:var pulse: write 1 then auto-release to 0 (~250 ms) via the calc path so the
     // systems logic latches on the rising edge; announce the press. Callers keep their own guard.
     protected void PulseMomentaryLVar(SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer, string varKey, string displayName)
@@ -798,5 +893,153 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             catch { /* best-effort auto-release */ }
         });
         announcer.Announce($"{displayName} pressed");
+    }
+
+    // ---- FMA armed-mode decode (FBW A320/A380 parity) ----
+    // Legacy A32NX_FMA_*_ARMED bitmasks (bit 0 = ALT). Decodes to mode names so arming a
+    // mode speaks "Altitude armed" / "NAV armed" instead of the old raw bitmask number.
+    // The bit tables themselves stay per-aircraft (identical _vertArmedBits/_latArmedBits
+    // static fields on each definition) and are passed in.
+    protected static string DecodeArmedModes(int v, (int bit, string name)[] bits)
+    {
+        return string.Join(", ", DecodeArmedModeNames(v, bits));
+    }
+
+    /// <summary>
+    /// Parts-returning counterpart of <see cref="DecodeArmedModes"/> for callers that
+    /// only need to iterate the individual names (e.g. to announce each one) — avoids a
+    /// join-then-re-Split round trip through a joined string.
+    /// </summary>
+    protected static List<string> DecodeArmedModeNames(int v, (int bit, string name)[] bits)
+    {
+        var names = new List<string>();
+        foreach (var b in bits) if ((v & b.bit) != 0) names.Add(b.name);
+        return names;
+    }
+
+    // Spoken CG suffix for the gross-weight readouts (FBW A320/A380 parity). Empty
+    // (suppressed) when the CG isn't available/sane, so the gross-weight readout never
+    // breaks or says "CG 0". Takes the cached %MAC value as a parameter since each
+    // aircraft caches its own _gwCgMac field.
+    protected static string CgMacPhrase(double gwCgMac) =>
+        (gwCgMac > 5 && gwCgMac < 60) ? $", center of gravity {gwCgMac:0.0} percent MAC" : "";
+
+    // Set the FCU altitude increment (100 or 1000 ft) — FBW A320/A380 parity. Kept as an
+    // instance method (not static) because it's invoked externally via an aircraft-typed
+    // instance reference (FBWA320AltitudeWindow/FBWA380AltitudeWindow), which a static
+    // member can't be called through.
+    public void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
+    {
+        if (!s.IsConnected) return;
+        s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);
+    }
+
+    // ---- PMDG 737/777 NG3 SDK ETA/distance read-outs (byte-identical pair) ----
+
+    /// <summary>
+    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
+    /// and current ground speed in knots. Returns empty string at low ground
+    /// speed (taxi / ground) where the estimate is meaningless.
+    /// </summary>
+    protected static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
+    {
+        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
+        if (distanceNm <= 0) return "";
+
+        double hours = distanceNm / groundSpeedKnots;
+        int totalSeconds = (int)Math.Round(hours * 3600.0);
+        int hh = totalSeconds / 3600;
+        int mm = (totalSeconds % 3600) / 60;
+        int ss = totalSeconds % 60;
+        return $": {hh:D2}:{mm:D2}:{ss:D2}";
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to top of descent on the NG3.
+    /// </summary>
+    protected static void AnnounceTODFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Top of descent not available");
+            return;
+        }
+        if (dist < 0.1f)
+        {
+            announcer.AnnounceImmediate("Past top of descent");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
+        });
+    }
+
+    /// <summary>
+    /// SDK-offset readout for distance to destination on the NG3.
+    /// </summary>
+    protected static void AnnounceDestFromSDK(
+        SimConnect.SimConnectManager simConnect,
+        SimConnect.IPMDGDataManager dm,
+        ScreenReaderAnnouncer announcer)
+    {
+        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
+        if (dist < 0)
+        {
+            announcer.AnnounceImmediate("Distance to destination not available");
+            return;
+        }
+        simConnect.RequestAircraftPositionAsync(position =>
+        {
+            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
+            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
+        });
+    }
+
+    // Cached set of RenderAsButton keys that are NOT annunciators (PMDG 737/777 parity).
+    // Used in ProcessSimVarUpdate to suppress raw value announcements without
+    // re-allocating GetVariables() on every call.
+    protected HashSet<string> BuildSuppressedButtonKeys()
+    {
+        var set = new HashSet<string>();
+        foreach (var kvp in GetVariables())
+        {
+            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
+                set.Add(kvp.Key);
+        }
+        return set;
+    }
+
+    // Fenix/FBW A320 parity: request the stock fuel-total-quantity SimVar via a
+    // temp data definition (ONCE period). logCategory parameterizes the Log.Debug
+    // category on failure (each caller's own aircraft-name tag).
+    protected static void RequestFuelQuantity(SimConnect.SimConnectManager simConnectMgr, string logCategory)
+    {
+        var simConnect = simConnectMgr.SimConnectInstance;
+        if (simConnectMgr.IsConnected && simConnect != null)
+        {
+            try
+            {
+                var tempDefId = SimConnect.SimConnectManager.DATA_DEFINITIONS.DEF_FUEL_QUANTITY;
+                simConnect.ClearDataDefinition(tempDefId);
+                simConnect.AddToDataDefinition(tempDefId,
+                    "FUEL TOTAL QUANTITY WEIGHT", "pounds",
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATATYPE.FLOAT64, 0.0f, 0);
+                simConnect.RegisterDataDefineStruct<SimConnect.SimConnectManager.SingleValue>(tempDefId);
+                simConnect.RequestDataOnSimObject(SimConnect.SimConnectManager.DATA_REQUESTS.REQUEST_FUEL_QUANTITY,
+                    tempDefId, Microsoft.FlightSimulator.SimConnect.SimConnect.SIMCONNECT_OBJECT_ID_USER,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_PERIOD.ONCE,
+                    Microsoft.FlightSimulator.SimConnect.SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(logCategory, $"Error requesting fuel quantity: {ex.Message}");
+            }
+        }
     }
 }

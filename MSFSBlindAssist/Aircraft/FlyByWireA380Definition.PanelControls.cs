@@ -84,7 +84,8 @@ public partial class FlyByWireA380Definition
         };
         p["Ventilation"] = new List<string>
         {
-            "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON"
+            "A32NX_OVHD_VENT_CAB_FANS_PB_IS_ON", "A32NX_OVHD_VENT_AIR_EXTRACT_PB_IS_ON",
+            "A32NX_OVHD_VENT_BLOWER_PB_IS_ON"
         };
         p["Cargo Air"] = new List<string>
         {
@@ -99,13 +100,17 @@ public partial class FlyByWireA380Definition
         };
         p["Fire"] = new List<string>
         {
-            "A32NX_FIRE_BUTTON_ENG1", "A32NX_FIRE_BUTTON_ENG2", "A32NX_FIRE_BUTTON_ENG3",
-            "A32NX_FIRE_BUTTON_ENG4", "A32NX_FIRE_BUTTON_APU",
+            "A380X_OVHD_ENG1_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG1",
+            "A380X_OVHD_ENG2_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG2",
+            "A380X_OVHD_ENG3_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG3",
+            "A380X_OVHD_ENG4_FIRE_GUARD", "A32NX_FIRE_BUTTON_ENG4",
+            "A380X_OVHD_APU_FIRE_GUARD", "A32NX_FIRE_BUTTON_APU",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_1_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_1_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_2_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_2_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_3_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_3_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_ENG_4_IS_PRESSED", "A32NX_OVHD_FIRE_AGENT_2_ENG_4_IS_PRESSED",
             "A32NX_OVHD_FIRE_AGENT_1_APU_1_IS_PRESSED",
+            "A32NX_CARGOSMOKE_DISCH1LOCK_TOGGLE", "A32NX_CARGOSMOKE_DISCH2LOCK_TOGGLE",
             "A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED", "A32NX_FIRE_TEST_CARGO"
         };
         p["Oxygen"] = new List<string>
@@ -157,7 +162,12 @@ public partial class FlyByWireA380Definition
             "BIGARMREST_FO_UP_DOWN", "BIGARMREST_FO_TILT", "SMALLARMREST_FO_FWD",
             // Armrest STOW toggles (fold the armrest away) — 2024-native-rebuild additions.
             "BIGARMREST_CPT_STOW", "BIGARMREST_FO_STOW",
-            "SMALLARMREST_CPT_STOW", "SMALLARMREST_FO_STOW"
+            "SMALLARMREST_CPT_STOW", "SMALLARMREST_FO_STOW",
+            // ---- Laptops / access-panel lock / visual model toggles (completeness pass) ----
+            "A380X_SWITCH_LAPTOP_POWER_LEFT", "A380X_SWITCH_LAPTOP_POWER_RIGHT",
+            "A32NX_SWITCH_DOORPANEL_LOCK",
+            "A380X_CABIN_HIDDEN", "A380X_CPT_SIDESTICK_HIDDEN", "A380X_FO_SIDESTICK_HIDDEN",
+            "A380X_CPT_EFB_HIDDEN", "A380X_FO_EFB_HIDDEN"
         };
         p["Signs"] = new List<string>
         {
@@ -195,11 +205,15 @@ public partial class FlyByWireA380Definition
         p["Recorder and Misc"] = new List<string>
         {
             "A32NX_AVIONICS_COMPLT_ON",
-            "A380X_OVHD_STORM_LT",   // cockpit door video moved to the unified p["Cockpit"]
+            // (Storm light moved to p["Interior Lighting"], next to the flood/ambient
+            // dimmers it overrides. Cockpit door video moved to the unified p["Cockpit"].)
             "A32NX_ACMS_TRIGGER_ON", "A32NX_CREW_HEAD_SET", "A32NX_SVGEINT_OVRD_ON",
             // ENGMANSTARTALTN moved to the "Engine FADEC and Manual Start" overhead panel.
             "A32NX_ENTERTAINMENT_CWS_OFF",
             "A32NX_ENTERTAINMENT_IFEC_OFF", "A380X_REMOTE_CB_CTRL",
+            // Completeness pass — ELT + DLS (inop but present), rain repellent (inop).
+            "A32NX_ELT_ON", "A32NX_DLS_ON",
+            "A32NX_RAIN_REPELLENT_LEFT_ON", "A32NX_RAIN_REPELLENT_RIGHT_ON",
         };
         // VHF-only — the non-VHF audio channels were dead L:vars (unmodelled by FBW),
         // pruned 2026-06-13. See the OnOff/Slider block above for the full rationale.
@@ -222,6 +236,10 @@ public partial class FlyByWireA380Definition
         p["Interior Lighting"] = new List<string>
         {
             "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
+            // Cockpit dimmers (FBW #10813). The storm light forces both to full, so it
+            // sits alongside them here rather than staying buried in "Recorder and Misc".
+            "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB", "A380X_PED_LIGHTING_AMBIENT_LT_KNOB",
+            "A380X_OVHD_STORM_LT",
             "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE",
             // Passenger-cabin lighting (moved here from the flyPad Quick Controls, which
             // can't be set through the injected agent — see CLAUDE.md flyPad note).
@@ -230,7 +248,7 @@ public partial class FlyByWireA380Definition
         p["Exterior Lighting"] = new List<string>
         {
             "LIGHT_BEACON", "LIGHT_STROBE", "LIGHT_NAV", "LIGHT_WING", "LIGHT_LOGO",
-            "LIGHT_LANDING", "LIGHT_TAXI_OVHD"
+            "LIGHT_LANDING", "NOSE_LIGHT", "LIGHT_RWY_TURNOFF"
         };
 
         p["Warnings"] = new List<string>
@@ -596,10 +614,10 @@ public partial class FlyByWireA380Definition
         // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
         // in d["RMP"] (FBW L:vars) and the RMP window.
         d["Transponder"] = new List<string> { "XPNDR_CODE", "XPNDR_STATE", "A32NX_DCDU_ATC_MSG_WAITING" };
-        // Minimums are ARINC429 words — TryGetDisplayOverride decodes them to
-        // "200 feet" / "Not set" (the raw word reads ~4.29e9). They also
-        // auto-announce when set on the MCDU PERF APPR page.
-        d["Minimums"] = new List<string> { "A32NX_FM1_MINIMUM_DESCENT_ALTITUDE", "A32NX_FM1_DECISION_HEIGHT" };
+        // Minimums are the plain-feet L:vars the MFD PERF page writes — TryGetDisplayOverride
+        // renders "200 feet" / "Not set". They also auto-announce when set. (The ARINC429
+        // FM1 words were dropped: NCD until approach range, so they read "Not set" at cruise.)
+        d["Minimums"] = new List<string> { "AIRLINER_MINIMUM_DESCENT_ALTITUDE", "AIRLINER_DECISION_HEIGHT" };
 
         // ---- A32NX shared gap readouts ----
         d["Autobrake"].AddRange(new[]
@@ -661,6 +679,7 @@ public partial class FlyByWireA380Definition
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",
             "PFD_GREENDOT", "PFD_V3", "PFD_V4", "PFD_VFENEXT",
+            "PFD_VSTALL1G", "PFD_SPEEDTREND", "PFD_GAMMA_A", "PFD_GAMMA_T",
             // Target/preselect speeds + selected V/S + expedite + flight directors + autobrake.
             "A32NX_SPEEDS_MANAGED_PFD", "A32NX_SpeedPreselVal", "A32NX_MachPreselVal",
             "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_FMA_EXPEDITE_MODE", "FD_1", "FD_2",
@@ -694,7 +713,9 @@ public partial class FlyByWireA380Definition
         // the old A32NX_SD_MORE_SHOWN "more flag" line was dropped (it read as the
         // useless "SD more: no").
         d["ECAM Control Panel"] = new List<string> { "A32NX_ECAM_SD_CURRENT_PAGE_INDEX" };
-        d["Wipers"] = new List<string> { "WIPER_LEFT", "WIPER_RIGHT" };
+        // Live OFF/SLOW/FAST position readback (the synthetic combos above only hold the
+        // last SET value; these hidden switch-var backers show the true circuit state).
+        d["Wipers"] = new List<string> { "WIPER_L_SW", "WIPER_R_SW" };
         d["Speeds"] = new List<string> { "A32NX_SPEEDS_VLS", "A32NX_SPEEDS_VAPP", "A32NX_SPEEDS_GD", "A32NX_SPEEDS_F", "A32NX_SPEEDS_S" };
 
         // ---- plain SD-page scalar readouts ----
@@ -729,7 +750,7 @@ public partial class FlyByWireA380Definition
         {
             "A32NX_LEFT_FLAPS_POSITION_PERCENT", "A32NX_RIGHT_FLAPS_POSITION_PERCENT",
             "A32NX_LEFT_SLATS_POSITION_PERCENT", "A32NX_RIGHT_SLATS_POSITION_PERCENT",
-            "ELEVATOR_TRIM", "A32NX_TO_PITCH_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION",
+            "ELEVATOR_TRIM", "A32NX_FM1_TO_PITCH_TRIM", "A32NX_SEC_1_RUDDER_ACTUAL_POSITION",
             "A32NX_NOSE_WHEEL_POSITION", "A32NX_TILLER_HANDLE_POSITION",
             "ELEVATOR_DEFLECTION", "AILERON_DEFLECTION", "RUDDER_DEFLECTION",
             "SPOILERS_LEFT_POSITION", "SPOILERS_RIGHT_POSITION",

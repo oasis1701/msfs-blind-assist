@@ -27,10 +27,14 @@ public partial class HorizonSim787Definition
             return true;
         }
 
-        // AP master — toggle via K event (AUTOPILOT MASTER is a SimVar, not settable via SetLVar)
+        // AP master — toggle via K event (AUTOPILOT MASTER is a SimVar, not settable via SetLVar).
+        // State-aware: AP_MASTER flips the current state, so only fire when the combo's
+        // target differs from the live state, or re-selecting the current value inverts it.
         if (varKey == "HS787_APMaster")
         {
-            simConnect.SendEvent("AP_MASTER");
+            double? current = simConnect.GetCachedVariableValue("HS787_APMaster");
+            if (current == null || (int)current.Value != (int)value)
+                simConnect.SendEvent("AP_MASTER");
             return true;
         }
 
@@ -62,9 +66,14 @@ public partial class HorizonSim787Definition
         }
 
         // Autothrottle arm — fallback when the InputEvent path above didn't match.
+        // State-aware: AUTO_THROTTLE_ARM flips the current arm state, so only fire when
+        // the combo's target differs from the live state, or re-selecting the current
+        // value disarms an armed autothrottle.
         if (varKey == "HS787_ATStatus")
         {
-            simConnect.SendEvent("AUTO_THROTTLE_ARM");
+            double? current = simConnect.GetCachedVariableValue("HS787_ATStatus");
+            if (current == null || (int)current.Value != (int)value)
+                simConnect.SendEvent("AUTO_THROTTLE_ARM");
             return true;
         }
 

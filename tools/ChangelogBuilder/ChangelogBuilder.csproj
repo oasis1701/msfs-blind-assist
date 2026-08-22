@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>13</LangVersion>
+    <RootNamespace>ChangelogBuilder</RootNamespace>
+    <AssemblyName>ChangelogBuilder</AssemblyName>
+
+    <!-- BOTH platforms are required. The test project is built with
+         -p:Platform=x64 and propagates that global property to every
+         ProjectReference; a plain "dotnet run" against this project in CI
+         uses the default AnyCPU. Declaring only one of them breaks the other. -->
+    <Platforms>AnyCPU;x64</Platforms>
+  </PropertyGroup>
+
+</Project>

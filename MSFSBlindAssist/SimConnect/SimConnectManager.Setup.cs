@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -10,6 +10,93 @@ namespace MSFSBlindAssist.SimConnect;
 
 public partial class SimConnectManager
 {
+    /// <summary>
+    /// Fixed-content hotkey readout data definitions (SC-12, 2026-07). Each of these used to be
+    /// cleared and re-registered (SafelyClearDataDefinition → AddToDataDefinition →
+    /// RegisterDataDefineStruct) on EVERY hotkey press even though the underlying simvar/unit
+    /// never changes — SafelyClearDataDefinition's own wait loop pumps
+    /// Application.DoEvents()+Thread.Sleep(10) on the UI thread for `delayMs` (50ms here) per
+    /// press. Registered ONCE here instead; the request methods in
+    /// SimConnectManager.DataRequests.cs now just fire RequestDataOnSimObject(..., ONCE) against
+    /// the already-registered def. See SafelyClearDataDefinition's doc comment: the crash risk it
+    /// guards against is ClearDataDefinition() racing an in-flight request against a def whose
+    /// CONTENT is about to be REPLACED with something different. A def that is added once, with
+    /// fixed content, and never cleared/re-added again has no such race window — this is strictly
+    /// SAFER than the old per-press clear/re-add cycle, not riskier.
+    /// (defId, simVar, unit, datatype) — defId doubles as the DATA_REQUESTS id for every entry
+    /// here (REQUEST_x and DEF_x share the same underlying int, e.g. 303 for both
+    /// REQUEST_ALTITUDE_AGL and DEF_ALTITUDE_AGL — see the DATA_REQUESTS/DATA_DEFINITIONS enums).
+    /// </summary>
+    private static readonly (int Id, string SimVar, string Unit, SIMCONNECT_DATATYPE Type)[] HotkeyReadoutDefinitions =
+    {
+        ((int)DATA_DEFINITIONS.DEF_ALTITUDE_AGL,   "PLANE ALT ABOVE GROUND",         "feet",            SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_ALTITUDE_MSL,   "INDICATED ALTITUDE",             "feet",            SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_AIRSPEED_IAS,   "AIRSPEED INDICATED",             "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_AIRSPEED_TAS,   "AIRSPEED TRUE",                  "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_GROUND_SPEED,   "GROUND VELOCITY",                "knots",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_VERTICAL_SPEED, "VERTICAL SPEED",                 "feet per minute", SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_MACH,           "AIRSPEED MACH",                  "number",          SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_BANK,           "PLANE BANK DEGREES",             "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_PITCH,          "PLANE PITCH DEGREES",            "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_OUTSIDE_TEMP,   "AMBIENT TEMPERATURE",            "celsius",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_SQUAWK_CODE,    "TRANSPONDER CODE:1",             "BCO16",           SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_HEADING_MAG,    "PLANE HEADING DEGREES MAGNETIC", "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+        ((int)DATA_DEFINITIONS.DEF_HEADING_TRUE,   "PLANE HEADING DEGREES TRUE",     "radians",         SIMCONNECT_DATATYPE.FLOAT64),
+    };
+
+    /// <summary>
+    /// Registers every entry in <see cref="HotkeyReadoutDefinitions"/> once per connection.
+    /// Called from SetupDataDefinitions, positioned with the other fixed/critical defs and
+    /// BEFORE the bulk per-aircraft RegisterAllVariables() call — these are universal (not
+    /// aircraft-specific) simvars, same category as AIRCRAFT_INFO/ATC/position above.
+    /// </summary>
+    private void RegisterHotkeyReadoutDefinitions()
+    {
+        var sc = simConnect!;
+        foreach (var def in HotkeyReadoutDefinitions)
+        {
+            sc.AddToDataDefinition((DATA_DEFINITIONS)def.Id, def.SimVar, def.Unit,
+                def.Type, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>((DATA_DEFINITIONS)def.Id);
+        }
+        Log.Debug("SimConnect", $"Registered {HotkeyReadoutDefinitions.Length} fixed hotkey readout data definitions");
+    }
+
+    /// <summary>
+    /// Registers <c>L:FSDT_GSX_COUATL_STARTED</c> as a permanent single-value definition
+    /// and asks for it once per second (every second, DEFAULT flag — see the request
+    /// site for why not CHANGED). Same L:var
+    /// registration shape as every other L:var here (<c>"L:{name}"</c>, "number",
+    /// FLOAT64). Never throws — see the call site.
+    /// </summary>
+    private void RegisterGsxCouatlStartedDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED,
+                "L:FSDT_GSX_COUATL_STARTED", "number",
+                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<SingleValue>(DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED);
+            // DEFAULT (every second), NOT CHANGED: this request is issued inside
+            // SetupDataDefinitions, which runs BEFORE SetupEvents attaches
+            // OnRecvSimobjectData and then pumps Application.DoEvents for hundreds
+            // of ms while clearing continuous batches — a pump that drains the
+            // receive queue with no handler attached. With CHANGED, the one packet
+            // an already-running Couatl produces lands in exactly that window and
+            // is discarded, and nothing re-sends it: the flag stays false all
+            // session for the very pilots (Couatl up before MSFSBA connects) this
+            // read exists for. Eight bytes a second is the price of self-healing.
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GSX_COUATL_STARTED,
+                DATA_DEFINITIONS.DEF_GSX_COUATL_STARTED, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered GSX COUATL_STARTED definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"GSX COUATL_STARTED registration failed (GSX-dependent features fall back to the Remote API flag alone): {ex.Message}");
+        }
+    }
 
     private void SetupDataDefinitions()
     {
@@ -137,6 +224,45 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.RegisterDataDefineStruct<TakeoffAssistData>(DATA_DEFINITIONS.TAKEOFF_ASSIST_DATA);
 
+
+        // Register manual-landing flare/rollout assist data. Own definition (not a reuse of
+        // VISUAL_GUIDANCE_DATA) so the flare assist can run concurrently with — and fully
+        // independent of — visual guidance, and so it gets SIM ON GROUND at frame rate for a
+        // crisp touchdown edge (the continuous-batch SIM_ON_GROUND samples at 1 Hz).
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE LATITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE LONGITUDE", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)1);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE HEADING DEGREES MAGNETIC", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)2);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "MAGVAR", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)3);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GROUND VELOCITY", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)4);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "VERTICAL SPEED", "feet per minute",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALT ABOVE GROUND", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE PITCH DEGREES", "radians",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "SIM ON GROUND", "Bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        // True MSL altitude — the approach phase measures the glidepath against the runway's
+        // navdata threshold elevation, which AGL (terrain-relative) cannot express.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE ALTITUDE", "feet",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
+        // Bank, for the SPOKEN approach-phase bank callouts (the tones carry no bank
+        // information). Left-positive, as SimConnect returns it — see FlareAssistData.BankDegrees.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "PLANE BANK DEGREES", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)10);
+        // Ground track — the approach phase computes its intercept as a TRACK (the geometry is a
+        // path over the ground) and then adds the live drift angle back to speak a heading that is
+        // flyable in HDG SEL. Without this the commanded heading is the drift angle wrong in any
+        // crosswind. Field and struct member must be added/removed TOGETHER.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.FLARE_ASSIST_DATA, "GPS GROUND TRUE TRACK", "degrees",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        sc.RegisterDataDefineStruct<FlareAssistData>(DATA_DEFINITIONS.FLARE_ASSIST_DATA);
+
         // Register wind data for wind information
         sc.AddToDataDefinition(DATA_DEFINITIONS.WIND_DATA, "AMBIENT WIND DIRECTION", "degrees",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)0);
@@ -159,6 +285,8 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)5);
         sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "AMBIENT WIND VELOCITY", "knots",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.WEATHER_DATA, "STRUCTURAL ICE PCT", "percent over 100",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
         sc.RegisterDataDefineStruct<AmbientWeatherData>(DATA_DEFINITIONS.WEATHER_DATA);
 
         // NAV Radio data
@@ -185,6 +313,19 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
+
+        // Fixed hotkey readout defs (altitude/airspeed/VS/mach/bank/pitch/OAT/squawk/heading —
+        // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
+        // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
+        RegisterHotkeyReadoutDefinitions();
+
+        // GSX's L:FSDT_GSX_COUATL_STARTED — one fixed def, requested once per second
+        // (never per frame). Universal, not aircraft-specific, so it registers here
+        // with the fixed defs. It is the pre-Remote-API "is GSX running" signal that every
+        // GSX build publishes; see GsxCouatlStartedLVar for what depends on it. Its own
+        // try/catch: GSX absent means the L:var never delivers (harmless), and a
+        // registration failure must not take the bulk registration below down with it.
+        RegisterGsxCouatlStartedDefinition();
 
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
@@ -265,6 +406,7 @@ public partial class SimConnectManager
 
                 // Only add to dictionary if registration was successful
                 variableDataDefinitions.TryAdd(kvp.Key, dataDefId);
+                requestIdToVarKey.TryAdd(dataDefId, kvp.Key);
                 registeredCount++;
 
                 // If the var asked to be excluded from the batched continuous monitoring
@@ -303,7 +445,10 @@ public partial class SimConnectManager
         // immediately diagnosable without re-instrumenting. registeredCount = individual on-demand
         // defs; batchCoveredCount = continuous vars served by batches (no individual def);
         // cappedCount = vars skipped at the future-proof cap (should be 0 in normal operation).
-        int totalDefs = registeredCount + 5 /*continuous batches*/ + 20 /*fixed defs, approx*/;
+        // "fixed defs" bumped 20->33 (2026-07, SC-12): the 13 hotkey readout defs (altitude/
+        // airspeed/VS/mach/bank/pitch/OAT/squawk/heading) are now registered ONCE and permanently,
+        // instead of being ephemeral request-time-only defs that this rough total never counted.
+        int totalDefs = registeredCount + 5 /*continuous batches*/ + 33 /*fixed defs, approx*/;
         string regSummary = $"[Registration] aircraft={CurrentAircraft?.GetType().Name} individualDefs={registeredCount} batchCovered={batchCoveredCount} capped={cappedCount} approxTotalDefs~{totalDefs} (SimConnect ceiling ~1000)";
         Log.Debug("SimConnect", regSummary);
         if (cappedCount > 0)
@@ -329,6 +474,8 @@ public partial class SimConnectManager
         // Clear previous batch setup (important when switching aircraft or adding/removing variables)
         int previousMapSize = continuousVariableIndexMap.Count;
         continuousVariableIndexMap.Clear();
+        for (int i = 0; i < batchVarArrays.Length; i++)
+            batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         Log.Debug("SimConnect", $"Cleared previous map (had {previousMapSize} entries)");
 
         // Get all continuous variables from current aircraft
@@ -422,6 +569,9 @@ public partial class SimConnectManager
 
             // Track entries added to the map for THIS batch so we can roll them back on failure.
             var batchMapKeys = new List<string>(batchVarCount);
+            // Mirrors batchMapKeys, but pre-resolving the varDef too — becomes batchVarArrays[batchNum]
+            // on success (see Step 2's prebuilt-array consumer in SimConnectManager.VarCache.cs).
+            var batchArrayEntries = new List<(string key, int index, SimVarDefinition def)>(batchVarCount);
 
             try
             {
@@ -445,6 +595,7 @@ public partial class SimConnectManager
 
                     continuousVariableIndexMap[kvp.Key] = (batchNum, indexWithinBatch);
                     batchMapKeys.Add(kvp.Key);
+                    batchArrayEntries.Add((kvp.Key, indexWithinBatch, varDef));
                     indexWithinBatch++;
                     totalVariablesAdded++;
 
@@ -496,6 +647,10 @@ public partial class SimConnectManager
                 );
 
                 batchesStarted++;
+                // Publish this batch's prebuilt array only once the batch is fully committed
+                // (mirrors continuousVariableIndexMap, which is only trusted for this batch's
+                // keys past this point too).
+                batchVarArrays[batchNum] = batchArrayEntries.ToArray();
                 Log.Debug("SimConnect", $"Batch {batchNum} monitoring started for {batchVarCount} variables");
             }
             catch (Exception ex)
@@ -507,6 +662,9 @@ public partial class SimConnectManager
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
                     continuousVariableIndexMap.Remove(key);
+                // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
+                // (the assignment above only runs after a successful try), so it's still whatever
+                // the top-of-method reset left it at (empty) — no separate rollback needed here.
 
                 // Continue with the next batch.
             }
@@ -611,6 +769,7 @@ public partial class SimConnectManager
 
         // Clear existing registrations
         variableDataDefinitions.Clear();
+        requestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 
@@ -763,12 +922,12 @@ public partial class SimConnectManager
             if (kvp.Value.Type == SimVarType.Event)
             {
                 uint eventId = nextEventId++;
-                eventIds[kvp.Key] = eventId;
 
                 try
                 {
                     // Map the event
                     sc.MapClientEventToSimEvent((EVENTS)eventId, kvp.Value.Name);
+                    eventIds[kvp.Key] = eventId;
                     registeredCount++;
                 }
                 catch (Exception ex)

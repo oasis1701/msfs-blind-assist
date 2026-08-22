@@ -20,10 +20,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Shift+T via the shared FbwEfbForm over CoherentPmdgEfbClient (no Community-folder bridge).
     public bool HasEFBSupport => true;
 
-    // Cached merged variables dictionary — built once on first access.
-    // All callers are read-only so sharing a single instance is safe.
-    private Dictionary<string, SimConnect.SimVarDefinition>? _cachedVariables;
-
     // Cached set of RenderAsButton keys that are NOT annunciators.
     // Used in ProcessSimVarUpdate to suppress raw value announcements
     // without re-allocating GetVariables() on every call.
@@ -32,16 +28,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private HashSet<string> SuppressedButtonKeys =>
         _suppressedButtonKeys ??= BuildSuppressedButtonKeys();
 
-    private HashSet<string> BuildSuppressedButtonKeys()
-    {
-        var set = new HashSet<string>();
-        foreach (var kvp in GetVariables())
-        {
-            if (kvp.Value.RenderAsButton && !kvp.Value.Name.Contains("_annun"))
-                set.Add(kvp.Key);
-        }
-        return set;
-    }
+    // BuildSuppressedButtonKeys moved to BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     // ---------------------------------------------------------------------
     // Suppression state for ProcessSimVarUpdate (Task C11).
@@ -236,11 +223,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // Variables — scaffold (populated in Tasks C5–C8)
     // =========================================================================
 
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        if (_cachedVariables != null)
-            return _cachedVariables;
-
         var variables = GetBaseVariables();
         // The PMDG NG3 does not drive the stock ELEVATOR TRIM POSITION SimVar
         // (it stays pinned within ±0.04° regardless of actual stabilizer trim),
@@ -251,7 +235,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         var pmdgVars = GetPMDGVariables();
         foreach (var kvp in pmdgVars)
             variables[kvp.Key] = kvp.Value;
-        _cachedVariables = variables;
         return variables;
     }
 
@@ -1401,6 +1384,10 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["CS_TOGA_2"]   = Momentary("CS_TOGA_2",   "TO/GA Right");
         d["CS_ATDisc_1"] = Momentary("CS_ATDisc_1", "Autothrottle Disengage Left");
         d["CS_ATDisc_2"] = Momentary("CS_ATDisc_2", "Autothrottle Disengage Right");
+        // Yoke A/P disconnect. The event has always existed in the ID table
+        // (EVT_YOKE_L_AP_DISC_SWITCH) but had no variable mapped to it, so there was
+        // no varKey to drive it from. Mirrors the 777's YOKE_APDisc pair.
+        d["YOKE_APDisc"]  = Momentary("YOKE_APDisc",  "Yoke AP Disconnect");
         // Same array convention as FIRE_HandlePos: [0]=Eng1, [1]=APU, [2]=Eng2.
         d["FIRE_HandleIlluminated_0"] = Annun("FIRE_HandleIlluminated_0", "Engine 1 Fire Handle Illuminated");
         d["FIRE_HandleIlluminated_1"] = Annun("FIRE_HandleIlluminated_1", "APU Fire Handle Illuminated");
@@ -3600,7 +3587,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["CS_TOGA_1"]   = "EVT_CONTROL_STAND_TOGA1_SWITCH",
             ["CS_TOGA_2"]   = "EVT_CONTROL_STAND_TOGA2_SWITCH",
             ["CS_ATDisc_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
-            ["CS_ATDisc_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+            ["CS_ATDisc_2"]  = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
+            ["YOKE_APDisc"]  = "EVT_YOKE_L_AP_DISC_SWITCH",
             // Glareshield — Master Warning / Caution recall
             ["WARN_ResetFireWarning"]      = "EVT_FIRE_WARN_LIGHT_LEFT",
             ["WARN_ResetMasterCaution"]    = "EVT_MASTER_CAUTION_LIGHT_LEFT",
@@ -5136,13 +5124,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // FMC speeds and cruise altitude — suppress when 0 (not set).
             // -------------------------------------------------------------
             case "FMC_V1":
-                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V1 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_VR":
-                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"VR {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_V2":
-                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)}");
+                if (value > 0) announcer.Announce($"V2 {(int)Math.Round(value)} knots");
                 return true;
             case "FMC_CruiseAlt":
                 if (value > 0) announcer.Announce($"Cruise altitude {(int)Math.Round(value)} feet");
@@ -5180,7 +5168,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Active) < 0.0001) return true;
                 _lastCom1Active = value;
-                announcer.Announce($"COM 1 active {value:F3}");
+                announcer.Announce($"COM1 active {value:F3}");
                 return true;
 
             case "COM2_ActiveFreq":
@@ -5191,7 +5179,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Active) < 0.0001) return true;
                 _lastCom2Active = value;
-                announcer.Announce($"COM 2 active {value:F3}");
+                announcer.Announce($"COM2 active {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:1":
@@ -5202,7 +5190,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom1Standby) < 0.0001) return true;
                 _lastCom1Standby = value;
-                announcer.Announce($"COM 1 standby {value:F3}");
+                announcer.Announce($"COM1 standby {value:F3}");
                 return true;
 
             case "COM_STANDBY_FREQUENCY_SET:2":
@@ -5213,7 +5201,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 if (Math.Abs(value - _lastCom2Standby) < 0.0001) return true;
                 _lastCom2Standby = value;
-                announcer.Announce($"COM 2 standby {value:F3}");
+                announcer.Announce($"COM2 standby {value:F3}");
                 return true;
 
             // -------------------------------------------------------------
@@ -5368,8 +5356,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 {
                     float speed = (float)dm.GetFieldValue("MCP_IASMach");
                     string speedText = speed < 10f
-                        ? $"M{speed:F2}"
-                        : $"{(int)Math.Round(speed)} knots";
+                        ? $"Mach {speed:F2}"
+                        : $"Speed {(int)Math.Round(speed)} knots";
                     string speedMode = "";
                     if ((int)dm.GetFieldValue("MCP_annunLVL_CHG") > 0) speedMode = ", LVL CHG";
                     announcer.AnnounceImmediate($"{speedText}{speedMode}");
@@ -5600,6 +5588,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 return true;
             }
 
+            case HotkeyAction.FCUSetAutopilot:
+            {
+                hotkeyManager.ExitInputHotkeyMode();
+                ShowPMDGAutopilotWindow(
+                    PMDGAutopilotRows.For737(), "737 Autopilot", simConnect, announcer, parentForm);
+                return true;
+            }
+
             // ------------------------------------------------------------------
             // CDU/EFB form dispatch — MainForm handles these by AircraftCode.
             // ------------------------------------------------------------------
@@ -5675,8 +5671,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         }
         float speed = (float)dm.GetFieldValue("MCP_IASMach");
         string speedText = speed < 10f
-            ? $"M{speed:F2}"
-            : $"{(int)Math.Round(speed)} knots";
+            ? $"Mach {speed:F2}"
+            : $"Speed {(int)Math.Round(speed)} knots";
         announcer.AnnounceImmediate(speedText);
     }
 
@@ -5714,70 +5710,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             _ = simConnect.SendPMDGMomentaryToggle((uint)evId, 1);
     }
 
-    /// <summary>
-    /// Format ETA as ": HH:MM:SS" given remaining distance in nautical miles
-    /// and current ground speed in knots. Returns empty string at low ground
-    /// speed (taxi / ground) where the estimate is meaningless.
-    /// </summary>
-    private static string FormatEtaFromDistance(double distanceNm, double groundSpeedKnots)
-    {
-        if (groundSpeedKnots < 30) return "";   // not airborne / too slow
-        if (distanceNm <= 0) return "";
-
-        double hours = distanceNm / groundSpeedKnots;
-        int totalSeconds = (int)Math.Round(hours * 3600.0);
-        int hh = totalSeconds / 3600;
-        int mm = (totalSeconds % 3600) / 60;
-        int ss = totalSeconds % 60;
-        return $": {hh:D2}:{mm:D2}:{ss:D2}";
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to top of descent on the NG3.
-    /// </summary>
-    private static void AnnounceTODFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToTOD");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Top of descent not available");
-            return;
-        }
-        if (dist < 0.1f)
-        {
-            announcer.AnnounceImmediate("Past top of descent");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to top of descent{eta}");
-        });
-    }
-
-    /// <summary>
-    /// SDK-offset readout for distance to destination on the NG3.
-    /// </summary>
-    private static void AnnounceDestFromSDK(
-        SimConnect.SimConnectManager simConnect,
-        SimConnect.IPMDGDataManager dm,
-        ScreenReaderAnnouncer announcer)
-    {
-        float dist = (float)dm.GetFieldValue("FMC_DistanceToDest");
-        if (dist < 0)
-        {
-            announcer.AnnounceImmediate("Distance to destination not available");
-            return;
-        }
-        simConnect.RequestAircraftPositionAsync(position =>
-        {
-            string eta = FormatEtaFromDistance(dist, position.GroundSpeedKnots);
-            announcer.AnnounceImmediate($"{dist:F0} miles to destination{eta}");
-        });
-    }
+    // FormatEtaFromDistance, AnnounceTODFromSDK, AnnounceDestFromSDK moved to
+    // BaseAircraftDefinition (byte-identical PMDG 737/777 pair).
 
     private void ShowPMDGHeadingDialog(
         SimConnect.SimConnectManager simConnect,
@@ -5900,6 +5834,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// <summary>
     /// Parse the speed dialog input. Accepts "M0.85" / "m0.85" / ".85" / "0.85"
     /// as Mach, or "250" as IAS. Anything in [0..10) is treated as Mach.
+    /// Canonical original — PMDG777Definition.TryParseSpeedInput (Task 9.8) is
+    /// a ported copy of this method (the two aircraft's speed dialogs don't
+    /// share a base helper, so it's duplicated rather than moved to Base).
     /// </summary>
     private static bool TryParseSpeedInput(string input, out bool isMach, out double value)
     {

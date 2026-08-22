@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.FlightSimulator.SimConnect;
@@ -18,6 +19,11 @@ public class PMDG777DataManager : IPMDGDataManager
 
     private static readonly FieldInfo[] s_dataFields =
         typeof(PMDG777XDataStruct).GetFields(BindingFlags.Public | BindingFlags.Instance);
+
+    // Built from s_dataFields (same BindingFlags as the per-call GetField
+    // lookups it replaces), so it resolves exactly the same names.
+    private static readonly Dictionary<string, FieldInfo> s_fieldsByName =
+        s_dataFields.ToDictionary(f => f.Name, f => f);
     // ------------------------------------------------------------------
     // Local enum IDs — SimConnect accepts any Enum type for these calls,
     // so we define our own enums rather than casting raw uints.
@@ -236,10 +242,18 @@ public class PMDG777DataManager : IPMDGDataManager
         }
 
         int changeCount = 0;
+        // Box each struct ONCE for the whole loop instead of once per field —
+        // FieldInfo.GetValue(struct) boxes its argument on every call, so the
+        // unboxed overload was copying the multi-KB struct per field (hundreds
+        // of copies/sec). Reading fields off a boxed copy returns identical
+        // values to reading off the struct directly (the box IS a bitwise
+        // copy of the same snapshot), so this is behavior-neutral.
+        object oldBox = _lastDataSnapshot;
+        object newBox = newData;
         foreach (var field in s_dataFields)
         {
-            object? oldVal = field.GetValue(_lastDataSnapshot);
-            object? newVal = field.GetValue(newData);
+            object? oldVal = field.GetValue(oldBox);
+            object? newVal = field.GetValue(newBox);
 
             if (field.FieldType.IsArray)
             {
@@ -309,13 +323,12 @@ public class PMDG777DataManager : IPMDGDataManager
             return 0.0;
         }
 
-        // Plain field
-        var field = typeof(PMDG777XDataStruct)
-            .GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+        object snapshotBox = _lastDataSnapshot;
 
-        if (field != null)
+        // Plain field
+        if (s_fieldsByName.TryGetValue(fieldName, out var field))
         {
-            return ToDouble(field.GetValue(_lastDataSnapshot));
+            return ToDouble(field.GetValue(snapshotBox));
         }
 
         // Array index suffix: "FieldName_N"
@@ -323,10 +336,9 @@ public class PMDG777DataManager : IPMDGDataManager
         if (lastUnderscore > 0 && int.TryParse(fieldName[(lastUnderscore + 1)..], out int index))
         {
             string baseName = fieldName[..lastUnderscore];
-            var baseField = typeof(PMDG777XDataStruct)
-                .GetField(baseName, BindingFlags.Public | BindingFlags.Instance);
 
-            if (baseField?.GetValue(_lastDataSnapshot) is Array arr && index < arr.Length)
+            if (s_fieldsByName.TryGetValue(baseName, out var baseField) &&
+                baseField.GetValue(snapshotBox) is Array arr && index < arr.Length)
                 return ToDouble(arr.GetValue(index));
         }
 
@@ -590,7 +602,7 @@ public class PMDG777DataManager : IPMDGDataManager
     /// Returns 14 text rows from the last received CDU screen for the given CDU index.
     /// Each row is CDU_COLS (24) characters wide.
     /// Returns null if no screen data has been received yet.
-    /// Symbol map: 0xA1 → '&lt;', 0xA2 → '&gt;', 0x20–0x7E → literal char, else ' '.
+    /// Symbol map: see <see cref="DecodeCellSymbol"/>.
     /// </summary>
     public string[]? GetCDURows(int cdu)
     {
@@ -607,14 +619,7 @@ public class PMDG777DataManager : IPMDGDataManager
             for (int col = 0; col < CDU_COLS; col++)
             {
                 byte sym = screen.Cells[col * CDU_ROWS + row].Symbol;
-                char ch  = sym switch
-                {
-                    0xA1                   => '<',
-                    0xA2                   => '>',
-                    >= 0x20 and <= 0x7E    => (char)sym,
-                    _                      => ' '
-                };
-                sb.Append(ch);
+                sb.Append(DecodeCellSymbol(sym));
             }
             rows[row] = sb.ToString();
         }
@@ -641,16 +646,28 @@ public class PMDG777DataManager : IPMDGDataManager
                 colors[row, col] = cell.Color;
                 flags[row, col] = cell.Flags;
 
-                if (sym == 0xA1) sb.Append('<');
-                else if (sym == 0xA2) sb.Append('>');
-                else if (sym >= 0x20 && sym <= 0x7E) sb.Append((char)sym);
-                else sb.Append(' ');
+                sb.Append(DecodeCellSymbol(sym));
             }
             rows[row] = sb.ToString();
         }
 
         return (rows, colors, flags);
     }
+
+    /// <summary>
+    /// Decodes a single PMDG CDU cell symbol byte into its display character.
+    /// Matches <see cref="PMDGNG3DataManager.DecodeCellSymbol"/> semantics
+    /// (line-select brackets, up/down arrows, printable ASCII passthrough, else space).
+    /// </summary>
+    internal static char DecodeCellSymbol(byte sym) => sym switch
+    {
+        0xA1                => '<',
+        0xA2                => '>',
+        0xA3                => '↑', // up arrow
+        0xA4                => '↓', // down arrow
+        >= 0x20 and <= 0x7E => (char)sym,
+        _                   => ' '
+    };
 
     // ------------------------------------------------------------------
     // IDisposable

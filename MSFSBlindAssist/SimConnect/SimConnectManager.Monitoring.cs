@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -203,13 +203,53 @@ public partial class SimConnectManager
         }
     }
 
-    // Hand fly mode monitoring
-    public void StartHandFlyMonitoring(bool monitorHeading, bool monitorVerticalSpeed)
+    // Hand fly mode monitoring. drainCancelledStreams: pass true ONLY when this
+    // is a RESTART over just-cancelled live streams (settings-apply while Hand
+    // Fly is active) — SafelyClearDataDefinition then cancels + message-pumps
+    // before clearing defs 371/372, the documented guard against the
+    // intermittent ClearDataDefinition-while-request-active crash. Activation
+    // paths must leave it false: no 371/372 request has been live for seconds,
+    // and the DoEvents pump would (a) open a re-entrancy window inside Hand Fly
+    // activation (WM_HOTKEY handlers can interleave mid-toggle) and (b) be
+    // ineffective anyway when activation runs inside SimConnect dispatch, where
+    // SimConnectDispatchInProgress blocks WM_USER processing during the wait.
+    public void StartHandFlyMonitoring(bool monitorHeading, bool monitorVerticalSpeed,
+        bool drainCancelledStreams = false)
     {
         if (!IsConnected || simConnect == null) return;
 
         try
         {
+            // Rebuild the ad-hoc heading/VS definitions FIRST, streams LAST —
+            // on the drain path this keeps the pump from delivering hand-fly
+            // data mid-call, and the def-before-request order is required
+            // regardless. With drainCancelledStreams false the requestId is
+            // null and SafelyClearDataDefinition clears without cancel/wait
+            // (safe: no recent 371/372 request can still be in flight).
+            if (monitorHeading)
+            {
+                var headingDefId = (DATA_DEFINITIONS)371;
+                SafelyClearDataDefinition(headingDefId,
+                    requestId: drainCancelledStreams ? (DATA_REQUESTS?)371 : null,
+                    delayMs: 50);
+                simConnect.AddToDataDefinition(headingDefId,
+                    "PLANE HEADING DEGREES MAGNETIC", "radians",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(headingDefId);
+            }
+
+            if (monitorVerticalSpeed)
+            {
+                var vsDefId = (DATA_DEFINITIONS)372;
+                SafelyClearDataDefinition(vsDefId,
+                    requestId: drainCancelledStreams ? (DATA_REQUESTS?)372 : null,
+                    delayMs: 50);
+                simConnect.AddToDataDefinition(vsDefId,
+                    "VERTICAL SPEED", "feet per minute",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(vsDefId);
+            }
+
             // Request continuous updates for pitch and bank at SIM_FRAME rate
             simConnect.RequestDataOnSimObject((DATA_REQUESTS)327,
                 (DATA_DEFINITIONS)GetVariableDataDefinition("PLANE_PITCH_DEGREES"),
@@ -226,14 +266,8 @@ public partial class SimConnectManager
             // Request heading monitoring if enabled
             if (monitorHeading)
             {
-                var headingDefId = (DATA_DEFINITIONS)371;
-                SafelyClearDataDefinition(headingDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(headingDefId,
-                    "PLANE HEADING DEGREES MAGNETIC", "radians",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(headingDefId);
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)371,
-                    headingDefId,
+                    (DATA_DEFINITIONS)371,
                     SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.SIM_FRAME,
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -242,14 +276,8 @@ public partial class SimConnectManager
             // Request vertical speed monitoring if enabled
             if (monitorVerticalSpeed)
             {
-                var vsDefId = (DATA_DEFINITIONS)372;
-                SafelyClearDataDefinition(vsDefId, requestId: null, delayMs: 50);
-                simConnect.AddToDataDefinition(vsDefId,
-                    "VERTICAL SPEED", "feet per minute",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-                simConnect.RegisterDataDefineStruct<SingleValue>(vsDefId);
                 simConnect.RequestDataOnSimObject((DATA_REQUESTS)372,
-                    vsDefId,
+                    (DATA_DEFINITIONS)372,
                     SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.SIM_FRAME,
                     SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
@@ -350,6 +378,50 @@ public partial class SimConnectManager
         }
     }
 
+    // Manual-landing flare/rollout assist monitoring. SIM_FRAME rate — the flare
+    // window (50 ft to touchdown) lasts only a few seconds, so 1 Hz is useless here.
+    // Started/stopped by LandingFlareAssistManager via MainForm (armed + below the
+    // approach altitude gate, or engaged), never left running for a whole flight.
+    public void StartFlareAssistMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)508,
+                DATA_DEFINITIONS.FLARE_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SIM_FRAME,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            Log.Debug("SimConnect", "Flare assist monitoring started");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error starting flare assist monitoring: {ex.Message}");
+        }
+    }
+
+    public void StopFlareAssistMonitoring()
+    {
+        if (!IsConnected || simConnect == null) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)508,
+                DATA_DEFINITIONS.FLARE_ASSIST_DATA,
+                SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.NEVER,
+                SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+            Log.Debug("SimConnect", "Flare assist monitoring stopped");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error stopping flare assist monitoring: {ex.Message}");
+        }
+    }
+
     private int GetVariableDataDefinition(string varKey)
     {
         if (variableDataDefinitions.TryGetValue(varKey, out int defId))
@@ -382,22 +454,4 @@ public partial class SimConnectManager
         return destinationRunway != null && destinationAirport != null;
     }
 
-    public AircraftPosition? GetAircraftPosition()
-    {
-        if (!IsConnected) return null;
-
-        try
-        {
-            simConnect!.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_AIRCRAFT_POSITION,
-                DATA_DEFINITIONS.AIRCRAFT_POSITION, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
-                0, 0, 0);
-            return null; // Will be returned via event handler
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("SimConnect", $"Error requesting aircraft position: {ex.Message}");
-            return null;
-        }
-    }
 }
