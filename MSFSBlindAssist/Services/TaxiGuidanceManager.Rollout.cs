@@ -485,22 +485,23 @@ public partial class TaxiGuidanceManager
             bool earlyVacateSwapped = false;
 
             // Early-vacate retarget. Entered only when the aircraft is BOTH laterally off
-            // the runway AND far from the planned exit. Both gates are load-bearing: the
+            // the runway AND vacated away from the planned exit. Both gates are load-bearing: the
             // lateral gate is what "vacated" physically means, so a trulyStopped handoff on
             // the centreline 2,000 ft short of the exit keeps the planned exit and taxis to
             // it; and the distance gate is now ALONG-TRACK (RolloutExitGate.
             // IsVacateAwayFromPlannedExit), not straight-line: measured along the runway and
             // read under the lateral conjunct above, an aircraft on its OWN exit's pavement
             // can be at most ~313 ft short of that exit's node, while distinct turnoffs sit
-            // 430-970 ft apart. The old straight-line TurnWindowFeet test alone left a 700 ft
-            // band in which a vacate onto a NEIGHBOURING exit re-routed to the planned one.
+            // 430-970 ft apart. The old straight-line TurnWindowFeet test alone left the band
+            // from 350 to 1,000 ft in which a vacate onto a NEIGHBOURING exit re-routed to the
+            // planned one — and measured turnoff spacing sits almost entirely inside it.
             // The 500 ft tightening rejected earlier does not apply here — it reasoned about a
             // turn begun ON the runway, which the lateral conjunct already excludes.
             bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
-            bool farFromPlannedExit = Navigation.RolloutExitGate.IsVacateAwayFromPlannedExit(
+            bool vacatedAwayFromPlannedExit = Navigation.RolloutExitGate.IsVacateAwayFromPlannedExit(
                 pastExit, signedAlongPastFt, distToExitFeet);
 
-            if (offRunwayAtHandoff && farFromPlannedExit && _rolloutExit != null)
+            if (offRunwayAtHandoff && vacatedAwayFromPlannedExit && _rolloutExit != null)
             {
                 double lateralSignedM = SignedLateralFromRunwayMeters(
                     lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon,
