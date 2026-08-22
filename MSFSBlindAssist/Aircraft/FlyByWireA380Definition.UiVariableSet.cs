@@ -14,12 +14,15 @@ public partial class FlyByWireA380Definition
     /// "harmonise" the two jets. A380FcuComputer.cpp:2142-2150 clears std_active on a PULL and
     /// sets it on a PUSH; the `pulled && !std_active` arm toggles QNH/QFE but is immediately
     /// overridden because pin_prog_qfe_avail is hardcoded false, which is what keeps PULL
-    /// idempotent and lets the caller fire either event unconditionally.
+    /// idempotent and lets the caller fire either event unconditionally. VERIFIED LIVE on
+    /// a380x 1bbd304 (2026-08-22), both sides: PUSH drove STD on, PULL drove it off.
     ///
     /// FBW #10855 deleted the H-events this used to fire (H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{n})
     /// along with MsfsBaroManager.ts and the FCU cockpit behaviour that consumed them, so the
-    /// old form was a silent no-op: the combo kept reporting the true state (it reads the stock
-    /// KOHLSMAN SETTING STD:n) while selecting Standard or QNH did nothing at all.
+    /// old form was a silent no-op: the combo kept reporting the true state (the stock
+    /// KOHLSMAN SETTING STD:n mirror tracks fine) while selecting Standard or QNH did nothing.
+    /// That is the real cause of the "altimeter stuck on QNH" report — confirmed from a
+    /// tester's debug.log, which showed a pre-fix build still emitting the deleted H-event.
     /// </summary>
     public static string? BaroModeEvent(string varKey, bool standard)
     {
@@ -459,8 +462,14 @@ public partial class FlyByWireA380Definition
         {
             string side = varKey == "ND_FILTER_L" ? "L" : "R";
             int current = varKey == "ND_FILTER_L" ? _ndFilterL : _ndFilterR;
-            if (NdFilterSelection.PushEvent(side, current, (int)Math.Round(value)) is { } ndEvt)
+            int desired = (int)Math.Round(value);
+            if (NdFilterSelection.PushEvent(side, current, desired) is { } ndEvt)
                 simConnect.SendEvent(ndEvt);
+            // The aircraft honours every change EXCEPT clearing (measured — see
+            // NdFilterSelection). Say so rather than leave the pilot with a dead control; this
+            // is the "error condition" case the announcement rules allow, not a combo echo.
+            if (NdFilterSelection.IsClearAttempt(current, desired))
+                announcer.AnnounceImmediate(NdFilterSelection.ClearUnsupportedMessage);
             return true;
         }
         // EFIS baro STD/QNH. Event name + the push=STD polarity live in BaroModeEvent above —

@@ -46,6 +46,23 @@ public static class NdFilterSelection
         return name == null ? null : $"A32NX.FCU_EFIS_{side}_{name}_PUSH";
     }
 
+    /// <summary>
+    /// True when the pilot asked for Off while a filter is actually shown — the one case the
+    /// aircraft will not honour (see <see cref="ClearUnsupportedMessage"/>). Selecting Off when
+    /// nothing is shown asks for nothing, and a filter-to-filter change is a normal replace.
+    /// </summary>
+    public static bool IsClearAttempt(int current, int desired) =>
+        desired == Off && current != Off;
+
+    /// <summary>
+    /// Spoken when a clear is asked for. The press is still sent, but measured live on
+    /// a380x 1bbd304 it does not take, and a control that silently does nothing is worse for a
+    /// blind pilot than one that explains itself. Phrased as a property of this aircraft build,
+    /// because that is what it is — the FCU's own generated code reads as though it should work.
+    /// </summary>
+    public static string ClearUnsupportedMessage =>
+        "This A380 build cannot clear the ND filter. Choose Waypoints, VOR/DME or NDB instead.";
+
     /// <summary>Spoken/display text for a <see cref="FromLights"/> position.</summary>
     public static string Text(int position) => position switch
     {

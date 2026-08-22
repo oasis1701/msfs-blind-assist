@@ -2157,14 +2157,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // STD(PUSH)/QNH(PULL) per side — the A380's knob events are the OPPOSITE of the
         // A32NX's; BaroModeEvent owns the set path and the evidence for that polarity.
         //
-        // ⚠️ The STATE is the FCU's own per-frame L:var, NOT the stock altimeter simvar.
-        // FBW #10855 deleted MsfsBaroManager.ts, whose setupSyncToMsfs was the only writer
-        // of `KOHLSMAN SETTING STD:{1,2}`; the WASM now registers those read-only and
-        // force-writes only :4 (the sim altimeter it pins to STD because it computes the
-        // displayed altitude itself). Reading the stock flag therefore returned the same
-        // value forever — reported live as "the altimeter won't switch between standard and
-        // QNH, it is stuck on QNH", with the events working fine underneath. The replacement
-        // is written every frame from the FCU's baro_std output.
+        // The STATE is the FCU's own per-frame output. The stock KOHLSMAN SETTING STD:{1,2}
+        // mirror this replaced does still track (a claim that it was dead is retracted — see
+        // FlyByWireA380BaroStateTests); this is simply the more direct source, and it is what
+        // FBW's own FcuSimvarPublisher reads.
         //
         // Keys keep the old names so the panel lists, window, hotkey readout and announce
         // branch stay stable.

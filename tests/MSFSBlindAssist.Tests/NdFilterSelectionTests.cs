@@ -49,13 +49,40 @@ public class NdFilterSelectionTests
             NdFilterSelection.PushEvent("L", NdFilterSelection.Waypoints, NdFilterSelection.Ndb));
     }
 
-    // The subtle half: there is no "off" button. Clearing the selection means pressing the
-    // button that is CURRENTLY ACTIVE, because that is what toggles the FCU back to NONE.
+    // There is no "off" button, so clearing can only mean re-pressing the ACTIVE one. The
+    // generated FCU code says that clears the selection to NONE — but it does NOT, measured
+    // live 2026-08-22 on a380x 1bbd304: six presses across WPT, VORD and NDB, each with a
+    // distinct command string so MobiFlight coalescing is excluded, and the selection never
+    // cleared while pressing a DIFFERENT button replaced it every single time.
+    //
+    // So the press is still sent (harmless, and it starts working if FBW changes), but the
+    // pilot must be TOLD, or selecting Off is a control that silently does nothing.
     [Fact]
-    public void Clearing_the_selection_presses_the_currently_active_button()
+    public void Clearing_still_presses_the_active_button_as_a_best_effort()
     {
         Assert.Equal("A32NX.FCU_EFIS_L_VORD_PUSH",
             NdFilterSelection.PushEvent("L", NdFilterSelection.VorDme, NdFilterSelection.Off));
+    }
+
+    [Fact]
+    public void Choosing_off_while_a_filter_is_shown_is_a_clear_attempt()
+    {
+        Assert.True(NdFilterSelection.IsClearAttempt(NdFilterSelection.VorDme, NdFilterSelection.Off));
+    }
+
+    [Theory]
+    [InlineData(NdFilterSelection.Off, NdFilterSelection.Off)]        // already clear, nothing asked
+    [InlineData(NdFilterSelection.VorDme, NdFilterSelection.Ndb)]     // a replace, which works
+    public void Anything_else_is_not_a_clear_attempt(int current, int desired)
+    {
+        Assert.False(NdFilterSelection.IsClearAttempt(current, desired));
+    }
+
+    [Fact]
+    public void The_clear_limitation_is_explained_in_words_a_pilot_can_act_on()
+    {
+        Assert.Contains("cannot", NdFilterSelection.ClearUnsupportedMessage,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

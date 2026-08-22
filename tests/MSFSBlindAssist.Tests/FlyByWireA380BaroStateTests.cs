@@ -1,16 +1,17 @@
 // Where the A380's "altimeter is on STD" flag is READ from.
 //
-// FBW #10855 deleted MsfsBaroManager.ts, whose setupSyncToMsfs was the ONLY thing writing the
-// stock `KOHLSMAN SETTING STD:{1,2}` simvar (1bbd304^ MsfsBaroManager.ts:158-160). At 1bbd304
-// the WASM registers :1/:2 read-only and force-writes only :4 — the sim altimeter FBW pins to
-// STD because it computes the displayed altitude itself (FlyByWireInterface.cpp:3061-3070).
+// It is `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD` — the FCU's own output, written every frame
+// from its baro_std (FlyByWireInterface.cpp:813, :2408), and the same name FBW's own
+// FcuSimvarPublisher reads. That is a more direct source than the stock KOHLSMAN SETTING STD
+// mirror it replaced.
 //
-// So the stock flag can never change, which is what a test pilot reported as "the altimeter
-// won't switch between standard and QNH, it is stuck on QNH". The PUSH/PULL events were fine
-// by then; the READBACK was dead, so the app could not see the change it had just made.
-//
-// The live state moved to `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD`, written every frame from
-// the FCU's own baro_std output (FlyByWireInterface.cpp:813, :2408) and new in this commit.
+// ⚠️ RETRACTION, kept deliberately. This file first claimed the stock mirror had lost its only
+// writer with MsfsBaroManager.ts and could never change again, and that this was why a tester
+// reported the altimeter stuck on QNH. Both claims are FALSE, disproven live on 1bbd304:
+// BARO_PUSH moved KOHLSMAN SETTING STD:1 0->1 and BARO_PULL moved it 1->0, both sides, with
+// nothing in MSFSBA writing it. The tester was simply running a pre-fix build (470a5cfa), which
+// debug.log showed emitting the deleted H:A380X_EFIS_CP_BARO_PUSH_1. The real cure was the event
+// migration, not this. Check the running binary before diagnosing behaviour.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
