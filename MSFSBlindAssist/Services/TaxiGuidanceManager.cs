@@ -820,10 +820,12 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach900Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
-    // Latches true when distToExitFeet first drops below ROLLOUT_EXIT_TONE_ARM_FT.
-    // Used to reset the heading-error smoother exactly once at that point so the
-    // exit-bearing tone fires immediately rather than lagging the transition.
-    private bool _rolloutExitToneArmed = false;
+    // Which steering-tone behaviour the last rollout frame used. A change resets the
+    // heading-error smoother so a DriftCorrection residual never leaks into the sharp
+    // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
+    // which reset the smoother on exit-tone entry only — the drift tone needs the same
+    // treatment in both directions.
+    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.
@@ -890,12 +892,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // pilot has started the turn onto the exit". Once we see this, hand
     // over to normal taxi guidance even if speed is still high (a
     // high-speed exit at 60 kt is plausible on Code-E rapid exits).
-    private const double ROLLOUT_TURN_BEGAN_HDG_DEG = 15.0;
+    private const double ROLLOUT_TURN_BEGAN_HDG_DEG = Navigation.RolloutExitGate.TurnBegunHeadingDeg;
     // Above this GS a heading deviation is NOT treated as a deliberate exit
     // turn. Category E rapid-exit taxiways top out at ~90 kt; at higher speeds
     // the deviation is touchdown yaw, crosswind crab alignment, or sim physics
     // at wheel contact — not a real runway exit maneuver.
-    private const double ROLLOUT_TURN_MAX_GS_KTS = 90.0;
+    private const double ROLLOUT_TURN_MAX_GS_KTS = Navigation.RolloutExitGate.TurnMaxGroundSpeedKts;
 
     // Speed-based handoff is now gated on proximity to the chosen exit. On long
     // runways the aircraft routinely decelerates below ROLLOUT_TAXI_GS_KTS
@@ -962,7 +964,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // Chosen to give the pilot ~2 s of directional preview before the
     // "turn now" speech fires at 150 ft — unambiguous "this direction" cue
     // without the premature-action risk of a long gradual build-up.
-    private const double ROLLOUT_EXIT_TONE_ARM_FT = 300.0;
+    private const double ROLLOUT_EXIT_TONE_ARM_FT = Navigation.RolloutExitGate.ExitToneArmFeet;
 
     // Explicit thresholds used in the exit-guidance zone (dist ≤ ARM_FT).
     // Tighter than the width-scaled runway values (4.2° activation on a wide
@@ -974,6 +976,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double ROLLOUT_EXIT_TONE_ACTIVATION_DEG = 2.5;
     private const double ROLLOUT_EXIT_TONE_MAX_PAN_DEG = 15.0;
 
+    // Drift-correction tone thresholds — the rollout phase that used to be silent.
+    // See Navigation/RolloutExitGate for where 2.0 comes from (it is the codebase's
+    // existing floor for a meaningful heading deviation) and why the max pan matches
+    // every other steering tone rather than inventing a wider one.
+    private const double ROLLOUT_DRIFT_TONE_SILENT_DEG = Navigation.RolloutExitGate.DriftToneSilentDeg;
+    private const double ROLLOUT_DRIFT_TONE_ACTIVATION_DEG = Navigation.RolloutExitGate.DriftToneActivationDeg;
+    private const double ROLLOUT_DRIFT_TONE_MAX_PAN_DEG = Navigation.RolloutExitGate.DriftToneMaxPanDeg;
+
     // Ground speed below which the steering tone activates during rollout.
     // Above this speed the tone is silent — at 80+ kt a pan cue is useless
     // because the pilot can't react and a high-speed exit is still many
@@ -982,7 +992,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // = pans toward the exit so the pilot steers to keep it centred and
     // naturally turns onto the exit. 50 kt gives ~10 s more lead time than
     // 40 kt at typical deceleration — meaningful for high-speed RETs (40–60 kt).
-    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = 50.0;
+    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = Navigation.RolloutExitGate.ToneActiveBelowGroundSpeedKts;
 
     // Below this ground speed, runway-end countdown mode considers the
     // aircraft effectively stopped and hands off to plain Taxiing. Lower

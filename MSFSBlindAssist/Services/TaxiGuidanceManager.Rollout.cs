@@ -21,7 +21,7 @@ public partial class TaxiGuidanceManager
         _rolloutApproach900Announced = false;
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
-        _rolloutExitToneArmed = false;
+        _rolloutToneMode = Navigation.RolloutToneMode.Silent;
     }
 
     /// <summary>
@@ -804,14 +804,20 @@ public partial class TaxiGuidanceManager
             // Fall through — bearing-to-junction tone below acts as the fallback.
         }
 
-        // Rollout steering tone — exit-only design:
+        // Rollout steering tone — three modes, selected by RolloutExitGate.SelectToneMode:
         //
-        // Tone is silent until the aircraft is within ROLLOUT_EXIT_TONE_ARM_FT (300 ft)
-        // of the chosen exit AND below ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt).
-        // Before 300 ft the tone stays off — no centreline steering during high-speed
-        // rollout; autopilot crab / crosswind alignment would cause confusing pan.
+        // Above ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS (50 kt) the tone is Silent — at runway
+        // speed a pan cue is useless and autopilot crab / crosswind alignment would cause
+        // confusing pan.
         //
-        // At 300 ft (≤50 kt): desired heading = bearing to the exit junction node.
+        // Below 50 kt and beyond ROLLOUT_EXIT_TONE_ARM_FT (300 ft) of the chosen exit, the
+        // tone is DriftCorrection: desired heading is the runway itself, steering the pilot
+        // back to the centreline through the long deceleration that used to be silent.
+        // KSEA 34L 2026-08-21: a 15.1° drift built up here with no cue at all, and the
+        // steering tone's first utterance was a 79° hard pan once ExitBearing took over.
+        //
+        // Within 300 ft (≤50 kt) the tone is ExitBearing: desired heading = bearing to the
+        // exit junction node.
         //   When the junction is on the centreline this is ≈ runway heading → tone stays
         //   silent; when the junction is off-axis (RET, angled exit) the bearing deviates
         //   naturally as the aircraft approaches → appropriate directional pan.
@@ -826,70 +832,77 @@ public partial class TaxiGuidanceManager
         //   exits like EIDW S5 (apron ~90° off runway). Bearing-to-junction stays silent
         //   while the aircraft is on centreline and only deviates as the aircraft nears
         //   an off-axis junction — appropriate directional pan without false alarms.
-        if (groundSpeedKts > ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
+        var toneMode = Navigation.RolloutExitGate.SelectToneMode(groundSpeedKts, distToExitFeet);
+        if (toneMode != _rolloutToneMode)
+        {
+            // Start every mode from a clean filter so the pan is sharp and immediate rather
+            // than ramping out of the previous mode's residual.
+            _headingErrorInitialized = false;
+            _rolloutToneMode = toneMode;
+        }
+
+        if (toneMode == Navigation.RolloutToneMode.Silent)
         {
             _steeringTone.Pause();
             _headingErrorInitialized = false;
-            _rolloutExitToneArmed = false;
         }
-        else if (distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT)
+        else
         {
-            // First entry into exit-bearing zone: reset smoother so the pan
-            // is sharp and immediate rather than ramping up from a near-zero residual.
-            if (!_rolloutExitToneArmed)
-            {
-                _rolloutExitToneArmed = true;
-                _headingErrorInitialized = false;
-            }
-
-            // Desired heading = bearing from current position to the exit node.
-            // This is ≈runway heading when the junction is on the centreline,
-            // and deviates toward the exit only as the aircraft nears an off-axis
-            // junction. "Guide me to the junction" rather than "point at the apron."
-            //
-            // Exception: once the "turn now" callout has fired for a Normal exit
-            // (50–110°), switch to ExitBearingTrue as the desired heading.
-            // Bearing-to-junction fights the turn at this range — the junction is
-            // still ahead, so as the pilot turns off the runway the heading error
-            // flips toward the wrong side. ExitBearingTrue correctly decreases as
-            // the pilot aligns with the exit, telling them how much more to turn.
-            // The Taxiing handoff via turnBegun (15° heading change) takes over
-            // shortly after and continues this guidance through the full turn.
             double desiredHeading;
-            if (_rolloutTurnNowAnnounced && _rolloutExit!.ExitType == "Normal" && _rolloutExit.ExitBearingTrue > 0.0)
+            double toneSilentDeg;
+            double toneActivationDeg;
+            double toneMaxPanDeg;
+
+            if (toneMode == Navigation.RolloutToneMode.ExitBearing)
             {
-                desiredHeading = _rolloutExit.ExitBearingTrue;
+                // Exception: once the "turn now" callout has fired for a Normal exit
+                // (50–110°), switch to ExitBearingTrue as the desired heading.
+                // Bearing-to-junction fights the turn at this range — the junction is
+                // still ahead, so as the pilot turns off the runway the heading error
+                // flips toward the wrong side. ExitBearingTrue correctly decreases as
+                // the pilot aligns with the exit, telling them how much more to turn.
+                if (_rolloutTurnNowAnnounced && _rolloutExit!.ExitType == "Normal"
+                    && _rolloutExit.ExitBearingTrue > 0.0)
+                {
+                    desiredHeading = _rolloutExit.ExitBearingTrue;
+                }
+                else
+                {
+                    const double MPD = 111132.0;
+                    double midLatRad = (lat + _rolloutExit!.Latitude) * 0.5 * Math.PI / 180.0;
+                    double bN = (_rolloutExit.Latitude - lat) * MPD;
+                    double bE = (_rolloutExit.Longitude - lon) * MPD * Math.Cos(midLatRad);
+                    desiredHeading = (Math.Atan2(bE, bN) * 180.0 / Math.PI + 360.0) % 360.0;
+                }
+
+                toneSilentDeg = ROLLOUT_EXIT_TONE_SILENT_DEG;
+                toneActivationDeg = ROLLOUT_EXIT_TONE_ACTIVATION_DEG;
+                toneMaxPanDeg = ROLLOUT_EXIT_TONE_MAX_PAN_DEG;
             }
             else
             {
-                const double MPD = 111132.0;
-                double midLatRad = (lat + _rolloutExit!.Latitude) * 0.5 * Math.PI / 180.0;
-                double bN = (_rolloutExit.Latitude - lat) * MPD;
-                double bE = (_rolloutExit.Longitude - lon) * MPD * Math.Cos(midLatRad);
-                desiredHeading = (Math.Atan2(bE, bN) * 180.0 / Math.PI + 360.0) % 360.0;
+                // DriftCorrection — the phase that used to be silent. Desired heading is
+                // the runway itself, so the tone reads "steer back to the centreline".
+                // KSEA 34L 2026-08-21: the pilot drifted to 15.1° with no cue at all, and
+                // the tone's first utterance was a 79° hard pan after the handoff.
+                desiredHeading = _rolloutRunwayHeadingTrue;
+                toneSilentDeg = ROLLOUT_DRIFT_TONE_SILENT_DEG;
+                toneActivationDeg = ROLLOUT_DRIFT_TONE_ACTIVATION_DEG;
+                toneMaxPanDeg = ROLLOUT_DRIFT_TONE_MAX_PAN_DEG;
             }
+
             double rawError = NormalizeAngle(desiredHeading - headingTrue);
             _smoothedHeadingError = _headingErrorInitialized
                 ? _smoothedHeadingError * (1 - HEADING_ERROR_FILTER_ALPHA) + rawError * HEADING_ERROR_FILTER_ALPHA
                 : rawError;
             _headingErrorInitialized = true;
+
             if (!_steeringToneSuppressed)
             {
                 _steeringTone.Resume();
-                // Tight explicit thresholds so the tone gives fine steering even on
-                // shallow exits (3–5°). Silent on-bearing, pans with any meaningful deviation.
                 _steeringTone.UpdateHeadingErrorWithThresholds(
-                    _smoothedHeadingError,
-                    ROLLOUT_EXIT_TONE_SILENT_DEG,
-                    ROLLOUT_EXIT_TONE_ACTIVATION_DEG,
-                    ROLLOUT_EXIT_TONE_MAX_PAN_DEG);
+                    _smoothedHeadingError, toneSilentDeg, toneActivationDeg, toneMaxPanDeg);
             }
-        }
-        else
-        {
-            // Outside 300 ft arm distance — tone silent. Smoother resets on
-            // exit-tone arming so the pan is sharp when it does start.
-            _steeringTone.Pause();
         }
     }
 
