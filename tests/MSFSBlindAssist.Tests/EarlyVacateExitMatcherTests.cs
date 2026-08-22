@@ -165,6 +165,26 @@ public class EarlyVacateExitMatcherTests
             new[] { planned, beyond }, planned, Along, 51.2));
     }
 
+    // The beyond-the-planned-exit guard must be SIGNED, not an absolute-distance compare.
+    // Absolute values also threw away a candidate BEHIND the aircraft that lay further behind
+    // than the planned exit lay ahead — the ordinary neighbouring-exit vacate: 1,500 ft exit
+    // spacing, an ~8-degree track off the axis, and the first laterally-clear frame reads
+    // 910 ft past the exit actually taken and 590 ft short of the planned one. That matched
+    // nothing and concluded with "left the runway short of Z" instead of following onto Y.
+    [Fact]
+    public void NeighbourFurtherBehindThanThePlannedExitIsAhead_IsStillChosen()
+    {
+        var planned = Exit(1, "Z", "Right");
+        var neighbour = Exit(2, "Y", "Right");
+
+        double Along(LandingExit e) => e.NodeId == 1 ? -590.0 : 910.0;
+
+        var picked = RolloutExitGate.MatchEarlyVacateExit(
+            new[] { planned, neighbour }, planned, Along, 51.2);
+
+        Assert.Same(neighbour, picked);
+    }
+
     // The motivating case still works: the neighbour the pilot actually turned onto is much
     // nearer along-track than the planned exit, so it wins.
     [Fact]

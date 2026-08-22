@@ -7,7 +7,12 @@ public enum RolloutToneMode
 {
     /// <summary>Tone paused — too fast for a heading cue to mean anything.</summary>
     Silent,
-    /// <summary>Steer back to the runway heading. Owns the long silent middle of the rollout.</summary>
+    /// <summary>
+    /// Steer back onto the runway HEADING. Owns the long silent middle of the rollout.
+    /// A heading cue only — there is no cross-track term, so an aircraft that has drifted
+    /// and then re-aligned goes quiet while still laterally displaced. Deliberate; do not
+    /// describe this mode as steering back to the CENTRELINE.
+    /// </summary>
     DriftCorrection,
     /// <summary>Steer at the exit junction. Owns the last 300 ft before the exit.</summary>
     ExitBearing
@@ -257,7 +262,7 @@ public static class RolloutExitGate
     /// <para>The window-and-direction check below is a SECOND, later fix: a pilot turning
     /// off between 3° and 15° of deviation (below <see cref="TurnBegunHeadingDeg"/>, so
     /// <c>turnBegun</c> hasn't accepted the turn yet), more than <see cref="ExitToneArmFeet"/>
-    /// from the exit NODE, was getting a "steer back to the centreline" DriftCorrection tone
+    /// from the exit NODE, was getting a "hold the runway heading" DriftCorrection tone
     /// that directly opposes a turn <see cref="IsExitTurnBegun"/> is about to accept — real,
     /// not hypothetical, because <see cref="TurnWindowFeet"/>'s own derivation shows an exit
     /// node can read up to 558 ft forward of its pavement junction. Silence, not opposition,
@@ -372,8 +377,10 @@ public static class RolloutExitGate
     /// of tolerance allows a candidate to read slightly ahead of the aircraft (an exit node
     /// forward of its own pavement junction), and nearest-by-absolute-value is what lets that
     /// still-ahead-but-close candidate win over one that reads further behind. A candidate must
-    /// also be strictly NEARER along-track than the planned exit — see the guard's own comment
-    /// for the self-contradicting callout that admits otherwise.</para>
+    /// also lie strictly BEHIND the planned exit along the runway — a SIGNED test, not an
+    /// absolute-distance one; see the guard's own comment for the self-contradicting callout
+    /// that admits a beyond-the-planned-exit candidate, and for the ordinary neighbouring-exit
+    /// vacate an absolute comparison threw away.</para>
     /// </summary>
     /// <param name="signedAlongPastFeet">
     /// Along-runway distance from each exit to the aircraft, in FEET, POSITIVE when the
@@ -402,13 +409,22 @@ public static class RolloutExitGate
 
         string side = aircraftLateralSignedMetres >= 0.0 ? "Right" : "Left";
 
-        // A substitute must be nearer along-track than the planned exit itself. Without this
-        // a candidate inside the forward slack can win while sitting BEYOND the planned exit,
-        // and the callout contradicts itself: "Left the runway short of taxiway P. Now
+        // A substitute must not sit BEYOND the planned exit. Without this a candidate inside
+        // the forward slack can win while lying further down the runway than the planned
+        // exit, and the callout contradicts itself: "Left the runway short of taxiway P. Now
         // following taxiway R." with R past P. That was unreachable while the branch was only
         // entered 1,000 ft short (any forward-slack candidate was then between the aircraft
         // and the planned exit) and became reachable when the entry moved to 350 ft.
-        double plannedPassed = Math.Abs(signedAlongPastFeet(plannedExit));
+        //
+        // The test is SIGNED, deliberately. Comparing Math.Abs on both sides also threw away
+        // a candidate BEHIND the aircraft whenever it lay further behind than the planned
+        // exit lay ahead — which is the ordinary neighbouring-exit vacate this method exists
+        // to catch: 1,500 ft exit spacing, an ~8° track, and the first laterally-clear frame
+        // is ~910 ft past the exit actually taken and 590 ft short of the planned one. That
+        // matched nothing and concluded with "left the runway short of Z" instead of
+        // following the pilot onto Y. Only a candidate FURTHER DOWN the runway than the
+        // planned exit is a contradiction; one behind the aircraft never is.
+        double plannedAlongPast = signedAlongPastFeet(plannedExit);
 
         LandingExit? best = null;
         double bestRank = double.MaxValue;
@@ -429,8 +445,11 @@ public static class RolloutExitGate
             if (passed < -EarlyVacateForwardSlackFeet) continue;  // still ahead of the aircraft
             if (passed > EarlyVacateMaxPassedFeet) continue;      // too far behind to be this turnoff
 
+            // Smaller signedAlongPast = further down the runway. Refuse only a candidate at
+            // or beyond the planned exit; see plannedAlongPast above for why this is signed.
+            if (passed <= plannedAlongPast) continue;
+
             double rank = Math.Abs(passed);
-            if (rank >= plannedPassed) continue;
 
             if (best == null || rank < bestRank)
             {

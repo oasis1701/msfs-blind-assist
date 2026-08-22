@@ -483,6 +483,12 @@ public partial class TaxiGuidanceManager
             // If it did, the touchdown route in _route targets the exit the pilot has just
             // left short of, so it can never be resumed as a fallback.
             bool earlyVacateSwapped = false;
+            // The substitute-exit callout, held until the re-route AND the reachability guard
+            // below have both accepted. AnnounceInstruction is AnnounceImmediate, and BOTH
+            // conclude paths further down announce through HandleArrival the same way, so
+            // speaking it at the swap meant a failed re-route or a refused route cut it off
+            // mid-sentence — the pilot heard a fragment of a claim the same frame withdrew.
+            string? pendingVacateAnnouncement = null;
 
             // Early-vacate retarget. Entered only when the aircraft is BOTH laterally off
             // the runway AND vacated away from the planned exit. Both gates are load-bearing: the
@@ -545,7 +551,12 @@ public partial class TaxiGuidanceManager
                     string vacatedName = string.IsNullOrEmpty(vacatedAt.TaxiwayName)
                         ? "exit taxiway"
                         : $"taxiway {vacatedAt.TaxiwayName}";
-                    AnnounceInstruction($"Left the runway short of {plannedNameSpoken}. Now following {vacatedName}.");
+                    // Held, not spoken: see pendingVacateAnnouncement above. It is announced
+                    // only on the path that actually ends with guidance following the
+                    // substitute — every conclude path below returns without it, and its own
+                    // closure is then the single thing the pilot hears.
+                    pendingVacateAnnouncement =
+                        $"Left the runway short of {plannedNameSpoken}. Now following {vacatedName}.";
 
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
@@ -715,6 +726,11 @@ public partial class TaxiGuidanceManager
                 StopGuidance();
                 return;
             }
+
+            // The substitute-exit callout, now that the re-route and the reachability guard
+            // have both accepted and the tone really is about to follow the taxiway named.
+            if (pendingVacateAnnouncement != null)
+                AnnounceInstruction(pendingVacateAnnouncement);
 
             SetState(TaxiGuidanceState.Taxiing);
             _steeringTone.Resume();
@@ -995,7 +1011,8 @@ public partial class TaxiGuidanceManager
         //
         // Below 50 kt and beyond ROLLOUT_EXIT_TONE_ARM_FT (300 ft) of the chosen exit, the
         // tone is DriftCorrection: desired heading is the runway itself, steering the pilot
-        // back to the centreline through the long deceleration that used to be silent.
+        // back onto the runway heading through the long deceleration that used to be silent.
+        // Heading only — no cross-track term (see the mode's own comment further down).
         // KSEA 34L 2026-08-21: a 15.1° drift built up here with no cue at all, and the
         // steering tone's first utterance was a 79° hard pan once ExitBearing took over.
         //
@@ -1070,8 +1087,13 @@ public partial class TaxiGuidanceManager
             }
             else
             {
-                // DriftCorrection — the phase that used to be silent. Desired heading is
-                // the runway itself, so the tone reads "steer back to the centreline".
+                // DriftCorrection — the phase that used to be silent. Desired heading is the
+                // runway itself, so the tone reads "steer back onto the runway heading".
+                // HEADING ONLY — there is no cross-track term, so an aircraft that has drifted
+                // and then re-aligned with the runway gets silence while still displaced,
+                // tracking parallel. That is deliberate (a constant offset is not closing on
+                // the edge, and a cross-track term would fight the exit turn), but do not
+                // describe this tone as steering back to the CENTRELINE: it does not.
                 // KSEA 34L 2026-08-21: the pilot drifted to 15.1° with no cue at all, and
                 // the tone's first utterance was a 79° hard pan after the handoff.
                 desiredHeading = _rolloutRunwayHeadingTrue;
