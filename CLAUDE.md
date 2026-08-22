@@ -366,6 +366,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The rollout steering tone has THREE modes (silent >50 kt / exit-bearing ≤300 ft / drift-correction in between) — never restore the two-mode "exit-only" design that left the middle of the rollout with no cue at all. → [taxi-guidance.md](docs/taxi-guidance.md)
 - After an early vacate the handoff must never re-route to the PLANNED exit — with no runway edges in the graph, A* routes between two exits the long way round (KSEA: 1,678 m up the parallel taxiway and back). Retarget or conclude. → [taxi-guidance.md](docs/taxi-guidance.md)
 - `MatchEarlyVacateExit` measures along-track PER EXIT and must never compare against `DistanceFromThresholdFeet` — that is measured from the LANDING threshold and breaks at every displaced-threshold runway. → [taxi-guidance.md](docs/taxi-guidance.md)
+- `IsHandoffRouteReachable` must gate every landing-exit handoff re-route — a route whose first segment the aircraft is not essentially already on must CONCLUDE guidance, never steer the tone at it (KSEA 34L: the tone panned 79° at a segment 53.9 m away with the aircraft 17.8 m outside the runway edge). → [taxi-guidance.md](docs/taxi-guidance.md)
 
 ### GSX gate integration, docking guidance & distance units (→ [gsx.md](docs/gsx.md))
 

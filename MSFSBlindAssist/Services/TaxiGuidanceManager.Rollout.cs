@@ -486,6 +486,26 @@ public partial class TaxiGuidanceManager
                     RolloutDiag($"Early vacate: left the runway {distToExitFeet:F0} ft short of " +
                         $"'{_rolloutExit.TaxiwayName}' (lateral {lateralSignedM:F0} m) — " +
                         $"retargeting to '{vacatedAt.TaxiwayName}' node={vacatedAt.NodeId}");
+
+                    // Capture the PLANNED exit's display name — same "Taxiway X" format
+                    // LoadRoute gives _route.DestinationName — BEFORE the swap below. If the
+                    // substitute's handoff route later fails the reachability guard,
+                    // HandleArrival must still name the exit the pilot was steered toward and
+                    // missed, not the substitute they ended up standing on.
+                    string plannedName = _rolloutExit.TaxiwayName.Length > 0
+                        ? $"Taxiway {_rolloutExit.TaxiwayName}"
+                        : "exit taxiway";
+                    _landingExitVacatedEarlyPlannedName = plannedName;
+
+                    // Every comparable retarget in this file announces the swap
+                    // (RetargetLandingExit, the undershoot retarget below) — silently
+                    // repointing the tone at a different exit left the pilot's first notice
+                    // of it at the arrival callout, with no warning the tone had moved.
+                    string vacatedName = string.IsNullOrEmpty(vacatedAt.TaxiwayName)
+                        ? "exit taxiway"
+                        : $"taxiway {vacatedAt.TaxiwayName}";
+                    AnnounceInstruction($"Left the runway short of {plannedName}. Now following {vacatedName}.");
+
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
                     _rolloutExit = vacatedAt;
@@ -897,6 +917,11 @@ public partial class TaxiGuidanceManager
         // KSEA 34L 2026-08-21: a 15.1° drift built up here with no cue at all, and the
         // steering tone's first utterance was a 79° hard pan once ExitBearing took over.
         //
+        // Exception, within RolloutExitGate.TurnWindowFeet of the exit: a heading deviation
+        // that is toward a KNOWN exit side goes Silent instead of DriftCorrection — don't
+        // fight a turn IsExitTurnBegun is about to accept just because it hasn't reached the
+        // 15° turnBegun threshold yet. See RolloutExitGate.SelectToneMode's doc.
+        //
         // Within 300 ft (≤50 kt) the tone is ExitBearing: desired heading = bearing to the
         // exit junction node.
         //   When the junction is on the centreline this is ≈ runway heading → tone stays
@@ -913,7 +938,8 @@ public partial class TaxiGuidanceManager
         //   exits like EIDW S5 (apron ~90° off runway). Bearing-to-junction stays silent
         //   while the aircraft is on centreline and only deviates as the aircraft nears
         //   an off-axis junction — appropriate directional pan without false alarms.
-        var toneMode = Navigation.RolloutExitGate.SelectToneMode(groundSpeedKts, distToExitFeet);
+        var toneMode = Navigation.RolloutExitGate.SelectToneMode(
+            groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather

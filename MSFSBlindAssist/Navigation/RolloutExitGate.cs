@@ -125,17 +125,55 @@ public static class RolloutExitGate
     /// <summary>
     /// Which steering-tone behaviour applies this frame.
     ///
-    /// <para><see cref="RolloutToneMode.Silent"/> and <see cref="RolloutToneMode.ExitBearing"/>
-    /// reproduce the pre-2026-08 behaviour exactly.
-    /// <see cref="RolloutToneMode.DriftCorrection"/> is new and fills the gap that was silent:
-    /// slowed down, but the exit is still far away.</para>
+    /// <para><see cref="RolloutToneMode.Silent"/> (the ground-speed case) and
+    /// <see cref="RolloutToneMode.ExitBearing"/> reproduce the pre-2026-08 behaviour exactly.
+    /// <see cref="RolloutToneMode.DriftCorrection"/> is the 2026-08 fix and fills the gap
+    /// that was silent: slowed down, but the exit is still far away.</para>
+    ///
+    /// <para>The window-and-direction check below is a SECOND, later fix: a pilot turning
+    /// off between 3° and 15° of deviation (below <see cref="TurnBegunHeadingDeg"/>, so
+    /// <c>turnBegun</c> hasn't accepted the turn yet), more than <see cref="ExitToneArmFeet"/>
+    /// from the exit NODE, was getting a "steer back to the centreline" DriftCorrection tone
+    /// that directly opposes a turn <see cref="IsExitTurnBegun"/> is about to accept — real,
+    /// not hypothetical, because <see cref="TurnWindowFeet"/>'s own derivation shows an exit
+    /// node can read up to 558 ft forward of its pavement junction. Silence, not opposition,
+    /// is correct here: don't fight a turn the gate is about to accept.</para>
+    ///
+    /// <para>A KNOWN exit side is required (<see cref="HasKnownExitSide"/>) — not merely
+    /// deferred to <see cref="IsTurnTowardExit"/>'s own unknown-side degradation — because at
+    /// an airport where <c>ExitBearingTrue</c> is unset a drift and an exit turn are
+    /// indistinguishable, and there the drift tone must keep working rather than going
+    /// silent.</para>
     /// </summary>
-    public static RolloutToneMode SelectToneMode(double groundSpeedKts, double distToExitFeet)
+    public static RolloutToneMode SelectToneMode(
+        double groundSpeedKts,
+        double distToExitFeet,
+        double headingDeltaSignedDeg,
+        double exitRelativeBearingDeg)
     {
         if (groundSpeedKts > ToneActiveBelowGroundSpeedKts) return RolloutToneMode.Silent;
         if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
+
+        if (distToExitFeet <= TurnWindowFeet
+            && Math.Abs(headingDeltaSignedDeg) >= DriftToneSilentDeg
+            && HasKnownExitSide(exitRelativeBearingDeg)
+            && IsTurnTowardExit(headingDeltaSignedDeg, exitRelativeBearingDeg))
+        {
+            return RolloutToneMode.Silent;
+        }
+
         return RolloutToneMode.DriftCorrection;
     }
+
+    /// <summary>
+    /// Does the exit have a knowable side, per the same <see cref="ExitSideMinBearingDeg"/>
+    /// floor <see cref="IsTurnTowardExit"/> degrades on? False for the
+    /// <c>ExitBearingTrue == 0.0</c> "unknown" sentinel (which normalises to a relative
+    /// bearing of 0.0) and for any exit close enough to dead-ahead to be geometrically
+    /// indistinguishable from straight.
+    /// </summary>
+    public static bool HasKnownExitSide(double exitRelativeBearingDeg)
+        => Math.Abs(exitRelativeBearingDeg) >= ExitSideMinBearingDeg;
 
     /// <summary>
     /// Has the pilot begun the turn onto the selected exit?
@@ -189,7 +227,7 @@ public static class RolloutExitGate
     /// </summary>
     public static bool IsTurnTowardExit(double headingDeltaSignedDeg, double exitRelativeBearingDeg)
     {
-        if (Math.Abs(exitRelativeBearingDeg) < ExitSideMinBearingDeg) return true;
+        if (!HasKnownExitSide(exitRelativeBearingDeg)) return true;
         return Math.Sign(headingDeltaSignedDeg) == Math.Sign(exitRelativeBearingDeg);
     }
 
@@ -203,9 +241,11 @@ public static class RolloutExitGate
     /// because the taxi graph carries no runway edges and that is the only path between the
     /// two exits.</para>
     ///
-    /// <para>Selection is "the last exit actually reached": you cannot vacate at an exit you
-    /// have not got to yet. <see cref="EarlyVacateForwardSlackFeet"/> of tolerance allows for
-    /// an exit node that reads forward of its own pavement junction.</para>
+    /// <para>Selection ranks candidates by <c>Math.Abs(passed)</c> — nearest to the aircraft,
+    /// not the smallest positive "last exit reached". <see cref="EarlyVacateForwardSlackFeet"/>
+    /// of tolerance allows a candidate to read slightly ahead of the aircraft (an exit node
+    /// forward of its own pavement junction), and nearest-by-absolute-value is what lets that
+    /// still-ahead-but-close candidate win over one that reads further behind.</para>
     /// </summary>
     /// <param name="signedAlongPastFeet">
     /// Along-runway distance from each exit to the aircraft, in FEET, POSITIVE when the
@@ -245,7 +285,7 @@ public static class RolloutExitGate
             // A blank ExitSide means the graph could not determine a side, NOT that the exit
             // is on the wrong one. Rank it on distance instead of dropping it — excluding it
             // would strand the pilot at exactly the airports whose navdata is already thin.
-            if (candidate.ExitSide.Length > 0
+            if (!string.IsNullOrEmpty(candidate.ExitSide)
                 && !string.Equals(candidate.ExitSide, side, StringComparison.OrdinalIgnoreCase))
                 continue;
 

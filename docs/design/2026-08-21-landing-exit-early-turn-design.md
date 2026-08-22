@@ -87,8 +87,12 @@ the planned exit.
 - A candidate must satisfy `signedAlongPast >= -EARLY_VACATE_FORWARD_SLACK_FT` (−600):
   at or past the exit, with slack, because a hold-short-marker exit node can read forward
   of the pavement junction the pilot actually turned at (see "Derivations").
-- Among candidates, pick the **smallest positive** `signedAlongPast` — the last exit
-  actually passed. You cannot vacate at an exit you have not reached.
+- Among candidates, pick the **smallest `Math.Abs(signedAlongPast)`** — the exit whose
+  node is nearest the aircraft, whether that reads slightly ahead (within the forward
+  slack) or slightly behind. Nearest-by-absolute-value, not "smallest positive": the
+  forward slack exists precisely because a node can read ahead of the junction the pilot
+  actually turned at, so the nearest candidate is sometimes the one still reading
+  (slightly) ahead of the aircraft, not the one already furthest behind it.
 - Reject if that value exceeds `EXIT_COVERAGE_GAP_FT` (1400) or if the winner is the
   planned exit.
 - Returns `null` when nothing qualifies; the caller then concludes guidance.
@@ -173,7 +177,7 @@ aircraft is not essentially already on.
 | `ROLLOUT_DRIFT_TONE_MAX_PAN_DEG` | 15.0 | matches every other tone in the file |
 | `EARLY_VACATE_FORWARD_SLACK_FT` | 600.0 | derived below |
 | `HANDOFF_REACH_MARGIN_M` | 15.0 | reuses `lateralToleranceM`'s buffer |
-| `EXIT_COVERAGE_GAP_FT` | 1400.0 | **existing**, reused, not duplicated |
+| `EXIT_COVERAGE_GAP_FT` | 1400.0 | duplicates `TaxiGraph.GetLandingExits`' value — not reusable, see below |
 
 ### Derivations
 
@@ -193,10 +197,12 @@ exits derive from hold-short nodes.
 rounded, applied in the opposite direction so a hold-short-marker node reading forward of
 the junction the pilot turned at still qualifies as "an exit already passed".
 
-**`EXIT_COVERAGE_GAP_FT` = 1,400 ft** is reused rather than paralleled. Its existing
-comment records it as measured across 266 runway directions at 39 airports as the
-distance beyond which two nodes stop describing the same physical turnoff — exactly the
-question `MatchEarlyVacateExit` is asking.
+**`EXIT_COVERAGE_GAP_FT` = 1,400 ft** duplicates rather than reuses `TaxiGraph.GetLandingExits`'
+value: that constant is a method-local `const` there and cannot be referenced from
+`RolloutExitGate`. Its existing comment records it as measured across 266 runway
+directions at 39 airports as the distance beyond which two nodes stop describing the same
+physical turnoff — exactly the question `MatchEarlyVacateExit` is asking — so the two must
+be kept in step by hand.
 
 **Drift deadband 2° / 3°.** 2° is the codebase's existing floor for a meaningful heading
 deviation (`Math.Max(2.0, exitAngle * 0.7)` in `alignedWithExit`). As a cross-check
@@ -213,7 +219,7 @@ and starts panning about 3.5 s before the old handoff fired.
 | `ExitSide == ""` | Side filter skipped for that candidate; ranked on distance alone. |
 | Displaced threshold | No threshold reference is used anywhere in the matcher. |
 | `PathWidth == 0` | Generous 25 m half-width fallback; biased toward accepting. |
-| No-graph rollout (`BeginLandingRolloutNoGraph`) | *Gains* the drift tone, which it never had. Handoff paths are unchanged: the re-route already cannot run without a graph. |
+| No-graph rollout (`BeginLandingRolloutNoGraph`) | *Gains* the drift tone, which it never had. Handoff paths are **not** unchanged: `BeginLandingRolloutNoGraph` populates `_rolloutAllExits`, so the early-vacate block runs here too. A no-match early vacate now concludes with the new "left the runway short of {exitName}" closure instead of falling through to the previous "Exit reached. Route unavailable…" message — the re-route itself is unchanged (it was already only ever attempted against `_graph`/`_dataProvider` populated by the preceding failed `LoadRoute`). |
 | Runway-end countdown, backtrack departure | Untouched. Both already own their own tones and their own state machines. |
 | Very shallow RET (< 15°) | `turnBegun` never fired for these. `exitedLaterally` and `alignedWithExit` still own them, unchanged. |
 | High-speed exit | `TryEarlyExitHandoff` is unchanged and still fires first, at ≤ 300 ft. |

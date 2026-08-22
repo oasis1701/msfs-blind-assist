@@ -282,6 +282,15 @@ public partial class TaxiGuidanceManager : IDisposable
     // distinct closure: this is the OPPOSITE failure to _landingExitMissed, which means
     // "you rolled past the vacate point", so the two must never share wording.
     private bool _landingExitVacatedEarly = false;
+    // Captured immediately before the early-vacate swap in UpdateLandingRollout, on the
+    // branch where a substitute exit was matched: the PLANNED exit's display name (the
+    // same "Taxiway X" / "exit taxiway" format LoadRoute uses for _route.DestinationName).
+    // _rolloutExit gets swapped to the substitute right after, so if that substitute's
+    // handoff route is later refused as unreachable, HandleArrival's "_route.DestinationName"
+    // would otherwise name the substitute the pilot is standing on, not the exit they were
+    // steered toward and missed. Null on the no-match branch, where _rolloutExit is never
+    // swapped and _route already names the planned exit correctly.
+    private string? _landingExitVacatedEarlyPlannedName = null;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -1649,8 +1658,8 @@ public partial class TaxiGuidanceManager : IDisposable
         // runway-end countdown, exactly like the LandingRollout overshoot path.
         if (_rolloutHandoffActive && _rolloutExit != null && _rolloutRunway != null)
         {
-            double hdgDeltaAbsPH = Math.Abs(NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue));
             double hdgDeltaSignedPH = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
+            double hdgDeltaAbsPH = Math.Abs(hdgDeltaSignedPH);
             double exitRelBearingPH = _rolloutExit.ExitBearingTrue != 0.0
                 ? NormalizeAngle(_rolloutExit.ExitBearingTrue - _rolloutRunwayHeadingTrue)
                 : 0.0;
@@ -2863,7 +2872,13 @@ public partial class TaxiGuidanceManager : IDisposable
             // simply going quiet reads as "broken" rather than "done, your
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
-            string exitName = _route?.DestinationName ?? "the exit";
+            // _landingExitVacatedEarlyPlannedName, when set, is the exit the pilot was
+            // actually steered toward and missed — captured before the early-vacate swap
+            // repointed _rolloutExit (and therefore _route.DestinationName) at a substitute
+            // exit. Without it, a substitute whose own handoff route then failed the
+            // reachability guard would have this closure name the substitute the pilot is
+            // standing on/near, not the exit they left the runway short of.
+            string exitName = _landingExitVacatedEarlyPlannedName ?? _route?.DestinationName ?? "the exit";
             if (_landingExitVacatedEarly)
             {
                 // The aircraft is off the runway but not at the planned exit, and nothing
@@ -2976,6 +2991,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
         _landingExitMissed = false;
         _landingExitVacatedEarly = false;
+        _landingExitVacatedEarlyPlannedName = null;
         _landingExitMinDistToTargetM = double.MaxValue;
         _missedVacateSince = DateTime.MinValue;
         _rolloutRunway = null;
