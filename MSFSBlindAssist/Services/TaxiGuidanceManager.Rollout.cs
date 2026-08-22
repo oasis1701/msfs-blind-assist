@@ -488,12 +488,17 @@ public partial class TaxiGuidanceManager
             // the runway AND far from the planned exit. Both gates are load-bearing: the
             // lateral gate is what "vacated" physically means, so a trulyStopped handoff on
             // the centreline 2,000 ft short of the exit keeps the planned exit and taxis to
-            // it; and the distance gate reuses the same window as IsExitTurnBegun, because
-            // ROLLOUT_NEAR_EXIT_FT (500) would classify a legitimate turn begun 800 ft out
-            // as an early vacate.
+            // it; and the distance gate is now ALONG-TRACK (RolloutExitGate.
+            // IsVacateAwayFromPlannedExit), not straight-line: measured along the runway and
+            // read under the lateral conjunct above, an aircraft on its OWN exit's pavement
+            // can be at most ~313 ft short of that exit's node, while distinct turnoffs sit
+            // 430-970 ft apart. The old straight-line TurnWindowFeet test alone left a 700 ft
+            // band in which a vacate onto a NEIGHBOURING exit re-routed to the planned one.
+            // The 500 ft tightening rejected earlier does not apply here — it reasoned about a
+            // turn begun ON the runway, which the lateral conjunct already excludes.
             bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
-            bool farFromPlannedExit = !pastExit
-                && distToExitFeet > Navigation.RolloutExitGate.TurnWindowFeet;
+            bool farFromPlannedExit = Navigation.RolloutExitGate.IsVacateAwayFromPlannedExit(
+                pastExit, signedAlongPastFt, distToExitFeet);
 
             if (offRunwayAtHandoff && farFromPlannedExit && _rolloutExit != null)
             {
