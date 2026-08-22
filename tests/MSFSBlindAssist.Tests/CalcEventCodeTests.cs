@@ -69,6 +69,27 @@ public class CalcEventCodeTests
         Assert.True(SimConnectManager.IsFbwFcuEvent(eventName));
     }
 
+    // ---- arbitrary RPN that must not be coalesced ------------------------------------------
+    //
+    // Not every calc write is an event. A bare K-event TOGGLE carries no value, so repeating it
+    // produces a byte-identical command and the second one is dropped: the A320/A380 wiper
+    // circuit toggle goes Off->Slow->Off->Slow and the last step silently does nothing, because
+    // its two ELECTRICAL_CIRCUIT_TOGGLE writes land back to back.
+    [Fact]
+    public void Repeating_the_same_raw_rpn_produces_distinct_commands()
+    {
+        Assert.NotEqual(
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 1),
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 2));
+    }
+
+    [Fact]
+    public void The_original_rpn_still_runs_after_the_inert_prefix()
+    {
+        Assert.Equal("5 0 * 77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)",
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 5));
+    }
+
     [Theory]
     [InlineData("AUTO_THROTTLE_ARM")]     // stock event — the legacy transport is correct
     [InlineData("KOHLSMAN_SET")]

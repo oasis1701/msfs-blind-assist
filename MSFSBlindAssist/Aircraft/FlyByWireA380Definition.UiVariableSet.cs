@@ -428,11 +428,11 @@ public partial class FlyByWireA380Definition
             bool on = (simConnect.GetCachedVariableValue(swKey) ?? 0.0) > 0.5;
             if (pos <= 0)
             {
-                if (on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                if (on) simConnect.ExecuteCalculatorCodeUnique($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
             }
             else
             {
-                if (!on) simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                if (!on) simConnect.ExecuteCalculatorCodeUnique($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
                 simConnect.ExecuteCalculatorCode($"{(pos == 1 ? 75 : 100)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
             }
             return true;

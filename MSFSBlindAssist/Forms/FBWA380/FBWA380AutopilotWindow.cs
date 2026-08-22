@@ -57,7 +57,7 @@ public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
         // K-EVENTS (K:A32NX.FCU_AP_1_PUSH / AP_2 / LOC / APPR) — NOT the dotted H-event the
         // A320 used. Firing the H-event does NOTHING (live-verified: H:A32NX.FCU_AP_2_PUSH left
         // A32NX_AUTOPILOT_2_ACTIVE at 0; the K-event flipped it to 1). So fire via the calc K path.
-        b.Click += (s, e) => { simConnect.ExecuteCalculatorCode($"(>K:{evt})"); RefreshStates(); };
+        b.Click += (s, e) => { simConnect.SendEvent(evt); RefreshStates(); };
         return b;
     }
 

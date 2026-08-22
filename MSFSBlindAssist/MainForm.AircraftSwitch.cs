@@ -60,7 +60,7 @@ public partial class MainForm
                 // probe never converges. See SimConnect.BridgeProbe for the measurements.
                 if (SimConnect.BridgeProbe.IsEcho(cached, _bridgeProbeNonce, _bridgeProbePrevNonce))
                 {
-                    simConnectManager.MarkCalcPathVerified();
+                    simConnectManager.MarkCalcPathVerified(_bridgeProbeAttempts);
                     return;
                 }
                 // First mismatch: the probe L:var did not exist when the data
@@ -80,7 +80,7 @@ public partial class MainForm
             {
                 // All 40 writes have been issued and attempt 40's read-back (above) just
                 // failed — give up: module absent or data-def read failing.
-                simConnectManager.MarkCalcPathProbeConcluded();
+                simConnectManager.MarkCalcPathProbeConcluded(_bridgeProbeAttempts, aircraftNeedsCalcPath: true);
                 return;
             }
             _bridgeProbeAttempts++;

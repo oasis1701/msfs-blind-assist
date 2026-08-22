@@ -392,7 +392,12 @@ public partial class FlyByWireA380Definition
         // windows already pass the correct A380 event names (incl. the TO_AP_HDG/VS variants), so
         // firing them as K-events makes all those FCU knob buttons work. (SPD/MACH stays the
         // conditional RPN above; TRK/FPA toggle goes through here too — verify it separately.)
-        else if (evt.StartsWith("A32NX.FCU_", StringComparison.Ordinal)) s.ExecuteCalculatorCode($"(>K:{evt})");
+        // Everything else goes through SendEvent, which routes A32NX.FCU_* down the
+        // calculator path AND makes each command unique. This used to call
+        // ExecuteCalculatorCode("(>K:{evt})") directly: that bypassed the probe (which is
+        // why the knob buttons kept working while the combos silently did not) but carried
+        // no sequence prefix, so two presses of the SAME button coalesced — the documented
+        // "one push did nothing, you had to push again". SendEvent now does both correctly.
         else s.SendEvent(evt);
         if (readback) OnPanelButtonFired(evt, s, a);
     }

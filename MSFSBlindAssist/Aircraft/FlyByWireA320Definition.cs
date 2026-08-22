@@ -8331,7 +8331,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool wantOn = pos > 0;
             bool isOn = (simConnect.GetCachedVariableValue(swKey) ?? 0) > 0.5;
             if (wantOn != isOn)
-                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                // Unique: two consecutive toggles of the SAME circuit are byte-identical
+                // and the second is dropped (Off->Slow->Off->Slow loses the last step).
+                simConnect.ExecuteCalculatorCodeUnique($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
             if (wantOn)
                 simConnect.ExecuteCalculatorCode($"{(pos >= 2 ? 100 : 75)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
             return true;

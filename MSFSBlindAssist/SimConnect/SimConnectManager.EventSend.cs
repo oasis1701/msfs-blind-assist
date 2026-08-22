@@ -28,6 +28,15 @@ public partial class SimConnectManager
         //     succeeds, fall through to the data-def write — the exact legacy (main) behavior,
         //     which works for Fenix and degrades to main's known imperfection for FBW for the
         //     few seconds before the probe verifies.
+        //
+        // ⚠️ DO NOT "clean up" the per-prefix ExecuteCalculatorCode routing in the FBW defs'
+        // HandleUIVariableSet catch-alls just because this global routing exists. Those write
+        // through the calculator UNCONDITIONALLY; this one is conditional on a probe that was
+        // measured failing silently for ten weeks (11 Jun - 22 Aug 2026). They are the reason
+        // the overhead panel kept working throughout that outage while the FCU combos did not,
+        // so they are deliberate defence in depth, not leftovers. Only ~7 of the ~71 calc call
+        // sites in those defs are even this shape; the rest are RPN logic and parameterised
+        // K-/H-events that could never be replaced by a plain L:var write.
         //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
         //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
         //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
@@ -205,6 +214,22 @@ public partial class SimConnectManager
     /// value that follows it, and a (>H:) still sees no argument. Same idiom, same reason, as
     /// the A320/A380 SD-page writes, the A380 RMP keypresses and the A380 seat-motor ramp.
     /// </summary>
+    /// <summary>
+    /// Makes an arbitrary RPN command textually unique so the MobiFlight channel cannot coalesce
+    /// it with an identical predecessor. Same inert "{seq} 0 *" prefix as BuildCalcEventCode.
+    ///
+    /// ⚠️ Needed by any VALUELESS write, which is where repeats are byte-identical: a bare
+    /// K-event TOGGLE is the common case. The A320/A380 wiper circuit toggle is the live example
+    /// — Off→Slow→Off→Slow silently loses the last step, because its two
+    /// ELECTRICAL_CIRCUIT_TOGGLE writes land back to back with nothing between them.
+    /// </summary>
+    public static string BuildUniqueCalcCode(string rpn, long seq) => $"{seq} 0 * {rpn}";
+
+    /// <summary>Run RPN that must not be coalesced with an identical predecessor.</summary>
+    public void ExecuteCalculatorCodeUnique(string rpnCode) =>
+        ExecuteCalculatorCode(BuildUniqueCalcCode(
+            rpnCode, System.Threading.Interlocked.Increment(ref calcEventSeq)));
+
     public static string BuildCalcEventCode(string eventName, uint data, long seq) =>
         eventName.StartsWith("H:", StringComparison.Ordinal)
             ? $"{seq} 0 * (>{eventName})"
