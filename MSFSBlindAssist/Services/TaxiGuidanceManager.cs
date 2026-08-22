@@ -513,7 +513,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // / combined surfaces). Cap so a malformed row can't blow the perpendicular
     // off-route tolerance out to hundreds of meters — that would mean the
     // aircraft is effectively never "off route" on those segments.
-    private const double OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0;
+    private const double OFF_ROUTE_PERP_WIDTH_CAP_FT =
+        Navigation.RolloutExitGate.MaxTrustedPathWidthFeet;
     // Grace window after a segment advance during which off-route is suppressed.
     // First-turn false-trigger: in the middle of the turn arc the aircraft's
     // perpendicular distance to the just-completed *or* just-entered segment can

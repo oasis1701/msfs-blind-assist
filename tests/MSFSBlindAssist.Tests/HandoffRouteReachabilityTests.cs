@@ -67,4 +67,36 @@ public class HandoffRouteReachabilityTests
         // Negative width is treated the same as absent.
         Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 40.0, -1.0));
     }
+
+    // Some navdata rows report absurd widths (thousands of feet, aprons mis-tagged as taxi
+    // paths). Uncapped, a 4,000 ft row bought a ~625 m corridor and the guard passed at any
+    // cross-track -- defeating itself on exactly the airports with the dirtiest navdata.
+    // The cap is the same 300 ft the off-route perpendicular check has always applied.
+    [Fact]
+    public void AbsurdPathWidth_IsCappedAtThreeHundredFeet()
+    {
+        double cappedThreshold =
+            RolloutExitGate.MaxTrustedPathWidthFeet * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+
+        // A 4,000 ft row must behave exactly like a 300 ft one.
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, cappedThreshold, 4000.0));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(cappedThreshold), 4000.0));
+
+        // The capped corridor (60.72 m) is still bounded, not infinite: the KSEA regression's
+        // 53.9 m cross-track sits inside it (unlike the pre-fix ~625 m corridor, which accepted
+        // literally any cross-track). A cross-track beyond the capped threshold -- the assertion
+        // above -- is still refused even under a mis-tagged 4,000 ft row.
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 53.9, 4000.0));
+    }
+
+    // The cap is one-sided: a width at or below it is used as-is, so ordinary taxiways are
+    // completely unaffected.
+    [Fact]
+    public void WidthBelowTheCap_IsUsedUnchanged()
+    {
+        double jThreshold = JWidthFt * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, jThreshold, JWidthFt));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(jThreshold), JWidthFt));
+    }
 }
