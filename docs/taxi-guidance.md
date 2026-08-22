@@ -731,6 +731,33 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 
    - **Runway-end countdown.** When the overshoot path finds no downfield exit (or the retarget itself fails), state stays in `LandingRollout` and `UpdateRunwayEndCountdown` drives three voice callouts as the aircraft approaches the physical end of the runway: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* (suffix suppressed when GS ≤ 30 kt) / *"Runway end in 100 feet. Stop."* (suffix unconditional — the action cue fires regardless of current GS). Tone stays silent — the pilot is on rudder/brakes alone. Transition to `Taxiing` (with `_route = null` — no recalc target) when GS drops below `ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3 kt` or heading deviates ≥ 15° (backtaxi turn). Replaces the previous "full silence" behavior so a blind pilot rolling toward the end of an active runway gets real braking information instead of being left to query Where-Am-I repeatedly.
 
+### Rollout exit-turn gate, drift-correction tone & early-vacate handoff (KSEA 34L, 2026-08-21)
+
+- The rollout exit-turn gate (`RolloutExitGate.IsExitTurnBegun`) tests the SIGNED heading
+  deviation against the exit's own side, and requires the turn to begin within
+  `TurnWindowFeet` (1,000 ft) of the exit or past it. Never restore the bare
+  `Math.Abs(hdgDelta) >= 15` form: at KSEA 34L a 15.1° LEFT deceleration drift, 2,232 ft
+  short of an exit lying 13.6° to the RIGHT, read as the exit turn, and the handoff then
+  panned the steering tone 79° right at a graph node 54 m away and 17.8 m outside the
+  runway edge. The 1,000 ft window is derived (558 ft worst-case exit-node displacement
+  at a 15° exit on a 200 ft runway, plus the app's own 450 ft "at the exit" range) — do
+  not tighten it to `ROLLOUT_NEAR_EXIT_FT`.
+- The rollout steering tone has THREE modes, not two (`RolloutExitGate.SelectToneMode`):
+  silent above 50 kt, exit-bearing within 300 ft of the exit, and drift-correction —
+  steer back to the runway heading — in between. The middle phase used to be silent, so
+  a pilot drifting toward the runway edge had no cue and the tone's first utterance was a
+  hard pan.
+- After an early vacate the handoff must NEVER re-route to the planned exit. The taxi
+  graph carries no runway edges, so A* routes between two exits the long way round: at
+  KSEA that was 1,678 m up the parallel taxiway T and back down Z toward the runway.
+  Retarget to the exit actually vacated at (`MatchEarlyVacateExit`) or conclude with the
+  "left the runway short of X" closure.
+- `MatchEarlyVacateExit` must measure along-track PER EXIT, never against
+  `DistanceFromThresholdFeet`. That field is measured from the LANDING threshold including
+  `ThresholdOffset` (KJFK 13R 2,055 ft), while an aircraft's along-runway position is
+  naturally measured from the physical runway start; comparing the two picks the wrong
+  exit at every displaced-threshold runway.
+
 ### Exit detection math (TaxiGraph.GetLandingExits)
 
 - Project each graph node onto the runway axis using equirectangular coordinates relative to the landing threshold, rotated by the runway's true heading.
