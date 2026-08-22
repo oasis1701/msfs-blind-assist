@@ -156,20 +156,15 @@ public partial class TaxiGuidanceManager
     /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
     /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
     /// component of the same equirectangular projection.
+    /// The projection itself lives in <see cref="SignedLateralFromRunwayMeters"/> — the two
+    /// were byte-identical copies, and they feed gates that must agree about one position.
     /// </summary>
     internal static double AbsLateralFromRunwayMeters(
         double pointLat, double pointLon,
         double refLat, double refLon,
         double runwayHeadingTrueDeg)
-    {
-        const double METERS_PER_DEG_LAT = 111132.0;
-        double latMidRad = (pointLat + refLat) * 0.5 * Math.PI / 180.0;
-        double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latMidRad);
-        double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
-        double dE = (pointLon - refLon) * metersPerDegLon;
-        double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
-        return Math.Abs(dE * Math.Cos(hdgRad) - dN * Math.Sin(hdgRad));
-    }
+        => Math.Abs(SignedLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrueDeg));
 
     /// <summary>
     /// Signed perpendicular offset (metres) of a point from the runway axis, POSITIVE =

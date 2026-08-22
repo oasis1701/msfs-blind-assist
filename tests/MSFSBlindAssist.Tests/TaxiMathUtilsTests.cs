@@ -441,4 +441,27 @@ public class TaxiMathUtilsTests
 
         Assert.True(lateral < 0); // negative agrees with ExitSide's "Left"
     }
+
+    // The absolute helper must be exactly the magnitude of the signed one. They were two
+    // hand-maintained copies of the same equirectangular projection, differing only in a
+    // Math.Abs -- and they feed gates that must agree about one aircraft position:
+    // IsWithinRolloutRunwayLaterally reads the absolute, the early-vacate side
+    // classification reads the signed.
+    [Theory]
+    [InlineData(47.4400, -122.3000, 47.4400, -122.3088, 337.0)]   // left of a KSEA-like axis
+    [InlineData(47.4400, -122.3160, 47.4400, -122.3088, 337.0)]   // right of it
+    [InlineData(47.4500, -122.3088, 47.4400, -122.3088, 337.0)]   // along the axis
+    [InlineData(51.4700,    0.4500, 51.4775,    0.4614,  90.0)]   // due-east runway
+    [InlineData(51.4700,    0.4500, 51.4775,    0.4614,   0.0)]   // due-north runway
+    [InlineData(-33.9400, 151.1700, -33.9465, 151.1810, 162.0)]   // southern hemisphere
+    public void AbsLateralIsTheMagnitudeOfSignedLateral(
+        double pointLat, double pointLon, double refLat, double refLon, double runwayHeadingTrue)
+    {
+        double abs = TaxiGuidanceManager.AbsLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrue);
+        double signed = TaxiGuidanceManager.SignedLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrue);
+
+        Assert.Equal(Math.Abs(signed), abs, 9);
+    }
 }
