@@ -1,7 +1,8 @@
 // Characterization tests for the pure static helpers in
 // MSFSBlindAssist.Services.TaxiGuidanceManager.MathUtils.cs: NormalizeAngle,
 // RunwayDesignatorsMatch, PerpendicularDistanceToSegmentMeters,
-// ComputeTurnVerbalFromHeading, SignedAlongRunwayMeters, AbsLateralFromRunwayMeters.
+// ComputeTurnVerbalFromHeading, SignedAlongRunwayMeters, AbsLateralFromRunwayMeters,
+// SignedLateralFromRunwayMeters.
 //
 // This is characterization, not spec verification: values are hand-derived from
 // reading the source and confirmed by running the tests; if a literal ever
@@ -131,6 +132,16 @@ public class TaxiMathUtilsTests
 
     private static (double lat, double lon) EquatorPoint(double eastMeters, double northMeters)
         => (northMeters / MpdEquator, eastMeters / MpdEquator);
+
+    // Point on the equator at `distanceMeters` from ref, along compass bearing
+    // `bearingDeg` (0 = north, 90 = east, clockwise from true north) -- same
+    // (east, north) = (sin, cos) convention SignedLateralFromRunwayMeters's own
+    // doc comment uses for the runway heading unit vector.
+    private static (double lat, double lon) BearingPoint(double bearingDeg, double distanceMeters)
+    {
+        double brgRad = bearingDeg * Math.PI / 180.0;
+        return EquatorPoint(distanceMeters * Math.Sin(brgRad), distanceMeters * Math.Cos(brgRad));
+    }
 
     [Fact]
     public void PerpendicularDistanceToSegmentMeters_on_segment_projects_perpendicular_distance()
@@ -308,5 +319,149 @@ public class TaxiMathUtilsTests
 
         Assert.Equal(200.0, latEast, 2);
         Assert.Equal(200.0, latWest, 2); // same magnitude as the east case -- no side encoded
+    }
+
+    // --- SignedLateralFromRunwayMeters ----------------------------------------
+    // Contract read from the XML doc + source (dE*cos(hdg) - dN*sin(hdg)):
+    // POSITIVE = RIGHT of the runway direction, matching LandingExit.ExitSide's
+    // own rule at TaxiGraph.cs ~line 3235:
+    //   NormalizeAngle(exitBearingTrue - rwyHeadingTrue) >= 0 ? "Right" : "Left"
+    // For a due-north runway (hdg=0) that reduces to dE -- east is right,
+    // west is left, matching the everyday "right of the runway centerline"
+    // sense a pilot facing the departure end would use.
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_east_point_is_positive_right_of_a_north_facing_runway()
+    {
+        var p = EquatorPoint(200, 1000); // 200 m east, 1000 m north of ref
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        Assert.Equal(200.0, lateral, 2);
+    }
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_west_point_is_negative_left_of_a_north_facing_runway()
+    {
+        var p = EquatorPoint(-200, 1000); // 200 m west, 1000 m north of ref
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        Assert.Equal(-200.0, lateral, 2);
+    }
+
+    // East-facing runway (hdg=090): the unit vector along the runway points
+    // east, so "right of the runway direction" is SOUTH (facing the direction
+    // of travel, right hand points south) -- the same rotation LandingExit's
+    // rule encodes generally.
+    [Fact]
+    public void SignedLateralFromRunwayMeters_south_point_is_positive_right_of_an_east_facing_runway()
+    {
+        var p = EquatorPoint(1000, -200); // 1000 m east, 200 m south of ref
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 90);
+        Assert.Equal(200.0, lateral, 2);
+    }
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_north_point_is_negative_left_of_an_east_facing_runway()
+    {
+        var p = EquatorPoint(1000, 200); // 1000 m east, 200 m north of ref
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 90);
+        Assert.Equal(-200.0, lateral, 2);
+    }
+
+    // A point straight down the runway's own axis (no cross-axis component)
+    // must read as (approximately) zero lateral offset, regardless of runway
+    // heading -- picked at a non-cardinal heading (045) so the test doesn't
+    // trivially degenerate to "dE=0" the way a due-north-heading version would.
+    [Fact]
+    public void SignedLateralFromRunwayMeters_point_on_the_runway_axis_is_approximately_zero()
+    {
+        var p = BearingPoint(45, 1000); // 1000 m straight down a 045-heading axis
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 45);
+        Assert.Equal(0.0, lateral, 3); // sub-mm residual from the degrees<->metres round trip
+    }
+
+    // The two helpers project the SAME perpendicular component -- one keeps
+    // the sign, one takes Math.Abs of it -- so |signed| must equal the
+    // absolute helper's result for identical inputs, on both sides.
+    [Fact]
+    public void SignedLateralFromRunwayMeters_absolute_value_matches_AbsLateralFromRunwayMeters_on_the_east_side()
+    {
+        var p = EquatorPoint(200, 1000);
+        double signed = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        double abs = TaxiGuidanceManager.AbsLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        Assert.Equal(abs, Math.Abs(signed), 6);
+    }
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_absolute_value_matches_AbsLateralFromRunwayMeters_on_the_west_side()
+    {
+        var p = EquatorPoint(-200, 1000);
+        double signed = TaxiGuidanceManager.SignedLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        double abs = TaxiGuidanceManager.AbsLateralFromRunwayMeters(p.lat, p.lon, 0, 0, 0);
+        Assert.Equal(abs, Math.Abs(signed), 6);
+    }
+
+    // --- Agreement with LandingExit.ExitSide -----------------------------------
+    // MatchEarlyVacateExit compares this helper's sign against ExitSide's own
+    // string, so the two conventions must agree or a pilot who vacates right
+    // gets matched against a left-side exit. Runway heading 090 (non-cardinal
+    // relative to the exit bearings below) so this isn't just a restatement of
+    // the cardinal-offset tests above.
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_sign_agrees_with_LandingExitExitSide_for_a_right_exit()
+    {
+        const double rwyHeadingTrueDeg = 90;   // east-facing runway
+        const double exitBearingTrue = 135;    // turns toward south of the runway heading
+
+        // LandingExit.ExitSide's own rule (TaxiGraph.cs ~line 3235):
+        string exitSide = TaxiGuidanceManager.NormalizeAngle(exitBearingTrue - rwyHeadingTrueDeg) >= 0
+            ? "Right" : "Left";
+        Assert.Equal("Right", exitSide);
+
+        var p = BearingPoint(exitBearingTrue, 1000); // a point out along the exit's own bearing
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(
+            p.lat, p.lon, 0, 0, rwyHeadingTrueDeg);
+
+        Assert.True(lateral > 0); // positive agrees with ExitSide's "Right"
+    }
+
+    [Fact]
+    public void SignedLateralFromRunwayMeters_sign_agrees_with_LandingExitExitSide_for_a_left_exit()
+    {
+        const double rwyHeadingTrueDeg = 90;   // east-facing runway
+        const double exitBearingTrue = 45;     // turns toward north of the runway heading
+
+        // LandingExit.ExitSide's own rule (TaxiGraph.cs ~line 3235):
+        string exitSide = TaxiGuidanceManager.NormalizeAngle(exitBearingTrue - rwyHeadingTrueDeg) >= 0
+            ? "Right" : "Left";
+        Assert.Equal("Left", exitSide);
+
+        var p = BearingPoint(exitBearingTrue, 1000); // a point out along the exit's own bearing
+        double lateral = TaxiGuidanceManager.SignedLateralFromRunwayMeters(
+            p.lat, p.lon, 0, 0, rwyHeadingTrueDeg);
+
+        Assert.True(lateral < 0); // negative agrees with ExitSide's "Left"
+    }
+
+    // The absolute helper must be exactly the magnitude of the signed one. They were two
+    // hand-maintained copies of the same equirectangular projection, differing only in a
+    // Math.Abs -- and they feed gates that must agree about one aircraft position:
+    // IsWithinRolloutRunwayLaterally reads the absolute, the early-vacate side
+    // classification reads the signed.
+    [Theory]
+    [InlineData(47.4400, -122.3000, 47.4400, -122.3088, 337.0)]   // left of a KSEA-like axis
+    [InlineData(47.4400, -122.3160, 47.4400, -122.3088, 337.0)]   // right of it
+    [InlineData(47.4500, -122.3088, 47.4400, -122.3088, 337.0)]   // along the axis
+    [InlineData(51.4700,    0.4500, 51.4775,    0.4614,  90.0)]   // due-east runway
+    [InlineData(51.4700,    0.4500, 51.4775,    0.4614,   0.0)]   // due-north runway
+    [InlineData(-33.9400, 151.1700, -33.9465, 151.1810, 162.0)]   // southern hemisphere
+    public void AbsLateralIsTheMagnitudeOfSignedLateral(
+        double pointLat, double pointLon, double refLat, double refLon, double runwayHeadingTrue)
+    {
+        double abs = TaxiGuidanceManager.AbsLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrue);
+        double signed = TaxiGuidanceManager.SignedLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrue);
+
+        Assert.Equal(Math.Abs(signed), abs, 9);
     }
 }
