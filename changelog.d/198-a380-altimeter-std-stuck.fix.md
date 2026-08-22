@@ -1,8 +1,7 @@
-The A380 altimeter can be switched between Standard and QNH again. It had become stuck reporting
-QNH no matter what you selected — and because the same reading feeds several places, the altimeter
-readout never showed "Standard" either, and the spoken altimeter updates kept reading out a QNH
-setting while the aircraft was actually on Standard.
+The A380's Standard/QNH state is now read from the flight control unit's own output rather than
+from the simulator's altimeter mirror. Both report the same thing, so this is not a fix for
+anything you would have noticed — it simply takes the reading from the source, which is one fewer
+step that can drift when FlyByWire moves things around.
 
-The switching itself was working the whole time; MSFSBA simply could not see the change it had just
-made, because the FlyByWire update moved where that state is published and left the old source
-frozen.
+The altimeter being stuck on QNH was a separate problem, covered by the other notes in this
+release: the commands the app sent were not reaching the aircraft.
