@@ -358,8 +358,9 @@ public partial class TaxiGuidanceManager
         // enough to be on the exit taxiway, but heading deviation never reached
         // ROLLOUT_TURN_BEGAN_HDG_DEG (true for any shallow RET < 15°). Treat
         // this the same as turnBegun — the exit has been taken.
-        // halfRunwayWidthFt + 30 ft is computed below for the overshoot gate
-        // but we need the values before that block, so compute them here.
+        // halfRunwayWidthFt is no longer a gate threshold — the lateral trigger below
+        // uses the shared IsWithinRolloutRunwayLaterally predicate instead. It is kept
+        // solely because the handoff diagnostic further down reports it.
         double halfRunwayWidthFt = (_rolloutRunway?.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
         // Use the runway start as the reference point for lateral measurement, NOT
         // the exit node. Exit nodes (especially HS/IHS hold-short markers) can be
@@ -462,6 +463,11 @@ public partial class TaxiGuidanceManager
             // a missed exit while in Taxiing state.
             _rolloutHandoffActive = true;
 
+            // Whether the early-vacate branch below repointed _rolloutExit at a substitute.
+            // If it did, the touchdown route in _route targets the exit the pilot has just
+            // left short of, so it can never be resumed as a fallback.
+            bool earlyVacateSwapped = false;
+
             // Early-vacate retarget. Entered only when the aircraft is BOTH laterally off
             // the runway AND far from the planned exit. Both gates are load-bearing: the
             // lateral gate is what "vacated" physically means, so a trulyStopped handoff on
@@ -522,6 +528,7 @@ public partial class TaxiGuidanceManager
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
                     _rolloutExit = vacatedAt;
+                    earlyVacateSwapped = true;
                 }
                 else
                 {
@@ -596,39 +603,23 @@ public partial class TaxiGuidanceManager
                 RolloutDiag(rerouteErr == null
                     ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
                     : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
+            }
 
-                // Reachability guard: never hand the steering tone a target the aircraft is
-                // not already essentially on. KSEA 34L 2026-08-21: the first segment lay
-                // 53.9 m of cross-track away with the aircraft 17.8 m outside the runway
-                // edge, and the tone — silent until that instant — panned 79° right.
-                if (handoffRerouted && _route != null && _route.Segments.Count > 0)
-                {
-                    var firstSeg = _route.Segments[0];
-                    double crossToFirstM = TaxiGraph.PerpendicularDistanceMetersStatic(
-                        lat, lon,
-                        firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
-                        firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
-
-                    if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
-                            offRunwayAtHandoff, crossToFirstM, firstSeg.PathWidth))
-                    {
-                        RolloutDiag($"Handoff route unreachable: {crossToFirstM:F0} m from the " +
-                            $"first segment (width {firstSeg.PathWidth:F0} ft) with the aircraft " +
-                            $"off the runway — concluding rather than steering across it");
-                        // Only claim "left the runway short of X" when an early vacate was
-                        // actually established — the captured planned-exit name is the proof.
-                        // Otherwise this guard has also fired for a vacate AT or PAST the
-                        // planned exit, where "short of" is false.
-                        if (_landingExitVacatedEarlyPlannedName != null)
-                            _landingExitVacatedEarly = true;
-                        else
-                            _landingExitRouteUnreachable = true;
-                        _rolloutHandoffActive = false;
-                        SetState(TaxiGuidanceState.Taxiing);
-                        HandleArrival();
-                        return;
-                    }
-                }
+            // An early-vacate swap with no route to show for it must CONCLUDE, never fall
+            // through to the re-anchor below: _route is still the touchdown route, whose
+            // destination is the PLANNED exit the pilot has just been told they left short
+            // of. Resuming the tone on it would steer them back toward the exit they
+            // skipped, seconds after the substitute announcement said otherwise — and with
+            // no runway edges in the graph, that is the 1,678 m KSEA long-way-round.
+            if (earlyVacateSwapped && !handoffRerouted)
+            {
+                RolloutDiag("Early vacate: substitute exit re-route failed — concluding " +
+                    "rather than resuming on the route to the planned exit");
+                _landingExitVacatedEarly = true;
+                _rolloutHandoffActive = false;
+                SetState(TaxiGuidanceState.Taxiing);
+                HandleArrival();
+                return;
             }
 
             // If the re-route did NOT succeed (LoadRoute failed, or _rolloutExit
@@ -645,6 +636,45 @@ public partial class TaxiGuidanceManager
                 _currentSegmentIndex = FindNearestSegmentIndexFullRoute(lat, lon);
                 RolloutDiag($"Handoff re-anchored _currentSegmentIndex={_currentSegmentIndex} " +
                     $"of {_route.Segments.Count}");
+            }
+
+            // Reachability guard: never hand the steering tone a target the aircraft is not
+            // already essentially on. KSEA 34L 2026-08-21: the first segment lay 53.9 m of
+            // cross-track away with the aircraft 17.8 m outside the runway edge, and the
+            // tone — silent until that instant — panned 79° right.
+            //
+            // Placed AFTER the re-anchor and read at _currentSegmentIndex so it tests the
+            // segment the tone is ACTUALLY about to steer at. It used to sit inside the
+            // re-route block gated on handoffRerouted, which left the fallback path — the
+            // one that resumes on the touchdown route — with no guard at all, while
+            // CLAUDE.md requires it to gate EVERY landing-exit handoff re-route. For a
+            // successful re-route the cursor is 0, so that case is unchanged.
+            if (_route != null && _currentSegmentIndex >= 0
+                && _currentSegmentIndex < _route.Segments.Count)
+            {
+                var firstSeg = _route.Segments[_currentSegmentIndex];
+                double crossToFirstM = TaxiGraph.PerpendicularDistanceMetersStatic(
+                    lat, lon,
+                    firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
+                    firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
+
+                if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
+                        offRunwayAtHandoff, crossToFirstM, firstSeg.PathWidth))
+                {
+                    RolloutDiag($"Handoff route unreachable: {crossToFirstM:F0} m from segment " +
+                        $"{_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
+                        $"aircraft off the runway — concluding rather than steering across it");
+                    // Same reason split as the guard's original site: only claim "short of X"
+                    // when an early vacate was actually established.
+                    if (_landingExitVacatedEarlyPlannedName != null)
+                        _landingExitVacatedEarly = true;
+                    else
+                        _landingExitRouteUnreachable = true;
+                    _rolloutHandoffActive = false;
+                    SetState(TaxiGuidanceState.Taxiing);
+                    HandleArrival();
+                    return;
+                }
             }
 
             // NoGraph path: route was never built (LoadRoute failed at touchdown
