@@ -1,5 +1,19 @@
 # Early-Vacate Along-Track Gate — Implementation Plan
 
+> **⚠️ CORRECTION — this plan contains a claim that is FALSE, left in place only because
+> this file is the historical record of what was executed.** Several code and doc blocks
+> below assert that *"distinct turnoffs are measured 430–970 ft apart"*, citing
+> `TaxiGraph.GetLandingExits`'s coverage-gap sweep. That sweep measures the distance from a
+> gap-fill candidate to an exit **already in the list** — the far ends of RET arcs, i.e. the
+> *same* physical turnoff — so it says nothing about how far apart two *different* turnoffs
+> sit. The shipped code and docs no longer make that claim. The 350 ft threshold rests
+> entirely on the derived `5 m / tan θ` bound (313 ft worst case), and the only real datum on
+> close-together distinct exits is the closest same-name pair kept on the hold-short path,
+> EGLL 09R S4E at 433 ft. See
+> [2026-08-22-early-vacate-along-track-gate-design.md](2026-08-22-early-vacate-along-track-gate-design.md)
+> for the corrected reasoning. A second, smaller correction: the band the old straight-line
+> test left unguarded is 350–1,000 ft, not the "700 ft" quoted below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the landing-rollout early-vacate retarget recognise a vacate onto a *different* exit that lies within 1,000 ft of the planned one, instead of silently routing the pilot to the exit they skipped.
