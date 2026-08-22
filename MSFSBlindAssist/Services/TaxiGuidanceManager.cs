@@ -276,6 +276,29 @@ public partial class TaxiGuidanceManager : IDisposable
     private double _landingExitMinDistToTargetM = double.MaxValue;
     private DateTime _missedVacateSince = DateTime.MinValue;
     private bool _landingExitMissed = false;
+    // Set when the handoff concludes because the aircraft left the runway somewhere other
+    // than the planned exit and no exit could be matched to where it actually went — or
+    // the route that was built is not one the aircraft is on. HandleArrival renders a
+    // distinct closure: this is the OPPOSITE failure to _landingExitMissed, which means
+    // "you rolled past the vacate point", so the two must never share wording.
+    private bool _landingExitVacatedEarly = false;
+    // Captured immediately before the early-vacate swap in UpdateLandingRollout, on the
+    // branch where a substitute exit was matched: the PLANNED exit's display name (the
+    // same "Taxiway X" / "exit taxiway" format LoadRoute uses for _route.DestinationName).
+    // _rolloutExit gets swapped to the substitute right after, so if that substitute's
+    // handoff route is later refused as unreachable, HandleArrival's "_route.DestinationName"
+    // would otherwise name the substitute the pilot is standing on, not the exit they were
+    // steered toward and missed. Null on the no-match branch, where _rolloutExit is never
+    // swapped and _route already names the planned exit correctly.
+    private string? _landingExitVacatedEarlyPlannedName = null;
+    // Set when the handoff concludes because the route that was built is not one the
+    // aircraft is on, WITHOUT an early vacate having been established first. Distinct from
+    // _landingExitVacatedEarly because that closure claims a POSITION — "short of X" — and
+    // this path cannot support that claim: the guard also fires when the aircraft turned off
+    // at or beyond the planned exit, where "short of" is simply false. Distinct from
+    // _landingExitOffPavement too, whose "Off the runway at X" wording reads as a successful
+    // vacate.
+    private bool _landingExitRouteUnreachable = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -383,7 +406,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // runway; Where-Am-I correctly reported the aircraft was still on 12R/30L). While
     // still on the runway we suppress the arrival and keep guiding toward the
     // off-runway extension node, so the "stop" is spoken only once genuinely clear.
-    private const double RUNWAY_CLEAR_MARGIN_M = 10.0;
+    // One source of truth — see Navigation/RolloutExitGate.RunwayClearMarginM, which the
+    // lateral handoff trigger and the early-vacate guards also read through
+    // IsLaterallyClearOfRunway.
+    private const double RUNWAY_CLEAR_MARGIN_M = Navigation.RolloutExitGate.RunwayClearMarginM;
     private const double RECALCULATION_COOLDOWN_SEC = 15.0;
     // Steering-tone look-ahead: target = the point this many metres ahead
     // along the route polyline (continuous walk — see GuidanceGeometry).
@@ -820,10 +846,12 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach900Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
-    // Latches true when distToExitFeet first drops below ROLLOUT_EXIT_TONE_ARM_FT.
-    // Used to reset the heading-error smoother exactly once at that point so the
-    // exit-bearing tone fires immediately rather than lagging the transition.
-    private bool _rolloutExitToneArmed = false;
+    // Which steering-tone behaviour the last rollout frame used. A change resets the
+    // heading-error smoother so a DriftCorrection residual never leaks into the sharp
+    // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
+    // which reset the smoother on exit-tone entry only — the drift tone needs the same
+    // treatment in both directions.
+    private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.
@@ -890,12 +918,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // pilot has started the turn onto the exit". Once we see this, hand
     // over to normal taxi guidance even if speed is still high (a
     // high-speed exit at 60 kt is plausible on Code-E rapid exits).
-    private const double ROLLOUT_TURN_BEGAN_HDG_DEG = 15.0;
+    private const double ROLLOUT_TURN_BEGAN_HDG_DEG = Navigation.RolloutExitGate.TurnBegunHeadingDeg;
     // Above this GS a heading deviation is NOT treated as a deliberate exit
     // turn. Category E rapid-exit taxiways top out at ~90 kt; at higher speeds
     // the deviation is touchdown yaw, crosswind crab alignment, or sim physics
     // at wheel contact — not a real runway exit maneuver.
-    private const double ROLLOUT_TURN_MAX_GS_KTS = 90.0;
+    private const double ROLLOUT_TURN_MAX_GS_KTS = Navigation.RolloutExitGate.TurnMaxGroundSpeedKts;
 
     // Speed-based handoff is now gated on proximity to the chosen exit. On long
     // runways the aircraft routinely decelerates below ROLLOUT_TAXI_GS_KTS
@@ -962,7 +990,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // Chosen to give the pilot ~2 s of directional preview before the
     // "turn now" speech fires at 150 ft — unambiguous "this direction" cue
     // without the premature-action risk of a long gradual build-up.
-    private const double ROLLOUT_EXIT_TONE_ARM_FT = 300.0;
+    private const double ROLLOUT_EXIT_TONE_ARM_FT = Navigation.RolloutExitGate.ExitToneArmFeet;
 
     // Explicit thresholds used in the exit-guidance zone (dist ≤ ARM_FT).
     // Tighter than the width-scaled runway values (4.2° activation on a wide
@@ -974,6 +1002,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private const double ROLLOUT_EXIT_TONE_ACTIVATION_DEG = 2.5;
     private const double ROLLOUT_EXIT_TONE_MAX_PAN_DEG = 15.0;
 
+    // Drift-correction tone thresholds — the rollout phase that used to be silent.
+    // See Navigation/RolloutExitGate for where 2.0 comes from (it is the codebase's
+    // existing floor for a meaningful heading deviation) and why the max pan matches
+    // every other steering tone rather than inventing a wider one.
+    private const double ROLLOUT_DRIFT_TONE_SILENT_DEG = Navigation.RolloutExitGate.DriftToneSilentDeg;
+    private const double ROLLOUT_DRIFT_TONE_ACTIVATION_DEG = Navigation.RolloutExitGate.DriftToneActivationDeg;
+    private const double ROLLOUT_DRIFT_TONE_MAX_PAN_DEG = Navigation.RolloutExitGate.DriftToneMaxPanDeg;
+
     // Ground speed below which the steering tone activates during rollout.
     // Above this speed the tone is silent — at 80+ kt a pan cue is useless
     // because the pilot can't react and a high-speed exit is still many
@@ -982,7 +1018,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // = pans toward the exit so the pilot steers to keep it centred and
     // naturally turns onto the exit. 50 kt gives ~10 s more lead time than
     // 40 kt at typical deceleration — meaningful for high-speed RETs (40–60 kt).
-    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = 50.0;
+    private const double ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS = Navigation.RolloutExitGate.ToneActiveBelowGroundSpeedKts;
 
     // Below this ground speed, runway-end countdown mode considers the
     // aircraft effectively stopped and hands off to plain Taxiing. Lower
@@ -1633,9 +1669,19 @@ public partial class TaxiGuidanceManager : IDisposable
         // runway-end countdown, exactly like the LandingRollout overshoot path.
         if (_rolloutHandoffActive && _rolloutExit != null && _rolloutRunway != null)
         {
-            double hdgDeltaAbsPH = Math.Abs(NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue));
+            double hdgDeltaSignedPH = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
+            double hdgDeltaAbsPH = Math.Abs(hdgDeltaSignedPH);
+            double exitRelBearingPH = Navigation.RolloutExitGate.ExitRelativeBearingDeg(
+                _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue);
+            // Direction test only, NOT the distance window IsExitTurnBegun applies. This
+            // block runs AFTER handoff, when the aircraft is already near or past the exit,
+            // so a proximity gate would be wrong here. But a wrong-way turn clearing the
+            // overshoot monitor is the same hole one level down: turnBegunPH sets
+            // _rolloutHandoffActive = false under the comment "Pilot has taken the exit".
             bool turnBegunPH = hdgDeltaAbsPH >= ROLLOUT_TURN_BEGAN_HDG_DEG
-                               && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
+                               && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
+                               && Navigation.RolloutExitGate.IsTurnTowardExit(
+                                      hdgDeltaSignedPH, exitRelBearingPH);
 
             double halfWidthFtPH = (_rolloutRunway.Width > 0 ? _rolloutRunway.Width : 200.0) * 0.5;
             double lateralFtPH = AbsLateralFromRunwayMeters(
@@ -2837,7 +2883,29 @@ public partial class TaxiGuidanceManager : IDisposable
             // move". The taxi planner (Input mode + Shift+Y) builds the gate
             // route.
             string exitName = _route?.DestinationName ?? "the exit";
-            if (_landingExitMissed)
+            if (_landingExitVacatedEarly)
+            {
+                // _landingExitVacatedEarlyPlannedName, when set, is the exit the pilot was
+                // actually steered toward and missed — captured before the early-vacate swap
+                // repointed _rolloutExit (and therefore _route.DestinationName) at a substitute
+                // exit. Without it, a substitute whose own handoff route then failed the
+                // reachability guard would have this closure name the substitute the pilot is
+                // standing on/near, not the exit they left the runway short of. Scoped to this
+                // branch only — the other three closures below describe a SUCCESSFUL arrival at
+                // whatever _rolloutExit/_route now name, and applying the planned-exit override
+                // there would misname the substitute exit the pilot actually reached.
+                string vacatedEarlyExitName = _landingExitVacatedEarlyPlannedName ?? exitName;
+                // The aircraft is off the runway but not at the planned exit, and nothing
+                // could be matched to where it actually went. Never route back to the
+                // planned exit from here: at KSEA 34L that produced a 1,678 m loop up the
+                // parallel taxiway and back down toward the runway, because the taxi graph
+                // carries no runway edges and that is the only path between two exits.
+                AnnounceInstruction(
+                    $"You have left the runway short of {vacatedEarlyExitName}. Exit guidance ended. " +
+                    $"Stop and hold position, then open the taxi planner to set a route " +
+                    $"to your gate.");
+            }
+            else if (_landingExitMissed)
             {
                 // Reached here from the missed-vacate backstop, not from a capture:
                 // the aircraft is clear of the runway but nowhere near the exit's
@@ -2847,6 +2915,17 @@ public partial class TaxiGuidanceManager : IDisposable
                     $"You have passed the {exitName} vacate point. Exit guidance ended. " +
                     $"Stop and hold position, then open the taxi planner to set a route " +
                     $"to your gate.");
+            }
+            else if (_landingExitRouteUnreachable)
+            {
+                // Off the runway, but nothing established WHERE along it — the guard fires
+                // for an at-the-exit and a past-the-exit vacate as well as an early one. Any
+                // positional claim here would be a guess, and a blind pilot told they are
+                // somewhere they are not may manoeuvre to "correct" a position that was fine.
+                // State only what is certain: guidance has ended and they should hold.
+                AnnounceInstruction(
+                    "Exit guidance ended: no usable route from here. Stop and hold position, " +
+                    "then open the taxi planner to set a route to your gate.");
             }
             else if (_landingExitOffPavement)
             {
@@ -2936,6 +3015,9 @@ public partial class TaxiGuidanceManager : IDisposable
         _isLandingExitRoute = false;
         _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
         _landingExitMissed = false;
+        _landingExitVacatedEarly = false;
+        _landingExitVacatedEarlyPlannedName = null;
+        _landingExitRouteUnreachable = false;
         _landingExitMinDistToTargetM = double.MaxValue;
         _missedVacateSince = DateTime.MinValue;
         _rolloutRunway = null;

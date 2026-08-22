@@ -1,0 +1,107 @@
+// Characterization tests for RolloutExitGate.IsHandoffRouteReachable — "is the route the
+// handoff just built one the aircraft is actually on?".
+//
+// Regression pinned: KSEA 34L → Z, 2026-08-21. The handoff re-route's first segment lay on
+// taxiway J's diagonal, 53.9 m of cross-track away, with the aircraft 17.8 m outside the
+// runway's east edge. The steering tone — silent until that instant — panned hard right at
+// 79° and the pilot followed it across ~60 m of unmapped ground.
+//
+// This tests proximity to the TARGET TAXIWAY, not the presence of pavement. Navdata carries
+// only runway and taxi_path polygons and cannot prove there is asphalt underfoot.
+
+using MSFSBlindAssist.Navigation;
+
+namespace MSFSBlindAssist.Tests;
+
+public class HandoffRouteReachabilityTests
+{
+    private const double JWidthFt = 82.0;   // KSEA taxiway J — half-width 12.4968 m (82 ft * 0.3048 / 2)
+
+    // A handoff taken while still on the runway is the normal case for every exit type
+    // and is never refused, however far the first segment is.
+    [Fact]
+    public void OnTheRunway_IsAlwaysReachable()
+    {
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(
+            aircraftOffRunway: false, crossTrackToFirstSegmentMetres: 200.0,
+            firstSegmentPathWidthFeet: JWidthFt));
+    }
+
+    // KSEA regression: off the runway, 53.9 m from an 82 ft segment. Threshold is
+    // 12.4968 + 15 = 27.4968 m, so this is refused and guidance concludes instead of panning.
+    [Fact]
+    public void Ksea34L_OffTheRunwayAndFiftyFourMetresFromTaxiwayJ_IsNotReachable()
+    {
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(
+            aircraftOffRunway: true, crossTrackToFirstSegmentMetres: 53.9,
+            firstSegmentPathWidthFeet: JWidthFt));
+    }
+
+    // Already on the exit taxiway — the ordinary early-vacate case that must keep working.
+    [Fact]
+    public void OffTheRunwayButOnTheTaxiway_IsReachable()
+    {
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 5.0, JWidthFt));
+    }
+
+    // Boundary: half-width (12.4968 m) + margin (15 m) = 27.4968 m, inclusive. Derived from
+    // the real constants (not a rounded literal) so this pins the exact boundary the
+    // production method computes, and asserts at the next representable double above it so
+    // a strict-inequality mutation (<= -> <) is actually caught.
+    [Fact]
+    public void BoundaryIsHalfWidthPlusFifteenMetres()
+    {
+        double threshold = JWidthFt * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, threshold, JWidthFt));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(threshold), JWidthFt));
+    }
+
+    // Missing PathWidth falls back to a GENEROUS 25 m half-width. This guard ENDS
+    // guidance, so thin navdata must never cause a false refusal.
+    [Fact]
+    public void MissingPathWidth_UsesTheGenerousFallback()
+    {
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 40.0, 0.0));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, 40.1, 0.0));
+        // Negative width is treated the same as absent.
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, 40.0, -1.0));
+    }
+
+    // Some navdata rows report absurd widths (thousands of feet, aprons mis-tagged as taxi
+    // paths). Uncapped, a 4,000 ft row bought a ~625 m corridor and the guard passed at any
+    // cross-track -- defeating itself on exactly the airports with the dirtiest navdata. The
+    // half-width is clamped to the same 25 m a MISSING width gets, so the widest corridor any
+    // segment can buy is 40 m.
+    [Fact]
+    public void AbsurdPathWidth_IsClampedToTheGenerousFallbackHalfWidth()
+    {
+        double maxCorridor =
+            RolloutExitGate.HandoffReachDefaultHalfWidthM + RolloutExitGate.HandoffReachMarginM;
+
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, maxCorridor, 4000.0));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(maxCorridor), 4000.0));
+    }
+
+    // The KSEA regression must stay refused even if its segment were mis-tagged absurdly
+    // wide -- this is the case the guard exists for, and the pre-clamp code admitted it.
+    [Fact]
+    public void Ksea34L_IsStillRefused_EvenWhenTheSegmentIsMisTaggedWide()
+    {
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, 53.9, 4000.0));
+    }
+
+    // The clamp is one-sided: any real taxiway is narrower than the 25 m clamp point
+    // (164 ft), so its own width is used unchanged.
+    [Fact]
+    public void RealTaxiwayWidth_IsUsedUnchanged()
+    {
+        double jThreshold = JWidthFt * 0.3048 * 0.5 + RolloutExitGate.HandoffReachMarginM;
+
+        Assert.True(RolloutExitGate.IsHandoffRouteReachable(true, jThreshold, JWidthFt));
+        Assert.False(RolloutExitGate.IsHandoffRouteReachable(true, Math.BitIncrement(jThreshold), JWidthFt));
+        // Well inside the clamp point, so this is nowhere near the 40 m ceiling.
+        Assert.True(jThreshold < RolloutExitGate.HandoffReachDefaultHalfWidthM
+                                 + RolloutExitGate.HandoffReachMarginM);
+    }
+}
