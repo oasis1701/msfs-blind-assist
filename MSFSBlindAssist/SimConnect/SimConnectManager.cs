@@ -48,6 +48,7 @@ public partial class SimConnectManager
     public event EventHandler<string>? SimulatorVersionDetected;
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
+    public event EventHandler<FuelTankWeightsData>? FuelTankWeightsReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     // Fired when a RequestAiTrafficData sweep delivers its final entry
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
@@ -380,6 +381,8 @@ public partial class SimConnectManager
         REQUEST_ZULU_TIME = 339,
         // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
         REQUEST_GSX_COUATL_STARTED = 340,
+        // 341, not 340: main claimed 340 for REQUEST_GSX_COUATL_STARTED while this branch was open.
+        REQUEST_FUEL_TANK_WEIGHTS = 341,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -440,6 +443,9 @@ public partial class SimConnectManager
         DEF_SQUAWK_CODE = 329,
         // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
         DEF_GSX_COUATL_STARTED = 340,
+        // Paired with REQUEST_FUEL_TANK_WEIGHTS (341) — per-tank fuel readout (output Ctrl/Alt+digit).
+        // 341, not 340: main claimed 340 for DEF_GSX_COUATL_STARTED while this branch was open.
+        DEF_FUEL_TANK_WEIGHTS = 341,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
@@ -817,6 +823,20 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    // Per-tank fuel weights (pounds), FUELSYSTEM TANK WEIGHT:1..16. Fixed 16 slots so the
+    // data definition always matches the struct regardless of how many tanks the loaded
+    // aircraft actually models — nonexistent tank indices simply read 0.
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct FuelTankWeightsData
+    {
+        public double t1; public double t2; public double t3; public double t4;
+        public double t5; public double t6; public double t7; public double t8;
+        public double t9; public double t10; public double t11; public double t12;
+        public double t13; public double t14; public double t15; public double t16;
+
+        public double[] ToArray() => new[] { t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16 };
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

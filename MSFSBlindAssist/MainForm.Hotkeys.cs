@@ -166,6 +166,9 @@ public partial class MainForm
             case HotkeyAction.ShowTcasWindow:
                 OpenTcasWindow();
                 break;
+            case HotkeyAction.ShowFuelTanks:
+                ShowFuelTanksWindow();
+                break;
             case HotkeyAction.AnnounceTcasTraffic:
                 AnnounceTrackedTcasTraffic();
                 break;
@@ -811,6 +814,30 @@ public partial class MainForm
 
         return base.ProcessCmdKey(ref msg, keyData);
     }
+
+    // Per-tank fuel readout (output Ctrl+1..9 = pounds, Alt+1..9 = kilograms).
+    // The slot table comes from the aircraft definition; the weights are a one-shot
+    // stock-fuel-system read, formatted by the pure FuelTankReadout helper.
+    /// <summary>
+    /// Opens the Fuel Tanks window (output Alt+U). Re-pressing focuses the existing window
+    /// rather than stacking a second one — it refreshes itself, so a duplicate would only
+    /// add another timer reading the same fuel.
+    /// </summary>
+    private void ShowFuelTanksWindow()
+    {
+        if (currentAircraft == null) return;
+
+        if (_fuelTanksForm is { IsDisposed: false })
+        {
+            _fuelTanksForm.Activate();
+            return;
+        }
+        _fuelTanksForm = new Forms.FuelTanksForm(currentAircraft, simConnectManager);
+        _fuelTanksForm.FormClosed += (_, _) => _fuelTanksForm = null;
+        _fuelTanksForm.Show();
+    }
+
+    private Forms.FuelTanksForm? _fuelTanksForm;
 
     protected override void WndProc(ref Message m)
     {

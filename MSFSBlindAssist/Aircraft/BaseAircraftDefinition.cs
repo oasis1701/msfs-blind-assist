@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Hotkeys;
+﻿using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Utils.Logging;
 
@@ -692,6 +692,25 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
+
+    // Per-tank fuel rows for the Fuel Tanks window (output Alt+U). Null = not wired for
+    // this aircraft; see FuelTankSlot. Uses the stock fuel system, so only aircraft whose
+    // tanks live in FUELSYSTEM TANK WEIGHT:n can opt in (PMDG reads its own CDA instead).
+    public virtual IReadOnlyList<FuelTankSlot>? GetFuelTankSlots() => null;
+
+    /// <summary>
+    /// Stock-fuel resolution: read FUELSYSTEM TANK WEIGHT and map it onto the slot table.
+    /// PMDG overrides this wholesale (its stock fuel vars read 0 — legacy fuel model).
+    /// </summary>
+    public virtual void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        Action<IReadOnlyList<FuelTankReading>?> onReady)
+    {
+        var slots = GetFuelTankSlots();
+        if (slots == null || slots.Count == 0) { onReady(null); return; }
+        simConnect.RequestFuelTankWeights(
+            weights => onReady(Services.FuelTankReadout.Resolve(slots, weights)));
+    }
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 

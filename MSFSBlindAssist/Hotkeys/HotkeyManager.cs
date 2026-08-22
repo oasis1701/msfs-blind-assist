@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Utils.Logging;
+﻿using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Hotkeys;
 
@@ -94,6 +94,7 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TOGGLE_ECAM_MONITORING = 9059;
         private const int HOTKEY_HAND_FLY_MODE = 9110;
         private const int HOTKEY_VISUAL_GUIDANCE = 9076;
+        private const int HOTKEY_FUEL_TANKS = 9260;    // Output mode: Alt+U (Fuel Tanks window)
         private const int HOTKEY_MACH_SPEED = 9060;
         private const int HOTKEY_EFB = 9061;
         private const int HOTKEY_TRACK_SLOT_1 = 9062;
@@ -448,6 +449,9 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_EFB:
                             TriggerHotkey(HotkeyAction.ShowElectronicFlightBag);
                             break;
+                        case HOTKEY_FUEL_TANKS:
+                            TriggerHotkey(HotkeyAction.ShowFuelTanks);
+                            break;
                         case HOTKEY_TRACK_SLOT_1:
                             TriggerHotkey(HotkeyAction.ReadTrackSlot1);
                             break;
@@ -753,6 +757,12 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE, MOD_CONTROL, 0x48); // Ctrl+H (Hand Fly Mode)
             RegisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE, MOD_CONTROL, 0x56); // Ctrl+V (Visual Guidance)
             RegisterHotKey(windowHandle, HOTKEY_EFB, MOD_SHIFT, 0x45); // Shift+E (Electronic Flight Bag)
+            // Fuel Tanks window. Alt+U, not Alt+F: Alt+F is very widely bound to FSUIPC,
+            // and rebinding that is not common knowledge, so it would collide silently for
+            // a lot of users. U is in "fuel" and was unclaimed. This replaced eighteen
+            // per-tank chords (Ctrl/Alt+1-9); the window's type-ahead does that job now.
+            RegisterHotKey(windowHandle, HOTKEY_FUEL_TANKS, MOD_ALT, 0x55);              // Alt+U (Fuel Tanks)
+
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1, MOD_NONE, 0x31);  // 1 (Track Slot 1)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2, MOD_NONE, 0x32);  // 2 (Track Slot 2)
             RegisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3, MOD_NONE, 0x33);  // 3 (Track Slot 3)
@@ -865,6 +875,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_HAND_FLY_MODE);
             UnregisterHotKey(windowHandle, HOTKEY_VISUAL_GUIDANCE);
             UnregisterHotKey(windowHandle, HOTKEY_EFB);
+            UnregisterHotKey(windowHandle, HOTKEY_FUEL_TANKS);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_1);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_2);
             UnregisterHotKey(windowHandle, HOTKEY_TRACK_SLOT_3);
@@ -1332,6 +1343,9 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot3,
         ReadTrackSlot4,
         ReadTrackSlot5,
+        // Per-tank fuel readout — each run MUST stay contiguous and in 1..9 order:
+        // the WndProc handler maps the hotkey-id ranges onto them by offset arithmetic.
+        ShowFuelTanks,
         ReadFuelInfo,
         ReadDisplayPFD,
         ReadDisplayLowerECAM,

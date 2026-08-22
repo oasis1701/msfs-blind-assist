@@ -1,4 +1,4 @@
-FLYBYWIRE A380X HOTKEY REFERENCE
+﻿FLYBYWIRE A380X HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -47,6 +47,10 @@ Characteristic Speeds:
 Fuel:
   F          Read Fuel On Board (pounds)
   Shift+F    Read Fuel On Board (kilograms)
+  Alt+U      Open the Fuel Tanks window (every tank, live, pounds and kilograms):
+             Feed 1-4, Outer, Mid and Inner (left and right on one line each),
+             Trim, and a Total. Type a tank's first letter to jump straight to
+             it -- "o" for Outer, "t" for Trim. Escape closes.
 
 Weight:
   W          Read Gross Weight (pounds) + center of gravity

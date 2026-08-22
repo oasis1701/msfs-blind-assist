@@ -6698,6 +6698,39 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return false;
     }
 
+    /// <summary>
+    /// Per-tank fuel for the Fuel Tanks window: Left main, Right main, Center, and Aux
+    /// only when it actually holds fuel. The 777 FCOM names the wing tanks left/right
+    /// main (unlike the 737's numbered Main Tank No. 1/2). Reads the PMDG SDK tank fields
+    /// rather than the base class's stock FUELSYSTEM path — those vars read 0 on this
+    /// aircraft (legacy fuel model). Synchronous: the CDA snapshot is already in hand.
+    /// </summary>
+    public override void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        Action<IReadOnlyList<FuelTankReading>?> onReady)
+    {
+        var dm = simConnect.PMDGDataManager;
+        // Before the first CDA snapshot every field reads 0.0 — publishing that would
+        // show a fuelled aircraft as bone dry. Null means "not available yet", which the
+        // window says out loud instead.
+        if (dm == null || !dm.IsReady) { onReady(null); return; }
+
+        var rows = new List<FuelTankReading>
+        {
+            Row("Left main", dm.GetFieldValue("FUEL_QtyLeft")),
+            Row("Right main", dm.GetFieldValue("FUEL_QtyRight")),
+            Row("Center", dm.GetFieldValue("FUEL_QtyCenter")),
+        };
+        // Aux is fitted on some 777 variants only; an empty aux is indistinguishable from
+        // an absent one over the SDK, so it appears only when it is carrying fuel.
+        double auxLbs = dm.GetFieldValue("FUEL_QtyAux");
+        if (auxLbs > 0.5) rows.Add(Row("Aux", auxLbs));
+        onReady(rows);
+
+        static FuelTankReading Row(string label, double lbs)
+            => new(label, new List<(string?, double)> { (null, lbs) });
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action,
         SimConnect.SimConnectManager simConnect,
@@ -6793,8 +6826,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
                 int aux    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux"));
                 int total  = left + center + right + aux;
-                announcer.AnnounceImmediate(
-                    $"Total {total} pounds, left {left}, center {center}, right {right}, aux {aux}");
+                // Per-tank breakdown moved to the dedicated output Ctrl+1..4 keys.
+                announcer.AnnounceImmediate($"Total fuel {total} pounds");
                 return true;
             }
 
@@ -7056,8 +7089,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight") * 0.453592);
                 int auxKg    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux") * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg + auxKg;
-                announcer.AnnounceImmediate(
-                    $"Total {totalKg} kilograms, left {leftKg}, center {centerKg}, right {rightKg}, aux {auxKg}");
+                // Per-tank breakdown moved to the dedicated output Alt+1..4 keys.
+                announcer.AnnounceImmediate($"Total fuel {totalKg} kilograms");
                 return true;
             }
 

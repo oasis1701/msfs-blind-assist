@@ -1,4 +1,4 @@
-PMDG 737-800 HOTKEY REFERENCE
+﻿PMDG 737-800 HOTKEY REFERENCE
 
 Application Navigation:
   Ctrl+1     Focus Sections List
@@ -33,8 +33,11 @@ Navigation:
   N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
 
 Fuel:
-  F          Read Fuel Quantity per tank (pounds)
-  Shift+F    Read Fuel Quantity per tank (kilograms)
+  F          Read Total Fuel (pounds)
+  Shift+F    Read Total Fuel (kilograms)
+  Alt+U      Open the Fuel Tanks window (every tank, live, pounds and kilograms):
+             Main 1 (left), Main 2 (right), Center, and a Total. Type a tank's
+             first letter to jump straight to it -- "c" for Center. Escape closes.
 
 Weight:
   W          Read Gross Weight (pounds)

@@ -5318,6 +5318,34 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         return labels.Count == 0 ? "none" : string.Join(", ", labels);
     }
 
+    /// <summary>
+    /// Per-tank fuel for the Fuel Tanks window: Main 1 (left), Main 2 (right), Center.
+    /// The NG3 has no aux tank. Reads the PMDG SDK tank fields rather than the base
+    /// class's stock FUELSYSTEM path — those vars read 0 on this aircraft (legacy fuel
+    /// model), so the slot table cannot serve it. Synchronous: the CDA snapshot is
+    /// already in hand, so the callback fires before this returns.
+    /// </summary>
+    public override void RequestFuelTankReadings(
+        SimConnect.SimConnectManager simConnect,
+        Action<IReadOnlyList<FuelTankReading>?> onReady)
+    {
+        var dm = simConnect.PMDGDataManager;
+        // Before the first CDA snapshot every field reads 0.0 — publishing that would
+        // show a fuelled aircraft as bone dry. Null means "not available yet", which the
+        // window says out loud instead.
+        if (dm == null || !dm.IsReady) { onReady(null); return; }
+
+        onReady(new List<FuelTankReading>
+        {
+            Row("Main 1", dm.GetFieldValue("FUEL_QtyLeft")),
+            Row("Main 2", dm.GetFieldValue("FUEL_QtyRight")),
+            Row("Center", dm.GetFieldValue("FUEL_QtyCenter")),
+        });
+
+        static FuelTankReading Row(string label, double lbs)
+            => new(label, new List<(string?, double)> { (null, lbs) });
+    }
+
     public override bool HandleHotkeyAction(
         HotkeyAction action,
         SimConnect.SimConnectManager simConnect,
@@ -5410,8 +5438,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 int centerKg = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter") * 0.453592);
                 int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight")  * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg;
-                announcer.AnnounceImmediate(
-                    $"Total {totalKg} kilograms, left {leftKg}, center {centerKg}, right {rightKg}");
+                // Per-tank breakdown moved to the dedicated output Alt+1..3 keys.
+                announcer.AnnounceImmediate($"Total fuel {totalKg} kilograms");
                 return true;
             }
 
@@ -5424,8 +5452,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 int center = (int)Math.Round(dm.GetFieldValue("FUEL_QtyCenter"));
                 int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
                 int total  = left + center + right;
-                announcer.AnnounceImmediate(
-                    $"Total {total} pounds, left {left}, center {center}, right {right}");
+                // Per-tank breakdown moved to the dedicated output Ctrl+1..3 keys.
+                announcer.AnnounceImmediate($"Total fuel {total} pounds");
                 return true;
             }
 

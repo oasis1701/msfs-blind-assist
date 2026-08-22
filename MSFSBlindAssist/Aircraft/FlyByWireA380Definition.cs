@@ -53,6 +53,25 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // block) is this airframe's single icing voice; the generic announcer yields.
     public override bool HasOwnIcingAnnouncer => true;
 
+    // Per-tank fuel readout (output Ctrl/Alt+digit). The A380X models 11 real tanks in the
+    // stock fuel system (flight_model.cfg Tank.1-11; 12-16 are 1-gallon engine-feed line
+    // buffers, ignored). Feeds are announced individually (engine feed monitoring), the
+    // symmetric wing pairs together (one keypress = imbalance check), trim on its own.
+    // Sim tank indices: 1 LeftOuter, 2 Feed1, 3 LeftMid, 4 LeftInner, 5 Feed2, 6 Feed3,
+    // 7 RightInner, 8 RightMid, 9 Feed4, 10 RightOuter, 11 Trim (verified live 2026-07-23).
+    private static readonly FuelTankSlot[] _fuelTankSlots =
+    [
+        new("Feed 1", (null, 2)),
+        new("Feed 2", (null, 5)),
+        new("Feed 3", (null, 6)),
+        new("Feed 4", (null, 9)),
+        new("Outer tanks", ("left", 1), ("right", 10)),
+        new("Mid tanks", ("left", 3), ("right", 8)),
+        new("Inner tanks", ("left", 4), ("right", 7)),
+        new("Trim tank", (null, 11)),
+    ];
+    public override IReadOnlyList<FuelTankSlot> GetFuelTankSlots() => _fuelTankSlots;
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
