@@ -727,8 +727,8 @@ public class SayIntentionsExternalRouteTests
     // runs through the track. Each of the four cases below is a real capture.
 
     private static (MainForm.TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
-        Choose(string[] clearance, string[] geometry) =>
-        MainForm.ChooseTaxiwaySource(clearance, geometry);
+        Choose(string[] clearance, string[] geometry, bool hadUnmatchedTaxiways = false) =>
+        MainForm.ChooseTaxiwaySource(clearance, geometry, hadUnmatchedTaxiways);
 
     [Fact]
     public void LiveLszhArrivalTrackReproducesTheClearanceExactly()
@@ -761,7 +761,9 @@ public class SayIntentionsExternalRouteTests
         // navdata calls N, so the text parsed to LE, E, H2 — one leg short of the
         // cleared route. The track holds all four, and the parsed three run straight
         // through it, so the track is this clearance with the missing leg restored.
-        var choice = Choose(new[] { "LE", "E", "H2" }, new[] { "LE", "E", "N", "H2" });
+        var choice = Choose(
+            new[] { "LE", "E", "H2" }, new[] { "LE", "E", "N", "H2" },
+            hadUnmatchedTaxiways: true);
 
         Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
         Assert.Equal(new[] { "LE", "E", "N", "H2" }, choice.Taxiways);
@@ -817,14 +819,31 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
-    public void TheTrackMayRunOnEitherSideOfWhatWasCleared()
+    public void SupplementalTrackLegsDoNotReplaceAFullyParsedClearance()
     {
         // A real track starts where the aircraft is standing and ends on the stand
         // lead-in, so it routinely carries legs before and after the cleared ones.
         var choice = Choose(new[] { "E", "C" }, new[] { "E4", "E", "C", "Link 5" });
 
-        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
-        Assert.False(choice.Disagreed);
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "E", "C" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void LiveOmdbTrackCannotAddFourSupplementalTaxiwaysToACompleteClearance()
+    {
+        // Live 2026-08-18/20 import. Every spoken leg matched this airport, but the old
+        // subsequence rule licensed SI's whole ground track and filled the dialog with
+        // U3, Y1, Z7 and K as well. Six cleared legs allowed up to thirteen track legs,
+        // so the length guard could not distinguish these additions from recovery.
+        var choice = Choose(
+            new[] { "U", "Y", "Z", "L4", "M", "M15A" },
+            new[] { "U3", "U", "Y1", "Y", "Z", "Z7", "K", "L4", "M", "M15A" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "U", "Y", "Z", "L4", "M", "M15A" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
     }
 
     [Fact]
@@ -834,8 +853,9 @@ public class SayIntentionsExternalRouteTests
         // stripped, case-insensitive.
         var choice = Choose(new[] { "n 5 e", "a" }, new[] { "N5E", "A", "F" });
 
-        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
-        Assert.False(choice.Disagreed);
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "n 5 e", "a" }, choice.Taxiways);
+        Assert.True(choice.Disagreed);
     }
 
     [Fact]
@@ -1011,7 +1031,9 @@ public class SayIntentionsExternalRouteTests
     {
         // Two cleared legs allow five. A real track legitimately carries the stand it
         // starts on, the lead-in it ends on, and a leg the text parse could not name.
-        var choice = Choose(new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z" });
+        var choice = Choose(
+            new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z" },
+            hadUnmatchedTaxiways: true);
 
         Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
         Assert.False(choice.Disagreed);

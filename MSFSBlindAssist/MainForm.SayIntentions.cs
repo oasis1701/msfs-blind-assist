@@ -285,7 +285,8 @@ public partial class MainForm
                 : null;
 
             var (source, taxiways, disagreed) = ChooseTaxiwaySource(
-                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>());
+                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>(),
+                unknownTaxiways.Count > 0);
 
             var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
@@ -403,11 +404,14 @@ public partial class MainForm
     /// already on the frequency. A stamp comparison therefore passes on every stale path
     /// there is, which is worse than no test at all — it reads like a safety gate.
     ///
-    /// What can tell them apart is AGREEMENT, on two counts. The clearance must run
-    /// through the track in order (see <see cref="ClearanceRunsThroughGeometry"/>),
-    /// because that is precisely the failure this path exists to fix: the text parse
-    /// DROPS legs it cannot name, and a live LEPA clearance saying "North" for taxiway N
-    /// parsed to LE, E, H2 where the track gave LE, E, N, H2. That test is also what
+    /// What can tell them apart is AGREEMENT plus evidence that recovery is needed. An
+    /// exact sequence is independent confirmation and adds nothing. A longer geometry
+    /// sequence is eligible only when the parser reports an unmatched clearance token;
+    /// then the recognized clearance must run through the track in order (see
+    /// <see cref="ClearanceRunsThroughGeometry"/>). That is precisely the failure this
+    /// path exists to fix: the text parse DROPS legs it cannot name, and a live LEPA
+    /// clearance saying "North" for taxiway N parsed to LE, E, H2 where the track gave
+    /// LE, E, N, H2. That test is also what
     /// rejects a stale path — the pre-clearance EGLL capture carries N5W where the
     /// clearance says N5E, so the walk fails on the first leg. And the track must be
     /// short enough to be a description OF that route rather than a route of its own
@@ -430,7 +434,8 @@ public partial class MainForm
     /// </summary>
     internal static (TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
         ChooseTaxiwaySource(
-            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
+            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways,
+            bool clearanceHadUnmatchedTaxiways = false)
     {
         // No path published, or one that snapped to nothing — no better than no path at
         // all. The words stay in charge, and the log keeps the counts that say why.
@@ -448,10 +453,38 @@ public partial class MainForm
 
         var cleared = SayIntentionsClearanceParser.CollapseConsecutive(clearanceTaxiways);
 
+        // An exact reading needs no recovery. Keep geometry as the provenance because it
+        // independently reproduced the clearance, but it cannot add anything the
+        // controller did not say. This also covers the KBOS N, N, K hold-short shape:
+        // the comparison collapse is deliberate, while the raw clearance remains in
+        // charge whenever the geometry is not exactly the same route.
+        if (TaxiwaySequencesEqual(cleared, geometryTaxiways))
+            return (TaxiwaySource.Geometry, geometryTaxiways, false);
+
+        // Geometry may fill a hole only when the parser can point to one. Previously any
+        // subsequence inside the generous 2n+1 length guard licensed the WHOLE published
+        // track. At OMDB that turned the fully parsed clearance U,Y,Z,L4,M,M15A into
+        // U3,U,Y1,Y,Z,Z7,K,L4,M,M15A: four supplemental names, none supported by a lost
+        // clearance token. The clearance is authoritative when every word survived.
+        if (!clearanceHadUnmatchedTaxiways)
+            return (TaxiwaySource.Clearance, clearanceTaxiways, true);
+
         return ClearanceRunsThroughGeometry(cleared, geometryTaxiways)
                && TrackIsShortEnoughToDescribe(cleared.Count, geometryTaxiways.Count)
             ? (TaxiwaySource.Geometry, geometryTaxiways, false)
             : (TaxiwaySource.Clearance, clearanceTaxiways, true);
+    }
+
+    private static bool TaxiwaySequencesEqual(
+        IReadOnlyList<string> left, IReadOnlyList<string> right)
+    {
+        if (left.Count != right.Count) return false;
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!SameTaxiwayNameSi(left[i], right[i])) return false;
+        }
+
+        return true;
     }
 
     /// <summary>Whether every cleared taxiway appears in the published track IN ORDER,
