@@ -258,4 +258,36 @@ public static class RolloutExitGate
 
         return best;
     }
+
+    /// <summary>
+    /// Is the route the handoff just built one the aircraft can actually follow from where
+    /// it is standing?
+    ///
+    /// <para>Refusing means CONCLUDING exit guidance with a spoken closure, which is why the
+    /// test is deliberately permissive: an on-runway handoff is never refused, and a segment
+    /// with no width gets a generous fallback.</para>
+    ///
+    /// <para>This tests proximity to the TARGET TAXIWAY, not the presence of pavement. Navdata
+    /// carries only runway and taxi_path polygons and cannot prove there is asphalt underfoot.
+    /// What it does guarantee is that the steering tone is never pointed at a taxiway the
+    /// aircraft is not essentially already on — the KSEA 34L failure, where the tone panned
+    /// 79° right at a segment 53.9 m away with the aircraft 17.8 m outside the runway edge.</para>
+    /// </summary>
+    /// <param name="crossTrackToFirstSegmentMetres">
+    /// Distance from the aircraft to the nearest point ON the route's first segment (clamped
+    /// to the segment, so endpoints count) — <c>TaxiGraph.PerpendicularDistanceMetersStatic</c>.
+    /// </param>
+    public static bool IsHandoffRouteReachable(
+        bool aircraftOffRunway,
+        double crossTrackToFirstSegmentMetres,
+        double firstSegmentPathWidthFeet)
+    {
+        if (!aircraftOffRunway) return true;
+
+        double halfWidthM = firstSegmentPathWidthFeet > 0.0
+            ? firstSegmentPathWidthFeet * 0.3048 * 0.5
+            : HandoffReachDefaultHalfWidthM;
+
+        return crossTrackToFirstSegmentMetres <= halfWidthM + HandoffReachMarginM;
+    }
 }
