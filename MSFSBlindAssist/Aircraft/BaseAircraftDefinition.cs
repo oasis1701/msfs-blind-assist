@@ -131,6 +131,29 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
                 IsAnnounced = true
             },
+            // Inclinometer ball for the "step on the ball" rudder-coordination cue (SlipCueGenerator).
+            // Streamed at SIM_FRAME so the hard-panned tick's side/rate are smooth, but ONLY while
+            // the cue is switched on: DeferredSubscription registers the definition without
+            // subscribing, and MainForm's Ctrl+K toggle calls Start/StopDeferredVariableMonitoring.
+            // Unlike G_FORCE — which must stream always because it captures a touchdown spike that
+            // cannot be requested retroactively — this cue is off by default and has nothing to
+            // catch retroactively, so every user should not pay its per-frame dispatch.
+            // MUST be IsAnnounced=true to be monitored; MainForm.HandleSpecialAnnouncements routes
+            // it to the slip cue and suppresses any generic call-out. Units "Position" (±127);
+            // MainForm normalises via SlipCueBallFullScale, and the SIDE convention lives in the
+            // SlipCueBallSign const there — UNVERIFIED in-sim, see the comment on it.
+            ["TURN_COORDINATOR_BALL"] = new SimConnect.SimVarDefinition
+            {
+                Name = "TURN COORDINATOR BALL",
+                DisplayName = "Turn Coordinator Ball",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "Position",
+                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ExcludeFromBatch = true,
+                HighFrequency = true,
+                DeferredSubscription = true
+            },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
             ["MON_GlideSlopeAlive"] = new SimConnect.SimVarDefinition
@@ -692,6 +715,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();
+
+    /// <summary>
+    /// Default Waypoint Flight Director profile (A320 baseline). Override on heavier/faster jets.
+    /// </summary>
+    public virtual WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 

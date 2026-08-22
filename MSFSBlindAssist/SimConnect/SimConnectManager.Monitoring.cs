@@ -332,6 +332,107 @@ public partial class SimConnectManager
         }
     }
 
+    // ---- Deferred (on-demand) per-var subscriptions ------------------------------------------
+    // A SimVarDefinition marked DeferredSubscription is registered at setup but NOT streamed until
+    // the feature that consumes it asks. Keeps an off-by-default feature's var (the Ctrl+K slip
+    // cue's TURN COORDINATOR BALL) off the SIM_FRAME path for everyone who never turns it on.
+    // The wanted set survives reconnects/aircraft switches — SetupDataDefinitions re-asserts it.
+    private readonly HashSet<string> _deferredSubscriptionsWanted = new();
+    private readonly object _deferredSubscriptionLock = new object();
+
+    /// <summary>Begin streaming a <c>DeferredSubscription</c> variable. Idempotent. Safe to call
+    /// while disconnected — the request is remembered and issued once definitions exist.</summary>
+    public void StartDeferredVariableMonitoring(string varKey)
+    {
+        lock (_deferredSubscriptionLock)
+        {
+            _deferredSubscriptionsWanted.Add(varKey);
+            RequestDeferredVariable(varKey, subscribe: true);
+        }
+    }
+
+    /// <summary>Stop streaming a <c>DeferredSubscription</c> variable. Idempotent and safe while
+    /// disconnected.</summary>
+    public void StopDeferredVariableMonitoring(string varKey)
+    {
+        lock (_deferredSubscriptionLock)
+        {
+            _deferredSubscriptionsWanted.Remove(varKey);
+            RequestDeferredVariable(varKey, subscribe: false);
+        }
+    }
+
+    /// <summary>Re-issues every wanted deferred subscription. Called at the end of
+    /// SetupDataDefinitions, when definition ids have just been rebuilt.</summary>
+    private void ReassertDeferredSubscriptions()
+    {
+        lock (_deferredSubscriptionLock)
+        {
+            foreach (string varKey in _deferredSubscriptionsWanted)
+                RequestDeferredVariable(varKey, subscribe: true);
+        }
+    }
+
+    /// <summary>Issues (or cancels, via PERIOD.NEVER) the per-var subscription. No-op when
+    /// disconnected or when the var isn't registered for this aircraft. Never throws.</summary>
+    private void RequestDeferredVariable(string varKey, bool subscribe)
+    {
+        if (!IsConnected || simConnect == null) return;
+        if (!variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+
+        bool highFrequency = CurrentAircraft?.GetVariables().TryGetValue(varKey, out var varDef) == true
+                             && varDef.HighFrequency;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject(
+                (DATA_REQUESTS)dataDefId,
+                (DATA_DEFINITIONS)dataDefId,
+                SIMCONNECT_OBJECT_ID_USER,
+                subscribe
+                    ? (highFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND)
+                    : SIMCONNECT_PERIOD.NEVER,
+                subscribe && highFrequency
+                    ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED
+                    : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+            Log.Debug("SimConnect",
+                $"Deferred subscription {(subscribe ? "started" : "stopped")} for {varKey} -> ID {dataDefId}");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error toggling deferred subscription for {varKey}: {ex.Message}");
+        }
+    }
+
+    // Reference-counted access to the shared VISUAL_GUIDANCE_DATA (req 505) stream. Both Visual
+    // Guidance and the Waypoint Flight Director ride it; they are mutually exclusive today, but
+    // ref-counting guarantees one feature never stops the stream out from under the other (mirrors
+    // the AcquireQuickAccessHotkeys pattern). Prefer Acquire/Release over the raw Start/Stop below.
+    private int _visualGuidanceRefCount = 0;
+    private readonly object _visualGuidanceMonitorLock = new object();
+
+    public void AcquireVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0)
+                StartVisualGuidanceMonitoring();
+            _visualGuidanceRefCount++;
+        }
+    }
+
+    public void ReleaseVisualGuidanceMonitoring()
+    {
+        lock (_visualGuidanceMonitorLock)
+        {
+            if (_visualGuidanceRefCount == 0) return;   // defensive: never go negative
+            _visualGuidanceRefCount--;
+            if (_visualGuidanceRefCount == 0)
+                StopVisualGuidanceMonitoring();
+        }
+    }
+
     // Visual guidance monitoring
     public void StartVisualGuidanceMonitoring()
     {

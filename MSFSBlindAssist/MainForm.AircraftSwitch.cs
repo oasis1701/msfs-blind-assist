@@ -589,6 +589,28 @@ public partial class MainForm
         // and `currentAircraft` already points at the new aircraft by the time the
         // cleanup block runs.
         var oldAircraft = currentAircraft;
+
+        // Stop Visual Guidance and the Waypoint Flight Director on an aircraft swap. Both were
+        // Initialized with the OLD aircraft's tuning profile (VG also with the old destination
+        // runway), and their tones would otherwise keep sounding on the new — possibly cold-and-dark
+        // — airframe. Stop() is idempotent and releases the ref-counted 505 stream claim through the
+        // flag-guarded ActiveChanged handlers (announce:false — a swap shouldn't speak "… off").
+        if (visualGuidanceManager != null && visualGuidanceManager.IsActive)
+            visualGuidanceManager.Stop(announce: false);
+        if (waypointFdManager != null && waypointFdManager.IsActive)
+            waypointFdManager.Stop(announce: false);
+        // Silence the rudder-coordination slip cue too — its white-noise tick would otherwise keep
+        // sounding on the new airframe (it owns its own WaveOut, independent of the managers above).
+        if (_slipCueOn)
+        {
+            slipCueGenerator?.Stop();
+            _slipCueOn = false;
+            // Drop the wanted-subscription claim too, or the ball var would be re-asserted onto the
+            // SIM_FRAME path for the NEW aircraft when its definitions are rebuilt — streaming for a
+            // cue that is now switched off.
+            simConnectManager.StopDeferredVariableMonitoring("TURN_COORDINATOR_BALL");
+        }
+
         // Halt the old A380 def's seat-motor / slider-ramp timers — they keep firing
         // calc-path L:var writes at the new aircraft otherwise (sim stays connected).
         // Both FBW defs' StopAllMotion also disposes that def's TCAS RA compose timer.

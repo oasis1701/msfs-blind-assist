@@ -167,6 +167,10 @@ Details: [docs/gsx.md](docs/gsx.md) — user-facing usage in the main sections, 
 
 Details: [docs/visual-guidance.md](docs/visual-guidance.md).
 
+### Waypoint Flight Director (synthetic audio FD, en-route)
+
+Details: [docs/waypoint-flight-director.md](docs/waypoint-flight-director.md).
+
 ### Multi-Aircraft Architecture
 
 **Core interfaces:**
@@ -538,6 +542,25 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The pitch PID's `fpmError`/`fpmErrorRate` coefficients must stay POSITIVE (same sign as the error) — never reintroduce the old leading-minus; it produced wrong-direction guidance masked by tight-tracking autopilot tests. → [visual-guidance.md](docs/visual-guidance.md)
 - PID math, phase machine, and lateral arc-capture logic must stay untouched by tone work — VG's failure mode must always be "missing audible reference," never "wrong steering command." → [visual-guidance.md](docs/visual-guidance.md)
 - VG's manual-query grace window must only suppress the two chatty per-second callouts (bank guidance, centerline deviation) — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](docs/visual-guidance.md)
+- The A380X and HS787 must NOT inherit the A320 baseline VG profile — both are heavy widebodies and carry 777-class overrides; the biases are type-performance ESTIMATES (the installed `flight_model.cfg` files hold only vestigial stub speeds, A380 == A320), pending in-sim coupled-ILS-autoland calibration. → [visual-guidance.md](docs/visual-guidance.md)
+
+### Waypoint Flight Director (en-route audio FD) (→ [waypoint-flight-director.md](docs/waypoint-flight-director.md))
+
+- The FD is 100% stock-SimVar and aircraft-agnostic — never add per-airframe variables/events to it; per-aircraft differences belong on `WaypointFlightDirectorProfile`, and every profile number is a best-effort class default still awaiting live in-sim tuning (there is no autopilot to verify hand-flying against). → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- The FD's `TonePitchRangeDeg` must EQUAL that profile's `MaxPitchDeg` — the FD clamps its pitch command to MaxPitchDeg, so a tone saturating earlier cannot represent commands the FD itself generates (it inherited VG's 6° and pinned the tone at full frequency through any normal climb on every profile except the PMDG 777). It is deliberately NOT the same number as `VisualGuidanceProfile.TonePitchRangeDeg`, which covers a narrow approach envelope and is sized for beat sensitivity instead. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- EVERY aircraft definition must state `GetWaypointFlightDirectorProfile()` explicitly, even when it just takes the baseline — `HeadwindA330Definition` derives from `FlyByWireA320Definition`, so an omitted override silently inherits an EXPLICIT narrowbody profile on a heavy widebody and reads as deliberate. Never derive `BankRateLeadSec` from a measured `TaxiTurnLeadSeconds`: the taxi figure is ground steering dominated by pilot rollout anticipation (PMDG 777: taxi 0.3 s vs FD lead 1.3 s). → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- FD and Visual Guidance are MUTUALLY EXCLUSIVE and share the ref-counted 505 stream — each feature must Release only what it Acquired (`_vgHoldsStream`/`_fdHoldsStream`) and Resume only the HandFly suppression it took (`_vgSuppressedHandFly`/`_fdSuppressedHandFly`); an aborted activation otherwise tears down the OTHER feature's stream or un-mutes HandFly under a running FD. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- `AUTOPILOT MASTER` must stay the LAST `VisualGuidanceData` field so existing offsets are unchanged; AP-mute detection must OR it with the cached `A32NX_AUTOPILOT_1/2_ACTIVE` vars — the FBW Airbuses do not drive the stock simvar, so without the OR the auto-mute silently never fires on them. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- There is NO spoken top-of-descent cue and NO bugless "fly a heading" mode — both were considered and deliberately dropped (the tone is the instrument; a heading is flown by setting a Course on a slot). Don't re-add either. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- Capture-radius arrival must stay ARMED (only counts once the fix has been approached from outside the radius) and abeam arrival must stay gated on MOVING — dropping either lets engaging parked or overhead a fix cascade through every slot. A course leg uses abeam only when it started far outside the fix; an outbound radial starts behind it, where abeam misfires. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- `AdvanceLeg` must coalesce a multi-slot skip into ONE callout — every advance is an `AnnounceImmediate`, which interrupts, so advancing one slot per frame produced a burst of half-spoken waypoint names. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- Ground track (`GPS GROUND MAGNETIC TRACK`) is MAGNETIC, matching `CalculateMagneticBearing` (`magnetic = true − variation`) — a course leg lifts BOTH the course (by the fix's `ReferenceMagVar`) and the track (by the aircraft's live magvar) into one true frame. Never mix the two references, and never convert twice. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- The pitch command must go through `EffectiveAoaDeg`, never raw `aoaDeg` — that is the only thing applying the profile's `TypicalApproachAoaDeg` fallback. It deliberately does NOT try to detect an addon stuck at 0.0 AoA: substituting ~5° over a real 0° commands a persistently nose-high attitude, which is worse than the flat command. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- ⚠️ The slip cue's ball SIDE is UNVERIFIED in-sim. The convention lives in the single `MainForm.SlipCueBallSign` const (flip to `-1.0` if a live check shows it backwards) — a reversed cue tells a blind pilot to press the WRONG pedal, so keep code and docs agreeing that it is unconfirmed until someone has flown it. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- `TURN_COORDINATOR_BALL` must stay `DeferredSubscription` — it is a SIM_FRAME var for an off-by-default cue, so it only streams while Ctrl+K is on. Contrast `G_FORCE`, which must stay always-on because it captures a touchdown spike that cannot be requested retroactively. Both branches sit at the TOP of the `HandleSpecialAnnouncements` ladder so lower branches don't re-test their VarName every frame. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- The EFB "Track Slot N" handler must REJECT a position-less fix (`Latitude==0 && Longitude==0`) — ARINC maneuver legs (CA/VA/VM/FM/CI/VI/CD/VD/CR, ~14% of legs) parse to (0,0) and would steer the FD at null island. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- The constraint TYPE comes from the raw ARINC `alt_descriptor` (`WaypointFix.AltDescriptor`), never the formatted `AltitudeRestriction` string (a fallback only) — and a single-bounded `B` maps to AtOrAbove (the floor), never dropped. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
+- The pure math (`WaypointFlightDirectorGeometry`, `WaypointConstraintMapper`) is guarded by the xUnit suite, NOT by `tools/WaypointFdProbe` — the probe is standalone, absent from the solution, and never run by CI. A case added to the probe must be added to the tests too or it protects nothing. → [waypoint-flight-director.md](docs/waypoint-flight-director.md)
 
 ### Guidance tone output device (→ [audio.md](docs/audio.md))
 
@@ -802,6 +825,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Fenix rotary encoders (RMP, FCU)** → [Fenix Increment/Decrement](docs/fenix-increment-decrement.md)
 - **Tuning visual guidance PID controller** → [Visual Guidance](docs/visual-guidance.md)
 - **Working on the guidance-tone output device (which Windows audio endpoint tones play on)** → [Guidance Tone Output Device](docs/audio.md)
+- **Working on / tuning the en-route Waypoint Flight Director** → [Waypoint Flight Director](docs/waypoint-flight-director.md)
 - **Working on taxi guidance (graph, router, tone, form)** → [Taxi Guidance](docs/taxi-guidance.md)
 - **Working on GSX gate selection, docking guidance, or the metres/feet distance toggle** → [GSX Integration](docs/gsx.md)
 - **Working on ActiveSky integration, the weather radar, METAR readouts, or weather auto-announcements** → [Weather](docs/weather.md)
@@ -830,6 +854,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[Fenix Increment/Decrement](docs/fenix-increment-decrement.md)** - Counter-based pattern for Fenix rotary encoders
 - **[Visual Guidance](docs/visual-guidance.md)** - PID controller tuning and ground track monitoring
 - **[Guidance Tone Output Device](docs/audio.md)** - Which Windows audio endpoint the taxi/takeoff/hand-fly/visual-guidance/docking tones play on, device fallback and recovery, the settings panel
+- **[Waypoint Flight Director](docs/waypoint-flight-director.md)** - Synthetic en-route audio FD to the tracked waypoint slots; dual-tone, crossing-altitude constraints, per-aircraft tuning
 - **[Taxi Guidance](docs/taxi-guidance.md)** - Turn-by-turn taxi assistance, steering tone, ATC-constrained routing
 - **[GSX Integration](docs/gsx.md)** - GSX gate selection, docking guidance, distance units; developer internals (gate DFS, docking geometry) under "Developer internals"
 - **[Weather](docs/weather.md)** - ActiveSky opt-in gate, SimConnect fallbacks, per-engine wind truth, precip source precedence, decoded-weather monitor lifecycle
