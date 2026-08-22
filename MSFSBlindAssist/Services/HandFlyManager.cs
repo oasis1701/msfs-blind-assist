@@ -58,6 +58,21 @@ public class HandFlyManager : IDisposable
     public bool MonitorHeading => monitorHeading;
     public bool MonitorVerticalSpeed => monitorVerticalSpeed;
 
+    /// <summary>
+    /// True while this manager is actually SPEAKING attitude callouts. Note this is
+    /// independent of <see cref="SuppressAudio"/>, which only stops the tone — the spoken
+    /// callouts deliberately survive it, so HandFly can narrate attitude underneath another
+    /// feature's tones.
+    ///
+    /// Exists so the manual-landing assist's own bank callouts can stand down when HandFly
+    /// is already speaking them: one condition must never be announced by two sources.
+    /// </summary>
+    public bool IsAnnouncingAttitude =>
+        isActive &&
+        (feedbackMode == HandFlyFeedbackMode.AnnouncementsOnly ||
+         feedbackMode == HandFlyFeedbackMode.Both) &&
+        !AnnouncementsMuted;
+
     public event EventHandler<bool>? HandFlyModeActiveChanged;
 
     public HandFlyManager(ScreenReaderAnnouncer screenReaderAnnouncer)

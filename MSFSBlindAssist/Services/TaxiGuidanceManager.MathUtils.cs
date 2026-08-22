@@ -156,8 +156,26 @@ public partial class TaxiGuidanceManager
     /// <paramref name="refLat/Lon"/> in direction <paramref name="runwayHeadingTrueDeg"/>.
     /// Companion to <see cref="SignedAlongRunwayMeters"/> — uses the perpendicular
     /// component of the same equirectangular projection.
+    /// The projection itself lives in <see cref="SignedLateralFromRunwayMeters"/> — the two
+    /// were byte-identical copies, and they feed gates that must agree about one position.
     /// </summary>
     internal static double AbsLateralFromRunwayMeters(
+        double pointLat, double pointLon,
+        double refLat, double refLon,
+        double runwayHeadingTrueDeg)
+        => Math.Abs(SignedLateralFromRunwayMeters(
+            pointLat, pointLon, refLat, refLon, runwayHeadingTrueDeg));
+
+    /// <summary>
+    /// Signed perpendicular offset (metres) of a point from the runway axis, POSITIVE =
+    /// RIGHT of the runway direction. Companion to <see cref="SignedAlongRunwayMeters"/>,
+    /// using the perpendicular component of the same equirectangular projection.
+    ///
+    /// <para>The sign convention matches <c>LandingExit.ExitSide</c>: the graph assigns
+    /// "Right" when <c>NormalizeAngle(exitBearingTrue - runwayHeadingTrue) &gt;= 0</c>, which
+    /// for a due-north runway puts a right-hand exit east of the axis — positive here.</para>
+    /// </summary>
+    internal static double SignedLateralFromRunwayMeters(
         double pointLat, double pointLon,
         double refLat, double refLon,
         double runwayHeadingTrueDeg)
@@ -168,7 +186,40 @@ public partial class TaxiGuidanceManager
         double dN = (pointLat - refLat) * METERS_PER_DEG_LAT;
         double dE = (pointLon - refLon) * metersPerDegLon;
         double hdgRad = runwayHeadingTrueDeg * Math.PI / 180.0;
-        return Math.Abs(dE * Math.Cos(hdgRad) - dN * Math.Sin(hdgRad));
+        return dE * Math.Cos(hdgRad) - dN * Math.Sin(hdgRad);
+    }
+
+    /// <summary>
+    /// True when the aircraft is still laterally within the landing runway's pavement
+    /// (half-width + <see cref="RUNWAY_CLEAR_MARGIN_M"/>). The single answer to "is
+    /// bearing-to-a-node-beside-the-runway still distorted?" — shared by the
+    /// landing-exit arrival gate and the post-exit tone floor, which must agree.
+    ///
+    /// Returns FALSE when there is no rollout runway to measure against: "not known to
+    /// be on the runway" degrades to trusting the live route, which is the safe
+    /// direction for both callers.
+    ///
+    /// Runway.Width is in FEET (as everywhere else in this file), so it is converted
+    /// before comparing against the metre lateral offset — a bare Width * 0.5 read as
+    /// metres makes the band ~3x too wide.
+    ///
+    /// The half-width/margin comparison itself lives in
+    /// <see cref="Navigation.RolloutExitGate.IsLaterallyClearOfRunway"/> so the rollout's
+    /// lateral handoff trigger cannot spell it differently — it did, and the 0.856 m
+    /// disagreement silently disabled the early-vacate retarget (PR #204 review).
+    /// </summary>
+    private bool IsWithinRolloutRunwayLaterally(double lat, double lon)
+    {
+        // Null runway is the only "not set" test: the runway and its heading are always
+        // assigned together, and 0.0 is a legitimate heading (a due-north runway), so
+        // treating it as a sentinel would report every frame as off the pavement.
+        if (_rolloutRunway == null) return false;
+
+        double lateralM = AbsLateralFromRunwayMeters(
+            lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+            _rolloutRunwayHeadingTrue);
+        return !Navigation.RolloutExitGate.IsLaterallyClearOfRunway(
+            lateralM, _rolloutRunway.Width);
     }
 
     /// <summary>

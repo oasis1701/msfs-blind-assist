@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -451,6 +451,13 @@ public partial class TaxiGuidanceManager
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
             _isLandingExitRoute = false;
+            _landingExitOffPavement = true;   // a new route re-decides this at its own handoff
+            _landingExitMissed = false;
+            _landingExitVacatedEarly = false;
+            _landingExitVacatedEarlyPlannedName = null;
+            _landingExitRouteUnreachable = false;
+            _landingExitMinDistToTargetM = double.MaxValue;
+            _missedVacateSince = DateTime.MinValue;
             _approachAnnounced = false;
             _curveAnnouncedSign = 0;
             _turnImminentAnnounced = false;
@@ -656,6 +663,50 @@ public partial class TaxiGuidanceManager
             {
                 bestDist = dist;
                 bestIdx = i;
+            }
+        }
+
+        // Endpoint-tie pin breaker (KLAS 26R, 2026-08-20). The scan above measures
+        // ENDPOINT distance, and the current segment shares its end node with the
+        // next — so once the aircraft has rolled past that shared node without
+        // passing inside the 25 m capture radius (a wide corner), the two tie
+        // forever, strict-improvement keeps the stale index, and on a long next
+        // segment (B at KLAS is 345 m) the aircraft can be squarely ON the route
+        // yet outside every endpoint's reach. The walk target then freezes at
+        // (stale segment end + look-ahead) and the tone orbits the pilot around a
+        // fixed point. Advance on the evidence the endpoint scan cannot see: the
+        // aircraft's projection is past the current segment's end AND interior on
+        // the next segment within a taxiway-width cross-track bound.
+        //
+        // Runs BEFORE the proximity early-out below — a pilot far along the long
+        // next segment is >SEGMENT_ADVANCE_MAX_DIST_M from every endpoint, which
+        // is exactly the pinned case, not an off-route one. Goes through
+        // AdvanceSegment() so the taxiway announcement and latch resets behave
+        // exactly like every other advance. NEVER fires while the current segment
+        // is a hold-short segment: advancing past an un-announced hold-short is
+        // the runway-incursion direction, and that invariant outranks un-pinning
+        // (the hold-short flow has its own capture handling).
+        //
+        // Fires in EITHER situation where the endpoint scan cannot advance: the
+        // shared-node tie (bestIdx unmoved — the KLAS shape), OR the scan picking a
+        // later segment that is still out of proximity range. The second is the far
+        // half of the same long segment: once past its midpoint the far endpoint
+        // wins the scan (no tie) but can still sit beyond SEGMENT_ADVANCE_MAX_DIST_M,
+        // so gating on the tie alone left a window — ~73 m of the KLAS B segment,
+        // more on a longer one — where the index stayed stale with the target
+        // frozen behind the aircraft. The projection test is the evidence either
+        // way; which endpoint happened to be nearest is not part of it.
+        if ((bestIdx == _currentSegmentIndex || bestDist > SEGMENT_ADVANCE_MAX_DIST_M)
+            && _currentSegmentIndex + 1 < _route.Segments.Count
+            && !_route.Segments[_currentSegmentIndex].IsHoldShortPoint)
+        {
+            var (pinLats, pinLons) = RoutePoints();
+            if (GuidanceGeometry.HasPassedOntoNextSegment(
+                    pinLats, pinLons, _currentSegmentIndex, lat, lon,
+                    SEGMENT_PASS_ADVANCE_MAX_CROSS_M))
+            {
+                AdvanceSegment();
+                return;
             }
         }
 
