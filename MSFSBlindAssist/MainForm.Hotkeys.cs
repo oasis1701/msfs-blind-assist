@@ -760,9 +760,14 @@ public partial class MainForm
             // tones — but only if VG actually suppressed it (not on a validation abort, and not
             // while the FD holds the suppression). Idempotent. Prevents un-muting HandFly under a
             // running FD when a VG activation aborts (no runway) after the FD was already active.
+            // ...and NOT while the manual-landing flare assist is engaged (main): VG
+            // auto-deactivates on the touchdown edge while the flare assist's rollout pan tone
+            // is running, so unmuting HandFly here would stack a second tone on the rollout.
+            // The flare assist's own EngagedChanged(false) resumes HandFly when it ends.
+            // The ownership flag still clears either way — this feature is done with it.
             if (_vgSuppressedHandFly)
             {
-                handFlyManager.ResumeAudio();
+                if (!flareAssistManager.IsEngaged) handFlyManager.ResumeAudio();
                 _vgSuppressedHandFly = false;
             }
         }
@@ -849,9 +854,12 @@ public partial class MainForm
 
             // Resume HandFly's tone if HandFly is still active — but only if the FD actually
             // suppressed it (not on the empty-slot validation abort). Idempotent.
+            // Same flare-assist carve-out as the VG path above: the hazard (stacking a tone on
+            // the rollout) is identical whichever feature held the suppression, and the flare
+            // assist resumes HandFly itself when it disengages.
             if (_fdSuppressedHandFly)
             {
-                handFlyManager.ResumeAudio();
+                if (!flareAssistManager.IsEngaged) handFlyManager.ResumeAudio();
                 _fdSuppressedHandFly = false;
             }
         }

@@ -18,9 +18,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Toggle is protected so aircraft that source trim from a custom variable
     // (e.g. the PMDG 737 reads the L-var ElevTrimTT — the stock ELEVATOR TRIM
     // POSITION SimVar is not driven by the NG3) can honour the shared Shift+T
-    // gate from their own ProcessSimVarUpdate.
+    // gate from their own ProcessSimVarUpdate. An aircraft that keeps the stock
+    // var but speaks its own scale overrides DescribeElevatorTrim instead; the
+    // last-announced KEY below is whatever that override returns (stabiliser
+    // units on the PMDG 777, rounded degrees by default).
     protected bool _trimAnnouncementsEnabled = true;
-    private double _lastAnnouncedTrimDeg = double.NaN;
+    private double _lastAnnouncedTrimKey = double.NaN;
 
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
@@ -581,6 +584,24 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Variable Update Processing
 
     /// <summary>
+    /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
+    /// spoken phrase and the key the debounce compares — the two must move together, or a type
+    /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
+    /// The key is compared EXACTLY against the last announced key (no tolerance), so it must
+    /// already be quantised to the announcement step (a <c>Math.Round</c> product), never raw.
+    /// <para>
+    /// The default is degrees with an up/down word, which is the only thing a generic aircraft
+    /// can say; an airframe with its own trim scale overrides it (e.g. <see cref="PMDG777Definition"/>).
+    /// </para>
+    /// </summary>
+    protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
+    {
+        double rounded = Math.Round(degrees, 2);
+        string direction = rounded >= 0 ? "up" : "down";
+        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+    }
+
+    /// <summary>
     /// Processes variable updates with custom logic.
     /// Handles altitude thousand-foot crossing announcements for all aircraft.
     /// Aircraft with additional complex variable processing logic should override and call base.ProcessSimVarUpdate() first.
@@ -599,27 +620,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             return true;
         }
 
-        // Elevator trim — announce in degrees with up/down, debounced to 0.01 degree
+        // Elevator trim — rendered by DescribeElevatorTrim, debounced on the value it reports
         if (varName == "MON_ElevatorTrim")
         {
             if (!_trimAnnouncementsEnabled)
                 return true; // Suppress when toggled off
 
-            double rounded = Math.Round(value, 2);
+            var (key, phrase) = DescribeElevatorTrim(value);
 
             // First update: store silently, don't announce initial value on app load
-            if (double.IsNaN(_lastAnnouncedTrimDeg))
+            if (double.IsNaN(_lastAnnouncedTrimKey))
             {
-                _lastAnnouncedTrimDeg = rounded;
+                _lastAnnouncedTrimKey = key;
                 return true;
             }
 
-            if (Math.Abs(rounded - _lastAnnouncedTrimDeg) < 0.005)
-                return true; // Debounce — skip if less than 0.01 degree change
+            // Exact compare, not a tolerance: the key is already quantised by DescribeElevatorTrim
+            // (a Math.Round product — equal decimals are bit-identical, and -0.0 == 0.0), so
+            // "unchanged" is simply "same key". A tolerance here would silently swallow genuine
+            // steps of an override that keys on a finer scale.
+            if (key == _lastAnnouncedTrimKey)
+                return true; // Debounce — skip when the reported value has not moved
 
-            _lastAnnouncedTrimDeg = rounded;
-            string direction = rounded >= 0 ? "up" : "down";
-            announcer.Announce($"Trim {direction} {Math.Abs(rounded):F2}");
+            _lastAnnouncedTrimKey = key;
+            announcer.Announce(phrase);
             return true;
         }
 

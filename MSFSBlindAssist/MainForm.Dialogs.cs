@@ -229,7 +229,20 @@ public partial class MainForm
                 // landing-exit planner is opened).
                 if (_augmentPrefetched.Add(dialog.SelectedAirport.ICAO))
                     _ = _augmentingProvider?.PrefetchAsync(dialog.SelectedAirport.ICAO, force: true);
-                announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
+
+                // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
+                // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's
+                // latest choice wins.
+                if (dialog.ManualLandingAssist)
+                {
+                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport);
+                    announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
+                }
+                else
+                {
+                    flareAssistManager.Disarm();
+                    announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}");
+                }
             }
         }
     }
