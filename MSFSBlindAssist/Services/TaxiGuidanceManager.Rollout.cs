@@ -615,7 +615,14 @@ public partial class TaxiGuidanceManager
                         RolloutDiag($"Handoff route unreachable: {crossToFirstM:F0} m from the " +
                             $"first segment (width {firstSeg.PathWidth:F0} ft) with the aircraft " +
                             $"off the runway — concluding rather than steering across it");
-                        _landingExitVacatedEarly = true;
+                        // Only claim "left the runway short of X" when an early vacate was
+                        // actually established — the captured planned-exit name is the proof.
+                        // Otherwise this guard has also fired for a vacate AT or PAST the
+                        // planned exit, where "short of" is false.
+                        if (_landingExitVacatedEarlyPlannedName != null)
+                            _landingExitVacatedEarly = true;
+                        else
+                            _landingExitRouteUnreachable = true;
                         _rolloutHandoffActive = false;
                         SetState(TaxiGuidanceState.Taxiing);
                         HandleArrival();

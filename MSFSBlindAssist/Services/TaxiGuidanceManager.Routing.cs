@@ -455,6 +455,7 @@ public partial class TaxiGuidanceManager
             _landingExitMissed = false;
             _landingExitVacatedEarly = false;
             _landingExitVacatedEarlyPlannedName = null;
+            _landingExitRouteUnreachable = false;
             _landingExitMinDistToTargetM = double.MaxValue;
             _missedVacateSince = DateTime.MinValue;
             _approachAnnounced = false;

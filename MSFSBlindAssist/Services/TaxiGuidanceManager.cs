@@ -291,6 +291,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // steered toward and missed. Null on the no-match branch, where _rolloutExit is never
     // swapped and _route already names the planned exit correctly.
     private string? _landingExitVacatedEarlyPlannedName = null;
+    // Set when the handoff concludes because the route that was built is not one the
+    // aircraft is on, WITHOUT an early vacate having been established first. Distinct from
+    // _landingExitVacatedEarly because that closure claims a POSITION — "short of X" — and
+    // this path cannot support that claim: the guard also fires when the aircraft turned off
+    // at or beyond the planned exit, where "short of" is simply false. Distinct from
+    // _landingExitOffPavement too, whose "Off the runway at X" wording reads as a successful
+    // vacate.
+    private bool _landingExitRouteUnreachable = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
@@ -2908,6 +2916,17 @@ public partial class TaxiGuidanceManager : IDisposable
                     $"Stop and hold position, then open the taxi planner to set a route " +
                     $"to your gate.");
             }
+            else if (_landingExitRouteUnreachable)
+            {
+                // Off the runway, but nothing established WHERE along it — the guard fires
+                // for an at-the-exit and a past-the-exit vacate as well as an early one. Any
+                // positional claim here would be a guess, and a blind pilot told they are
+                // somewhere they are not may manoeuvre to "correct" a position that was fine.
+                // State only what is certain: guidance has ended and they should hold.
+                AnnounceInstruction(
+                    "Exit guidance ended: no usable route from here. Stop and hold position, " +
+                    "then open the taxi planner to set a route to your gate.");
+            }
             else if (_landingExitOffPavement)
             {
                 AnnounceInstruction(
@@ -2998,6 +3017,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _landingExitMissed = false;
         _landingExitVacatedEarly = false;
         _landingExitVacatedEarlyPlannedName = null;
+        _landingExitRouteUnreachable = false;
         _landingExitMinDistToTargetM = double.MaxValue;
         _missedVacateSince = DateTime.MinValue;
         _rolloutRunway = null;
