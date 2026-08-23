@@ -70,6 +70,9 @@ public sealed class AltitudeModeTracker
         // vertically (cold and dark, FD and AP off), or the FMA is mid-autoland, where the
         // #10855 shim files LAND/FLARE/ROLL OUT under the LATERAL mode and leaves the vertical
         // mode at None. Publishing there would read "Selected" through the flare.
+        // ⚠️ THIS return, plus preserving IsManaged below it, is what keeps the flare quiet —
+        // NOT AltitudeManagedState's lateral autoland rescue, which sits below it and therefore
+        // cannot run on this path at all. Delete this and the flare announces "Selected".
         if (_vertical == NoVerticalMode)
         {
             _spoken ??= IsManaged;
