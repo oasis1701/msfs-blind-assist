@@ -28,6 +28,15 @@ public partial class SimConnectManager
         //     succeeds, fall through to the data-def write — the exact legacy (main) behavior,
         //     which works for Fenix and degrades to main's known imperfection for FBW for the
         //     few seconds before the probe verifies.
+        //
+        // ⚠️ DO NOT "clean up" the per-prefix ExecuteCalculatorCode routing in the FBW defs'
+        // HandleUIVariableSet catch-alls just because this global routing exists. Those write
+        // through the calculator UNCONDITIONALLY; this one is conditional on a probe that was
+        // measured failing silently for ten weeks (11 Jun - 22 Aug 2026). They are the reason
+        // the overhead panel kept working throughout that outage while the FCU combos did not,
+        // so they are deliberate defence in depth, not leftovers. Only ~7 of the ~71 calc call
+        // sites in those defs are even this shape; the rest are RPN logic and parameterised
+        // K-/H-events that could never be replaced by a plain L:var write.
         //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
         //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
         //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
@@ -125,7 +134,7 @@ public partial class SimConnectManager
         Log.Debug("SimConnect", $"Sending event: {eventName} with data: {data}");
 
         // Two FlyByWire event classes prefer the MobiFlight calculator path:
-        //   1. "H:" gauge/HTML events (e.g. H:A380X_EFIS_CP_BARO_PUSH_1) — these have NO
+        //   1. "H:" gauge/HTML events (e.g. H:A32NX_CHRONO_RST) — these have NO
         //      TransmitClientEvent transport AT ALL (main never sent H: via SendEvent; its
         //      SendHVar was MobiFlight-only too), so they always go to the MobiFlight
         //      channel, queued during the brief connect window.
@@ -151,7 +160,9 @@ public partial class SimConnectManager
         }
         if (eventName.Contains('.') && mobiFlightWasm != null)
         {
-            if (CalcPathVerified)
+            // FBW FCU buttons never wait on the probe — see IsFbwFcuEvent for why a false
+            // negative there silently kills them rather than degrading them.
+            if (CalcPathVerified || IsFbwFcuEvent(eventName, CurrentAircraft?.AircraftCode))
             {
                 FireCalcEvent(eventName, data);
                 return;
@@ -187,17 +198,81 @@ public partial class SimConnectManager
             SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
     }
 
+    // Ever-increasing discriminator for the calc-path event strings. Interlocked because
+    // SendEvent is reached from the UI thread, hotkey handling and background timers alike.
+    private long calcEventSeq;
+
+    /// <summary>
+    /// The RPN the MobiFlight command channel is given for one H: or dotted event.
+    ///
+    /// ⚠️ The leading "<paramref name="seq"/> 0 *" is LOAD-BEARING, not decoration. That channel
+    /// DEDUPS byte-identical consecutive commands, so without a per-call discriminator every
+    /// TOGGLE event reached through SendEvent could be fired once and then never again: an EFIS
+    /// filter or LOC/APPR switched on could not be switched off, because "on" and "off" are the
+    /// same event and therefore the same string. The prefix pushes seq, pushes 0 and multiplies
+    /// to an inert 0 which is left on the stack and discarded — so a (>K:) still pops the data
+    /// value that follows it, and a (>H:) still sees no argument. Same idiom, same reason, as
+    /// the A320/A380 SD-page writes, the A380 RMP keypresses and the A380 seat-motor ramp.
+    /// </summary>
+    /// <summary>
+    /// Makes an arbitrary RPN command textually unique so the MobiFlight channel cannot coalesce
+    /// it with an identical predecessor. Same inert "{seq} 0 *" prefix as BuildCalcEventCode.
+    ///
+    /// ⚠️ Needed by any VALUELESS write, which is where repeats are byte-identical: a bare
+    /// K-event TOGGLE is the common case. The A320/A380 wiper circuit toggle is the live example
+    /// — Off→Slow→Off→Slow silently loses the last step, because its two
+    /// ELECTRICAL_CIRCUIT_TOGGLE writes land back to back with nothing between them.
+    /// </summary>
+    public static string BuildUniqueCalcCode(string rpn, long seq) => $"{seq} 0 * {rpn}";
+
+    /// <summary>Run RPN that must not be coalesced with an identical predecessor.</summary>
+    public void ExecuteCalculatorCodeUnique(string rpnCode) =>
+        ExecuteCalculatorCode(BuildUniqueCalcCode(
+            rpnCode, System.Threading.Interlocked.Increment(ref calcEventSeq)));
+
+    public static string BuildCalcEventCode(string eventName, uint data, long seq) =>
+        eventName.StartsWith("H:", StringComparison.Ordinal)
+            ? $"{seq} 0 * (>{eventName})"
+            : $"{seq} 0 * {data} (>K:{eventName})";
+
+    /// <summary>
+    /// FlyByWire FCU button events, which MUST go down the calculator path and must NOT wait on
+    /// the <see cref="CalcPathVerified"/> probe.
+    ///
+    /// ⚠️ The FBW FCU consumes these strictly as calculator K-events; the TransmitClientEvent
+    /// fallback reaches it not at all. So a probe FALSE NEGATIVE — path alive, read-back broken —
+    /// does not degrade these, it kills them outright. That is not hypothetical: measured
+    /// 2026-08-22 on a live machine, MSFSBA_BRIDGE_PROBE held the exact nonce written (so the
+    /// calc WRITE was fine) while the data-def read-back never arrived, leaving the path forever
+    /// unverified and every A32NX.FCU_* sent through SendEvent silently discarded. Reported as
+    /// "the FCU won't accept". FireFCUButton had always bypassed this by calling
+    /// ExecuteCalculatorCode directly, which is exactly why the knob buttons kept working while
+    /// the combos did not — the inconsistency hid the fault for months.
+    ///
+    /// Deliberately narrow: only the FCU family, and only on the A380. Stock events still want
+    /// the legacy transport, and other dotted events keep the probe gate.
+    ///
+    /// ⚠️ The AIRCRAFT half of that narrowing is load-bearing, not tidiness. The A32NX shares the
+    /// `A32NX.FCU_*` event names but NOT the reasoning above: its FCU is reached perfectly well by
+    /// MapClientEventToSimEvent + TransmitClientEvent (the shipping path documented in SendEvent),
+    /// so for the A320 this bypass does not rescue a probe false negative — it DELETES the working
+    /// fallback. A pilot without the MobiFlight WASM module (a supported, degraded configuration —
+    /// it is exactly what CalcPathVerdict.PilotWarning exists to announce) would have every A320
+    /// FCU control go dead rather than degrade: FCU_HDG_SET / FCU_SPD_SET / FCU_ALT_SET, the
+    /// FCU_EFIS_{L,R}_BARO_{SET,PUSH,PULL} writes and every FCU panel push button, all handed to a
+    /// WASM module that is not there and silently dropped.
+    /// </summary>
+    public static bool IsFbwFcuEvent(string eventName, string? aircraftCode) =>
+        aircraftCode == "FBW_A380"
+        && eventName.StartsWith("A32NX.FCU_", StringComparison.Ordinal);
+
     // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
     // dotted custom events take the data param. Callers route here once the verdict/connection
     // gates have been applied (the H: flush may fire during the brief connect window —
     // ExecuteCalculatorCode drops safely if the module object is gone).
-    private void FireCalcEvent(string eventName, uint data)
-    {
-        if (eventName.StartsWith("H:", StringComparison.Ordinal))
-            ExecuteCalculatorCode($"(>{eventName})");
-        else
-            ExecuteCalculatorCode($"{data} (>K:{eventName})");
-    }
+    private void FireCalcEvent(string eventName, uint data) =>
+        ExecuteCalculatorCode(
+            BuildCalcEventCode(eventName, data, System.Threading.Interlocked.Increment(ref calcEventSeq)));
 
     // Flush events queued while the calc-path verdict was pending. Called from
     // MarkCalcPathVerified (flush via calc) and MarkCalcPathProbeConcluded (flush

@@ -243,13 +243,11 @@ public partial class MainForm : Form
     // per app session. Manual refresh (force:true) bypasses it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
 
-    // FBW A380 STD-flag watchdog debounce (see the BARO_MB_WATCH_* branch in OnSimVarUpdated).
-    private DateTime _a380BaroStdMismatchL = DateTime.MinValue, _a380BaroStdMismatchR = DateTime.MinValue;
-
     // MobiFlight end-to-end bridge probe state (see BridgeProbeTimer_Tick).
     private System.Windows.Forms.Timer? _bridgeProbeTimer;
 
     private int _bridgeProbeNonce = (Environment.TickCount & 0x3FFF) + 1; // 1..16384, never 0
+    private int _bridgeProbePrevNonce;                                    // 0 = nothing written yet
 
     private int _bridgeProbeAttempts;
 
@@ -587,6 +585,16 @@ public partial class MainForm : Form
         simConnectManager = new SimConnectManager(this.Handle);
         simConnectManager.CurrentAircraft = currentAircraft;
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
+        // A calc path that never came up is a DEGRADED session on FBW aircraft — overhead
+        // switches can silently revert and the FCU can ignore commands. Say so once, rather
+        // than let the pilot find it one dead control at a time (which is what happened for
+        // ten weeks). Queued: it must not cut across a callout.
+        simConnectManager.CalcPathDegraded += (_, msg) =>
+        {
+            if (string.IsNullOrEmpty(msg)) return;
+            if (InvokeRequired) BeginInvoke(new Action(() => announcer.Announce(msg)));
+            else announcer.Announce(msg);
+        };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;

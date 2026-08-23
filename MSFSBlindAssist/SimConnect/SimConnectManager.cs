@@ -171,11 +171,13 @@ public partial class SimConnectManager
     // unverified, they fall back to the legacy TransmitClientEvent transport.
     public bool CalcPathProbeConcluded { get; private set; }
 
-    public void MarkCalcPathVerified()
+    public void MarkCalcPathVerified(int attempts = 0)
     {
         if (CalcPathVerified) return;
         CalcPathVerified = true;
         CalcPathProbeConcluded = true;
+        // KEEP THIS LOG LINE. Its absence is why a broken probe hid for ten weeks.
+        Log.Info("SimConnect", CalcPathVerdict.LogLine(verified: true, attempts));
         FlushPendingCalcEvents();
     }
 
@@ -186,12 +188,21 @@ public partial class SimConnectManager
     /// the legacy TransmitClientEvent transport; queued H: events are fired at the
     /// MobiFlight channel anyway (there is no alternative transport for H: events).
     /// </summary>
-    public void MarkCalcPathProbeConcluded()
+    public void MarkCalcPathProbeConcluded(int attempts = 0, bool aircraftNeedsCalcPath = false)
     {
         if (CalcPathProbeConcluded) return;
         CalcPathProbeConcluded = true;
+        // KEEP THIS LOG LINE (see MarkCalcPathVerified). A silent give-up is what let every
+        // generic L:var write and dotted FBW event degrade unnoticed for ten weeks.
+        Log.Warn("SimConnect", CalcPathVerdict.LogLine(verified: false, attempts));
+        CalcPathDegraded?.Invoke(this,
+            CalcPathVerdict.PilotWarning(verified: false, aircraftNeedsCalcPath) ?? string.Empty);
         FlushPendingCalcEvents();
     }
+
+    /// <summary>Raised with a spoken warning when the probe concludes UNVERIFIED on an aircraft
+    /// that needs the calculator path; the payload is empty when there is nothing to say.</summary>
+    public event EventHandler<string>? CalcPathDegraded;
 
     /// <summary>Re-arms the probe verdict (called from MainForm's probe re-arm path on
     /// reconnect/aircraft swap, alongside the Disconnect() reset).</summary>
