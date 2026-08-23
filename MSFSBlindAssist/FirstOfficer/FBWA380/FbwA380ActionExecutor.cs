@@ -19,6 +19,20 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
 {
     private const int WriteSpacingMs = 200;
 
+    // Dotted FBW input events this executor fires through FireFCUButton. The definition's
+    // registration is what maps a dotted name onto a transport, so an event the definition
+    // does not register cannot reach the aircraft by any path — the sim swallows it silently.
+    // These are constants rather than inline literals so FiredEventNames cannot drift out of
+    // sync with the dispatch switch below. Pinned by FoFbwEventContractTests.
+    private const string EvtSpdPush = "A32NX.FCU_SPD_PUSH";
+    private const string EvtHdgPush = "A32NX.FCU_TO_AP_HDG_PUSH";
+    private const string EvtAltPush = "A32NX.FCU_ALT_PUSH";
+    private const string EvtAp1Push = "A32NX.FCU_AP_1_PUSH";
+
+    /// <summary>Every dotted FBW input event this executor can fire.</summary>
+    public static readonly string[] FiredEventNames =
+        { EvtSpdPush, EvtHdgPush, EvtAltPush, EvtAp1Push };
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private SimConnectManager? _sc;
     private FlyByWireA380Definition? _def;
@@ -94,10 +108,10 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
         {
             "BARO_STD"        => FireBaro(std: true),
             "BARO_QNH"        => FireBaro(std: false),
-            "FCU_PUSH_SPEED"  => FireFcu("A32NX.FCU_SPD_PUSH"),
-            "FCU_PUSH_HEADING"=> FireFcu("A32NX.FCU_TO_AP_HDG_PUSH"),
-            "FCU_PUSH_ALT"    => FireFcu("A32NX.FCU_ALT_PUSH"),
-            "AP1_ENGAGE"      => FireFcu("A32NX.FCU_AP_1_PUSH"),
+            "FCU_PUSH_SPEED"  => FireFcu(EvtSpdPush),
+            "FCU_PUSH_HEADING"=> FireFcu(EvtHdgPush),
+            "FCU_PUSH_ALT"    => FireFcu(EvtAltPush),
+            "AP1_ENGAGE"      => FireFcu(EvtAp1Push),
             _                 => ApplySilent(name, target ?? 1),
         };
         _lastWriteUtc = DateTime.UtcNow;

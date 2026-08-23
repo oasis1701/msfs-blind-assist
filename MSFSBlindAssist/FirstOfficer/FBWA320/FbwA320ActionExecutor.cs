@@ -20,6 +20,27 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
 {
     private const int WriteSpacingMs = 200;
 
+    // Dotted FBW input events this executor fires through FireFCUButton. The definition's
+    // registration is what maps a dotted name onto a transport, so an event the definition
+    // does not register cannot reach the aircraft by any path — the sim swallows it silently.
+    // These are constants rather than inline literals so FiredEventNames cannot drift out of
+    // sync with the dispatch switch below. Pinned by FoFbwEventContractTests.
+    private const string EvtSpdPush = "A32NX.FCU_SPD_PUSH";
+    private const string EvtHdgPush = "A32NX.FCU_HDG_PUSH";
+    private const string EvtAltPush = "A32NX.FCU_ALT_PUSH";
+    private const string EvtAp1Push = "A32NX.FCU_AP_1_PUSH";
+    private const string EvtBaroLPull = "A32NX.FCU_EFIS_L_BARO_PULL";
+    private const string EvtBaroLPush = "A32NX.FCU_EFIS_L_BARO_PUSH";
+    private const string EvtBaroRPull = "A32NX.FCU_EFIS_R_BARO_PULL";
+    private const string EvtBaroRPush = "A32NX.FCU_EFIS_R_BARO_PUSH";
+
+    /// <summary>Every dotted FBW input event this executor can fire.</summary>
+    public static readonly string[] FiredEventNames =
+    {
+        EvtSpdPush, EvtHdgPush, EvtAltPush, EvtAp1Push,
+        EvtBaroLPull, EvtBaroLPush, EvtBaroRPull, EvtBaroRPush,
+    };
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private SimConnectManager? _sc;
     private FlyByWireA320Definition? _def;
@@ -97,10 +118,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         {
             "BARO_STD"          => FireBaro(std: true),   // A320: PULL = STD
             "BARO_QNH"          => FireBaro(std: false),  // A320: PUSH = QNH
-            "FCU_PUSH_SPEED"    => FireFcu("A32NX.FCU_SPD_PUSH"),
-            "FCU_PUSH_HEADING"  => FireFcu("A32NX.FCU_HDG_PUSH"),   // NOT the A380's FCU_TO_AP_HDG_PUSH
-            "FCU_PUSH_ALT"      => FireFcu("A32NX.FCU_ALT_PUSH"),
-            "AP1_ENGAGE"        => FireFcu("A32NX.FCU_AP_1_PUSH"),
+            "FCU_PUSH_SPEED"    => FireFcu(EvtSpdPush),
+            "FCU_PUSH_HEADING"  => FireFcu(EvtHdgPush),
+            "FCU_PUSH_ALT"      => FireFcu(EvtAltPush),
+            "AP1_ENGAGE"        => FireFcu(EvtAp1Push),
             "CABIN_CALL_ALL"    => await FireCabinCallAsync(),
             _ when name.StartsWith("ECAM_PAGE_") => await FireEcamPageAsync(name),
             _                   => ApplySilent(name, target ?? 1),
@@ -131,8 +152,8 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     private bool FireBaro(bool std)
     {
         // A320 PULL = STD, PUSH = QNH (opposite the A380). The _EIS_BARO_IS_STD L:vars are dead.
-        string l = std ? "A32NX.FCU_EFIS_L_BARO_PULL" : "A32NX.FCU_EFIS_L_BARO_PUSH";
-        string r = std ? "A32NX.FCU_EFIS_R_BARO_PULL" : "A32NX.FCU_EFIS_R_BARO_PUSH";
+        string l = std ? EvtBaroLPull : EvtBaroLPush;
+        string r = std ? EvtBaroRPull : EvtBaroRPush;
         _def!.FireFCUButton(l, _sc!, _announcer!, readback: false);
         _def!.FireFCUButton(r, _sc!, _announcer!, readback: false);
         return true;
