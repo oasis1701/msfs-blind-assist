@@ -83,6 +83,16 @@ public class ArmedAltitudeModeTests
     }
 
     [Fact]
+    public void Constraint_bit_is_read_at_the_right_position()
+    {
+        // Bit 28 ALONE, SSM Normal Operation. The live-capture test above uses a payload with
+        // six bits set, so it passes for five WRONG bit indices; this is what actually pins 28.
+        double raw = (3.0 * 4294967296.0) + (1u << 27);
+        Assert.True(ArmedAltitudeMode.ConstraintApplicable(raw));
+        Assert.False(ArmedAltitudeMode.IsCruiseAltitude(raw));
+    }
+
+    [Fact]
     public void NameAltArmedBit_renames_only_the_alt_entry_and_leaves_the_source_untouched()
     {
         var source = new (int bit, string name)[]

@@ -33,6 +33,8 @@ public class AltitudeManagedStateTests
     [InlineData(13)]  // OP DES
     [InlineData(14)]  // V/S
     [InlineData(15)]  // FPA
+    [InlineData(25)]  // between the two managed ranges — pins that they stay DISJOINT, so a
+    [InlineData(29)]  // tidy of "20..24 or 30..34" into "20..34" cannot pass silently
     [InlineData(40)]  // SRS
     [InlineData(41)]  // SRS GA
     [InlineData(50)]  // TCAS
