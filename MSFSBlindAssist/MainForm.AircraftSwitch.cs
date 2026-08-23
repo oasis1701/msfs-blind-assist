@@ -55,9 +55,12 @@ public partial class MainForm
             if (_bridgeProbeAwaitingRead)
             {
                 double cached = simConnectManager.GetCachedVariableValue("MSFSBA_BRIDGE_PROBE") ?? 0;
-                if ((int)Math.Round(cached) == _bridgeProbeNonce)
+                // Accept the PREVIOUS nonce too — the read-back lags the write by one round, so
+                // comparing against only the current one misses by exactly one every time and the
+                // probe never converges. See SimConnect.BridgeProbe for the measurements.
+                if (SimConnect.BridgeProbe.IsEcho(cached, _bridgeProbeNonce, _bridgeProbePrevNonce))
                 {
-                    simConnectManager.MarkCalcPathVerified();
+                    simConnectManager.MarkCalcPathVerified(_bridgeProbeAttempts);
                     return;
                 }
                 // First mismatch: the probe L:var did not exist when the data
@@ -70,13 +73,14 @@ public partial class MainForm
                     _bridgeProbeRebound = true;
                     simConnectManager.RebindVariableDataDefinition("MSFSBA_BRIDGE_PROBE");
                 }
+                _bridgeProbePrevNonce = _bridgeProbeNonce;          // the lagging read may still echo this
                 _bridgeProbeNonce = (_bridgeProbeNonce % 16384) + 1; // new nonce each retry
             }
             if (_bridgeProbeAttempts >= 40)
             {
                 // All 40 writes have been issued and attempt 40's read-back (above) just
                 // failed — give up: module absent or data-def read failing.
-                simConnectManager.MarkCalcPathProbeConcluded();
+                simConnectManager.MarkCalcPathProbeConcluded(_bridgeProbeAttempts, aircraftNeedsCalcPath: true);
                 return;
             }
             _bridgeProbeAttempts++;
