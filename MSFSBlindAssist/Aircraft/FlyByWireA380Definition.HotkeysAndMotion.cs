@@ -243,9 +243,11 @@ public partial class FlyByWireA380Definition
     public void RequestFCUAltitudeWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
-        _reqAlt = true; _pAltVal = _pAltMgd = null;
+        // Only the VALUE is requested. The managed/selected word comes from the derived state at
+        // emit time — requesting A32NX_FCU_ALT_MANAGED here would force-read an ExcludeFromBatch
+        // var, whose PERIOD.ONCE replaces its standing subscription, and it carries nothing we use.
+        _reqAlt = true; _pAltVal = null;
         s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_ALT_MANAGED", forceUpdate: true);
     }
 
     public void RequestFCUVSWithStatus(SimConnectManager s)
@@ -345,11 +347,10 @@ public partial class FlyByWireA380Definition
         // value we just set (no racy cache re-read) plus the cached managed dot — mirroring the
         // "FCU altitude 36000, managed/selected" Fenix announces. The window's SelectAll
         // separately gives NVDA's "36000 selected" field echo.
-        // ⚠️ The managed word comes from the DERIVED state, never from the cached
-        // A32NX_FCU_ALT_MANAGED value: that key now carries the FMA vertical mode (a mode
-        // NUMBER), because the L:var of that name has been hardcoded to 0 by the aircraft
-        // since FBW #10855. A ">0.5" test on it would read "managed" for every mode but None.
-        string altStatus = _altModeManaged ? "managed" : "selected";
+        // ⚠️ The managed word comes from the DERIVED state (AltitudeModeTracker), never from a
+        // direct read of A32NX_FCU_ALT_MANAGED: that L:var has been hardcoded to 0 by the
+        // aircraft since FBW #10855, so a ">0.5" test on it would always read "selected".
+        string altStatus = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
         if (_metricAlt)
         {
             int m = (int)Math.Round(rounded * 0.3048);

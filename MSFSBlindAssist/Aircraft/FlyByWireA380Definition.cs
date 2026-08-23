@@ -2015,16 +2015,18 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Mode", managedSel);
         Mon("A32NX_FCU_SPD_MANAGED_DOT", "Speed Mode", managedSel);
         Mon("A32NX_FCU_VS_MANAGED", "Vertical Speed Mode", managedSel);
-        // ⚠️ ALTITUDE is the ONE of the four that is DERIVED, not read. Its key keeps the old
-        // name so the pilot's Ctrl+M mute and every call site survive, but it is BACKED BY THE
-        // FMA VERTICAL MODE: FBW #10855 hardcoded L:A32NX_FCU_ALT_MANAGED to 0 in the WASM
-        // (`const bool lvlChManaged = false; idFcuShimAltManaged->set(lvlChManaged);`), so
-        // reading it can only ever say "Selected". Never point this back at its own name.
-        // AltitudeManagedState carries the evidence and the deleted FCU's own formula; the
-        // decode + call-out live in ProcessSimVarUpdate, which is why ValueDescriptions is
-        // empty here (the raw value is a vertical mode, not a 0/1 flag).
+        // ⚠️ ALTITUDE is the ONE of the four that is DERIVED, not read: FBW #10855 hardcoded
+        // L:A32NX_FCU_ALT_MANAGED to 0 in the WASM, so reading it can only ever say "Selected".
+        // The key is KEPT — pointing at its own dead L:var — purely to carry the pilot's Ctrl+M
+        // mute row and the FCU panel row; its VALUE is never used. The derivation reads
+        // A32NX_FMA_VERTICAL_MODE under its own key instead (see ProcessSimVarUpdate), because
+        // that key is BATCH-covered and a batched var cannot lose its stream: RequestVariable
+        // early-returns for batch-covered vars before issuing the PERIOD.ONCE that would replace
+        // a standing PERIOD.SECOND subscription. Aliasing this key onto that Name instead put the
+        // only input on an individual def, where one panel-open force-read killed the feature for
+        // the session. ValueDescriptions is empty because the row renders from
+        // TryGetDisplayOverride, not from a 0/1 flag.
         Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", new Dictionary<double, string>());
-        vars["A32NX_FCU_ALT_MANAGED"].Name = "A32NX_FMA_VERTICAL_MODE";
         // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
@@ -2039,12 +2041,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
-        // A32NX_FCU_ALT_MANAGED must ALSO stay out of the batch, but for a second and stronger
-        // reason than the force-read above: it now reads A32NX_FMA_VERTICAL_MODE, which is
-        // itself a batched var, and two continuous BATCHED keys sharing one Name shift every
-        // later var's struct slot (VarNameCollisionTests pins this). Its own individual def
-        // keeps the two copies independent.
-        vars["A32NX_FCU_ALT_MANAGED"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
         Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
@@ -3075,13 +3071,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // decoding it, vs the A32NX's old raw-number announce). Bits per the FBW a32nx-api.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
 
-    // Derived FCU ALTITUDE managed/selected state — see AltitudeManagedState for why it is
-    // computed here instead of read from L:A32NX_FCU_ALT_MANAGED. _altModeVertical is the FMA
-    // vertical mode (delivered under the A32NX_FCU_ALT_MANAGED key), _altModeLateral the FMA
-    // lateral mode (the autoland rescue), and the armed bitmask comes from _prevVertArmed.
-    // _altModeSpoken is the last value ACTUALLY announced, not the last computed: it is what
-    // makes the vertical-mode-to-None transient of an autoland silent instead of a
-    // "Selected … Managed" pair one frame apart.
     // PRIM FG discrete word 3 qualifiers, cached from FMA_CRUISE_ALT_MODE. Neither is an armed
     // state: they only decide WHICH NAME the armed ALT bit is announced under.
     private bool _fgAltConstraintApplicable, _fgAltIsCruiseAltitude;
@@ -3101,10 +3090,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         return bits;
     }
 
-    private int _altModeVertical, _altModeLateral;
-    private bool _altModeSeenVertical;
-    private bool _altModeManaged;
-    private bool? _altModeSpoken;
+    // Derived FCU ALTITUDE managed/selected state. AltitudeManagedState owns the rule,
+    // AltitudeModeTracker owns the sequencing (baseline, readiness, autoland, reconnect reset).
+    private readonly AltitudeModeTracker _altMode = new();
     private string _lastFlightPhaseA380 = "";
     // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
     // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
@@ -3240,7 +3228,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed
     // and announce via the pairing in ProcessSimVarUpdate.
     // ===================================================================
-    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
+    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
