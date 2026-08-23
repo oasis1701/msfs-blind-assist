@@ -1,1 +1,1 @@
-A320: an armed altitude is now announced as "Altitude constraint armed" when the FMS has a constraint at that altitude, matching the fix already made for the A380. The PFD marks this only by colouring the ALT indication magenta, so it was previously inaudible.
+A320: an armed altitude is now announced as "Altitude constraint armed" when the FMS has a constraint at that altitude, so you can tell it apart from an ordinary armed altitude without reading the PFD.

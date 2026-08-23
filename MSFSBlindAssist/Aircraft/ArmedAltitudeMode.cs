@@ -80,9 +80,12 @@ public static class ArmedAltitudeMode
     /// altConstraint.isNormalOperation()</c>). Pass the raw
     /// <c>A32NX_FMGC_{1,2}_FM_ALTITUDE_CONSTRAINT</c>.
     ///
-    /// ⚠️ Normal Operation ONLY — deliberately stricter than <see cref="Arinc429Word.BitValueOr"/>,
-    /// which also accepts Functional Test. Matching the PFD exactly is the point; a lamp test
-    /// must not manufacture an altitude constraint.
+    /// ⚠️ <c>IsNormalOperation</c>, not <see cref="Arinc429Word.BitValueOr"/> — and that is NOT
+    /// this code choosing to be stricter than the A380 half above. The two aircraft carry the
+    /// qualifier differently and each mirrors ITS OWN PFD's accessor: the A380 reads a discrete
+    /// BIT, so it uses FBW's <c>bitValueOr</c> semantics (Normal Operation OR Functional Test),
+    /// while the A32NX reads a value word's VALIDITY, for which <c>isNormalOperation()</c> is the
+    /// only sensible accessor and is exactly what its PFD calls. Do not "harmonize" them.
     ///
     /// The A32NX PFD's extra <c>!clbArmed</c> term is NOT reproduced here, on either airframe.
     /// That term decides which single label to draw in one text slot, not whether the armed

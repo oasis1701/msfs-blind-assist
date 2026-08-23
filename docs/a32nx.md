@@ -192,9 +192,9 @@ else                     fmgc_a_bus.fm_alt_constraint_ft.SSM = NoComputedData;
 
 so the word is read for its VALIDITY and its number is never used — which is also precisely what
 the A32NX PFD reads (`FMA.tsx`: `altAcqArmed && !clbArmed && altConstraint.isNormalOperation()`).
-`ConstraintApplicableFromConstraintWord` gates on Normal Operation **only**, deliberately
-stricter than `Arinc429Word.BitValueOr`, which also accepts Functional Test: a lamp test must not
-manufacture an altitude constraint.
+`ConstraintApplicableFromConstraintWord` gates on Normal Operation **only** — the accessor its own
+PFD uses for a value word's validity, where the A380 reads a discrete bit and uses `bitValueOr`.
+Each mirrors its own aircraft; neither is stricter than the other, so do not "harmonize" them.
 
 **Both FMGCs are read, and the qualifier applies if either says so.** The armed bitmask MSFSBA
 receives follows `fmgcPriorityIndex`, so an FMGC-1-only read would go quiet whenever FMGC 2 held
