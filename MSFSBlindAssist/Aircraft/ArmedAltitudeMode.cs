@@ -114,4 +114,35 @@ public static class ArmedAltitudeMode
                 named[i].name = Name(altConstraintApplicable, altIsCruiseAltitude);
         return named;
     }
+
+    /// <summary>
+    /// The ALT bit within <c>A32NX_FMA_VERTICAL_ARMED</c>. A raw bit VALUE, not a shift
+    /// position — the <c>_vertArmedBits</c> tables are written as values (1 Altitude, 4 Climb,
+    /// 8 Descent, 16 Glideslope, 32 Final, 64 TCAS), and <see cref="NameAltArmedBit"/> finds its
+    /// entry by comparing against this same value.
+    /// </summary>
+    public const int AltArmedBit = 1;
+
+    /// <summary>
+    /// The newly-armed bits that can be announced IMMEDIATELY — everything except ALT.
+    ///
+    /// ALT is the only armed mode with a qualifier (an FMS altitude constraint, or on the A380
+    /// the cruise altitude), and that qualifier is always dispatched to the definition AFTER the
+    /// armed bitmask itself: on the A380 it rides a different continuous batch, on the A32NX it
+    /// sorts a few slots later in the same one. Naming ALT inline therefore reads the PREVIOUS
+    /// tick's qualifier, and because the call-out is edge-triggered the wrong name is permanent.
+    /// So ALT is held and flushed once the qualifier has settled; every other mode is unaffected
+    /// and keeps its immediate call-out.
+    /// </summary>
+    public static int ImmediateArmedBits(int newlyArmed) => newlyArmed & ~AltArmedBit;
+
+    /// <summary>Whether a newly-armed bitmask contains ALT and therefore needs the hold.</summary>
+    public static bool ShouldHoldAltAnnouncement(int newlyArmed) => (newlyArmed & AltArmedBit) != 0;
+
+    /// <summary>
+    /// Whether a held ALT announcement is still worth speaking when the hold flushes: ALT must
+    /// still be armed in the CURRENT bitmask. An ALT that arms and disarms inside the hold
+    /// window is dropped rather than announced after it stopped being true.
+    /// </summary>
+    public static bool HeldAltStillArmed(int currentArmed) => (currentArmed & AltArmedBit) != 0;
 }

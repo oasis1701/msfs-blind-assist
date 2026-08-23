@@ -116,6 +116,70 @@ public class ArmedAltitudeModeTests
         Assert.Equal("Climb", named[0].name);
         Assert.Equal("Cruise altitude", named[1].name);
     }
+
+    // ---- Splitting a newly-armed bitmask into "say now" and "hold" ----
+    //
+    // The ALT entry is the only one with a qualifier (constraint / cruise altitude), and its
+    // qualifier is always DISPATCHED AFTER the armed bitmask, so naming it inline reads the
+    // previous tick's value. It is held; everything else is announced at once.
+
+    [Fact]
+    public void Immediate_bits_strip_only_the_alt_bit()
+    {
+        // ALT(1) + CLB(4) + DES(8) armed together: CLB and DES speak now, ALT is held.
+        Assert.Equal(4 | 8, ArmedAltitudeMode.ImmediateArmedBits(1 | 4 | 8));
+    }
+
+    [Fact]
+    public void Immediate_bits_pass_a_mask_without_alt_through_unchanged()
+    {
+        Assert.Equal(4 | 16, ArmedAltitudeMode.ImmediateArmedBits(4 | 16));
+    }
+
+    [Fact]
+    public void Immediate_bits_are_empty_when_alt_armed_alone()
+    {
+        Assert.Equal(0, ArmedAltitudeMode.ImmediateArmedBits(1));
+    }
+
+    [Fact]
+    public void Immediate_bits_leave_the_high_bits_alone()
+    {
+        // FINAL(32) and TCAS(64) must survive the strip — a sign or width slip would eat them.
+        Assert.Equal(32 | 64, ArmedAltitudeMode.ImmediateArmedBits(1 | 32 | 64));
+    }
+
+    [Theory]
+    [InlineData(1, true)]        // ALT alone
+    [InlineData(1 | 4, true)]    // ALT with CLB
+    [InlineData(4, false)]       // CLB alone
+    [InlineData(0, false)]       // nothing newly armed
+    public void Hold_is_needed_exactly_when_the_alt_bit_is_newly_armed(int newlyArmed, bool expected)
+    {
+        Assert.Equal(expected, ArmedAltitudeMode.ShouldHoldAltAnnouncement(newlyArmed));
+    }
+
+    [Theory]
+    [InlineData(1, true)]        // still armed at flush time
+    [InlineData(1 | 8, true)]    // still armed, alongside DES
+    [InlineData(8, false)]       // ALT disarmed inside the hold window
+    [InlineData(0, false)]       // everything disarmed
+    public void A_held_announcement_survives_only_while_alt_is_still_armed(int currentArmed, bool expected)
+    {
+        // An ALT that arms and disarms inside the hold window must be DROPPED, not spoken late.
+        Assert.Equal(expected, ArmedAltitudeMode.HeldAltStillArmed(currentArmed));
+    }
+
+    [Fact]
+    public void The_alt_bit_constant_matches_the_table_entry_it_names()
+    {
+        // NameAltArmedBit finds the ALT entry by the VALUE 1. If these ever disagree, the hold
+        // would defer one bit while the namer renamed another.
+        var named = ArmedAltitudeMode.NameAltArmedBit(
+            new (int bit, string name)[] { (ArmedAltitudeMode.AltArmedBit, "Altitude"), (4, "Climb") },
+            altConstraintApplicable: true, altIsCruiseAltitude: false);
+        Assert.Equal("Altitude constraint", named[0].name);
+    }
 }
 
 /// <summary>
