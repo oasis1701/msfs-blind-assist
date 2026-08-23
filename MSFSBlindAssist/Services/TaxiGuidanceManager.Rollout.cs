@@ -65,7 +65,8 @@ public partial class TaxiGuidanceManager
                 $"exit.Lat={exit.Latitude:F6} exit.Lon={exit.Longitude:F6} " +
                 $"exit.TaxiwayName='{exit.TaxiwayName}' exit.NodeId={exit.NodeId} " +
                 $"runway.RunwayID='{runway.RunwayID}' runway.Length={runway.Length:F0} " +
-                $"runwayHeadingTrue={runwayHeadingTrue:F2} allExits.Count={allExits.Count}");
+                $"runwayHeadingTrue={runwayHeadingTrue:F2} allExits.Count={allExits.Count} " +
+                $"allExits={DescribeExits(allExits)}");
 
             if (_route == null || _route.Segments.Count == 0)
             {
@@ -773,19 +774,37 @@ public partial class TaxiGuidanceManager
             RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg " +
                 $"lateral={lateralFromCenterlineFt:F0}ft halfWidth={halfRunwayWidthFt:F0}ft exitBrgErr={exitBrgErr:F1}deg");
 
-            // Sorted list — first suitable exit further downfield than the current
-            // one (with ROLLOUT_OVERSHOOT_FT sentinel to skip the current one and
-            // any near-duplicates). Exits requiring a turn > 90° are skipped —
-            // same suitability rule as undershoot protection.
-            Navigation.LandingExit? nextExit = null;
-            foreach (var e in _rolloutAllExits)
+            // Measured from the aircraft, not the missed exit - see DownfieldCutoffFeet. A
+            // high-speed exit is only declared missed up to ROLLOUT_HIGHSPEED_OVERSHOOT_FT
+            // (500 ft) past it, so an exit-relative cutoff can call a turnoff several hundred
+            // feet BEHIND the wing "downfield" and pan the tone back at it.
+            double downfieldCutoffFt = Navigation.RolloutExitGate.DownfieldCutoffFeet(
+                _rolloutExit.DistanceFromThresholdFeet, signedAlongPastFt, ROLLOUT_OVERSHOOT_FT);
+
+            var nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
+                _rolloutAllExits, downfieldCutoffFt);
+
+            // Nothing left in the planned list. That list came from GetLandingExits, which is
+            // built for the planner DIALOG and drops turnoffs on purpose - one entry per
+            // taxiway name, and no unmarked junction at all once the runway has a single
+            // hold-short marker. Rapid-exit taxiways are commonly modelled without a
+            // hold-short bar (they are one-way), so a marked crossing near the threshold can
+            // hide every RET behind it. Before telling a pilot at 90 kt that the runway has
+            // run out of exits - a verdict whose only remedy is a 180 on active pavement -
+            // ask the graph itself. CYYZ 23, 2026-08-23: the list held six exits ending at the
+            // missed one, while 5,400 ft of runway and three further turnoffs lay ahead.
+            if (nextExit == null && _graph != null && _rolloutRunway != null)
             {
-                if (e.DistanceFromThresholdFeet <= _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
-                    continue;
-                if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
-                    continue;
-                nextExit = e;
-                break;
+                var rescued = _graph.FindDownfieldExits(_rolloutRunway, downfieldCutoffFt);
+                if (rescued.Count > 0)
+                {
+                    RolloutDiag($"OVERSHOOT planned list exhausted \u2014 graph rescan found " +
+                        $"{rescued.Count}: {DescribeExits(rescued)}");
+                    _rolloutAllExits = Navigation.RolloutExitGate.MergeRescueExits(
+                        _rolloutAllExits, rescued);
+                    nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
+                        _rolloutAllExits, downfieldCutoffFt);
+                }
             }
 
             if (nextExit != null)
@@ -795,7 +814,11 @@ public partial class TaxiGuidanceManager
                 return;
             }
 
-            RolloutDiag("OVERSHOOT no downfield exit -> EnterRunwayEndCountdown");
+            // Genuinely nothing ahead. Record what was rejected, so a report of this can be
+            // answered from the log instead of guessed at - the CYYZ verdict was reached
+            // inside a loop that wrote down nothing about what it looked at.
+            RolloutDiag($"OVERSHOOT no downfield exit past {downfieldCutoffFt:F0}ft -> " +
+                $"EnterRunwayEndCountdown; considered {DescribeExits(_rolloutAllExits)}");
 
             // No downfield exit. Announce, clear the route so the off-route
             // recalc has nothing to chase, fall through to idle Taxiing.
@@ -1607,16 +1630,28 @@ public partial class TaxiGuidanceManager
     /// suitability rule as the overshoot next-exit scan.
     /// </summary>
     private Navigation.LandingExit? NextDownfieldExit(Navigation.LandingExit afterExit)
+        => Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
+            _rolloutAllExits,
+            afterExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT);
+
+    /// <summary>
+    /// Compact "name@distance" rendering of an exit list for the rollout diagnostic. The
+    /// missed-exit verdict is only reviewable after the fact if the log says what was on the
+    /// table when it was reached.
+    /// </summary>
+    private static string DescribeExits(IReadOnlyList<Navigation.LandingExit>? exits)
     {
-        foreach (var e in _rolloutAllExits)
+        if (exits == null || exits.Count == 0) return "[]";
+        var sb = new System.Text.StringBuilder("[");
+        for (int i = 0; i < exits.Count; i++)
         {
-            if (e.DistanceFromThresholdFeet <= afterExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
-                continue;
-            if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
-                continue;
-            return e;
+            if (i > 0) sb.Append(' ');
+            var e = exits[i];
+            sb.Append(string.IsNullOrEmpty(e.TaxiwayName) ? "?" : e.TaxiwayName)
+              .Append('@').Append(e.DistanceFromThresholdFeet.ToString("F0"))
+              .Append('/').Append(e.ExitAngleDegrees.ToString("F0")).Append("deg");
         }
-        return null;
+        return sb.Append(']').ToString();
     }
 
     /// <summary>
@@ -1798,8 +1833,16 @@ public partial class TaxiGuidanceManager
 
         if (distM <= BACKTRACK_HANDOFF_M)
         {
-            AnnounceInstruction("Runway vacated.");
-            // _route is null; pilot loads the next route via Taxi Assist.
+            // Stop the tone BEFORE the state change. Taxiing with a null route returns from
+            // UpdatePosition before anything touches the tone, so a tone left sounding here
+            // never gets another heading-error update: it holds its last pan for as long as
+            // the pilot keeps taxiing - reported from CYYZ as "stuck in the right ear", 68
+            // seconds of it in the log. The no-connection-node branch above has always
+            // stopped the tone for exactly this reason; this branch simply never did.
+            _steeringTone.Stop();
+            // Say what state the pilot is now in. _route is null, so a status query answers
+            // "No route loaded." - which is true but reads as a fault unless they were told.
+            AnnounceInstruction("Runway vacated. No route set \u2014 use the taxi planner for a route to your stand.");
             SetState(TaxiGuidanceState.Taxiing);
         }
     }
