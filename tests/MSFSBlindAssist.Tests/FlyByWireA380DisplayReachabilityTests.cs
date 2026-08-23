@@ -26,6 +26,11 @@ public class FlyByWireA380DisplayReachabilityTests
         // L:var never delivers, so a row keyed on it would read "--" for the whole session.
         { "EFIS Captain", "A32NX_FCU_EFIS_L_WPT_LIGHT_ON" },
         { "EFIS First Officer", "A32NX_FCU_EFIS_R_WPT_LIGHT_ON" },
+        // Altitude managed/selected, decoded from the derived AltitudeModeTracker. The key's own
+        // L:var is FBW #10855's dead one (hardcoded to 0) — the actual call-out is emitted off
+        // A32NX_FMA_VERTICAL_MODE — so this FCU panel row is the only thing that puts the
+        // altitude mode in front of a pilot at all.
+        { "FCU", "A32NX_FCU_ALT_MANAGED" },
     };
 
     [Theory]
