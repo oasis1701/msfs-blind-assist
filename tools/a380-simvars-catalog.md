@@ -3,6 +3,15 @@
 Authoritative catalog of cockpit variables (L:vars, H:events, K:events) for the FlyByWire A380X,
 organized by cockpit AREA / PANEL in roughly **overhead → glareshield → instrument panel → pedestal → displays** order.
 
+> ⚠️ **This catalog predates the FlyByWire FG-into-PRIM move (#10855, a380x `1bbd304`).** Rows are
+> accurate as of the build named below unless marked otherwise; a name here is evidence of what
+> the aircraft published THEN, not proof it still exists. The authoritative account of the move is
+> the "FG-into-PRIM variable migration" section of [docs/a380x.md](../docs/a380x.md), and the event
+> names MSFSBA relies on are pinned by `FlyByWireA380EventContractTests`. Check a name against the
+> FBW tree before building on it — a deleted K-event is swallowed by the sim with no error at all.
+>
+> Known casualties already struck through below: the `H:A380X_EFIS_CP_BARO_{PULL,PUSH}_*` baro pair.
+
 **Scope notes**
 
 - The **FCU is intentionally EXCLUDED** (out of scope) per request.
@@ -359,8 +368,8 @@ Overhead bleed/air-cond controls:
 | `A32NX_EFIS_{SIDE}_ND_MODE` / `A32NX_EFIS_{SIDE}_ND_RANGE` | enum | as above | R | Legacy A32NX-named mirror of ND mode/range (read). |
 | `A32NX_EFIS_{SIDE}_OPTION` | enum | filter option | R/W | Legacy EFIS option var. |
 | `A32NX_EFIS_TERR_{SIDE}_ACTIVE` | bool | 0/1 | R | Terrain overlay active. |
-| `H:A380X_EFIS_CP_BARO_PULL_{ALTIMETER_INDEX}` | event | — | W | Baro knob pull (STD). **[A380-SPECIFIC]** |
-| `H:A380X_EFIS_CP_BARO_PUSH_{ALTIMETER_INDEX}` | event | — | W | Baro knob push (QNH). **[A380-SPECIFIC]** |
+| ~~`H:A380X_EFIS_CP_BARO_PULL_{ALTIMETER_INDEX}`~~ | event | — | — | **DELETED by FBW #10855** — use `A32NX.FCU_EFIS_{L,R}_BARO_PULL` (= **QNH**). **[A380-SPECIFIC]** |
+| ~~`H:A380X_EFIS_CP_BARO_PUSH_{ALTIMETER_INDEX}`~~ | event | — | — | **DELETED by FBW #10855** — use `A32NX.FCU_EFIS_{L,R}_BARO_PUSH` (= **STD**). **[A380-SPECIFIC]** |
 | `H:A32NX_EFIS_{SIDE}_CHRONO_PUSHED` | event | — | W | EFIS chrono push (`{SIDE}` = L/R). |
 
 ---
