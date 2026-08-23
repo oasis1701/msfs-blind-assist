@@ -85,41 +85,12 @@ public partial class MainForm
             // Fall through so ENGINE_MODE_SELECTOR still auto-announces its position.
         }
 
-        // FBW A380 STD-flag watchdog: in STD the FCU forces the stock altimeter to
-        // exactly 1013.25 hPa, but its KOHLSMAN SETTING STD write is TRANSITION-only —
-        // a session that starts with STD already engaged reads a stale 0 (observed
-        // live 2026-06-11), which mis-read the Altimeter STD combo/hotkey. When the
-        // MB mirror sits at the STD constant for >2 s with the flag still 0, back-fill
-        // the flag (everything keys on it). ONE direction only (0→1): the FCU's
-        // exit-write is same-tick reliable, and correcting 1→0 could fight a
-        // mid-transition frame. The def suppresses these vars' announcements.
-        if (currentAircraft?.AircraftCode == "FBW_A380" &&
-            (e.VarName == "BARO_MB_WATCH_L" || e.VarName == "BARO_MB_WATCH_R"))
-        {
-            bool baroCapt = e.VarName == "BARO_MB_WATCH_L";
-            bool atStdConstant = Math.Abs(e.Value - 1013.25) < 0.02;
-            double? stdFlag = simConnectManager?.GetCachedVariableValue(
-                baroCapt ? "A32NX_FCU_LEFT_EIS_BARO_IS_STD" : "A32NX_FCU_RIGHT_EIS_BARO_IS_STD");
-            if (atStdConstant && (stdFlag ?? 0) < 0.5)
-            {
-                var nowUtc = DateTime.UtcNow;
-                var since = baroCapt ? _a380BaroStdMismatchL : _a380BaroStdMismatchR;
-                if (since == DateTime.MinValue)
-                {
-                    if (baroCapt) _a380BaroStdMismatchL = nowUtc; else _a380BaroStdMismatchR = nowUtc;
-                }
-                else if ((nowUtc - since).TotalSeconds > 2)
-                {
-                    simConnectManager?.ExecuteCalculatorCode($"1 (>A:KOHLSMAN SETTING STD:{(baroCapt ? 1 : 2)}, Bool)");
-                    if (baroCapt) _a380BaroStdMismatchL = DateTime.MinValue; else _a380BaroStdMismatchR = DateTime.MinValue;
-                }
-            }
-            else
-            {
-                if (baroCapt) _a380BaroStdMismatchL = DateTime.MinValue; else _a380BaroStdMismatchR = DateTime.MinValue;
-            }
-            // Fall through; the def's ProcessSimVarUpdate returns true for these keys.
-        }
+        // (The FBW A380 STD-flag watchdog that lived here is GONE. It back-filled the stock
+        //  KOHLSMAN SETTING STD flag because the FCU only wrote it on TRANSITIONS, so a
+        //  session starting in STD read a stale 0. FBW #10855 deleted that writer entirely
+        //  and the A380 STD flag is now the FCU's own per-frame L:var, which is never stale.
+        //  Do NOT reinstate it: nothing reads the stock flag any more, so the back-fill
+        //  write converges on nothing and a genuine QNH of 1013 would retry it every 2 s.)
 
         // Step 2: Handle special one-off announcements (terminal cases only)
         if (HandleSpecialAnnouncements(e))
@@ -1148,6 +1119,11 @@ public partial class MainForm
                 bool isSyntheticSelector =
                     varName == "A32NX_MSFSBA_SD_PAGE" ||
                     varName == "A32NX_MSFSBA_SPEEDBRAKE" ||
+                    // A380 ND option filter: an action combo whose own key has no backing L:var,
+                    // so any value that ever arrives for it is a 0 from an unwritten var — which
+                    // would snap the selection back to "Off" behind the pilot. The live filter is
+                    // read from the WPT light's display row instead.
+                    varName.StartsWith("ND_FILTER_", StringComparison.Ordinal) ||
                     varName.EndsWith("_DETENT", StringComparison.Ordinal);
 
                 // Find the matching value in the combo box
