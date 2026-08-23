@@ -192,6 +192,16 @@ public partial class MainForm
             {
                 UpdateButtonStateFromStateVariable(e.VarName, e.Value);
             }
+
+            // Complete any pending display request BEFORE the def-handled early return:
+            // a var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
+            // populate is waiting on exactly that. Left below the return, every panel
+            // containing a def-handled var (FCU altitude mode, PFD armed modes) waited out
+            // the full 2 s fallback on every open and Refresh.
+            if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
+            {
+                pendingDisplayRequests[e.VarName].TrySetResult(true);
+            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
@@ -202,12 +212,6 @@ public partial class MainForm
             GetDisplayVarNamesCached().Contains(e.VarName))
         {
             displayValues[e.VarName] = e.Value;
-
-            // Signal completion for pending requests
-            if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
-            {
-                pendingDisplayRequests[e.VarName].TrySetResult(true);
-            }
 
             // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
             // whole panel is force-read at once, so N responses land in quick succession; without
