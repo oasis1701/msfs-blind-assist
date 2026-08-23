@@ -229,8 +229,12 @@ disproven `GetCachedVariableValue` approach that must not be re-attempted.
 
 The mute re-check is the one piece that is **A32NX-specific, and it is a trap for the next
 deferred announcement added to this def.** This aircraft is muted CENTRALLY: MainForm wraps
-`announcer.Suppressed` around the whole `ProcessSimVarUpdate` call, because ~100 A32NX vars
-announce from inside it. A timer tick runs OUTSIDE that wrap, so anything spoken from a timer
+`announcer.Suppressed` around the whole `ProcessSimVarUpdate` call, because vars like the A320's
+EFIS baro readouts (and the Headwind A330's stock-Kohlsman altimeter, which shares the wrap)
+announce from INSIDE it and return true — exiting before the generic
+`A32NXDisabledMonitorVariables` gate below, so a Ctrl+M un-tick never muted them. The
+`a32nxMuted` comment in `MainForm.Announcers.cs` is the authority.
+A timer tick runs OUTSIDE that wrap, so anything spoken from a timer
 must consult `A32NXDisabledMonitorVariablesSet` for itself — `FlushHeldAltArmAnnouncement` does.
 The A380 has no such trap: its armed branch checks `A380DisabledMonitorVariablesSet` locally, so
 its flush inherits the same check by writing it the same way.
