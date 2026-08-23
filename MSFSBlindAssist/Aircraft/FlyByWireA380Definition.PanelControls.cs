@@ -617,8 +617,13 @@ public partial class FlyByWireA380Definition
         // text ("1013 hPa" / "29.92 inHg" / "Standard"), so the same value the
         // pilot hears auto-announced now also reads in the panel. (The preselect QNH
         // read-out was removed — see the baro-preselect note above.)
-        d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA", "ND_FILTER_L" };
-        d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA", "ND_FILTER_R" };
+        // The ND-filter row is keyed on the WPT LIGHT, not on the ND_FILTER_{side} combo: the
+        // combo is an Act() action control with no backing L:var, so a def bound to it never
+        // delivers and the row would sit at "--". The light is a real batched var and its
+        // TryGetDisplayOverride renders the whole decoded selection. (Same split as the wipers:
+        // the combo is WIPER_LEFT, the readout is WIPER_L_SW.)
+        d["EFIS Captain"] = new List<string> { "A32NX_FCU_LEFT_EIS_BARO_HPA", "A32NX_FCU_EFIS_L_WPT_LIGHT_ON" };
+        d["EFIS First Officer"] = new List<string> { "A32NX_FCU_RIGHT_EIS_BARO_HPA", "A32NX_FCU_EFIS_R_WPT_LIGHT_ON" };
         // d["Radios"] removed with the dead "Radios" panel — the RMP active/standby freqs are
         // in d["RMP"] (FBW L:vars) and the RMP window.
         d["Transponder"] = new List<string> { "XPNDR_CODE", "XPNDR_STATE", "A32NX_DCDU_ATC_MSG_WAITING" };

@@ -20,6 +20,12 @@ public class FlyByWireA380DisplayReachabilityTests
         // PRIM FG discrete word 3 bit 29 (altIsCrzAlt) — the ALT CRZ / ALT CRZ* the PFD's own
         // FMA shows. OnRequest and not announced, so the PFD status box is its only route out.
         { "PFD", "FMA_CRUISE_ALT_MODE" },
+        // The ND option filter, decoded from its three lights. The row is keyed on the WPT
+        // LIGHT, never on the ND_FILTER_{side} combo: that combo is an Act() action control
+        // whose own key has no backing L:var, and a data definition bound to a nonexistent
+        // L:var never delivers, so a row keyed on it would read "--" for the whole session.
+        { "EFIS Captain", "A32NX_FCU_EFIS_L_WPT_LIGHT_ON" },
+        { "EFIS First Officer", "A32NX_FCU_EFIS_R_WPT_LIGHT_ON" },
     };
 
     [Theory]

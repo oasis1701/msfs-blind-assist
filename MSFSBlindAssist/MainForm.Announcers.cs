@@ -1110,6 +1110,11 @@ public partial class MainForm
                 bool isSyntheticSelector =
                     varName == "A32NX_MSFSBA_SD_PAGE" ||
                     varName == "A32NX_MSFSBA_SPEEDBRAKE" ||
+                    // A380 ND option filter: an action combo whose own key has no backing L:var,
+                    // so any value that ever arrives for it is a 0 from an unwritten var — which
+                    // would snap the selection back to "Off" behind the pilot. The live filter is
+                    // read from the WPT light's display row instead.
+                    varName.StartsWith("ND_FILTER_", StringComparison.Ordinal) ||
                     varName.EndsWith("_DETENT", StringComparison.Ordinal);
 
                 // Find the matching value in the combo box

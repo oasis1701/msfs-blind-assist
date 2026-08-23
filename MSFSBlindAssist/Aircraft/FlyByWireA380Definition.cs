@@ -1039,16 +1039,26 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             // ⚠️ WPT / VORD / NDB are NOT independent — they are ONE selection, and offering
             // them as three switches is the defect a test pilot reported ("turn Waypoints on,
             // then NDB on, and Waypoints turns off"). The FCU holds a single pEfisFilter enum;
-            // see NdFilterSelection for the evidence and the press mapping. The three lights
-            // are silent state FEEDERS for that combo — consumed in ProcessSimVarUpdate, never
-            // announced individually, or one filter change would speak twice (old off, new on).
+            // see NdFilterSelection for the evidence and the press mapping. The three lights are
+            // the state FEEDERS for that combo — consumed in ProcessSimVarUpdate, never announced
+            // individually, or one filter change would speak twice (old off, new on). The DERIVED
+            // selection is announced once instead, and the WPT light doubles as its live-state
+            // backer (same split as WIPER_LEFT / WIPER_L_SW below: an Act() combo writes, a real
+            // var reads). That is why WPT alone keeps a pilot-facing DisplayName and stays in the
+            // Ctrl+M list — it is the one row that mutes the ND-filter call-out.
             foreach (var btn in new[] { "WPT", "VORD", "NDB" })
                 vars[$"A32NX_FCU_EFIS_{side}_{btn}_LIGHT_ON"] = new SimVarDefinition
                 {
-                    Name = $"A32NX_FCU_EFIS_{side}_{btn}_LIGHT_ON", DisplayName = $"{who} {btn} light",
+                    Name = $"A32NX_FCU_EFIS_{side}_{btn}_LIGHT_ON",
+                    DisplayName = btn == "WPT" ? $"{who} ND Filter Position" : $"{who} {btn} light",
                     Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
-                    IsAnnounced = true, ExcludeFromMonitorManager = true
+                    IsAnnounced = true, ExcludeFromMonitorManager = btn != "WPT"
                 };
+            // Write-only action combo: it fires the press, it does NOT read back. Its own key has
+            // no backing L:var (nothing ever writes L:ND_FILTER_{side}), so it must never be put
+            // in a display list — a data definition bound to a nonexistent L:var never delivers
+            // (see SimConnectManager.RebindVariableDataDefinition) and the row would read "--"
+            // forever. The readout is the WPT light above, decoded in TryGetDisplayOverride.
             Act($"ND_FILTER_{side}", $"{who} ND Filter", new Dictionary<double, string>
             {
                 [NdFilterSelection.Off] = "Off", [NdFilterSelection.Waypoints] = "Waypoints",
@@ -2928,6 +2938,12 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // ProcessSimVarUpdate). One selection, never three independent flags — NdFilterSelection.
     private readonly Dictionary<string, bool> _ndLightsL = new(), _ndLightsR = new();
     private int _ndFilterL, _ndFilterR;
+    // Announce state for the derived selection: silent until all three lights of the side have
+    // reported once, and silent for the echo of the pilot's own combo pick (see ProcessSimVarUpdate).
+    private bool _ndBaselinedL, _ndBaselinedR;
+    private int _ndFilterEchoL = -1, _ndFilterEchoR = -1;
+    private long _ndFilterEchoTickL, _ndFilterEchoTickR;
+    private const int NdFilterEchoSuppressMs = 1500;
 
     // Last announced bit state for the two FMA monitors that share PRIM FG discrete word 5
     // (see ProcessSimVarUpdate). Absent key = not yet sampled, so the first read baselines

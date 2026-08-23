@@ -66,7 +66,21 @@ public class CalcEventCodeTests
     [InlineData("A32NX.FCU_EFIS_R_NDB_PUSH")]
     public void Fbw_fcu_events_are_routed_around_the_probe(string eventName)
     {
-        Assert.True(SimConnectManager.IsFbwFcuEvent(eventName));
+        Assert.True(SimConnectManager.IsFbwFcuEvent(eventName, "FBW_A380"));
+    }
+
+    // ...but ONLY on the A380. The A32NX uses the same event NAMES and is reached fine by
+    // TransmitClientEvent, so bypassing the probe there deletes a working fallback instead of
+    // rescuing a broken one: a pilot with no MobiFlight WASM module would lose the whole A320
+    // FCU rather than have it degrade.
+    [Theory]
+    [InlineData("A32NX.FCU_HDG_SET")]
+    [InlineData("A32NX.FCU_EFIS_L_BARO_PUSH")]
+    [InlineData("A32NX.FCU_LOC_PUSH")]
+    public void The_a320_keeps_its_legacy_fcu_transport(string eventName)
+    {
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, "A320"));
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, null));
     }
 
     // ---- arbitrary RPN that must not be coalesced ------------------------------------------
@@ -96,6 +110,6 @@ public class CalcEventCodeTests
     [InlineData("A32NX.SOMETHING_ELSE")]  // dotted but not an FCU button; leave it gated
     public void Everything_else_keeps_the_normal_routing(string eventName)
     {
-        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName));
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, "FBW_A380"));
     }
 }

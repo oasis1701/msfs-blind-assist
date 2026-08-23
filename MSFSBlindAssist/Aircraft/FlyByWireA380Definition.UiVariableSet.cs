@@ -463,6 +463,10 @@ public partial class FlyByWireA380Definition
             string side = varKey == "ND_FILTER_L" ? "L" : "R";
             int current = varKey == "ND_FILTER_L" ? _ndFilterL : _ndFilterR;
             int desired = (int)Math.Round(value);
+            // Stamp the echo so the lights coming back don't make ProcessSimVarUpdate announce a
+            // selection the screen reader just spoke for this combo.
+            if (side == "L") { _ndFilterEchoL = desired; _ndFilterEchoTickL = Environment.TickCount64; }
+            else { _ndFilterEchoR = desired; _ndFilterEchoTickR = Environment.TickCount64; }
             if (NdFilterSelection.PushEvent(side, current, desired) is { } ndEvt)
                 simConnect.SendEvent(ndEvt);
             // The aircraft honours every change EXCEPT clearing (measured — see

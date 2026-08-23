@@ -71,9 +71,14 @@ public partial class FlyByWireA380Definition
 
         // ND option filter — ONE selection per side, fed by its three lights. Stored as they
         // arrive (ProcessSimVarUpdate has no SimConnect handle to read the siblings) and
-        // rendered from _ndFilter* in TryGetDisplayOverride. Silent (return true): the combo
-        // speaks the selection, so announcing the lights too would say it twice on every
-        // change — once for the filter switching off, once for the new one coming on.
+        // rendered from _ndFilter* in TryGetDisplayOverride.
+        //
+        // The three lights are never announced INDIVIDUALLY — one filter change moves two of
+        // them, so that would speak twice (old off, new on). The DERIVED selection is announced
+        // once instead: without it a filter changed in the 3-D cockpit, on a hardware EFIS-CP or
+        // by the aircraft itself would reach the pilot through no channel at all (the combo is
+        // write-only and only speaks the pilot's OWN pick, via the screen reader). Muted through
+        // the WPT light's Ctrl+M row, which is why that one var is not ExcludeFromMonitorManager.
         if (varName.StartsWith("A32NX_FCU_EFIS_", StringComparison.Ordinal)
             && varName.EndsWith("_LIGHT_ON", StringComparison.Ordinal))
         {
@@ -87,7 +92,25 @@ public partial class FlyByWireA380Definition
                 int filter = NdFilterSelection.FromLights(
                     lights.GetValueOrDefault("WPT"), lights.GetValueOrDefault("VORD"),
                     lights.GetValueOrDefault("NDB"));
+                int prev = isLeft ? _ndFilterL : _ndFilterR;
                 if (isLeft) _ndFilterL = filter; else _ndFilterR = filter;
+                // Baseline-first, like every other MSFSBA monitor — and the baseline is only
+                // trustworthy once ALL THREE lights of the side have reported: they arrive one at
+                // a time, so a partial view reads as Off and the third delivery would announce a
+                // filter that was already showing when the app connected.
+                bool baselined = lights.Count == 3 && (isLeft ? _ndBaselinedL : _ndBaselinedR);
+                if (lights.Count == 3) { if (isLeft) _ndBaselinedL = true; else _ndBaselinedR = true; }
+                // Suppress the echo of the pilot's OWN combo pick: the screen reader already spoke
+                // the selection, so announcing it again is the double-announce the UI rules forbid.
+                // MainForm's global _uiSetEcho gate can't cover this — it keys on the var the combo
+                // set (ND_FILTER_{side}), and what comes back is a different var (the lights).
+                long echoTick = isLeft ? _ndFilterEchoTickL : _ndFilterEchoTickR;
+                bool echo = filter == (isLeft ? _ndFilterEchoL : _ndFilterEchoR)
+                            && Environment.TickCount64 - echoTick < NdFilterEchoSuppressMs;
+                bool ndMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet
+                    .Contains($"A32NX_FCU_EFIS_{(isLeft ? "L" : "R")}_WPT_LIGHT_ON");
+                if (baselined && filter != prev && !echo && !ndMuted)
+                    announcer.Announce($"{(isLeft ? "Capt" : "F/O")} ND Filter: {NdFilterSelection.Text(filter)}");
                 return true;
             }
         }

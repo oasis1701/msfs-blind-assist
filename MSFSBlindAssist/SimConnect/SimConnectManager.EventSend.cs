@@ -162,7 +162,7 @@ public partial class SimConnectManager
         {
             // FBW FCU buttons never wait on the probe — see IsFbwFcuEvent for why a false
             // negative there silently kills them rather than degrading them.
-            if (CalcPathVerified || IsFbwFcuEvent(eventName))
+            if (CalcPathVerified || IsFbwFcuEvent(eventName, CurrentAircraft?.AircraftCode))
             {
                 FireCalcEvent(eventName, data);
                 return;
@@ -249,11 +249,22 @@ public partial class SimConnectManager
     /// ExecuteCalculatorCode directly, which is exactly why the knob buttons kept working while
     /// the combos did not — the inconsistency hid the fault for months.
     ///
-    /// Deliberately narrow: only the FCU family. Stock events still want the legacy transport,
-    /// and other dotted events keep the probe gate.
+    /// Deliberately narrow: only the FCU family, and only on the A380. Stock events still want
+    /// the legacy transport, and other dotted events keep the probe gate.
+    ///
+    /// ⚠️ The AIRCRAFT half of that narrowing is load-bearing, not tidiness. The A32NX shares the
+    /// `A32NX.FCU_*` event names but NOT the reasoning above: its FCU is reached perfectly well by
+    /// MapClientEventToSimEvent + TransmitClientEvent (the shipping path documented in SendEvent),
+    /// so for the A320 this bypass does not rescue a probe false negative — it DELETES the working
+    /// fallback. A pilot without the MobiFlight WASM module (a supported, degraded configuration —
+    /// it is exactly what CalcPathVerdict.PilotWarning exists to announce) would have every A320
+    /// FCU control go dead rather than degrade: FCU_HDG_SET / FCU_SPD_SET / FCU_ALT_SET, the
+    /// FCU_EFIS_{L,R}_BARO_{SET,PUSH,PULL} writes and every FCU panel push button, all handed to a
+    /// WASM module that is not there and silently dropped.
     /// </summary>
-    public static bool IsFbwFcuEvent(string eventName) =>
-        eventName.StartsWith("A32NX.FCU_", StringComparison.Ordinal);
+    public static bool IsFbwFcuEvent(string eventName, string? aircraftCode) =>
+        aircraftCode == "FBW_A380"
+        && eventName.StartsWith("A32NX.FCU_", StringComparison.Ordinal);
 
     // Fire a calculator-path event via the MobiFlight bridge. H: events are momentary (no param);
     // dotted custom events take the data param. Callers route here once the verdict/connection
