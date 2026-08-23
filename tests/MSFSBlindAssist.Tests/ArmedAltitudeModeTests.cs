@@ -16,6 +16,7 @@
 // so on the A380 the constraint case is signalled by COLOUR ALONE — the text stays "ALT" —
 // which is precisely the difference a blind pilot has no other way to get.
 
+using System.Reflection;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
@@ -171,14 +172,25 @@ public class ArmedAltitudeModeTests
     }
 
     [Fact]
-    public void The_alt_bit_constant_matches_the_table_entry_it_names()
+    public void Both_fbw_vert_armed_tables_place_altitude_at_the_bit_constant()
     {
-        // NameAltArmedBit finds the ALT entry by the VALUE 1. If these ever disagree, the hold
-        // would defer one bit while the namer renamed another.
-        var named = ArmedAltitudeMode.NameAltArmedBit(
-            new (int bit, string name)[] { (ArmedAltitudeMode.AltArmedBit, "Altitude"), (4, "Climb") },
-            altConstraintApplicable: true, altIsCruiseAltitude: false);
-        Assert.Equal("Altitude constraint", named[0].name);
+        // NameAltArmedBit finds the ALT entry by comparing against AltArmedBit, so a test that
+        // builds its own table using that same constant can never disagree with it — that was
+        // this test's original form, and it was tautological. The real risk lives one level
+        // up: a DEFINITION's own private _vertArmedBits table using a different bit value (or
+        // name) for Altitude, which would desync the hold/flush machinery
+        // (ShouldHoldAltAnnouncement / HeldAltStillArmed / ImmediateArmedBits, all keyed on
+        // AltArmedBit) from what that airframe's FMA decoder actually announces. Reflect into
+        // both real private static tables so either can't drift without failing here.
+        Assert.Equal("Altitude", AltitudeEntry(typeof(FlyByWireA320Definition)).name);
+        Assert.Equal("Altitude", AltitudeEntry(typeof(FlyByWireA380Definition)).name);
+    }
+
+    private static (int bit, string name) AltitudeEntry(Type definitionType)
+    {
+        var field = definitionType.GetField("_vertArmedBits", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var bits = ((int bit, string name)[])field.GetValue(null)!;
+        return bits.Single(b => b.bit == ArmedAltitudeMode.AltArmedBit);
     }
 }
 
