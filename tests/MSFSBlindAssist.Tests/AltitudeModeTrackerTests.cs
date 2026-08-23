@@ -144,5 +144,6 @@ public class AltitudeModeTrackerTests
         Assert.False(t.IsKnown);
         t.OnVerticalMode(22);                          // managed mode, armed still unknown
         Assert.False(t.IsKnown);
+        Assert.False(t.IsManaged);
     }
 }
