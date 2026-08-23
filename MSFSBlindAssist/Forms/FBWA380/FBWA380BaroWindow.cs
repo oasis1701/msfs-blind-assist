@@ -10,8 +10,9 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 //   QNH value : aircraft.ApplyUIVariable("CAPT_QNH_SET", v, ...) — validates,
 //               converts to mb*16, fires K:KOHLSMAN_SET (moves BOTH altimeters).
 //   STD/QNH   : aircraft.ApplyUIVariable("A32NX_FCU_LEFT/RIGHT_EIS_BARO_IS_STD",...)
-//               → HandleUIVariableSet fires H:A380X_EFIS_CP_BARO_{PULL|PUSH}_{1|2}
-//               (PULL=STD, PUSH=QNH; MsfsBaroManager.ts). State is read back from
+//               → HandleUIVariableSet fires A32NX.FCU_EFIS_{L|R}_BARO_{PUSH|PULL}
+//               (PUSH=STD, PULL=QNH — opposite of the A32NX knob; the name and the
+//               polarity evidence live on BaroModeEvent). State is read back from
 //               KOHLSMAN SETTING STD:1 via the re-keyed def (IS_STD L:vars removed
 //               in dev FBW).
 //   Unit      : aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", ...)

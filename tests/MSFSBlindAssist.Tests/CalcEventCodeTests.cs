@@ -1,0 +1,115 @@
+// The RPN string SendEvent hands to the MobiFlight command channel for an H: or dotted event.
+//
+// The channel DEDUPS: two consecutive byte-identical command strings fire once. Four places in
+// this codebase already work around it with a leading "<seq> 0 *" (which pushes seq, pushes 0,
+// multiplies to an inert 0 that is left on the stack and discarded) — the A320 and A380 SD-page
+// writes, the A380 RMP keypresses, and the A380 seat-motor ramp. SendEvent did not, so every
+// TOGGLE button reached through it could be switched on and never off again: "on" and "off" are
+// the same event, hence the same string, and the second press was swallowed.
+
+using MSFSBlindAssist.SimConnect;
+
+namespace MSFSBlindAssist.Tests;
+
+public class CalcEventCodeTests
+{
+    // The bug itself. A pilot sets an EFIS filter On, then Off: both picks fire the one
+    // A32NX.FCU_EFIS_L_WPT_PUSH toggle event, so without a per-call discriminator the Off is
+    // dropped and the filter can never be turned back off.
+    [Fact]
+    public void Repeated_presses_of_one_event_produce_distinct_command_strings()
+    {
+        string first = SimConnectManager.BuildCalcEventCode("A32NX.FCU_EFIS_L_WPT_PUSH", 0, seq: 1);
+        string second = SimConnectManager.BuildCalcEventCode("A32NX.FCU_EFIS_L_WPT_PUSH", 0, seq: 2);
+
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void A_dotted_event_still_fires_the_k_event_with_its_data()
+    {
+        Assert.Equal("1 0 * 0 (>K:A32NX.FCU_LOC_PUSH)",
+            SimConnectManager.BuildCalcEventCode("A32NX.FCU_LOC_PUSH", 0, seq: 1));
+    }
+
+    // The data parameter is a real argument for some events, so it must survive the prefix and
+    // stay the value (>K:) pops — the inert 0 sits below it on the stack.
+    [Fact]
+    public void A_dotted_event_carries_a_non_zero_data_parameter_through()
+    {
+        Assert.Equal("4 0 * 3 (>K:SOME.EVENT)",
+            SimConnectManager.BuildCalcEventCode("SOME.EVENT", 3, seq: 4));
+    }
+
+    // H: events take no value, so the prefix is the only thing on the stack.
+    [Fact]
+    public void An_h_event_keeps_its_no_argument_form()
+    {
+        Assert.Equal("2 0 * (>H:A32NX.SOME_H_EVENT)",
+            SimConnectManager.BuildCalcEventCode("H:A32NX.SOME_H_EVENT", 0, seq: 2));
+    }
+
+    // ---- FBW FCU events bypass the calc-path PROBE -----------------------------------------
+    //
+    // SendEvent only uses the calculator path once the MSFSBA_BRIDGE_PROBE round-trip has
+    // verified it, and otherwise falls back to TransmitClientEvent. The FlyByWire FCU does not
+    // receive that fallback — it consumes A32NX.FCU_* strictly as calculator K-events.
+    //
+    // Measured on a live machine 2026-08-22: the probe writes its nonce fine (the L:var held the
+    // exact value) but the read-back never arrives, so the path is never verified and every
+    // A32NX.FCU_* routed through SendEvent silently went nowhere — reported as "the FCU won't
+    // accept". FireFCUButton had always sidestepped this by calling ExecuteCalculatorCode
+    // directly, which is why the knob buttons worked while the combos did not.
+    [Theory]
+    [InlineData("A32NX.FCU_EFIS_L_BARO_PUSH")]
+    [InlineData("A32NX.FCU_LOC_PUSH")]
+    [InlineData("A32NX.FCU_EFIS_R_NDB_PUSH")]
+    public void Fbw_fcu_events_are_routed_around_the_probe(string eventName)
+    {
+        Assert.True(SimConnectManager.IsFbwFcuEvent(eventName, "FBW_A380"));
+    }
+
+    // ...but ONLY on the A380. The A32NX uses the same event NAMES and is reached fine by
+    // TransmitClientEvent, so bypassing the probe there deletes a working fallback instead of
+    // rescuing a broken one: a pilot with no MobiFlight WASM module would lose the whole A320
+    // FCU rather than have it degrade.
+    [Theory]
+    [InlineData("A32NX.FCU_HDG_SET")]
+    [InlineData("A32NX.FCU_EFIS_L_BARO_PUSH")]
+    [InlineData("A32NX.FCU_LOC_PUSH")]
+    public void The_a320_keeps_its_legacy_fcu_transport(string eventName)
+    {
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, "A320"));
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, null));
+    }
+
+    // ---- arbitrary RPN that must not be coalesced ------------------------------------------
+    //
+    // Not every calc write is an event. A bare K-event TOGGLE carries no value, so repeating it
+    // produces a byte-identical command and the second one is dropped: the A320/A380 wiper
+    // circuit toggle goes Off->Slow->Off->Slow and the last step silently does nothing, because
+    // its two ELECTRICAL_CIRCUIT_TOGGLE writes land back to back.
+    [Fact]
+    public void Repeating_the_same_raw_rpn_produces_distinct_commands()
+    {
+        Assert.NotEqual(
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 1),
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 2));
+    }
+
+    [Fact]
+    public void The_original_rpn_still_runs_after_the_inert_prefix()
+    {
+        Assert.Equal("5 0 * 77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)",
+            SimConnectManager.BuildUniqueCalcCode("77 (>K:ELECTRICAL_CIRCUIT_TOGGLE)", seq: 5));
+    }
+
+    [Theory]
+    [InlineData("AUTO_THROTTLE_ARM")]     // stock event — the legacy transport is correct
+    [InlineData("KOHLSMAN_SET")]
+    [InlineData("A32NX.SOMETHING_ELSE")]  // dotted but not an FCU button; leave it gated
+    public void Everything_else_keeps_the_normal_routing(string eventName)
+    {
+        Assert.False(SimConnectManager.IsFbwFcuEvent(eventName, "FBW_A380"));
+    }
+}

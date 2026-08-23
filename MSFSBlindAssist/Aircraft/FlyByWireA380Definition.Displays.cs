@@ -48,6 +48,11 @@ public partial class FlyByWireA380Definition
         }
         // Wiper position readout (backed on the circuit-switch var, but the OFF/SLOW/FAST
         // state comes from _wiperState*, computed from switch+power in ProcessSimVarUpdate).
+        // ND option filter — one selection per side, decoded from its three lights. Keyed on the
+        // WPT LIGHT because that is the real, delivering var the display list carries; the
+        // ND_FILTER_{side} combo has no backing L:var and never reports anything.
+        if (varKey == "A32NX_FCU_EFIS_L_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterL); return true; }
+        if (varKey == "A32NX_FCU_EFIS_R_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterR); return true; }
         if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
         if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
@@ -155,6 +160,17 @@ public partial class FlyByWireA380Definition
         // override here would be dead code. The pristine-0..1-ratio quirk is instead
         // fixed sim-side: OnDisplayPanelShown below self-normalizes both knob L:vars
         // when the Interior Lighting panel opens.)
+        // Cruise-altitude mode: PRIM FG discrete word 3 bit 29 ("altIsCrzAlt" — the same bit
+        // the PFD's ALT CRZ / ALT CRZ* FMA message derives from). SSM-gated: a word that is
+        // not Normal Operation / Functional Test reads "not available" rather than a
+        // misleading "off". (FBW #10855 moved this out of A32NX_FMA_CRUISE_ALT_MODE.)
+        if (varKey == "FMA_CRUISE_ALT_MODE")
+        {
+            var cw = new SimConnect.Arinc429Word(value);
+            displayText = (!cw.IsNormalOperation && !cw.IsFunctionalTest) ? "not available"
+                        : cw.BitValueOr(29, false) ? "cruise altitude" : "off";
+            return true;
+        }
         // Nosewheel steering angle: 0.5 = centred, (v-0.5)*140 = degrees (±70° authority).
         if (varKey == "A32NX_NOSE_WHEEL_POSITION")
         {
