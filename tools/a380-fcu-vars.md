@@ -2,11 +2,24 @@
 
 Reference for porting the A320 FCU accessibility integration to the A380X.
 
+> [!CAUTION]
+> **This page was written BEFORE FlyByWire #10855 ("add FG part to PRIM", a380x `1bbd304`,
+> 18 Aug 2026) and several of its headline claims are now FALSE.** It is kept because the
+> A320-vs-A380 mapping and the H-event paths are still useful, but do not take a row here as
+> current without checking it against the FBW tree. Corrected below where it matters; the
+> authoritative account of the move is the "FG-into-PRIM variable migration" section of
+> [docs/a380x.md](../docs/a380x.md), and the event names are pinned by
+> `FlyByWireA380EventContractTests`.
+>
+> Specifically: the A380 **does** now publish `A32NX_FCU_*_LIGHT_ON` per-button lights; the
+> `A32NX_FCU_EFIS_{L,R}_*` family **does** now exist and is how the EFIS-CP is read and driven;
+> the A380 FCU has **no EXPED button**; and the `A32NX.FCU_TO_AP_*` events below were deleted.
+
 ## TL;DR — how the A380 FCU differs architecturally
 
 - The A380 "FCU" is a **self-contained TypeScript instrument** (`fbw-a380x/src/systems/instruments/src/FCU/`), not the A32NX glass FCU. Its knobs/buttons are still driven by the **legacy `H:A320_Neo_FCU_*` H-events**, and the managers translate those into **`K:A32NX.FCU_*` key events** plus they **write the SAME `L:A32NX_*` display L:vars the A320 uses** — NOT the A320's ARINC-style `A32NX_FCU_AFS_DISPLAY_*` words. Those `A32NX_FCU_AFS_DISPLAY_*` vars do **not exist** on the A380.
-- The A380 **does NOT publish per-button FCU light L:vars** (`A32NX_FCU_*_LIGHT_ON`). Those don't exist in the A380 tree at all. AP/ATHR/LOC/APPR state must be read from the **FG / FMA status L:vars** instead.
-- EFIS-CP **baro is completely re-architected**: there is no `A32NX_FCU_EFIS_L_*` family. Baro mode/unit are read from `XMLVAR_*` lvars and emitted as **ARINC EIS discrete words** (`A32NX_FCU_LEFT_EIS_*`). The only A380X-prefixed baro var is the preselect readout.
+- ~~The A380 does NOT publish per-button FCU light L:vars.~~ **REVERSED by #10855**: `A32NX_FCU_{LOC,APPR}_LIGHT_ON` and the whole `A32NX_FCU_EFIS_{L,R}_*_LIGHT_ON` family are now the per-button state, written per frame by the WASM and read by the cockpit's own INDICATOR_CODE. The FG/FMA status L:vars this bullet pointed at are the ones that were deleted.
+- ~~EFIS-CP baro is completely re-architected; there is no `A32NX_FCU_EFIS_L_*` family.~~ **REVERSED by #10855**: the EFIS-CP is driven by `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` (PUSH=STD, PULL=QNH — opposite of the A32NX knob). Mode is still read back from the stock `KOHLSMAN SETTING STD:n`.
 
 Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; **[simvars]** = `fbw-a380x/docs/a380-simvars.md`; **[api]** = flybywiresim.com a380x flight-deck-api page; **[input-events]** = `fbw-a380x/docs/a380x-input-events.md`.
 
@@ -17,8 +30,8 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
 | `A32NX.FCU_HDG_SET` | `A32NX.FCU_HDG_SET` (via H-event `A320_Neo_FCU_HDG_SET` → reads `L:A320_Neo_FCU_HDG_SET_DATA`) | SAME key event. HDG SET path confirmed [FCU-src HeadingManager.onEvent]. `A32NX.FCU_HDG_SET` listed [api]. |
-| `A32NX.FCU_HDG_PUSH` | **`A32NX.FCU_TO_AP_HDG_PUSH`** | A380-SPECIFIC. HeadingManager fires `K:A32NX.FCU_TO_AP_HDG_PUSH` on push [FCU-src HeadingManager.onPush]. (`A32NX.FCU_HDG_PUSH` also documented [api] as the generic API, but the in-sim FCU uses the `_TO_AP_` variant.) |
-| `A32NX.FCU_HDG_PULL` | **`A32NX.FCU_TO_AP_HDG_PULL`** | A380-SPECIFIC. [FCU-src HeadingManager.onPull]. |
+| `A32NX.FCU_HDG_PUSH` | `A32NX.FCU_HDG_PUSH` | **CORRECTED post-#10855.** SAME name. The `_TO_AP_` variant this row used to recommend was DELETED with the standalone FCU managers; the surviving event drives the AFS knob directly (`hdg_trk_knob.pushed`, SimConnectInterface.cpp:2349). |
+| `A32NX.FCU_HDG_PULL` | `A32NX.FCU_HDG_PULL` | **CORRECTED post-#10855.** SAME name (`hdg_trk_knob.pulled`, SimConnectInterface.cpp:2356). |
 | `A32NX.FCU_SPD_SET` | `A32NX.FCU_SPD_SET` | SAME [api]. In-sim path: H-event `A320_Neo_FCU_SPEED_SET` → `L:A320_Neo_FCU_SPEED_SET_DATA` [FCU-src SpeedManager]. |
 | `A32NX.FCU_SPD_PUSH` / `_PULL` | `A32NX.FCU_SPD_PUSH` / `A32NX.FCU_SPD_PULL` | SAME [api]. (FCU SpeedManager handles push/pull internally via `K:SPEED_SLOT_INDEX_SET`, but the documented stable events keep the A32NX names.) |
 | `A32NX.FCU_ALT_SET` | `A32NX.FCU_ALT_SET` | SAME [api]. |
@@ -27,8 +40,8 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX.FCU_ALT_INCREMENT_SET` | `A32NX.FCU_ALT_INCREMENT_SET` (also `A32NX.FCU_ALT_INCREMENT_TOGGLE`) | SAME [api]. Selector value var `L:XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT` (100..1000) [api]. |
 | `A32NX.FCU_VS_SET` | `A32NX.FCU_VS_SET` | SAME [api]. In-sim: H-event `A320_Neo_FCU_VS_SET` → `L:A320_Neo_FCU_VS_SET_DATA` [FCU-src VerticalSpeedManager]. |
 | `A32NX.FCU_VS_PUSH` | `A32NX.FCU_VS_PUSH` | SAME (documented) [api]. Note: the in-sim VerticalSpeedManager handles VS PUSH internally; only PULL fires a key event. |
-| `A32NX.FCU_VS_PULL` | **`A32NX.FCU_TO_AP_VS_PULL`** | A380-SPECIFIC. VerticalSpeedManager fires `K:A32NX.FCU_TO_AP_VS_PULL` [FCU-src VerticalSpeedManager.onPull]. (Generic `A32NX.FCU_VS_PULL` documented [api].) |
-| `A32NX.FCU_EXPED_PUSH` | `A32NX.FCU_EXPED_PUSH` | SAME. A380 **HAS EXPED** — AutopilotManager fires `K:A32NX.FCU_EXPED_PUSH` [FCU-src AutopilotManager.onEvent]. Active state from `L:A32NX_FMA_EXPEDITE_MODE`. |
+| `A32NX.FCU_VS_PULL` | `A32NX.FCU_VS_PULL` | **CORRECTED post-#10855.** SAME name (`vs_fpa_knob.pulled`, SimConnectInterface.cpp:2460). |
+| `A32NX.FCU_EXPED_PUSH` | *(none)* | **CORRECTED post-#10855.** The A380 FCU has **NO EXPED button**; both the event and `L:A32NX_FMA_EXPEDITE_MODE` are gone from the A380 tree. The old "A380 HAS EXPED" claim on this row is what put an Expedite control in the app. A320-only. |
 | `A32NX.FCU_APPR_PUSH` | `A32NX.FCU_APPR_PUSH` | SAME [FCU-src AutopilotManager.onEvent]. |
 | `A32NX.FCU_LOC_PUSH` | `A32NX.FCU_LOC_PUSH` | SAME [FCU-src AutopilotManager.onEvent]. |
 | `A32NX.FCU_AP_1_PUSH` | `A32NX.FCU_AP_1_PUSH` | SAME. A380 **has separate AP1/AP2** — AutopilotManager fires `K:A32NX.FCU_AP_1_PUSH` [FCU-src AutopilotManager.onEvent]. |
@@ -44,7 +57,7 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
 | `A32NX.FCU_EFIS_L_FD_PUSH` (+ `_R_`) | **NO `A32NX.FCU_EFIS_*` event on A380, AND the FD is UNCONTROLLABLE on this build.** `TOGGLE_FLIGHT_DIRECTOR` (indexed or not), the `A320_Neo_FCU_FD_n_PUSH` H-event, and direct writes to `A380X_EFIS_L_FD_BUTTON_IS_ON` / `A32NX_FCU_LEFT_EIS_FD_ACTIVE` ALL fail — FBW recomputes the L-var every tick (verified live). The MSFSBA FD button + event were REMOVED. | FD-on STATE is still read-only via `AUTOPILOT FLIGHT DIRECTOR ACTIVE` (`FD_ACTIVE`, kept as a status readout). |
-| `A32NX.FCU_EFIS_L_BARO_SET/PUSH/PULL` (+ `_R_`) | **A380X-prefixed input events.** Per the FBW API catalog the A380 baro knob uses `H:A380X_EFIS_CP_BARO_PULL_{1\|2}` / `H:A380X_EFIS_CP_BARO_PUSH_{1\|2}` (ALTIMETER_INDEX 1=Capt/L, 2=F/O/R). | A380-SPECIFIC. NOTE: these H-events are referenced in the FBW input catalog; the local FCU `BaroManager` consumes them internally (onPush=STD, onPull=QNH/last, onRotate=±). They are **NOT** in `a380x-input-events.md` (which currently only documents RMP), so treat the exact `_PUSH_/_PULL_/_SET_` spelling as **UNCERTAIN — verify in-sim**. |
+| `A32NX.FCU_EFIS_L_BARO_PUSH/PULL` (+ `_R_`) | `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` | **CORRECTED post-#10855.** SAME names as the A32NX, OPPOSITE polarity: **PUSH=STD, PULL=QNH** (A380FcuComputer.cpp:2142-2150 clears `std_active` on pull, sets it on push). The `H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{1,2}` events this row used to recommend were DELETED along with `MsfsBaroManager.ts` — firing them is a silent no-op. PULL is idempotent because `pin_prog_qfe_avail` is hardcoded false, so both may be fired unconditionally. |
 
 ---
 
