@@ -708,6 +708,23 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Re-baseline the definition's "first reading is silent" trackers. Called on a
+    /// SimConnect RECONNECT as well as an aircraft switch: the definition object survives
+    /// a reconnect while SimConnect clears its value cache, so a tracker not reset here
+    /// compares flight 2's first reading against a value spoken on flight 1 and announces
+    /// a phantom change. MainForm resets its OWN trackers (ice, turbulence, SIGMET
+    /// proximity, turnaround) at the same site; this is the definition-owned half.
+    ///
+    /// ⚠️ A definition that adds a tracker gated on a "not yet seen" sentinel — a -1, a
+    /// bool?, a _prev*/_last* consulted before announcing, a ??= latch, an absent-key
+    /// check on a Dictionary — MUST reset it here. This list is maintained BY HAND, not
+    /// generated: two separate review sweeps of FlyByWireA380Definition/
+    /// FlyByWireA320Definition have each found it incomplete, so it is only ever as
+    /// complete as the last person who remembered to extend it when they added a tracker.
+    /// </summary>
+    public virtual void ResetAnnouncementBaselines() { }
+
+    /// <summary>
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();

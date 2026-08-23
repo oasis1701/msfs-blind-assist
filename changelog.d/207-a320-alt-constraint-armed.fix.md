@@ -1,0 +1,1 @@
+A320: an armed altitude is now announced as "Altitude constraint armed" when the FMS has a constraint at that altitude, so you can tell it apart from an ordinary armed altitude without reading the PFD.

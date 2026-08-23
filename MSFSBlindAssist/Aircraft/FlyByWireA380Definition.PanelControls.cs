@@ -610,6 +610,11 @@ public partial class FlyByWireA380Definition
             // AP1/AP2/ATHR/LOC/APPR/EXPED/TRK-FPA are now stateful combos in the
             // FCU control panel, so they're not duplicated here as readouts.
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE",
+            // Managed/Selected for the FCU altitude, decoded in TryGetDisplayOverride off the
+            // derived AltitudeModeTracker (_altMode) — this key's own raw value is the dead
+            // L:var again and is ignored. Listed here only so the row exists to read, and so
+            // Ctrl+M has something to mute.
+            "A32NX_FCU_ALT_MANAGED",
             "FD_ACTIVE"
         };
         // The EIS baro value is an ARINC429 word — NOT shown as a raw display field
@@ -674,8 +679,10 @@ public partial class FlyByWireA380Definition
             "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_LATERAL_ARMED",
             // ALT CRZ / ALT CRZ* — decoded from PRIM FG discrete word 3 bit 29 in
-            // TryGetDisplayOverride. Listed HERE is what makes it reachable: it is OnRequest
-            // and not announced, so with no panel carrying it the decoder never runs.
+            // TryGetDisplayOverride. Listed HERE is what makes it reachable: the var is
+            // Continuous + IsAnnounced but ExcludeFromMonitorManager, and ProcessSimVarUpdate
+            // always returns true for it, so it never announces itself — with no panel carrying
+            // the key, TryGetDisplayOverride is never asked to render it either.
             "FMA_CRUISE_ALT_MODE",
             "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS",
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
