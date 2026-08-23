@@ -163,3 +163,57 @@ Verified NOT bugs on the A32NX (do not "fix"): **seat belts is genuinely 2-posit
 **The C/B TRIPPED ECAM messages ARE wired and DO get spoken — verified end to end (2026-08-16).** Gating found in `CircuitBreakerLogic.ts`: a monitored bit set **AND** FWC flight phase 1, 2 or 6 **AND** held for a **60-second** confirm node (`NXLogicConfirmNode(60, true)`) — so a trip is silent for a full minute before the caution appears; do not conclude "it doesn't work" after 15 s. Live test on the running build (`a32nx-v2024.2.0-dev.7dbada1`): setting `L:1:A32NX_CB_49VU_A_TRIPPED_0` bit 0, phase 1, produced the announcement in MSFSBA's own log — `New ECAM message detected for announcement: 'C/B TRIPPED ON OVHD PNL, Amber'`. Note the ECP breaker (49VU E12) is a poor test subject: pulling it unpowers the ECAM Control Panel itself, so pick another monitored bit in the same group.
 
 **Stray "m" in every grouped ECAM announcement — FIXED.** The live test above first came out as *"C/B **m** TRIPPED ON OVHD PNL"*. Cause: each grouped title is stored `"\x1b<4m\x1b4mC/B\x1bm TRIPPED…"`, and the closing `\x1bm` is ESC + a literal `'m'`; `CleanANSICodes`' control-character pass turned the ESC into a space and left the letter stranded as its own word, which the screen reader spoke. This affected **every** grouped message on the A320 table (`BRAKES m HOT`, `T.O m AUTO BRK`), not just the new ones. `CleanANSICodes` is now the same ESC-anchored single regex the A380 lookup has always used (`\x1b[<)\d]*m`, which covers the bare ESC+`m` reset) plus a `ƴm` alternate for this table's compile-time mojibake — C#'s greedy `\x` escape makes `"\x1b4m"` compile to `U+01B4 'ƴ' + 'm'`, which is also why four action lines briefly stored as `"\x1b5m"` (`308118602/3`, `308128002/3`) announced a stray `Ƶm` with no colour word until they were corrected to `"\x1b<5m"`. The old non-anchored digit pass that could eat real text like "75m" is gone with the consolidation. The characterization tests that pinned the old residue were updated deliberately — if one ever fails claiming a missing `m`, the fix has been reverted, not broken.
+
+### The armed ALT call-out names an FMS altitude constraint (2026-08-23)
+
+Ported from the A380 fix (see [a380x.md](a380x.md) for the full derivation). The two airframes
+agree on the SEMANTIC and differ only in how the aircraft carries the qualifier, so
+`ArmedAltitudeMode` is shared and each def supplies its own source.
+
+**⚠️ The A32NX is NOT a verbatim copy of the A380 here — do not port by assumption.** Three
+things differ, and each was checked against the source:
+
+| | A380 | A32NX |
+| --- | --- | --- |
+| armed bits come from | PRIM FG discrete word 2, bits 11/13/14/15/16/18 | FMGC A-bus discrete word 3, bits **12/22/23/24/25** |
+| constraint qualifier | FG word 3 **bit 28** (`alt_cstr_applicable`) | **the SSM** of `A32NX_FMGC_{1,2}_FM_ALTITUDE_CONSTRAINT` |
+| cruise-altitude flavour | FG word 3 bit 29 (`altIsCrzAlt`) | **none** — the A32NX FMA has no ALT CRZ branch |
+
+Only the final `verticalArmed = altArmed | (clbArmed << 2) | …` expression is byte-identical
+between the two WASM shims, which is exactly what makes "it's shared" a tempting and wrong
+conclusion.
+
+**The SSM *is* the flag, not a proxy for it.** `FmgcComputer.cpp:4898`:
+
+```cpp
+if (alt_cstr_applicable) fmgc_a_bus.fm_alt_constraint_ft.SSM = NormalOperation;
+else                     fmgc_a_bus.fm_alt_constraint_ft.SSM = NoComputedData;
+```
+
+so the word is read for its VALIDITY and its number is never used — which is also precisely what
+the A32NX PFD reads (`FMA.tsx`: `altAcqArmed && !clbArmed && altConstraint.isNormalOperation()`).
+`ConstraintApplicableFromConstraintWord` gates on Normal Operation **only**, deliberately
+stricter than `Arinc429Word.BitValueOr`, which also accepts Functional Test: a lamp test must not
+manufacture an altitude constraint.
+
+**Both FMGCs are read, and the qualifier applies if either says so.** The armed bitmask MSFSBA
+receives follows `fmgcPriorityIndex`, so an FMGC-1-only read would go quiet whenever FMGC 2 held
+priority. In normal dual operation both compute the same constraint, so the OR changes nothing;
+under a single failure it keeps the call-out alive instead of silently degrading.
+
+**The PFD's extra `!clbArmed` term is deliberately NOT reproduced**, on either airframe. That
+term decides which single label to draw in one text slot, not whether the armed altitude is a
+constraint — the A380's own colour rule has no such term, and MSFSBA announces each newly-armed
+mode separately rather than only the top-priority one.
+
+**Bit 2 removed, bit 64 kept — and the difference is the point.** The old
+`(2, "Altitude constraint")` row could never fire: the shim skips bit 1 because
+`base_fmgc_armed_modes` has no constraint member at all (it carries `alt_acq_armed` /
+`alt_acq_arm_possible`, same as the A380's bus). That is structural, so the row is gone. Bit 64
+(TCAS) also cannot fire today — the A32NX shim hardcodes `bool tcasArmed = false;` where its
+siblings read a bit — but that reads as *not yet wired* rather than *not modelled*, so the entry
+stays and starts working the day FBW wires it.
+
+**⚠️ Source-verified, not sim-verified.** There was no A320 loaded when this was written. Every
+claim above is traced to the FBW tree; the live measurement behind the A380 half (bit 28 TRUE at
+FL360 with nothing armed) has no A32NX counterpart yet.

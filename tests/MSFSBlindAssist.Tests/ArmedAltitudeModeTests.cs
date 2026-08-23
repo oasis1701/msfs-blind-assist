@@ -82,3 +82,68 @@ public class ArmedAltitudeModeTests
         Assert.True(ArmedAltitudeMode.IsCruiseAltitude(raw));
     }
 }
+
+/// <summary>
+/// The A32NX carries the SAME qualifier by a different route. Its FMGC encodes
+/// <c>alt_cstr_applicable</c> as the SSM of the constraint VALUE word rather than as a
+/// discrete bit (<c>FmgcComputer.cpp:4898</c>):
+/// <code>
+///     if (alt_cstr_applicable) fmgc_a_bus.fm_alt_constraint_ft.SSM = NormalOperation;
+///     else                     fmgc_a_bus.fm_alt_constraint_ft.SSM = NoComputedData;
+/// </code>
+/// which is exactly what the A32NX PFD reads (<c>FMA.tsx</c>: <c>altAcqArmed &amp;&amp;
+/// !clbArmed &amp;&amp; altConstraint.isNormalOperation()</c>). Its FMGC has no
+/// <c>alt_cst_armed</c> bit either — <c>base_fmgc_armed_modes</c> carries
+/// <c>alt_acq_armed</c> / <c>alt_acq_arm_possible</c> and no constraint member — and there is
+/// no cruise-altitude branch on that airframe at all.
+/// </summary>
+public class ArmedAltitudeModeConstraintWordTests
+{
+    private const double NoComputedData = 1.0 * 4294967296.0;
+    private const double FunctionalTest = 2.0 * 4294967296.0;
+    private const double NormalOperation = 3.0 * 4294967296.0;
+    private const double FailureWarning = 0.0;
+
+    // 8000 ft as an IEEE-754 float payload, the shape fm_alt_constraint_ft actually carries.
+    private static readonly uint Payload8000Ft = BitConverter.SingleToUInt32Bits(8000f);
+
+    [Fact]
+    public void A_constraint_word_in_normal_operation_means_the_constraint_applies()
+    {
+        Assert.True(ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(NormalOperation + Payload8000Ft));
+    }
+
+    [Fact]
+    public void No_computed_data_means_no_constraint()
+    {
+        // This is the FMGC's own "else" branch — not a failure, just nothing constrained.
+        Assert.False(ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(NoComputedData + Payload8000Ft));
+    }
+
+    [Fact]
+    public void A_failed_word_means_no_constraint()
+    {
+        Assert.False(ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(FailureWarning + Payload8000Ft));
+    }
+
+    [Fact]
+    public void Functional_test_is_not_normal_operation()
+    {
+        // Deliberately stricter than Arinc429Word.BitValueOr, which accepts Functional Test:
+        // the A32NX PFD gates on isNormalOperation() alone, and this must not diverge from it.
+        Assert.False(ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(FunctionalTest + Payload8000Ft));
+    }
+
+    [Fact]
+    public void The_a320_never_claims_a_cruise_altitude()
+    {
+        // No ALT CRZ branch exists in the A32NX FMA, so the A320 always passes false and the
+        // shared namer must fall through to the constraint/plain pair.
+        Assert.Equal("Altitude constraint", ArmedAltitudeMode.Name(
+            ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(NormalOperation + Payload8000Ft),
+            altIsCruiseAltitude: false));
+        Assert.Equal("Altitude", ArmedAltitudeMode.Name(
+            ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(NoComputedData + Payload8000Ft),
+            altIsCruiseAltitude: false));
+    }
+}

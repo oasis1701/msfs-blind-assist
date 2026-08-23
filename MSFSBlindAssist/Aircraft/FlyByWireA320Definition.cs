@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Forms;
+﻿using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Utils.Logging;
@@ -2909,6 +2909,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FMGC_1_DISCRETE_WORD_4", DisplayName = "Autoland capability",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true, Units = "number"
+        },
+        // ---- FMA: is the armed ALT an FMS altitude CONSTRAINT? ----
+        // The A32NX FMGC encodes alt_cstr_applicable as the SSM of the constraint VALUE word
+        // (FmgcComputer.cpp:4898 — Normal Operation when a constraint applies, No Computed Data
+        // when none does), so these are read for their VALIDITY, never their number. Both
+        // FMGCs, because the armed bitmask MSFSBA receives follows fmgcPriorityIndex and a
+        // FMGC-1-only read would go quiet whenever FMGC 2 held priority. Continuous so the
+        // qualifier is current the moment the armed bitmask moves; silent and Ctrl+M-hidden
+        // because neither word is an armed state — ProcessSimVarUpdate caches and returns true.
+        ["FMGC_1_ALT_CONSTRAINT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_1_FM_ALTITUDE_CONSTRAINT", DisplayName = "FMGC 1 altitude constraint",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true, Units = "number"
+        },
+        ["FMGC_2_ALT_CONSTRAINT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_FM_ALTITUDE_CONSTRAINT", DisplayName = "FMGC 2 altitude constraint",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true, Units = "number"
         },
         // ---- ND: GS / TAS / wind (ADIRS ARINC429 BNR words) ----
         ["A32NX_ADIRS_IR_1_GROUND_SPEED"] = new SimConnect.SimVarDefinition
@@ -6319,8 +6339,39 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // to mode names so arming a mode speaks "Altitude armed" / "NAV armed" instead of
     // the old raw bitmask number. Matches the A380.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
+
+    // Is an FMS altitude constraint in force, per FMGC 1 / FMGC 2? Cached from the two
+    // FM_ALTITUDE_CONSTRAINT words' SSMs. Not an armed state on its own — it only decides
+    // WHICH NAME the armed ALT bit is announced under.
+    private bool _altConstraintFmgc1, _altConstraintFmgc2;
+
+    /// <summary>
+    /// <see cref="_vertArmedBits"/> with the ALT entry named for the constraint currently in
+    /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
+    /// so the cruise flavour is never offered here (it is A380-only).
+    /// </summary>
+    private (int bit, string name)[] VerticalArmedBits()
+    {
+        var bits = ((int bit, string name)[])_vertArmedBits.Clone();
+        for (int i = 0; i < bits.Length; i++)
+            if (bits[i].bit == 1)   // the ALT bit — found by VALUE, never by position
+                bits[i].name = ArmedAltitudeMode.Name(
+                    _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
+        return bits;
+    }
+    // ⚠️ There is NO bit 2 here, and that is not an omission to "fix". FBW's shim builds
+    // A32NX_FMA_VERTICAL_ARMED as `altArmed | (clbArmed << 2) | (desArmed << 3) |
+    // (gsArmed << 4) | (finalArmed << 5) | (tcasArmed << 6)` — bit 1 is skipped because the
+    // FMGC has no "ALT CST armed" signal to put there (base_fmgc_armed_modes carries
+    // alt_acq_armed / alt_acq_arm_possible and no constraint member). The constraint RENAMES
+    // the ALT bit instead, via VerticalArmedBits/ArmedAltitudeMode.
+    //
+    // Bit 64 (TCAS) is KEPT even though it cannot fire today: the A32NX shim hardcodes
+    // `bool tcasArmed = false;` where its siblings read a bit, which reads as not-yet-wired
+    // rather than not-modelled, so the entry costs nothing and starts working if FBW wires it.
+    // That is the opposite call from bit 2, where the signal is structurally absent.
     private static readonly (int bit, string name)[] _vertArmedBits =
-        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+        { (1, "Altitude"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
     // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 
@@ -7262,7 +7313,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_FMA_VERTICAL_ARMED" || varKey == "A32NX_FMA_LATERAL_ARMED")
         {
             int iv = (int)Math.Round(value);
-            string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? _vertArmedBits : _latArmedBits);
+            // Same live table the call-out uses, so the row and the speech can never disagree
+            // about whether the armed ALT is an FMS altitude constraint.
+            string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? VerticalArmedBits() : _latArmedBits);
             displayText = string.IsNullOrEmpty(modes) ? "None" : modes;
             return true;
         }
@@ -7761,6 +7814,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // FMGC altitude-constraint words — cached, never spoken. Read for their SSM only: the
+        // FMGC sets Normal Operation exactly when alt_cstr_applicable is true and No Computed
+        // Data otherwise (FmgcComputer.cpp:4898), so validity IS the constraint flag and the
+        // number is irrelevant. A constraint existing is not an arming, so returning true here
+        // is what stops this word announcing anything on its own.
+        if (varName == "FMGC_1_ALT_CONSTRAINT" || varName == "FMGC_2_ALT_CONSTRAINT")
+        {
+            bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
+            if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
+            else _altConstraintFmgc2 = applies;
+            return true;
+        }
+
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
         // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
         if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
@@ -7771,7 +7837,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
             if (prev >= 0 && (iv & ~prev) != 0)
             {
-                string nm = DecodeArmedModes(iv & ~prev, vert ? _vertArmedBits : _latArmedBits);
+                string nm = DecodeArmedModes(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits);
                 if (!string.IsNullOrEmpty(nm))
                     foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
                         announcer.Announce($"{one} armed");

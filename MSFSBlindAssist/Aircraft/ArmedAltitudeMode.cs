@@ -3,8 +3,11 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// Which flavour of armed ALT the A380 FMA is showing — plain altitude, an FMS altitude
-/// CONSTRAINT, or the cruise altitude.
+/// Which flavour of armed ALT the FMA is showing — plain altitude, an FMS altitude CONSTRAINT,
+/// or (A380 only) the cruise altitude. Shared by the A380 and the A32NX, which agree on the
+/// SEMANTIC and differ only in how the aircraft carries the qualifier: see
+/// <see cref="ConstraintApplicable"/> (A380, a discrete bit) against
+/// <see cref="ConstraintApplicableFromConstraintWord"/> (A32NX, an SSM).
 ///
 /// ⚠️ Do NOT go looking for an "ALT CST armed" bit. The A380 PRIM FG has none: its armed-modes
 /// bus (<c>base_prim_armed_modes</c>) carries <c>alt_acq_armed</c>, <c>alt_acq_arm_possible</c>,
@@ -63,4 +66,30 @@ public static class ArmedAltitudeMode
     /// <summary><c>altIsCrzAlt</c> off a raw PRIM FG discrete word 3, SSM-gated the same way.</summary>
     public static bool IsCruiseAltitude(double rawWord) =>
         new Arinc429Word(rawWord).BitValueOr(CruiseAltitudeBit, false);
+
+    /// <summary>
+    /// The SAME qualifier on the A32NX, which carries it by a different route: its FMGC encodes
+    /// <c>alt_cstr_applicable</c> as the SSM of the constraint VALUE word rather than as a
+    /// discrete bit (<c>FmgcComputer.cpp:4898</c>):
+    /// <code>
+    ///     if (alt_cstr_applicable) fmgc_a_bus.fm_alt_constraint_ft.SSM = NormalOperation;
+    ///     else                     fmgc_a_bus.fm_alt_constraint_ft.SSM = NoComputedData;
+    /// </code>
+    /// So "is there a constraint?" IS "is that word in Normal Operation?" — which is exactly
+    /// what the A32NX PFD reads (<c>FMA.tsx</c>: <c>altAcqArmed &amp;&amp; !clbArmed &amp;&amp;
+    /// altConstraint.isNormalOperation()</c>). Pass the raw
+    /// <c>A32NX_FMGC_{1,2}_FM_ALTITUDE_CONSTRAINT</c>.
+    ///
+    /// ⚠️ Normal Operation ONLY — deliberately stricter than <see cref="Arinc429Word.BitValueOr"/>,
+    /// which also accepts Functional Test. Matching the PFD exactly is the point; a lamp test
+    /// must not manufacture an altitude constraint.
+    ///
+    /// The A32NX PFD's extra <c>!clbArmed</c> term is NOT reproduced here, on either airframe.
+    /// That term decides which single label to draw in one text slot, not whether the armed
+    /// altitude is a constraint — the A380's own COLOUR rule (<c>B2Cell.classSub</c>, the rule
+    /// this helper mirrors) has no such term. MSFSBA announces each newly-armed mode separately
+    /// rather than only the top-priority one, so the display-priority question does not arise.
+    /// </summary>
+    public static bool ConstraintApplicableFromConstraintWord(double rawConstraintWord) =>
+        new Arinc429Word(rawConstraintWord).IsNormalOperation;
 }
