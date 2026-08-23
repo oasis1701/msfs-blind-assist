@@ -6366,6 +6366,46 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         _prevLatArmed = -1;
         _altConstraintFmgc1 = false;
         _altConstraintFmgc2 = false;
+        // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
+        _lastSpoilerBand = -1;
+        // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
+        _lastAutolandCap = null;
+        // COM active/standby (COM_ACTIVE_FREQUENCY:n/COM_STANDBY_FREQUENCY:n) and the
+        // COM transmit-selector rising edge (COM_TRANSMIT:n) — both keyed dictionaries
+        // gate on "key absent" via TryGetValue. _comTxOn isn't on the explicit list but
+        // is the same tracker group (declared on the line right after _lastComKhz, same
+        // "COM radio auto-announce state" comment block, identical TryGetValue shape) —
+        // included for the same reason _lastComKhz is.
+        _lastComKhz.Clear();
+        _comTxOn.Clear();
+        // EFIS baro dedup set (A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_HPA / _BARO /
+        // _DISPLAY_BARO_VALUE_MODE, read by AnnounceBaroIfChanged): _baroMode/_baroModeR
+        // gate their own "mode not seeded yet" check (< 0); _baroHpa/_baroHpaR and
+        // _baroInUnitL/_baroInUnitR jointly gate the "no value yet" check (both <= 0);
+        // _lastBaroPhraseL/_lastBaroPhraseR are the phrase-level "first is silent" dedup
+        // (null check).
+        _baroMode = -1;
+        _baroModeR = -1;
+        _baroHpa = -1;
+        _baroHpaR = -1;
+        _baroInUnitL = -1;
+        _baroInUnitR = -1;
+        _lastBaroPhraseL = null;
+        _lastBaroPhraseR = null;
+        // Flight phase (A32NX_FMGC_FLIGHT_PHASE), the A320 counterpart to the A380's
+        // _lastFlightPhaseA380: "" never equals a real phase name, so a stale non-empty
+        // value carried over from flight 1 can suppress flight 2's own first announce of
+        // that same phase name. Also backs the public CurrentFlightPhase property
+        // MainForm reads for the window title — reset to the declared default only.
+        currentFlightPhase = "";
+        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums) — same reasoning as the
+        // A380, though the sentinel differs: A320 declares both = -1, the SAME value
+        // ApproachMinimums.ToFeet uses for "no minimum set" (unlike the A380, which keeps
+        // an impossible -2 never-read sentinel distinct from its own -1 "none" reading).
+        // Either way, the gate is a plain "did the decoded value change" compare with no
+        // first-read suppression, so a genuinely-set minimum is meant to (re-)announce on
+        // connect; resetting the cache here would make an UNCHANGED minimum look changed
+        // and re-announce it as noise on reconnect.
     }
     // ⚠️ There is NO bit 2 here, and that is not an omission to "fix". FBW's shim builds
     // A32NX_FMA_VERTICAL_ARMED as `altArmed | (clbArmed << 2) | (desArmed << 3) |

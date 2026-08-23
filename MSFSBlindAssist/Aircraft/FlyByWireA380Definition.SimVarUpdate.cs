@@ -912,6 +912,41 @@ public partial class FlyByWireA380Definition
         _fgAltConstraintApplicable = false;
         _fgAltIsCruiseAltitude = false;
         _lastFlightPhaseA380 = "";
+        // Transponder squawk auto-announce (XPNDR_CODE, see above): first-read gate is
+        // _lastSquawkBcd < 0.
+        _lastSquawkBcd = -1;
+        // EFIS baro value/mode/unit, per side (A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_HPA /
+        // _IS_STD / XMLVAR_Baro_Selector_HPA_{1,2}): _lastBaroL/R gate on < 0, the two
+        // bool? pairs gate on HasValue.
+        _lastBaroL = -1;
+        _lastBaroR = -1;
+        _baroStdL = null;
+        _baroStdR = null;
+        _baroInHgL = null;
+        _baroInHgR = null;
+        // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
+        _lastAutolandCap = null;
+        // VHF active/standby (COM_ACTIVE_*/COM_STANDBY_*): gate is "key absent from the
+        // dictionary" (TryGetValue defaults prev to 0, and the announce requires prev > 0).
+        _comActiveFreq.Clear();
+        _comStandbyFreq.Clear();
+        // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
+        _lastSpoilerBand = -1;
+        // Thrust-lever detent baseline (A32NX_AUTOTHRUST_TLA:n): the whole group re-enters
+        // its "gathering a fresh baseline from all 4 engines" phase together —
+        // _tlaBaselineDone false blocks every announce branch until _tla has no NaN slots
+        // left, at which point _lastEngDetent/_lastAllDetent are freshly recomputed. Reset
+        // all four to their declared values or a stale _lastEngDetent/_lastAllDetent entry
+        // can silently suppress a real post-reconnect detent change that coincides with a
+        // flight-1 value.
+        for (int i = 0; i < _tla.Length; i++) { _tla[i] = double.NaN; _lastEngDetent[i] = null; }
+        _lastAllDetent = null;
+        _tlaBaselineDone = false;
+        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums). Their gate is a plain
+        // "changed" compare with no first-read suppression — a set minimum is meant to
+        // announce on connect. Seeded to -2 (impossible sentinel, since -1 is a valid
+        // "none/NCD" reading) precisely so the first read always announces. Resetting them
+        // here would make a still-set minimum re-announce on reconnect as noise.
     }
 
     // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,
