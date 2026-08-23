@@ -84,6 +84,21 @@ public class AltitudeModeTrackerTests
     }
 
     [Fact]
+    public void IsManaged_is_preserved_not_recomputed_while_vertical_mode_is_none()
+    {
+        // The armed bitmask must stay 0 throughout, so the ONLY thing keeping IsManaged true
+        // across the dropout is the preservation itself. With a managed bit armed (as the
+        // sibling test has) IsManaged reads true unconditionally and the assertion proves
+        // nothing — moving `IsManaged = managed;` above the vertical==0 early return would
+        // still pass it.
+        var t = Ready(vertical: 22, armed: 0);   // CLB: managed by MODE alone, nothing armed
+        Assert.True(t.IsManaged);
+
+        Assert.Null(t.OnVerticalMode(0));        // the dropout
+        Assert.True(t.IsManaged);                // PRESERVED, not recomputed to false
+    }
+
+    [Fact]
     public void Reset_re_baselines_so_flight_two_does_not_inherit_flight_one()
     {
         // Land managed, reconnect at a cold gate, take off again: the first real mode of
@@ -95,6 +110,18 @@ public class AltitudeModeTrackerTests
         Assert.False(t.IsKnown);
         Assert.Null(t.OnVerticalMode(0));             // cold gate
         Assert.Null(t.OnVerticalArmed(0));
+
+        // Must stay UNMANAGED (SRS, not e.g. CLB): flight 1 ended managed (_spoken == true),
+        // so a reading that would itself be unmanaged is the one that DIVERGES if Reset()
+        // failed to clear that stale value — a managed reading here would coincidentally
+        // match flight 1's leftover true either way and prove nothing. It also cannot be
+        // swapped for a managed value to additionally probe the NoVerticalMode freeze
+        // (IsManagedTrackerTests' sibling test below covers that): the cold-gate armed(0)
+        // call just above already ran the freeze at _vertical==0, latching _spoken to the
+        // post-Reset IsManaged (false), so ANY managed reading here is a genuine change from
+        // that latched false and is REQUIRED by the (unchanged, approved) production code to
+        // announce — Assert.Null could never pass for one, independent of whether Reset()
+        // works.
         Assert.Null(t.OnVerticalMode(40));            // SRS at rotation — silent baseline
     }
 
