@@ -151,6 +151,22 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         announcer.Announce(phrase);
     }
 
+    // The base's ResetAnnouncementBaselines() (FlyByWireA320Definition) resets its OWN baro
+    // tracker fields, but knows nothing about this subclass's separate _hwBaro* cache above —
+    // so without this override, a SimConnect reconnect at a field with a different QNH would
+    // compare the first post-reconnect reading against a phrase spoken on the previous flight
+    // and announce "Altimeter: …" unprompted. Unlike the A380 there is no connect-announcer
+    // blackout for this airframe (MainForm.AircraftSwitch.cs gates that FBW_A380-only), so this
+    // reset is the only thing standing between a reconnect and that phantom announcement.
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        _hwBaroMb = -1;
+        _hwBaroStd = -1;
+        _hwBaroInHg = -1;
+        _hwLastBaroPhrase = "";
+    }
+
     // Inherited from FlyByWireA320Definition and deliberately NOT overridden: the armed-mode bit
     // table (bit 2 removed — the A32NX shim skips it) and the two FMGC constraint words. Both
     // were verified against the A32NX, not the A339X. The constraint words degrade safely if
