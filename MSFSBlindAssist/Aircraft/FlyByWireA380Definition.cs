@@ -3081,14 +3081,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     /// than cached: it is only ever wanted on an armed-mode change or a panel repaint, and a
     /// stale copy would announce the wrong flavour.
     /// </summary>
-    private (int bit, string name)[] VerticalArmedBits()
-    {
-        var bits = ((int bit, string name)[])_vertArmedBits.Clone();
-        for (int i = 0; i < bits.Length; i++)
-            if (bits[i].bit == 1)   // the ALT bit — found by VALUE, never by position
-                bits[i].name = ArmedAltitudeMode.Name(_fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
-        return bits;
-    }
+    private (int bit, string name)[] VerticalArmedBits() =>
+        ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, _fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
 
     // Derived FCU ALTITUDE managed/selected state. AltitudeManagedState owns the rule,
     // AltitudeModeTracker owns the sequencing (baseline, readiness, autoland, reconnect reset).

@@ -81,6 +81,31 @@ public class ArmedAltitudeModeTests
         Assert.False(ArmedAltitudeMode.ConstraintApplicable(raw));
         Assert.True(ArmedAltitudeMode.IsCruiseAltitude(raw));
     }
+
+    [Fact]
+    public void NameAltArmedBit_renames_only_the_alt_entry_and_leaves_the_source_untouched()
+    {
+        var source = new (int bit, string name)[]
+            { (1, "Altitude"), (4, "Climb"), (16, "Glideslope") };
+
+        var named = ArmedAltitudeMode.NameAltArmedBit(source, altConstraintApplicable: true, altIsCruiseAltitude: false);
+
+        Assert.Equal("Altitude constraint", named[0].name);
+        Assert.Equal("Climb", named[1].name);
+        Assert.Equal("Glideslope", named[2].name);
+        // The shared static table must NOT be mutated — a rename that leaked into it would
+        // survive the constraint clearing and mislabel every later arm for the session.
+        Assert.Equal("Altitude", source[0].name);
+    }
+
+    [Fact]
+    public void NameAltArmedBit_finds_the_alt_entry_by_value_not_by_position()
+    {
+        var source = new (int bit, string name)[] { (4, "Climb"), (1, "Altitude") };
+        var named = ArmedAltitudeMode.NameAltArmedBit(source, altConstraintApplicable: false, altIsCruiseAltitude: true);
+        Assert.Equal("Climb", named[0].name);
+        Assert.Equal("Cruise altitude", named[1].name);
+    }
 }
 
 /// <summary>

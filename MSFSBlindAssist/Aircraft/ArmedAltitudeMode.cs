@@ -92,4 +92,23 @@ public static class ArmedAltitudeMode
     /// </summary>
     public static bool ConstraintApplicableFromConstraintWord(double rawConstraintWord) =>
         new Arinc429Word(rawConstraintWord).IsNormalOperation;
+
+    /// <summary>
+    /// An armed-vertical-mode bit table with the ALT entry named for the qualifiers currently in
+    /// force. Shared by both FBW airframes, which differ only in HOW they read the qualifier —
+    /// keeping the transform here is what stops the "find the ALT entry by VALUE, never by
+    /// position" rule from existing in two copies that can drift.
+    ///
+    /// Returns a NEW array; <paramref name="bits"/> is typically a shared static table and must
+    /// never be mutated, or a rename would outlive the constraint that caused it.
+    /// </summary>
+    public static (int bit, string name)[] NameAltArmedBit(
+        (int bit, string name)[] bits, bool altConstraintApplicable, bool altIsCruiseAltitude)
+    {
+        var named = ((int bit, string name)[])bits.Clone();
+        for (int i = 0; i < named.Length; i++)
+            if (named[i].bit == 1)   // the ALT bit — found by VALUE, never by position
+                named[i].name = Name(altConstraintApplicable, altIsCruiseAltitude);
+        return named;
+    }
 }

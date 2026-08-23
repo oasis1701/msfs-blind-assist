@@ -6350,15 +6350,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
     /// so the cruise flavour is never offered here (it is A380-only).
     /// </summary>
-    private (int bit, string name)[] VerticalArmedBits()
-    {
-        var bits = ((int bit, string name)[])_vertArmedBits.Clone();
-        for (int i = 0; i < bits.Length; i++)
-            if (bits[i].bit == 1)   // the ALT bit — found by VALUE, never by position
-                bits[i].name = ArmedAltitudeMode.Name(
-                    _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
-        return bits;
-    }
+    private (int bit, string name)[] VerticalArmedBits() =>
+        ArmedAltitudeMode.NameAltArmedBit(
+            _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
 
     public override void ResetAnnouncementBaselines()
     {
