@@ -246,7 +246,11 @@ public partial class FlyByWireA380Definition
         // Only the VALUE is requested. The managed/selected word comes from the derived state at
         // emit time — requesting A32NX_FCU_ALT_MANAGED here would force-read an ExcludeFromBatch
         // var, whose PERIOD.ONCE replaces its standing subscription, and it carries nothing we use.
-        _reqAlt = true; _pAltVal = null;
+        // Unlike HDG/SPD/VS above/below, there is no _pAlt* pending-value field to reset here:
+        // those three genuinely await a SECOND sim delivery to pair up, but altitude's other half
+        // is read straight off the derived tracker at emit time (see the FCU_ALT_VALUE branch in
+        // .SimVarUpdate.cs) — _reqAlt alone is enough. Don't add one back for symmetry.
+        _reqAlt = true;
         s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
     }
 

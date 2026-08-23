@@ -3228,7 +3228,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed
     // and announce via the pairing in ProcessSimVarUpdate.
     // ===================================================================
-    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pVsVal, _pFpaVal, _pVsMode;
+    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
