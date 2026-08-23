@@ -942,6 +942,44 @@ public partial class FlyByWireA380Definition
         for (int i = 0; i < _tla.Length; i++) { _tla[i] = double.NaN; _lastEngDetent[i] = null; }
         _lastAllDetent = null;
         _tlaBaselineDone = false;
+        // ND option filter, per side (A32NX_FCU_EFIS_{L,R}_{WPT,VORD,NDB}_LIGHT_ON): the
+        // baseline is only trustworthy once all 3 lights of a side have reported, so both
+        // the light dictionary and the baseline flag must clear together — _ndFilterL/R is
+        // reset too for the same "match the whole declared state" reason, though it is
+        // rewritten unconditionally on every light event (baselined or not) so it can never
+        // actually strand a stale value once baselined is reachable again. The echo-suppression
+        // fields (_ndFilterEcho{L,R}, _ndFilterEchoTick{L,R}) are a different mechanism — they
+        // suppress the echo of the PILOT'S OWN combo pick within a short tick window, not a
+        // flight-1-vs-flight-2 leak — so they are deliberately left alone.
+        _ndLightsL.Clear();
+        _ndLightsR.Clear();
+        _ndFilterL = 0;
+        _ndFilterR = 0;
+        _ndBaselinedL = false;
+        _ndBaselinedR = false;
+        // Icing stick (A32NX_ICING_STATE_ICING_STICK_INDICATOR): this is the A380's OWN
+        // icing announcer (HasOwnIcingAnnouncer = true), which is precisely why MainForm's
+        // generic ice-accretion path (AnnounceAmbientChanges, gated on
+        // currentAircraft?.HasOwnIcingAnnouncer != true) never calls _iceAccretionTracker.
+        // Observe() for this airframe at all — the two trackers are mutually exclusive by
+        // construction, not just coincidentally non-overlapping, so resetting this one
+        // cannot produce a double announcement with MainForm's (which resets its own
+        // tracker at the same reconnect site, a no-op for this airframe either way).
+        _icingActive = false;
+        _icingBaselineDone = false;
+        // Generic ARINC-enum "announce on change" cache, keyed per var name — covers every
+        // large-value ARINC-encoded fault/status var registered with ValueDescriptions, not
+        // just one tracker. Gate: TryGetValue-absent defaults prevSt to 0 ("so the initial
+        // no-fault is silent" per its own comment) — an empty dictionary reproduces that
+        // exact cold-start condition for every var it covers.
+        _arincEnumState.Clear();
+        // FMA mode alert bits (FMA_FG_ALERTS, "Speed Protection"/"FMA Reversion"): gate is
+        // hadPrev from TryGetValue, same absent-key-is-silent shape.
+        _fmaFgBitState.Clear();
+        // External power (GPU) available, per GPU 1-4 (A380X_GND_GPU_AVAIL_n): gate is
+        // prev >= 0 (declared sentinel -1 = unseen), independent per index — no
+        // baseline-completion coupling like the thrust-lever group.
+        for (int i = 0; i < _gpuAvail.Length; i++) _gpuAvail[i] = -1;
         // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums). Their gate is a plain
         // "changed" compare with no first-read suppression — a set minimum is meant to
         // announce on connect. Seeded to -2 (impossible sentinel, since -1 is a valid
