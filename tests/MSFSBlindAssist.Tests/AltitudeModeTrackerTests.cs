@@ -116,7 +116,7 @@ public class AltitudeModeTrackerTests
         // failed to clear that stale value — a managed reading here would coincidentally
         // match flight 1's leftover true either way and prove nothing. It also cannot be
         // swapped for a managed value to additionally probe the NoVerticalMode freeze
-        // (IsManagedTrackerTests' sibling test below covers that): the cold-gate armed(0)
+        // (AltitudeModeTrackerTests' sibling test above covers that): the cold-gate armed(0)
         // call just above already ran the freeze at _vertical==0, latching _spoken to the
         // post-Reset IsManaged (false), so ANY managed reading here is a genuine change from
         // that latched false and is REQUIRED by the (unchanged, approved) production code to
