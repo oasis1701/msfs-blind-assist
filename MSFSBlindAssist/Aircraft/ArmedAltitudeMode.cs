@@ -110,7 +110,7 @@ public static class ArmedAltitudeMode
     {
         var named = ((int bit, string name)[])bits.Clone();
         for (int i = 0; i < named.Length; i++)
-            if (named[i].bit == 1)   // the ALT bit — found by VALUE, never by position
+            if (named[i].bit == AltArmedBit)   // the ALT bit — found by VALUE, never by position
                 named[i].name = Name(altConstraintApplicable, altIsCruiseAltitude);
         return named;
     }

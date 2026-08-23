@@ -289,8 +289,26 @@ public partial class FlyByWireA380Definition
             if (prev >= 0 && (iv & ~prev) != 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
             {
-                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits))
+                int newly = iv & ~prev;
+                // Lateral modes have no qualifier and are never held.
+                int immediate = vert ? ArmedAltitudeMode.ImmediateArmedBits(newly) : newly;
+                foreach (var one in DecodeArmedModeNames(immediate, vert ? VerticalArmedBits() : _latArmedBits))
                     announcer.Announce($"{one} armed");
+
+                // ALT is held until its constraint/cruise qualifier has settled — see
+                // ArmedAltitudeMode.ImmediateArmedBits for why naming it here would be stale.
+                if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
+                {
+                    _altArmHoldPending = true;
+                    _altArmAnnouncer = announcer;
+                    if (_altArmHoldTimer == null)
+                    {
+                        _altArmHoldTimer = new System.Windows.Forms.Timer { Interval = 300 };
+                        _altArmHoldTimer.Tick += (_, _) => FlushHeldAltArmAnnouncement();
+                    }
+                    _altArmHoldTimer.Stop();
+                    _altArmHoldTimer.Start();
+                }
             }
             // Arming CLB/DES/G/S is one of the two ways altitude becomes managed.
             if (vert) SpeakAltitudeMode(_altMode.OnVerticalArmed(iv), announcer);
@@ -307,6 +325,10 @@ public partial class FlyByWireA380Definition
         {
             _fgAltConstraintApplicable = ArmedAltitudeMode.ConstraintApplicable(value);
             _fgAltIsCruiseAltitude = ArmedAltitudeMode.IsCruiseAltitude(value);
+            // A qualifier that CHANGED this sample arrives in the same drain as the arm that is
+            // waiting on it, so flush at once — the 300 ms timer is only the backstop for a
+            // qualifier that did not change, where the cached bits were already correct.
+            FlushHeldAltArmAnnouncement();
             return true;
         }
 
@@ -904,6 +926,28 @@ public partial class FlyByWireA380Definition
         announcer.Announce(phrase);
     }
 
+    /// <summary>
+    /// Speak a held armed-ALT call-out, named for the qualifier as it now stands. Called from
+    /// both triggers — the qualifier's own branch and the 300 ms backstop timer — and safe to
+    /// call when nothing is pending.
+    /// </summary>
+    private void FlushHeldAltArmAnnouncement()
+    {
+        _altArmHoldTimer?.Stop();
+        if (!_altArmHoldPending) return;
+        _altArmHoldPending = false;
+
+        var announcer = _altArmAnnouncer;
+        if (announcer == null) return;
+        // Re-checked HERE, not when the hold was armed, so muting during the window still works.
+        if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("A32NX_FMA_VERTICAL_ARMED")) return;
+        // An ALT that armed and disarmed inside the window is dropped, not spoken late.
+        if (!ArmedAltitudeMode.HeldAltStillArmed(_prevVertArmed)) return;
+
+        foreach (var one in DecodeArmedModeNames(ArmedAltitudeMode.AltArmedBit, VerticalArmedBits()))
+            announcer.Announce($"{one} armed");
+    }
+
     public override void ResetAnnouncementBaselines()
     {
         _altMode.Reset();
@@ -911,6 +955,8 @@ public partial class FlyByWireA380Definition
         _prevLatArmed = -1;
         _fgAltConstraintApplicable = false;
         _fgAltIsCruiseAltitude = false;
+        _altArmHoldPending = false;
+        _altArmHoldTimer?.Stop();
         _lastFlightPhaseA380 = "";
         // Transponder squawk auto-announce (XPNDR_CODE, see above): first-read gate is
         // _lastSquawkBcd < 0.

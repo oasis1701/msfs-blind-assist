@@ -496,6 +496,18 @@ public partial class FlyByWireA380Definition
             _tcasRaAnnouncer = null;
         }
         catch { }
+        // Held armed-ALT announcement timer: same reasoning as the TCAS RA timer above — a
+        // discarded def instance must not keep a UI-thread timer alive to speak a held call-out
+        // through the captured announcer at the NEW aircraft.
+        try
+        {
+            _altArmHoldTimer?.Stop();
+            _altArmHoldTimer?.Dispose();
+            _altArmHoldTimer = null;
+            _altArmHoldPending = false;
+            _altArmAnnouncer = null;
+        }
+        catch { }
         // Hotkey windows created by this def (FCU/Baro/E/WD): dispose so they don't
         // survive the swap holding this def + the E/WD refresh timer.
         try { DisposeTrackedWindows(); } catch { }
