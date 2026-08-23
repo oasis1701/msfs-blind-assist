@@ -159,6 +159,17 @@ public partial class MainForm
         {
             if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
         }
+
+        // Complete any pending display request for BOTH branches, before the def-handled early
+        // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
+        // populate is waiting on exactly that — but so is every ordinary var, which reaches Step 3
+        // instead. The two are mutually exclusive (the def-handled branch returns), so this must
+        // sit above the split: completing in only one of them leaves the other's panels waiting
+        // out the full 2 s fallback on every open and Refresh.
+        if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
+        {
+            pendingDisplayRequests[e.VarName].TrySetResult(true);
+        }
         if (wasProcessedByAircraft)
         {
             // The def announced (suppressed) and updated its own baseline — consume the echo so a
@@ -191,16 +202,6 @@ public partial class MainForm
             else
             {
                 UpdateButtonStateFromStateVariable(e.VarName, e.Value);
-            }
-
-            // Complete any pending display request BEFORE the def-handled early return:
-            // a var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
-            // populate is waiting on exactly that. Left below the return, every panel
-            // containing a def-handled var (FCU altitude mode, PFD armed modes) waited out
-            // the full 2 s fallback on every open and Refresh.
-            if (pendingDisplayRequests != null && pendingDisplayRequests.ContainsKey(e.VarName))
-            {
-                pendingDisplayRequests[e.VarName].TrySetResult(true);
             }
             return; // Aircraft handled it completely, no further generic processing needed
         }
