@@ -97,6 +97,14 @@ public static class ArmedAltitudeMode
         new Arinc429Word(rawConstraintWord).IsNormalOperation;
 
     /// <summary>
+    /// The ALT bit within <c>A32NX_FMA_VERTICAL_ARMED</c>. A raw bit VALUE, not a shift
+    /// position — the <c>_vertArmedBits</c> tables are written as values (1 Altitude, 4 Climb,
+    /// 8 Descent, 16 Glideslope, 32 Final, 64 TCAS), and <see cref="NameAltArmedBit"/> finds its
+    /// entry by comparing against this same value.
+    /// </summary>
+    public const int AltArmedBit = 1;
+
+    /// <summary>
     /// An armed-vertical-mode bit table with the ALT entry named for the qualifiers currently in
     /// force. Shared by both FBW airframes, which differ only in HOW they read the qualifier —
     /// keeping the transform here is what stops the "find the ALT entry by VALUE, never by
@@ -114,14 +122,6 @@ public static class ArmedAltitudeMode
                 named[i].name = Name(altConstraintApplicable, altIsCruiseAltitude);
         return named;
     }
-
-    /// <summary>
-    /// The ALT bit within <c>A32NX_FMA_VERTICAL_ARMED</c>. A raw bit VALUE, not a shift
-    /// position — the <c>_vertArmedBits</c> tables are written as values (1 Altitude, 4 Climb,
-    /// 8 Descent, 16 Glideslope, 32 Final, 64 TCAS), and <see cref="NameAltArmedBit"/> finds its
-    /// entry by comparing against this same value.
-    /// </summary>
-    public const int AltArmedBit = 1;
 
     /// <summary>
     /// The newly-armed bits that can be announced IMMEDIATELY — everything except ALT.

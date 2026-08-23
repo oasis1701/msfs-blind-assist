@@ -3057,7 +3057,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private ScreenReaderAnnouncer? _altArmAnnouncer;
     private bool _altArmHoldPending;
 
-
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
     // hysteresis (entered icing / cleared), not as a spammy raw value. _icingActive

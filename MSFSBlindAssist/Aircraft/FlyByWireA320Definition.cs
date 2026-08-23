@@ -6345,6 +6345,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // WHICH NAME the armed ALT bit is announced under.
     private bool _altConstraintFmgc1, _altConstraintFmgc2;
 
+    // Held armed-ALT announcement — same rationale as the A380's, except the qualifier here is
+    // the two FMGC constraint words, which sort a few slots AFTER A32NX_FMA_VERTICAL_ARMED in the
+    // same continuous batch. Announcer kept in a FIELD, not captured in the Tick closure.
+    private System.Windows.Forms.Timer? _altArmHoldTimer;
+    private ScreenReaderAnnouncer? _altArmAnnouncer;
+    private bool _altArmHoldPending;
+
     /// <summary>
     /// <see cref="_vertArmedBits"/> with the ALT entry named for the constraint currently in
     /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
@@ -6354,12 +6361,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         ArmedAltitudeMode.NameAltArmedBit(
             _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
 
+    /// <summary>
+    /// Speak a held armed-ALT call-out, named for the constraint as it now stands. Called from
+    /// both triggers — either FMGC constraint word's branch, and the 300 ms backstop timer.
+    ///
+    /// ⚠️ The Ctrl+M mute is checked HERE, unlike the inline armed branch below, which relies on
+    /// MainForm wrapping <c>announcer.Suppressed</c> around ProcessSimVarUpdate. A timer tick runs
+    /// OUTSIDE that wrap, so without this check a muted "Altitude armed" would still be spoken.
+    /// </summary>
+    private void FlushHeldAltArmAnnouncement()
+    {
+        _altArmHoldTimer?.Stop();
+        if (!_altArmHoldPending) return;
+        _altArmHoldPending = false;
+
+        var announcer = _altArmAnnouncer;
+        if (announcer == null) return;
+        if (Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains("A32NX_FMA_VERTICAL_ARMED")) return;
+        if (!ArmedAltitudeMode.HeldAltStillArmed(_prevVertArmed)) return;
+
+        foreach (var one in DecodeArmedModeNames(ArmedAltitudeMode.AltArmedBit, VerticalArmedBits()))
+            announcer.Announce($"{one} armed");
+    }
+
     public override void ResetAnnouncementBaselines()
     {
         _prevVertArmed = -1;
         _prevLatArmed = -1;
         _altConstraintFmgc1 = false;
         _altConstraintFmgc2 = false;
+        _altArmHoldPending = false;
+        _altArmHoldTimer?.Stop();
         // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
         _lastSpoilerBand = -1;
         // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
@@ -7543,6 +7575,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _tcasRaComposeTimer?.Dispose();
             _tcasRaComposeTimer = null;
             _tcasRaAnnouncer = null;
+            _altArmHoldTimer?.Stop();
+            _altArmHoldTimer?.Dispose();
+            _altArmHoldTimer = null;
+            _altArmHoldPending = false;
+            _altArmAnnouncer = null;
         }
         catch { }
         try { DisposeTrackedWindows(); } catch { }
@@ -7866,6 +7903,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
             if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
             else _altConstraintFmgc2 = applies;
+            // A qualifier that CHANGED this sample arrives in the same drain as the arm waiting
+            // on it, so flush at once; the 300 ms timer is only the backstop.
+            FlushHeldAltArmAnnouncement();
             return true;
         }
 
@@ -7879,10 +7919,24 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
             if (prev >= 0 && (iv & ~prev) != 0)
             {
-                string nm = DecodeArmedModes(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits);
-                if (!string.IsNullOrEmpty(nm))
-                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
-                        announcer.Announce($"{one} armed");
+                int newly = iv & ~prev;
+                // Lateral modes have no qualifier and are never held.
+                int immediate = vert ? ArmedAltitudeMode.ImmediateArmedBits(newly) : newly;
+                foreach (var one in DecodeArmedModeNames(immediate, vert ? VerticalArmedBits() : _latArmedBits))
+                    announcer.Announce($"{one} armed");
+
+                if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
+                {
+                    _altArmHoldPending = true;
+                    _altArmAnnouncer = announcer;
+                    if (_altArmHoldTimer == null)
+                    {
+                        _altArmHoldTimer = new System.Windows.Forms.Timer { Interval = 300 };
+                        _altArmHoldTimer.Tick += (_, _) => FlushHeldAltArmAnnouncement();
+                    }
+                    _altArmHoldTimer.Stop();
+                    _altArmHoldTimer.Start();
+                }
             }
             return true;
         }
