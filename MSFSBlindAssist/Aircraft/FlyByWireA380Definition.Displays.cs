@@ -291,7 +291,9 @@ public partial class FlyByWireA380Definition
             }
             case "A32NX_FMA_VERTICAL_ARMED":
             {
-                string s = DecodeArmedModes((int)Math.Round(value), _vertArmedBits);
+                // Same live table the call-out uses, so the row and the speech can never
+                // disagree about whether the armed ALT is a constraint or the cruise altitude.
+                string s = DecodeArmedModes((int)Math.Round(value), VerticalArmedBits());
                 displayText = string.IsNullOrEmpty(s) ? "None" : s;
                 return true;
             }

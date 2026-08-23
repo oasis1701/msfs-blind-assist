@@ -289,11 +289,24 @@ public partial class FlyByWireA380Definition
             if (prev >= 0 && (iv & ~prev) != 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
             {
-                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? _vertArmedBits : _latArmedBits))
+                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits))
                     announcer.Announce($"{one} armed");
             }
             // Arming CLB/DES/G/S is one of the two ways altitude becomes managed.
             if (vert) RecomputeAltitudeMode(announcer);
+            return true;
+        }
+
+        // PRIM FG discrete word 3 — cached, never spoken. Bit 28 (alt_cstr_applicable) and bit
+        // 29 (altIsCrzAlt) are QUALIFIERS on the armed ALT call-out, not armed states of their
+        // own: bit 28 was measured TRUE at FL360 with A32NX_FMA_VERTICAL_ARMED at 0 and nothing
+        // armed, so announcing off this word directly would invent an arming that never
+        // happened. Returning true is what keeps it silent. Its "Cruise Altitude Mode" panel row
+        // still renders, from TryGetDisplayOverride.
+        if (varName == "FMA_CRUISE_ALT_MODE")
+        {
+            _fgAltConstraintApplicable = ArmedAltitudeMode.ConstraintApplicable(value);
+            _fgAltIsCruiseAltitude = ArmedAltitudeMode.IsCruiseAltitude(value);
             return true;
         }
 

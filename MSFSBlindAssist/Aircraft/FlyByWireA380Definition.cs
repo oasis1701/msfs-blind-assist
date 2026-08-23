@@ -2129,10 +2129,16 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Cruise-altitude mode moved into PRIM FG discrete word 3 bit 29 ("altIsCrzAlt",
         // what the PFD's own ALT CRZ / ALT CRZ* FMA message derives from) with FBW #10855;
         // the old A32NX_FMA_CRUISE_ALT_MODE is gone. Decoded in TryGetDisplayOverride.
+        // Continuous, but SILENT and Ctrl+M-hidden: the word also carries bit 28
+        // (alt_cstr_applicable), which names the armed ALT call-out — see ArmedAltitudeMode —
+        // so it has to be live rather than read-on-panel-open. ProcessSimVarUpdate caches both
+        // bits and returns true; nothing about this word is ever spoken on its own, because
+        // neither bit is an armed state (bit 28 was measured TRUE at FL360 with nothing armed).
         vars["FMA_CRUISE_ALT_MODE"] = new SimVarDefinition
         {
             Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_3", DisplayName = "Cruise Altitude Mode",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         };
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Vertical Deviation");
         // FMS vertical-profile target altitude at the current position — the basis for
@@ -3076,6 +3082,25 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // _altModeSpoken is the last value ACTUALLY announced, not the last computed: it is what
     // makes the vertical-mode-to-None transient of an autoland silent instead of a
     // "Selected … Managed" pair one frame apart.
+    // PRIM FG discrete word 3 qualifiers, cached from FMA_CRUISE_ALT_MODE. Neither is an armed
+    // state: they only decide WHICH NAME the armed ALT bit is announced under.
+    private bool _fgAltConstraintApplicable, _fgAltIsCruiseAltitude;
+
+    /// <summary>
+    /// <see cref="_vertArmedBits"/> with the ALT entry named for the qualifiers currently in
+    /// force — "Altitude constraint" / "Cruise altitude" / "Altitude". Built per call rather
+    /// than cached: it is only ever wanted on an armed-mode change or a panel repaint, and a
+    /// stale copy would announce the wrong flavour.
+    /// </summary>
+    private (int bit, string name)[] VerticalArmedBits()
+    {
+        var bits = ((int bit, string name)[])_vertArmedBits.Clone();
+        for (int i = 0; i < bits.Length; i++)
+            if (bits[i].bit == 1)   // the ALT bit — found by VALUE, never by position
+                bits[i].name = ArmedAltitudeMode.Name(_fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
+        return bits;
+    }
+
     private int _altModeVertical, _altModeLateral;
     private bool _altModeSeenVertical;
     private bool _altModeManaged;
@@ -3157,8 +3182,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private readonly Dictionary<string, bool> _doorOpen = new();
     private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
     private bool _betaTargetActive;   // A32NX_BETA_TARGET_ACTIVE, cached for the beta-target decode
+    // ⚠️ There is NO bit 2 here. FBW's shim builds A32NX_FMA_VERTICAL_ARMED as
+    // `altArmed | (clbArmed << 2) | (desArmed << 3) | (gsArmed << 4) | (finalArmed << 5) |
+    // (tcasArmed << 6)` — bit 1 is skipped because the A380 PRIM FG has no "ALT CST armed"
+    // signal to put there. The old (2, "Altitude constraint") entry could therefore never fire.
+    // The constraint now RENAMES the ALT bit instead, via VerticalArmedBits/ArmedAltitudeMode.
+    // (Bit 17 of FG word 2, op_clb_armed, is dropped by that same shim and has no slot in this
+    // bitmask at all — an unfixable gap on this side, recorded in docs/a380x.md.)
     private static readonly (int bit, string name)[] _vertArmedBits =
-        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+        { (1, "Altitude"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
 
 
