@@ -133,6 +133,10 @@ public static class ArmedAltitudeMode
     /// tick's qualifier, and because the call-out is edge-triggered the wrong name is permanent.
     /// So ALT is held and flushed once the qualifier has settled; every other mode is unaffected
     /// and keeps its immediate call-out.
+    ///
+    /// VERTICAL-MASK ONLY — never apply this to a LATERAL newly-armed mask. Bit 1 there is NAV
+    /// (see <c>_latArmedBits</c>), a different mode with no qualifier of its own; stripping it
+    /// would silently and permanently drop the "NAV armed" call-out, which has no other channel.
     /// </summary>
     public static int ImmediateArmedBits(int newlyArmed) => newlyArmed & ~AltArmedBit;
 
