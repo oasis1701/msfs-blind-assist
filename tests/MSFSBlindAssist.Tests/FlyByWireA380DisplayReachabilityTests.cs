@@ -13,12 +13,17 @@ namespace MSFSBlindAssist.Tests;
 public class FlyByWireA380DisplayReachabilityTests
 {
     // Vars that exist ONLY to be read out, with the status box that has to carry them. Each has
-    // a decoder in TryGetDisplayOverride and no other consumer — no hotkey, no window, no
-    // auto-announce — so being listed here is the only thing that puts it in front of a pilot.
+    // a decoder in TryGetDisplayOverride that only runs when a panel's display list requests the
+    // key — no hotkey and no window ever requests these directly, and where the var IS Continuous
+    // + IsAnnounced its own ProcessSimVarUpdate handler deliberately never speaks it (always
+    // returns true, or is ExcludeFromMonitorManager) — so being listed here is the only thing
+    // that puts it in front of a pilot.
     public static TheoryData<string, string> ReadoutOnlyVariables() => new()
     {
         // PRIM FG discrete word 3 bit 29 (altIsCrzAlt) — the ALT CRZ / ALT CRZ* the PFD's own
-        // FMA shows. OnRequest and not announced, so the PFD status box is its only route out.
+        // FMA shows. Continuous and IsAnnounced, but ExcludeFromMonitorManager and a
+        // ProcessSimVarUpdate handler that always returns true keep it from ever announcing
+        // itself, so the PFD status box is its only route out.
         { "PFD", "FMA_CRUISE_ALT_MODE" },
         // The ND option filter, decoded from its three lights. The row is keyed on the WPT
         // LIGHT, never on the ND_FILTER_{side} combo: that combo is an Act() action control

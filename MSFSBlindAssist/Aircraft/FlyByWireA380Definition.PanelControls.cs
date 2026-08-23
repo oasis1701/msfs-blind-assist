@@ -679,8 +679,10 @@ public partial class FlyByWireA380Definition
             "A32NX_FMA_VERTICAL_MODE", "A32NX_FMA_VERTICAL_ARMED",
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_LATERAL_ARMED",
             // ALT CRZ / ALT CRZ* — decoded from PRIM FG discrete word 3 bit 29 in
-            // TryGetDisplayOverride. Listed HERE is what makes it reachable: it is OnRequest
-            // and not announced, so with no panel carrying it the decoder never runs.
+            // TryGetDisplayOverride. Listed HERE is what makes it reachable: the var is
+            // Continuous + IsAnnounced but ExcludeFromMonitorManager, and ProcessSimVarUpdate
+            // always returns true for it, so it never announces itself — with no panel carrying
+            // the key, TryGetDisplayOverride is never asked to render it either.
             "FMA_CRUISE_ALT_MODE",
             "A32NX_AUTOTHRUST_MODE", "A32NX_AUTOTHRUST_STATUS",
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE",
