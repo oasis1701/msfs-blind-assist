@@ -25,7 +25,9 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
     // These are constants rather than inline literals so FiredEventNames cannot drift out of
     // sync with the dispatch switch below. Pinned by FoFbwEventContractTests.
     private const string EvtSpdPush = "A32NX.FCU_SPD_PUSH";
-    private const string EvtHdgPush = "A32NX.FCU_TO_AP_HDG_PUSH";
+    // FBW #10855 renamed FCU_TO_AP_HDG_PUSH to FCU_HDG_PUSH; the A380 and A32NX now share the
+    // one spelling, so this no longer diverges from the A320 executor the way it once did.
+    private const string EvtHdgPush = "A32NX.FCU_HDG_PUSH";
     private const string EvtAltPush = "A32NX.FCU_ALT_PUSH";
     private const string EvtAp1Push = "A32NX.FCU_AP_1_PUSH";
 
@@ -140,7 +142,11 @@ public sealed class FbwA380ActionExecutor : IFoActionExecutor
 
     private bool FireBaro(bool std)
     {
-        // Both sides via the def's verified baro branch (fires H:A380X_EFIS_CP_BARO_PUSH/PULL_{1,2}).
+        // Both sides via the def's verified baro branch. #10855 deleted MsfsBaroManager and with
+        // it H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{1,2}; the branch now fires the FCU computer's
+        // A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL} K-events instead. These var keys are unchanged,
+        // so routing this through ApplyUIVariable keeps the FO on whatever the def has verified.
+        // A380 polarity is PUSH = STD (the opposite of the A320) — see BaroModeEvent.
         bool ok = ApplySilent("A32NX_FCU_LEFT_EIS_BARO_IS_STD", std ? 1 : 0);
         ok &= ApplySilent("A32NX_FCU_RIGHT_EIS_BARO_IS_STD", std ? 1 : 0);
         return ok;

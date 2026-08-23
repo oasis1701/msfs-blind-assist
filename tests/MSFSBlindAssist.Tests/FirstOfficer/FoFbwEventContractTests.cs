@@ -59,4 +59,27 @@ public class FoFbwEventContractTests
             "A320 First Officer fires events the A320 definition does not register — these are "
             + "silent no-ops in the sim: " + string.Join(", ", unregistered));
     }
+
+    /// <summary>
+    /// The specific events FBW #10855 retired, shared with the definition-side contract so the
+    /// two lists cannot disagree. This says WHY a name is dead rather than only that it is
+    /// missing, and keeps the FO pinned even if a definition were to re-register one by mistake.
+    /// </summary>
+    [Fact]
+    public void No_first_officer_executor_fires_an_event_retired_by_fbw_10855()
+    {
+        var retired = FlyByWireA380EventContractTests.RetiredByFbw10855
+            .ToHashSet(StringComparer.Ordinal);
+
+        var stale = FbwA380ActionExecutor.FiredEventNames
+            .Concat(FbwA320ActionExecutor.FiredEventNames)
+            .Where(retired.Contains)
+            .Distinct()
+            .Order()
+            .ToList();
+
+        Assert.True(stale.Count == 0,
+            "A First Officer executor still fires an input event FBW #10855 deleted: "
+            + string.Join(", ", stale));
+    }
 }
