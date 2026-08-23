@@ -1,0 +1,1 @@
+Swept both FlyByWire airframes for anything else broken by the FBW source changes. Nothing further was found: no deleted variables or events are still referenced, and the autothrust readouts whose writers were rewritten were verified correct against the aircraft in flight. The sweep method is recorded so it can be repeated.
