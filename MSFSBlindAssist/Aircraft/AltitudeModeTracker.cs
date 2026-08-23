@@ -65,8 +65,6 @@ public sealed class AltitudeModeTracker
     {
         if (!IsKnown) return null;
 
-        bool managed = AltitudeManagedState.IsManaged(_vertical, _armed, _lateral);
-
         // Say nothing while the FMA shows NO vertical mode, and do not let that state move the
         // published value either. Two situations reach it: nothing is flying the aircraft
         // vertically (cold and dark, FD and AP off), or the FMA is mid-autoland, where the
@@ -78,6 +76,7 @@ public sealed class AltitudeModeTracker
             return null;
         }
 
+        bool managed = AltitudeManagedState.IsManaged(_vertical, _armed, _lateral);
         IsManaged = managed;
 
         // Compared against the last value SPOKEN, not the last computed — that is what lets the
