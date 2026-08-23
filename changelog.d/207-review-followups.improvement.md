@@ -1,0 +1,1 @@
+The A380's PFD and FCU panels used to take about two seconds to fill in every time you opened or refreshed them — they now appear straight away. MSFSBA also now clears what it last announced whenever it reconnects to the simulator, so starting a second flight in the same session no longer produces a spurious announcement for something that did not actually change.

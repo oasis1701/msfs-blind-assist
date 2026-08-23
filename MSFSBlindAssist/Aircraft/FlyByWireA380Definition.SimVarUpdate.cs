@@ -289,10 +289,49 @@ public partial class FlyByWireA380Definition
             if (prev >= 0 && (iv & ~prev) != 0
                 && !Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName))
             {
-                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? _vertArmedBits : _latArmedBits))
+                foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits))
                     announcer.Announce($"{one} armed");
             }
+            // Arming CLB/DES/G/S is one of the two ways altitude becomes managed.
+            if (vert) SpeakAltitudeMode(_altMode.OnVerticalArmed(iv), announcer);
             return true;
+        }
+
+        // PRIM FG discrete word 3 — cached, never spoken. Bit 28 (alt_cstr_applicable) and bit
+        // 29 (altIsCrzAlt) are QUALIFIERS on the armed ALT call-out, not armed states of their
+        // own: bit 28 was measured TRUE at FL360 with A32NX_FMA_VERTICAL_ARMED at 0 and nothing
+        // armed, so announcing off this word directly would invent an arming that never
+        // happened. Returning true is what keeps it silent. Its "Cruise Altitude Mode" panel row
+        // still renders, from TryGetDisplayOverride.
+        if (varName == "FMA_CRUISE_ALT_MODE")
+        {
+            _fgAltConstraintApplicable = ArmedAltitudeMode.ConstraintApplicable(value);
+            _fgAltIsCruiseAltitude = ArmedAltitudeMode.IsCruiseAltitude(value);
+            return true;
+        }
+
+        // The dead L:A32NX_FCU_ALT_MANAGED — hardcoded to 0 by FBW #10855. Kept ONLY so the
+        // pilot has a Ctrl+M row to mute the derived call-out and an FCU panel row to read it
+        // from; the value is meaningless and is deliberately not used. Returning true is what
+        // keeps the generic monitor from speaking "Altitude Mode: 0".
+        if (varName == "A32NX_FCU_ALT_MANAGED") return true;
+
+        // The FMA vertical mode is the primary input to the derived altitude mode. Read from
+        // this BATCHED key, never from an ExcludeFromBatch alias: RequestVariable early-returns
+        // for batch-covered vars before issuing its PERIOD.ONCE, so no panel force-read and no
+        // Shift+A can cancel this stream. Deliberately NOT handled — fall through so the generic
+        // monitor still speaks "Vertical Mode: …" exactly as before.
+        if (varName == "A32NX_FMA_VERTICAL_MODE")
+        {
+            SpeakAltitudeMode(_altMode.OnVerticalMode((int)Math.Round(value)), announcer);
+        }
+
+        // The FMA lateral mode is cached for the autoland half of that derivation — the shim
+        // files LAND/FLARE/ROLL OUT under the LATERAL mode. Also falls through, so the generic
+        // monitor still speaks "Lateral Mode: …".
+        if (varName == "A32NX_FMA_LATERAL_MODE")
+        {
+            SpeakAltitudeMode(_altMode.OnLateralMode((int)Math.Round(value)), announcer);
         }
         // Flight phase — match the A32NX "Entering X phase" wording (was the generic
         // "Flight Phase: X" via the monitor).
@@ -818,16 +857,16 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        if (_reqAlt && (varName == "FCU_ALT_VALUE" || varName == "A32NX_FCU_ALT_MANAGED"))
+        // The managed/selected word is read from the DERIVED state at emit time, not awaited as
+        // a second half: it is a cached field, so there was never a reason to round-trip to the
+        // sim for it. Awaiting it left _reqAlt latched when that half was lost, and the latch
+        // then fired on an unrelated FMA transition minutes later with a stale altitude.
+        if (_reqAlt && varName == "FCU_ALT_VALUE")
         {
-            if (varName == "FCU_ALT_VALUE") _pAltVal = value; else _pAltMgd = value;
-            if (_pAltVal.HasValue && _pAltMgd.HasValue)
-            {
-                string st = _pAltMgd.Value > 0 ? "managed" : "selected";
-                var (av, au) = AltUser(_pAltVal.Value);
-                announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
-                _pAltVal = _pAltMgd = null; _reqAlt = false;
-            }
+            var (av, au) = AltUser(value);
+            string st = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
+            announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
+            _reqAlt = false;
             return true;
         }
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
@@ -852,6 +891,102 @@ public partial class FlyByWireA380Definition
         }
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// Speak a phrase the tracker decided is worth speaking, honouring the pilot's Ctrl+M mute.
+    /// The mute is checked HERE rather than inside the tracker so the tracker stays pure.
+    /// </summary>
+    private void SpeakAltitudeMode(string? phrase, ScreenReaderAnnouncer announcer)
+    {
+        if (phrase == null) return;
+        if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("A32NX_FCU_ALT_MANAGED")) return;
+        announcer.Announce(phrase);
+    }
+
+    public override void ResetAnnouncementBaselines()
+    {
+        _altMode.Reset();
+        _prevVertArmed = -1;
+        _prevLatArmed = -1;
+        _fgAltConstraintApplicable = false;
+        _fgAltIsCruiseAltitude = false;
+        _lastFlightPhaseA380 = "";
+        // Transponder squawk auto-announce (XPNDR_CODE, see above): first-read gate is
+        // _lastSquawkBcd < 0.
+        _lastSquawkBcd = -1;
+        // EFIS baro value/mode/unit, per side (A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_HPA /
+        // _IS_STD / XMLVAR_Baro_Selector_HPA_{1,2}): _lastBaroL/R gate on < 0, the two
+        // bool? pairs gate on HasValue.
+        _lastBaroL = -1;
+        _lastBaroR = -1;
+        _baroStdL = null;
+        _baroStdR = null;
+        _baroInHgL = null;
+        _baroInHgR = null;
+        // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
+        _lastAutolandCap = null;
+        // RMP + stock VHF active/standby (FBW_RMP_FREQUENCY_ACTIVE_*, COM_ACTIVE_*/
+        // COM_STANDBY_*): gate is "key absent from the dictionary" (TryGetValue defaults prev
+        // to 0, and the announce requires prev != 0 / prev > 0).
+        _rmpActiveFreq.Clear();
+        _comActiveFreq.Clear();
+        _comStandbyFreq.Clear();
+        // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
+        _lastSpoilerBand = -1;
+        // Thrust-lever detent baseline (A32NX_AUTOTHRUST_TLA:n): the whole group re-enters
+        // its "gathering a fresh baseline from all 4 engines" phase together —
+        // _tlaBaselineDone false blocks every announce branch until _tla has no NaN slots
+        // left, at which point _lastEngDetent/_lastAllDetent are freshly recomputed. Reset
+        // all four to their declared values or a stale _lastEngDetent/_lastAllDetent entry
+        // can silently suppress a real post-reconnect detent change that coincides with a
+        // flight-1 value.
+        for (int i = 0; i < _tla.Length; i++) { _tla[i] = double.NaN; _lastEngDetent[i] = null; }
+        _lastAllDetent = null;
+        _tlaBaselineDone = false;
+        // ND option filter, per side (A32NX_FCU_EFIS_{L,R}_{WPT,VORD,NDB}_LIGHT_ON): the
+        // baseline is only trustworthy once all 3 lights of a side have reported, so both
+        // the light dictionary and the baseline flag must clear together — _ndFilterL/R is
+        // reset too for the same "match the whole declared state" reason, though it is
+        // rewritten unconditionally on every light event (baselined or not) so it can never
+        // actually strand a stale value once baselined is reachable again. The echo-suppression
+        // fields (_ndFilterEcho{L,R}, _ndFilterEchoTick{L,R}) are a different mechanism — they
+        // suppress the echo of the PILOT'S OWN combo pick within a short tick window, not a
+        // flight-1-vs-flight-2 leak — so they are deliberately left alone.
+        _ndLightsL.Clear();
+        _ndLightsR.Clear();
+        _ndFilterL = 0;
+        _ndFilterR = 0;
+        _ndBaselinedL = false;
+        _ndBaselinedR = false;
+        // Icing stick (A32NX_ICING_STATE_ICING_STICK_INDICATOR): this is the A380's OWN
+        // icing announcer (HasOwnIcingAnnouncer = true), which is precisely why MainForm's
+        // generic ice-accretion path (AnnounceAmbientChanges, gated on
+        // currentAircraft?.HasOwnIcingAnnouncer != true) never calls _iceAccretionTracker.
+        // Observe() for this airframe at all — the two trackers are mutually exclusive by
+        // construction, not just coincidentally non-overlapping, so resetting this one
+        // cannot produce a double announcement with MainForm's (which resets its own
+        // tracker at the same reconnect site, a no-op for this airframe either way).
+        _icingActive = false;
+        _icingBaselineDone = false;
+        // Generic ARINC-enum "announce on change" cache, keyed per var name — covers every
+        // large-value ARINC-encoded fault/status var registered with ValueDescriptions, not
+        // just one tracker. Gate: TryGetValue-absent defaults prevSt to 0 ("so the initial
+        // no-fault is silent" per its own comment) — an empty dictionary reproduces that
+        // exact cold-start condition for every var it covers.
+        _arincEnumState.Clear();
+        // FMA mode alert bits (FMA_FG_ALERTS, "Speed Protection"/"FMA Reversion"): gate is
+        // hadPrev from TryGetValue, same absent-key-is-silent shape.
+        _fmaFgBitState.Clear();
+        // External power (GPU) available, per GPU 1-4 (A380X_GND_GPU_AVAIL_n): gate is
+        // prev >= 0 (declared sentinel -1 = unseen), independent per index — no
+        // baseline-completion coupling like the thrust-lever group.
+        for (int i = 0; i < _gpuAvail.Length; i++) _gpuAvail[i] = -1;
+        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums). Their gate is a plain
+        // "changed" compare with no first-read suppression — a set minimum is meant to
+        // announce on connect. Seeded to -2 (impossible sentinel, since -1 is a valid
+        // "none/NCD" reading) precisely so the first read always announces. Resetting them
+        // here would make a still-set minimum re-announce on reconnect as noise.
     }
 
     // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,
