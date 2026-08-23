@@ -1,0 +1,1 @@
+Corrected the explanation of how the A380 altitude-mode call-out stays quiet during an autoland. The behaviour was already right; the documentation named the wrong mechanism, which would have led a later change to reintroduce a spurious call-out during the flare.
