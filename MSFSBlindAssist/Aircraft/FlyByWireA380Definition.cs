@@ -2030,14 +2030,24 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
-        // Keep an individual data def for the four managed-status legs the OUTPUT-mode FCU
-        // readouts (Shift+H/S/A/V) force-read via RequestVariable(forceUpdate). That call
-        // NO-OPS for batch-covered vars (the SimConnect-ceiling strengthening skips their
-        // individual def), so without this the managed leg never arrives, the value+managed
-        // pair-gate in ProcessSimVarUpdate never closes, and the readout is SILENT. Mirrors
-        // the A320 fix (FlyByWireA320Definition's *_MANAGED vars). 4 extra defs, well within
-        // the A380's data-def headroom. (A32NX_FCU_VS_MANAGED is not force-read by any readout
-        // — VS keys on TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
+        // readouts (Shift+H/S/V) force-read via RequestVariable(forceUpdate). This is no longer
+        // load-bearing the way it once looked: 929be066 fixed RequestVariable(forceUpdate) to
+        // also re-fire an unchanged batch-covered var (DataRequests.cs/VarCache.cs), so dropping
+        // ExcludeFromBatch here would NOT silence Shift+H/S/V. What it costs is latency, not
+        // silence: with ExcludeFromBatch, the forced re-read gets an immediate PERIOD.ONCE reply;
+        // without it, the value+managed pair-gate in ProcessSimVarUpdate would only close on the
+        // next 1 Hz continuous-batch delivery. Mirrors the A320 fix (FlyByWireA320Definition's
+        // *_MANAGED vars). 3 extra defs, well within the A380's data-def headroom.
+        // (A32NX_FCU_VS_MANAGED is not force-read by any readout — VS keys on
+        // TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        //
+        // A32NX_FCU_ALT_MANAGED is deliberately NOT in this list and must never be added back:
+        // FBW #10855 hardcoded its underlying L:var to 0, so no read path — forced or batched —
+        // can ever recover it. Altitude's managed/selected state is derived instead, off the
+        // batch-covered A32NX_FMA_VERTICAL_MODE (see the ⚠️ comment on the A32NX_FCU_ALT_MANAGED
+        // Mon() registration above and docs/a380x.md, "The FCU ALTITUDE managed/selected state is
+        // DERIVED, not read").
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
