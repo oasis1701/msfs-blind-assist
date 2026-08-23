@@ -926,8 +926,10 @@ public partial class FlyByWireA380Definition
         _baroInHgR = null;
         // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
         _lastAutolandCap = null;
-        // VHF active/standby (COM_ACTIVE_*/COM_STANDBY_*): gate is "key absent from the
-        // dictionary" (TryGetValue defaults prev to 0, and the announce requires prev > 0).
+        // RMP + stock VHF active/standby (FBW_RMP_FREQUENCY_ACTIVE_*, COM_ACTIVE_*/
+        // COM_STANDBY_*): gate is "key absent from the dictionary" (TryGetValue defaults prev
+        // to 0, and the announce requires prev != 0 / prev > 0).
+        _rmpActiveFreq.Clear();
         _comActiveFreq.Clear();
         _comStandbyFreq.Clear();
         // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
