@@ -7563,9 +7563,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     /// <summary>
     /// Aircraft-swap cleanup hook (named for symmetry with the A380 def, which also
-    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and
-    /// disposes any hotkey windows this def created, so a discarded instance can't
-    /// keep UI-thread timers or windows alive against the new aircraft.
+    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and the
+    /// held armed-ALT timer, and disposes any hotkey windows this def created, so a
+    /// discarded instance can't keep UI-thread timers or windows alive against the new
+    /// aircraft. Each teardown gets its OWN try/catch: sharing one would let a throw in
+    /// the first silently skip the rest, which is the exact leak they exist to prevent.
     /// </summary>
     public void StopAllMotion()
     {
@@ -7575,6 +7577,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _tcasRaComposeTimer?.Dispose();
             _tcasRaComposeTimer = null;
             _tcasRaAnnouncer = null;
+        }
+        catch { }
+        // Held armed-ALT announcement timer: same reasoning as the TCAS RA timer above — a
+        // discarded def instance must not keep a UI-thread timer alive to speak a held call-out
+        // through the captured announcer at the NEW aircraft.
+        try
+        {
             _altArmHoldTimer?.Stop();
             _altArmHoldTimer?.Dispose();
             _altArmHoldTimer = null;

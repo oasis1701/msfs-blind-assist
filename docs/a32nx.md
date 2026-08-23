@@ -216,4 +216,21 @@ stays and starts working the day FBW wires it.
 
 **⚠️ Source-verified, not sim-verified.** There was no A320 loaded when this was written. Every
 claim above is traced to the FBW tree; the live measurement behind the A380 half (bit 28 TRUE at
-FL360 with nothing armed) has no A32NX counterpart yet.
+FL360 with nothing armed) has no A32NX counterpart yet. (The dispatch-ordering measurement below
+is a separate matter — it is measured against MSFSBA's own registration, not the FBW source.)
+
+**The armed-ALT call-out is HELD until the qualifier settles, and the flush re-checks the Ctrl+M
+mute ITSELF.** `A32NX_FMA_VERTICAL_ARMED` sits at continuous-batch 1 index 164 while the two FMGC
+constraint words sit at 167/168 — three slots later in the SAME batch — so naming the ALT bit
+inline read the PREVIOUS tick's constraint. Only the ALT entry is held; it flushes on whichever
+lands first, either FMGC constraint word's own branch or a 300 ms backstop timer. See
+[a380x.md](a380x.md) for the full derivation, the measured ordering on both airframes, and the
+disproven `GetCachedVariableValue` approach that must not be re-attempted.
+
+The mute re-check is the one piece that is **A32NX-specific, and it is a trap for the next
+deferred announcement added to this def.** This aircraft is muted CENTRALLY: MainForm wraps
+`announcer.Suppressed` around the whole `ProcessSimVarUpdate` call, because ~100 A32NX vars
+announce from inside it. A timer tick runs OUTSIDE that wrap, so anything spoken from a timer
+must consult `A32NXDisabledMonitorVariablesSet` for itself — `FlushHeldAltArmAnnouncement` does.
+The A380 has no such trap: its armed branch checks `A380DisabledMonitorVariablesSet` locally, so
+its flush inherits the same check by writing it the same way.
