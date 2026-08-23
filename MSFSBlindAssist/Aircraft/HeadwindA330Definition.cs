@@ -151,8 +151,26 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         announcer.Announce(phrase);
     }
 
+    // Inherited from FlyByWireA320Definition and deliberately NOT overridden: the armed-mode bit
+    // table (bit 2 removed — the A32NX shim skips it) and the two FMGC constraint words. Both
+    // were verified against the A32NX, not the A339X. The constraint words degrade safely if
+    // Headwind does not publish them (0.0 reads as SSM FailureWarning → no constraint → the plain
+    // "Altitude" call-out, exactly as before). Bit 2 is the open question: if the A339X DOES set
+    // it, its arm is now dropped silently rather than mislabelled, so log it once instead of
+    // leaving a gap with no failure signal at all.
+    private bool _loggedUnknownVertArmedBit;
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        if (varName == "A32NX_FMA_VERTICAL_ARMED" && !_loggedUnknownVertArmedBit
+            && ((int)System.Math.Round(value) & 2) != 0)
+        {
+            _loggedUnknownVertArmedBit = true;
+            Utils.Logging.Log.Warn("HW_A330", "A32NX_FMA_VERTICAL_ARMED bit 2 is set on this airframe. "
+                + "The shared FBW bit table drops it (the A32NX shim never sets it), so this arm is "
+                + "not being announced. See docs/a32nx.md.");
+        }
+
         switch (varName)
         {
             // Stock altimeter — the authoritative baro source on this airframe.
