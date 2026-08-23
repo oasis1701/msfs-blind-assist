@@ -2753,20 +2753,6 @@ public class TaxiGraph
     #region Landing Exit Planning
 
     /// <summary>
-    /// Finds usable runway exit taxiways for the given landing runway. Projects every
-    /// hold-short and ILS hold-short node onto the runway centerline; any node that
-    /// lies within the runway footprint (half-width + 15 m lateral buffer) and between
-    /// a minimum along-runway distance and the runway end is considered an exit.
-    ///
-    /// Returned list is sorted by along-runway distance from the landing threshold (nearest first).
-    /// Useful exits typically start 1500 ft past the threshold (jet touchdown zone) and
-    /// end ~500 ft before the runway end.
-    ///
-    /// "Threshold" = rwy.StartLat/Lon (primary end of the Runway record, which is the
-    /// landing threshold for this runway direction — the DB returns one Runway per
-    /// direction, each with its own StartLat representing its own threshold).
-    /// </summary>
-    /// <summary>
     /// Last-resort scan for a way off <paramref name="rwy"/> ahead of the aircraft, used by
     /// the landing rollout when the planned exit has been missed and
     /// <see cref="GetLandingExits"/>' list holds nothing further down the runway.
@@ -2782,7 +2768,7 @@ public class TaxiGraph
     /// "is there any way off this runway ahead of me?", which is asked at 90 kt and whose
     /// fallback is a 180-degree backtrack on an active runway (CYYZ 23, 2026-08-23: the
     /// rollout declared the missed exit the last one with 5,400 ft of pavement and three
-    /// further turnoffs ahead).
+    /// further turnoffs ahead).</para>
     ///
     /// <para>So this asks the graph directly: every corridor node beyond
     /// <paramref name="afterDistanceFromThresholdFeet"/> whose named edges demonstrably leave
@@ -2874,7 +2860,34 @@ public class TaxiGraph
                 double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
                 double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
                 double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
-                if (curOff > bestOff + 0.01) best = e;
+                if (curOff > bestOff + 0.01) { best = e; continue; }
+                if (Math.Abs(curOff - bestOff) > 0.01) continue;
+
+                // Equal off-axis angle: the adjacency list holds BOTH the forward exit edge
+                // and the reverse edge of the same taxiway segment, and the two fold to the
+                // SAME `off`, so without a tie-break first-encountered wins on navdata row
+                // order alone. That is not cosmetic here - the relBest > 90 guard below then
+                // discards the junction outright, so a real turnoff (a 60-degree crossing
+                // taxiway, say) is invisible to the rescue scan on roughly half of orderings
+                // and the pilot is told the runway has run out of exits. Same tie-break
+                // GetLandingExits carries: the correct edge moves the aircraft further
+                // off-runway on the SAME side as the junction (lateralM: + right, - left).
+                if (Math.Abs(lateralM) > 1.0)
+                {
+                    double bestLatComp = Math.Sin(
+                        NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                    double curLatComp = Math.Sin(
+                        NormalizeAngle(e.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                    if (Math.Sign(curLatComp) == Math.Sign(lateralM)
+                        && Math.Sign(bestLatComp) != Math.Sign(lateralM))
+                        best = e;
+                }
+                else if (curRel <= 90.0 && bestRel > 90.0)
+                {
+                    // Junction sits on the centreline - lateral direction cannot
+                    // discriminate. Fall back to hemisphere: forward beats backward.
+                    best = e;
+                }
             }
             if (best == null) continue;
 
@@ -2890,6 +2903,32 @@ public class TaxiGraph
                 : exitAngle <= NORMAL_MAX_DEG ? "Normal" : "End";
 
             double exitBearingTrue = best.BearingDegrees == 0.0 ? 360.0 : best.BearingDegrees;
+
+            // Shallow first-edge stub: this scan deliberately admits smooth-curve RETs whose
+            // every segment reads near-parallel (the ExitPathLeavesCorridor branch above), and
+            // for those the first edge's bearing is barely off the runway axis - EDDB 24L M3
+            // starts at 6.9 degrees, LGAV 03R D8/D9 at 7.6. The rollout's exit-bearing tone
+            // mode and the post-exit pan floor both steer on ExitBearingTrue, so publishing the
+            // stub bearing pans the pilot straight down the runway at the moment they must turn
+            // and makes ExitSide a coin flip. Use the node->apron bearing instead when it is
+            // wider - the same override, guards and threshold GetLandingExits applies.
+            if (exitAngle < MIN_FALLBACK_EXIT_ANGLE_DEG
+                && apronNodeId > 0
+                && Nodes.TryGetValue(apronNodeId, out var apronTaxiNode))
+            {
+                double latRb = (node.Latitude + apronTaxiNode.Latitude) * 0.5 * Math.PI / 180.0;
+                double mPLb = METERS_PER_DEG_LAT * Math.Cos(latRb);
+                double dNb = (apronTaxiNode.Latitude - node.Latitude) * METERS_PER_DEG_LAT;
+                double dEb = (apronTaxiNode.Longitude - node.Longitude) * mPLb;
+                double apronBrg = Math.Atan2(dEb, dNb) * 180.0 / Math.PI;
+                if (apronBrg < 0) apronBrg += 360.0;
+                double apronAngle = Math.Abs(NormalizeAngle(apronBrg - rwyHeadingTrue));
+                double currentAngleFwd = Math.Abs(NormalizeAngle(
+                    (exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue));
+                if (apronAngle <= NORMAL_MAX_DEG && apronAngle > currentAngleFwd)
+                    exitBearingTrue = apronBrg == 0.0 ? 360.0 : apronBrg;
+            }
+
             found.Add(new LandingExit
             {
                 NodeId = node.NodeId,
@@ -2928,6 +2967,20 @@ public class TaxiGraph
         return kept;
     }
 
+    /// <summary>
+    /// Finds usable runway exit taxiways for the given landing runway. Projects every
+    /// hold-short and ILS hold-short node onto the runway centerline; any node that
+    /// lies within the runway footprint (half-width + 15 m lateral buffer) and between
+    /// a minimum along-runway distance and the runway end is considered an exit.
+    ///
+    /// Returned list is sorted by along-runway distance from the landing threshold (nearest first).
+    /// Useful exits typically start 1500 ft past the threshold (jet touchdown zone) and
+    /// end ~500 ft before the runway end.
+    ///
+    /// "Threshold" = rwy.StartLat/Lon (primary end of the Runway record, which is the
+    /// landing threshold for this runway direction — the DB returns one Runway per
+    /// direction, each with its own StartLat representing its own threshold).
+    /// </summary>
     public List<LandingExit> GetLandingExits(Runway rwy)
     {
         var exits = new List<LandingExit>();

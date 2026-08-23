@@ -1821,7 +1821,9 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
   ft BEHIND the wing, and the retarget would pan the tone back at it.
 
   **The scan.** When `FirstSuitableDownfieldExit` comes back null, `UpdateLandingRollout` calls
-  `_graph.FindDownfieldExits(_rolloutRunway, missedExitDistance + ROLLOUT_OVERSHOOT_FT)`. That walks every
+  `_graph.FindDownfieldExits(_rolloutRunway, downfieldCutoffFt)` — the same aircraft-floored
+  cutoff `FirstSuitableDownfieldExit` was just asked with, never the bare
+  `missedExitDistance + ROLLOUT_OVERSHOOT_FT`. That walks every
   corridor node beyond the cutoff whose named edges demonstrably leave the runway strip (same
   `MIN_FALLBACK_EXIT_ANGLE_DEG` test, same `ExitPathLeavesCorridor` BFS, same tolerances as
   `GetLandingExits`), **ignoring hold-short markers in both directions** — a marked node is as eligible as
