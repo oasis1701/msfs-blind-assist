@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Utils.Logging;
