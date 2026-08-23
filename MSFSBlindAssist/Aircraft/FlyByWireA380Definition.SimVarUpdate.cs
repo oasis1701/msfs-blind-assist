@@ -292,7 +292,39 @@ public partial class FlyByWireA380Definition
                 foreach (var one in DecodeArmedModeNames(iv & ~prev, vert ? _vertArmedBits : _latArmedBits))
                     announcer.Announce($"{one} armed");
             }
+            // Arming CLB/DES/G/S is one of the two ways altitude becomes managed.
+            if (vert) RecomputeAltitudeMode(announcer);
             return true;
+        }
+
+        // FCU ALTITUDE managed/selected. The key is A32NX_FCU_ALT_MANAGED but the value that
+        // arrives is the FMA VERTICAL MODE — the L:var of that name has been hardcoded to 0 by
+        // the aircraft since FBW #10855, so it is derived here instead (AltitudeManagedState
+        // carries the evidence and the formula the deleted FBW FCU used). Handled here, and
+        // never by the generic monitor, because the generic path would speak the vertical mode
+        // a SECOND time under the label "Altitude Mode".
+        if (varName == "A32NX_FCU_ALT_MANAGED")
+        {
+            _altModeVertical = (int)Math.Round(value);
+            _altModeSeenVertical = true;
+            RecomputeAltitudeMode(announcer);
+            // Feed a pending Shift+A read-out: FCU_ALT_VALUE carries the number, this carries
+            // the status word. Whichever arrives second speaks the pair.
+            if (_reqAlt)
+            {
+                _pAltMgd = _altModeManaged ? 1 : 0;
+                TryEmitAltitudeReadout(announcer);
+            }
+            return true;
+        }
+
+        // The FMA lateral mode is cached (never consumed) for the autoland half of that
+        // derivation. Deliberately NOT handled — fall through so the generic monitor still
+        // speaks "Lateral Mode: …" exactly as before.
+        if (varName == "A32NX_FMA_LATERAL_MODE")
+        {
+            _altModeLateral = (int)Math.Round(value);
+            RecomputeAltitudeMode(announcer);
         }
         // Flight phase — match the A32NX "Entering X phase" wording (was the generic
         // "Flight Phase: X" via the monitor).
@@ -818,16 +850,12 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        if (_reqAlt && (varName == "FCU_ALT_VALUE" || varName == "A32NX_FCU_ALT_MANAGED"))
+        // Only the VALUE half arrives here — the managed half is filled in by the
+        // A32NX_FCU_ALT_MANAGED branch above, which returns before reaching this point.
+        if (_reqAlt && varName == "FCU_ALT_VALUE")
         {
-            if (varName == "FCU_ALT_VALUE") _pAltVal = value; else _pAltMgd = value;
-            if (_pAltVal.HasValue && _pAltMgd.HasValue)
-            {
-                string st = _pAltMgd.Value > 0 ? "managed" : "selected";
-                var (av, au) = AltUser(_pAltVal.Value);
-                announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
-                _pAltVal = _pAltMgd = null; _reqAlt = false;
-            }
+            _pAltVal = value;
+            TryEmitAltitudeReadout(announcer);
             return true;
         }
         if (_reqVs && (varName == "A32NX_AUTOPILOT_VS_SELECTED" || varName == "A32NX_AUTOPILOT_FPA_SELECTED" ||
@@ -852,6 +880,57 @@ public partial class FlyByWireA380Definition
         }
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
+    }
+
+    /// <summary>
+    /// Recompute the derived FCU altitude mode and speak it when it has genuinely changed.
+    /// Called from all three of its inputs (FMA vertical mode, vertical armed bitmask, lateral
+    /// mode), any of which can move on its own.
+    /// </summary>
+    private void RecomputeAltitudeMode(ScreenReaderAnnouncer announcer)
+    {
+        // Baseline-first, and the baseline is only trustworthy once BOTH of the primary inputs
+        // have reported: they arrive independently (the vertical mode on its own data
+        // definition, the armed bitmask in the continuous batch), so a half-delivered view
+        // would announce a mode that was already showing when the app connected.
+        bool inputsKnown = _altModeSeenVertical && _prevVertArmed >= 0;
+        _altModeManaged = AltitudeManagedState.IsManaged(_altModeVertical, Math.Max(_prevVertArmed, 0), _altModeLateral);
+        if (!inputsKnown) return;
+
+        // Say nothing while the FMA shows NO vertical mode. Two different situations reach
+        // this, and neither wants a call-out: nothing is flying the aircraft vertically (cold
+        // and dark, FD and AP off), or the FMA is mid-autoland, where the #10855 shim files
+        // LAND/FLARE/ROLL OUT under the LATERAL mode and leaves the vertical mode at None for
+        // the frame in between. Without this the flare would announce "Altitude Mode: Selected"
+        // and then "Altitude Mode: Managed" one frame later. The STATE is still updated above,
+        // so a Shift+A during either is answered correctly.
+        if (_altModeVertical == 0)
+        {
+            _altModeSpoken ??= _altModeManaged;
+            return;
+        }
+
+        // Compared against the last value SPOKEN, not the last computed — that is what lets the
+        // suppressed transient above pass through without leaving a phantom edge behind it.
+        if (_altModeSpoken == _altModeManaged) { _altModeSpoken = _altModeManaged; return; }
+        bool firstReading = _altModeSpoken == null;
+        _altModeSpoken = _altModeManaged;
+        if (firstReading) return;
+        if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("A32NX_FCU_ALT_MANAGED")) return;
+        announcer.Announce($"Altitude Mode: {AltitudeManagedState.Text(_altModeManaged)}");
+    }
+
+    /// <summary>
+    /// Speak a pending Shift+A read-out once both halves are in hand — the FCU altitude from
+    /// FCU_ALT_VALUE and the managed/selected word from the derived altitude mode.
+    /// </summary>
+    private void TryEmitAltitudeReadout(ScreenReaderAnnouncer announcer)
+    {
+        if (!_reqAlt || !_pAltVal.HasValue || !_pAltMgd.HasValue) return;
+        string st = _pAltMgd.Value > 0 ? "managed" : "selected";
+        var (av, au) = AltUser(_pAltVal.Value);
+        announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
+        _pAltVal = _pAltMgd = null; _reqAlt = false;
     }
 
     // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,

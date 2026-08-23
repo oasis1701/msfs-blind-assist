@@ -610,6 +610,10 @@ public partial class FlyByWireA380Definition
             // AP1/AP2/ATHR/LOC/APPR/EXPED/TRK-FPA are now stateful combos in the
             // FCU control panel, so they're not duplicated here as readouts.
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE",
+            // Managed/Selected for the FCU altitude, decoded in TryGetDisplayOverride. Sits
+            // beside the vertical mode it is derived from — the raw value on this row IS that
+            // mode, because L:A32NX_FCU_ALT_MANAGED has been dead since FBW #10855.
+            "A32NX_FCU_ALT_MANAGED",
             "FD_ACTIVE"
         };
         // The EIS baro value is an ARINC429 word — NOT shown as a raw display field

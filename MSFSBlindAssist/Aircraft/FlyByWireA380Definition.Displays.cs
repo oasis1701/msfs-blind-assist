@@ -53,6 +53,10 @@ public partial class FlyByWireA380Definition
         // ND_FILTER_{side} combo has no backing L:var and never reports anything.
         if (varKey == "A32NX_FCU_EFIS_L_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterL); return true; }
         if (varKey == "A32NX_FCU_EFIS_R_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterR); return true; }
+        // FCU altitude mode. The row's raw value is the FMA VERTICAL MODE (the key reads that
+        // var since FBW #10855 hardcoded L:A32NX_FCU_ALT_MANAGED to 0) — without this override
+        // the FCU panel would show a bare mode number under the label "Altitude Mode".
+        if (varKey == "A32NX_FCU_ALT_MANAGED") { displayText = AltitudeManagedState.Text(_altModeManaged); return true; }
         if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
         if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
