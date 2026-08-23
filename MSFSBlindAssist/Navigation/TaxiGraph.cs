@@ -2766,6 +2766,168 @@ public class TaxiGraph
     /// landing threshold for this runway direction — the DB returns one Runway per
     /// direction, each with its own StartLat representing its own threshold).
     /// </summary>
+    /// <summary>
+    /// Last-resort scan for a way off <paramref name="rwy"/> ahead of the aircraft, used by
+    /// the landing rollout when the planned exit has been missed and
+    /// <see cref="GetLandingExits"/>' list holds nothing further down the runway.
+    ///
+    /// <para><b>Why this is not GetLandingExits with a filter.</b> That list is built for the
+    /// planner DIALOG and is deliberately lossy in two ways. It keeps one entry per taxiway
+    /// name, and - decisively - the moment ONE node in the runway corridor carries a
+    /// hold-short marker with a forward exit it stops considering unmarked junctions for the
+    /// WHOLE runway (`hasHoldShortOnRunway`). Rapid-exit taxiways are routinely modelled
+    /// without a hold-short bar, because they are one-way turnoffs, so a single marked
+    /// crossing taxiway near the threshold can hide every RET behind it. Both choices are
+    /// right for a menu the pilot reads before the flight. Neither is an acceptable answer to
+    /// "is there any way off this runway ahead of me?", which is asked at 90 kt and whose
+    /// fallback is a 180-degree backtrack on an active runway (CYYZ 23, 2026-08-23: the
+    /// rollout declared the missed exit the last one with 5,400 ft of pavement and three
+    /// further turnoffs ahead).
+    ///
+    /// <para>So this asks the graph directly: every corridor node beyond
+    /// <paramref name="afterDistanceFromThresholdFeet"/> whose named edges demonstrably leave
+    /// the runway strip, forward-peeling only (a turn past 90 degrees is the backtrack this
+    /// exists to avoid), stopping short of the pavement end. Hold-short markers are ignored
+    /// in BOTH directions - a marked node is as eligible as an unmarked one.</para>
+    ///
+    /// <para>Nodes of one curved RET arc collapse onto the arc entry point: a candidate is
+    /// dropped when a nearer kept candidate shares its taxiway name within
+    /// EXIT_COVERAGE_GAP_FT. Genuinely separate turnoffs sharing a name - the KBNA shape -
+    /// survive, exactly as the coverage fill in <see cref="GetLandingExits"/> intends.</para>
+    ///
+    /// <para>Returned nearest-first. Runs once, at the overshoot decision - never per frame.</para>
+    /// </summary>
+    public List<LandingExit> FindDownfieldExits(Runway rwy, double afterDistanceFromThresholdFeet)
+    {
+        var found = new List<LandingExit>();
+        if (rwy == null || rwy.Length <= 0) return found;
+
+        // Same frame, tolerances and classification thresholds as GetLandingExits - a rescue
+        // candidate must describe the same geometry a planned one would.
+        const double MIN_FALLBACK_EXIT_ANGLE_DEG = 20.0;
+        const double HIGH_SPEED_MAX_DEG = 50.0;
+        const double NORMAL_MAX_DEG     = 110.0;
+        const double END_RATIO          = 0.85;
+        const double END_BUFFER_FT      = 50.0;
+        const double METERS_PER_DEG_LAT = 111132.0;
+        const double COVERAGE_GAP_FT    = RolloutExitGate.EarlyVacateMaxPassedFeet;
+
+        double rwyHeadingTrue = rwy.Heading;
+        double cosH = Math.Cos(rwyHeadingTrue * Math.PI / 180.0);
+        double sinH = Math.Sin(rwyHeadingTrue * Math.PI / 180.0);
+        double halfWidthFt = rwy.Width > 0 ? rwy.Width * 0.5 : 75.0;
+        double lateralToleranceM = (halfWidthFt * 0.3048) + 15.0;
+        double lengthM = rwy.Length * 0.3048;
+        double maxDistFt = rwy.Length - END_BUFFER_FT;
+        double landingThresholdOffsetFt = rwy.ThresholdOffset;
+
+        foreach (var node in Nodes.Values)
+        {
+            if (node.Type == TaxiNodeType.Parking) continue;
+            if (!Adjacency.TryGetValue(node.NodeId, out var edges)) continue;
+
+            double latRad = (rwy.StartLat + node.Latitude) * 0.5 * Math.PI / 180.0;
+            double metersPerDegLon = METERS_PER_DEG_LAT * Math.Cos(latRad);
+            double dN = (node.Latitude - rwy.StartLat) * METERS_PER_DEG_LAT;
+            double dE = (node.Longitude - rwy.StartLon) * metersPerDegLon;
+            double alongM   = dE * sinH + dN * cosH;
+            double lateralM = dE * cosH - dN * sinH;
+
+            if (Math.Abs(lateralM) > lateralToleranceM) continue;
+            if (alongM < 0 || alongM > lengthM + 50.0) continue;
+
+            double alongFt = alongM / 0.3048;
+            if (alongFt > maxDistFt) continue;
+            double distFromThresholdFt = alongFt - landingThresholdOffsetFt;
+            if (distFromThresholdFt <= afterDistanceFromThresholdFeet) continue;
+
+            // Does anything named actually leave the runway strip from here? An edge turning
+            // meaningfully off the axis answers yes at once; otherwise follow the named path
+            // (a smooth RET whose every segment reads near-parallel) and see whether it
+            // clears the corridor. A parallel holding taxiway never does.
+            bool hasOffAxisNamedEdge = false;
+            foreach (var ed in edges)
+            {
+                if (string.IsNullOrEmpty(ed.TaxiwayName)) continue;
+                double rel = Math.Abs(NormalizeAngle(ed.BearingDegrees - rwyHeadingTrue));
+                double off = rel > 90.0 ? 180.0 - rel : rel;
+                if (off >= MIN_FALLBACK_EXIT_ANGLE_DEG) { hasOffAxisNamedEdge = true; break; }
+            }
+            int apronNodeId = ExitPathLeavesCorridor(
+                node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
+            if (!hasOffAxisNamedEdge && apronNodeId < 0) continue;
+
+            // Best exit edge: connector-style names first, then the widest turn off the axis
+            // - the same ranking GetLandingExits uses, so a rescue candidate is announced to
+            // the pilot the way a planned one would be.
+            TaxiEdge? best = null;
+            foreach (var e in edges)
+            {
+                if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.IsNullOrEmpty(e.TaxiwayName)) continue;
+                if (best == null) { best = e; continue; }
+                bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
+                bool curHasDigit  = HasLetterAndDigit(e.TaxiwayName);
+                if (curHasDigit && !bestHasDigit) { best = e; continue; }
+                if (curHasDigit != bestHasDigit) continue;
+                double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
+                double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
+                double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+                double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
+                if (curOff > bestOff + 0.01) best = e;
+            }
+            if (best == null) continue;
+
+            double relBest = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
+            // A stub peeling back toward the approach end is a turnaround, not an exit - the
+            // very thing this scan exists to keep the pilot out of.
+            if (relBest > 90.0) continue;
+            double exitAngle = relBest;
+
+            double endRatio = alongFt / rwy.Length;
+            string exitType = endRatio > END_RATIO ? "End"
+                : exitAngle <= HIGH_SPEED_MAX_DEG ? "High-speed"
+                : exitAngle <= NORMAL_MAX_DEG ? "Normal" : "End";
+
+            double exitBearingTrue = best.BearingDegrees == 0.0 ? 360.0 : best.BearingDegrees;
+            found.Add(new LandingExit
+            {
+                NodeId = node.NodeId,
+                ApronNodeId = apronNodeId > 0 ? apronNodeId : node.NodeId,
+                Latitude = node.Latitude,
+                Longitude = node.Longitude,
+                DistanceFromThresholdFeet = distFromThresholdFt,
+                DistanceFromTouchdownFeet = distFromThresholdFt - 1000.0,
+                TaxiwayName = best.TaxiwayName,
+                ExitAngleDegrees = exitAngle,
+                ExitBearingTrue = exitBearingTrue,
+                ExitType = exitType,
+                ExitSide = NormalizeAngle(
+                    (exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0
+                    ? "Right" : "Left"
+            });
+        }
+
+        found.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+
+        // Collapse the interior nodes of one RET arc onto its entry point, without merging two
+        // turnoffs that merely share a name (KBNA). Same coverage rule, same constant.
+        var kept = new List<LandingExit>(found.Count);
+        foreach (var e in found)
+        {
+            bool duplicate = false;
+            for (int i = kept.Count - 1; i >= 0; i--)
+            {
+                if (e.DistanceFromThresholdFeet - kept[i].DistanceFromThresholdFeet > COVERAGE_GAP_FT)
+                    break; // sorted - nothing earlier can be inside the window either
+                if (string.Equals(kept[i].TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                { duplicate = true; break; }
+            }
+            if (!duplicate) kept.Add(e);
+        }
+        return kept;
+    }
+
     public List<LandingExit> GetLandingExits(Runway rwy)
     {
         var exits = new List<LandingExit>();

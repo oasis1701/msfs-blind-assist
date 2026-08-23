@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Navigation;
+﻿namespace MSFSBlindAssist.Navigation;
 
 /// <summary>
 /// Which steering-tone behaviour applies on a landing-rollout frame.
@@ -515,6 +515,88 @@ public static class RolloutExitGate
         => exitBearingTrue != 0.0
             ? NormalizeAngle(exitBearingTrue - runwayHeadingTrue)
             : 0.0;
+
+    /// <summary>
+    /// Beyond this turn angle an "exit" is a turnaround, not a way off the runway.
+    /// <see cref="MSFSBlindAssist.Navigation.TaxiGraph.GetLandingExits"/> encodes a
+    /// backward-peeling stub by forcing its angle to 130, so the same number screens both a
+    /// genuinely obtuse turnoff and a stub aimed back at the approach end.
+    /// </summary>
+    public const double MaxUsableExitTurnDeg = 90.0;
+
+    /// <summary>
+    /// The nearest exit in <paramref name="exits"/> lying beyond
+    /// <paramref name="afterDistanceFromThresholdFeet"/> that the aircraft could actually
+    /// take. Null when none does.
+    ///
+    /// <para>The caller passes the missed exit's distance PLUS the overshoot margin, so an
+    /// entry at or below the cutoff is the exit just rolled past, or another node of the same
+    /// arc; offering either would turn the aircraft round on the runway.</para>
+    ///
+    /// <para>An angle of 0 is GetLandingExits' "no bearing found" sentinel rather than a real
+    /// measurement, so an exit whose geometry could not be measured stays eligible - it is
+    /// still a way off the runway, and the alternative on offer is a backtrack.</para>
+    ///
+    /// <para>Assumes <paramref name="exits"/> is nearest-first, which every producer
+    /// guarantees (GetLandingExits sorts, FindDownfieldExits sorts, MergeRescueExits sorts).</para>
+    /// </summary>
+    public static LandingExit? FirstSuitableDownfieldExit(
+        IReadOnlyList<LandingExit>? exits,
+        double afterDistanceFromThresholdFeet)
+    {
+        if (exits == null) return null;
+        foreach (var e in exits)
+        {
+            if (e == null) continue;
+            if (e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
+            if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
+            return e;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Folds the rescue scan's findings into the rollout's working exit list, nearest-first.
+    ///
+    /// <para>The rescue scan
+    /// (<see cref="MSFSBlindAssist.Navigation.TaxiGraph.FindDownfieldExits"/>) knows nothing
+    /// about the planner list, so it can rediscover an exit already in it. Two entries for one
+    /// turnoff would let the fall-forward on a failed route retarget to the same place it just
+    /// failed to reach, so a candidate within <see cref="EarlyVacateMaxPassedFeet"/> of a
+    /// known exit sharing its name is dropped and the known one kept.</para>
+    ///
+    /// <para>Everything downstream of the retarget - the fall-forward, the undershoot scan,
+    /// the early-vacate matcher - reads this one list and assumes nearest-first ordering.</para>
+    /// </summary>
+    public static List<LandingExit> MergeRescueExits(
+        IReadOnlyList<LandingExit>? known,
+        IReadOnlyList<LandingExit>? rescued)
+    {
+        var merged = new List<LandingExit>();
+        if (known != null)
+            foreach (var e in known) { if (e != null) merged.Add(e); }
+
+        if (rescued != null)
+        {
+            foreach (var r in rescued)
+            {
+                if (r == null) continue;
+                bool duplicate = false;
+                foreach (var e in merged)
+                {
+                    if (!string.Equals(e.TaxiwayName, r.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (Math.Abs(e.DistanceFromThresholdFeet - r.DistanceFromThresholdFeet)
+                        <= EarlyVacateMaxPassedFeet)
+                    { duplicate = true; break; }
+                }
+                if (!duplicate) merged.Add(r);
+            }
+        }
+
+        merged.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
+        return merged;
+    }
 
     /// <summary>
     /// Fold an angle into [−180, 180]. Private to keep this module free of the Services and
