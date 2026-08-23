@@ -904,6 +904,16 @@ public partial class FlyByWireA380Definition
         announcer.Announce(phrase);
     }
 
+    public override void ResetAnnouncementBaselines()
+    {
+        _altMode.Reset();
+        _prevVertArmed = -1;
+        _prevLatArmed = -1;
+        _fgAltConstraintApplicable = false;
+        _fgAltIsCruiseAltitude = false;
+        _lastFlightPhaseA380 = "";
+    }
+
     // CgMacPhrase moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair,
     // now parameterized on the cached %MAC value).
 }

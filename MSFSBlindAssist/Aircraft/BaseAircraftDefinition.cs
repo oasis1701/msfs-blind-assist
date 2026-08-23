@@ -689,6 +689,16 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Re-baseline every "first reading is silent" tracker the definition owns. Called on a
+    /// SimConnect RECONNECT as well as an aircraft switch, because the definition object
+    /// survives a reconnect while SimConnect clears its value cache — so without this, flight 2
+    /// compares its first reading against a value spoken on flight 1 and announces a phantom
+    /// change. MainForm resets its OWN trackers (ice, turbulence, SIGMET proximity, turnaround)
+    /// at the same site; this is the definition-owned half, which nothing reached before.
+    /// </summary>
+    public virtual void ResetAnnouncementBaselines() { }
+
+    /// <summary>
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>
     public virtual VisualGuidanceProfile GetVisualGuidanceProfile() => new();

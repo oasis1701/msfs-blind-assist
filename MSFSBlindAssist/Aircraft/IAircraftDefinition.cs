@@ -304,6 +304,17 @@ public interface IAircraftDefinition
     /// </summary>
     void StopDisplayMonitoring(SimConnect.SimConnectManager simConnect);
 
+    /// <summary>
+    /// Re-baseline every "first reading is silent" tracker the definition owns. Called on a
+    /// SimConnect RECONNECT as well as an aircraft switch, because the definition object
+    /// survives a reconnect while SimConnect clears its value cache — so without this, flight 2
+    /// compares its first reading against a value spoken on flight 1 and announces a phantom
+    /// change. MainForm resets its OWN trackers (ice, turbulence, SIGMET proximity, turnaround)
+    /// at the same site; this is the definition-owned half. Aircraft with no such trackers
+    /// should use the default implementation (does nothing).
+    /// </summary>
+    void ResetAnnouncementBaselines();
+
     // Visual Landing Guidance Profile
 
     /// <summary>

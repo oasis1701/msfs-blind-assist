@@ -6359,6 +6359,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                     _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
         return bits;
     }
+
+    public override void ResetAnnouncementBaselines()
+    {
+        _prevVertArmed = -1;
+        _prevLatArmed = -1;
+        _altConstraintFmgc1 = false;
+        _altConstraintFmgc2 = false;
+    }
     // ⚠️ There is NO bit 2 here, and that is not an omission to "fix". FBW's shim builds
     // A32NX_FMA_VERTICAL_ARMED as `altArmed | (clbArmed << 2) | (desArmed << 3) |
     // (gsArmed << 4) | (finalArmed << 5) | (tcasArmed << 6)` — bit 1 is skipped because the
