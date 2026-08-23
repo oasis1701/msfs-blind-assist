@@ -7912,9 +7912,18 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
             if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
             else _altConstraintFmgc2 = applies;
-            // A qualifier that CHANGED this sample arrives in the same drain as the arm waiting
-            // on it, so flush at once; the 300 ms timer is only the backstop.
-            FlushHeldAltArmAnnouncement();
+            // Flush ONLY from FMGC_2's branch, never FMGC_1's. The two words sort adjacently
+            // in the same continuous batch with FMGC_1 draining FIRST, so a flush eager on
+            // "either word changed" would — when both change in the same drain — read a
+            // fresh FMGC_1 bool against a still-stale FMGC_2 bool and could announce a
+            // constraint that has just cleared. Flushing from FMGC_2 alone covers all three
+            // cases correctly: (1) both change this drain — FMGC_1 caches silently, FMGC_2
+            // caches and flushes with both bools fresh; (2) only FMGC_1 changes — no eager
+            // flush here, so the 300 ms backstop timer flushes, by which point FMGC_2's
+            // cached bool is current precisely because it did not change; (3) only FMGC_2
+            // changes — it flushes immediately with FMGC_1's cached bool, current for the
+            // same reason.
+            if (varName == "FMGC_2_ALT_CONSTRAINT") FlushHeldAltArmAnnouncement();
             return true;
         }
 
