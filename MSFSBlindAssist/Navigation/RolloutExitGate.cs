@@ -525,6 +525,30 @@ public static class RolloutExitGate
     public const double MaxUsableExitTurnDeg = 90.0;
 
     /// <summary>
+    /// Where "downfield" starts when looking for the exit to retarget to after an overshoot.
+    ///
+    /// <para>Measured from whichever is further along the runway - the missed exit, or the
+    /// AIRCRAFT - plus <paramref name="marginFeet"/>. Measuring from the exit alone is wrong
+    /// for a high-speed exit, which is only declared missed once the aircraft is up to
+    /// ROLLOUT_HIGHSPEED_OVERSHOOT_FT (500 ft) past it, because a rapid-exit turn can still be
+    /// started late. From the exit, a turnoff 200 ft beyond it reads as "downfield" while
+    /// sitting 250 ft BEHIND the wing, and the retarget would pan the tone back at it.</para>
+    ///
+    /// <para>The aircraft is a FLOOR, not an extra margin on top of one: the exit-relative
+    /// cutoff is kept exactly as it was and simply never allowed to fall behind the wing. So
+    /// in the ordinary case - a normal exit missed by the 100 ft overshoot margin - the cutoff
+    /// is unchanged, and the only candidates this can ever remove are ones the aircraft has
+    /// already rolled past, which were never takeable.</para>
+    /// </summary>
+    public static double DownfieldCutoffFeet(
+        double plannedExitDistanceFromThresholdFeet,
+        double signedAlongPastExitFeet,
+        double marginFeet)
+        => Math.Max(
+               plannedExitDistanceFromThresholdFeet + marginFeet,
+               plannedExitDistanceFromThresholdFeet + signedAlongPastExitFeet);
+
+    /// <summary>
     /// The nearest exit in <paramref name="exits"/> lying beyond
     /// <paramref name="afterDistanceFromThresholdFeet"/> that the aircraft could actually
     /// take. Null when none does.

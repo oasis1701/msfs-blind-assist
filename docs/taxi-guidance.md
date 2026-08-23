@@ -1809,6 +1809,15 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
   `allExits.Count=6` ending at H2 — *"Missed last exit on runway 23"* with 5,400 ft of runway and (in
   navdata) H4, J2 and H6 still ahead. The pilot rolled to the end and had to turn around on the runway.
 
+  **Where "downfield" is measured from (`RolloutExitGate.DownfieldCutoffFeet`).** From whichever is
+  further along the runway — the missed exit, or the AIRCRAFT — plus `ROLLOUT_OVERSHOOT_FT`. The
+  aircraft is a FLOOR, not an extra margin: the exit-relative cutoff is unchanged and simply never
+  allowed to fall behind the wing, so the only candidates this removes are ones already rolled past. It
+  matters because a HIGH-SPEED exit is not declared missed until the aircraft is up to
+  `ROLLOUT_HIGHSPEED_OVERSHOOT_FT` (500 ft) past it — a rapid-exit turn can still be started late — so an
+  exit-relative cutoff would read a turnoff 200 ft beyond the missed exit as "downfield" while it sat 250
+  ft BEHIND the wing, and the retarget would pan the tone back at it.
+
   **The scan.** When `FirstSuitableDownfieldExit` comes back null, `UpdateLandingRollout` calls
   `_graph.FindDownfieldExits(_rolloutRunway, missedExitDistance + ROLLOUT_OVERSHOOT_FT)`. That walks every
   corridor node beyond the cutoff whose named edges demonstrably leave the runway strip (same

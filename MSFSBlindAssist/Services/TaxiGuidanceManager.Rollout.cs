@@ -774,8 +774,12 @@ public partial class TaxiGuidanceManager
             RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg " +
                 $"lateral={lateralFromCenterlineFt:F0}ft halfWidth={halfRunwayWidthFt:F0}ft exitBrgErr={exitBrgErr:F1}deg");
 
-            double downfieldCutoffFt =
-                _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT;
+            // Measured from the aircraft, not the missed exit - see DownfieldCutoffFeet. A
+            // high-speed exit is only declared missed up to ROLLOUT_HIGHSPEED_OVERSHOOT_FT
+            // (500 ft) past it, so an exit-relative cutoff can call a turnoff several hundred
+            // feet BEHIND the wing "downfield" and pan the tone back at it.
+            double downfieldCutoffFt = Navigation.RolloutExitGate.DownfieldCutoffFeet(
+                _rolloutExit.DistanceFromThresholdFeet, signedAlongPastFt, ROLLOUT_OVERSHOOT_FT);
 
             var nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
                 _rolloutAllExits, downfieldCutoffFt);

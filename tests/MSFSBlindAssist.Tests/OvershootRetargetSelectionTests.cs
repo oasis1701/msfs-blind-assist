@@ -135,4 +135,57 @@ public class OvershootRetargetSelectionTests
         Assert.Equal("H4", next?.TaxiwayName);
         Assert.Equal(new[] { "B", "H2", "H4", "J2" }, merged.Select(e => e.TaxiwayName).ToArray());
     }
+
+    // ---------------------------------------------------------------------------------
+    // Where the "downfield" cutoff is measured FROM.
+    // ---------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_cutoff_sits_ahead_of_the_missed_exit_on_a_normal_overshoot()
+    {
+        // The ordinary case: overshoot fires 100 ft past a normal exit, so the aircraft and
+        // the exit-plus-margin are the same place and the cutoff is unchanged.
+        double cutoff = RolloutExitGate.DownfieldCutoffFeet(
+            plannedExitDistanceFromThresholdFeet: 5100,
+            signedAlongPastExitFeet: 104,
+            marginFeet: 100);
+
+        Assert.Equal(5204, cutoff, 1.0);
+    }
+
+    [Fact]
+    public void The_cutoff_never_falls_behind_the_aircraft_after_a_high_speed_overshoot()
+    {
+        // A high-speed exit is only declared missed once the aircraft is up to 500 ft past it
+        // (ROLLOUT_HIGHSPEED_OVERSHOOT_FT), because a rapid-exit turn can still be started
+        // late. Measuring the cutoff from the EXIT would then offer a turnoff 350 ft BEHIND
+        // the wing as the "next exit downfield" - and the retarget would pan the tone at it.
+        double cutoff = RolloutExitGate.DownfieldCutoffFeet(
+            plannedExitDistanceFromThresholdFeet: 5100,
+            signedAlongPastExitFeet: 450,
+            marginFeet: 100);
+
+        Assert.Equal(5550, cutoff, 1.0);
+    }
+
+    [Fact]
+    public void An_exit_level_with_the_wheels_is_not_offered_as_the_next_one()
+    {
+        var exits = new[] { Exit("H2", 5100), Exit("H3", 5500), Exit("H4", 6700) };
+        double cutoff = RolloutExitGate.DownfieldCutoffFeet(5100, 450, 100);
+
+        // H3 sits 50 ft behind the aircraft. Only H4 is still takeable.
+        Assert.Equal("H4", RolloutExitGate.FirstSuitableDownfieldExit(exits, cutoff)?.TaxiwayName);
+    }
+
+    [Fact]
+    public void A_negative_along_track_never_pulls_the_cutoff_back_before_the_missed_exit()
+    {
+        // Defensive: the overshoot branch only runs with the exit behind, but nothing in the
+        // signature enforces it, and a cutoff before the missed exit would re-offer the exit
+        // the pilot just rolled through.
+        double cutoff = RolloutExitGate.DownfieldCutoffFeet(5100, -200, 100);
+
+        Assert.Equal(5200, cutoff, 1.0);
+    }
 }
