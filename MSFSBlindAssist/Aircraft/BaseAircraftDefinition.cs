@@ -28,6 +28,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
 
+    /// <summary>
+    /// The live SimConnect manager, set once by MainForm on connect. Read-only convenience for
+    /// definitions that need a value FRESHER than their own ProcessSimVarUpdate branch can give
+    /// them — SimConnectManager's cache is written on the producer thread before the consumer
+    /// drains the event queue, so a value still queued behind the current event is already in it.
+    /// Null before the first connect; every use must degrade to a cached fallback.
+    /// </summary>
+    public SimConnect.SimConnectManager? Sim { get; set; }
+
     // Abstract members from IAircraftDefinition that must be implemented
     public abstract string AircraftName { get; }
     public abstract string AircraftCode { get; }

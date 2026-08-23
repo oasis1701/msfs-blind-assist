@@ -6350,9 +6350,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
     /// so the cruise flavour is never offered here (it is A380-only).
     /// </summary>
-    private (int bit, string name)[] VerticalArmedBits() =>
-        ArmedAltitudeMode.NameAltArmedBit(
-            _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
+    private (int bit, string name)[] VerticalArmedBits()
+    {
+        // Same freshness rule as the A380 — here the armed bitmask sorts three slots ahead of
+        // the two constraint words in the SAME batch, so the cached bools lag by one delivery on
+        // exactly the tick that matters. Both FMGCs, because the armed bitmask follows
+        // fmgcPriorityIndex and an FMGC-1-only read goes quiet whenever FMGC 2 holds priority.
+        double? w1 = Sim?.GetCachedVariableValue("FMGC_1_ALT_CONSTRAINT");
+        double? w2 = Sim?.GetCachedVariableValue("FMGC_2_ALT_CONSTRAINT");
+        bool cst = w1.HasValue || w2.HasValue
+            ? (w1.HasValue && ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(w1.Value))
+              || (w2.HasValue && ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(w2.Value))
+            : _altConstraintFmgc1 || _altConstraintFmgc2;
+        return ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, cst, altIsCruiseAltitude: false);
+    }
 
     public override void ResetAnnouncementBaselines()
     {

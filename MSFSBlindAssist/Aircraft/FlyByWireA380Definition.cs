@@ -3081,8 +3081,20 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     /// than cached: it is only ever wanted on an armed-mode change or a panel repaint, and a
     /// stale copy would announce the wrong flavour.
     /// </summary>
-    private (int bit, string name)[] VerticalArmedBits() =>
-        ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, _fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
+    private (int bit, string name)[] VerticalArmedBits()
+    {
+        // Read the qualifier from the SimConnect cache, not from _fgAlt* — the armed bitmask is
+        // dispatched BEFORE PRIM FG discrete word 3 (different batches, requested 1 then 2), so
+        // on the tick a constraint becomes applicable in the same sample the ALT bit arms, the
+        // cached bools still hold the previous value and the call-out — which is edge-triggered
+        // and never re-fires — would say "Altitude armed" for a constrained altitude. The cache
+        // is written on the producer thread before this consumer runs. Falls back to the cached
+        // bools when Sim is null (before the first connect) or the var has not been seen.
+        double? raw = Sim?.GetCachedVariableValue("FMA_CRUISE_ALT_MODE");
+        bool cst = raw.HasValue ? ArmedAltitudeMode.ConstraintApplicable(raw.Value) : _fgAltConstraintApplicable;
+        bool crz = raw.HasValue ? ArmedAltitudeMode.IsCruiseAltitude(raw.Value) : _fgAltIsCruiseAltitude;
+        return ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, cst, crz);
+    }
 
     // Derived FCU ALTITUDE managed/selected state. AltitudeManagedState owns the rule,
     // AltitudeModeTracker owns the sequencing (baseline, readiness, autoland, reconnect reset).

@@ -222,6 +222,7 @@ public partial class MainForm
             // exactly this reason; the definition object also survives a reconnect, so its
             // baseline-first announcers need the same treatment (A380 altitude mode, both
             // airframes' armed-mode bitmasks).
+            if (currentAircraft is BaseAircraftDefinition baseDef) baseDef.Sim = simConnectManager;
             currentAircraft?.ResetAnnouncementBaselines();
             weatherAnnouncementTimer?.Start();
         }
