@@ -8158,12 +8158,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Clock: CHR start/stop + reset are H-events; the ET knob is a settable L:var.
         if (varKey == "A32NX_MSFSBA_CHRONO_TOGGLE")
         {
-            if (value > 0.5) simConnect.ExecuteCalculatorCode("(>H:A32NX_CHRONO_TOGGLE)");
+            if (value > 0.5) simConnect.ExecuteCalculatorCodeUnique("(>H:A32NX_CHRONO_TOGGLE)");
             return true;
         }
         if (varKey == "A32NX_MSFSBA_CHRONO_RESET")
         {
-            if (value > 0.5) simConnect.ExecuteCalculatorCode("(>H:A32NX_CHRONO_RST)");
+            if (value > 0.5) simConnect.ExecuteCalculatorCodeUnique("(>H:A32NX_CHRONO_RST)");
             return true;
         }
         if (varKey == "A32NX_CHRONO_ET_SWITCH_POS")
@@ -8179,7 +8179,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // drives nothing). Only the "Activate" option (value > 0.5) fires.
         if (varKey == "A32NX_RUDDER_TRIM_RESET")
         {
-            if (value > 0.5) { simConnect.ExecuteCalculatorCode("(>K:RUDDER_TRIM_RESET)"); announcer.Announce("Rudder trim reset"); }
+            if (value > 0.5) { simConnect.ExecuteCalculatorCodeUnique("(>K:RUDDER_TRIM_RESET)"); announcer.Announce("Rudder trim reset"); }
             return true;
         }
 
@@ -8335,7 +8335,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool wantOn = pos > 0;
             bool isOn = (simConnect.GetCachedVariableValue(swKey) ?? 0) > 0.5;
             if (wantOn != isOn)
-                simConnect.ExecuteCalculatorCode($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
+                // Unique: two consecutive toggles of the SAME circuit are byte-identical
+                // and the second is dropped (Off->Slow->Off->Slow loses the last step).
+                simConnect.ExecuteCalculatorCodeUnique($"{circuit} (>K:ELECTRICAL_CIRCUIT_TOGGLE)");
             if (wantOn)
                 simConnect.ExecuteCalculatorCode($"{(pos >= 2 ? 100 : 75)} {circuit} (>K:2:ELECTRICAL_CIRCUIT_POWER_SETTING_SET)");
             return true;
