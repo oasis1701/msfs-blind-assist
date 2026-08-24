@@ -207,14 +207,7 @@ public static class SayIntentionsTaxiPathSnapper
     /// a missing or unreadable path degrades to "nothing to say", never an exception,
     /// because the caller is a hotkey a blind pilot presses mid-taxi.
     /// </summary>
-    /// <param name="clearedTaxiways">Names the controller actually said, or null when there
-    /// is no clearance to consult. The excursion filter is geometric and cannot tell a
-    /// junction clip from a cleared leg that happens to be brief, so a name in this set is
-    /// evidence that outranks the heuristic — but only for the LAST run carrying it. See
-    /// the guard in stage 4.</param>
-    public static SnapResult Snap(
-        IReadOnlyList<GeoPoint> path, IReadOnlyList<NamedEdge> edges,
-        IReadOnlyCollection<string>? clearedTaxiways = null)
+    public static SnapResult Snap(IReadOnlyList<GeoPoint> path, IReadOnlyList<NamedEdge> edges)
     {
         if (path is null || path.Count == 0)
         {
@@ -321,22 +314,6 @@ public static class SayIntentionsTaxiPathSnapper
             previousSurvivingName = name;
         }
 
-        // What the controller named, and how many surviving runs carry each name. Built
-        // once; only consulted when a run is about to be dropped as an excursion.
-        var clearedSet = clearedTaxiways is null
-            ? null
-            : new HashSet<string>(clearedTaxiways, StringComparer.OrdinalIgnoreCase);
-
-        var survivingNameCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        if (clearedSet is not null)
-        {
-            foreach ((string name, int _) in surviving)
-            {
-                survivingNameCounts.TryGetValue(name, out int seen);
-                survivingNameCounts[name] = seen + 1;
-            }
-        }
-
         // 4. Drop sandwiched junction excursions — a short run that leaves one taxiway and
         //    returns to it (see MaxExcursionRunPoints).
         //
@@ -358,26 +335,6 @@ public static class SayIntentionsTaxiPathSnapper
                 && surviving[i].Length <= MaxExcursionRunPoints
                 && i + 1 < surviving.Count
                 && surviving[i + 1].Name == kept[^1];
-
-            // A cleared taxiway carried by exactly ONE surviving run is the last evidence
-            // that ATC named it. Dropping it breaks ClearanceRunsThroughGeometry, so the
-            // clearance wins and the pilot is told the ground track differs — about a track
-            // that agreed. Live CYVR 2026-08-19: [6, JB, 6, J, …] against a clearance of
-            // [JB, J, H, D, D9], where JB is cleared and appears nowhere else.
-            //
-            // The occurs-exactly-once test is what keeps this from backfiring. Protecting
-            // EVERY cleared name breaks the case where a clearance names two crossing
-            // taxiways — "via A, B", track [A, B, A, B] — by keeping a spurious
-            // out-and-back; there the second B carries the evidence, so the sandwiched one
-            // costs nothing to drop.
-            if (sandwiched
-                && clearedSet is not null
-                && clearedSet.Contains(name)
-                && survivingNameCounts.TryGetValue(name, out int occurrences)
-                && occurrences == 1)
-            {
-                sandwiched = false;
-            }
 
             if (sandwiched)
             {
