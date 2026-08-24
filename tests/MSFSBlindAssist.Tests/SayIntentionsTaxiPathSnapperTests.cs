@@ -92,6 +92,23 @@ public class SayIntentionsTaxiPathSnapperTests
     }
 
     [Fact]
+    public void TheLiveCapturesCarryAHeadingForEveryPoint()
+    {
+        // Without this the two capture tests could pass while silently exercising the
+        // no-heading fallback - if the fixture reader stopped reading the heading, or a
+        // future fixture were captured without one, the bearing preference would go
+        // untested against real data and nothing would say so.
+        foreach (string fixture in new[]
+                 { "lszh-taxipath-arrival.json", "kdtw-taxipath-crossing.json" })
+        {
+            var path = LoadFixturePath(fixture);
+
+            Assert.NotEmpty(path);
+            Assert.All(path, p => Assert.NotNull(p.HeadingDegrees));
+        }
+    }
+
+    [Fact]
     public void ConnectorStubsAreDroppedNotReported()
     {
         var result = SayIntentionsTaxiPathSnapper.Snap(
@@ -598,6 +615,71 @@ public class SayIntentionsTaxiPathSnapperTests
         Assert.Equal(1, fromEarlier.ExcursionRunCount);
     }
 
+    // --- The published heading decides a crossing taxiway that is genuinely nearer ------
+    //
+    // This is the artifact at its SOURCE. At a junction the crossing pavement is not merely
+    // a near tie - it is closer than the taxiway being travelled (KDEN: P7's centreline
+    // stops 21.13 m short of P and wins on 148 of 154 sampled offsets), so no ambiguity
+    // margin can catch it. What separates them is direction: the aircraft is travelling
+    // along the main taxiway, and SayIntentions publishes that heading for every point.
+    //
+    // Geometry: "M" runs north at lon 8.0000; "C" crosses it east-west at lat 50.0050. The
+    // clipped points sit 14.3 m east of M and within 11.1 m of C, so C wins on distance
+    // every time. Sample spacing is denser than SayIntentions' real ~28 m because the band
+    // where C is nearer is only ~29 m wide; the test is about stage 1's CHOICE, not spacing.
+
+    private static readonly NamedEdge EdgeCrossMain = new("M", 50.0000, 8.0000, 50.0100, 8.0000);
+    private static readonly NamedEdge EdgeCrossing = new("C", 50.0050, 7.9990, 50.0050, 8.0010);
+    private static readonly NamedEdge[] CrossingEdges = { EdgeCrossMain, EdgeCrossing };
+
+    /// <summary>A point on M, travelling north.</summary>
+    private static GeoPoint NorthOnMain(double lat) => new(lat, 8.0000, 0.0);
+
+    /// <summary>A point 14.3 m east of M and nearer the crossing C, still travelling north.</summary>
+    private static GeoPoint NorthNearCrossing(double lat) => new(lat, 8.0002, 0.0);
+
+    private static GeoPoint[] AcrossTheJunction(Func<double, GeoPoint> clipped) => new[]
+    {
+        NorthOnMain(50.0020), NorthOnMain(50.0030), NorthOnMain(50.0040),
+        clipped(50.00490), clipped(50.00495), clipped(50.00500),
+        clipped(50.00505), clipped(50.00510),
+        NorthOnMain(50.0060), NorthOnMain(50.0070), NorthOnMain(50.0080),
+    };
+
+    [Fact]
+    public void ACrossingTaxiwayThatIsNearerLosesToTheDirectionOfTravel()
+    {
+        // Five clipped points - past MaxExcursionRunPoints, so the sandwich filter cannot
+        // mask this. Without the heading the route names a taxiway the aircraft crossed.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(NorthNearCrossing), CrossingEdges);
+
+        Assert.Equal(new[] { "M" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void WithNoPublishedHeadingTheNearestEdgeStillWins()
+    {
+        // Degrade to exactly today's behaviour when SayIntentions published no heading.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(lat => new GeoPoint(lat, 8.0002)), CrossingEdges);
+
+        Assert.Equal(new[] { "M", "C", "M" }, result.Taxiways);
+    }
+
+    [Fact]
+    public void AHeadingNoEdgeAgreesWithFallsBackToTheNearestEdge()
+    {
+        // The safety property: the fallback is what stops this rejecting real legs. Measured
+        // on the KDTW capture, 10 of 124 points have a winner ~90 deg off the published
+        // heading and are on legs that belong to the route - they must keep today's answer.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(lat => new GeoPoint(lat, 8.0002, 45.0)), CrossingEdges);
+
+        Assert.Equal(new[] { "M", "C", "M" }, result.Taxiways);
+    }
+
     // ---- TrimToPointsAhead: the published track is not always what is LEFT of the route ----
     //
     // KDTW, live, 2026-07-31. Holding short of runway 4R, cleared to cross and continue
@@ -782,9 +864,19 @@ public class SayIntentionsTaxiPathSnapperTests
         foreach (var entry in doc.RootElement.GetProperty("taxi_path").EnumerateArray())
         {
             var point = entry.GetProperty("point");
+            // The heading is read here for the same reason production reads it: without
+            // it these captures would exercise the snapper's no-heading fallback rather
+            // than the path a real import takes. Both fixtures carry one for every point
+            // (LSZH 40, KDTW 124), and the sequences they pin are unchanged by it - which
+            // is exactly the property the bearing preference has to hold.
+            double? heading = entry.TryGetProperty("heading", out var h)
+                && h.ValueKind == JsonValueKind.Number
+                    ? h.GetDouble()
+                    : null;
             points.Add(new GeoPoint(
                 point.GetProperty("lat").GetDouble(),
-                point.GetProperty("lon").GetDouble()));
+                point.GetProperty("lon").GetDouble(),
+                heading));
         }
         return points;
     }

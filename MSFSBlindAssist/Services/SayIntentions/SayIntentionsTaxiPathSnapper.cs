@@ -1,8 +1,20 @@
 namespace MSFSBlindAssist.Services.SayIntentions;
 
 /// <summary>One position from SayIntentions' <c>current_flight.taxi_path</c>, which is
-/// published as <c>{"heading":…, "point":{"lon":…,"lat":…}}</c> per entry.</summary>
-public readonly record struct GeoPoint(double Latitude, double Longitude);
+/// published as <c>{"heading":…, "point":{"lon":…,"lat":…}}</c> per entry.
+///
+/// <paramref name="HeadingDegrees"/> is that published heading: the direction of travel
+/// along the path at this point, in degrees true. Both committed captures carry one for
+/// every point (LSZH 40, KDTW 124), and consecutive points on a straight leg share a
+/// value, so it reads as the bearing of the leg rather than an instantaneous attitude.
+/// Null when SayIntentions published none, and every consumer must degrade to the
+/// no-heading behaviour rather than guess.
+///
+/// Reading it does NOT breach the rule against reading taxi_path members: that rule names
+/// the NAME-ISH ones (id/label/name) and exists so taxiway names can never come from
+/// SayIntentions. A heading is geometry, exactly like lat and lon.</summary>
+public readonly record struct GeoPoint(
+    double Latitude, double Longitude, double? HeadingDegrees = null);
 
 /// <summary>
 /// One straight SEGMENT of a named taxiway — not a whole taxiway and not a whole OSM
@@ -115,6 +127,25 @@ public static class SayIntentionsTaxiPathSnapper
     /// remove back through, which is worse.
     /// </summary>
     internal const int MinRunPoints = 2;
+
+    /// <summary>
+    /// How far a taxiway edge's bearing may sit from the point's published heading and still
+    /// count as running in the direction of travel.
+    ///
+    /// This is the guard the junction artifact actually needs, and it belongs HERE rather
+    /// than in the sequence filter downstream, because at a real junction the crossing
+    /// pavement is not a near tie — it is genuinely NEARER than the taxiway being travelled
+    /// (KDEN: P7's centreline stops 21.13 m short of P and wins on 148 of 154 sampled
+    /// offsets). No ambiguity margin can catch that; a direction test can, because the
+    /// aircraft is travelling along P and P7 crosses it.
+    ///
+    /// 25 deg is not a new number: <c>MergeOptions.MatchMaxBearingDeg</c> already uses it for
+    /// the same judgement in <c>TaxiDataMerger.BestMatchName</c>, which solves the same
+    /// problem (which named segment does this location belong to) for the augmentation
+    /// merge. Measured on the two committed captures, 25/35/45/60 are all harmless; 25 is
+    /// chosen because it reuses a calibrated constant instead of inventing one.
+    /// </summary>
+    internal const double MaxHeadingDisagreementDeg = 25.0;
 
     /// <summary>
     /// The longest run that may be discarded as a junction excursion — a taxiway the
@@ -275,6 +306,14 @@ public static class SayIntentionsTaxiPathSnapper
             string? nearestName = null;
             double nearestMetres = double.MaxValue;
 
+            // Second candidate: the nearest edge that also runs in the direction the point
+            // says the aircraft is travelling. Preferred over the plain nearest when it
+            // exists — see MaxHeadingDisagreementDeg — and simply absent otherwise, which is
+            // what makes this safe rather than a rejection. See the fallback below.
+            string? alignedName = null;
+            double alignedMetres = double.MaxValue;
+            double? heading = path[i].HeadingDegrees;
+
             // Linear over every segment, and NOT free: measured 20-90 ms per call —
             // a 111-point capture against EGLL's 5,189 named edges is ~576k point-segment
             // evaluations, about 40 ms. That is several frames, and it runs SYNCHRONOUSLY
@@ -295,16 +334,58 @@ public static class SayIntentionsTaxiPathSnapper
                     nearestMetres = metres;
                     nearestName = edge.TaxiwayName;
                 }
+
+                // Bearing is trigonometry and this loop runs tens of thousands of times per
+                // point, so it is computed ONLY for an edge that could still become the
+                // aligned winner: inside the tolerance and closer than the best aligned so
+                // far. On a real capture that is a handful of edges per point, not all 5,189.
+                if (heading is double travelling
+                    && metres <= SnapToleranceMetres
+                    && metres < alignedMetres)
+                {
+                    double edgeBearing = MSFSBlindAssist.Services.TaxiAugment.TaxiGeo.BearingDeg(
+                        edge.FromLat, edge.FromLon, edge.ToLat, edge.ToLon);
+
+                    // Mod 180: an edge describes a line, and the aircraft may be travelling
+                    // along it either way round.
+                    if (MSFSBlindAssist.Services.TaxiAugment.TaxiGeo.BearingDiffMod180(
+                            travelling, edgeBearing) <= MaxHeadingDisagreementDeg)
+                    {
+                        alignedMetres = metres;
+                        alignedName = edge.TaxiwayName;
+                    }
+                }
             }
 
-            if (nearestName is null || nearestMetres > SnapToleranceMetres)
+            // Prefer direction over distance — but only when direction has an answer. When no
+            // edge in range agrees with the heading, the plain nearest stands.
+            //
+            // THAT FALLBACK IS THE SAFETY PROPERTY, not a convenience. A hard gate — reject
+            // any edge disagreeing with the heading — was measured and is wrong: on the KDTW
+            // capture it rejects 10 of 124 points (8.8 %), and those points sit on K, Q, U9
+            // and A5, legs that genuinely belong to the route. A rejected point becomes a
+            // null, a null breaks its run, and a broken run can drop a real leg below
+            // MinRunPoints. Falling back leaves every one of those points exactly as it was.
+            //
+            // Measured on both committed captures: 0 of 40 picks change at LSZH and 0-1 of
+            // 124 at KDTW, and neither taxiway sequence moves. Those two tests are the
+            // regression guard for this rule.
+            string? chosenName = nearestName;
+            double chosenMetres = nearestMetres;
+            if (alignedName is not null)
+            {
+                chosenName = alignedName;
+                chosenMetres = alignedMetres;
+            }
+
+            if (chosenName is null || chosenMetres > SnapToleranceMetres)
             {
                 perPoint[i] = null;
                 unsnappedCount++;
             }
             else
             {
-                perPoint[i] = nearestName;
+                perPoint[i] = chosenName;
             }
         }
 

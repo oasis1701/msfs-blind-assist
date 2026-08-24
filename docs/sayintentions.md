@@ -1084,14 +1084,30 @@ CYVR its cleared `JB` below:
   `AnExcursionWhoseLeadingAnchorTheTrimRemovedIsNotRecognised`, which also shows the pass
   working correctly one sample earlier.
 
-The deeper fix for all four is upstream, not here: the nearest-edge scan picks a name with
-a bare `<` and no ambiguity margin, while this repo's own `TaxiDataMerger.BestMatchName`
-solves the same problem with a 25° bearing gate and a near-tie refusal — and SayIntentions
-publishes a per-point `heading` that the reader currently discards. A refused near-tie
-becomes a null, the null breaks the run, and the existing pipeline collapses `X, Y, X` to
-`X` with no ability to delete a leg that is not an artifact. That is a recorded follow-up,
-not a change to make from reasoning alone: it replaces this approach rather than fixing
-it, and it can only be validated in a live sim.
+**The direction of travel is checked first, upstream of all of this.** SayIntentions
+publishes a `heading` for every point of `taxi_path`, and the snapper now uses it: among
+edges inside the 25 m tolerance it prefers the nearest one whose bearing agrees with that
+heading to within 25°, and falls back to the plain nearest when none agrees. At a junction
+the crossing pavement is perpendicular to the direction of travel, so the taxiway being
+travelled wins even though the crossing one is closer — which is the artifact removed at
+source, before any of the shapes above can form.
+
+The fallback is the safety property, not a convenience. Two stricter rules were measured
+against the committed captures and rejected. A hard bearing gate — reject any edge that
+disagrees — throws away 10 of KDTW's 124 points (8.8 %), and those points sit on `K`, `Q`,
+`U9` and `A5`, legs that belong to the route; a rejected point becomes a null, a null
+breaks its run, and a broken run can drop a real leg below `MinRunPoints`. Using the
+heading only to settle a near tie is safe but useless here: at a real junction the
+crossing pavement is not nearly as close, it is *closer* (KDEN's `P7` wins on 148 of 154
+sampled offsets), so no ambiguity margin contains it. Bearing-preferred nearest changes 0
+of LSZH's 40 per-point picks and 0–1 of KDTW's 124, and moves neither sequence — those two
+captures are the regression guard, and they read the published heading exactly as a live
+import does.
+
+The sandwich filter stays in place behind it. Retiring it is a separate decision and needs
+sim evidence: neither committed capture contains a junction artifact (`geoExcursions=0` on
+both), so CI can show the heading rule is harmless on real data and correct on synthetic
+junction geometry, but not that it removes the CYVR / KDEN / KORD artifact.
 
 **Why only the sandwich shape.** It is tempting to reject any track that leaves a taxiway and
 comes back to it, since that is what a junction clip looks like. Measured against 56 real
