@@ -206,8 +206,18 @@ public class SayIntentionsTaxiPathSnapperTests
     public void ATaxiwayRevisitedAfterAnotherIsKeptTwice()
     {
         // Non-consecutive reuse is real (a clearance crosses and comes back). Only
-        // CONSECUTIVE duplicates collapse.
-        var path = new[] { OnA(0.1), OnA(0.2), OnB(0.5), OnB(0.7), OnA(0.8), OnA(0.9) };
+        // CONSECUTIVE duplicates collapse — for a run long enough to sit outside the
+        // sandwiched-junction-excursion window (MaxExcursionRunPoints). A SHORT revisit
+        // of a different taxiway between two runs of the same one is now exactly what
+        // the excursion pass removes by design (see the sandwiched-excursion tests
+        // above), so B needs more than MaxExcursionRunPoints (4) points here to keep
+        // this test testing non-consecutive reuse rather than the excursion pass.
+        var path = new[]
+        {
+            OnA(0.1), OnA(0.2),
+            OnB(0.1), OnB(0.3), OnB(0.5), OnB(0.7), OnB(0.9),
+            OnA(0.8), OnA(0.9),
+        };
 
         var result = SayIntentionsTaxiPathSnapper.Snap(path, CornerEdges);
 
@@ -251,6 +261,156 @@ public class SayIntentionsTaxiPathSnapperTests
         Assert.Empty(result.Taxiways);
         Assert.Equal(2, result.PointCount);
         Assert.Equal(2, result.UnsnappedCount);
+    }
+
+    // --- Sandwiched junction excursions -----------------------------------------------
+    //
+    // Near a junction the spur taxiway legitimately wins the nearest-edge scan for a few
+    // consecutive points, so the sequence reads X, Y, X and the pilot is routed out onto
+    // pavement the aircraft only crossed. Measured against real navdata: KORD A/A17 gives
+    // a 2-point run, CYVR D/D5 a 3-point run, KDEN P/P7 a 4-point run (its centreline
+    // stops 21.13 m short of P, inside the snap tolerance). Across 600 junctions at five
+    // airports, 97.8 % of sandwiched excursions are 4 points or fewer.
+
+    private static readonly NamedEdge EdgeMain = new("X", 50.0000, 8.0000, 50.0100, 8.0000);
+    private static readonly NamedEdge EdgeSpur = new("Y", 50.0050, 8.0002, 50.0060, 8.0002);
+    private static readonly NamedEdge EdgeOther = new("Z", 50.0070, 8.0002, 50.0080, 8.0002);
+    private static readonly NamedEdge[] JunctionEdges = { EdgeMain, EdgeSpur, EdgeOther };
+
+    /// <summary>A point on the main taxiway X, at the given latitude offset in units of
+    /// 0.0001 degrees north of 50.0000.</summary>
+    private static GeoPoint OnMain(int step) => new(50.0000 + (0.0001 * step), 8.0000);
+
+    /// <summary>A point sitting exactly on the spur Y.</summary>
+    private static GeoPoint OnSpur(int step) => new(50.0050 + (0.0001 * step), 8.0002);
+
+    /// <summary>A point sitting exactly on the third taxiway Z.</summary>
+    private static GeoPoint OnOther(int step) => new(50.0070 + (0.0001 * step), 8.0002);
+
+    /// <summary>Three points along X, then <paramref name="spurPoints"/> on the spur Y,
+    /// then three more along X — the X, Y, X shape every real case takes.</summary>
+    private static GeoPoint[] MainSpurMain(int spurPoints)
+    {
+        var path = new List<GeoPoint> { OnMain(10), OnMain(20), OnMain(30) };
+        for (int i = 1; i <= spurPoints; i++) path.Add(OnSpur(i));
+        path.Add(OnMain(80));
+        path.Add(OnMain(90));
+        path.Add(OnMain(95));
+        return path.ToArray();
+    }
+
+    [Theory]
+    [InlineData(2)]  // KORD A, A17, A
+    [InlineData(3)]  // CYVR D, D5, D
+    [InlineData(4)]  // KDEN P, P7, P — the worst real case, exactly on the bound
+    public void AnExcursionUpToTheBoundIsRemoved(int spurPoints)
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(spurPoints), JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(1, result.ExcursionRunCount);
+        Assert.Equal(0, result.DroppedRunCount);
+    }
+
+    [Fact]
+    public void AFivePointExcursionIsKeptBecauseTheBoundIsExact()
+    {
+        // One point past MaxExcursionRunPoints. A track that holds a taxiway for five
+        // samples (~140 m) is describing pavement, not clipping a junction.
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(5), JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortRunBetweenTwoDIFFERENTTaxiwaysIsNotAnExcursion()
+    {
+        // The sandwich is the whole discriminator: X, Y, Z is a route that genuinely
+        // passes along three taxiways, however briefly it holds the middle one.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnOther(1), OnOther(2), OnOther(3),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "Z" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortLeadingRunIsKeptBecauseNothingPrecedesIt()
+    {
+        // A real track starts on the stand lead-in. With no run before it there is no
+        // sandwich, so it is a leg like any other.
+        var path = new[]
+        {
+            OnSpur(1), OnSpur(2),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortTrailingRunIsKeptBecauseNothingFollowsIt()
+    {
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void TwoExcursionsOffTheSameTaxiwayBothGoInOnePass()
+    {
+        // X, Y, X, Z, X. The second excursion is only visible once the first has been
+        // removed, which is why the pass compares against the last run KEPT rather than
+        // the immediately preceding one.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnMain(60), OnMain(65), OnMain(68),
+            OnOther(1), OnOther(2),
+            OnMain(90), OnMain(95), OnMain(98),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(2, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AStubDroppedBetweenTwoPassesOfOneTaxiwayIsNotCountedAsAnExcursion()
+    {
+        // The stub filter runs first and can leave two same-named runs adjacent. That is
+        // one leg, not an excursion — DroppedRunCount already accounts for the stub.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(1, result.DroppedRunCount);
+        Assert.Equal(0, result.ExcursionRunCount);
     }
 
     // ---- TrimToPointsAhead: the published track is not always what is LEFT of the route ----

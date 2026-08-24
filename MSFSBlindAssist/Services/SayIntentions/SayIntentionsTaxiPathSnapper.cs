@@ -23,8 +23,16 @@ public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLo
 /// so they are missing from <paramref name="Taxiways"/> without ever showing up in
 /// <paramref name="UnsnappedCount"/>. Without this field a genuinely short leg and a
 /// perfectly clean read are indistinguishable to the caller.
+///
+/// <paramref name="ExcursionRunCount"/> is a third, different thing again: taxiways the
+/// track really did touch, held only briefly, and left again for the SAME taxiway it
+/// arrived from. Those are junction geometry, not legs of the route — see
+/// <see cref="SayIntentionsTaxiPathSnapper.MaxExcursionRunPoints"/>. Defaulted so a
+/// caller constructing a SnapResult positionally does not have to know about them.
 /// </summary>
-public sealed record SnapResult(IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount, int DroppedRunCount);
+public sealed record SnapResult(
+    IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount, int DroppedRunCount,
+    int ExcursionRunCount = 0);
 
 /// <summary>
 /// Turns SayIntentions' taxi_path GEOMETRY into a taxiway sequence, by snapping each
@@ -86,6 +94,34 @@ public static class SayIntentionsTaxiPathSnapper
     /// remove back through, which is worse.
     /// </summary>
     internal const int MinRunPoints = 2;
+
+    /// <summary>
+    /// The longest run that may be discarded as a junction excursion — a taxiway the
+    /// track touches between two passes of the SAME taxiway.
+    ///
+    /// Near a junction the spur is at or inside <see cref="SnapToleranceMetres"/> of the
+    /// taxiway being travelled, so it legitimately wins the nearest-edge scan for a few
+    /// consecutive points and the sequence reads X, Y, X. Three live imports applied one:
+    /// KDEN P8,P,P7,P,EC; KORD A,A17,A,A14; CYVR D,D5,D,D9. Measured against the real
+    /// navdata behind them, the spur run reaches 2 points at KORD, 3 at CYVR and 4 at
+    /// KDEN — whose P7 centreline stops 21.13 m short of P and so wins on 148 of 154
+    /// sampled phase/offset combinations.
+    ///
+    /// Raising <see cref="MinRunPoints"/> instead is NOT the fix: it would have to reach
+    /// 5 to cover KDEN, which also deletes any genuinely cleared taxiway crossed in under
+    /// ~140 m, with no sandwich requirement to make that safe.
+    ///
+    /// 4 is measured, not tuned. Across 600 junctions at KDEN, CYVR, KORD, KATL and EGLL,
+    /// sandwiched excursions run 1 pt 45.1 %, 2 pt 21.4 %, 3 pt 23.2 %, 4 pt 8.2 %,
+    /// 5 pt 1.4 %, 6+ 0.7 % — so this removes 97.8 % of them. At SayIntentions' ~28 m
+    /// sample spacing it is also "at most ~112 m of pavement".
+    ///
+    /// The reason a generous bound is safe here and nowhere else in this file: removing a
+    /// SANDWICHED run cannot disconnect anything. X → Y → X becomes X, and the aircraft
+    /// still taxis along X. The worst case is a genuine sub-112 m detour flattened into
+    /// the straight run it departed from, which is still a route the pilot can fly.
+    /// </summary>
+    internal const int MaxExcursionRunPoints = 4;
 
     /// <summary>
     /// The part of a published track that is still AHEAD of the aircraft: everything
@@ -219,13 +255,13 @@ public static class SayIntentionsTaxiPathSnapper
             }
         }
 
-        var taxiways = new List<string>();
+        // 3. Drop the connector stubs. This MUST happen before the excursion pass and the
+        //    collapse below: collapsing first turns every run into length 1 and there is
+        //    nothing left to filter on, so every stub survives.
+        var surviving = new List<(string Name, int Length)>();
         int droppedRunCount = 0;
         foreach ((string? name, int length) in runs)
         {
-            // 3. Drop the connector stubs. This MUST happen before the collapse below:
-            //    collapsing first turns every run into length 1 and there is nothing
-            //    left to filter on, so every stub survives.
             if (name is null)
             {
                 // Already reflected in unsnappedCount above — this is a miss, not a
@@ -244,8 +280,45 @@ public static class SayIntentionsTaxiPathSnapper
                 continue;
             }
 
-            // 4. Collapse consecutive duplicates — and only consecutive ones. A route
-            //    that leaves a taxiway and comes back to it later names it twice.
+            surviving.Add((name, length));
+        }
+
+        // 4. Drop sandwiched junction excursions — a short run that leaves one taxiway and
+        //    returns to it (see MaxExcursionRunPoints).
+        //
+        //    Compared against the last run KEPT, not the immediately preceding one: that
+        //    is what lets X, Y, X, Z, X resolve in a single left-to-right pass, because Z
+        //    only becomes a sandwich once Y has gone.
+        //
+        //    Step 3 can leave two SAME-named runs adjacent (X, stub, X), and that is not
+        //    an excursion — it is one leg whose stub is already counted above. The
+        //    `kept[^1] != name` test is what excludes it.
+        var kept = new List<string>();
+        int excursionRunCount = 0;
+        for (int i = 0; i < surviving.Count; i++)
+        {
+            string name = surviving[i].Name;
+            bool sandwiched =
+                kept.Count > 0
+                && kept[^1] != name
+                && surviving[i].Length <= MaxExcursionRunPoints
+                && i + 1 < surviving.Count
+                && surviving[i + 1].Name == kept[^1];
+
+            if (sandwiched)
+            {
+                excursionRunCount++;
+                continue;
+            }
+
+            kept.Add(name);
+        }
+
+        // 5. Collapse consecutive duplicates — and only consecutive ones. A route
+        //    that leaves a taxiway and comes back to it later names it twice.
+        var taxiways = new List<string>();
+        foreach (string name in kept)
+        {
             if (taxiways.Count > 0 && taxiways[^1] == name)
             {
                 continue;
@@ -254,7 +327,8 @@ public static class SayIntentionsTaxiPathSnapper
             taxiways.Add(name);
         }
 
-        return new SnapResult(taxiways, path.Count, unsnappedCount, droppedRunCount);
+        return new SnapResult(
+            taxiways, path.Count, unsnappedCount, droppedRunCount, excursionRunCount);
     }
 
     /// <summary>Distance between two points, in metres. A degenerate segment through

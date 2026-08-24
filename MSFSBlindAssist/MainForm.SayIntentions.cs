@@ -338,6 +338,7 @@ public partial class MainForm
                         $"geoTrimmed={trimmedPoints} " +
                         $"geoUnsnapped={(snap == null ? "-" : snap.UnsnappedCount.ToString())} " +
                         $"geoDroppedRuns={(snap == null ? "-" : snap.DroppedRunCount.ToString())} " +
+                        $"geoExcursions={(snap == null ? "-" : snap.ExcursionRunCount.ToString())} " +
                         $"geoTaxiways=[{string.Join(",", snap?.Taxiways ?? Array.Empty<string>())}] " +
                         $"clearanceTaxiways=[{string.Join(",", clearanceTaxiways)}] " +
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
