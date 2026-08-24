@@ -300,6 +300,11 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
                 !string.IsNullOrWhiteSpace(per[i].Name))
             {
                 nav[i].Name = per[i].Name!;
+                // Remember that this name is not navdata's. TaxiGraph's case-variant fold
+                // reads it so an online spelling can never outvote a navdata one and
+                // rename the whole taxiway - the merge refuses to overwrite a named
+                // segment, and this is what stops that being undone a layer up.
+                nav[i].NameFromOnlineSource = true;
             }
 
             if (per[i].Aliases.Count > 0)

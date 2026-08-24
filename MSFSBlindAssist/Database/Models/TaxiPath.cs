@@ -29,6 +29,21 @@ public class TaxiPath
     /// </summary>
     public List<string> Aliases { get; set; } = new();
 
+    /// <summary>
+    /// True when <see cref="Name"/> did not come from navdata but was adopted from an
+    /// online source (OpenStreetMap / X-Plane apt.dat) for a segment navdata left
+    /// unnamed. Set by AugmentingAirportDataProvider.ApplyMergedNames at the one place
+    /// that adoption happens. Not persisted to the DB - in-memory only, like
+    /// <see cref="Aliases"/> - and false for every non-augmented airport.
+    ///
+    /// It exists so TaxiGraph.BuildCanonicalTaxiwayNames can honour "navdata is
+    /// AUTHORITATIVE" when it folds case variants together. TaxiDataMerger enforces that
+    /// rule by refusing to overwrite a named segment; the fold sits a layer above and,
+    /// without this, could hand a whole taxiway an online spelling on a majority of
+    /// online-filled segments.
+    /// </summary>
+    public bool NameFromOnlineSource { get; set; }
+
     // Start point
     public string StartType { get; set; } = "";
     public string StartDir { get; set; } = "";

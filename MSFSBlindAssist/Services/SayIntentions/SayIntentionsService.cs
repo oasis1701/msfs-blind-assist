@@ -232,7 +232,8 @@ public sealed class SayIntentionsService
             // current_flight.taxi_path is SayIntentions' own taxi-route geometry, a
             // live EDDF capture gave ~200 entries shaped
             // {"heading": 93.92, "point": {"lon": …, "lat": …}} with no name anywhere.
-            // ReadTaxiPathPoints below reads ONLY point.lat/point.lon — see its doc
+            // ReadTaxiPathPoints below reads point.lat/point.lon and the entry's own
+            // heading, all three GEOMETRY, and nothing else — see its doc
             // comment for why nothing else in an entry is ever touched. See the
             // rewritten CLAUDE.md invariant ("SayIntentions integration") and
             // docs/sayintentions.md for the hazard this boundary exists to prevent.
@@ -376,7 +377,17 @@ public sealed class SayIntentionsService
             if (latitude is null || longitude is null)
                 continue;
 
-            points.Add(new GeoPoint(latitude.Value, longitude.Value));
+            // The entry's heading, when SayIntentions published one. This is the ONLY
+            // member read here besides the coordinates, and it is read because it is
+            // GEOMETRY: the snapper uses it to tell a taxiway the aircraft is travelling
+            // along from one it is merely crossing. The standing rule against reading
+            // taxi_path members names the NAME-ISH ones (id/label/name) and exists so a
+            // taxiway name can never come from SayIntentions - that is untouched.
+            //
+            // Absent is a supported answer, not a failure: the point is still kept and
+            // the snapper degrades to its plain nearest-edge choice for it.
+            points.Add(new GeoPoint(
+                latitude.Value, longitude.Value, GetDouble(entry, "heading")));
         }
 
         return points;
