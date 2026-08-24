@@ -280,9 +280,9 @@ public partial class FlyByWireA380Definition
         // FMA armed modes — decode the legacy bitmask and announce NEWLY-armed modes
         // on change (so arming ALT/NAV speaks "Altitude armed"/"NAV armed"). Parity
         // with the A32NX, which the A380 previously lacked (it was read-only).
-        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        if (varName == ArmedAltitudeMode.ArmedVerticalKey || varName == "A32NX_FMA_LATERAL_ARMED")
         {
-            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            bool vert = varName == ArmedAltitudeMode.ArmedVerticalKey;
             int iv = (int)Math.Round(value);
             int prev = vert ? _prevVertArmed : _prevLatArmed;
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
@@ -297,18 +297,10 @@ public partial class FlyByWireA380Definition
 
                 // ALT is held until its constraint/cruise qualifier has settled — see
                 // ArmedAltitudeMode.ImmediateArmedBits for why naming it here would be stale.
+                // The hold is released by the batch that carries the qualifier
+                // (DeferredFlushWatchVariable), not by a clock.
                 if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
-                {
                     _altArmHoldPending = true;
-                    _altArmAnnouncer = announcer;
-                    if (_altArmHoldTimer == null)
-                    {
-                        _altArmHoldTimer = new System.Windows.Forms.Timer { Interval = 300 };
-                        _altArmHoldTimer.Tick += (_, _) => FlushHeldAltArmAnnouncement();
-                    }
-                    _altArmHoldTimer.Stop();
-                    _altArmHoldTimer.Start();
-                }
             }
             // Arming CLB/DES/G/S is one of the two ways altitude becomes managed.
             if (vert) SpeakAltitudeMode(_altMode.OnVerticalArmed(iv), announcer);
@@ -325,10 +317,10 @@ public partial class FlyByWireA380Definition
         {
             _fgAltConstraintApplicable = ArmedAltitudeMode.ConstraintApplicable(value);
             _fgAltIsCruiseAltitude = ArmedAltitudeMode.IsCruiseAltitude(value);
-            // A qualifier that CHANGED this sample arrives in the same drain as the arm that is
-            // waiting on it, so flush at once — the 300 ms timer is only the backstop for a
-            // qualifier that did not change, where the cached bits were already correct.
-            FlushHeldAltArmAnnouncement();
+            // No flush here. This branch runs only when the word CHANGED, so it cannot tell a
+            // held call-out that an UNCHANGED qualifier has arrived and is current — which is
+            // most samples. The hold is released by this variable's BATCH instead; see
+            // DeferredFlushWatchVariable.
             return true;
         }
 
@@ -927,26 +919,40 @@ public partial class FlyByWireA380Definition
     }
 
     /// <summary>
-    /// Speak a held armed-ALT call-out, named for the qualifier as it now stands. Called from
-    /// both triggers — the qualifier's own branch and the 300 ms backstop timer — and safe to
-    /// call when nothing is pending.
+    /// The armed-ALT call-out is named by PRIM FG discrete word 3 (bits 28 alt_cstr_applicable /
+    /// 29 altIsCrzAlt), which rides continuous batch 2 while the armed bitmask rides batch 1 — a
+    /// SEPARATE SimConnect message, requested ~330 ms later (SafelyClearDataDefinition waits
+    /// 300 ms per batch). So the hold waits on that batch's delivery, which is the only event
+    /// that means "the qualifier is current for this sample" whether or not it moved.
+    ///
+    /// Non-null only while a call-out is actually held, so the batch hook costs nothing the rest
+    /// of the time.
     /// </summary>
-    private void FlushHeldAltArmAnnouncement()
+    public override string? DeferredFlushWatchVariable =>
+        _altArmHoldPending ? "FMA_CRUISE_ALT_MODE" : null;
+
+    /// <summary>
+    /// Speak the held armed-ALT call-out, named for the qualifier as it now stands.
+    /// </summary>
+    public override void OnDeferredFlushBatchDelivered(ScreenReaderAnnouncer announcer)
     {
-        _altArmHoldTimer?.Stop();
-        if (!_altArmHoldPending) return;
+        bool muted = Settings.SettingsManager.Current
+            .A380DisabledMonitorVariablesSet.Contains(ArmedAltitudeMode.ArmedVerticalKey);
+        // Mute re-checked HERE, not when the hold was armed, so muting during the window works.
+        // ALT must also still be armed: one that armed and disarmed inside the window is
+        // dropped, not spoken late.
+        if (!ArmedAltitudeMode.ShouldSpeakHeldAlt(_altArmHoldPending, muted, _prevVertArmed))
+        {
+            _altArmHoldPending = false;
+            return;
+        }
         _altArmHoldPending = false;
 
-        var announcer = _altArmAnnouncer;
-        if (announcer == null) return;
-        // Re-checked HERE, not when the hold was armed, so muting during the window still works.
-        if (Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains("A32NX_FMA_VERTICAL_ARMED")) return;
-        // An ALT that armed and disarmed inside the window is dropped, not spoken late.
-        if (!ArmedAltitudeMode.HeldAltStillArmed(_prevVertArmed)) return;
-
-        foreach (var one in DecodeArmedModeNames(ArmedAltitudeMode.AltArmedBit, VerticalArmedBits()))
-            announcer.Announce($"{one} armed");
+        announcer.Announce($"{ArmedAltitudeMode.Name(_fgAltConstraintApplicable, _fgAltIsCruiseAltitude)} armed");
     }
+
+    /// <inheritdoc />
+    public override void CancelDeferredFlush() => _altArmHoldPending = false;
 
     public override void ResetAnnouncementBaselines()
     {
@@ -955,8 +961,7 @@ public partial class FlyByWireA380Definition
         _prevLatArmed = -1;
         _fgAltConstraintApplicable = false;
         _fgAltIsCruiseAltitude = false;
-        _altArmHoldPending = false;
-        _altArmHoldTimer?.Stop();
+        CancelDeferredFlush();
         _lastFlightPhaseA380 = "";
         // Transponder squawk auto-announce (XPNDR_CODE, see above): first-read gate is
         // _lastSquawkBcd < 0.

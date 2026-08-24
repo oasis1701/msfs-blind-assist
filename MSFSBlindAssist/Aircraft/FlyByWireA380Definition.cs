@@ -3049,12 +3049,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
     // Held armed-ALT announcement. The ALT entry's qualifier (PRIM FG discrete word 3 bits 28/29)
     // is delivered in continuous batch 2 while A32NX_FMA_VERTICAL_ARMED rides batch 1 — a separate
-    // SimConnect message — so naming ALT inline reads the previous tick's qualifier. The name is
-    // held and flushed by whichever lands first: the qualifier's own branch, or this timer.
-    // Announcer kept in a FIELD rather than captured in the Tick closure so the timer does not
-    // hold the enclosing scope alive; disposal rides StopAllMotion, like _tcasRaComposeTimer.
-    private System.Windows.Forms.Timer? _altArmHoldTimer;
-    private ScreenReaderAnnouncer? _altArmAnnouncer;
+    // SimConnect message — so naming ALT inline reads the previous sample's qualifier. The
+    // call-out is held until batch 2 has been delivered, at which point the qualifier is current
+    // for this sample whether or not it moved; see DeferredFlushWatchVariable below. There is no
+    // timer and no wall clock: the batch stream is the clock.
     private bool _altArmHoldPending;
 
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS

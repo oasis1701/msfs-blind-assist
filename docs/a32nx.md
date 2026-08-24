@@ -222,10 +222,17 @@ is a separate matter — it is measured against MSFSBA's own registration, not t
 **The armed-ALT call-out is HELD until the qualifier settles, and the flush re-checks the Ctrl+M
 mute ITSELF.** `A32NX_FMA_VERTICAL_ARMED` sits at continuous-batch 1 index 164 while the two FMGC
 constraint words sit at 167/168 — three slots later in the SAME batch — so naming the ALT bit
-inline read the PREVIOUS tick's constraint. Only the ALT entry is held; it flushes on whichever
-lands first, either FMGC constraint word's own branch or a 300 ms backstop timer. See
-[a380x.md](a380x.md) for the full derivation, the measured ordering on both airframes, and the
-disproven `GetCachedVariableValue` approach that must not be re-attempted.
+inline read the PREVIOUS sample's constraint. Only the ALT entry is held, and it is released by
+the DELIVERY of the batch carrying the constraint words, not by a timer and not by those words'
+own `ProcessSimVarUpdate` branches (which run only when a value CHANGED, and so cannot report an
+unchanged-but-now-current qualifier). Because that batch is the same one the arming bitmask rides,
+the flush lands at the tail of the same message — no delay at all on this airframe. The def names
+the word to wait on through `DeferredFlushWatchVariable`, and returns **FMGC_2**, not FMGC_1: the
+two are OR'd so both must be current, and `A32NX_FMGC_2_...` sorts after `A32NX_FMGC_1_...`, so
+waiting on the later of the two is correct whether they share a batch (they do today) or ever
+straddle the 300-var boundary. See [a380x.md](a380x.md) for the full derivation, the measured
+ordering on both airframes, why a wall-clock backstop was rejected, and the disproven
+`GetCachedVariableValue` approach that must not be re-attempted.
 
 The mute re-check is the one piece that is **A32NX-specific, and it is a trap for the next
 deferred announcement added to this def.** This aircraft is muted CENTRALLY: MainForm wraps
@@ -234,7 +241,9 @@ EFIS baro readouts (and the Headwind A330's stock-Kohlsman altimeter, which shar
 announce from INSIDE it and return true — exiting before the generic
 `A32NXDisabledMonitorVariables` gate below, so a Ctrl+M un-tick never muted them. The
 `a32nxMuted` comment in `MainForm.Announcers.cs` is the authority.
-A timer tick runs OUTSIDE that wrap, so anything spoken from a timer
-must consult `A32NXDisabledMonitorVariablesSet` for itself — `FlushHeldAltArmAnnouncement` does.
-The A380 has no such trap: its armed branch checks `A380DisabledMonitorVariablesSet` locally, so
-its flush inherits the same check by writing it the same way.
+Anything delivered through a callback rather than through `ProcessSimVarUpdate` — a timer tick, or
+the `OnDeferredFlushBatchDelivered` batch hook — runs OUTSIDE that wrap and must consult
+`A32NXDisabledMonitorVariablesSet` for itself; this def's `OnDeferredFlushBatchDelivered` does,
+via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap: its armed branch
+checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
+it the same way.

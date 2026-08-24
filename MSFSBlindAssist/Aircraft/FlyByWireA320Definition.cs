@@ -6347,9 +6347,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // Held armed-ALT announcement — same rationale as the A380's, except the qualifier here is
     // the two FMGC constraint words, which sort a few slots AFTER A32NX_FMA_VERTICAL_ARMED in the
-    // same continuous batch. Announcer kept in a FIELD, not captured in the Tick closure.
-    private System.Windows.Forms.Timer? _altArmHoldTimer;
-    private ScreenReaderAnnouncer? _altArmAnnouncer;
+    // same continuous batch. The hold is released by that batch's delivery; no timer.
     private bool _altArmHoldPending;
 
     /// <summary>
@@ -6362,27 +6360,39 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
 
     /// <summary>
-    /// Speak a held armed-ALT call-out, named for the constraint as it now stands. Called from
-    /// both triggers — either FMGC constraint word's branch, and the 300 ms backstop timer.
+    /// The armed-ALT call-out is named by the SSM of the two FMGC constraint words, which sort a
+    /// few slots after the armed bitmask in the SAME continuous batch — so the hold is released
+    /// at the end of that same batch message, with no delay at all.
+    ///
+    /// FMGC_2 and not FMGC_1: the two are OR'd, so both must be current, and FMGC_2 sorts LAST
+    /// (<c>A32NX_FMGC_1_...</c> before <c>A32NX_FMGC_2_...</c>). Waiting on the later of the two
+    /// is correct whether they share a batch (they do today) or ever straddle the 300-var
+    /// boundary.
+    /// </summary>
+    public override string? DeferredFlushWatchVariable =>
+        _altArmHoldPending ? "FMGC_2_ALT_CONSTRAINT" : null;
+
+    /// <summary>
+    /// Speak the held armed-ALT call-out, named for the constraint as it now stands.
     ///
     /// ⚠️ The Ctrl+M mute is checked HERE, unlike the inline armed branch below, which relies on
-    /// MainForm wrapping <c>announcer.Suppressed</c> around ProcessSimVarUpdate. A timer tick runs
+    /// MainForm wrapping <c>announcer.Suppressed</c> around ProcessSimVarUpdate. This runs
     /// OUTSIDE that wrap, so without this check a muted "Altitude armed" would still be spoken.
     /// </summary>
-    private void FlushHeldAltArmAnnouncement()
+    public override void OnDeferredFlushBatchDelivered(ScreenReaderAnnouncer announcer)
     {
-        _altArmHoldTimer?.Stop();
-        if (!_altArmHoldPending) return;
+        bool muted = Settings.SettingsManager.Current
+            .A32NXDisabledMonitorVariablesSet.Contains(ArmedAltitudeMode.ArmedVerticalKey);
+        bool speak = ArmedAltitudeMode.ShouldSpeakHeldAlt(_altArmHoldPending, muted, _prevVertArmed);
         _altArmHoldPending = false;
+        if (!speak) return;
 
-        var announcer = _altArmAnnouncer;
-        if (announcer == null) return;
-        if (Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains("A32NX_FMA_VERTICAL_ARMED")) return;
-        if (!ArmedAltitudeMode.HeldAltStillArmed(_prevVertArmed)) return;
-
-        foreach (var one in DecodeArmedModeNames(ArmedAltitudeMode.AltArmedBit, VerticalArmedBits()))
-            announcer.Announce($"{one} armed");
+        announcer.Announce(
+            $"{ArmedAltitudeMode.Name(_altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false)} armed");
     }
+
+    /// <inheritdoc />
+    public override void CancelDeferredFlush() => _altArmHoldPending = false;
 
     public override void ResetAnnouncementBaselines()
     {
@@ -6390,8 +6400,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         _prevLatArmed = -1;
         _altConstraintFmgc1 = false;
         _altConstraintFmgc2 = false;
-        _altArmHoldPending = false;
-        _altArmHoldTimer?.Stop();
+        CancelDeferredFlush();
         // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
         _lastSpoilerBand = -1;
         // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
@@ -7387,8 +7396,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_FMA_VERTICAL_ARMED" || varKey == "A32NX_FMA_LATERAL_ARMED")
         {
             int iv = (int)Math.Round(value);
-            // Same live table the call-out uses, so the row and the speech can never disagree
-            // about whether the armed ALT is an FMS altitude constraint.
+            // Same live table the call-out uses, so the row and the speech agree about whether
+            // the armed ALT is an FMS altitude constraint — EXCEPT inside the hold window. The
+            // call-out is deliberately deferred until the constraint words' batch lands (see
+            // DeferredFlushWatchVariable), while this row renders from whatever is cached at
+            // repaint time. Both settle on the same answer once the batch arrives.
             string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? VerticalArmedBits() : _latArmedBits);
             displayText = string.IsNullOrEmpty(modes) ? "None" : modes;
             return true;
@@ -7563,8 +7575,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     /// <summary>
     /// Aircraft-swap cleanup hook (named for symmetry with the A380 def, which also
-    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and the
-    /// held armed-ALT timer, and disposes any hotkey windows this def created, so a
+    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer, drops any
+    /// held armed-ALT call-out, and disposes any hotkey windows this def created, so a
     /// discarded instance can't keep UI-thread timers or windows alive against the new
     /// aircraft. Each teardown gets its OWN try/catch: sharing one would let a throw in
     /// the first silently skip the rest, which is the exact leak they exist to prevent.
@@ -7579,18 +7591,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _tcasRaAnnouncer = null;
         }
         catch { }
-        // Held armed-ALT announcement timer: same reasoning as the TCAS RA timer above — a
-        // discarded def instance must not keep a UI-thread timer alive to speak a held call-out
-        // through the captured announcer at the NEW aircraft.
-        try
-        {
-            _altArmHoldTimer?.Stop();
-            _altArmHoldTimer?.Dispose();
-            _altArmHoldTimer = null;
-            _altArmHoldPending = false;
-            _altArmAnnouncer = null;
-        }
-        catch { }
+        // Held armed-ALT announcement: a discarded def instance must not speak a call-out it was
+        // holding at the NEW aircraft. (No timer to dispose — the hold is consumed by the
+        // continuous-batch stream, not by a clock.)
+        try { CancelDeferredFlush(); } catch { }
         try { DisposeTrackedWindows(); } catch { }
     }
 
@@ -7912,26 +7916,17 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
             if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
             else _altConstraintFmgc2 = applies;
-            // Flush ONLY from FMGC_2's branch, never FMGC_1's. The two words sort adjacently
-            // in the same continuous batch with FMGC_1 draining FIRST, so a flush eager on
-            // "either word changed" would — when both change in the same drain — read a
-            // fresh FMGC_1 bool against a still-stale FMGC_2 bool and could announce a
-            // constraint that has just cleared. Flushing from FMGC_2 alone covers all three
-            // cases correctly: (1) both change this drain — FMGC_1 caches silently, FMGC_2
-            // caches and flushes with both bools fresh; (2) only FMGC_1 changes — no eager
-            // flush here, so the 300 ms backstop timer flushes, by which point FMGC_2's
-            // cached bool is current precisely because it did not change; (3) only FMGC_2
-            // changes — it flushes immediately with FMGC_1's cached bool, current for the
-            // same reason.
-            if (varName == "FMGC_2_ALT_CONSTRAINT") FlushHeldAltArmAnnouncement();
+            // No flush here. This branch runs only when a word CHANGED, so it cannot tell a held
+            // call-out that an UNCHANGED constraint word has arrived and is current. The hold is
+            // released by the BATCH carrying these words instead; see DeferredFlushWatchVariable.
             return true;
         }
 
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
         // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
-        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        if (varName == ArmedAltitudeMode.ArmedVerticalKey || varName == "A32NX_FMA_LATERAL_ARMED")
         {
-            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            bool vert = varName == ArmedAltitudeMode.ArmedVerticalKey;
             int iv = (int)Math.Round(value);
             int prev = vert ? _prevVertArmed : _prevLatArmed;
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
@@ -7943,18 +7938,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 foreach (var one in DecodeArmedModeNames(immediate, vert ? VerticalArmedBits() : _latArmedBits))
                     announcer.Announce($"{one} armed");
 
+                // ALT is held until its constraint qualifier has settled — released by the
+                // batch that carries it (DeferredFlushWatchVariable), not by a clock.
                 if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
-                {
                     _altArmHoldPending = true;
-                    _altArmAnnouncer = announcer;
-                    if (_altArmHoldTimer == null)
-                    {
-                        _altArmHoldTimer = new System.Windows.Forms.Timer { Interval = 300 };
-                        _altArmHoldTimer.Tick += (_, _) => FlushHeldAltArmAnnouncement();
-                    }
-                    _altArmHoldTimer.Stop();
-                    _altArmHoldTimer.Start();
-                }
             }
             return true;
         }

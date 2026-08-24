@@ -105,6 +105,15 @@ public static class ArmedAltitudeMode
     public const int AltArmedBit = 1;
 
     /// <summary>
+    /// The variable KEY both FBW definitions register the armed-vertical bitmask under (it is
+    /// also its SimVar Name). Shared so the Ctrl+M mute consulted by a deferred flush and the
+    /// one consulted by the inline armed branch can never be two different spellings of one
+    /// rule — a rename would otherwise mute the inline group and leave the held call-out
+    /// speaking.
+    /// </summary>
+    public const string ArmedVerticalKey = "A32NX_FMA_VERTICAL_ARMED";
+
+    /// <summary>
     /// An armed-vertical-mode bit table with the ALT entry named for the qualifiers currently in
     /// force. Shared by both FBW airframes, which differ only in HOW they read the qualifier —
     /// keeping the transform here is what stops the "find the ALT entry by VALUE, never by
@@ -147,6 +156,20 @@ public static class ArmedAltitudeMode
     /// Whether a held ALT announcement is still worth speaking when the hold flushes: ALT must
     /// still be armed in the CURRENT bitmask. An ALT that arms and disarms inside the hold
     /// window is dropped rather than announced after it stopped being true.
+    ///
+    /// ⚠ The <c>&gt; 0</c> half is load-bearing, not defensive noise. <c>_prevVertArmed</c> is a
+    /// DUAL-PURPOSE field — an armed bitmask, plus <c>-1</c> for "no baseline taken yet" (its
+    /// initialiser, and what both defs' <c>ResetAnnouncementBaselines</c> writes) — and
+    /// <c>-1 &amp; 1 == 1</c>, so the bare bit test answers "ALT is armed" for the sentinel. A hold
+    /// that outlived a re-baseline would then speak a phantom call-out with nothing armed.
     /// </summary>
-    public static bool HeldAltStillArmed(int currentArmed) => (currentArmed & AltArmedBit) != 0;
+    public static bool HeldAltStillArmed(int currentArmed) =>
+        currentArmed > 0 && (currentArmed & AltArmedBit) != 0;
+
+    /// <summary>
+    /// The three gates a held ALT call-out must clear before it is spoken, in one shared place
+    /// because both airframes must agree on them.
+    /// </summary>
+    public static bool ShouldSpeakHeldAlt(bool pending, bool muted, int currentArmed) =>
+        pending && !muted && HeldAltStillArmed(currentArmed);
 }

@@ -19,6 +19,49 @@ namespace MSFSBlindAssist;
 
 public partial class MainForm
 {
+    /// <summary>
+    /// A continuous batch has finished dispatching. If the current definition is holding an
+    /// announcement that was waiting on a variable in THIS batch, that variable is now current
+    /// for this sample, so let the definition speak it.
+    ///
+    /// This is what replaced a wall-clock timer on the FBW armed-ALT call-out: the qualifier
+    /// that names it rides a different batch on the A380, delivered by a separate SimConnect
+    /// request made ~330 ms after the one carrying the armed bitmask, so no fixed interval can
+    /// be known to span the gap. Batch delivery is the event that actually answers the question.
+    /// </summary>
+    private void OnContinuousBatchDelivered(object? sender, int batchNum)
+    {
+        // Ordering IS the guarantee being sold here: the flush must see every SimVarUpdated this
+        // batch carried. Dispatch is synchronous on the UI thread, so that holds on the normal
+        // path. If we are ever off it, or the producer queue still has undrained updates, do
+        // nothing rather than risk flushing against a half-applied sample — the hold stays
+        // pending and the next delivery of the same batch flushes it one period later.
+        if (InvokeRequired || Volatile.Read(ref queuedEventCount) > 0) return;
+
+        var aircraft = currentAircraft;
+        if (aircraft?.DeferredFlushWatchVariable is not string watchVar) return;
+        if (simConnectManager == null) return;
+
+        if (simConnectManager.TryGetContinuousBatch(watchVar, out int watchBatch))
+        {
+            if (watchBatch != batchNum) return;
+        }
+        else
+        {
+            // The watched variable is not batch-covered — it was made ExcludeFromBatch, renamed,
+            // or dropped. Its batch will therefore NEVER be delivered, so honouring the contract
+            // literally would hold the call-out forever and lose it silently. Flush on the first
+            // delivery instead: the qualifier may be one sample stale, which is exactly the
+            // pre-hold behaviour, and a slightly mis-named call-out beats none at all.
+            Log.Warn("Announcements",
+                $"Deferred-flush watch variable '{watchVar}' is not batch-covered; flushing on "
+                + $"batch {batchNum} instead. To release the hold on schedule the variable must "
+                + "be Continuous + IsAnnounced and not ExcludeFromBatch.");
+        }
+
+        aircraft.OnDeferredFlushBatchDelivered(announcer);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)

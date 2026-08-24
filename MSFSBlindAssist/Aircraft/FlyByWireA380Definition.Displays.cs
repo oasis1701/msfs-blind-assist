@@ -295,8 +295,13 @@ public partial class FlyByWireA380Definition
             }
             case "A32NX_FMA_VERTICAL_ARMED":
             {
-                // Same live table the call-out uses, so the row and the speech can never
-                // disagree about whether the armed ALT is a constraint or the cruise altitude.
+                // Same live table the call-out uses, so the row and the speech agree about
+                // whether the armed ALT is a constraint or the cruise altitude — EXCEPT inside
+                // the hold window. The call-out is deliberately deferred until the qualifier's
+                // batch lands (see DeferredFlushWatchVariable), while this row renders from
+                // whatever is cached at repaint time, so a repaint during the hold can show the
+                // previous sample's flavour. Both settle on the same answer once the batch
+                // arrives; the row is not the thing that must be right first, the speech is.
                 string s = DecodeArmedModes((int)Math.Round(value), VerticalArmedBits());
                 displayText = string.IsNullOrEmpty(s) ? "None" : s;
                 return true;
