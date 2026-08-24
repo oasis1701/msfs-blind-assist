@@ -496,6 +496,10 @@ public partial class FlyByWireA380Definition
             _tcasRaAnnouncer = null;
         }
         catch { }
+        // Held armed-ALT announcement: a discarded def instance must not speak a call-out it was
+        // holding at the NEW aircraft. (No timer to dispose — the hold is consumed by the
+        // continuous-batch stream, not by a clock.)
+        try { CancelDeferredFlush(); } catch { }
         // Hotkey windows created by this def (FCU/Baro/E/WD): dispose so they don't
         // survive the swap holding this def + the E/WD refresh timer.
         try { DisposeTrackedWindows(); } catch { }

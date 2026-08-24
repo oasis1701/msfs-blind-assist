@@ -486,6 +486,20 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", $"  Stack trace: {ex.StackTrace}");
             return;  // Abort processing to prevent crash
         }
+
+        // Every SimVarUpdated this message carried has now been dispatched (dispatch is
+        // synchronous and inline), so anything waiting on "batch N has arrived for this sample"
+        // can act. Deliberately NOT raised on the abort path above: a batch that failed to
+        // unmarshal did not deliver. Its own try/catch so a subscriber cannot break the batch
+        // stream.
+        try
+        {
+            ContinuousBatchDelivered?.Invoke(this, batchNum);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"ContinuousBatchDelivered subscriber threw for batch {batchNum}: {ex.Message}");
+        }
     }
 
     /// <summary>

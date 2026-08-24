@@ -724,6 +724,16 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// </summary>
     public virtual void ResetAnnouncementBaselines() { }
 
+    /// <inheritdoc />
+    /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>
+    public virtual string? DeferredFlushWatchVariable => null;
+
+    /// <inheritdoc />
+    public virtual void OnDeferredFlushBatchDelivered(Accessibility.ScreenReaderAnnouncer announcer) { }
+
+    /// <inheritdoc />
+    public virtual void CancelDeferredFlush() { }
+
     /// <summary>
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>

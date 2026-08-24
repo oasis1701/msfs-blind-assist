@@ -6374,6 +6374,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     // WHICH NAME the armed ALT bit is announced under.
     private bool _altConstraintFmgc1, _altConstraintFmgc2;
 
+    // Held armed-ALT announcement — same rationale as the A380's, except the qualifier here is
+    // the two FMGC constraint words, which sort a few slots AFTER A32NX_FMA_VERTICAL_ARMED in the
+    // same continuous batch. The hold is released by that batch's delivery; no timer.
+    private bool _altArmHoldPending;
+
     /// <summary>
     /// <see cref="_vertArmedBits"/> with the ALT entry named for the constraint currently in
     /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
@@ -6383,12 +6388,48 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         ArmedAltitudeMode.NameAltArmedBit(
             _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
 
+    /// <summary>
+    /// The armed-ALT call-out is named by the SSM of the two FMGC constraint words, which sort a
+    /// few slots after the armed bitmask in the SAME continuous batch — so the hold is released
+    /// at the end of that same batch message, with no delay at all.
+    ///
+    /// FMGC_2 and not FMGC_1: the two are OR'd, so both must be current, and FMGC_2 sorts LAST
+    /// (<c>A32NX_FMGC_1_...</c> before <c>A32NX_FMGC_2_...</c>). Waiting on the later of the two
+    /// is correct whether they share a batch (they do today) or ever straddle the 300-var
+    /// boundary.
+    /// </summary>
+    public override string? DeferredFlushWatchVariable =>
+        _altArmHoldPending ? "FMGC_2_ALT_CONSTRAINT" : null;
+
+    /// <summary>
+    /// Speak the held armed-ALT call-out, named for the constraint as it now stands.
+    ///
+    /// ⚠️ The Ctrl+M mute is checked HERE, unlike the inline armed branch below, which relies on
+    /// MainForm wrapping <c>announcer.Suppressed</c> around ProcessSimVarUpdate. This runs
+    /// OUTSIDE that wrap, so without this check a muted "Altitude armed" would still be spoken.
+    /// </summary>
+    public override void OnDeferredFlushBatchDelivered(ScreenReaderAnnouncer announcer)
+    {
+        bool muted = Settings.SettingsManager.Current
+            .A32NXDisabledMonitorVariablesSet.Contains(ArmedAltitudeMode.ArmedVerticalKey);
+        bool speak = ArmedAltitudeMode.ShouldSpeakHeldAlt(_altArmHoldPending, muted, _prevVertArmed);
+        _altArmHoldPending = false;
+        if (!speak) return;
+
+        announcer.Announce(
+            $"{ArmedAltitudeMode.Name(_altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false)} armed");
+    }
+
+    /// <inheritdoc />
+    public override void CancelDeferredFlush() => _altArmHoldPending = false;
+
     public override void ResetAnnouncementBaselines()
     {
         _prevVertArmed = -1;
         _prevLatArmed = -1;
         _altConstraintFmgc1 = false;
         _altConstraintFmgc2 = false;
+        CancelDeferredFlush();
         // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
         _lastSpoilerBand = -1;
         // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
@@ -7384,8 +7425,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_FMA_VERTICAL_ARMED" || varKey == "A32NX_FMA_LATERAL_ARMED")
         {
             int iv = (int)Math.Round(value);
-            // Same live table the call-out uses, so the row and the speech can never disagree
-            // about whether the armed ALT is an FMS altitude constraint.
+            // Same live table the call-out uses, so the row and the speech agree about whether
+            // the armed ALT is an FMS altitude constraint — EXCEPT inside the hold window. The
+            // call-out is deliberately deferred until the constraint words' batch lands (see
+            // DeferredFlushWatchVariable), while this row renders from whatever is cached at
+            // repaint time. Both settle on the same answer once the batch arrives.
             string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? VerticalArmedBits() : _latArmedBits);
             displayText = string.IsNullOrEmpty(modes) ? "None" : modes;
             return true;
@@ -7560,9 +7604,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
     /// <summary>
     /// Aircraft-swap cleanup hook (named for symmetry with the A380 def, which also
-    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and
-    /// disposes any hotkey windows this def created, so a discarded instance can't
-    /// keep UI-thread timers or windows alive against the new aircraft.
+    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer, drops any
+    /// held armed-ALT call-out, and disposes any hotkey windows this def created, so a
+    /// discarded instance can't keep UI-thread timers or windows alive against the new
+    /// aircraft. Each teardown gets its OWN try/catch: sharing one would let a throw in
+    /// the first silently skip the rest, which is the exact leak they exist to prevent.
     /// </summary>
     public void StopAllMotion()
     {
@@ -7574,6 +7620,10 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             _tcasRaAnnouncer = null;
         }
         catch { }
+        // Held armed-ALT announcement: a discarded def instance must not speak a call-out it was
+        // holding at the NEW aircraft. (No timer to dispose — the hold is consumed by the
+        // continuous-batch stream, not by a clock.)
+        try { CancelDeferredFlush(); } catch { }
         try { DisposeTrackedWindows(); } catch { }
     }
 
@@ -7895,23 +7945,32 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
             if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
             else _altConstraintFmgc2 = applies;
+            // No flush here. This branch runs only when a word CHANGED, so it cannot tell a held
+            // call-out that an UNCHANGED constraint word has arrived and is current. The hold is
+            // released by the BATCH carrying these words instead; see DeferredFlushWatchVariable.
             return true;
         }
 
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
         // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
-        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        if (varName == ArmedAltitudeMode.ArmedVerticalKey || varName == "A32NX_FMA_LATERAL_ARMED")
         {
-            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            bool vert = varName == ArmedAltitudeMode.ArmedVerticalKey;
             int iv = (int)Math.Round(value);
             int prev = vert ? _prevVertArmed : _prevLatArmed;
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
             if (prev >= 0 && (iv & ~prev) != 0)
             {
-                string nm = DecodeArmedModes(iv & ~prev, vert ? VerticalArmedBits() : _latArmedBits);
-                if (!string.IsNullOrEmpty(nm))
-                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
-                        announcer.Announce($"{one} armed");
+                int newly = iv & ~prev;
+                // Lateral modes have no qualifier and are never held.
+                int immediate = vert ? ArmedAltitudeMode.ImmediateArmedBits(newly) : newly;
+                foreach (var one in DecodeArmedModeNames(immediate, vert ? VerticalArmedBits() : _latArmedBits))
+                    announcer.Announce($"{one} armed");
+
+                // ALT is held until its constraint qualifier has settled — released by the
+                // batch that carries it (DeferredFlushWatchVariable), not by a clock.
+                if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
+                    _altArmHoldPending = true;
             }
             return true;
         }
