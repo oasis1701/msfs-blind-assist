@@ -84,6 +84,14 @@ public static class AltitudeManagedState
     /// lateral mode either way. LOC capture/track (30/31) are NOT included — localizer tracking
     /// says nothing about the vertical side.
     /// </summary>
+    /// ⚠️ CURRENTLY UNREACHABLE IN PRODUCTION, and kept deliberately. The only caller of
+    /// <see cref="IsManaged"/> is AltitudeModeTracker.Recompute, whose
+    /// `_vertical == NoVerticalMode` early return sits ABOVE it — so on the one path this was
+    /// written for, an autoland with the vertical mode at None, this never runs. The tracker
+    /// PRESERVES its last published value there instead, which gives the same answer because
+    /// reaching LAND means passing through G/S CAPT/TRACK, both managed. This stays as
+    /// defence-in-depth for the day that suppression is narrowed; do not delete it as dead code,
+    /// and do not delete the early return believing this covers the flare.
     private static bool IsAutolandLateralMode(int lateralMode) => lateralMode is >= 32 and <= 34;
 
     /// <summary>Spoken/display text, matching the wording the dead var's ValueDescriptions used.</summary>
