@@ -131,6 +131,15 @@ public static class SayIntentionsTaxiPathSnapper
     /// SANDWICHED run cannot disconnect anything. X → Y → X becomes X, and the aircraft
     /// still taxis along X. The worst case is a genuine sub-112 m detour flattened into
     /// the straight run it departed from, which is still a route the pilot can fly.
+    ///
+    /// SANDWICH-ONLY IS DELIBERATE, AND MEASURED. Rejecting any track that leaves a taxiway
+    /// and later returns to it was proposed and is wrong: across the 17 revisit occurrences
+    /// in a 56-import log, 14 are sandwiches (the junction-clip shape this constant bounds)
+    /// and all 3 non-sandwiched revisits are legitimate — KBOS revisits E because the
+    /// CLEARANCE does ("P, E, M, K, E"), and KBOS K and KATL H are each the stand lead-in
+    /// arriving as the final leg. A blanket revisit rule rejects 7 of 31 geometry-sourced
+    /// imports to catch 3 artifacts, and of the 4 it wrongly rejects, KMDW loses Q and Y6 —
+    /// the route to the runway after a partial clearance.
     /// </summary>
     internal const int MaxExcursionRunPoints = 4;
 

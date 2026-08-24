@@ -1028,6 +1028,36 @@ The four unsnapped points are the turn into stand E52, which is apron rather tha
 pavement. `Link 5`, `Link 6` and `Inner` are OSM names for connector stubs no controller
 ever says; they appear as single points because SI's path clips their corners.
 
+**Junction excursions.** The same corner-clipping produces a worse artifact when the clipped
+pavement is a real, named taxiway. Approaching a junction, the crossing taxiway is often at or
+inside the 25 m snap tolerance of the one being travelled, so it legitimately wins the
+nearest-edge scan for two to four consecutive points and the sequence reads `X, Y, X` — a leg
+the aircraft never taxied. Three live imports applied one: KDEN `P8, P, P7, P, EC`, KORD
+`A, A17, A, A14`, CYVR `D, D5, D, D9`. Measured against the real navdata behind them, KDEN's
+`P7` is the worst case: its centreline stops 21.13 m short of `P`, so it wins on 148 of 154
+sampled positions. A run of at most `MaxExcursionRunPoints` (4) sitting between two runs of the
+**same** taxiway is therefore dropped; across 600 junctions at five airports that removes
+97.8 % of them. Removing a sandwiched run can never disconnect a route — `X → Y → X` becomes
+`X`, and the aircraft still taxis along `X`.
+
+**Why only the sandwich shape.** It is tempting to reject any track that leaves a taxiway and
+comes back to it, since that is what a junction clip looks like. Measured against 56 real
+imports, that is too blunt: of 17 revisit occurrences, 14 are sandwiches — exactly one run
+between the two visits — and all three of the non-sandwiched ones are real. KBOS revisits `E`
+because the controller's own clearance does (`P, E, M, K, E`); KBOS `K` and KATL `H` are each
+the stand lead-in arriving as the final leg. A blanket rule throws away 7 of the 31
+geometry-sourced imports to catch 3 artifacts, and among the 4 it wrongly discards, KMDW loses
+`Q` and `Y6` — the pavement to the runway after a clearance that stopped at a hold short.
+
+**And never the last cleared leg.** The filter is geometric and cannot tell a junction clip
+from a cleared taxiway that happens to be brief. At CYVR the track read
+`6, JB, 6, J, H, D, D5, D, D9` against a clearance of `JB, J, H, D, D9`: `JB` is cleared, is
+sandwiched, and appears nowhere else, so removing it would break the agreement walk and make
+you hear *"SayIntentions ground track differs from the clearance"* about a track that agreed.
+A run is therefore kept when its name is one the controller said **and** it is the only
+surviving run carrying that name. Both halves matter — protecting every cleared name would
+keep a spurious out-and-back wherever a clearance names two crossing taxiways.
+
 **EGLL, 2026-07-30.** *"Taxi to Gate 325 via N5E, A, F, G"*, captured 10 s later, snaps to
 exactly `N5E, A, F, G` — this time against **navdata**-named edges (EGLL has 5214 of 5706
 segments named), so unlike LSZH the result does not rest on the OSM augmentation:
