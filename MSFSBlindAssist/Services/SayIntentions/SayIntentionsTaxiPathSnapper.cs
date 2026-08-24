@@ -27,8 +27,14 @@ public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLo
 /// <paramref name="ExcursionRunCount"/> is a third, different thing again: taxiways the
 /// track really did touch, held only briefly, and left again for the SAME taxiway it
 /// arrived from. Those are junction geometry, not legs of the route — see
-/// <see cref="SayIntentionsTaxiPathSnapper.MaxExcursionRunPoints"/>. Defaulted so a
-/// caller constructing a SnapResult positionally does not have to know about them.
+/// <see cref="SayIntentionsTaxiPathSnapper.MaxExcursionRunPoints"/>.
+///
+/// <paramref name="ExcursionTaxiways"/> NAMES them, in the order they were removed. The
+/// count alone cannot say WHICH leg went, and it is not even a leg delta — removing the
+/// filling also merges the two anchors, so Taxiways.Count + ExcursionRunCount does not add
+/// back up to PreExcursionTaxiwayCount. Naming them is what lets sayintentions.log settle
+/// "was the taxiway the controller cleared the one this deleted?" from a single capture,
+/// which is the question docs/sayintentions.md records as still open.
 ///
 /// <paramref name="PreExcursionTaxiwayCount"/> is how many legs the track had after the stub
 /// filter but BEFORE the excursion pass — i.e. the length ChooseTaxiwaySource's
@@ -36,14 +42,18 @@ public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLo
 /// Taxiways SHORTER, and that guard is what stops a stale pre-clearance track being flown
 /// silently, so measuring it against the trimmed list would loosen it: a stale plan that
 /// lost on length alone could squeak inside the bound. The route still USES the trimmed
-/// list; only the length test uses this. Defaulted so a caller constructing a SnapResult
-/// positionally does not have to know about it — read it through Math.Max against
-/// Taxiways.Count so a default-constructed 0 degrades to the pre-branch behaviour rather
-/// than to a maximally permissive guard.
+/// list; only the length test uses this.
+///
+/// None of these is DEFAULTED, deliberately. They were, and the guard's safety then rested
+/// on a caller remembering to wrap the read in Math.Max against Taxiways.Count, because a
+/// positionally-constructed SnapResult carried 0 and TrackIsShortEnoughToDescribe(n, 0) is
+/// 0 &lt;= 2n+1 — always true, the guard disabled, no test failing. A required member cannot
+/// be forgotten; a documented obligation on a data record can.
 /// </summary>
 public sealed record SnapResult(
     IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount, int DroppedRunCount,
-    int ExcursionRunCount = 0, int PreExcursionTaxiwayCount = 0);
+    int ExcursionRunCount, int PreExcursionTaxiwayCount,
+    IReadOnlyList<string> ExcursionTaxiways);
 
 /// <summary>
 /// Turns SayIntentions' taxi_path GEOMETRY into a taxiway sequence, by snapping each
@@ -124,13 +134,52 @@ public static class SayIntentionsTaxiPathSnapper
     ///
     /// 4 is measured, not tuned. Across 600 junctions at KDEN, CYVR, KORD, KATL and EGLL,
     /// sandwiched excursions run 1 pt 45.1 %, 2 pt 21.4 %, 3 pt 23.2 %, 4 pt 8.2 %,
-    /// 5 pt 1.4 %, 6+ 0.7 % — so this removes 97.8 % of them. At SayIntentions' ~28 m
-    /// sample spacing it is also "at most ~112 m of pavement".
+    /// 5 pt 1.4 %, 6+ 0.7 %. Read that carefully: the 1-point bucket — 45.1 %, the largest
+    /// of them — never reaches this constant at all, because <see cref="MinRunPoints"/>
+    /// removed it one stage earlier and counted it in DroppedRunCount. This bound covers
+    /// the 2-4 point buckets, 52.8 %, and the two together cover 97.8 %. So
+    /// geoExcursions=0 does NOT mean "no junction clips" — check geoDroppedRuns beside it.
+    ///
+    /// The unit is SAMPLES, not metres, and the two are not interchangeable: at the median
+    /// ~28 m spacing 4 points span 3 gaps, so ~84 m, and the minimum observed spacing is
+    /// 17.3 m, so ~52 m. (An earlier version of this comment said "~112 m", counting 4
+    /// gaps for 4 points.) SayIntentions' resampling step is not part of any contract, so
+    /// if it ever densifies, this bound silently stops firing and the whole calibration
+    /// above stops applying with it. Expressing it in metres — the run's own along-track
+    /// length is computable here, the points are in hand and PointToPointMetres exists —
+    /// is the durable form; it is recorded as a follow-up rather than done here because it
+    /// needs the 600-junction sweep re-run in the new unit.
     ///
     /// The reason a generous bound is safe here and nowhere else in this file: removing a
     /// SANDWICHED run cannot disconnect anything. X → Y → X becomes X, and the aircraft
-    /// still taxis along X. The worst case is a genuine sub-112 m detour flattened into
-    /// the straight run it departed from, which is still a route the pilot can fly.
+    /// still taxis along X. The worst case for the ROUTE is a genuine short detour
+    /// flattened into the straight run it departed from, which is still a route the pilot
+    /// can fly. It is not the worst case overall: dropping the filling also merges the two
+    /// anchors into ONE row, and rows are what hold-shorts hang on, so a clearance with two
+    /// hold-shorts on the same taxiway (the KBOS "N, hold short 15R, N" shape) loses the
+    /// second one to MapHoldShortsToTaxiways' forward-only scan. That is announced
+    /// ("Could not set hold short of runway ..."), never silent — but it is a runway
+    /// hold-short, so weigh it before widening anything here.
+    ///
+    /// THE SANDWICH MUST BE CONTIGUOUS in the published track: the anchor, the filling and
+    /// the returning anchor must be neighbours in `runs`, with nothing removed between
+    /// them. Without that, stage 3's own removals weld two runs together the track never
+    /// showed as adjacent — X, [lost], Y, [lost], X reads as a sandwich and deletes a
+    /// taxiway the aircraft genuinely taxied, with nothing announced when the unsnapped
+    /// share sits under UnsnappedShareWorthSaying. It also keeps this pass consistent with
+    /// itself: X, Y, Z, X is deliberately NOT an excursion (see
+    /// AShortRunBetweenTwoDIFFERENTTaxiwaysIsNotAnExcursion), so it must not become one
+    /// just because Z was short enough for the stub filter to remove.
+    ///
+    /// KNOWN SHAPES THIS DOES NOT CATCH, all leaving the artifact in the route rather than
+    /// deleting a real leg — the safe direction, and deliberately left alone because
+    /// every fix for them makes the pass delete MORE (see docs/sayintentions.md):
+    ///   • a split filling  X, Y, [stub], Y, X — the forward test sees Y, not X;
+    ///   • a nested pair    Z, X, Y, X, Z — one left-to-right pass, no re-examination;
+    ///   • two spurs        X, Y, Z, X — the lookahead is one run, not a window;
+    ///   • a trimmed anchor — TrimToPointsAhead can cut the leading X away, and the spur
+    ///     then becomes the route's first leg (pinned by
+    ///     AnExcursionWhoseLeadingAnchorTheTrimRemovedIsNotRecognised).
     ///
     /// SANDWICH-ONLY IS DELIBERATE, AND MEASURED. Rejecting any track that leaves a taxiway
     /// and later returns to it was proposed and is wrong: across the 17 revisit occurrences
@@ -211,7 +260,7 @@ public static class SayIntentionsTaxiPathSnapper
     {
         if (path is null || path.Count == 0)
         {
-            return new SnapResult(Array.Empty<string>(), 0, 0, 0);
+            return new SnapResult(Array.Empty<string>(), 0, 0, 0, 0, 0, Array.Empty<string>());
         }
 
         var candidates = edges ?? Array.Empty<NamedEdge>();
@@ -278,8 +327,16 @@ public static class SayIntentionsTaxiPathSnapper
         // 3. Drop the connector stubs. This MUST happen before the excursion pass and the
         //    collapse below: collapsing first turns every run into length 1 and there is
         //    nothing left to filter on, so every stub survives.
-        var surviving = new List<(string Name, int Length)>();
+        //    Each survivor also records whether it FOLLOWS ITS PREDECESSOR DIRECTLY — that
+        //    is, whether anything at all was removed between the two. Stage 4 needs it:
+        //    dropping a run here welds two runs together that the published track never
+        //    showed as adjacent, and judging a sandwich on the welded pair deletes a
+        //    taxiway the aircraft really taxied. It is the same rule stage 2 states one
+        //    level down (a null has to BREAK a run rather than be skipped over), which was
+        //    never re-established at the run level.
+        var surviving = new List<(string Name, int Length, bool FollowsPredecessorDirectly)>();
         int droppedRunCount = 0;
+        bool lostSincePreviousSurvivor = false;
         foreach ((string? name, int length) in runs)
         {
             if (name is null)
@@ -287,6 +344,7 @@ public static class SayIntentionsTaxiPathSnapper
                 // Already reflected in unsnappedCount above — this is a miss, not a
                 // taxiway that was seen and then dropped, so it must not also inflate
                 // droppedRunCount.
+                lostSincePreviousSurvivor = true;
                 continue;
             }
 
@@ -297,10 +355,12 @@ public static class SayIntentionsTaxiPathSnapper
                 // different failure than "could not read part of it", so it gets its
                 // own count instead of silently vanishing (see SnapResult.DroppedRunCount).
                 droppedRunCount++;
+                lostSincePreviousSurvivor = true;
                 continue;
             }
 
-            surviving.Add((name, length));
+            surviving.Add((name, length, !lostSincePreviousSurvivor));
+            lostSincePreviousSurvivor = false;
         }
 
         // The length the stale-track guard was calibrated against: the track after the stub
@@ -308,24 +368,27 @@ public static class SayIntentionsTaxiPathSnapper
         // collapses, so the two counts are the same KIND of number.
         int preExcursionTaxiwayCount = 0;
         string? previousSurvivingName = null;
-        foreach ((string name, int _) in surviving)
+        foreach (var run in surviving)
         {
-            if (name != previousSurvivingName) preExcursionTaxiwayCount++;
-            previousSurvivingName = name;
+            if (run.Name != previousSurvivingName) preExcursionTaxiwayCount++;
+            previousSurvivingName = run.Name;
         }
 
         // 4. Drop sandwiched junction excursions — a short run that leaves one taxiway and
         //    returns to it (see MaxExcursionRunPoints).
         //
-        //    Compared against the last run KEPT, not the immediately preceding one: that
-        //    is what lets X, Y, X, Z, X resolve in a single left-to-right pass, because Z
-        //    only becomes a sandwich once Y has gone.
+        //    Compared against the last run KEPT, not the immediately preceding one. NOT
+        //    because of X, Y, X, Z, X — an earlier comment claimed that and it is wrong:
+        //    when the loop reaches Z the entry before it in `surviving` is already X under
+        //    either rule. The rule matters for X, Y, X, Y, Z with a short middle X, where
+        //    surviving[i-1] measures that X against the Y just dropped and deletes the
+        //    ANCHOR. See AnExcursionIsMeasuredAgainstTheLastRunKEPTNotTheOneImmediatelyBefore.
         //
         //    Step 3 can leave two SAME-named runs adjacent (X, stub, X), and that is not
         //    an excursion — it is one leg whose stub is already counted above. The
         //    `kept[^1] != name` test is what excludes it.
         var kept = new List<string>();
-        int excursionRunCount = 0;
+        var excursionTaxiways = new List<string>();
         for (int i = 0; i < surviving.Count; i++)
         {
             string name = surviving[i].Name;
@@ -333,12 +396,14 @@ public static class SayIntentionsTaxiPathSnapper
                 kept.Count > 0
                 && kept[^1] != name
                 && surviving[i].Length <= MaxExcursionRunPoints
+                && surviving[i].FollowsPredecessorDirectly
                 && i + 1 < surviving.Count
-                && surviving[i + 1].Name == kept[^1];
+                && surviving[i + 1].Name == kept[^1]
+                && surviving[i + 1].FollowsPredecessorDirectly;
 
             if (sandwiched)
             {
-                excursionRunCount++;
+                excursionTaxiways.Add(name);
                 continue;
             }
 
@@ -359,8 +424,8 @@ public static class SayIntentionsTaxiPathSnapper
         }
 
         return new SnapResult(
-            taxiways, path.Count, unsnappedCount, droppedRunCount, excursionRunCount,
-            preExcursionTaxiwayCount);
+            taxiways, path.Count, unsnappedCount, droppedRunCount, excursionTaxiways.Count,
+            preExcursionTaxiwayCount, excursionTaxiways);
     }
 
     /// <summary>Distance between two points, in metres. A degenerate segment through

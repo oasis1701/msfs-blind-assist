@@ -728,7 +728,10 @@ public class SayIntentionsExternalRouteTests
 
     private static (MainForm.TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
         Choose(string[] clearance, string[] geometry) =>
-        MainForm.ChooseTaxiwaySource(clearance, geometry);
+        // The published length is the track's own, since none of these fixtures carries a
+        // junction excursion — which is what the production caller passes when the
+        // excursion pass removed nothing.
+        MainForm.ChooseTaxiwaySource(clearance, geometry, geometry.Length);
 
     [Fact]
     public void LiveLszhArrivalTrackReproducesTheClearanceExactly()
@@ -1060,20 +1063,51 @@ public class SayIntentionsExternalRouteTests
     }
 
     [Fact]
-    public void OmittingThePublishedLengthFallsBackToTheListsOwnLength()
+    public void TheProductionPathCarriesTheSnappersPublishedLengthIntoTheGuard()
     {
-        var choice = MainForm.ChooseTaxiwaySource(
-            new[] { "E", "C" }, new[] { "E", "C", "W" });
+        // The one wiring nothing else covers: a REAL SnapResult, from a real Snap, through
+        // the expression MainForm.BuildTaxiRouteFromSayIntentionsAsync uses. Every other
+        // ChooseTaxiwaySource test hands it a literal, so the argument that carries the
+        // stale-track guard's input could be changed to snap.Taxiways.Count and nothing
+        // would fail. Mutation-checked: swapping it for snap.Taxiways.Count flips this to
+        // Geometry.
+        //
+        // X, Y, X, Z, X collapses to one applied leg but was five as the snapper received
+        // it. One cleared leg allows three, so the applied count would pass the guard and
+        // the published count must not.
+        var edges = new[]
+        {
+            new NamedEdge("X", 50.0000, 8.0000, 50.0100, 8.0000),
+            new NamedEdge("Y", 50.0050, 8.0002, 50.0060, 8.0002),
+            new NamedEdge("Z", 50.0070, 8.0002, 50.0080, 8.0002),
+        };
+        var path = new[]
+        {
+            new GeoPoint(50.0010, 8.0000), new GeoPoint(50.0020, 8.0000),
+            new GeoPoint(50.0051, 8.0002), new GeoPoint(50.0052, 8.0002),
+            new GeoPoint(50.0060, 8.0000), new GeoPoint(50.0065, 8.0000),
+            new GeoPoint(50.0071, 8.0002), new GeoPoint(50.0072, 8.0002),
+            new GeoPoint(50.0090, 8.0000), new GeoPoint(50.0095, 8.0000),
+        };
 
-        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
-        Assert.False(choice.Disagreed);
+        var snap = SayIntentionsTaxiPathSnapper.Snap(path, edges);
+        Assert.Equal(new[] { "X" }, snap.Taxiways);
+        Assert.Equal(5, snap.PreExcursionTaxiwayCount);
+
+        var choice = MainForm.ChooseTaxiwaySource(
+            new[] { "X" }, snap.Taxiways, snap.PreExcursionTaxiwayCount);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
     }
 
     // --- Announcement provenance ------------------------------------------------------
 
     private static SnapResult Snap(
         string[] taxiways, int pointCount, int unsnapped = 0, int droppedRuns = 0) =>
-        new(taxiways, pointCount, unsnapped, droppedRuns);
+        new(taxiways, pointCount, unsnapped, droppedRuns,
+            ExcursionRunCount: 0, PreExcursionTaxiwayCount: taxiways.Length,
+            ExcursionTaxiways: Array.Empty<string>());
 
     [Fact]
     public void TheAnnouncementSaysWhereTheRouteCameFrom()
