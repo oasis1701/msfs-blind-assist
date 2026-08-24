@@ -386,4 +386,219 @@ public class TaxiGraphStaticsTests
         var expectedNames = new[] { "A", "B", "C", "D", "E", "F" };
         Assert.Equal(expectedNames, edgesForward.Select(edge => edge.Name).ToArray());
     }
+
+    // --- Canonical taxiway spelling -------------------------------------------------
+    //
+    // CYVR navdata genuinely contains both "D" and "d" as taxi_path.name values. The two
+    // accessors then disagreed: GetAllTaxiwayNames() dedupes into a HashSet with
+    // StringComparer.OrdinalIgnoreCase, so the form's list held ONE of them, while
+    // GetNamedEdges() returned the raw name and the SayIntentions snapper saw BOTH. A live
+    // 2026-08-19 import applied "d" and "D" as separate legs and the form could seat only
+    // one of them (skipped=[d]).
+    //
+    // The canonical spelling is the ordinally smallest, which is deterministic regardless
+    // of input order — the same property GetNamedEdges' own sort key requires — and picks
+    // the conventional uppercase form, since 'D' < 'd' ordinally.
+
+    private static TaxiPath Segment(string name, double startLon, double endLon) =>
+        new() { Name = name, StartLat = 0, StartLon = startLon, EndLat = 0, EndLon = endLon };
+
+    /// <summary>A segment whose name navdata did not supply - adopted from OSM or
+    /// apt.dat for a segment navdata left unnamed.</summary>
+    private static TaxiPath OnlineSegment(string name, double startLon, double endLon)
+    {
+        var path = Segment(name, startLon, endLon);
+        path.NameFromOnlineSource = true;
+        return path;
+    }
+
+    private static List<TaxiPath> CyvrCaseVariantPaths() => new()
+    {
+        new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+        new TaxiPath { Name = "d", StartLat = 0, StartLon = 0.002, EndLat = 0, EndLon = 0.004 },
+    };
+
+
+    // --- The spelling the data mostly uses wins ---------------------------------------
+    //
+    // Ordinal-smallest alone puts the ALL-CAPS variant first at the first differing
+    // letter ('I' 0x49 < 'i' 0x69), so ONE stray row renamed every segment of a
+    // word-shaped taxiway — and TaxiwayName is SPOKEN verbatim, so a screen reader then
+    // reads "L-I-N-K 5". docs/taxi-guidance.md states the rule that broke: "The stored
+    // name is always the original human-readable form from the authoritative source."
+    // Counting rows restores it in the case that actually occurs, and stays deterministic
+    // and order-independent because ordinal-smallest still breaks a tie.
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_prefers_the_spelling_the_data_mostly_uses()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 5", 0.000, 0.002),
+            Segment("Link 5", 0.002, 0.004),
+            Segment("Link 5", 0.004, 0.006),
+            Segment("LINK 5", 0.006, 0.008),
+        });
+
+        Assert.Equal("Link 5", map["LINK 5"]);
+        Assert.Equal("Link 5", map["link 5"]);
+    }
+
+    // --- Navdata outranks an online spelling, however many rows carry it ---------------
+    //
+    // The fold runs on the AUGMENTED path list, so an OSM / apt.dat name adopted for a
+    // segment navdata left unnamed competes here with a navdata one. CLAUDE.md: "navdata is
+    // AUTHORITATIVE - an existing navdata taxiway/gate name is never overwritten, online
+    // names only fill UNNAMED segments." TaxiDataMerger enforces that when it merges; this
+    // keeps the fold from undoing it one layer up.
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_prefers_a_navdata_spelling_over_an_online_majority()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 53", 0.000, 0.002),
+            OnlineSegment("LINK 53", 0.002, 0.004),
+            OnlineSegment("LINK 53", 0.004, 0.006),
+            OnlineSegment("LINK 53", 0.006, 0.008),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
+    }
+
+    [Fact]
+    public void An_all_online_group_is_still_decided_by_the_vote()
+    {
+        // Provenance says nothing when no spelling has navdata behind it, so the majority
+        // rule and its ordinal tie-break still apply.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            OnlineSegment("Link 53", 0.000, 0.002),
+            OnlineSegment("Link 53", 0.002, 0.004),
+            OnlineSegment("LINK 53", 0.004, 0.006),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
+    }
+
+    [Fact]
+    public void A_zero_length_navdata_row_confers_no_authority()
+    {
+        // Build discards it, so it decides nothing - the same rule the vote already applies.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("LINK 53", 0.004, 0.004),
+            OnlineSegment("Link 53", 0.000, 0.002),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
+    }
+
+    [Fact]
+    public void A_zero_length_row_does_not_decide_the_spelling()
+    {
+        // Build discards a row whose endpoints resolve to one node (startNodeId ==
+        // endNodeId) — but only AFTER the fold has run, so without this the vote is
+        // decided by a row that contributes no node, no edge and no name registration.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 5", 0.000, 0.002),
+            Segment("LINK 5", 0.004, 0.004),
+        });
+
+        Assert.Equal("Link 5", map["LINK 5"]);
+    }
+
+    [Fact]
+    public void A_stray_all_caps_row_does_not_rename_the_whole_taxiway()
+    {
+        var graph = TaxiGraph.Build(
+            new List<TaxiPath>
+            {
+                Segment("Link 5", 0.000, 0.002),
+                Segment("Link 5", 0.002, 0.004),
+                Segment("LINK 5", 0.004, 0.006),
+            },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "Link 5" }, graph.GetAllTaxiwayNames());
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_breaks_an_even_vote_ordinally()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(CyvrCaseVariantPaths());
+
+        Assert.Equal("D", map["D"]);
+        Assert.Equal("D", map["d"]);
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_does_not_depend_on_input_order()
+    {
+        var forward = CyvrCaseVariantPaths();
+        var reversed = CyvrCaseVariantPaths();
+        reversed.Reverse();
+
+        Assert.Equal(
+            TaxiGraph.BuildCanonicalTaxiwayNames(forward)["d"],
+            TaxiGraph.BuildCanonicalTaxiwayNames(reversed)["d"]);
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_ignores_blank_and_whitespace_names()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            new TaxiPath { Name = "", StartLat = 0, StartLon = 0, EndLat = 0, EndLon = 0.002 },
+            new TaxiPath { Name = "   ", StartLat = 0, StartLon = 0.002, EndLat = 0, EndLon = 0.004 },
+        });
+
+        Assert.Empty(map);
+    }
+
+    [Fact]
+    public void A_taxiway_spelled_two_ways_reaches_the_graph_as_one_name()
+    {
+        var graph = TaxiGraph.Build(
+            CyvrCaseVariantPaths(), new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "D" }, graph.GetAllTaxiwayNames());
+    }
+
+    [Fact]
+    public void Two_case_variant_paths_between_the_same_nodes_are_one_edge()
+    {
+        // Same pavement under two spellings. Before canonicalisation AddEdge's ordinal ==
+        // dedup treated them as different taxiways and kept both.
+        var graph = TaxiGraph.Build(
+            new List<TaxiPath>
+            {
+                new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+                new TaxiPath { Name = "d", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+            },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "D" }, graph.GetAllTaxiwayNames());
+        Assert.All(graph.Adjacency.Values, edges => Assert.Single(edges));
+    }
+
+    [Fact]
+    public void The_two_name_accessors_agree_on_the_same_graph()
+    {
+        // This is the actual defect: the SayIntentions import resolves its clearance
+        // against GetAllTaxiwayNames() and snaps its geometry against GetNamedEdges(),
+        // so a name only one of them reports is a leg the form cannot seat.
+        //
+        // Scoped to a graph with NO aliases, which this fixture is. GetAllTaxiwayNames also
+        // returns alias DISPLAY labels ("HAWKER (D)") that GetNamedEdges never emits, so the
+        // two accessors are not required to agree in general — only about the spelling of
+        // the real taxiway names they both carry, which is what this pins.
+        var graph = TaxiGraph.Build(
+            CyvrCaseVariantPaths(), new List<ParkingSpot>(), new List<StartPosition>());
+
+        var fromEdges = graph.GetNamedEdges().Select(e => e.Name).Distinct().ToList();
+
+        Assert.Equal(graph.GetAllTaxiwayNames(), fromEdges);
+    }
 }

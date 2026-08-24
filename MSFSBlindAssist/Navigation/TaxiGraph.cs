@@ -164,6 +164,133 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// One spelling per taxiway, resolvable from any spelling that appears for it.
+    ///
+    /// Scenery data really does carry the same taxiway under two casings — CYVR navdata
+    /// holds both "D" and "d" — and two accessors on this class then disagreed about the
+    /// airport. <see cref="GetAllTaxiwayNames"/> dedupes into a HashSet with
+    /// StringComparer.OrdinalIgnoreCase, so it reported ONE of them; <see cref="GetNamedEdges"/>
+    /// returned each edge's raw name, so it reported BOTH. The SayIntentions import consumes
+    /// the two TOGETHER — the first to resolve the spoken clearance, the second to snap the
+    /// published ground track — so a live 2026-08-19 CYVR import produced "d" and "D" as
+    /// separate legs and the form could seat only one of them.
+    ///
+    /// The canonical spelling is THE ONE THE DATA MOSTLY USES, with the ordinally smallest
+    /// breaking an even vote. Ordinal-smallest ALONE was tried first and is wrong for
+    /// word-shaped names: uppercase sorts before lowercase at the first differing letter
+    /// ('I' 0x49 &lt; 'i' 0x69), so a SINGLE row spelled "LINK 5" renamed every "Link 5"
+    /// segment at the airport — and TaxiwayName is SPOKEN VERBATIM, so a screen reader then
+    /// reads it letter by letter. docs/taxi-guidance.md states the rule that breaks: "The
+    /// stored name is always the original human-readable form from the authoritative
+    /// source." Counting rows honours it wherever the data has a predominant spelling, and
+    /// the ordinal tie-break keeps the whole rule deterministic and independent of
+    /// enumeration order — the same property GetNamedEdges' own sort key exists to
+    /// guarantee — while still preferring the conventional "D" over "d" for a
+    /// single-letter designator, where the two spellings are genuinely one row each.
+    ///
+    /// A row the graph itself DISCARDS gets no vote: <see cref="Build"/> skips a path whose
+    /// endpoints resolve to one node, but only AFTER this fold has run, so a zero-length row
+    /// could otherwise decide the spelling of every real segment while contributing no node,
+    /// no edge and no RegisterTaxiwayNode call. Such a row still MAPS (it is a key like any
+    /// other) so that whatever Build does with it lands on the same spelling; it just does
+    /// not choose. A group with nothing but discarded rows falls back to the ordinal
+    /// tie-break naturally, because every vote in it is zero.
+    ///
+    /// This does NOT only arise where an airport's OWN data is inconsistently cased — an
+    /// earlier version of this comment claimed it did, and that is wrong. The list reaching
+    /// <see cref="Build"/> is the AUGMENTED one: AugmentingAirportDataProvider writes OSM /
+    /// apt.dat names into TaxiPath.Name for segments navdata left unnamed, un-normalised, so
+    /// an online spelling competes here with a navdata one.
+    ///
+    /// So PROVENANCE OUTRANKS THE VOTE: a spelling with a navdata row behind it beats one
+    /// with none, however many online rows carry the latter. "navdata is AUTHORITATIVE — an
+    /// existing navdata taxiway/gate name is never overwritten" (CLAUDE.md) is enforced by
+    /// TaxiDataMerger when it merges, which refuses to overwrite a named segment; without
+    /// this the fold could undo it one layer up, because a taxiway navdata names on two
+    /// segments and an online source fills on three would lose 3-2 on count alone. The vote
+    /// then decides inside the winning provenance, and ordinal-smallest inside that. A group
+    /// with no navdata row at all is decided by the vote exactly as before.
+    ///
+    /// A discarded row confers no authority either — the navdata tally counts only rows Build
+    /// will keep, for the same reason the vote does.
+    ///
+    /// The returned dictionary holds ONE entry per case-insensitive group, keyed by the
+    /// first spelling seen for it — not one entry per spelling. Lookups are
+    /// OrdinalIgnoreCase, so every spelling still resolves; do not read <c>Keys</c> expecting
+    /// the canonical form.
+    ///
+    /// Safe to apply at the point names enter the graph because every consumer of
+    /// TaxiEdge.TaxiwayName that COMPARES names already does so OrdinalIgnoreCase (TaxiRouter,
+    /// TaxiGuidanceManager, TaxiLeadIn, ResolveTaxiwayName). That is not a class invariant —
+    /// this file's own edge dedups and SayIntentionsTaxiPathSnapper compare ordinally — it is
+    /// what makes folding safe for them, and this fold is what makes their ordinal compares
+    /// safe in turn. The only behavioural change is that one taxiway now has one spelling
+    /// wherever it is displayed, emitted or seated.
+    /// </summary>
+    /// <summary>How many rows carry one exact spelling, and how many of those are
+    /// navdata's rather than an online source's. Discarded rows count in neither.</summary>
+    private readonly record struct Tally(int Navdata, int Total);
+
+    internal static Dictionary<string, string> BuildCanonicalTaxiwayNames(List<TaxiPath> paths)
+    {
+        // Case-insensitive group -> per exact spelling, how many SUBSTANTIAL rows carry it
+        // and how many of those came from navdata rather than an online source.
+        var votes = new Dictionary<string, Dictionary<string, Tally>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in paths)
+        {
+            string name = path.Name?.Trim() ?? "";
+            if (name.Length == 0) continue;
+
+            if (!votes.TryGetValue(name, out var perSpelling))
+            {
+                perSpelling = new Dictionary<string, Tally>(StringComparer.Ordinal);
+                votes[name] = perSpelling;
+            }
+
+            // Zero weight for a row Build will discard: it still gets an entry, so the
+            // spelling maps, but it cannot outvote - or lend authority to - pavement that
+            // is not there.
+            bool discardedByBuild = FastDistanceMeters(
+                path.StartLat, path.StartLon, path.EndLat, path.EndLon) < MERGE_THRESHOLD_METERS;
+            int weight = discardedByBuild ? 0 : 1;
+            int navdataWeight = path.NameFromOnlineSource ? 0 : weight;
+
+            var seen = perSpelling.TryGetValue(name, out var t) ? t : default;
+            perSpelling[name] = new Tally(seen.Navdata + navdataWeight, seen.Total + weight);
+        }
+
+        var canonical = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in votes)
+        {
+            string? best = null;
+            var bestTally = new Tally(-1, -1);
+            foreach (var (spelling, tally) in group.Value)
+            {
+                if (Beats(spelling, tally, best, bestTally))
+                {
+                    best = spelling;
+                    bestTally = tally;
+                }
+            }
+
+            canonical[group.Key] = best!;
+        }
+
+        return canonical;
+
+        // Total order: navdata authority first, then most rows, then ordinally smallest.
+        // Every step is a property of the data rather than of enumeration order, so the same
+        // airport always folds the same way however the paths list was ordered.
+        static bool Beats(string spelling, Tally tally, string? best, Tally bestTally)
+        {
+            if (tally.Navdata != bestTally.Navdata) return tally.Navdata > bestTally.Navdata;
+            if (tally.Total != bestTally.Total) return tally.Total > bestTally.Total;
+            return string.CompareOrdinal(spelling, best) < 0;
+        }
+    }
+
+    /// <summary>
     /// Builds the taxi graph from raw taxi path data and parking spots.
     /// </summary>
     public static TaxiGraph Build(List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts,
@@ -212,11 +339,22 @@ public class TaxiGraph
             runwayStarts = snapped;
         }
 
+        // One spelling per taxiway, decided across ALL paths before any is processed —
+        // see BuildCanonicalTaxiwayNames for the CYVR "D"/"d" case this removes.
+        var canonicalTaxiwayNames = BuildCanonicalTaxiwayNames(paths);
+
         foreach (var path in paths)
         {
             // Defense-in-depth: trim here in case the path was constructed directly
-            // (e.g. tests) bypassing the DB provider normalization.
+            // (e.g. tests) bypassing the DB provider normalization. Then fold the
+            // trimmed name onto the airport's canonical spelling of it, so nodes, edges,
+            // RegisterTaxiwayNode, _normalizedRealNames and the alias labels below all
+            // agree with GetAllTaxiwayNames().
             string name = path.Name?.Trim() ?? "";
+            if (name.Length > 0 && canonicalTaxiwayNames.TryGetValue(name, out string? canonicalName))
+            {
+                name = canonicalName;
+            }
 
             // Resolve start and end nodes (create if new, merge if close) — pass the
             // trimmed name so node.TaxiwayNames HashSet entries are canonical.
