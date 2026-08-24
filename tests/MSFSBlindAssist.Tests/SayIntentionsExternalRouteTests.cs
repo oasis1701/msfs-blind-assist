@@ -948,6 +948,42 @@ public class SayIntentionsExternalRouteTests
         Assert.True(choice.Disagreed);
     }
 
+    [Fact]
+    public void LiveKdenRoundTripArtifactFallsBackToTheClearanceWithoutFalseDisagreement()
+    {
+        // Live 2026-08-06: the track clipped P7 while travelling on P, producing an
+        // out-and-back P -> P7 -> P that passed both old agreement gates.
+        var choice = Choose(
+            new[] { "P8", "P", "EC", "EA" },
+            new[] { "P8", "P", "P7", "P", "EC", "EA" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.Equal(new[] { "P8", "P", "EC", "EA" }, choice.Taxiways);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void LiveKordRoundTripArtifactFallsBackToTheClearance()
+    {
+        var choice = Choose(
+            new[] { "A", "A14", "V2" },
+            new[] { "A", "A17", "A", "A14", "V2" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
+    [Fact]
+    public void ALeadingAndTrailingLeadInDoNotSpendTheInteriorBudget()
+    {
+        var choice = Choose(
+            new[] { "A", "B" },
+            new[] { "Stand1", "Lead1", "A", "B", "Exit1", "Exit2", "Gate1" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
     // --- ChooseTaxiwaySource: a short clearance cannot licence a long track ------------
     //
     // The subsequence walk's discriminating power scales with how many legs the
@@ -994,7 +1030,8 @@ public class SayIntentionsExternalRouteTests
         var choice = Choose(new[] { "N", "E", "B" }, StaleLszhPreClearancePlan);
 
         Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
-        Assert.True(choice.Disagreed);
+        // Revisit detection, not a false order/length claim, rejects this publication.
+        Assert.False(choice.Disagreed);
     }
 
     [Fact]
@@ -1003,27 +1040,27 @@ public class SayIntentionsExternalRouteTests
         var choice = Choose(new[] { "E" }, StaleLszhPreClearancePlan);
 
         Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
-        Assert.True(choice.Disagreed);
+        Assert.False(choice.Disagreed);
     }
 
     [Fact]
-    public void ATrackAtTheEdgeOfTheLengthGuardIsStillTaken()
+    public void ATrackAtTheEdgeOfTheInteriorInsertionGuardIsStillTaken()
     {
-        // Two cleared legs allow five. A real track legitimately carries the stand it
-        // starts on, the lead-in it ends on, and a leg the text parse could not name.
-        var choice = Choose(new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z" });
+        // Two cleared legs allow three insertions between their first and last matches.
+        var choice = Choose(new[] { "A", "B" }, new[] { "Lead", "A", "X", "Y", "Z", "B", "Tail" });
 
         Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
         Assert.False(choice.Disagreed);
     }
 
     [Fact]
-    public void ATrackOneLegPastTheGuardIsRejectedAndSaidOutLoud()
+    public void ATrackOneInteriorInsertionPastTheGuardIsRejectedAndSaidOutLoud()
     {
-        // Rejected by LENGTH rather than by the walk, and it still counts as a
-        // disagreement: the two sources really do describe different routes, and
-        // silence is what let the stale plan through.
-        var choice = Choose(new[] { "A", "B" }, new[] { "X", "A", "Y", "B", "Z", "W" });
+        // Four interior insertions exceed the three-leg budget. Leading and trailing
+        // names are irrelevant to this judgement.
+        var choice = Choose(
+            new[] { "A", "B" },
+            new[] { "Lead", "A", "W", "X", "Y", "Z", "B", "Tail" });
 
         Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
         Assert.Equal(new[] { "A", "B" }, choice.Taxiways);
@@ -1035,8 +1072,7 @@ public class SayIntentionsExternalRouteTests
     {
         // The guard measures the COLLAPSED clearance, because a taxiway said twice is
         // one leg of evidence, not two: it constrains the walk exactly as much as one
-        // does. Counted raw, this three-name clearance would allow seven track legs and
-        // take a six-leg track that two real legs cannot vouch for.
+        // does. Four interior insertions exceed the three allowed by two real legs.
         var choice = Choose(
             new[] { "N", "N", "K" }, new[] { "N", "V", "W", "X", "Y", "K" });
 

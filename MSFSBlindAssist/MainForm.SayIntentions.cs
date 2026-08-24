@@ -410,9 +410,10 @@ public partial class MainForm
     /// parsed to LE, E, H2 where the track gave LE, E, N, H2. That test is also what
     /// rejects a stale path — the pre-clearance EGLL capture carries N5W where the
     /// clearance says N5E, so the walk fails on the first leg. And the track must be
-    /// short enough to be a description OF that route rather than a route of its own
-    /// (see <see cref="TrackIsShortEnoughToDescribe"/>), because the walk alone loses its
-    /// grip on a short clearance.
+    /// short enough in its INTERIOR to be a description OF that route rather than a
+    /// route of its own (see <see cref="TrackHasFewEnoughInteriorInsertions"/>), because
+    /// the walk alone loses its grip on a short clearance. Finally, a track that leaves
+    /// and later revisits a taxiway is rejected as a crossing-snap artifact.
     ///
     /// The comparison runs against the COLLAPSED clearance, and only the comparison: what
     /// is handed back when the clearance wins is the RAW list. ParseClearanceTaxiPlan
@@ -422,11 +423,11 @@ public partial class MainForm
     /// duplicates, so [N … N] arrives here as a single N. Walked raw, such a clearance
     /// could never agree with its own track, and the pilot heard a disagreement about two
     /// descriptions of the same pavement. Collapsing only ADJACENT repeats keeps a
-    /// genuine later revisit a leg the track still has to carry twice.
+    /// later revisit visible for the round-trip artifact gate below.
     ///
-    /// Anything else is a genuine disagreement, and the CLEARANCE wins it: that is what
-    /// the pilot actually heard. The caller says so out loud — a route that is not the one
-    /// ATC gave must not be discovered on the taxiway.
+    /// A failed order/interior gate is a genuine disagreement, and the CLEARANCE wins it
+    /// with an announcement. A revisit-only rejection is the same route with suspect snap
+    /// rows, so the clearance wins without a false disagreement warning.
     /// </summary>
     internal static (TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
         ChooseTaxiwaySource(
@@ -448,10 +449,22 @@ public partial class MainForm
 
         var cleared = SayIntentionsClearanceParser.CollapseConsecutive(clearanceTaxiways);
 
-        return ClearanceRunsThroughGeometry(cleared, geometryTaxiways)
-               && TrackIsShortEnoughToDescribe(cleared.Count, geometryTaxiways.Count)
+        bool runsThrough = ClearanceRunsThroughGeometry(cleared, geometryTaxiways);
+        bool interiorOk = TrackHasFewEnoughInteriorInsertions(cleared, geometryTaxiways);
+
+        // A track that leaves a taxiway and later comes back to it has the exact shape
+        // produced when sparse taxi_path samples clip a crossing edge: KDEN P -> P7 -> P
+        // and KORD A -> A17 -> A were both live examples. It is not evidence of a
+        // different clearance — the recognized clearance still walks through it — but
+        // it is not safe geometry to put in the dialog. Fall back to the controller's
+        // words without crying disagreement unless one of the actual agreement gates
+        // (order or interior-insertion count) failed.
+        bool revisitsTaxiway = GeometryRevisitsTaxiway(geometryTaxiways);
+        bool disagreed = !(runsThrough && interiorOk);
+
+        return runsThrough && interiorOk && !revisitsTaxiway
             ? (TaxiwaySource.Geometry, geometryTaxiways, false)
-            : (TaxiwaySource.Clearance, clearanceTaxiways, true);
+            : (TaxiwaySource.Clearance, clearanceTaxiways, disagreed);
     }
 
     /// <summary>Whether every cleared taxiway appears in the published track IN ORDER,
@@ -478,8 +491,9 @@ public partial class MainForm
     }
 
     /// <summary>Whether the published track is short enough to be a description OF the
-    /// cleared route rather than a route of its own — at most two track legs per cleared
-    /// leg, plus one.
+    /// cleared route rather than a route of its own. Only insertions BETWEEN cleared
+    /// legs count: leading stand lead-ins and trailing gate/runway lead-ins are the
+    /// normal shape of a real track and carry no evidence that it is stale.
     ///
     /// The subsequence walk loses its grip as the clearance gets shorter: two or three
     /// legs run through almost any track that touches the same corner of the airfield.
@@ -498,11 +512,54 @@ public partial class MainForm
     /// clearance — and when this is what rejects the track, the caller reports it as a
     /// disagreement, not as a silent fallback.
     ///
-    /// Counted on the COLLAPSED clearance: a taxiway named twice is one leg of evidence,
-    /// constraining the walk exactly as much as one does, so it must not buy the track
-    /// extra length.</summary>
-    private static bool TrackIsShortEnoughToDescribe(int clearedLegs, int trackLegs) =>
-        trackLegs <= (clearedLegs * 2) + 1;
+    /// The old total-length gate allowed at most n+1 extra legs for n cleared legs. Keep
+    /// that measured budget, but spend it only on the interior span. Counted on the
+    /// COLLAPSED clearance: a taxiway named twice is one leg of evidence and must not buy
+    /// the track extra room.</summary>
+    private static bool TrackHasFewEnoughInteriorInsertions(
+        IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
+    {
+        int geometryIndex = 0;
+        int firstMatch = -1;
+        int lastMatch = -1;
+
+        foreach (string cleared in clearanceTaxiways)
+        {
+            while (geometryIndex < geometryTaxiways.Count
+                   && !SameTaxiwayNameSi(geometryTaxiways[geometryIndex], cleared))
+            {
+                geometryIndex++;
+            }
+
+            if (geometryIndex == geometryTaxiways.Count) return false;
+            if (firstMatch < 0) firstMatch = geometryIndex;
+            lastMatch = geometryIndex;
+            geometryIndex++;
+        }
+
+        int interiorInsertions = (lastMatch - firstMatch + 1) - clearanceTaxiways.Count;
+        return interiorInsertions <= clearanceTaxiways.Count + 1;
+    }
+
+    /// <summary>Whether the track leaves a taxiway and later returns to it. Consecutive
+    /// duplicates are one continuous leg; names use the import's normalized comparison
+    /// so case and punctuation variants cannot hide a revisit.</summary>
+    private static bool GeometryRevisitsTaxiway(IReadOnlyList<string> geometryTaxiways)
+    {
+        var leftTaxiways = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? previous = null;
+
+        foreach (string taxiway in geometryTaxiways)
+        {
+            string normalized = SayIntentionsClearanceParser.NormalizeTaxiwayName(taxiway);
+            if (normalized.Equals(previous, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.IsNullOrEmpty(previous)) leftTaxiways.Add(previous);
+            if (leftTaxiways.Contains(normalized)) return true;
+            previous = normalized;
+        }
+
+        return false;
+    }
 
     /// <summary>Taxiway names compared the way the rest of this import compares them:
     /// spacing and punctuation stripped, case-insensitive — "N 5 E" is N5E.</summary>

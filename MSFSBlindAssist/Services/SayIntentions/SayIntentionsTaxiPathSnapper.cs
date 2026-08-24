@@ -209,9 +209,13 @@ public static class SayIntentionsTaxiPathSnapper
         var runs = new List<(string? Name, int Length)>();
         foreach (string? name in perPoint)
         {
-            if (runs.Count > 0 && runs[^1].Name == name)
+            if (runs.Count > 0
+                && string.Equals(runs[^1].Name, name, StringComparison.OrdinalIgnoreCase))
             {
-                runs[^1] = (name, runs[^1].Length + 1);
+                // Preserve the first graph spelling as the stable canonical label. A
+                // later case variant (`d` after `D` at CYVR) extends the same run; it
+                // must not make the displayed name depend on the final sample.
+                runs[^1] = (runs[^1].Name, runs[^1].Length + 1);
             }
             else
             {
@@ -246,7 +250,8 @@ public static class SayIntentionsTaxiPathSnapper
 
             // 4. Collapse consecutive duplicates — and only consecutive ones. A route
             //    that leaves a taxiway and comes back to it later names it twice.
-            if (taxiways.Count > 0 && taxiways[^1] == name)
+            if (taxiways.Count > 0
+                && string.Equals(taxiways[^1], name, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }

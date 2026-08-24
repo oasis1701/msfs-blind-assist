@@ -1090,10 +1090,15 @@ to leave the entire suite green. In order:
    *"No cleared taxiways to check it against, so this is SayIntentions' own plan, not
    ATC's."* See [A track nothing checked](#a-track-nothing-checked).
 3. **The clearance runs through the geometry in order, gaps allowed** — a subsequence
-   walk — **and** the track is at most `2n + 1` legs long for `n` cleared legs →
-   **geometry**.
-4. Anything else → **clearance**, and *"SayIntentions ground track differs from the
-   clearance. Using the clearance."* is spoken.
+   walk — the interior span carries no more than `n + 1` inserted legs for `n` cleared
+   legs, **and the track never leaves and later revisits a taxiway** → **geometry**.
+   Leading stand lead-ins and trailing gate/runway lead-ins do not spend that insertion
+   budget; they are the normal shape of a published route.
+4. A track that otherwise agrees but revisits a taxiway → **clearance**, without a false
+   disagreement warning; this is treated as a snap artifact around the same pavement.
+5. Anything that fails the order or interior-insertion gate → **clearance**, and
+   *"SayIntentions ground track differs from the clearance. Using the clearance."* is
+   spoken.
 
 **The walk, and why gaps are the point.** A real track legitimately names legs the
 controller did not: the stand it starts on, the lead-in it ends on, and — the case this
@@ -1118,21 +1123,27 @@ Walked raw, `[N, N, K]` could never agree with its own track `[N, K]`, and the p
 — which also switched the geometry path, and the dropped-leg recovery it exists for, off
 for **every clearance of that shape**. So the walk runs against `CollapseConsecutive` and
 only the walk does; the raw list still reaches the form, and each November keeps its row.
-Only *adjacent* repeats collapse, so a genuine later revisit stays a leg the track has to
-carry twice.
+Only *adjacent* repeats collapse for the agreement walk. The snapper keeps a later
+revisit so the chooser can detect and reject the `P, P7, P` round-trip artifact rather
+than hiding it by deduplication.
 
-**The `2n + 1` ratio guard.** The walk's discriminating power scales with how many legs
+**The interior-insertion guard.** The walk's discriminating power scales with how many legs
 the clearance has, and a short one runs straight through almost any track touching the
 same corner of the airfield. Against the real LSZH pre-clearance publication — twelve
 legs — *"via E, C"*, *"via N, E, B"* and even a bare *"via E"* all walk clean through,
-and a track that agrees is taken **silently**. So the track additionally has to be short
-enough to be a description *of* the cleared route rather than a route of its own: at most
-two track legs per cleared leg, plus one. Every real agreement measured runs 1.0–1.33
-track legs per cleared leg (LSZH 3:3, EGLL 4:4, the LEPA dropped leg 3:4); every stale
-reading runs 2.5–12. The guard
-counts the **collapsed** clearance, because a taxiway named twice is one leg of evidence
-and constrains the walk exactly as much as one does — it must not buy the track extra
-length.
+and a track that agrees is taken **silently**. The old `2n + 1` total-length gate also
+penalized normal leading and trailing lead-ins. The same `n + 1` extra-leg budget now
+counts only names between the first and last cleared matches. It counts the **collapsed**
+clearance, because a taxiway named twice is one leg of evidence and must not buy the
+track extra room.
+
+**Round-trip rejection.** Sparse `taxi_path` samples can clip a crossing edge long enough
+to survive the two-point run filter, yielding `P, P7, P` (KDEN) or `A, A17, A` (KORD).
+Those tracks pass both the order walk and the insertion budget but would put an out-and-
+back row in the dialog. Any track that leaves a normalized taxiway name and later returns
+to it falls back to the clearance. That is a snap artifact rather than evidence that the
+two sources describe different routes, so it does not trigger the disagreement warning.
+Adjacent case variants such as CYVR's `d, D` collapse in the snapper before this check.
 
 #### A track nothing checked
 
@@ -1200,9 +1211,8 @@ Nothing about a trim is announced. A route that starts where the aircraft is sta
 the expected answer, not a warning. `sayintentions.log` records it as `geoTrimmed`, which
 with `geoPoints` adds back up to what SayIntentions published.
 
-The trim also feeds the agreement walk, and helpfully: a track cut to the remaining route
-is shorter, so it is a *description* of the remaining clearance rather than a route of its
-own, which is what the `2n + 1` guard is measuring.
+The trim also feeds the agreement walk and its interior-insertion/revisit gates: a track
+cut to what remains cannot be rejected merely for carrying pavement already flown.
 
 #### The naming source is a real limit
 
@@ -1238,16 +1248,16 @@ would be more code for no perceptible gain.
 
 These are decisions with their evidence attached, not open bugs.
 
-- **The `2n + 1` guard is calibrated on ONE stale capture.** Real matches sit at
-  1.0–1.33 and stale ones at 2.5–12, so the gap is wide — but a second stale capture
-  could move the boundary, and the constant should be revisited against one rather than
-  defended on principle.
+- **The `n + 1` interior-insertion budget inherits the old guard's calibration.** It now
+  ignores leading/trailing lead-ins, measured as routine in 21 of 56 real imports, while
+  the independent revisit rule catches the three measured round-trip artifacts. Revisit
+  the budget against new captures rather than defending it on principle.
 - **A badly-degraded parse now loses a correct track.** Where the text recovers one leg
   of five, the track legitimately *is* much longer and the guard rejects geometry that
   was right. This is the deliberate direction: falling back to a clearance we know is
   incomplete still names the legs it could not apply, so the pilot is warned, whereas
   accepting a stale track is silent and wrong. Bias toward the clearance. A track
-  rejected on length is reported as a disagreement, never dropped quietly.
+  rejected on interior length is reported as a disagreement, never dropped quietly.
 - **Hold-short anchors cross sources on the geometry path.** They are parsed from the
   clearance and then mapped onto whichever sequence is being applied, so a clearance
   anchor naming a taxiway the track lacks maps to `-1` and is announced as unsettable

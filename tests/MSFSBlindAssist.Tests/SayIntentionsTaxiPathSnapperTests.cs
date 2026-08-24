@@ -215,6 +215,24 @@ public class SayIntentionsTaxiPathSnapperTests
     }
 
     [Fact]
+    public void AdjacentCaseVariantsCollapseToOneTaxiway()
+    {
+        // Live CYVR produced `d` beside `D` for the same taxiway. Windows/navdata name
+        // comparisons are case-insensitive, so the dialog must never receive two rows.
+        var upper = new NamedEdge("D", 50.0000, 8.0000, 50.0010, 8.0000);
+        var lower = new NamedEdge("d", 50.0010, 8.0000, 50.0020, 8.0000);
+        var path = new[]
+        {
+            PointOnEdge(upper, 0.2), PointOnEdge(upper, 0.6),
+            PointOnEdge(lower, 0.2), PointOnEdge(lower, 0.6)
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, new[] { upper, lower });
+
+        Assert.Equal(new[] { "D" }, result.Taxiways);
+    }
+
+    [Fact]
     public void AnUnsnappedPointBreaksARunRatherThanBeingSkippedOver()
     {
         // Run lengths are counted over the raw per-point sequence INCLUDING the
