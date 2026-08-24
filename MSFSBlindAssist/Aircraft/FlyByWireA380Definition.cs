@@ -2047,21 +2047,41 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Mode", managedSel);
         Mon("A32NX_FCU_SPD_MANAGED_DOT", "Speed Mode", managedSel);
         Mon("A32NX_FCU_VS_MANAGED", "Vertical Speed Mode", managedSel);
-        Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", managedSel);
+        // ⚠️ ALTITUDE is the ONE of the four that is DERIVED, not read: FBW #10855 hardcoded
+        // L:A32NX_FCU_ALT_MANAGED to 0 in the WASM, so reading it can only ever say "Selected".
+        // The key is KEPT — pointing at its own dead L:var — purely to carry the pilot's Ctrl+M
+        // mute row and the FCU panel row; its VALUE is never used. The derivation reads
+        // A32NX_FMA_VERTICAL_MODE under its own key instead (see ProcessSimVarUpdate), because
+        // that key is BATCH-covered and a batched var cannot lose its stream: RequestVariable
+        // early-returns for batch-covered vars before issuing the PERIOD.ONCE that would replace
+        // a standing PERIOD.SECOND subscription. Aliasing this key onto that Name instead put the
+        // only input on an individual def, where one panel-open force-read killed the feature for
+        // the session. ValueDescriptions is empty because the row renders from
+        // TryGetDisplayOverride, not from a 0/1 flag.
+        Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", new Dictionary<double, string>());
         // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
-        // Keep an individual data def for the four managed-status legs the OUTPUT-mode FCU
-        // readouts (Shift+H/S/A/V) force-read via RequestVariable(forceUpdate). That call
-        // NO-OPS for batch-covered vars (the SimConnect-ceiling strengthening skips their
-        // individual def), so without this the managed leg never arrives, the value+managed
-        // pair-gate in ProcessSimVarUpdate never closes, and the readout is SILENT. Mirrors
-        // the A320 fix (FlyByWireA320Definition's *_MANAGED vars). 4 extra defs, well within
-        // the A380's data-def headroom. (A32NX_FCU_VS_MANAGED is not force-read by any readout
-        // — VS keys on TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
+        // readouts (Shift+H/S/V) force-read via RequestVariable(forceUpdate). This is no longer
+        // load-bearing the way it once looked: 929be066 fixed RequestVariable(forceUpdate) to
+        // also re-fire an unchanged batch-covered var (DataRequests.cs/VarCache.cs), so dropping
+        // ExcludeFromBatch here would NOT silence Shift+H/S/V. What it costs is latency, not
+        // silence: with ExcludeFromBatch, the forced re-read gets an immediate PERIOD.ONCE reply;
+        // without it, the value+managed pair-gate in ProcessSimVarUpdate would only close on the
+        // next 1 Hz continuous-batch delivery. Mirrors the A320 fix (FlyByWireA320Definition's
+        // *_MANAGED vars). 3 extra defs, well within the A380's data-def headroom.
+        // (A32NX_FCU_VS_MANAGED is not force-read by any readout — VS keys on
+        // TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        //
+        // A32NX_FCU_ALT_MANAGED is deliberately NOT in this list and must never be added back:
+        // FBW #10855 hardcoded its underlying L:var to 0, so no read path — forced or batched —
+        // can ever recover it. Altitude's managed/selected state is derived instead, off the
+        // batch-covered A32NX_FMA_VERTICAL_MODE (see the ⚠️ comment on the A32NX_FCU_ALT_MANAGED
+        // Mon() registration above and docs/a380x.md, "The FCU ALTITUDE managed/selected state is
+        // DERIVED, not read").
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
-        vars["A32NX_FCU_ALT_MANAGED"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
@@ -2147,10 +2167,16 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Cruise-altitude mode moved into PRIM FG discrete word 3 bit 29 ("altIsCrzAlt",
         // what the PFD's own ALT CRZ / ALT CRZ* FMA message derives from) with FBW #10855;
         // the old A32NX_FMA_CRUISE_ALT_MODE is gone. Decoded in TryGetDisplayOverride.
+        // Continuous, but SILENT and Ctrl+M-hidden: the word also carries bit 28
+        // (alt_cstr_applicable), which names the armed ALT call-out — see ArmedAltitudeMode —
+        // so it has to be live rather than read-on-panel-open. ProcessSimVarUpdate caches both
+        // bits and returns true; nothing about this word is ever spoken on its own, because
+        // neither bit is an armed state (bit 28 was measured TRUE at FL360 with nothing armed).
         vars["FMA_CRUISE_ALT_MODE"] = new SimVarDefinition
         {
             Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_3", DisplayName = "Cruise Altitude Mode",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         };
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Vertical Deviation");
         // FMS vertical-profile target altitude at the current position — the basis for
@@ -3086,6 +3112,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // arming a mode speaks "Altitude armed" / "NAV armed" — matching the A32NX (and
     // decoding it, vs the A32NX's old raw-number announce). Bits per the FBW a32nx-api.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
+
+    // PRIM FG discrete word 3 qualifiers, cached from FMA_CRUISE_ALT_MODE. Neither is an armed
+    // state: they only decide WHICH NAME the armed ALT bit is announced under.
+    private bool _fgAltConstraintApplicable, _fgAltIsCruiseAltitude;
+
+    /// <summary>
+    /// <see cref="_vertArmedBits"/> with the ALT entry named for the qualifiers currently in
+    /// force — "Altitude constraint" / "Cruise altitude" / "Altitude". Built per call rather
+    /// than cached: it is only ever wanted on an armed-mode change or a panel repaint, and a
+    /// stale copy would announce the wrong flavour.
+    /// </summary>
+    private (int bit, string name)[] VerticalArmedBits() =>
+        ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, _fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
+
+    // Derived FCU ALTITUDE managed/selected state. AltitudeManagedState owns the rule,
+    // AltitudeModeTracker owns the sequencing (baseline, readiness, autoland, reconnect reset).
+    private readonly AltitudeModeTracker _altMode = new();
     private string _lastFlightPhaseA380 = "";
     // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
     // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
@@ -3163,8 +3206,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private readonly Dictionary<string, bool> _doorOpen = new();
     private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
     private bool _betaTargetActive;   // A32NX_BETA_TARGET_ACTIVE, cached for the beta-target decode
+    // ⚠️ There is NO bit 2 here. FBW's shim builds A32NX_FMA_VERTICAL_ARMED as
+    // `altArmed | (clbArmed << 2) | (desArmed << 3) | (gsArmed << 4) | (finalArmed << 5) |
+    // (tcasArmed << 6)` — bit 1 is skipped because the A380 PRIM FG has no "ALT CST armed"
+    // signal to put there. The old (2, "Altitude constraint") entry could therefore never fire.
+    // The constraint now RENAMES the ALT bit instead, via VerticalArmedBits/ArmedAltitudeMode.
+    // (Bit 17 of FG word 2, op_clb_armed, is dropped by that same shim and has no slot in this
+    // bitmask at all — an unfixable gap on this side, recorded in docs/a380x.md.)
     private static readonly (int bit, string name)[] _vertArmedBits =
-        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+        { (1, "Altitude"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
 
 
@@ -3214,7 +3264,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed
     // and announce via the pairing in ProcessSimVarUpdate.
     // ===================================================================
-    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
+    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
