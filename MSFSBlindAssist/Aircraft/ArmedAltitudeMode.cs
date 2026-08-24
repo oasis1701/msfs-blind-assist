@@ -97,6 +97,23 @@ public static class ArmedAltitudeMode
         new Arinc429Word(rawConstraintWord).IsNormalOperation;
 
     /// <summary>
+    /// The ALT bit within <c>A32NX_FMA_VERTICAL_ARMED</c>. A raw bit VALUE, not a shift
+    /// position — the <c>_vertArmedBits</c> tables are written as values (1 Altitude, 4 Climb,
+    /// 8 Descent, 16 Glideslope, 32 Final, 64 TCAS), and <see cref="NameAltArmedBit"/> finds its
+    /// entry by comparing against this same value.
+    /// </summary>
+    public const int AltArmedBit = 1;
+
+    /// <summary>
+    /// The variable KEY both FBW definitions register the armed-vertical bitmask under (it is
+    /// also its SimVar Name). Shared so the Ctrl+M mute consulted by a deferred flush and the
+    /// one consulted by the inline armed branch can never be two different spellings of one
+    /// rule — a rename would otherwise mute the inline group and leave the held call-out
+    /// speaking.
+    /// </summary>
+    public const string ArmedVerticalKey = "A32NX_FMA_VERTICAL_ARMED";
+
+    /// <summary>
     /// An armed-vertical-mode bit table with the ALT entry named for the qualifiers currently in
     /// force. Shared by both FBW airframes, which differ only in HOW they read the qualifier —
     /// keeping the transform here is what stops the "find the ALT entry by VALUE, never by
@@ -110,8 +127,49 @@ public static class ArmedAltitudeMode
     {
         var named = ((int bit, string name)[])bits.Clone();
         for (int i = 0; i < named.Length; i++)
-            if (named[i].bit == 1)   // the ALT bit — found by VALUE, never by position
+            if (named[i].bit == AltArmedBit)   // the ALT bit — found by VALUE, never by position
                 named[i].name = Name(altConstraintApplicable, altIsCruiseAltitude);
         return named;
     }
+
+    /// <summary>
+    /// The newly-armed bits that can be announced IMMEDIATELY — everything except ALT.
+    ///
+    /// ALT is the only armed mode with a qualifier (an FMS altitude constraint, or on the A380
+    /// the cruise altitude), and that qualifier is always dispatched to the definition AFTER the
+    /// armed bitmask itself: on the A380 it rides a different continuous batch, on the A32NX it
+    /// sorts a few slots later in the same one. Naming ALT inline therefore reads the PREVIOUS
+    /// tick's qualifier, and because the call-out is edge-triggered the wrong name is permanent.
+    /// So ALT is held and flushed once the qualifier has settled; every other mode is unaffected
+    /// and keeps its immediate call-out.
+    ///
+    /// VERTICAL-MASK ONLY — never apply this to a LATERAL newly-armed mask. Bit 1 there is NAV
+    /// (see <c>_latArmedBits</c>), a different mode with no qualifier of its own; stripping it
+    /// would silently and permanently drop the "NAV armed" call-out, which has no other channel.
+    /// </summary>
+    public static int ImmediateArmedBits(int newlyArmed) => newlyArmed & ~AltArmedBit;
+
+    /// <summary>Whether a newly-armed bitmask contains ALT and therefore needs the hold.</summary>
+    public static bool ShouldHoldAltAnnouncement(int newlyArmed) => (newlyArmed & AltArmedBit) != 0;
+
+    /// <summary>
+    /// Whether a held ALT announcement is still worth speaking when the hold flushes: ALT must
+    /// still be armed in the CURRENT bitmask. An ALT that arms and disarms inside the hold
+    /// window is dropped rather than announced after it stopped being true.
+    ///
+    /// ⚠ The <c>&gt; 0</c> half is load-bearing, not defensive noise. <c>_prevVertArmed</c> is a
+    /// DUAL-PURPOSE field — an armed bitmask, plus <c>-1</c> for "no baseline taken yet" (its
+    /// initialiser, and what both defs' <c>ResetAnnouncementBaselines</c> writes) — and
+    /// <c>-1 &amp; 1 == 1</c>, so the bare bit test answers "ALT is armed" for the sentinel. A hold
+    /// that outlived a re-baseline would then speak a phantom call-out with nothing armed.
+    /// </summary>
+    public static bool HeldAltStillArmed(int currentArmed) =>
+        currentArmed > 0 && (currentArmed & AltArmedBit) != 0;
+
+    /// <summary>
+    /// The three gates a held ALT call-out must clear before it is spoken, in one shared place
+    /// because both airframes must agree on them.
+    /// </summary>
+    public static bool ShouldSpeakHeldAlt(bool pending, bool muted, int currentArmed) =>
+        pending && !muted && HeldAltStillArmed(currentArmed);
 }

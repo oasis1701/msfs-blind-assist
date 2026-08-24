@@ -583,6 +583,7 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
 
@@ -1062,6 +1063,15 @@ public partial class MainForm : Form
             iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
             iflyExitDef.Shutdown();
         }
+
+        // Definition-owned UI-thread timers (both FBW defs' TCAS RA compose timer) and any held
+        // call-out. StopAllMotion is otherwise only reached from the aircraft-SWAP path, so a
+        // quit left them live across simConnectManager.Disconnect()'s 500 ms DoEvents pump —
+        // which dispatches WM_TIMER, so a timer could still speak on the way out. Same leak
+        // class as the iFly def and the PMDG EFB clients handled above.
+        (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
+        (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
+        currentAircraft?.CancelDeferredFlush();
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
