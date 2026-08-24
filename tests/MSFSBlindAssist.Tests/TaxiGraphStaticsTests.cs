@@ -403,6 +403,15 @@ public class TaxiGraphStaticsTests
     private static TaxiPath Segment(string name, double startLon, double endLon) =>
         new() { Name = name, StartLat = 0, StartLon = startLon, EndLat = 0, EndLon = endLon };
 
+    /// <summary>A segment whose name navdata did not supply - adopted from OSM or
+    /// apt.dat for a segment navdata left unnamed.</summary>
+    private static TaxiPath OnlineSegment(string name, double startLon, double endLon)
+    {
+        var path = Segment(name, startLon, endLon);
+        path.NameFromOnlineSource = true;
+        return path;
+    }
+
     private static List<TaxiPath> CyvrCaseVariantPaths() => new()
     {
         new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
@@ -433,6 +442,56 @@ public class TaxiGraphStaticsTests
 
         Assert.Equal("Link 5", map["LINK 5"]);
         Assert.Equal("Link 5", map["link 5"]);
+    }
+
+    // --- Navdata outranks an online spelling, however many rows carry it ---------------
+    //
+    // The fold runs on the AUGMENTED path list, so an OSM / apt.dat name adopted for a
+    // segment navdata left unnamed competes here with a navdata one. CLAUDE.md: "navdata is
+    // AUTHORITATIVE - an existing navdata taxiway/gate name is never overwritten, online
+    // names only fill UNNAMED segments." TaxiDataMerger enforces that when it merges; this
+    // keeps the fold from undoing it one layer up.
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_prefers_a_navdata_spelling_over_an_online_majority()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 53", 0.000, 0.002),
+            OnlineSegment("LINK 53", 0.002, 0.004),
+            OnlineSegment("LINK 53", 0.004, 0.006),
+            OnlineSegment("LINK 53", 0.006, 0.008),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
+    }
+
+    [Fact]
+    public void An_all_online_group_is_still_decided_by_the_vote()
+    {
+        // Provenance says nothing when no spelling has navdata behind it, so the majority
+        // rule and its ordinal tie-break still apply.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            OnlineSegment("Link 53", 0.000, 0.002),
+            OnlineSegment("Link 53", 0.002, 0.004),
+            OnlineSegment("LINK 53", 0.004, 0.006),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
+    }
+
+    [Fact]
+    public void A_zero_length_navdata_row_confers_no_authority()
+    {
+        // Build discards it, so it decides nothing - the same rule the vote already applies.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("LINK 53", 0.004, 0.004),
+            OnlineSegment("Link 53", 0.000, 0.002),
+        });
+
+        Assert.Equal("Link 53", map["LINK 53"]);
     }
 
     [Fact]

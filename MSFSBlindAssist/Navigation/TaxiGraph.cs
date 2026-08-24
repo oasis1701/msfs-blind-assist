@@ -200,13 +200,19 @@ public class TaxiGraph
     /// earlier version of this comment claimed it did, and that is wrong. The list reaching
     /// <see cref="Build"/> is the AUGMENTED one: AugmentingAirportDataProvider writes OSM /
     /// apt.dat names into TaxiPath.Name for segments navdata left unnamed, un-normalised, so
-    /// an online spelling competes here with a navdata one. That is why the vote matters
-    /// rather than merely the tie-break: at a partly-augmented airport the online rows are
-    /// the minority, so the navdata spelling wins on count. It is NOT a full guarantee —
-    /// "navdata is AUTHORITATIVE" (CLAUDE.md) is enforced by TaxiDataMerger, which refuses to
-    /// overwrite a named segment, and nothing here knows a row's provenance. Making the fold
-    /// provenance-aware needs a flag on TaxiPath; see the follow-up recorded in
-    /// docs/sayintentions.md.
+    /// an online spelling competes here with a navdata one.
+    ///
+    /// So PROVENANCE OUTRANKS THE VOTE: a spelling with a navdata row behind it beats one
+    /// with none, however many online rows carry the latter. "navdata is AUTHORITATIVE — an
+    /// existing navdata taxiway/gate name is never overwritten" (CLAUDE.md) is enforced by
+    /// TaxiDataMerger when it merges, which refuses to overwrite a named segment; without
+    /// this the fold could undo it one layer up, because a taxiway navdata names on two
+    /// segments and an online source fills on three would lose 3-2 on count alone. The vote
+    /// then decides inside the winning provenance, and ordinal-smallest inside that. A group
+    /// with no navdata row at all is decided by the vote exactly as before.
+    ///
+    /// A discarded row confers no authority either — the navdata tally counts only rows Build
+    /// will keep, for the same reason the vote does.
     ///
     /// The returned dictionary holds ONE entry per case-insensitive group, keyed by the
     /// first spelling seen for it — not one entry per spelling. Lookups are
@@ -221,10 +227,15 @@ public class TaxiGraph
     /// safe in turn. The only behavioural change is that one taxiway now has one spelling
     /// wherever it is displayed, emitted or seated.
     /// </summary>
+    /// <summary>How many rows carry one exact spelling, and how many of those are
+    /// navdata's rather than an online source's. Discarded rows count in neither.</summary>
+    private readonly record struct Tally(int Navdata, int Total);
+
     internal static Dictionary<string, string> BuildCanonicalTaxiwayNames(List<TaxiPath> paths)
     {
-        // Case-insensitive group -> how many SUBSTANTIAL rows carry each exact spelling.
-        var votes = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        // Case-insensitive group -> per exact spelling, how many SUBSTANTIAL rows carry it
+        // and how many of those came from navdata rather than an online source.
+        var votes = new Dictionary<string, Dictionary<string, Tally>>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var path in paths)
         {
@@ -233,34 +244,33 @@ public class TaxiGraph
 
             if (!votes.TryGetValue(name, out var perSpelling))
             {
-                perSpelling = new Dictionary<string, int>(StringComparer.Ordinal);
+                perSpelling = new Dictionary<string, Tally>(StringComparer.Ordinal);
                 votes[name] = perSpelling;
             }
 
             // Zero weight for a row Build will discard: it still gets an entry, so the
-            // spelling maps, but it cannot outvote pavement that is actually there.
+            // spelling maps, but it cannot outvote - or lend authority to - pavement that
+            // is not there.
             bool discardedByBuild = FastDistanceMeters(
                 path.StartLat, path.StartLon, path.EndLat, path.EndLon) < MERGE_THRESHOLD_METERS;
             int weight = discardedByBuild ? 0 : 1;
+            int navdataWeight = path.NameFromOnlineSource ? 0 : weight;
 
-            perSpelling[name] = perSpelling.TryGetValue(name, out int seen) ? seen + weight : weight;
+            var seen = perSpelling.TryGetValue(name, out var t) ? t : default;
+            perSpelling[name] = new Tally(seen.Navdata + navdataWeight, seen.Total + weight);
         }
 
         var canonical = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in votes)
         {
             string? best = null;
-            int bestVotes = -1;
-            foreach (var (spelling, count) in group.Value)
+            var bestTally = new Tally(-1, -1);
+            foreach (var (spelling, tally) in group.Value)
             {
-                // Total order: most rows first, ordinally smallest to break an even vote.
-                // Independent of enumeration order, so the same airport always folds the
-                // same way however the paths list was ordered.
-                if (count > bestVotes
-                    || (count == bestVotes && string.CompareOrdinal(spelling, best) < 0))
+                if (Beats(spelling, tally, best, bestTally))
                 {
                     best = spelling;
-                    bestVotes = count;
+                    bestTally = tally;
                 }
             }
 
@@ -268,6 +278,16 @@ public class TaxiGraph
         }
 
         return canonical;
+
+        // Total order: navdata authority first, then most rows, then ordinally smallest.
+        // Every step is a property of the data rather than of enumeration order, so the same
+        // airport always folds the same way however the paths list was ordered.
+        static bool Beats(string spelling, Tally tally, string? best, Tally bestTally)
+        {
+            if (tally.Navdata != bestTally.Navdata) return tally.Navdata > bestTally.Navdata;
+            if (tally.Total != bestTally.Total) return tally.Total > bestTally.Total;
+            return string.CompareOrdinal(spelling, best) < 0;
+        }
     }
 
     /// <summary>
