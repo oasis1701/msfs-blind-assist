@@ -386,4 +386,79 @@ public class TaxiGraphStaticsTests
         var expectedNames = new[] { "A", "B", "C", "D", "E", "F" };
         Assert.Equal(expectedNames, edgesForward.Select(edge => edge.Name).ToArray());
     }
+
+    // --- Canonical taxiway spelling -------------------------------------------------
+    //
+    // CYVR navdata genuinely contains both "D" and "d" as taxi_path.name values. The two
+    // accessors then disagreed: GetAllTaxiwayNames() dedupes into a HashSet with
+    // StringComparer.OrdinalIgnoreCase, so the form's list held ONE of them, while
+    // GetNamedEdges() returned the raw name and the SayIntentions snapper saw BOTH. A live
+    // 2026-08-19 import applied "d" and "D" as separate legs and the form could seat only
+    // one of them (skipped=[d]).
+    //
+    // The canonical spelling is the ordinally smallest, which is deterministic regardless
+    // of input order — the same property GetNamedEdges' own sort key requires — and picks
+    // the conventional uppercase form, since 'D' < 'd' ordinally.
+
+    private static List<TaxiPath> CyvrCaseVariantPaths() => new()
+    {
+        new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+        new TaxiPath { Name = "d", StartLat = 0, StartLon = 0.002, EndLat = 0, EndLon = 0.004 },
+    };
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_maps_every_spelling_to_the_ordinally_smallest()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(CyvrCaseVariantPaths());
+
+        Assert.Equal("D", map["D"]);
+        Assert.Equal("D", map["d"]);
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_does_not_depend_on_input_order()
+    {
+        var forward = CyvrCaseVariantPaths();
+        var reversed = CyvrCaseVariantPaths();
+        reversed.Reverse();
+
+        Assert.Equal(
+            TaxiGraph.BuildCanonicalTaxiwayNames(forward)["d"],
+            TaxiGraph.BuildCanonicalTaxiwayNames(reversed)["d"]);
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_ignores_blank_and_whitespace_names()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            new TaxiPath { Name = "", StartLat = 0, StartLon = 0, EndLat = 0, EndLon = 0.002 },
+            new TaxiPath { Name = "   ", StartLat = 0, StartLon = 0.002, EndLat = 0, EndLon = 0.004 },
+        });
+
+        Assert.Empty(map);
+    }
+
+    [Fact]
+    public void A_taxiway_spelled_two_ways_reaches_the_graph_as_one_name()
+    {
+        var graph = TaxiGraph.Build(
+            CyvrCaseVariantPaths(), new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "D" }, graph.GetAllTaxiwayNames());
+    }
+
+    [Fact]
+    public void The_two_name_accessors_agree_on_the_same_graph()
+    {
+        // This is the actual defect: the SayIntentions import resolves its clearance
+        // against GetAllTaxiwayNames() and snaps its geometry against GetNamedEdges(),
+        // so a name only one of them reports is a leg the form cannot seat.
+        var graph = TaxiGraph.Build(
+            CyvrCaseVariantPaths(), new List<ParkingSpot>(), new List<StartPosition>());
+
+        var fromEdges = graph.GetNamedEdges().Select(e => e.Name).Distinct().ToList();
+
+        Assert.Equal(graph.GetAllTaxiwayNames(), fromEdges);
+    }
 }

@@ -164,6 +164,48 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// One spelling per taxiway, keyed by every spelling that appears for it.
+    ///
+    /// Scenery data really does carry the same taxiway under two casings — CYVR navdata
+    /// holds both "D" and "d" — and two accessors on this class then disagreed about the
+    /// airport. <see cref="GetAllTaxiwayNames"/> dedupes into a HashSet with
+    /// StringComparer.OrdinalIgnoreCase, so it reported ONE of them; <see cref="GetNamedEdges"/>
+    /// returned each edge's raw name, so it reported BOTH. The SayIntentions import consumes
+    /// the two TOGETHER — the first to resolve the spoken clearance, the second to snap the
+    /// published ground track — so a live 2026-08-19 CYVR import produced "d" and "D" as
+    /// separate legs and the form could seat only one of them.
+    ///
+    /// The canonical spelling is the ordinally SMALLEST of the group. That is deterministic
+    /// regardless of enumeration or input order — the same property GetNamedEdges' own sort
+    /// key exists to guarantee — and it naturally prefers the conventional uppercase form,
+    /// because 'D' sorts before 'd'.
+    ///
+    /// Safe to apply at the point names enter the graph because every consumer of
+    /// TaxiEdge.TaxiwayName already compares OrdinalIgnoreCase (TaxiRouter, TaxiGuidanceManager,
+    /// TaxiLeadIn, ResolveTaxiwayName). The only behavioural change is that one taxiway now has
+    /// one spelling wherever it is displayed, emitted or seated. It also repairs the two ordinal
+    /// `==` edge-dedup comparisons in this file, which previously treated "D" and "d" as
+    /// different pavement.
+    /// </summary>
+    internal static Dictionary<string, string> BuildCanonicalTaxiwayNames(List<TaxiPath> paths)
+    {
+        var canonical = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in paths)
+        {
+            string name = path.Name?.Trim() ?? "";
+            if (name.Length == 0) continue;
+
+            if (!canonical.TryGetValue(name, out string? current)
+                || string.CompareOrdinal(name, current) < 0)
+            {
+                canonical[name] = name;
+            }
+        }
+
+        return canonical;
+    }
+
+    /// <summary>
     /// Builds the taxi graph from raw taxi path data and parking spots.
     /// </summary>
     public static TaxiGraph Build(List<TaxiPath> paths, List<ParkingSpot> parkingSpots, List<StartPosition> runwayStarts,
@@ -212,11 +254,22 @@ public class TaxiGraph
             runwayStarts = snapped;
         }
 
+        // One spelling per taxiway, decided across ALL paths before any is processed —
+        // see BuildCanonicalTaxiwayNames for the CYVR "D"/"d" case this removes.
+        var canonicalTaxiwayNames = BuildCanonicalTaxiwayNames(paths);
+
         foreach (var path in paths)
         {
             // Defense-in-depth: trim here in case the path was constructed directly
-            // (e.g. tests) bypassing the DB provider normalization.
+            // (e.g. tests) bypassing the DB provider normalization. Then fold the
+            // trimmed name onto the airport's canonical spelling of it, so nodes, edges,
+            // RegisterTaxiwayNode, _normalizedRealNames and the alias labels below all
+            // agree with GetAllTaxiwayNames().
             string name = path.Name?.Trim() ?? "";
+            if (name.Length > 0 && canonicalTaxiwayNames.TryGetValue(name, out string? canonicalName))
+            {
+                name = canonicalName;
+            }
 
             // Resolve start and end nodes (create if new, merge if close) — pass the
             // trimmed name so node.TaxiwayNames HashSet entries are canonical.
