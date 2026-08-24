@@ -280,8 +280,13 @@ public partial class MainForm
                 context.TaxiPathPoints, position.Latitude, position.Longitude);
             int trimmedPoints = context.TaxiPathPoints.Count - trackAhead.Count;
 
+            // The clearance is passed in so the snapper's junction-excursion filter never
+            // deletes the last evidence of a taxiway ATC named — see its clearedTaxiways
+            // parameter. The RAW list is right here: only membership is read, and the
+            // hold-short repeats it carries are harmless to that.
             SnapResult? snap = trackAhead.Count > 0
-                ? SayIntentionsTaxiPathSnapper.Snap(trackAhead, ReadNamedEdges(form))
+                ? SayIntentionsTaxiPathSnapper.Snap(
+                    trackAhead, ReadNamedEdges(form), clearanceTaxiways)
                 : null;
 
             var (source, taxiways, disagreed) = ChooseTaxiwaySource(
