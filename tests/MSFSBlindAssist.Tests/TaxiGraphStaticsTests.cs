@@ -449,11 +449,33 @@ public class TaxiGraphStaticsTests
     }
 
     [Fact]
+    public void Two_case_variant_paths_between_the_same_nodes_are_one_edge()
+    {
+        // Same pavement under two spellings. Before canonicalisation AddEdge's ordinal ==
+        // dedup treated them as different taxiways and kept both.
+        var graph = TaxiGraph.Build(
+            new List<TaxiPath>
+            {
+                new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+                new TaxiPath { Name = "d", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
+            },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "D" }, graph.GetAllTaxiwayNames());
+        Assert.All(graph.Adjacency.Values, edges => Assert.Single(edges));
+    }
+
+    [Fact]
     public void The_two_name_accessors_agree_on_the_same_graph()
     {
         // This is the actual defect: the SayIntentions import resolves its clearance
         // against GetAllTaxiwayNames() and snaps its geometry against GetNamedEdges(),
         // so a name only one of them reports is a leg the form cannot seat.
+        //
+        // Scoped to a graph with NO aliases, which this fixture is. GetAllTaxiwayNames also
+        // returns alias DISPLAY labels ("HAWKER (D)") that GetNamedEdges never emits, so the
+        // two accessors are not required to agree in general — only about the spelling of
+        // the real taxiway names they both carry, which is what this pins.
         var graph = TaxiGraph.Build(
             CyvrCaseVariantPaths(), new List<ParkingSpot>(), new List<StartPosition>());
 

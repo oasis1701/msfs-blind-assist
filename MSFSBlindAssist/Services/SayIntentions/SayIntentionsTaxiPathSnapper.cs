@@ -29,10 +29,21 @@ public sealed record NamedEdge(string TaxiwayName, double FromLat, double FromLo
 /// arrived from. Those are junction geometry, not legs of the route — see
 /// <see cref="SayIntentionsTaxiPathSnapper.MaxExcursionRunPoints"/>. Defaulted so a
 /// caller constructing a SnapResult positionally does not have to know about them.
+///
+/// <paramref name="PreExcursionTaxiwayCount"/> is how many legs the track had after the stub
+/// filter but BEFORE the excursion pass — i.e. the length ChooseTaxiwaySource's
+/// TrackIsShortEnoughToDescribe guard was calibrated against. The excursion pass makes
+/// Taxiways SHORTER, and that guard is what stops a stale pre-clearance track being flown
+/// silently, so measuring it against the trimmed list would loosen it: a stale plan that
+/// lost on length alone could squeak inside the bound. The route still USES the trimmed
+/// list; only the length test uses this. Defaulted so a caller constructing a SnapResult
+/// positionally does not have to know about it — read it through Math.Max against
+/// Taxiways.Count so a default-constructed 0 degrades to the pre-branch behaviour rather
+/// than to a maximally permissive guard.
 /// </summary>
 public sealed record SnapResult(
     IReadOnlyList<string> Taxiways, int PointCount, int UnsnappedCount, int DroppedRunCount,
-    int ExcursionRunCount = 0);
+    int ExcursionRunCount = 0, int PreExcursionTaxiwayCount = 0);
 
 /// <summary>
 /// Turns SayIntentions' taxi_path GEOMETRY into a taxiway sequence, by snapping each
@@ -283,6 +294,17 @@ public static class SayIntentionsTaxiPathSnapper
             surviving.Add((name, length));
         }
 
+        // The length the stale-track guard was calibrated against: the track after the stub
+        // filter but before any excursion is removed. Collapsed the same way stage 5
+        // collapses, so the two counts are the same KIND of number.
+        int preExcursionTaxiwayCount = 0;
+        string? previousSurvivingName = null;
+        foreach ((string name, int _) in surviving)
+        {
+            if (name != previousSurvivingName) preExcursionTaxiwayCount++;
+            previousSurvivingName = name;
+        }
+
         // 4. Drop sandwiched junction excursions — a short run that leaves one taxiway and
         //    returns to it (see MaxExcursionRunPoints).
         //
@@ -328,7 +350,8 @@ public static class SayIntentionsTaxiPathSnapper
         }
 
         return new SnapResult(
-            taxiways, path.Count, unsnappedCount, droppedRunCount, excursionRunCount);
+            taxiways, path.Count, unsnappedCount, droppedRunCount, excursionRunCount,
+            preExcursionTaxiwayCount);
     }
 
     /// <summary>Distance between two points, in metres. A degenerate segment through

@@ -395,6 +395,28 @@ public class SayIntentionsTaxiPathSnapperTests
     }
 
     [Fact]
+    public void AnExcursionIsMeasuredAgainstTheLastRunKEPTNotTheOneImmediatelyBefore()
+    {
+        // X, Y, X, Z, X with the excursion counter as the witness. Under a
+        // surviving[i-1]-based rule the second drop is decided against Y rather than X, and
+        // ExcursionRunCount diverges even where the taxiway list happens to agree.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnMain(60), OnMain(65),
+            OnOther(1), OnOther(2),
+            OnMain(90), OnMain(95), OnMain(98),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(2, result.ExcursionRunCount);
+        Assert.Equal(5, result.PreExcursionTaxiwayCount);
+    }
+
+    [Fact]
     public void AStubDroppedBetweenTwoPassesOfOneTaxiwayIsNotCountedAsAnExcursion()
     {
         // The stub filter runs first and can leave two same-named runs adjacent. That is
@@ -410,6 +432,26 @@ public class SayIntentionsTaxiPathSnapperTests
 
         Assert.Equal(new[] { "X" }, result.Taxiways);
         Assert.Equal(1, result.DroppedRunCount);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void ThePreExcursionCountReportsTheTrackBeforeExcursionsWereRemoved()
+    {
+        // X, Y, X collapses to a single applied leg, but the track as published was three.
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(3), JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(3, result.PreExcursionTaxiwayCount);
+    }
+
+    [Fact]
+    public void ThePreExcursionCountEqualsTheAppliedCountWhenNothingWasRemoved()
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(5), JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(3, result.PreExcursionTaxiwayCount);
         Assert.Equal(0, result.ExcursionRunCount);
     }
 

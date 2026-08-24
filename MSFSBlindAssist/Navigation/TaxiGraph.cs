@@ -178,7 +178,15 @@ public class TaxiGraph
     /// The canonical spelling is the ordinally SMALLEST of the group. That is deterministic
     /// regardless of enumeration or input order — the same property GetNamedEdges' own sort
     /// key exists to guarantee — and it naturally prefers the conventional uppercase form,
-    /// because 'D' sorts before 'd'.
+    /// because 'D' sorts before 'd'. That rationale is exact for single-letter designators
+    /// and only approximate for word-shaped names: where one row spells a taxiway "LINK 5"
+    /// and the rest spell it "Link 5", the all-caps form wins, and TaxiwayName is SPOKEN
+    /// verbatim — a screen reader may read an all-caps word letter by letter. It is still
+    /// an improvement on what it replaced, which was whichever spelling Adjacency
+    /// enumeration reached first, i.e. no guarantee at all; and it only arises at an
+    /// airport whose own data is already inconsistently cased. Prefer-the-most-common was
+    /// considered and rejected: no measurement supports it, and it trades a rule you can
+    /// reason about for one you cannot.
     ///
     /// Safe to apply at the point names enter the graph because every consumer of
     /// TaxiEdge.TaxiwayName already compares OrdinalIgnoreCase (TaxiRouter, TaxiGuidanceManager,

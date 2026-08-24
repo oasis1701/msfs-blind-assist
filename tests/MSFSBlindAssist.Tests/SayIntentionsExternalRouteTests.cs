@@ -1044,6 +1044,31 @@ public class SayIntentionsExternalRouteTests
         Assert.True(choice.Disagreed);
     }
 
+    [Fact]
+    public void TheLengthGuardMeasuresTheTrackAsPublishedNotTheTrimmedList()
+    {
+        // The excursion pass makes the applied list shorter. If the guard measured THAT, a
+        // stale plan rejected on length alone would start passing. Two cleared legs allow
+        // five; the trimmed list is 5 and would pass, the published track was 12 and must not.
+        var choice = MainForm.ChooseTaxiwaySource(
+            new[] { "E", "C" },
+            new[] { "E", "C", "W", "V", "U" },
+            geometryLegsAsPublished: 12);
+
+        Assert.Equal(MainForm.TaxiwaySource.Clearance, choice.Source);
+        Assert.True(choice.Disagreed);
+    }
+
+    [Fact]
+    public void OmittingThePublishedLengthFallsBackToTheListsOwnLength()
+    {
+        var choice = MainForm.ChooseTaxiwaySource(
+            new[] { "E", "C" }, new[] { "E", "C", "W" });
+
+        Assert.Equal(MainForm.TaxiwaySource.Geometry, choice.Source);
+        Assert.False(choice.Disagreed);
+    }
+
     // --- Announcement provenance ------------------------------------------------------
 
     private static SnapResult Snap(

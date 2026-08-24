@@ -285,7 +285,12 @@ public partial class MainForm
                 : null;
 
             var (source, taxiways, disagreed) = ChooseTaxiwaySource(
-                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>());
+                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>(),
+                // Math.Max, not the raw field: a SnapResult built positionally without this
+                // member carries 0, and 0 passes the guard unconditionally — the opposite of
+                // what it is for. Degrading to the list's own length is the pre-branch
+                // behaviour and is always safe.
+                snap == null ? null : Math.Max(snap.PreExcursionTaxiwayCount, snap.Taxiways.Count));
 
             var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
@@ -415,6 +420,14 @@ public partial class MainForm
     /// (see <see cref="TrackIsShortEnoughToDescribe"/>), because the walk alone loses its
     /// grip on a short clearance.
     ///
+    /// The length test measures the track AS PUBLISHED — reduced only by the snapper's stub
+    /// filter — not the list handed back. The snapper also drops sandwiched junction
+    /// excursions, which makes the list shorter, and this guard is the one thing standing
+    /// between a stale pre-clearance track and a silently-flown route: measuring the trimmed
+    /// list would let a stale plan that lost on length alone squeak inside the bound. The
+    /// caller passes SnapResult.PreExcursionTaxiwayCount; omitting it falls back to the
+    /// list's own length, which is what every caller with no snapper behind it wants.
+    ///
     /// The comparison runs against the COLLAPSED clearance, and only the comparison: what
     /// is handed back when the clearance wins is the RAW list. ParseClearanceTaxiPlan
     /// deliberately keeps a taxiway repeated across a hold-short (the KBOS pattern) so
@@ -431,7 +444,8 @@ public partial class MainForm
     /// </summary>
     internal static (TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
         ChooseTaxiwaySource(
-            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
+            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways,
+            int? geometryLegsAsPublished = null)
     {
         // No path published, or one that snapped to nothing — no better than no path at
         // all. The words stay in charge, and the log keeps the counts that say why.
@@ -450,7 +464,8 @@ public partial class MainForm
         var cleared = SayIntentionsClearanceParser.CollapseConsecutive(clearanceTaxiways);
 
         return ClearanceRunsThroughGeometry(cleared, geometryTaxiways)
-               && TrackIsShortEnoughToDescribe(cleared.Count, geometryTaxiways.Count)
+               && TrackIsShortEnoughToDescribe(
+                      cleared.Count, geometryLegsAsPublished ?? geometryTaxiways.Count)
             ? (TaxiwaySource.Geometry, geometryTaxiways, false)
             : (TaxiwaySource.Clearance, clearanceTaxiways, true);
     }
