@@ -400,14 +400,73 @@ public class TaxiGraphStaticsTests
     // of input order — the same property GetNamedEdges' own sort key requires — and picks
     // the conventional uppercase form, since 'D' < 'd' ordinally.
 
+    private static TaxiPath Segment(string name, double startLon, double endLon) =>
+        new() { Name = name, StartLat = 0, StartLon = startLon, EndLat = 0, EndLon = endLon };
+
     private static List<TaxiPath> CyvrCaseVariantPaths() => new()
     {
         new TaxiPath { Name = "D", StartLat = 0, StartLon = 0.000, EndLat = 0, EndLon = 0.002 },
         new TaxiPath { Name = "d", StartLat = 0, StartLon = 0.002, EndLat = 0, EndLon = 0.004 },
     };
 
+
+    // --- The spelling the data mostly uses wins ---------------------------------------
+    //
+    // Ordinal-smallest alone puts the ALL-CAPS variant first at the first differing
+    // letter ('I' 0x49 < 'i' 0x69), so ONE stray row renamed every segment of a
+    // word-shaped taxiway — and TaxiwayName is SPOKEN verbatim, so a screen reader then
+    // reads "L-I-N-K 5". docs/taxi-guidance.md states the rule that broke: "The stored
+    // name is always the original human-readable form from the authoritative source."
+    // Counting rows restores it in the case that actually occurs, and stays deterministic
+    // and order-independent because ordinal-smallest still breaks a tie.
+
     [Fact]
-    public void BuildCanonicalTaxiwayNames_maps_every_spelling_to_the_ordinally_smallest()
+    public void BuildCanonicalTaxiwayNames_prefers_the_spelling_the_data_mostly_uses()
+    {
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 5", 0.000, 0.002),
+            Segment("Link 5", 0.002, 0.004),
+            Segment("Link 5", 0.004, 0.006),
+            Segment("LINK 5", 0.006, 0.008),
+        });
+
+        Assert.Equal("Link 5", map["LINK 5"]);
+        Assert.Equal("Link 5", map["link 5"]);
+    }
+
+    [Fact]
+    public void A_zero_length_row_does_not_decide_the_spelling()
+    {
+        // Build discards a row whose endpoints resolve to one node (startNodeId ==
+        // endNodeId) — but only AFTER the fold has run, so without this the vote is
+        // decided by a row that contributes no node, no edge and no name registration.
+        var map = TaxiGraph.BuildCanonicalTaxiwayNames(new List<TaxiPath>
+        {
+            Segment("Link 5", 0.000, 0.002),
+            Segment("LINK 5", 0.004, 0.004),
+        });
+
+        Assert.Equal("Link 5", map["LINK 5"]);
+    }
+
+    [Fact]
+    public void A_stray_all_caps_row_does_not_rename_the_whole_taxiway()
+    {
+        var graph = TaxiGraph.Build(
+            new List<TaxiPath>
+            {
+                Segment("Link 5", 0.000, 0.002),
+                Segment("Link 5", 0.002, 0.004),
+                Segment("LINK 5", 0.004, 0.006),
+            },
+            new List<ParkingSpot>(), new List<StartPosition>());
+
+        Assert.Equal(new[] { "Link 5" }, graph.GetAllTaxiwayNames());
+    }
+
+    [Fact]
+    public void BuildCanonicalTaxiwayNames_breaks_an_even_vote_ordinally()
     {
         var map = TaxiGraph.BuildCanonicalTaxiwayNames(CyvrCaseVariantPaths());
 
