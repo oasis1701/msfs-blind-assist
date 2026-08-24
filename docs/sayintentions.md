@@ -1049,14 +1049,21 @@ the stand lead-in arriving as the final leg. A blanket rule throws away 7 of the
 geometry-sourced imports to catch 3 artifacts, and among the 4 it wrongly discards, KMDW loses
 `Q` and `Y6` — the pavement to the runway after a clearance that stopped at a hold short.
 
-**And never the last cleared leg.** The filter is geometric and cannot tell a junction clip
-from a cleared taxiway that happens to be brief. At CYVR the track read
-`6, JB, 6, J, H, D, D5, D, D9` against a clearance of `JB, J, H, D, D9`: `JB` is cleared, is
-sandwiched, and appears nowhere else, so removing it would break the agreement walk and make
-you hear *"SayIntentions ground track differs from the clearance"* about a track that agreed.
-A run is therefore kept when its name is one the controller said **and** it is the only
-surviving run carrying that name. Both halves matter — protecting every cleared name would
-keep a spurious out-and-back wherever a clearance names two crossing taxiways.
+**Known limitation: the filter can drop a cleared leg.** It is geometric and cannot tell a
+junction clip from a cleared taxiway that happens to be brief. At CYVR the track read
+`6, JB, 6, J, H, D, D5, D, D9` against a clearance of `JB, J, H, D, D9`. `JB` is cleared, is
+sandwiched between two `6` runs, and appears nowhere else, so it is dropped — the agreement
+walk then fails, the clearance wins, and you are told the ground track differs from a track
+that actually agreed. One import in fifty-six measured.
+
+That is left alone deliberately. The failure is in the safe direction: you get the controller's
+own route, correctly, plus one caution too many. Protecting a cleared name was implemented and
+reverted, because it removes the caution by handing you the geometry route instead — and at
+CYVR that route is `6, JB, 6, J, H, D, D9`, which walks you off `6` onto `JB` and back at a
+single junction. A spurious turn instruction is worse than a spurious warning. The deeper
+reading is that the sandwich `6, JB, 6` may have its artifact on the *anchor* — the second `6`
+— rather than on the filling, which no rule here currently models; settling that needs a live
+capture at a stand where it reproduces, not another guess.
 
 **EGLL, 2026-07-30.** *"Taxi to Gate 325 via N5E, A, F, G"*, captured 10 s later, snaps to
 exactly `N5E, A, F, G` — this time against **navdata**-named edges (EGLL has 5214 of 5706
