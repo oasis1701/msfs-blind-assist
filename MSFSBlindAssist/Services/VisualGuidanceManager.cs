@@ -9,8 +9,10 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// Manages visual landing guidance using dual audio tones.
-/// The DESIRED tone encodes the PID-commanded pitch (frequency, default 200–800 Hz over ±10°) and
-/// commanded bank (stereo pan over ±10°). The CURRENT tone always plays alongside it, mirroring
+/// The DESIRED tone encodes the PID-commanded pitch (frequency, 200–800 Hz over the profile's
+/// TonePitchRangeDeg — ±6° by default, configured SYMMETRICALLY so the mapping stays one
+/// straight line, unlike the generator's own asymmetric −10°/+20° defaults which belong to hand
+/// fly) and commanded bank (stereo pan over ±5° by default). The CURRENT tone plays alongside it, mirroring
 /// the same mapping against the aircraft's *actual* pitch and bank, so frequency match
 /// (zero-beat) means correct pitch attitude / vertical speed and pan match means correct bank.
 /// Aircraft-specific tunables (approach AoA, Vref, rate caps, tone frequency range) come from

@@ -296,10 +296,6 @@ public partial class MainForm : Form
     // a fresh one-shot position read (SimOnGround + ground speed) before
     // performing the handoff; see PerformLiftoffHandoffIfValid.
     private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
-    // The handoff's breadcrumb wording AND the mute that protects it now live together in
-    // Services/LiftoffHandoffBreadcrumb — they must be changed as a pair, which is exactly
-    // what a lone constant here failed to enforce (the phrase was shortened once and this
-    // number was not, leaving a measured 3.5 s hole in the pitch callouts at rotation).
     // Outcome of the most recent RegisterHandFlyHotkeys() call, recorded by
     // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
     // quick-access-keys warning into its breadcrumb: the breadcrumb's
