@@ -8,7 +8,7 @@ The visual guidance system uses a **PID controller** to generate pitch and bank 
 
 **Key files:**
 - `MSFSBlindAssist/Services/VisualGuidanceManager.cs` — PID, phase machine, tone modulation, `StandardBank` helper, on-ground auto-deactivation hook
-- `MSFSBlindAssist/Services/AudioToneGenerator.cs` — default 200–800 Hz pitch→Hz / ±10° pitch / ±10° bank→pan; per-instance `Configure(minHz, maxHz, pitchRangeDeg, bankRangeDeg)` for aircraft-specific ranges
+- `MSFSBlindAssist/Services/AudioToneGenerator.cs` — default 200–800 Hz pitch→Hz over −10°/+20° pitch (asymmetric — see below) / ±10° bank→pan; per-instance `Configure(minHz, maxHz, pitchRangeDeg, bankRangeDeg)` for aircraft-specific ranges, plus a 5-argument overload taking separate down/up pitch ranges
 - `MSFSBlindAssist/Aircraft/IAircraftDefinition.cs` — `VisualGuidanceProfile` (per-aircraft tunables incl. tone frequency range)
 - `MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs` — default A320 profile
 - `MSFSBlindAssist/Settings/UserSettings.cs` — `VisualGuidanceToneWaveform/Volume`, `VisualGuidanceCurrentToneWaveform/Volume`, `VisualGuidanceHardPanTone`
@@ -24,7 +24,9 @@ Two `AudioToneGenerator` instances always run side-by-side while visual guidance
 | **Desired** | PID-commanded pitch (200–800 Hz over ±6°) | PID-commanded bank (±1.0 over ±5°) | Triangle |
 | **Current** | Aircraft's *actual* pitch | Aircraft's *actual* bank | Sine |
 
-The default ranges are deliberately **tighter than `AudioToneGenerator`'s own defaults** (±10° / ±10°). The narrowing gives **50 Hz of beat per ° of pitch error** (vs 30 Hz/° at the native ±10° default — +67% precision) and **0.20 pan delta per ° of bank error** (vs 0.10 pan/° at ±10° — +100% precision), making sub-degree errors clearly audible. At 0.1° pitch error a pilot hears a 5 Hz beat (slow wobble); at 0.5° they hear a 25 Hz beat (clear fluttering). The trade-off is earlier saturation: the PID can command up to 25° bank during intercept, which saturates the desired tone at full pan. That's fine because the spoken bank-guidance announcements ("3 left", "matched", etc.) already cover the large-error regime — the tones own the precise near-matched-state cue, spoken cues own the gross corrections.
+The default ranges are deliberately **tighter than `AudioToneGenerator`'s own defaults** (−10°/+20° pitch / ±10° bank). The narrowing gives **50 Hz of beat per ° of pitch error** (vs 30 Hz/° nose-down and 15 Hz/° nose-up at the native default) and **0.20 pan delta per ° of bank error** (vs 0.10 pan/° at ±10° — +100% precision), making sub-degree errors clearly audible. At 0.1° pitch error a pilot hears a 5 Hz beat (slow wobble); at 0.5° they hear a 25 Hz beat (clear fluttering). The trade-off is earlier saturation: the PID can command up to 25° bank during intercept, which saturates the desired tone at full pan. That's fine because the spoken bank-guidance announcements ("3 left", "matched", etc.) already cover the large-error regime — the tones own the precise near-matched-state cue, spoken cues own the gross corrections.
+
+The generator's own pitch default is **asymmetric** (−10° nose-down, +20° nose-up) and **piecewise**, anchored so 0° always sits at the centre frequency. Visual guidance is unaffected — it configures a symmetric range, and equal down/up ranges collapse to the single straight line the mapping always was. The asymmetry exists for **hand fly**, which is the only consumer of the defaults and is auto-activated at liftoff, where an airliner is already 12–18° nose up: under the old symmetric ±10° default the tone was past saturation from its first update and stayed pinned at 800 Hz for the whole initial climb. Anchoring 0° at the centre is what leaves the nose-down half numerically identical, so widening the top cost nothing already learned by ear.
 
 ### Independence from HandFly mode
 

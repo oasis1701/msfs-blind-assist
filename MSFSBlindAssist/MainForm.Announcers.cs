@@ -1074,27 +1074,18 @@ public partial class MainForm
             // announce) and would interrupt the breadcrumb after a syllable. Mute
             // the callout stream (never the tone) until the breadcrumb has finished;
             // this covers the pre-armed case too, where the stream is already running.
+            // The wording and its matching mute both live in LiftoffHandoffBreadcrumb —
+            // including why the quick-access-keys warning has to ride INSIDE this one
+            // utterance rather than be spoken separately.
+            //
             // Ordering: the grace MUST be set AFTER handFlyManager.Toggle() — the
-            // activation branch clears any stale grace window.
-            handFlyManager.SuppressAnnouncementsFor(LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS);
-
-            // Fold the quick-access-keys warning into the single breadcrumb when
-            // this handoff's own activation failed to register them (a bare-letter
-            // key held by another app, or output mode active at fire time). The
-            // handler's standalone warning (OnHandFlyModeActiveChanged) is spoken
-            // WITHOUT interrupt, so the breadcrumb's AnnounceImmediate — which
-            // cancels pending speech on all three backends — would silently
-            // swallow it and the pilot would never learn the quick-access keys
-            // are dead. Pre-armed case excluded: OnHandFlyModeActiveChanged did
-            // not fire during this handoff, and the warning already played in
-            // full when the pilot armed Hand Fly manually on the ground.
-            string breadcrumb = activatedHandFly
-                ? "Airborne. Takeoff assist off, hand fly active."
-                : "Airborne. Takeoff assist off.";
-            if (activatedHandFly && !_handFlyQuickKeysRegistered)
-            {
-                breadcrumb += " Quick access keys unavailable. Use output mode for H, V, Q.";
-            }
+            // activation branch clears any stale grace window. _handFlyQuickKeysRegistered
+            // is written by OnHandFlyModeActiveChanged, which that same Toggle() raised, so
+            // it is already current here.
+            string breadcrumb = LiftoffHandoffBreadcrumb.Compose(
+                activatedHandFly, _handFlyQuickKeysRegistered);
+            handFlyManager.SuppressAnnouncementsFor(
+                LiftoffHandoffBreadcrumb.GraceMsFor(activatedHandFly, _handFlyQuickKeysRegistered));
             announcer.AnnounceImmediate(breadcrumb);
         });
     }
