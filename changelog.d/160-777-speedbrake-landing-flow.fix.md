@@ -1,0 +1,1 @@
+The PMDG 777 no longer arms the speedbrake during the approach setup — far too early. There is now a Landing flow that arms it and reminds you to set the missed approach altitude, and ticking "Speedbrake: ARMED" on the Landing checklist actually arms the lever, which it never did before.

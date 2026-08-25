@@ -1,0 +1,1 @@
+The PMDG 777 Electrical Power Up flow now connects both external power receptacles. It used to stop after the primary, so the secondary stayed disconnected for the whole flight and the Secure flow then only had one button to press on shutdown.
