@@ -283,20 +283,17 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
-            // Detection-only: MAIN_GearLever is live and trustworthy (it tracks the
-            // pilot's own hand movement), but no external write can position this lever —
-            // see the AT_GEAR_OFF comment in PMDG737FlowDefinitions. Ticking this item
-            // must therefore not fire an action that silently does nothing; it auto-ticks
-            // when the pilot actually moves the lever to OFF.
-            //
-            // NeverForceComplete: the After Takeoff FLOW's own gear step is a Captain
-            // reminder (AT_GEAR_OFF — see its comment), which finishing the flow would
-            // otherwise force-tick and latch here, telling the pilot "Gear lever: OFF"
-            // for a lever the flow never actually moved. This item's truth is readable
-            // and its switch is genuinely unwritable, so it may only come true by the
-            // pilot actually moving the lever.
-            WithNeverForceComplete(Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
-                "MAIN_GearLever", v => v > 0.5 && v < 1.5, action: null)),
+            // Acknowledgement only, permanently: no external write can position the NG3
+            // gear lever's OFF detent — see the AT_GEAR_OFF comment in
+            // PMDG737FlowDefinitions. It is reachable only by a mouse click/drag in the
+            // virtual cockpit, which is unavailable to this app AND to a blind pilot (the
+            // stock UP/DOWN key bindings don't reach OFF either). So this is a Captain
+            // reminder like BTOC_FLAPS/DSA_AB, not a state check — the state-verified
+            // gear check lives on ATC_GEAR ("Landing gear: UP and OFF"), which UP alone
+            // satisfies. The label makes the tick's meaning unambiguous: it does not
+            // claim the lever moved.
+            Reminder("ATKO_GEAR_OFF", "AFTER_TAKEOFF",
+                "Gear lever: OFF — acknowledge only, this app cannot move the lever"),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }
@@ -616,15 +613,6 @@ public static class PMDG737ChecklistDefinitions
 
     private static Func<AircraftActionExecutor, AircraftStateEvaluator, Task>? AsCheckAction(Act? action)
         => action == null ? null : (e, s) => { action(e, s); return Task.CompletedTask; };
-
-    // Opts an already-built item out of a finishing flow's MarkGroupComplete tick — see
-    // ChecklistItem.NeverForceComplete. Post-set rather than a constructor param so it
-    // reads at the one call site that needs it instead of widening every Auto() overload.
-    private static Item WithNeverForceComplete(Item item)
-    {
-        item.NeverForceComplete = true;
-        return item;
-    }
 
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,

@@ -420,15 +420,23 @@ ever reads it.
 
 ### Current First Officer behaviour
 
+The OFF detent is reachable only by a mouse click/drag in the virtual cockpit — there is
+no stock key binding for it (unlike UP/DOWN, which do have one) — so it is unavailable
+both to this app AND to a blind pilot. That makes it permanently unlike every other
+detection-only item: there is no path, app-side or pilot-side, by which
+`MAIN_GearLever` can ever read OFF. So the design is acknowledgement, not detection.
+
 `FirstOfficer/PMDG737/PMDG737FlowDefinitions.cs`'s After Takeoff flow calls "Gear lever:
 OFF" as a Captain item — it never claims to move the lever, because it can't.
-`FirstOfficer/PMDG737/PMDG737ChecklistDefinitions.cs`'s `ATKO_GEAR_OFF` item is
-detection-only (`MAIN_GearLever` between 1 and OFF's neighbourhood, `action: null`): it
-ticks itself the moment the pilot moves the real lever, and stays unticked if they leave
-it at UP. `AircraftActionExecutor.SetGearLever` was deleted as dead code — it reported
-success on every call while moving nothing. The After Takeoff Checklist's separate
-`ATC_GEAR` item ("Landing gear: UP and OFF") is unaffected: it was already
-detection-only and its wider `v < 1.5` condition already accepted either UP or OFF.
+`FirstOfficer/PMDG737/PMDG737ChecklistDefinitions.cs`'s `ATKO_GEAR_OFF` item is a
+`Reminder` (Captain-called, manually ticked, no state read) whose label spells out that
+the tick is an acknowledgement — "Gear lever: OFF — acknowledge only, this app cannot
+move the lever" — never a claim that the lever moved.
+`AircraftActionExecutor.SetGearLever` was deleted as dead code — it reported success on
+every call while moving nothing. The state-verified gear check lives on the After
+Takeoff *Checklist*'s separate `ATC_GEAR` item ("Landing gear: UP and OFF"), which was
+already detection-only and whose wider `v < 1.5` condition is satisfied by UP alone —
+unaffected by any of this.
 
 **Known limitation — this is not FO-only.** `PMDG737Definition.cs:1225` still exposes a
 pilot-facing panel combo, `Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN")`,

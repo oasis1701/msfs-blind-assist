@@ -131,13 +131,6 @@ public class ChecklistManager<TExec, TState>
     /// live-state mirror could never correct it: a blind pilot reading the Landing
     /// checklist on final was told the speedbrake was armed when it was not.
     ///
-    /// An item is ALSO treated as excluded, regardless of <paramref name="excludeItemIds"/>,
-    /// when <see cref="ChecklistItem{TExec,TState}.NeverForceComplete"/> is set — a step
-    /// that isn't a failure (nothing was skipped) but whose item the app can never actually
-    /// deliver, because the underlying switch cannot be written (e.g. the 737 gear lever).
-    /// Same treatment, same reasoning: force-ticking it would assert a lie a live mirror
-    /// could never correct once the group latches.
-    ///
     /// The group latch ALWAYS arms here, unconditionally — the flow's completed steps are
     /// still a flight-long historical record and must survive switches moving later for the
     /// rest of the group, exactly as before an excluded item ever existed. What changes is
@@ -155,8 +148,7 @@ public class ChecklistManager<TExec, TState>
         foreach (var item in group.Items)
         {
             if (item.Type == ChecklistItemType.Informational) continue;   // separators aren't tickable
-            bool excluded = item.NeverForceComplete
-                || (excludeItemIds != null && excludeItemIds.Contains(item.Id));
+            bool excluded = excludeItemIds != null && excludeItemIds.Contains(item.Id);
             if (excluded)
             {
                 // Exempt whenever the flow did not itself deliver this item: it is
