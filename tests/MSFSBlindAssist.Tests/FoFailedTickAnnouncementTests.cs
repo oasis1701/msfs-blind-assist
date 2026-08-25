@@ -149,9 +149,17 @@ public class FoFailedTickAnnouncementTests
         Assert.Empty(failures);
     }
 
-    // Fires once per failed tick, not once per polling pass.
+    // One failed tick yields exactly one event across repeated evaluation passes. This is
+    // structural, not something the extra polls independently exercise: the revert branch
+    // in EvaluateAutoDetection requires item.IsChecked, and the very first pass that raises
+    // ItemActionFailed also un-ticks the item in the same pass — so polls 2 and 3 find the
+    // revert branch unreachable regardless of whether AwaitingActionConfirmation was cleared
+    // before the raise. The clear-before-raise in ChecklistManager is belt-and-braces for a
+    // handler that re-enters synchronously (e.g. re-ticks the item from inside its own
+    // ItemActionFailed handler); this test does not construct that case. What it does pin is
+    // that re-evaluating an already-reverted item never re-reports or duplicates the failure.
     [Fact]
-    public void TheEventFiresOnce_NotOnEveryPoll()
+    public void OneFailedTick_YieldsExactlyOneEventAcrossRepeatedPolls()
     {
         var (mgr, state, group, failures) = Build(ActionItem("SPDBRK", "G", "F1"));
         state.Values["F1"] = 0;               // the switch never moves
