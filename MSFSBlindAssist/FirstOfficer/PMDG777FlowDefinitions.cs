@@ -75,10 +75,14 @@ public static class PMDG777FlowDefinitions
                 s => s.IsBusTie1Auto() && s.IsBusTie2Auto()),
             // Try GPU — push both buttons and wait to see if power comes on.
             // APU is never started here; it is always started during Before Start.
+            // PER SIDE, never "is ANY GPU on": both steps once shared that predicate, so
+            // connecting the primary made it true and the SECONDARY step skipped itself —
+            // the secondary receptacle was never connected, and Secure then found only one
+            // side to disconnect. See GroundPowerGate.
             Skip(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
-                s => s.IsAnyGpuOn()),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: true)),
             Skip(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
-                s => s.IsAnyGpuOn()),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: true)),
             Wait("EPU_WAIT_GPU", "Waiting for GPU power", 8),
             Skip(SW("EPU_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1),
                 s => s.IsParkingBrakeSet()),
@@ -275,9 +279,11 @@ public static class PMDG777FlowDefinitions
             // Disconnect ground power only if it is actually connected (APU is now running).
             // Each GPU is checked independently — skip if it is already off.
             Skip(Momentary("BS_GND_PWR_1", "Ground power primary: disconnect",
-                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"), s => !s.IsGpuPower1On()),
+                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)),
             Skip(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
-                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),  s => !s.IsGpuPower2On()),
+                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)),
             Captain("BS_START_ACARS", "Start ACARS"),
             Captain("BS_TAXI_CLR", "Obtain pushback and start clearance"),
         }
@@ -587,9 +593,11 @@ public static class PMDG777FlowDefinitions
             // battery). Each GPU is checked independently — skip if it is already off, so a
             // re-run and a never-connected-GPU both no-op. Mirrors Before Start L243–246.
             Skip(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
-                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"), s => !s.IsGpuPower1On()),
+                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)),
             Skip(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
-                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),  s => !s.IsGpuPower2On()),
+                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
+                s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)),
             Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
                "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),
                 s => !s.IsBatteryOn()),

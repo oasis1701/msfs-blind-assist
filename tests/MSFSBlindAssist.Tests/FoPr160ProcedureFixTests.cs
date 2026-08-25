@@ -127,4 +127,27 @@ public class FoPr160ProcedureFixTests
         string a32nx = ChecklistItemLabel(A320Checklist.Build(), "DESCENT", "DC_MCDU");
         Assert.Equal(fenix, a32nx);
     }
+
+    // -- 2. PMDG 777 ground power ------------------------------------------
+
+    // Both GPU steps must survive at Electrical Power Up. The defect was not a missing
+    // step but a shared skip predicate that made the second one skip itself once the
+    // first had connected; the predicates themselves are not directly testable (the 777
+    // state evaluator wraps a concrete PMDG777DataManager), which is why the rule lives
+    // in GroundPowerGate — see GroundPowerGateTests.
+    [Fact]
+    public void Pmdg777_ElectricalPowerUp_StillDrivesBothGroundPowerSides()
+    {
+        var ids = FlowStepIds(Pmdg777Flows.Build(), "ELECTRICAL_POWER_UP").ToList();
+        Assert.Contains("EPU_GND_PWR_PRIM", ids);
+        Assert.Contains("EPU_GND_PWR_SEC", ids);
+    }
+
+    [Fact]
+    public void Pmdg777_Secure_StillDisconnectsBothGroundPowerSides()
+    {
+        var ids = FlowStepIds(Pmdg777Flows.Build(), "SECURE").ToList();
+        Assert.Contains("SEC_GND_PWR_PRIM", ids);
+        Assert.Contains("SEC_GND_PWR_SEC", ids);
+    }
 }
