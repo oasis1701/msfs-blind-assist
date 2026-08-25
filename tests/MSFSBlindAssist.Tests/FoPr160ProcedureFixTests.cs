@@ -13,7 +13,7 @@ using Pmdg777Flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions;
 using Pmdg777Checklist = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions;
 using Pmdg737Flows = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions;
 using Pmdg737Checklist = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737ChecklistDefinitions;
-using MSFSBlindAssist.FirstOfficer.PMDG737;
+using SbLadder = MSFSBlindAssist.FirstOfficer.PMDG737.SpeedbrakeArmLadder;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -246,8 +246,8 @@ public class FoPr160ProcedureFixTests
             .Single(f => f.Id == "LANDING").Steps
             .Single(s => s.Id == "LD_SPDBRK");
 
-        Assert.Equal(SpeedbrakeArmLadder.PseudoKey, step.EventName);
-        Assert.Equal(SpeedbrakeArmLadder.ArmedField, step.VerifyFieldName);
+        Assert.Equal(SbLadder.PseudoKey, step.EventName);
+        Assert.Equal(SbLadder.ArmedField, step.VerifyFieldName);
         Assert.Equal("LDC_SPDBRK", step.CompletesChecklistItemId);
         Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
     }
@@ -258,6 +258,6 @@ public class FoPr160ProcedureFixTests
     public void Pmdg737_SpeedbrakePseudoKey_IsNotARealPmdgEvent()
     {
         Assert.False(MSFSBlindAssist.Aircraft.PMDG737Definition.EventIds
-            .ContainsKey(SpeedbrakeArmLadder.PseudoKey));
+            .ContainsKey(SbLadder.PseudoKey));
     }
 }

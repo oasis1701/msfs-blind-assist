@@ -233,8 +233,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         // 2026-08-25: that 2026-07-03 verification no longer reproduces — the owner
         // reports the lever not arming. The FO path therefore no longer trusts a single
         // transport: ArmSpeedbrakeAsync escalates CDA click -> transmit click -> transmit
-        // press/release and reads MAIN_annunSPEEDBRAKE_ARMED back between each. This
-        // table entry still governs the non-FO callers of these detent events.
+        // press/release and reads MAIN_annunSPEEDBRAKE_ARMED back between each. These rows
+        // still serve the sibling detent events reached through the normal dispatch path
+        // (e.g. _DOWN, via SetSpeedbrakeDown()); the _ARM row itself is now bypassed by
+        // the FO path, which sends that event directly from ArmSpeedbrakeAsync.
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"]    = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"]     = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50PCT"]   = new(Dispatch.MouseFlag),
@@ -569,7 +571,14 @@ public class AircraftActionExecutor : IFoActionExecutor
                 _lastWriteUtc = DateTime.UtcNow;
 
                 bool armed = await WaitForSpeedbrakeArmedAsync();
-                if (armed) return true;
+                if (armed)
+                {
+                    // WHICH transport worked is the whole point of the ladder — without
+                    // this line the escalation can never be narrowed back to one rung.
+                    Log.Debug("FirstOfficer",
+                        $"Speedbrake armed via {SpeedbrakeArmLadder.Attempts[i]} (attempt {i + 1}).");
+                    return true;
+                }
 
                 bool doNotArm = FieldOn(SpeedbrakeArmLadder.DoNotArmField);
                 if (!SpeedbrakeArmLadder.ShouldContinue(i, armed, doNotArm))
@@ -599,6 +608,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         return FieldOn(SpeedbrakeArmLadder.ArmedField);
     }
 
+    // No IsReady gate needed: pre-snapshot every field reads 0.0, so an unready data
+    // manager reads as "not armed" / "not lit" — the ladder tries every rung and honestly
+    // reports failure, which is the fail-safe direction here (unlike CenterQty(), where a
+    // false-0 must BLOCK an on-write, this is a read-only verification check).
     private bool FieldOn(string field)
         => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
 
