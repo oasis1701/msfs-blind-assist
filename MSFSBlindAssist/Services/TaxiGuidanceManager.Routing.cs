@@ -340,6 +340,23 @@ public partial class TaxiGuidanceManager
             // honest "is this clearance sane?" measure.
             double fullRouteMeters = route.TotalDistanceMeters;
 
+            // Did the route actually REACH the runway before TruncateToHoldShort cut it back?
+            // TaxiRouter deliberately ends a runway route on the LAST CLEARED TAXIWAY when that
+            // taxiway does not connect to the destination node (`lastTaxiwayTerminal`, two sites,
+            // runway destinations only) — that is what honours a cleared taxiway instead of
+            // bypassing it (EIDW N2, LFPG R1). The route then ends nowhere near
+            // `destinationNodeId`, which is never reassigned, so the destination-node reach probe
+            // below cannot see it. That is the real PHNL 04L failure: the clearance ended on a
+            // taxiway that only parallels 04L, guidance held ~456 m off behind a legitimate-looking
+            // "Hold short of Runway 04L", and the lineup tone panned for four minutes.
+            // Captured BEFORE truncation, because truncation legitimately moves the end back to a
+            // hold line on a route that DID reach the runway — the LPPT 02 case that made the
+            // reach probe move to the destination node in the first place, and took this
+            // protection with it.
+            bool routeReachedDestination = route.Segments.Count > 0 &&
+                route.Segments.Any(s => s.ToNode != null && s.ToNode.NodeId == destinationNodeId);
+            var preTruncationEndNode = route.Segments.Count > 0 ? route.Segments[^1].ToNode : null;
+
             // Critical safety fix: when the destination is a runway, the route MUST
             // end at the hold-short line — not at the threshold itself. Otherwise
             // HandleArrival fires only when the aircraft is within the 30 m arrival
@@ -403,6 +420,20 @@ public partial class TaxiGuidanceManager
                         $"Warning: this route ends about {FormatDistance(endCrossM)} to the side of " +
                         $"{destinationName} and does not reach the runway. You may be missing the " +
                         $"taxiway that connects to the runway. Check your taxiway entry and reprogram.";
+                }
+                else if (!routeReachedDestination && preTruncationEndNode != null &&
+                         !RouteEndIsRunwayHold(preTruncationEndNode, destinationName))
+                {
+                    double walkM = RouteEndWalkToRunwayMeters(preTruncationEndNode, destinationName);
+                    if (walkM > RUNWAY_REACH_MAX_WALK_M)
+                    {
+                        _routeReachesRunway = false;
+                        runwayReachWarning =
+                            $"Warning: this route stops short of {destinationName}, about " +
+                            $"{FormatDistance(walkM)} of taxiing away, and does not reach the runway. " +
+                            $"The last taxiway you entered does not connect to it. Check your taxiway " +
+                            $"entry and reprogram.";
+                    }
                 }
             }
 
@@ -1008,6 +1039,12 @@ public partial class TaxiGuidanceManager
         // Apply the same runway-destination safety truncation as LoadRoute — otherwise
         // after an auto-recalc the pilot would roll straight onto the runway instead
         // of stopping at the hold-short line.
+        // Captured BEFORE the truncation below, for the same reason LoadRoute captures it there:
+        // truncation legitimately moves a REACHING route's end back to a hold line, and judging
+        // the post-truncation end would read that as "ended short".
+        bool recalcReachedDestination = newRoute.Segments.Count > 0 &&
+            newRoute.Segments.Any(s2 => s2.ToNode != null && s2.ToNode.NodeId == _destinationNodeId);
+        var recalcEndNode = newRoute.Segments.Count > 0 ? newRoute.Segments[^1].ToNode : null;
         if (_isRunwayLineup)
             TruncateToHoldShort(newRoute, _destinationName, _preferIlsHold);
 
@@ -1018,8 +1055,16 @@ public partial class TaxiGuidanceManager
         // Only meaningful for a runway lineup (matching the TruncateToHoldShort
         // guard above); gate destinations leave _routeReachesRunway true so the
         // runway-only safety net stays disarmed.
+        // Both halves, same as LoadRoute: the destination node must be near the centerline AND
+        // the route must actually get to the runway. A recalc routes to the same
+        // _destinationNodeId but can still be terminated early on the last cleared taxiway, so
+        // checking only the destination node here leaves the bailout disarmed for exactly the
+        // routes that need it (see RouteEndIsRunwayHold / RouteEndWalkToRunwayMeters).
         _routeReachesRunway = !_isRunwayLineup ||
-            DestinationCrossTrackMeters(_destinationNodeId) <= RUNWAY_REACH_MAX_CROSS_M;
+            (DestinationCrossTrackMeters(_destinationNodeId) <= RUNWAY_REACH_MAX_CROSS_M &&
+             (recalcReachedDestination || recalcEndNode == null ||
+              RouteEndIsRunwayHold(recalcEndNode, _destinationName) ||
+              RouteEndWalkToRunwayMeters(recalcEndNode, _destinationName) <= RUNWAY_REACH_MAX_WALK_M));
 
         // Distinct consecutive named taxiways of the recalculated route, in order.
         var viaNames = new List<string>();
@@ -1392,10 +1437,31 @@ public partial class TaxiGuidanceManager
                 crossingSeg.ToNode.Latitude, crossingSeg.ToNode.Longitude);
             if (string.IsNullOrEmpty(crossedRwy)) continue;
 
-            // Skip the destination runway (TruncateToHoldShort owns it).
-            if (!string.IsNullOrEmpty(destBare) &&
-                crossedRwy.Equals(destBare, StringComparison.OrdinalIgnoreCase))
+            // The DESTINATION's own strip needs care in two ways.
+            //
+            // (a) SKIP only the route's own ARRIVAL at it, not every crossing of it. The old
+            //     rule skipped any crossing whose name equalled the destination's, which is
+            //     wrong twice over: `WhichRunwayCrossedByEdge` names the crossing after
+            //     whichever END is nearer the crossing point, so a route to 04L that crosses
+            //     the 04L/22R strip reports "22R" and slipped past the exclusion entirely,
+            //     while one crossing nearer the 04L end reported "04L" and was DROPPED — no
+            //     hold-short at all before crossing the active runway, the exact
+            //     runway-incursion direction FAA AIM 4-3-18 / ICAO Doc 4444 exist to prevent.
+            //     The thing TruncateToHoldShort actually owns is the route's FINAL segment
+            //     (it truncated the route there and tagged it), so that — and only that — is
+            //     what must not be tagged twice. Matching is reciprocal-aware, because the
+            //     designator reported here is not necessarily the one the pilot selected.
+            //
+            // (b) NAME it as the pilot's clearance does. A crossing of the destination strip
+            //     announced under the opposite designator ("hold short of runway 22R" while
+            //     taxiing to 04L) is the same pavement under a name the pilot never chose.
+            //     The label still carries the hold point ("runway 04L at D5"), so it stays
+            //     distinguishable from the destination's own hold-short callout.
+            bool sameStripAsDestination = !string.IsNullOrEmpty(destBare) &&
+                RunwayDesignatorsMatch(crossedRwy, destBare);
+            if (sameStripAsDestination && i >= route.Segments.Count - 1)
                 continue;
+            string displayRwy = sameStripAsDestination ? destBare : crossedRwy;
 
             // Skip if we've just tagged this runway already (a wide runway whose
             // entry and exit edges both cross the centerline, or consecutive
@@ -1417,7 +1483,7 @@ public partial class TaxiGuidanceManager
             // "runway X at <holdPoint>"; user labels + correct names kept;
             // a DB name for a DIFFERENT pavement corrected to geometric truth.
             string? newLabel = RouteRunwayCrossings.ComposeCrossingLabel(
-                holdSeg.HoldShortRunway, crossedRwy);
+                holdSeg.HoldShortRunway, displayRwy);
             if (newLabel != null)
                 holdSeg.HoldShortRunway = newLabel;
             lastTaggedRunway = crossedRwy;
@@ -1656,6 +1722,56 @@ public partial class TaxiGuidanceManager
         return AbsLateralFromRunwayMeters(
             destNode.Latitude, destNode.Longitude,
             _lineupTargetLat, _lineupTargetLon, _lineupHeadingTrue);
+    }
+
+    /// <summary>
+    /// True when the route's end is a hold-short node belonging to the DESTINATION runway — i.e.
+    /// the route stopped exactly where a departure is supposed to stop, even though it never
+    /// contained the destination node. This is the first of the two independent "the route is
+    /// fine" signals guarding the ended-short warning, and it is what covers a set-back
+    /// CAT II/III hold (EGKK A3 sits 162 m off the centerline) and the sparse GA fields where a
+    /// legitimate hold is a long taxi from the pavement — measured over the whole fs2020 DB,
+    /// 1.85 % of runway-owned hold nodes are more than <see cref="RUNWAY_REACH_MAX_WALK_M"/> of
+    /// taxiing from their runway, and they are almost all small strips with minimal networks.
+    /// <para>The name test is reciprocal-tolerant via <see cref="RunwayDesignatorsMatch"/>; an
+    /// UNNAMED hold does not qualify (it could belong to any runway), which is deliberate — the
+    /// walk test below is what covers airports whose navdata carries no hold names at all.</para>
+    /// </summary>
+    internal static bool RouteEndIsRunwayHold(Database.Models.TaxiNode endNode, string destinationName)
+    {
+        if (endNode.Type != Database.Models.TaxiNodeType.HoldShort &&
+            endNode.Type != Database.Models.TaxiNodeType.ILSHoldShort)
+            return false;
+        if (string.IsNullOrWhiteSpace(endNode.HoldShortName)) return false;
+
+        string bare = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? destinationName.Substring("Runway ".Length).Trim()
+            : destinationName.Trim();
+        return RunwayDesignatorsMatch(endNode.HoldShortName!, bare);
+    }
+
+    /// <summary>
+    /// How much further the aircraft would have to TAXI from the route's end to be on the
+    /// destination runway's pavement, or 0 when the graph has no centerline for that runway (no
+    /// answer → never warn, so a graph that could not pair the runway's ends degrades to today's
+    /// behaviour rather than inventing a failure).
+    /// <para>Deliberately NOT the perpendicular distance to the centerline, and NOT the distance
+    /// to the lineup node — see <see cref="TaxiGraph.GraphWalkToRunwayPavement"/> for why both of
+    /// those give the wrong answer here. Bounded by <see cref="RUNWAY_REACH_WALK_SEARCH_M"/> and
+    /// run once per route load.</para>
+    /// </summary>
+    private double RouteEndWalkToRunwayMeters(Database.Models.TaxiNode endNode, string destinationName)
+    {
+        if (_graph == null) return 0.0;
+        var cl = _graph.FindCenterlineByName(destinationName);
+        if (cl == null) return 0.0;
+
+        double walk = _graph.GraphWalkToRunwayPavement(
+            endNode.NodeId, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2,
+            cl.HalfWidthMeters, RUNWAY_REACH_WALK_SEARCH_M);
+        // Unreachable within the search bound is the strongest possible "does not reach the
+        // runway" answer, so report the bound rather than 0 (which would read as "already there").
+        return double.IsPositiveInfinity(walk) ? RUNWAY_REACH_WALK_SEARCH_M : walk;
     }
 
 }

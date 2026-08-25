@@ -1478,6 +1478,84 @@ off the centerline and the lineup tone panned forever.
   This catches recalc-built routes too (which bypass `LoadRoute`). Both latches
   reset on `LoadRoute` / `StopGuidance`.
 
+**The destination node is a runway ENTRANCE, not just the nearest node (LPPT 20).**
+`TaxiAssistForm` resolves a runway destination through
+`TaxiGraph.FindRunwayLineupEntryNode`, not a bare `FindNearestNode` of the lineup
+point. The lineup point comes from the navdata `start` row, which is trusted for
+where ALONG the runway the departure begins — correct at a displaced threshold, and
+the reason `SnapStartToRunwayCenterline` exists — but nothing guarantees a taxiway
+MEETS the runway there. LPPT 20 has a 1955 ft (596 m) displaced threshold with its
+start row on it, ~619 m into the takeoff run, while the taxi network touches that
+centerline only at S3 (~70 m, the full-length end) and U5/U6 (~1396 m). Nearest-node
+returned an S3 node **204 m away and 201 m off to the side** — abeam the runway, not
+on it — so the route dead-ended there, fired "does not reach Runway 20" (identically
+with the taxiway list on "None", because the node is picked at dropdown-population
+time), and the lineup intercept would have dragged the aircraft across ~200 m of
+grass. The replacement is a real entrance: on the pavement, on the runway proper,
+with an off-runway neighbour (`HasOffRunwayNeighbour`, the same test
+`FindBacktrackEntryNode` uses), in the nearest node's connected component. Only
+candidates **at or behind** the lineup point are eligible, nearest first — one
+further downfield is an intersection departure, i.e. less runway than the pilot
+selected, and must never be substituted silently (measured over the whole DB,
+allowing downfield entrances moved 2,209 runway ends, EGLL 09L by 755 m and EHAM 36R
+by 1,417 m, with nothing spoken). An entrance behind the `runway_end` pavement edge
+still counts (starter extensions: EGLL 09L via AB13 300–355 m back), so there is no
+`along >= 0` floor. It runs ONLY when the plain nearest node is already beyond
+`RUNWAY_REACH_MAX_CROSS_M` — the same constant the warning uses, so the search and
+the check can never disagree — and returns the plain node unchanged when no entrance
+qualifies, so a genuinely unreachable lineup point still trips the honest warning
+instead of being retargeted somewhere arbitrary. Measured: 80 of 54,032 runway ends
+change, all 80 already inside the warning population, all clearing it.
+
+**A route can END SHORT of the runway, and the destination-node probe cannot see it
+(PHNL 04L).** `TaxiRouter.FindConstrainedPath`'s `lastTaxiwayTerminal` deliberately
+ends a runway route on the LAST CLEARED TAXIWAY when that taxiway does not connect to
+the destination — that is what honours a cleared taxiway instead of bypassing it
+(EIDW N2, LFPG R1) — and `_destinationNodeId` is never reassigned, so the route stops
+hundreds of metres away while the cross-track probe reads a destination node sitting
+happily on the runway. That is the real PHNL 04L failure (clearance ended on a
+taxiway paralleling 04L; guidance held ~456 m off behind a legitimate-looking "Hold
+short of Runway 04L" and the lineup tone panned for four minutes). Moving the probe
+onto the destination node in 2026-06-16 to kill the LPPT 02 false positive took this
+protection with it. **Do not label the cross-track probe "the PHNL 04L check"** —
+measured 2026-08-24, PHNL 04L's lineup point has a taxiway-F node 3.7 m away and
+3.2 m off the centerline, so that probe cannot fire there at all.
+
+`LoadRoute` / `TryRecalculateRoute` therefore capture whether the route ever
+contained `destinationNodeId` **BEFORE `TruncateToHoldShort`** — truncation
+legitimately moves a REACHING route's end back to a hold, so judging the
+post-truncation end reads every normal departure as ended-short. An ended-short route
+warns only when BOTH independent guards fail:
+
+- `RouteEndIsRunwayHold` — the end is a hold-short node named (reciprocal-tolerant)
+  for this runway. Covers set-back CAT II/III holds (EGKK A3 at 162 m) and the sparse
+  GA fields where a legitimate hold is a long taxi from the pavement. An UNNAMED hold
+  does not qualify; the walk below is what covers airports with no hold names.
+- `TaxiGraph.GraphWalkToRunwayPavement` ≤ `RUNWAY_REACH_MAX_WALK_M` — how far the
+  aircraft would still have to TAXI to be on the pavement. Never a perpendicular
+  distance (it cannot separate a set-back hold from a parallel taxiway with no
+  connector) and never the distance to the lineup node (the runway is not a
+  continuous graph corridor: PHNL 04L's taxiway E reads 0 m to the pavement but
+  1,399 m to the lineup node). Calibrated on 172,802 runway-owned hold nodes —
+  p50 54 m, p90 130 m, 99.16 % within 400 m; PHNL 04L's real holds are 34–60 m while
+  taxiway H is 655 m and P is 804 m.
+
+**A crossing of the destination's own strip still gets a hold-short.**
+`InsertRunwayCrossingHoldShorts` used to skip any crossing whose name equalled the
+destination's, which was wrong from both ends, because `WhichRunwayCrossedByEdge`
+names a crossing after whichever runway END is nearer it: a route to 04L crossing the
+04L/22R strip reported "22R" and announced a hold-short of a runway the pilot never
+chose, while the same crossing nearer the 04L end reported "04L" and was DROPPED — no
+hold before crossing the active runway, the incursion direction FAA AIM 4-3-18 /
+ICAO Doc 4444 exist to prevent. The exclusion now skips ONLY the route's own arrival:
+same strip (reciprocal-aware `RunwayDesignatorsMatch`) AND the crossing edge is the
+FINAL segment, the one `TruncateToHoldShort` already truncated to and tagged. Never
+make the exclusion reciprocal-aware WITHOUT the final-segment condition — alone it
+deletes the hold from every genuine crossing of the destination runway. The label is
+composed from the designator the PILOT selected, not the geometric one, and keeps its
+hold point ("runway 04L at D5") so it stays distinct from the destination's own
+"Stop. Hold short of Runway 04L".
+
 **Tone slew limiter (`SlewLimitToneError`).** The Taxiing tone's heading error is
 slew-rate-limited to `TAXI_TONE_MAX_SLEW_DEG_PER_SEC`. Two events move the tone's
 target discontinuously and used to slam the pan hard left↔right: a multi-segment
@@ -1536,7 +1614,9 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `INCURSION_WARN_DISTANCE_M` | 40.0 | Off-route hold-short proximity warning |
 | `OFF_ROUTE_PERP_WIDTH_CAP_FT` | 300.0 | Upper cap on segment width used for off-route tolerance (rejects bad DB width rows) |
 | `POST_TURN_OFFROUTE_GRACE_SEC` | 4.0 | Off-route detection suppressed for this many seconds after every segment advance |
-| `RUNWAY_REACH_MAX_CROSS_M` | 120.0 | Unreachable-runway warning: if a runway-destination route's final point is more than this perpendicular distance off the runway centerline, the route doesn't reach the runway. Above the ~90 m ICAO Annex 14 max hold-short offset, below real misroutes (PHNL 04L: ~456 m) |
+| `RUNWAY_REACH_MAX_CROSS_M` | 120.0 | Unreachable-runway warning, half one: perpendicular distance from the route's DESTINATION NODE to the runway centerline beyond which the route clearly does not reach the runway. Sits above any legitimate runway-ENTRANCE offset (an entrance is on the pavement). Do NOT justify it by hold-short offsets — measured in this DB, LPPT 02's own full-length ILS hold is 151 m off, its IHSND holds reach 183 m and EGKK A3 is 162 m, so a hold-based measure at this threshold false-fires immediately. `TaxiGraph.FindRunwayLineupEntryNode` takes the same number, so the entrance search and this check agree on what "reaches the runway" means |
+| `RUNWAY_REACH_MAX_WALK_M` | 400.0 | Unreachable-runway warning, half two ("the route ENDED SHORT"): how far the aircraft would still have to TAXI from the route's end to be on the pavement (`TaxiGraph.GraphWalkToRunwayPavement`). Calibrated on 172,802 runway-owned hold nodes — p50 54 m, p90 130 m, 99.16 % within 400 m. The remaining 1.85 % are almost all tiny GA strips and are caught by the independent hold-NAME signal (`RouteEndIsRunwayHold`); the warning needs BOTH guards to fail |
+| `RUNWAY_REACH_WALK_SEARCH_M` | 1500.0 | Search bound for that walk — comfortably past the threshold so the answer is never a truncation artefact, small enough that an end disconnected from the runway cannot walk the whole airport. Route-load only, never per frame |
 | `LINEUP_UNREACHABLE_CROSS_FEET` | 400.0 | During lineup, cross-track beyond this (~122 m) for `LINEUP_UNREACHABLE_SEC` with no convergence ⇒ the route never reached the runway → one-shot spoken bailout |
 | `LINEUP_UNREACHABLE_SEC` | 12.0 | Sustain time for the lineup unreachable-runway bailout |
 | `TAXI_TONE_MAX_SLEW_DEG_PER_SEC` | 60.0 | Slew-rate cap on the Taxiing tone's heading error. A genuine turn changes the error gradually (≈ yaw rate, well under the cap) and passes through; a one-frame target discontinuity (segment-index skip on a sharp corner, or a route recalc) is stretched into a smooth ~1–1.5 s sweep instead of a hard L↔R pan slam. Applied after the rate-lead projection, Taxiing only |

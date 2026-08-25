@@ -788,15 +788,63 @@ public partial class TaxiGuidanceManager : IDisposable
     // 6.8 m off and the lineup intercept bridges the gap). Measuring the
     // truncated hold-short therefore false-fired "does not reach the runway" on
     // a perfectly reachable runway. The destination node (_destinationNodeId =
-    // FindNearestNode of the lineup point) is the correct reachability probe:
-    // near the runway when reachable, far off only when the clearance ended on a
-    // parallel taxiway with no node near the lineup point (the real PHNL case).
-    // RUNWAY_REACH_MAX_CROSS_M is the perpendicular distance from that
-    // destination node to the runway centerline beyond which the route clearly
-    // does not reach the runway. 120 m sits safely above any LEGITIMATE runway-
-    // entrance node offset, yet well below the ~456 m the PHNL 04L failure
-    // produced.
-    private const double RUNWAY_REACH_MAX_CROSS_M = 120.0;
+    // FindNearestNode of the lineup point) is the correct reachability probe for the
+    // DESTINATION NODE: near the runway when reachable, far off when the lineup point
+    // itself is stranded with no entrance near it (LPPT 20, now handled up front by
+    // TaxiGraph.FindRunwayLineupEntryNode).
+    //
+    // NOT, however, for "the clearance ended on a parallel taxiway" — that comment used
+    // to claim this probe covered the real PHNL 04L case and it does NOT. Measured
+    // 2026-08-24, PHNL 04L's lineup point has a taxiway-F node 3.7 m away, 3.2 m off the
+    // centerline, so its destination node is fine and this check cannot fire there. That
+    // failure is a route that ENDED SHORT of the runway, which is what
+    // RUNWAY_REACH_MAX_WALK_M below exists to catch.
+    //
+    // RUNWAY_REACH_MAX_CROSS_M is the perpendicular distance from the destination node to
+    // the runway centerline beyond which the route clearly does not reach the runway.
+    // 120 m sits safely above any LEGITIMATE runway-ENTRANCE node offset (an entrance sits
+    // on the pavement).
+    //
+    // DO NOT justify this number by hold-short offsets, and do NOT move this probe back
+    // onto a HOLD. The old rationale ("above the ~90 m ICAO Annex 14 max hold-short
+    // offset") is stale: measured in this DB, LPPT 02's own full-length ILS hold is 151 m
+    // off the centerline, its other IHSND holds reach 183 m, and EGKK A3 is 162 m — all
+    // above 120 m. A hold-based measure at this threshold false-fires immediately, which
+    // is exactly why the probe was moved here in 2026-06-16 — and moving it here is what
+    // silently disarmed the PHNL 04L protection until the ended-short test was added.
+    // internal (not private): TaxiAssistForm passes this same number to
+    // TaxiGraph.FindRunwayLineupEntryNode, whose whole job is to find a real runway
+    // entrance BEFORE this warning would fire. The two must be the same number or the
+    // search and the check disagree about what "reaches the runway" means.
+    internal const double RUNWAY_REACH_MAX_CROSS_M = 120.0;
+
+    // SECOND half of the reach test — "the route ENDED SHORT of the runway".
+    //
+    // The cross-track probe above only sees the DESTINATION NODE, and TaxiRouter deliberately
+    // ends a runway route on the LAST CLEARED TAXIWAY when that taxiway does not connect to the
+    // destination (`lastTaxiwayTerminal`), which is what honours a cleared taxiway rather than
+    // bypassing it (EIDW N2, LFPG R1). `_destinationNodeId` is never reassigned, so such a route
+    // leaves the destination node sitting happily on the runway while the route itself stops
+    // hundreds of metres away — the real PHNL 04L failure, where the clearance ended on a taxiway
+    // paralleling 04L, guidance held ~456 m off behind a legitimate-looking "Hold short of Runway
+    // 04L", and the lineup tone panned for four minutes. Moving the probe to the destination node
+    // in 2026-06-16 (to stop the LPPT 02 false positive) took this protection with it.
+    //
+    // A route that ended short is judged by how far the aircraft would still have to TAXI to be
+    // on the runway (TaxiGraph.GraphWalkToRunwayPavement) — NOT by perpendicular distance, which
+    // cannot tell a set-back CAT II/III hold (EGKK A3, 162 m off, one short taxi away) from a
+    // parallel taxiway with no connector at all. Measured against this DB: PHNL 04L's real holds
+    // are 34-60 m of taxiing from the pavement while taxiway H is 655 m and P is 804 m; over the
+    // whole fs2020 DB, 99.16 % of the 172,802 runway-owned hold nodes are within 400 m (p50 54 m,
+    // p90 130 m). The remaining 1.85 % are almost all tiny GA strips with sparse networks, and
+    // they are caught by the SEPARATE hold-name signal (RouteEndIsRunwayHold) rather than this
+    // number — the two guards are independent, and the warning needs BOTH to fail.
+    internal const double RUNWAY_REACH_MAX_WALK_M = 400.0;
+
+    // Search bound for that walk. Comfortably past the threshold so the answer is never a
+    // truncation artefact, and small enough that an end disconnected from the runway cannot walk
+    // the whole airport. Route-load only, never per frame.
+    private const double RUNWAY_REACH_WALK_SEARCH_M = 1500.0;
     // During LiningUp, cross-track this far off the centerline (≈122 m, again
     // above the ~90 m legitimate-hold-short ceiling) sustained for
     // LINEUP_UNREACHABLE_SEC without converging means the route never reached
