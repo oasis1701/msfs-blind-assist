@@ -386,8 +386,9 @@ public static class FbwA320FlowDefinitions
             Captain("DC_AUTOBRAKE", "Set the landing autobrake — Instrument section, Autobrake panel"),
             Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "DC_SEATBELTS"),
-            Captain("DC_ARRPERF", "Calculate arrival performance on the EFB"),
-            Captain("DC_MCDU", "Complete the MCDU approach page and minimums before top of descent"),
+            // ONE descent-preparation item — see FbwA320ChecklistDefinitions.BuildDescent.
+            Captain("DC_MCDU",
+                "Descent preparation: MCDU PERF APPR set — QNH, temperature, wind and minimums; landing configuration reviewed"),
         }
     };
 

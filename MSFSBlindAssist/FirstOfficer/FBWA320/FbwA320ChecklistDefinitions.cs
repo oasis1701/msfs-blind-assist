@@ -344,8 +344,14 @@ public static class FbwA320ChecklistDefinitions
             Auto("DC_SEATBELTS", "DESCENT", "Seatbelt signs: ON", "CABIN SEATBELTS ALERT SWITCH",
                 v => v > 0.5, (e, s) => s.IsOn("CABIN SEATBELTS ALERT SWITCH")
                     ? Task.CompletedTask : e.Set("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1)),
-            Reminder("DC_ARRPERF", "DESCENT", "Calculate arrival performance on the EFB"),
-            Reminder("DC_MCDU", "DESCENT", "Complete the MCDU approach page and minimums before top of descent"),
+            // ONE descent-preparation item. The EFB carries no landing-performance answer
+            // on the A320 — VAPP comes off the MCDU PERF APPR page from the QNH /
+            // temperature / wind / minimums the crew enters. And there is no CRUISE group
+            // on this profile, so THIS group is the pre-TOD preparation: an item that says
+            // "before top of descent" contradicts where it lives. Kept word-for-word
+            // identical to the Fenix profile's item — the two were written as copies.
+            Reminder("DC_MCDU", "DESCENT",
+                "Descent preparation: MCDU PERF APPR set — QNH, temperature, wind and minimums; landing configuration reviewed"),
         }
     };
 

@@ -297,8 +297,13 @@ public static class FenixChecklistDefinitions
             Reminder("DC_AUTOBRAKE", "DESCENT", "Set the landing autobrake — Main Instrument Panel, Auto Brakes"),
             Auto("DC_SEATBELTS", "DESCENT", "Seatbelt signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
-            Reminder("DC_ARRPERF", "DESCENT", "Calculate arrival performance on the EFB"),
-            Reminder("DC_MCDU", "DESCENT", "Complete the MCDU approach page and minimums before top of descent"),
+            // ONE descent-preparation item. The EFB carries no landing-performance answer
+            // on the A320 — VAPP comes off the MCDU PERF APPR page from the QNH /
+            // temperature / wind / minimums the crew enters. And there is no CRUISE group
+            // on this profile, so THIS group is the pre-TOD preparation: an item that says
+            // "before top of descent" contradicts where it lives.
+            Reminder("DC_MCDU", "DESCENT",
+                "Descent preparation: MCDU PERF APPR set — QNH, temperature, wind and minimums; landing configuration reviewed"),
         }
     };
 

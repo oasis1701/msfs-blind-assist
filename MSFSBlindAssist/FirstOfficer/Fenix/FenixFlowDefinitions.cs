@@ -333,8 +333,9 @@ public static class FenixFlowDefinitions
             Captain("DC_AUTOBRAKE", "Set the landing autobrake — Main Instrument Panel, Auto Brakes"),
             Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "DC_SEATBELTS"),
-            Captain("DC_ARRPERF", "Calculate arrival performance on the EFB"),
-            Captain("DC_MCDU", "Complete the MCDU approach page and minimums before top of descent"),
+            // ONE descent-preparation item — see FenixChecklistDefinitions.BuildDescent.
+            Captain("DC_MCDU",
+                "Descent preparation: MCDU PERF APPR set — QNH, temperature, wind and minimums; landing configuration reviewed"),
         }
     };
 
