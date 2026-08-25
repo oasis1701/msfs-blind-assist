@@ -38,6 +38,7 @@ public static class PMDG777FlowDefinitions
         BuildAfterTakeoff(),
         BuildDescentSetup(),
         BuildApproachSetup(),
+        BuildLanding(),
         BuildAfterLanding(),
         BuildShutdown(),
         BuildSecure(),
@@ -466,18 +467,43 @@ public static class PMDG777FlowDefinitions
     {
         Id = "APPROACH_SETUP",
         Name = "Approach Setup",
-        Description = "Sets altimeters and confirms configuration for approach.",
-        RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL", "LANDING_CL" },
+        Description = "Sets altimeters for approach.",
+        RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
         Steps = new()
         {
+            // The speedbrake is NOT armed here. Approach Setup runs at the
+            // descent/approach transition, well before the landing configuration is
+            // established — arming there is too early. It moved to the Landing flow,
+            // which is where its own CompletesChecklistItemId ("LDG_SPEEDBRAKE", an item
+            // in LANDING_CL) always said it belonged.
             Captain("APP_ALTIMETERS",   "Altimeters: Set local QNH / transition"),
-            SW("APP_SPEEDBRAKE_ARM",    "Speedbrake: ARM",   "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null,
-               true, "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5, "LDG_SPEEDBRAKE"),
         }
     };
 
     // -----------------------------------------------------------------------
-    // Flow 10: After Landing
+    // Flow 10: Landing
+    // -----------------------------------------------------------------------
+    private static FlowDefinition<AircraftStateEvaluator> BuildLanding() => new()
+    {
+        Id = "LANDING",
+        Name = "Landing",
+        Description = "Speedbrake armed and missed approach altitude set for landing.",
+        RelatedChecklistGroupIds = new[] { "LANDING_CL" },
+        Steps = new()
+        {
+            // Moved out of Approach Setup: too early there. The ARM detent is an ABSOLUTE
+            // mouse-click position, not a toggle, so re-arming an already-armed lever is a
+            // no-op and this step needs no skip guard (unlike the ground-power buttons).
+            SW("LD_SPEEDBRAKE_ARM",   "Speedbrake: ARM",   "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null,
+               true, "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5, "LDG_SPEEDBRAKE"),
+            // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
+            // 777 ignition is automatic and needs no CONT selection for landing.
+            Captain("LD_MISSED",      "Set the missed approach altitude"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Flow 11: After Landing
     // -----------------------------------------------------------------------
     private static FlowDefinition<AircraftStateEvaluator> BuildAfterLanding() => new()
     {
@@ -517,7 +543,7 @@ public static class PMDG777FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // Flow 11: Shutdown
+    // Flow 12: Shutdown
     // -----------------------------------------------------------------------
     private static FlowDefinition<AircraftStateEvaluator> BuildShutdown() => new()
     {
@@ -567,7 +593,7 @@ public static class PMDG777FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // Flow 12: Secure
+    // Flow 13: Secure
     // -----------------------------------------------------------------------
     private static FlowDefinition<AircraftStateEvaluator> BuildSecure() => new()
     {

@@ -150,4 +150,60 @@ public class FoPr160ProcedureFixTests
         Assert.Contains("SEC_GND_PWR_PRIM", ids);
         Assert.Contains("SEC_GND_PWR_SEC", ids);
     }
+
+    // -- 3. PMDG 777 speedbrake: Approach -> Landing ------------------------
+
+    [Fact]
+    public void Pmdg777_ApproachSetupFlow_NoLongerArmsTheSpeedbrake()
+    {
+        var ids = FlowStepIds(Pmdg777Flows.Build(), "APPROACH_SETUP").ToList();
+        Assert.DoesNotContain("APP_SPEEDBRAKE_ARM", ids);
+        Assert.Contains("APP_ALTIMETERS", ids);
+    }
+
+    [Fact]
+    public void Pmdg777_ApproachGroup_NoLongerArmsTheSpeedbrake()
+    {
+        var ids = ChecklistItemIds(Pmdg777Checklist.Build(), "APPROACH").ToList();
+        Assert.DoesNotContain("APPA_SPEEDBRAKE", ids);
+        Assert.Contains("APPA_ALTIMETERS", ids);
+    }
+
+    [Fact]
+    public void Pmdg777_HasALandingFlow_ThatArmsTheSpeedbrake()
+    {
+        var flows = Pmdg777Flows.Build();
+        var landing = flows.Single(f => f.Id == "LANDING");
+
+        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED" },
+                     landing.Steps.Select(s => s.Id).ToArray());
+        Assert.Contains("LANDING_CL", landing.RelatedChecklistGroupIds);
+
+        var arm = landing.Steps.Single(s => s.Id == "LD_SPEEDBRAKE_ARM");
+        Assert.Equal("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", arm.EventName);
+        Assert.Equal("FCTL_Speedbrake_Lever", arm.VerifyFieldName);
+        Assert.Equal("LDG_SPEEDBRAKE", arm.CompletesChecklistItemId);
+    }
+
+    // The Landing flow must run AFTER Approach Setup and BEFORE After Landing, so the
+    // FO window lists it in the order a pilot flies it.
+    [Fact]
+    public void Pmdg777_LandingFlow_SitsBetweenApproachSetupAndAfterLanding()
+    {
+        var ids = Pmdg777Flows.Build().Select(f => f.Id).ToList();
+        Assert.Equal(ids.IndexOf("APPROACH_SETUP") + 1, ids.IndexOf("LANDING"));
+        Assert.Equal(ids.IndexOf("LANDING") + 1, ids.IndexOf("AFTER_LANDING"));
+    }
+
+    // Ticking "Speedbrake: ARMED" on the Landing checklist must actually arm it; the
+    // item verified but never actuated (action: null).
+    [Fact]
+    public void Pmdg777_LandingChecklistSpeedbrake_ActuallyArms()
+    {
+        var item = Pmdg777Checklist.Build()
+            .Single(g => g.Id == "LANDING_CL").Items
+            .Single(i => i.Id == "LDG_SPEEDBRAKE");
+        Assert.NotNull(item.CheckAction);
+        Assert.Equal("FCTL_Speedbrake_Lever", item.StateFieldName);
+    }
 }

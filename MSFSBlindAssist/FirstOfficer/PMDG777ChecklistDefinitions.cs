@@ -586,10 +586,9 @@ public static class PMDG777ChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
+            // The speedbrake is NOT armed here — too early. It lives on the Landing
+            // checklist (LDG_SPEEDBRAKE) and the Landing flow.
             Reminder("APPA_ALTIMETERS", "APPROACH", "Altimeters: Set local QNH / transition"),
-            Auto("APPA_SPEEDBRAKE", "APPROACH", "Speedbrake: ARM",
-                "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5,
-                action: (e, _) => e.SetSpeedbrakeArmed()),
         }
     };
 
@@ -627,9 +626,13 @@ public static class PMDG777ChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
+            // Ticking this ARMS the lever — it used to verify but never actuate, so a
+            // pilot who ticked it on an unarmed lever got a tick and nothing else. The
+            // ARM detent is absolute (not a toggle), so a tick on an already-armed lever
+            // is a harmless no-op.
             Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
                 "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5,
-                action: null),
+                action: (e, _) => e.SetSpeedbrakeArmed()),
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
                 action: null),
