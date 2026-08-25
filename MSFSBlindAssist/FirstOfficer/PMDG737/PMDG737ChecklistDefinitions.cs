@@ -283,8 +283,13 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
-            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF", "MAIN_GearLever", v => v > 0.5 && v < 1.5,
-                (e, _) => e.SetGearLever(1)),
+            // Detection-only: MAIN_GearLever is live and trustworthy (it tracks the
+            // pilot's own hand movement), but no external write can position this lever —
+            // see the AT_GEAR_OFF comment in PMDG737FlowDefinitions. Ticking this item
+            // must therefore not fire an action that silently does nothing; it auto-ticks
+            // when the pilot actually moves the lever to OFF.
+            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
+                "MAIN_GearLever", v => v > 0.5 && v < 1.5, action: null),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }

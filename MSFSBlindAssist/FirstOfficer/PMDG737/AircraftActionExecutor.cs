@@ -809,7 +809,6 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     // Flight controls / pedestal
     public bool SetYawDamper(int p)      => Fire("EVT_OH_YAW_DAMPER", p);
-    public bool SetGearLever(int p)      => Fire("EVT_GEAR_LEVER", p);                      // 0=UP,2=DOWN
     public bool SetAutobrake(int p)      => Fire("EVT_MPM_AUTOBRAKE_SELECTOR", p);          // 0=RTO,1=OFF..5=MAX
     public bool SetAltFlapsPos(int p)    => Fire("EVT_OH_ALT_FLAPS_POS_SWITCH", p);
     public bool SetSpeedbrakeDown()      => Fire("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", 1);
