@@ -96,16 +96,33 @@ public class ChecklistManager<TExec, TState>
     /// record (same philosophy as the group-completion latch). Without this, a flow that
     /// set all the switches left the checklist header stuck at a partial "N of M" because
     /// the phase's Captain-reminder / reminder items never auto-tick from state.
+    ///
+    /// <paramref name="excludeItemIds"/> names the items the flow could NOT deliver — the
+    /// steps it announced as skipped. Those are neither ticked nor latched over. Without
+    /// it, a step that failed and said so out loud ("Skipping: Speedbrake: ARMED") was
+    /// force-ticked two seconds later at flow completion AND frozen by the latch, so the
+    /// live-state mirror could never correct it: a blind pilot reading the Landing
+    /// checklist on final was told the speedbrake was armed when it was not.
+    ///
+    /// The latch is withheld only while an excluded item is ACTUALLY un-ticked. An excluded
+    /// item the state already agrees with is not a failure — the phase genuinely is
+    /// complete, and freezing it as a historical record is still right.
     /// </summary>
-    public void MarkGroupComplete(string groupId)
+    public void MarkGroupComplete(string groupId, IReadOnlyCollection<string>? excludeItemIds = null)
     {
         var group = FindGroup(groupId);
         if (group == null) return;
 
+        bool anyExcludedStillUnset = false;
         group.HasParticipation = true;
         foreach (var item in group.Items)
         {
             if (item.Type == ChecklistItemType.Informational) continue;   // separators aren't tickable
+            if (excludeItemIds != null && excludeItemIds.Contains(item.Id))
+            {
+                if (!item.IsChecked) anyExcludedStillUnset = true;
+                continue;
+            }
             if (!item.IsChecked)
             {
                 item.IsChecked = true;
@@ -113,8 +130,10 @@ public class ChecklistManager<TExec, TState>
             }
         }
         // The flow already ran its actions; freeze the group as a historical record so a
-        // later flow moving the same switches can't un-tick it.
-        group.CompletionLatched = true;
+        // later flow moving the same switches can't un-tick it — but never freeze over a
+        // step the flow could not deliver, or the group can never tell the truth again.
+        if (!anyExcludedStillUnset)
+            group.CompletionLatched = true;
         GroupProgressChanged?.Invoke(group);
     }
 

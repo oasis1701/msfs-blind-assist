@@ -1006,8 +1006,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         // Mark the phase's checklist section(s) complete — running the flow is the FO
         // working that phase, so its checklist header should read "Complete" instead of a
         // stale partial count (the phase's reminder items never auto-tick from state).
+        // Never tick — or latch over — an item whose step the flow announced as skipped.
+        // The pilot heard "Skipping: X"; force-ticking X two seconds later contradicted
+        // that out loud, and the latch made the contradiction permanent for the session.
+        var unfinished = _flowMgr.UnfinishedChecklistItemIds;
         foreach (var groupId in RelatedGroupIdsFor(flow))
-            _checklistMgr.MarkGroupComplete(groupId);
+            _checklistMgr.MarkGroupComplete(groupId, unfinished);
 
         UpdateFlowButtonStates();
     }

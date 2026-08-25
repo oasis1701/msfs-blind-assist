@@ -53,6 +53,18 @@ public class FlowManager<TExec, TState>
     public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
+    // Checklist items belonging to steps this run announced as SKIPPED — i.e. the step
+    // failed and its FailurePolicy let the flow continue. FirstOfficerForm passes these to
+    // MarkGroupComplete so flow completion cannot tick and latch an item the flow never
+    // delivered. Only the Skip branch contributes: Stop and an exhausted RetryThenStop both
+    // raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
+    // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
+    private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
+
+    /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
+    /// from the FlowCompleted handler; cleared when the next run starts.</summary>
+    public IReadOnlyCollection<string> UnfinishedChecklistItemIds => _unfinishedChecklistItemIds;
+
     // -----------------------------------------------------------------------
     // Constructor
     // -----------------------------------------------------------------------
@@ -116,6 +128,7 @@ public class FlowManager<TExec, TState>
 
     private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
+        _unfinishedChecklistItemIds.Clear();
         FlowStarted?.Invoke(flow);
         _announcer.AnnounceImmediate($"{flow.Name} flow started");
 
@@ -171,6 +184,8 @@ public class FlowManager<TExec, TState>
                         return;
 
                     case FlowStepFailurePolicy.Skip:
+                        if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
+                            _unfinishedChecklistItemIds.Add(step.CompletesChecklistItemId);
                         StepSkipped?.Invoke(flow, step, i);
                         _announcer.Announce($"Skipping: {step.AnnounceText}");
                         break;
