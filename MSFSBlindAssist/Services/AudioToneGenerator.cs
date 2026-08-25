@@ -146,26 +146,38 @@ public class AudioToneGenerator : IDisposable
 
     // Default pitch→frequency mapping. Min = dive (negative pitch), max = climb (positive pitch),
     // center = level flight. Per-instance overrides via Configure(...) before Start().
-    private const float DEFAULT_MIN_FREQUENCY = 200f;
-    private const float DEFAULT_MAX_FREQUENCY = 800f;
-    // ASYMMETRIC BY DESIGN, and these defaults ARE hand fly's mapping — HandFlyManager and the
-    // settings panel's preview tone are the only consumers that never call Configure.
+    //
+    // internal rather than private ONLY so AudioTonePitchMappingTests can assert against the
+    // SHIPPED numbers instead of re-typing them. Reached via Properties/InternalsVisibleTo.cs.
+    // Do NOT re-add a second `internal const` alias per value: a const is inlined into the
+    // consuming assembly's IL, so an alias is a compile-time COPY, not a reference — precisely
+    // the drift it would claim to prevent.
+    internal const float DEFAULT_MIN_FREQUENCY = 200f;
+    internal const float DEFAULT_MAX_FREQUENCY = 800f;
+    // ASYMMETRIC BY DESIGN, and these defaults ARE hand fly's mapping. TWO consumers never call
+    // Configure AND drive pitch: HandFlyManager, and the settings panel's Test Tone preview
+    // (HandFlyPanel.StartTestTone). Five more construction sites never call Configure either
+    // (AudioPanel, TaxiGuidancePanel, TaxiSteeringTone, ProximityBeeper, TakeoffAssistManager)
+    // and are unaffected ONLY because none of them calls UpdatePitch — add a pitch cue to any
+    // of those and it silently inherits this mapping, kink and all.
+    //
     // Nose-down stays at the long-standing 10° (an airliner rarely exceeds it in normal
     // operation, and leaving it alone keeps every already-learned nose-down cue identical).
     // Nose-up is 20° because hand fly is AUTO-ACTIVATED AT LIFTOFF, where the aircraft is
     // already 12–18° nose up: at 10° the tone was past saturation from its very first update
-    // and stayed pinned at maximum for the whole initial climb. See PitchToFrequency.
-    private const double DEFAULT_PITCH_DOWN_RANGE_DEG = 10.0;
-    private const double DEFAULT_PITCH_UP_RANGE_DEG = 20.0;
+    // and stayed pinned at maximum for the whole initial climb. See PitchToFrequency. The price
+    // is nose-up resolution — 30 → 15 Hz/°, for the whole flight, cruise included.
+    //
+    // KNOWN LIMITATION: 20° is an AIRFRAME-shaped number sitting on a shared class const. A
+    // Cessna climbs at ~8° and an A320 TOGA/windshear escape reaches 20–25°, so a second
+    // airframe needing a different climb range means moving this onto VisualGuidanceProfile
+    // (the LandingFlareAssistManager profile lambda in MainForm is the established idiom).
+    // Deliberately not done now: no airframe currently needs a different value, and
+    // per-airframe numbers would need fly-testing.
+    internal const double DEFAULT_PITCH_DOWN_RANGE_DEG = 10.0;
+    internal const double DEFAULT_PITCH_UP_RANGE_DEG = 20.0;
 
     private const double DEFAULT_BANK_RANGE_DEG = 10.0;  // bank (degrees) at which pan saturates to ±1.0
-
-    // Exposed so the mapping tests can assert against the SHIPPED hand-fly numbers rather than
-    // re-typing them (a copy would keep passing after someone re-tuned the real ones).
-    internal const float DefaultMinFrequencyHz = DEFAULT_MIN_FREQUENCY;
-    internal const float DefaultMaxFrequencyHz = DEFAULT_MAX_FREQUENCY;
-    internal const double DefaultPitchDownRangeDeg = DEFAULT_PITCH_DOWN_RANGE_DEG;
-    internal const double DefaultPitchUpRangeDeg = DEFAULT_PITCH_UP_RANGE_DEG;
 
     // Effective mapping (defaults preserved when Configure is not called).
     private float minFrequency = DEFAULT_MIN_FREQUENCY;
