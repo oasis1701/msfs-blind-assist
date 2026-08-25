@@ -230,13 +230,16 @@ public class AircraftActionExecutor : IFoActionExecutor
         // 6791–6795, like the flaps' 7141–7149): they commit ONLY with
         // MOUSE_FLAG_LEFTSINGLE. The old Simple dispatch (bare param) was a silent
         // no-op — the Landing flow's "Speedbrake: ARMED" never armed.
-        // 2026-08-25: that 2026-07-03 verification no longer reproduces — the owner
-        // reports the lever not arming. The FO path therefore no longer trusts a single
-        // transport: ArmSpeedbrakeAsync escalates CDA click -> transmit click -> transmit
-        // press/release and reads MAIN_annunSPEEDBRAKE_ARMED back between each. These rows
-        // still serve the sibling detent events reached through the normal dispatch path
-        // (e.g. _DOWN, via SetSpeedbrakeDown()); the _ARM row itself is now bypassed by
-        // the FO path, which sends that event directly from ArmSpeedbrakeAsync.
+        // 2026-08-25: live-verified against a real 737-800 — a single CDA + LEFTSINGLE
+        // click on EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM armed the lever on the first
+        // attempt. The FO path (ArmSpeedbrakeAsync / SpeedbrakeArmLadder) still reads
+        // MAIN_annunSPEEDBRAKE_ARMED back afterward and reports honestly if it does not
+        // take, but no longer escalates across transports — see SpeedbrakeArmLadder's
+        // class comment for why the other two proven transports stay documented on the
+        // enum without being tried. These rows still serve the sibling detent events
+        // reached through the normal dispatch path (e.g. _DOWN, via SetSpeedbrakeDown());
+        // the _ARM row itself is bypassed by the FO path, which sends that event directly
+        // from ArmSpeedbrakeAsync.
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"]    = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"]     = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50PCT"]   = new(Dispatch.MouseFlag),
@@ -522,24 +525,24 @@ public class AircraftActionExecutor : IFoActionExecutor
     }
 
     /// <summary>
-    /// Arms the speedbrake and PROVES it, escalating across transports.
+    /// Arms the speedbrake and PROVES it, rather than assuming it.
     ///
     /// The old path dispatched one CDA + LEFTSINGLE click and reported success
     /// unconditionally — so when it did not take, the Landing flow said "Speedbrake:
-    /// ARMED" and the checklist item ticked while the lever stayed down. The NG3 has a
-    /// documented family of CDA-deaf controls that only move on TransmitClientEvent
-    /// mouse-clicks, and which family the speedbrake detents belong to could not be
-    /// settled from the repo, so each rung is tried and READ BACK in turn (see
-    /// <see cref="SpeedbrakeArmLadder"/>).
+    /// ARMED" and the checklist item ticked while the lever stayed down. Live-verified
+    /// 2026-08-25: that same CDA + LEFTSINGLE click arms the lever on the first try, so
+    /// <see cref="SpeedbrakeArmLadder"/> is now a single rung — but this method still
+    /// READS BACK <c>MAIN_annunSPEEDBRAKE_ARMED</c> afterward and reports honestly if it
+    /// does not take, rather than the old dispatch-once-and-assume-success.
     ///
-    /// Holds <c>_dispatchGate</c> across the whole ladder and uses <c>DispatchCoreAsync</c>
+    /// Holds <c>_dispatchGate</c> across the whole call and uses <c>DispatchCoreAsync</c>
     /// / the raw send methods internally — never <c>DispatchAsync</c>, which would deadlock
-    /// on the gate. Worst case is roughly four seconds, which
+    /// on the gate. Worst case is roughly the verify window (~1.2s), which
     /// <c>ChecklistManager.RunCheckActionWithGraceAsync</c> already covers: it holds revert
     /// until the action completes AND the dispatch gate drains, which is what the
     /// multi-second transponder walk relies on.
     /// </summary>
-    /// <returns>true once MAIN_annunSPEEDBRAKE_ARMED confirms; false if no rung took.</returns>
+    /// <returns>true once MAIN_annunSPEEDBRAKE_ARMED confirms; false if the rung did not take.</returns>
     public async Task<bool> ArmSpeedbrakeAsync()
     {
         const string ev = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
@@ -554,9 +557,10 @@ public class AircraftActionExecutor : IFoActionExecutor
             // Already armed, or already deployed (auto-speedbrake fired on touchdown, or
             // manually raised): a click here is a click toward the DOWN/RETRACT side of
             // the detent travel, which on this lever means yanking the ground spoilers
-            // back in during rollout. Before this ladder existed, a re-run of the Landing
-            // flow (or a manual re-tick) fired exactly one such click; the escalation would
-            // otherwise fire up to three. Bail out honestly-true instead.
+            // back in during rollout. Without this guard, a re-run of the Landing flow
+            // (or a manual re-tick) would fire that click once per call — one rung today,
+            // but this guard is what keeps a re-run harmless regardless of how many rungs
+            // SpeedbrakeArmLadder.Attempts holds. Bail out honestly-true instead.
             if (FieldOn(SpeedbrakeArmLadder.ArmedField) || FieldOn(SpeedbrakeArmLadder.ExtendedField))
                 return true;
 
@@ -568,10 +572,17 @@ public class AircraftActionExecutor : IFoActionExecutor
                     case SpeedbrakeArmTransport.CdaClick:
                         sc.SendPMDGEvent(ev, id, MouseFlagLeftSingle);
                         break;
+                    // TransmitClick / TransmitPressRelease are unreachable today —
+                    // SpeedbrakeArmLadder.Attempts holds only CdaClick, which is proven to
+                    // arm the lever on the first try (live-verified 2026-08-25). They stay
+                    // here, and stay documented on SpeedbrakeArmTransport, because they are
+                    // ALSO proven-working transports for this same control; if a future
+                    // aircraft/firmware combination needs them again, re-adding a rung to
+                    // Attempts is enough — the dispatch shape doesn't need re-deriving.
                     case SpeedbrakeArmTransport.TransmitClick:
                         // No release sent — matches the walked-rotary precedent in this
                         // file (e.g. EVT_TCAS_MODE), where a bare LEFTSINGLE is the whole
-                        // click. Rung 3 (TransmitPressRelease) is the different shape
+                        // click. TransmitPressRelease is the different shape
                         // WarningTestAsync's momentary buttons need.
                         sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
                         break;
@@ -586,8 +597,9 @@ public class AircraftActionExecutor : IFoActionExecutor
                 bool armed = await WaitForSpeedbrakeArmedAsync();
                 if (armed)
                 {
-                    // WHICH transport worked is the whole point of the ladder — without
-                    // this line the escalation can never be narrowed back to one rung.
+                    // Records which transport worked. With Attempts down to one rung
+                    // this is diagnostic rather than load-bearing, but it costs nothing
+                    // and pays for itself the moment Attempts grows again.
                     Log.Debug("FirstOfficer",
                         $"Speedbrake armed via {SpeedbrakeArmLadder.Attempts[i]} (attempt {i + 1}).");
                     return true;

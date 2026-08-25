@@ -379,23 +379,35 @@ NG3 vocabulary string lists `Gear;Up,Down` with no OFF entry at all, and the use
 confirmed FSFO's own checklist hangs on this exact item. UP and OFF sound identical by
 ear, which is why the combination is convincing even though nothing but UP ever happens.
 
-### The `ROTOR_BRAKE` encoded channel — a discovered, live-verified third transport
+### The `ROTOR_BRAKE` encoded channel — an existing mechanism, re-confirmed on the 737
 
-FSFO drives PMDG discrete switches through the *stock* `ROTOR_BRAKE` K-event (id 66587)
-carrying an encoded parameter:
+This is not a new discovery: `MSFSBlindAssist/Aircraft/PMDG777Definition.cs:6188-6209`
+already drives three PMDG 777 soundpack switches (`switch_622_a`, `switch_623_a`,
+`switch_319_a`) through exactly this channel, crediting the FSCopilot PMDG 777 profile in
+its own comment — `switch_319_a`'s 3-position knob already uses the wheel codes
+(`toB ? 31907u : 31908u`, i.e. wheel-up/wheel-down). What the 2026-08-25 737 session added
+is an independent live re-confirmation of the mouse-code end of the encoding, on a
+different airframe:
+
+FSFO/FSCopilot drive PMDG discrete switches through the *stock* `ROTOR_BRAKE` K-event (id
+66587) carrying an encoded parameter:
 
     param = (pmdgEventId - 69632) * 100 + mouseCode
 
 where `69632` is `THIRD_PARTY_EVENT_ID_MIN`. Mouse codes: `01` left-single, `02` right,
 `04` left-release, `07` wheel-up, `08` wheel-down.
 
-**Verified live:** `679201` armed the speedbrake and `679101` disarmed it, both via a
-plain `TransmitClientEvent` on `ROTOR_BRAKE` — no third-party event registration needed.
-RPN form: `455101 (>K:ROTOR_BRAKE)`.
+**Verified live (737, 2026-08-25):** `679201` armed the speedbrake and `679101` disarmed
+it, both via a plain `TransmitClientEvent` on `ROTOR_BRAKE` — no third-party event
+registration needed. RPN form: `679201 (>K:ROTOR_BRAKE)`.
 
 Confidence is not uniform across that list: the formula itself and mouse code `01` are
-**measured**. Codes `02`/`04`/`07`/`08` are **inferred** from FSFO's own usage patterns
-and are untested against this airframe — do not present them as proven.
+**measured** on the 737. Codes `02`/`04` are still **inferred** from FSFO's own usage
+patterns and remain untested against this airframe. Codes `07`/`08` (wheel-up/wheel-down)
+are corroborated rather than purely inferred — they are the same codes already live in
+production on the 777's `switch_319_a` knob cited above — but that corroboration is from
+a different airframe and switch, not a 737 live test, so still do not present them as
+737-proven.
 
 This channel does **not** rescue the gear lever — it was one of the 18 ruled-out shapes
 above (row 18). It is recorded here so a future control that needs it is found rather
@@ -417,3 +429,14 @@ it at UP. `AircraftActionExecutor.SetGearLever` was deleted as dead code — it 
 success on every call while moving nothing. The After Takeoff Checklist's separate
 `ATC_GEAR` item ("Landing gear: UP and OFF") is unaffected: it was already
 detection-only and its wider `v < 1.5` condition already accepted either UP or OFF.
+
+**Known limitation — this is not FO-only.** `PMDG737Definition.cs:1225` still exposes a
+pilot-facing panel combo, `Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN")`,
+dispatched through `_simpleEventMap` (`PMDG737Definition.cs:3582`) straight to
+`EVT_GEAR_LEVER` with a plain parameter — row 2/3 in the ruled-out table above, one of the
+inert shapes. A blind pilot who selects any position in that combo gets silence: no
+movement, no error, nothing read back. This is a pre-existing panel-control gap, not
+something the First Officer fix introduced or can paper over — the combo still reads
+`MAIN_GearLever`'s live state correctly, it just cannot write it. Left unchanged
+deliberately (out of scope for this pass; removing the control or making it announce its
+own no-op needs its own decision).
