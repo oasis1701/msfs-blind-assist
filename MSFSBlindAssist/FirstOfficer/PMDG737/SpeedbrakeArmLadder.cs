@@ -17,17 +17,18 @@ public enum SpeedbrakeArmTransport
 }
 
 /// <summary>
-/// Pure escalation policy for arming the PMDG 737 speedbrake.
+/// Pure arm policy for the PMDG 737 speedbrake.
 ///
 /// The event id is correct (THIRD_PARTY_EVENT_ID_MIN + 6792, matching the shipped
-/// PMDG_NG3_SDK.h) and the dispatch table already forces MOUSE_FLAG_LEFTSINGLE, but the
-/// NG3 has a documented family of CDA-deaf controls that only respond to
-/// TransmitClientEvent mouse-clicks, and which family the speedbrake detents belong to
-/// could not be settled from the repository. So the arm ESCALATES, reading
-/// <see cref="ArmedField"/> back between attempts, and reports honestly if none takes —
-/// the previous code dispatched once and reported success unconditionally.
+/// PMDG_NG3_SDK.h) and the dispatch table already forces MOUSE_FLAG_LEFTSINGLE. This used
+/// to ESCALATE across transports because the NG3 has a documented family of CDA-deaf
+/// controls that only respond to TransmitClientEvent mouse-clicks, and which family the
+/// speedbrake detents belong to could not be settled from the repository. Live probing
+/// settled it (see <see cref="Attempts"/>), so the policy is now a single rung — but it
+/// still reads <see cref="ArmedField"/> back afterward and reports honestly if it does not
+/// take, rather than the previous code's dispatch-once-and-report-success-unconditionally.
 ///
-/// Split out from the executor so the order and the early exit are testable without
+/// Split out from the executor so the read-back and the early exits are testable without
 /// SimConnect; the executor owns the I/O and the read-back timing.
 ///
 /// NOTE: <see cref="ArmedField"/> reflects the auto-speedbrake system being ARMED, not raw
@@ -58,12 +59,19 @@ public static class SpeedbrakeArmLadder
     /// PMDG event name — it must never appear in PMDG737Definition.EventIds.</summary>
     public const string PseudoKey = "SPEEDBRAKE_ARM";
 
-    /// <summary>Cheapest and most-likely first.</summary>
+    /// <summary>
+    /// Live-verified against a PMDG 737-800 in flight (2026-08-25): a single CDA +
+    /// MOUSE_FLAG_LEFTSINGLE click on EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM armed the
+    /// lever on the first attempt (<see cref="ArmedField"/> false -> true, audible to the
+    /// pilot). <see cref="SpeedbrakeArmTransport.TransmitClick"/> and
+    /// <see cref="SpeedbrakeArmTransport.TransmitPressRelease"/> remain proven-working
+    /// transports for this control and stay documented on the enum, but a rung that
+    /// never fires only ever spends the pilot's time on an aircraft where rung 1 failed
+    /// for a real reason — which <see cref="DoNotArmField"/> already catches.
+    /// </summary>
     public static IReadOnlyList<SpeedbrakeArmTransport> Attempts { get; } = new[]
     {
         SpeedbrakeArmTransport.CdaClick,
-        SpeedbrakeArmTransport.TransmitClick,
-        SpeedbrakeArmTransport.TransmitPressRelease,
     };
 
     /// <summary>Should another attempt be made after the one at <paramref name="attemptIndex"/>?</summary>

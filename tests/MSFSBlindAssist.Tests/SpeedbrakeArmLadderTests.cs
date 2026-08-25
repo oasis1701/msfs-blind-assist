@@ -1,29 +1,29 @@
-using System.Linq;
 using Xunit;
 using MSFSBlindAssist.FirstOfficer.PMDG737;
 
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The PMDG 737 speedbrake arm escalates across transports because the NG3 has a
+/// The PMDG 737 speedbrake arm used to escalate across transports because the NG3 has a
 /// documented family of CDA-deaf controls that only respond to TransmitClientEvent
 /// mouse-clicks, and it could not be settled from the repo which family the speedbrake
-/// detents belong to. The ORDER matters (cheapest/most-likely first) and the DO NOT ARM
-/// early exit matters (an auto-speedbrake fault cannot be clicked away).
+/// detents belong to. Live probing (2026-08-25) settled it: a single CDA click arms the
+/// lever first try. The ladder structure — the loop, the read-back, ShouldContinue, and
+/// the DO NOT ARM / already-armed early exits — stays, because a faulted auto-speedbrake
+/// system or an already-deployed lever are real conditions no transport can click through.
 /// </summary>
 public class SpeedbrakeArmLadderTests
 {
+    // Live-verified against a PMDG 737-800 in flight (2026-08-25): a single
+    // CDA + MOUSE_FLAG_LEFTSINGLE on EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM armed the
+    // lever on the first attempt (MAIN_annunSPEEDBRAKE_ARMED false -> true, audible to
+    // the pilot). The escalation existed only because we could not tell which transport
+    // worked; rungs 2 and 3 now only ever spend the pilot's time on an aircraft where
+    // rung 1 failed for a real reason, which DoNotArmField already catches.
     [Fact]
-    public void Attempts_EscalateFromCdaToTransmitToPressRelease()
+    public void TheLadderIsASingleProvenRung()
     {
-        Assert.Equal(
-            new[]
-            {
-                SpeedbrakeArmTransport.CdaClick,
-                SpeedbrakeArmTransport.TransmitClick,
-                SpeedbrakeArmTransport.TransmitPressRelease,
-            },
-            SpeedbrakeArmLadder.Attempts.ToArray());
+        Assert.Equal(new[] { SpeedbrakeArmTransport.CdaClick }, SpeedbrakeArmLadder.Attempts);
     }
 
     [Fact]
@@ -40,15 +40,6 @@ public class SpeedbrakeArmLadderTests
     {
         Assert.False(SpeedbrakeArmLadder.ShouldContinue(
             attemptIndex: 0, armed: false, doNotArmLit: true));
-    }
-
-    [Fact]
-    public void ShouldContinue_KeepsGoingWhileAttemptsRemain()
-    {
-        Assert.True(SpeedbrakeArmLadder.ShouldContinue(
-            attemptIndex: 0, armed: false, doNotArmLit: false));
-        Assert.True(SpeedbrakeArmLadder.ShouldContinue(
-            attemptIndex: 1, armed: false, doNotArmLit: false));
     }
 
     [Fact]
