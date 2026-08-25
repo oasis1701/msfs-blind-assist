@@ -34,7 +34,8 @@ public class FoFlowCompletionExclusionTests
         public void SetPlannedPressurizationAltitudes(int? cruiseAltFt, int? destElevFt) { }
     }
 
-    private static ChecklistItem<FakeExec, FakeState> AutoItem(string id, string groupId, string field)
+    private static ChecklistItem<FakeExec, FakeState> AutoItem(string id, string groupId, string field,
+        bool neverForceComplete = false)
         => new()
         {
             Id = id, GroupId = groupId, Label = id,
@@ -44,6 +45,7 @@ public class FoFlowCompletionExclusionTests
             StateFieldName = field,
             StateCondition = v => v > 0.5,
             RevertBehavior = RevertBehavior.RevertToState,
+            NeverForceComplete = neverForceComplete,
         };
 
     private static (ChecklistManager<FakeExec, FakeState> mgr, FakeState state,
@@ -272,5 +274,54 @@ public class FoFlowCompletionExclusionTests
         mgr.EvaluateAutoDetection();
 
         Assert.True(failed.IsChecked); // historical record survives — no longer exempt
+    }
+
+    // NeverForceComplete: an item whose truth is observable but whose switch the app
+    // cannot actually move (the 737 gear lever) must never be asserted by a finishing
+    // flow, even though it is NOT in excludeItemIds (the flow step didn't fail — it's a
+    // Captain reminder with nothing to skip). MarkGroupComplete must leave it alone while
+    // still ticking its siblings normally.
+    [Fact]
+    public void NeverForceCompleteItem_IsNotTicked_ButSiblingsAre()
+    {
+        var (mgr, _, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("GEAR", "G", "F2", neverForceComplete: true));
+
+        mgr.MarkGroupComplete("G");
+
+        Assert.True(group.Items.Single(i => i.Id == "GOOD").IsChecked);
+        Assert.False(group.Items.Single(i => i.Id == "GEAR").IsChecked);
+    }
+
+    // The whole point of the flag: the item must still reach true on its own once the
+    // pilot actually moves the switch — the group latch (which still arms) must never
+    // block the auto-tick branch for a NeverForceComplete item.
+    [Fact]
+    public void NeverForceCompleteItem_StillAutoTicksWhenStateAgrees()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("GEAR", "G", "F2", neverForceComplete: true));
+
+        mgr.MarkGroupComplete("G");
+        Assert.True(group.CompletionLatched);
+
+        state.Values["F2"] = 1;
+        mgr.EvaluateAutoDetection();
+
+        Assert.True(group.Items.Single(i => i.Id == "GEAR").IsChecked);
+    }
+
+    // No-regression pin: an item that leaves the flag at its default (false) must be
+    // ticked by MarkGroupComplete exactly as before the flag existed.
+    [Fact]
+    public void ItemWithFlagLeftFalse_IsTickedNormally_NoRegression()
+    {
+        var (mgr, _, group) = Build(
+            AutoItem("A", "G", "F1"), AutoItem("B", "G", "F2", neverForceComplete: false));
+
+        mgr.MarkGroupComplete("G");
+
+        Assert.All(group.Items, i => Assert.True(i.IsChecked));
+        Assert.True(group.CompletionLatched);
     }
 }

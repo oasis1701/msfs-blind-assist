@@ -122,6 +122,19 @@ public class ChecklistItem<TExec, TState>
     /// </summary>
     public bool ExemptFromCompletionLatch { get; set; }
 
+    /// <summary>
+    /// Never let a finishing flow tick this item (ChecklistManager.MarkGroupComplete).
+    /// For a normal item, flow completion ticking it is right: running the flow IS the
+    /// First Officer working that phase, and a Captain-reminder item has no state to read.
+    /// But an item whose truth is OBSERVABLE, and whose switch the app cannot actually
+    /// move, must never be asserted by a flow — the pilot would read it as done for a
+    /// switch still in the wrong position, with the group latched so the live-state
+    /// mirror can never correct it. Set this only where the state is genuinely readable
+    /// and the write is known impossible; the item then reaches true solely by
+    /// auto-detection when the pilot moves the switch themselves.
+    /// </summary>
+    public bool NeverForceComplete { get; set; }
+
     // -----------------------------------------------------------------------
     // Manual-tick action settling (ChecklistManager.RunCheckActionWithGraceAsync)
     // -----------------------------------------------------------------------

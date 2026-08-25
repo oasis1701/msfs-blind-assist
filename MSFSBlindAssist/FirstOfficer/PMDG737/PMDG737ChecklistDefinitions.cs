@@ -288,8 +288,15 @@ public static class PMDG737ChecklistDefinitions
             // see the AT_GEAR_OFF comment in PMDG737FlowDefinitions. Ticking this item
             // must therefore not fire an action that silently does nothing; it auto-ticks
             // when the pilot actually moves the lever to OFF.
-            Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
-                "MAIN_GearLever", v => v > 0.5 && v < 1.5, action: null),
+            //
+            // NeverForceComplete: the After Takeoff FLOW's own gear step is a Captain
+            // reminder (AT_GEAR_OFF — see its comment), which finishing the flow would
+            // otherwise force-tick and latch here, telling the pilot "Gear lever: OFF"
+            // for a lever the flow never actually moved. This item's truth is readable
+            // and its switch is genuinely unwritable, so it may only come true by the
+            // pilot actually moving the lever.
+            WithNeverForceComplete(Auto("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
+                "MAIN_GearLever", v => v > 0.5 && v < 1.5, action: null)),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }
@@ -609,6 +616,15 @@ public static class PMDG737ChecklistDefinitions
 
     private static Func<AircraftActionExecutor, AircraftStateEvaluator, Task>? AsCheckAction(Act? action)
         => action == null ? null : (e, s) => { action(e, s); return Task.CompletedTask; };
+
+    // Opts an already-built item out of a finishing flow's MarkGroupComplete tick — see
+    // ChecklistItem.NeverForceComplete. Post-set rather than a constructor param so it
+    // reads at the one call site that needs it instead of widening every Auto() overload.
+    private static Item WithNeverForceComplete(Item item)
+    {
+        item.NeverForceComplete = true;
+        return item;
+    }
 
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,
