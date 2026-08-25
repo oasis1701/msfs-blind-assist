@@ -79,7 +79,10 @@ public class ChecklistGroup<TExec, TState>
         CompletionLatched = false;
         HasParticipation  = false;
         foreach (var item in Items)
+        {
             item.IsChecked = false;
+            item.ExemptFromCompletionLatch = false;
+        }
     }
 }
 

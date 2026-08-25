@@ -95,8 +95,15 @@ public class ChecklistItem<TExec, TState>
     /// while this one item never happened. The group-completion latch is a flight-long
     /// historical record and must keep protecting every item the flow really did perform —
     /// but the item it could NOT perform has to go on mirroring live state, or one manual
-    /// tick could freeze a lie in place for the rest of the flight. Cleared as soon as the
-    /// state genuinely agrees, and on untick / reset.
+    /// tick could freeze a lie in place for the rest of the flight.
+    ///
+    /// Cleared by: an auto-tick transition in EvaluateAutoDetection (the live state caught
+    /// up on its own), a real DELIVERY of the item — ChecklistManager.MarkComplete or the
+    /// non-excluded tick branch of MarkGroupComplete, both meaning a flow actually performed
+    /// this step — a manual UNTICK, and ResetGroup/ResetAll. It is deliberately NOT cleared
+    /// by a manual TICK (ChecklistManager.ToggleItem's tick arm): a pilot ticking the box by
+    /// hand is not evidence the switch moved, so the item must keep mirroring live state
+    /// until something actually delivers or unticks it.
     /// </summary>
     public bool ExemptFromCompletionLatch { get; set; }
 

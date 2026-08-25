@@ -62,8 +62,10 @@ public class FlowManager<TExec, TState>
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
-    /// from the FlowCompleted handler; cleared when the next run starts.</summary>
-    public IReadOnlyCollection<string> UnfinishedChecklistItemIds => _unfinishedChecklistItemIds;
+    /// from the FlowCompleted handler; cleared when the next run starts. Returns a
+    /// snapshot, not the live set, so a caller may hold onto or enumerate the result
+    /// without racing the next run's Clear()/Add() on this same set.</summary>
+    public IReadOnlyCollection<string> UnfinishedChecklistItemIds => _unfinishedChecklistItemIds.ToArray();
 
     // -----------------------------------------------------------------------
     // Constructor

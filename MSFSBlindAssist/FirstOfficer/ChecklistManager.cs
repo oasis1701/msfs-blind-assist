@@ -82,6 +82,13 @@ public class ChecklistManager<TExec, TState>
             if (!item.IsChecked)
             {
                 item.IsChecked = true;
+                // A real delivery: this item is no longer the one the flow could not
+                // perform, even if an earlier run left it exempted. Without this, a
+                // re-run whose step now succeeds ticks the item but leaves it exempt
+                // from the group latch forever, so it alone keeps un-ticking itself
+                // whenever the switch later moves — the exact false-completion the
+                // exemption exists to prevent, narrowed to one item.
+                item.ExemptFromCompletionLatch = false;
                 RaiseChanged(group, item);
             }
             TryLatch(group);
@@ -130,6 +137,10 @@ public class ChecklistManager<TExec, TState>
             if (!item.IsChecked)
             {
                 item.IsChecked = true;
+                // A real delivery clears any exemption left over from a prior run of
+                // this same flow (see the identical clear in MarkComplete above) —
+                // this item is no longer the one that could not be performed.
+                item.ExemptFromCompletionLatch = false;
                 ItemStateChanged?.Invoke(group, item);
             }
         }

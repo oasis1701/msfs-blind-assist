@@ -101,8 +101,10 @@ public class FoFlowCompletionExclusionTests
         Assert.True(group.CompletionLatched);
 
         // A later phase moves the GOOD item's switch away from the checked condition.
+        // GOOD was ticked by MarkGroupComplete, not a manual tick, so LastManualCheckUtc
+        // is already null and the manual-tick grace already reads as expired — the group
+        // latch alone is what must keep it ticked here.
         var good = group.Items.Single(i => i.Id == "GOOD");
-        good.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
         state.Values["F1"] = 0;
         mgr.EvaluateAutoDetection();
 
@@ -188,6 +190,36 @@ public class FoFlowCompletionExclusionTests
 
         Assert.All(group.Items, i => Assert.True(i.IsChecked));
         Assert.True(group.CompletionLatched);
+    }
+
+    // The exemption must not survive a real re-delivery of the item. First run: the step
+    // is excluded (announced as skipped), so the item is exempted and the group latches.
+    // Pilot re-runs the flow; this time the step succeeds and MarkComplete ticks the item
+    // for real. From that point the item must be protected by the group latch exactly like
+    // its siblings — an un-cleared exemption would leave it un-ticking itself forever, the
+    // one item in the group with no historical-record protection.
+    [Fact]
+    public void ExcludedItem_RedeliveredViaMarkComplete_ClearsExemption_SoLatchProtectsItGoingForward()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("FAILED", "G", "F2"));
+
+        // First run: FAILED could not be delivered.
+        mgr.MarkGroupComplete("G", new[] { "FAILED" });
+        var failed = group.Items.Single(i => i.Id == "FAILED");
+        Assert.True(failed.ExemptFromCompletionLatch);
+
+        // Pilot re-runs the flow; this time the step succeeds.
+        mgr.MarkComplete("FAILED");
+        Assert.False(failed.ExemptFromCompletionLatch);
+
+        // The switch later moves away (e.g. on rollout) — the group is already latched,
+        // and with the exemption cleared that latch must now protect this item too.
+        failed.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        state.Values["F2"] = 0;
+        mgr.EvaluateAutoDetection();
+
+        Assert.True(failed.IsChecked);
     }
 
     // An id that belongs to another group (or to nothing) must not disturb this one.
