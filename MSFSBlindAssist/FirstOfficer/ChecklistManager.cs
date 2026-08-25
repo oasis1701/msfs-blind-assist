@@ -20,6 +20,14 @@ public class ChecklistManager<TExec, TState>
     // Raised when a group's overall progress changes.
     public event Action<ChecklistGroup<TExec, TState>>? GroupProgressChanged;
 
+    /// <summary>
+    /// Raised when an item the pilot ticked BY HAND is un-ticked again because its linked
+    /// action never took effect. The form speaks this — it is the only channel that reaches
+    /// a blind pilot who has navigated away from the checklist tree, where the correction
+    /// is otherwise silent and visual-only. Never raised for an ordinary revert.
+    /// </summary>
+    public event Action<ChecklistGroup<TExec, TState>, ChecklistItem<TExec, TState>>? ItemActionFailed;
+
     public IReadOnlyList<ChecklistGroup<TExec, TState>> Groups => _groups;
 
     public ChecklistManager(TState state, TExec executor,
@@ -55,7 +63,10 @@ public class ChecklistManager<TExec, TState>
             item.LastManualCheckUtc = DateTime.UtcNow;
             group.HasParticipation = true;
             if (item.CheckAction != null && _executor.IsAvailable)
+            {
+                item.AwaitingActionConfirmation = true;
                 _ = RunCheckActionWithGraceAsync(item);
+            }
             // No TryLatch here: the fresh grace stamp always defers arming (see
             // TryLatch) — the next EvaluateAutoDetection pass arms it once the tick's
             // readback has had its chance to surface a failed action.
@@ -65,6 +76,9 @@ public class ChecklistManager<TExec, TState>
             // A manual untick re-opens the group: the live mirror (and reverts) resume.
             group.CompletionLatched = false;
             item.ExemptFromCompletionLatch = false;
+            // The pilot is withdrawing the request themselves — nothing is owed to them
+            // if the (now-moot) action never lands.
+            item.AwaitingActionConfirmation = false;
         }
 
         RaiseChanged(group, item);
@@ -89,6 +103,8 @@ public class ChecklistManager<TExec, TState>
                 // whenever the switch later moves — the exact false-completion the
                 // exemption exists to prevent, narrowed to one item.
                 item.ExemptFromCompletionLatch = false;
+                // A flow working this group supersedes the pilot's pending request.
+                item.AwaitingActionConfirmation = false;
                 RaiseChanged(group, item);
             }
             TryLatch(group);
@@ -141,6 +157,8 @@ public class ChecklistManager<TExec, TState>
                 // this same flow (see the identical clear in MarkComplete above) —
                 // this item is no longer the one that could not be performed.
                 item.ExemptFromCompletionLatch = false;
+                // A flow working this group supersedes the pilot's pending request.
+                item.AwaitingActionConfirmation = false;
                 ItemStateChanged?.Invoke(group, item);
             }
         }
@@ -164,6 +182,7 @@ public class ChecklistManager<TExec, TState>
         foreach (var item in group.Items)
         {
             item.ExemptFromCompletionLatch = false;
+            item.AwaitingActionConfirmation = false;
             if (item.IsChecked)
             {
                 item.IsChecked = false;
@@ -205,14 +224,20 @@ public class ChecklistManager<TExec, TState>
                 // by a state that cannot currently be evaluated.
                 if (stateMatches is null) continue;
 
-                if (stateMatches.Value && !item.IsChecked)
+                if (stateMatches.Value)
                 {
-                    item.IsChecked = true;
-                    item.ExemptFromCompletionLatch = false;
-                    ItemStateChanged?.Invoke(group, item);
-                    groupChanged = true;
+                    // The state agrees — whatever the pilot asked for happened. Clear the
+                    // mark whether or not this pass is the one that ticks the item.
+                    item.AwaitingActionConfirmation = false;
+                    if (!item.IsChecked)
+                    {
+                        item.IsChecked = true;
+                        item.ExemptFromCompletionLatch = false;
+                        ItemStateChanged?.Invoke(group, item);
+                        groupChanged = true;
+                    }
                 }
-                else if (!stateMatches.Value && item.IsChecked
+                else if (item.IsChecked
                     && item.RevertBehavior == RevertBehavior.RevertToState
                     && (!group.CompletionLatched || item.ExemptFromCompletionLatch)
                     && !item.ActionSettling
@@ -221,6 +246,13 @@ public class ChecklistManager<TExec, TState>
                     item.IsChecked = false;
                     ItemStateChanged?.Invoke(group, item);
                     groupChanged = true;
+                    if (item.AwaitingActionConfirmation)
+                    {
+                        // Clear BEFORE raising so a handler that re-enters can't loop, and
+                        // so the next polling pass cannot report the same failure twice.
+                        item.AwaitingActionConfirmation = false;
+                        ItemActionFailed?.Invoke(group, item);
+                    }
                 }
             }
 

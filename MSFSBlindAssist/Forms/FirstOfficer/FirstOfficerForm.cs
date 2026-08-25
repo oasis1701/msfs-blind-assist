@@ -134,6 +134,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
 
         // Subscribe to events
         _checklistMgr.ItemStateChanged   += OnChecklistItemChanged;
+        _checklistMgr.ItemActionFailed   += OnChecklistItemActionFailed;
         _checklistMgr.GroupProgressChanged += OnGroupProgressChanged;
         _flowMgr.FlowStarted   += OnFlowStarted;
         _flowMgr.FlowCompleted += OnFlowCompleted;
@@ -700,6 +701,18 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     {
         if (InvokeRequired) { Invoke(() => OnChecklistItemChanged(group, item)); return; }
         RefreshTreeNodeForItem(group, item);
+    }
+
+    // The pilot ticked this by hand, the linked action ran, and the state never agreed —
+    // so the item just un-ticked itself. That correction is otherwise silent and
+    // visual-only, which is no use to a blind pilot who has left the tree. Speaking a
+    // failure is permitted under the screen-reader rule (it is an error condition, not a
+    // UI interaction), and it is QUEUED so it can never cut across a landing callout.
+    private void OnChecklistItemActionFailed(ChecklistGroup<TExec, TState> group,
+                                             ChecklistItem<TExec, TState> item)
+    {
+        if (InvokeRequired) { Invoke(() => OnChecklistItemActionFailed(group, item)); return; }
+        _announcer.Announce($"Unable to complete: {item.Label}");
     }
 
     private void OnGroupProgressChanged(ChecklistGroup<TExec, TState> group)

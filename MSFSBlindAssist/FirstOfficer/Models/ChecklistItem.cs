@@ -87,6 +87,16 @@ public class ChecklistItem<TExec, TState>
     /// </summary>
     public DateTime? LastManualCheckUtc { get; set; }
 
+    /// <summary>
+    /// Set when a MANUAL tick fired this item's <see cref="CheckAction"/>, and cleared the
+    /// moment the sim state agrees (or on untick / reset / a flow marking it complete).
+    /// While it stands, a RevertToState un-tick means the action the pilot asked for did
+    /// not take — an error condition worth speaking. An ordinary revert, where the pilot
+    /// simply moved the switch back themselves, must stay silent, and this flag is what
+    /// tells the two apart.
+    /// </summary>
+    public bool AwaitingActionConfirmation { get; set; }
+
     /// <summary>Whether the user can tick/untick this item manually via the TreeView.</summary>
     public bool ManualCompletionAllowed { get; set; } = true;
 
