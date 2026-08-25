@@ -235,4 +235,42 @@ public class FoFlowCompletionExclusionTests
         Assert.All(group.Items, i => Assert.True(i.IsChecked));
         Assert.True(group.CompletionLatched);
     }
+
+    // The exemption must be clearable even when a HAND TICK (not a flow delivery) is what
+    // checked the item. Before the fix, ExemptFromCompletionLatch's clear in
+    // EvaluateAutoDetection's auto-tick branch sat inside `if (!item.IsChecked)` — so once
+    // ToggleItem's tick arm had already set IsChecked = true, no later pass (the live state
+    // agreeing, or even a genuine flow re-delivery) could ever clear the exemption again.
+    // The 737 speedbrake scenario: the pilot re-ticks a skipped item to retry, the retry
+    // actually lands, and the item must then behave exactly like every un-excluded sibling —
+    // including reverting no further, because the group latch now protects it too.
+    [Fact]
+    public void ExcludedItem_HandTickedThenStateAgrees_ClearsExemption_SoLatchProtectsItGoingForward()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("FAILED", "G", "F2"));
+
+        // First run: FAILED could not be delivered by the flow.
+        mgr.MarkGroupComplete("G", new[] { "FAILED" });
+        var failed = group.Items.Single(i => i.Id == "FAILED");
+        Assert.True(failed.ExemptFromCompletionLatch);
+
+        // The pilot reacts to "Skipping: ..." and hand-ticks the item themselves.
+        mgr.ToggleItem("G", "FAILED");
+        Assert.True(failed.IsChecked);
+
+        // The switch actually agrees now (whatever the pilot's tick did, it worked).
+        state.Values["F2"] = 1;
+        mgr.EvaluateAutoDetection();
+
+        Assert.False(failed.ExemptFromCompletionLatch);
+
+        // Prove the latch now protects it exactly like every un-excluded sibling: the
+        // state falls away later (e.g. on rollout), well past the manual-tick grace.
+        failed.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        state.Values["F2"] = 0;
+        mgr.EvaluateAutoDetection();
+
+        Assert.True(failed.IsChecked); // historical record survives — no longer exempt
+    }
 }

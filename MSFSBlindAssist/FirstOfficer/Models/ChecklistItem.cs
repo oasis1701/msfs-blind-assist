@@ -107,13 +107,18 @@ public class ChecklistItem<TExec, TState>
     /// but the item it could NOT perform has to go on mirroring live state, or one manual
     /// tick could freeze a lie in place for the rest of the flight.
     ///
-    /// Cleared by: an auto-tick transition in EvaluateAutoDetection (the live state caught
-    /// up on its own), a real DELIVERY of the item — ChecklistManager.MarkComplete or the
-    /// non-excluded tick branch of MarkGroupComplete, both meaning a flow actually performed
-    /// this step — a manual UNTICK, and ResetGroup/ResetAll. It is deliberately NOT cleared
-    /// by a manual TICK (ChecklistManager.ToggleItem's tick arm): a pilot ticking the box by
-    /// hand is not evidence the switch moved, so the item must keep mirroring live state
-    /// until something actually delivers or unticks it.
+    /// Cleared by: the live state agreeing in EvaluateAutoDetection (whether or not that
+    /// pass is the one that ticks the item), a real DELIVERY of the item —
+    /// ChecklistManager.MarkComplete or the non-excluded branch of MarkGroupComplete,
+    /// both cleared unconditionally rather than only when that call is the one that ticks
+    /// it, since the item may already be checked (e.g. from an earlier hand-tick) — a
+    /// manual UNTICK, and ResetGroup/ResetAll. It is deliberately NOT cleared by a manual
+    /// TICK (ChecklistManager.ToggleItem's tick arm): a pilot ticking the box by hand is
+    /// not evidence the switch moved, so the item must keep mirroring live state until
+    /// something actually delivers, the state agrees, or something unticks it. This is
+    /// why the flag can be set on an item that is simultaneously checked — see
+    /// MarkGroupComplete's excluded branch, which exempts a hand-ticked-but-undelivered
+    /// item (AwaitingActionConfirmation) exactly the same as an un-ticked one.
     /// </summary>
     public bool ExemptFromCompletionLatch { get; set; }
 

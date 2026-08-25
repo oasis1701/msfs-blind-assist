@@ -203,4 +203,39 @@ public class FoFailedTickAnnouncementTests
         mgr.EvaluateAutoDetection();
         Assert.Empty(failures);
     }
+
+    // An item excluded by a finishing flow but ALREADY CHECKED at MarkGroupComplete time —
+    // because the pilot reacted to "Skipping: ..." by hand-ticking it themselves while the
+    // flow was still wrapping up — must still be exempted, not just an item that is still
+    // un-ticked. Before the fix, MarkGroupComplete's excluded branch only exempted
+    // `!item.IsChecked`, so this in-flight retry handed the item a checked-with-no-exemption
+    // state; the unconditional group.CompletionLatched = true then froze it for good,
+    // silently defeating both the exemption and this file's ItemActionFailed announcement.
+    [Fact]
+    public void ExcludedItem_AlreadyHandTickedAtGroupComplete_IsStillExempted_AndLaterFailsLoudly()
+    {
+        var (mgr, state, group, failures) = Build(ActionItem("SPDBRK", "G", "F1"));
+        state.Values["F1"] = 0;               // the switch never actually moves
+
+        // Pilot reacts to the flow's "Skipping" announcement mid-run and hand-ticks it.
+        mgr.ToggleItem("G", "SPDBRK");
+        var item = group.Items[0];
+        Assert.True(item.IsChecked);
+        Assert.True(item.AwaitingActionConfirmation);
+
+        // The flow finishes and reports this item as one it could not deliver.
+        mgr.MarkGroupComplete("G", new[] { "SPDBRK" });
+
+        Assert.True(item.ExemptFromCompletionLatch);
+        Assert.True(group.CompletionLatched);
+
+        // Past the grace, with the switch never having moved, the exemption must let it
+        // revert — and the failure must be announced, exactly as it would outside a
+        // latched group.
+        AgeTheTick(item);
+        mgr.EvaluateAutoDetection();
+
+        Assert.False(item.IsChecked);
+        Assert.Equal(new[] { "SPDBRK" }, failures);
+    }
 }

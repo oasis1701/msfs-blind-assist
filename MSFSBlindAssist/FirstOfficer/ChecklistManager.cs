@@ -93,16 +93,19 @@ public class ChecklistManager<TExec, TState>
             var item = group.Items.FirstOrDefault(i => i.Id == itemId);
             if (item == null) continue;
             group.HasParticipation = true; // a flow worked this group
+            // A real delivery: this item is no longer the one the flow could not
+            // perform, even if an earlier run left it exempted. Cleared
+            // unconditionally — whether or not THIS call is the one that ticks the
+            // item — because the item may already be checked (e.g. a prior manual
+            // tick) when the flow's own delivery lands. Without this, a re-run
+            // whose step now succeeds can leave the item exempt from the group
+            // latch forever, so it alone keeps un-ticking itself whenever the
+            // switch later moves — the exact false-completion the exemption exists
+            // to prevent, narrowed to one item.
+            item.ExemptFromCompletionLatch = false;
             if (!item.IsChecked)
             {
                 item.IsChecked = true;
-                // A real delivery: this item is no longer the one the flow could not
-                // perform, even if an earlier run left it exempted. Without this, a
-                // re-run whose step now succeeds ticks the item but leaves it exempt
-                // from the group latch forever, so it alone keeps un-ticking itself
-                // whenever the switch later moves — the exact false-completion the
-                // exemption exists to prevent, narrowed to one item.
-                item.ExemptFromCompletionLatch = false;
                 // A flow working this group supersedes the pilot's pending request.
                 item.AwaitingActionConfirmation = false;
                 RaiseChanged(group, item);
@@ -147,16 +150,27 @@ public class ChecklistManager<TExec, TState>
             if (item.Type == ChecklistItemType.Informational) continue;   // separators aren't tickable
             if (excludeItemIds != null && excludeItemIds.Contains(item.Id))
             {
-                if (!item.IsChecked) item.ExemptFromCompletionLatch = true;
+                // Exempt whenever the flow did not itself deliver this item: it is
+                // un-checked, OR it is checked only because the PILOT hand-ticked it
+                // (AwaitingActionConfirmation) while the flow was skipping it. Without
+                // the second half, a pilot who reacts to "Skipping: ..." by ticking the
+                // box before the flow finishes hands the item a checked-with-no-
+                // exemption state at MarkGroupComplete — frozen by the latch below with
+                // no way back to a live mirror, silently defeating both the exemption
+                // and the failed-tick announcement.
+                if (!item.IsChecked || item.AwaitingActionConfirmation)
+                    item.ExemptFromCompletionLatch = true;
                 continue;
             }
+            // A real delivery clears any exemption left over from a prior run of this
+            // same flow (see the identical clear in MarkComplete above) — this item is
+            // no longer the one that could not be performed. Cleared unconditionally,
+            // not only when this call is the one that ticks the item (see MarkComplete
+            // for why that matters).
+            item.ExemptFromCompletionLatch = false;
             if (!item.IsChecked)
             {
                 item.IsChecked = true;
-                // A real delivery clears any exemption left over from a prior run of
-                // this same flow (see the identical clear in MarkComplete above) —
-                // this item is no longer the one that could not be performed.
-                item.ExemptFromCompletionLatch = false;
                 // A flow working this group supersedes the pilot's pending request.
                 item.AwaitingActionConfirmation = false;
                 ItemStateChanged?.Invoke(group, item);
@@ -228,13 +242,16 @@ public class ChecklistManager<TExec, TState>
 
                 if (stateMatches.Value)
                 {
-                    // The state agrees — whatever the pilot asked for happened. Clear the
-                    // mark whether or not this pass is the one that ticks the item.
+                    // The state agrees — whatever the pilot asked for happened. Clear
+                    // both marks whether or not this pass is the one that ticks the
+                    // item: a hand-tick that later comes to agree with live state is
+                    // just as much "the switch moved" as a flow's own delivery, and
+                    // must stop being treated as unresolved/exempt either way.
                     item.AwaitingActionConfirmation = false;
+                    item.ExemptFromCompletionLatch = false;
                     if (!item.IsChecked)
                     {
                         item.IsChecked = true;
-                        item.ExemptFromCompletionLatch = false;
                         ItemStateChanged?.Invoke(group, item);
                         groupChanged = true;
                     }
