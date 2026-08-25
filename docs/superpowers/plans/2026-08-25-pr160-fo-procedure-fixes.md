@@ -205,7 +205,7 @@ public class FoPr160ProcedureFixTests
 
 Run: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter "FullyQualifiedName~FoPr160ProcedureFixTests"`
 
-Expected: 5 failures. `Fenix_DescentPrep_...` fails on `Assert.DoesNotContain("DC_ARRPERF", ids)`; `BothA320Profiles_...` currently passes only by coincidence — it will still be present after the change, which is the point.
+Expected: **4 failed, 1 passed.** The four wording facts fail on `Assert.DoesNotContain("DC_ARRPERF", ids)`. `BothA320Profiles_UseTheSameDescentPrepWording` passes already — the two profiles are identical copies today — and is a pin: it must go on passing after the change, so the two never drift apart.
 
 - [ ] **Step 3: Edit the Fenix checklist**
 
