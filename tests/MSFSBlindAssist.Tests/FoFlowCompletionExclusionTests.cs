@@ -215,7 +215,8 @@ public class FoFlowCompletionExclusionTests
 
         // The switch later moves away (e.g. on rollout) — the group is already latched,
         // and with the exemption cleared that latch must now protect this item too.
-        failed.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        // No grace back-dating needed: MarkComplete never stamps LastManualCheckUtc, so
+        // the manual-tick grace is not in play and the latch is the only thing under test.
         state.Values["F2"] = 0;
         mgr.EvaluateAutoDetection();
 
