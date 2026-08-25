@@ -183,6 +183,7 @@ public class ChecklistManager<TExec, TState>
         {
             item.ExemptFromCompletionLatch = false;
             item.AwaitingActionConfirmation = false;
+            item.ClearActionGrace();
             if (item.IsChecked)
             {
                 item.IsChecked = false;

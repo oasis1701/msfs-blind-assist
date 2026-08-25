@@ -82,6 +82,7 @@ public class ChecklistGroup<TExec, TState>
         {
             item.IsChecked = false;
             item.ExemptFromCompletionLatch = false;
+            item.ClearActionGrace();
         }
     }
 }

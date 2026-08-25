@@ -1,4 +1,3 @@
-using System.Reflection;
 using MSFSBlindAssist.FirstOfficer;
 using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
@@ -76,23 +75,17 @@ public class FoFailedTickAnnouncementTests
         return (mgr, state, group, failures);
     }
 
-    // ChecklistManager.WithinManualTickGrace also honors a second, private clock —
-    // ActionGraceUtc, stamped by RunCheckActionWithGraceAsync after the action's
-    // dispatch queue drains. FakeExec's tasks are already-completed, so that whole
-    // async method runs to completion synchronously inside ToggleItem, stamping
-    // ActionGraceUtc to the real current instant. Aging only the public
-    // LastManualCheckUtc therefore isn't enough to step past the grace window for an
-    // item with a CheckAction — reach the private ticks field too.
-    private static readonly FieldInfo ActionGraceUtcTicksField =
-        typeof(ChecklistItem<FakeExec, FakeState>).GetField("_actionGraceUtcTicks",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-
-    // Step past the 10-second ManualTickGrace without sleeping.
+    // ChecklistManager.WithinManualTickGrace also honors a second clock — ActionGraceUtc,
+    // stamped by RunCheckActionWithGraceAsync after the action's dispatch queue drains.
+    // FakeExec's tasks are already-completed, so that whole async method runs to
+    // completion synchronously inside ToggleItem, stamping ActionGraceUtc to the real
+    // current instant. Aging only the public LastManualCheckUtc therefore isn't enough to
+    // step past the grace window for an item with a CheckAction — clear ActionGraceUtc too,
+    // via the item's own ClearActionGrace() (the symmetric partner of StampActionGraceUtc).
     private static void AgeTheTick(ChecklistItem<FakeExec, FakeState> item)
     {
-        var past = DateTime.UtcNow - TimeSpan.FromSeconds(11);
-        item.LastManualCheckUtc = past;
-        ActionGraceUtcTicksField.SetValue(item, past.Ticks);
+        item.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        item.ClearActionGrace();
     }
 
     [Fact]

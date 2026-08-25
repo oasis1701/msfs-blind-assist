@@ -144,6 +144,16 @@ public class ChecklistItem<TExec, TState>
     /// (a DateTime? property write is not atomic).</summary>
     public void StampActionGraceUtc() => Volatile.Write(ref _actionGraceUtcTicks, DateTime.UtcNow.Ticks);
 
+    /// <summary>
+    /// Clear the action-grace stamp — the symmetric partner of
+    /// <see cref="StampActionGraceUtc"/>. A reset forgets everything else about the item,
+    /// so it must forget the in-flight tick's grace too; otherwise a reset issued moments
+    /// after a manual tick leaves the item protected from RevertToState for the rest of the
+    /// grace window, mirroring nothing. Uses the same Volatile write as the stamp: this
+    /// field is written from background continuations and read by the UI evaluation timer.
+    /// </summary>
+    public void ClearActionGrace() => Volatile.Write(ref _actionGraceUtcTicks, 0);
+
     /// <summary>UTC time the manual tick's action finished draining, or null if never.</summary>
     public DateTime? ActionGraceUtc
     {
