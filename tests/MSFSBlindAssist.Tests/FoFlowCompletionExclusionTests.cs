@@ -72,17 +72,66 @@ public class FoFlowCompletionExclusionTests
         Assert.False(group.Items.Single(i => i.Id == "FAILED").IsChecked);
     }
 
-    // Latching an un-ticked failed item would freeze the group and permanently disable
-    // the live-state mirror that is the pilot's only way to learn the truth later.
+    // The group latch is a flight-long historical record for the steps the flow DID
+    // perform — one failed step must not strip that record from every sibling item.
+    // The group latches even though FAILED was left un-ticked; FAILED alone is exempted
+    // (proven by the two tests below), so it keeps mirroring live state on its own.
     [Fact]
-    public void ExcludedItemLeftUnticked_DoesNotLatchTheGroup()
+    public void ExcludedItemLeftUnticked_StillLatchesSoTheRestOfThePhaseSurvivesTheFlight()
     {
         var (mgr, _, group) = Build(
             AutoItem("GOOD", "G", "F1"), AutoItem("FAILED", "G", "F2"));
 
         mgr.MarkGroupComplete("G", new[] { "FAILED" });
 
-        Assert.False(group.CompletionLatched);
+        Assert.True(group.CompletionLatched);
+    }
+
+    // The actual property being protected: a sibling item the flow genuinely completed
+    // must stay ticked as a historical record for the rest of the flight, even though one
+    // OTHER item in the same group was excluded and the group is latched.
+    [Fact]
+    public void ExcludedItemPresent_SiblingStillSurvivesStateFlippingFalseLater()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("FAILED", "G", "F2"));
+
+        state.Values["F1"] = 1;
+        mgr.MarkGroupComplete("G", new[] { "FAILED" });
+        Assert.True(group.CompletionLatched);
+
+        // A later phase moves the GOOD item's switch away from the checked condition.
+        var good = group.Items.Single(i => i.Id == "GOOD");
+        good.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        state.Values["F1"] = 0;
+        mgr.EvaluateAutoDetection();
+
+        Assert.True(good.IsChecked); // historical record survives — group stays latched
+    }
+
+    // The excluded item itself must remain free to revert — its own exemption must not
+    // be defeated by the group's latch, even after a manual tick lands on it later.
+    [Fact]
+    public void ExcludedItem_ManuallyTickedLater_StillRevertsInsideLatchedGroup()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("FAILED", "G", "F2"));
+
+        mgr.MarkGroupComplete("G", new[] { "FAILED" });
+        Assert.True(group.CompletionLatched);
+
+        var failed = group.Items.Single(i => i.Id == "FAILED");
+        Assert.True(failed.ExemptFromCompletionLatch);
+
+        // The pilot manually ticks the item the flow could not deliver, then its
+        // underlying state drops away (the tick itself did not fix anything).
+        mgr.ToggleItem("G", "FAILED");
+        failed.LastManualCheckUtc = DateTime.UtcNow - TimeSpan.FromSeconds(11);
+        state.Values["F2"] = 0;
+        mgr.EvaluateAutoDetection();
+
+        Assert.False(failed.IsChecked); // the exemption let it revert — no frozen lie
+        Assert.True(group.CompletionLatched); // the rest of the group is unaffected
     }
 
     // A group left unlatched must still be able to correct itself upward when the pilot

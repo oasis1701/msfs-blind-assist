@@ -90,6 +90,16 @@ public class ChecklistItem<TExec, TState>
     /// <summary>Whether the user can tick/untick this item manually via the TreeView.</summary>
     public bool ManualCompletionAllowed { get; set; } = true;
 
+    /// <summary>
+    /// Set when a finishing flow SKIPPED this item's step, so the group latched around it
+    /// while this one item never happened. The group-completion latch is a flight-long
+    /// historical record and must keep protecting every item the flow really did perform —
+    /// but the item it could NOT perform has to go on mirroring live state, or one manual
+    /// tick could freeze a lie in place for the rest of the flight. Cleared as soon as the
+    /// state genuinely agrees, and on untick / reset.
+    /// </summary>
+    public bool ExemptFromCompletionLatch { get; set; }
+
     // -----------------------------------------------------------------------
     // Manual-tick action settling (ChecklistManager.RunCheckActionWithGraceAsync)
     // -----------------------------------------------------------------------
