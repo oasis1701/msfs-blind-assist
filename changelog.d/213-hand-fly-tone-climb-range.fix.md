@@ -1,0 +1,1 @@
+Hand Fly's tone no longer sits pinned at its highest note through the whole initial climb — it now tracks pitch all the way to 20° nose up, so it stays useful from the moment you rotate. Level flight and nose-down attitudes sound exactly as they did before.

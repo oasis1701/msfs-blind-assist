@@ -1,0 +1,1 @@
+When Takeoff Assist hands over to Hand Fly at liftoff, pitch callouts now resume after about a second and a half instead of three and a half, so you are no longer flying the rotation without them. The handover callout is now simply "Airborne. Hand fly."
