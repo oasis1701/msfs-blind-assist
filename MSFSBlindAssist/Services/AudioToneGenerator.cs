@@ -176,13 +176,33 @@ public class AudioToneGenerator : IDisposable
     private float CenterFrequency => (minFrequency + maxFrequency) / 2f;
 
     /// <summary>
+    /// The captured attitude→audio mapping, for AudioToneConfigureTests. Internal (reached via
+    /// Properties/InternalsVisibleTo.cs) because the fields are private and <see cref="UpdatePitch"/>
+    /// needs a live WASAPI endpoint, so there is otherwise NO way for CI to observe that
+    /// <see cref="Configure"/> put each argument on the field it names — the same gap
+    /// AudioToneGeneratorTests records for the registration contract. Read-only; nothing in
+    /// production reads this.
+    /// </summary>
+    internal (float Min, float Max, double Down, double Up, double Bank) MappingForTests
+        => (minFrequency, maxFrequency, pitchDownRangeDeg, pitchUpRangeDeg, bankRangeDeg);
+
+    /// <summary>
     /// Optional per-instance configuration for both axes of the attitude→audio mapping. Call
     /// BEFORE <see cref="Start"/> (config is captured at Start time).
     ///
-    /// This is the SYMMETRIC form: <paramref name="pitchRangeDegrees"/> saturates the tone in
-    /// both directions. The class-level defaults are NOT symmetric (200–800 Hz over −10°/+20°
-    /// pitch, pan saturation at ±10° bank) because they belong to hand-fly mode, which never
-    /// calls Configure — see <see cref="PitchToFrequency"/> for why the nose-up half is wider.
+    /// The pitch range is SYMMETRIC here: <paramref name="pitchRangeDegrees"/> saturates the
+    /// tone in both directions, which makes <see cref="PitchToFrequency"/> collapse to a single
+    /// straight line. The class-level defaults are deliberately NOT symmetric (200–800 Hz over
+    /// −10°/+20° pitch, pan saturation at ±10° bank) because they belong to hand-fly mode,
+    /// which never calls Configure — see <see cref="PitchToFrequency"/> for why the nose-up
+    /// half is wider.
+    ///
+    /// There is intentionally NO asymmetric overload. Nothing needs one — every caller here
+    /// configures a symmetric range — and a second overload differing only by a trailing
+    /// double made `Configure(min, max, 6.0, 5.0, 12.0)` bind silently with the bank range
+    /// landing on the nose-up range and pan saturation moving to 12°. If a per-airframe
+    /// asymmetric range is ever needed, put it on <c>VisualGuidanceProfile</c> rather than
+    /// re-adding a positional overload.
     ///
     /// Tightening the ranges increases the matching slope: more Hz of beat per degree of pitch
     /// error, more pan delta per degree of bank error. Visual landing guidance currently uses
@@ -192,35 +212,30 @@ public class AudioToneGenerator : IDisposable
     /// fighter) via the profile.
     /// </summary>
     public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees, double bankRangeDegrees)
-        // The isPlaying guard and the validation both live in the 5-argument overload; equal
-        // down/up ranges make PitchToFrequency collapse to the single straight line this
-        // overload has always described.
-        => Configure(minFrequencyHz, maxFrequencyHz, pitchRangeDegrees, pitchRangeDegrees, bankRangeDegrees);
-
-    /// <summary>
-    /// Asymmetric variant of <see cref="Configure(float, float, double, double)"/>: the nose-down
-    /// and nose-up halves get their own saturation angles. Call BEFORE <see cref="Start"/>.
-    ///
-    /// Aircraft do not fly symmetrically about the horizon — an airliner rotates to 15–18° nose up
-    /// and rarely exceeds ~10° nose down in normal operation. A single symmetric range therefore
-    /// has to choose between covering a climb-out and keeping useful resolution, and choosing 10°
-    /// left hand-fly's tone pinned at maximum for the whole initial climb (see
-    /// <see cref="PitchToFrequency"/>).
-    /// </summary>
-    public void Configure(float minFrequencyHz, float maxFrequencyHz,
-        double pitchDownRangeDegrees, double pitchUpRangeDegrees, double bankRangeDegrees)
     {
         if (isPlaying)
             return;  // mapping is captured at Start(); change before starting
+
         if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz
-            && pitchDownRangeDegrees > 0 && pitchUpRangeDegrees > 0 && bankRangeDegrees > 0)
+            && pitchRangeDegrees > 0 && bankRangeDegrees > 0)
         {
             minFrequency = minFrequencyHz;
             maxFrequency = maxFrequencyHz;
-            pitchDownRangeDeg = pitchDownRangeDegrees;
-            pitchUpRangeDeg = pitchUpRangeDegrees;
+            pitchDownRangeDeg = pitchRangeDegrees;
+            pitchUpRangeDeg = pitchRangeDegrees;
             bankRangeDeg = bankRangeDegrees;
+            return;
         }
+
+        // Rejecting the whole configuration leaves this instance on the CLASS DEFAULTS, and
+        // those are hand fly's ASYMMETRIC −10°/+20° mapping — not the symmetric ±10° a caller
+        // reading this method would assume, and not what it asked for. For a visual-guidance
+        // tone pair that means a kinked mapping instead of the straight line its zero-beat
+        // design rests on. Silent rejection is kept (a tone must never take down a flight),
+        // but it is no longer invisible.
+        Log.Warn("Audio", $"AudioToneGenerator.Configure rejected ({minFrequencyHz} Hz, {maxFrequencyHz} Hz, " +
+                          $"±{pitchRangeDegrees}° pitch, ±{bankRangeDegrees}° bank); keeping the asymmetric " +
+                          $"class defaults (−{DEFAULT_PITCH_DOWN_RANGE_DEG}°/+{DEFAULT_PITCH_UP_RANGE_DEG}°)");
     }
 
     /// <summary>
