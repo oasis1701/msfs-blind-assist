@@ -325,8 +325,14 @@ public static class PMDG737ChecklistDefinitions
             Auto("LDA_START", "LANDING", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(2); e.SetEngStartSelector2(2); }),
-            // No speedbrake-lever state field exists in the NG3 CDA struct — action-only.
-            ActionManual("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED", (e, _) => e.SetSpeedbrakeArmed()),
+            // Detected on MAIN_annunSPEEDBRAKE_ARMED. (The old comment here claimed the
+            // NG3 CDA struct has no speedbrake state field; it does — this one — and
+            // without it a failed arm ticked the item anyway.) The annunciator reflects
+            // the auto-speedbrake system being ARMED rather than raw lever position, so it
+            // will not light cold-and-dark; this item only exists in the Landing phase.
+            AutoAsync("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED",
+                SpeedbrakeArmLadder.ArmedField, v => v > 0.5,
+                (e, _) => e.ArmSpeedbrakeAsync()),
             Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };
@@ -541,7 +547,10 @@ public static class PMDG737ChecklistDefinitions
         Items = new()
         {
             Auto("LDC_START", "LANDING_CL", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5, new[] { "ENG_StartSelector_1" }, action: null),
-            Reminder("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED"),
+            // Verify-only on the checklist — the Landing flow and the Landing group item
+            // are what actuate. Mirrors the 777's LDG_SPEEDBRAKE.
+            Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED",
+                SpeedbrakeArmLadder.ArmedField, v => v > 0.5, action: null),
             Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", "MAIN_GearLever", v => v > 1.5, action: null),
             Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set for landing"),
         }

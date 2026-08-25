@@ -13,6 +13,7 @@ using Pmdg777Flows = MSFSBlindAssist.FirstOfficer.PMDG777FlowDefinitions;
 using Pmdg777Checklist = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinitions;
 using Pmdg737Flows = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions;
 using Pmdg737Checklist = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737ChecklistDefinitions;
+using MSFSBlindAssist.FirstOfficer.PMDG737;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -205,5 +206,58 @@ public class FoPr160ProcedureFixTests
             .Single(i => i.Id == "LDG_SPEEDBRAKE");
         Assert.NotNull(item.CheckAction);
         Assert.Equal("FCTL_Speedbrake_Lever", item.StateFieldName);
+    }
+
+    // -- 4. PMDG 737 speedbrake: verified arm -------------------------------
+
+    // All three sites used to be unverified, resting on a comment claiming no
+    // lever state field exists in the NG3 CDA struct. MAIN_annunSPEEDBRAKE_ARMED
+    // does exist (PMDGNG3DataStruct.cs, and PMDG_NG3_SDK.h) - so a failed arm was
+    // reported as success and the pilot landed with the lever down.
+
+    [Fact]
+    public void Pmdg737_LandingGroupSpeedbrake_AutoDetectsFromTheArmedAnnunciator()
+    {
+        var item = Pmdg737Checklist.Build()
+            .Single(g => g.Id == "LANDING").Items
+            .Single(i => i.Id == "LDA_SPDBRK");
+
+        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
+        Assert.Equal("MAIN_annunSPEEDBRAKE_ARMED", item.StateFieldName);
+        Assert.NotNull(item.CheckAction);
+    }
+
+    [Fact]
+    public void Pmdg737_LandingChecklistSpeedbrake_VerifiesButDoesNotActuate()
+    {
+        var item = Pmdg737Checklist.Build()
+            .Single(g => g.Id == "LANDING_CL").Items
+            .Single(i => i.Id == "LDC_SPDBRK");
+
+        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
+        Assert.Equal("MAIN_annunSPEEDBRAKE_ARMED", item.StateFieldName);
+        Assert.Null(item.CheckAction);
+    }
+
+    [Fact]
+    public void Pmdg737_LandingFlowSpeedbrake_GoesThroughTheVerifiedPseudoKey()
+    {
+        var step = Pmdg737Flows.Build()
+            .Single(f => f.Id == "LANDING").Steps
+            .Single(s => s.Id == "LD_SPDBRK");
+
+        Assert.Equal(SpeedbrakeArmLadder.PseudoKey, step.EventName);
+        Assert.Equal(SpeedbrakeArmLadder.ArmedField, step.VerifyFieldName);
+        Assert.Equal("LDC_SPDBRK", step.CompletesChecklistItemId);
+        Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
+    }
+
+    // The pseudo-key is intercepted before the dispatch table is consulted, so it must
+    // never collide with a real PMDG event name.
+    [Fact]
+    public void Pmdg737_SpeedbrakePseudoKey_IsNotARealPmdgEvent()
+    {
+        Assert.False(MSFSBlindAssist.Aircraft.PMDG737Definition.EventIds
+            .ContainsKey(SpeedbrakeArmLadder.PseudoKey));
     }
 }

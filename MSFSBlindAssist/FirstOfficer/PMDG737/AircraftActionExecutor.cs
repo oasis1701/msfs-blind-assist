@@ -1,6 +1,7 @@
 using System.Threading;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.PMDG737;
 
@@ -89,6 +90,14 @@ public class AircraftActionExecutor : IFoActionExecutor
     // 2026-07-11, same finding family as the walked rotaries).
     private const uint MouseFlagLeftSingleU  = 0x20000000u;
     private const uint MouseFlagLeftReleaseU = 0x00020000u;
+
+    // Speedbrake arm read-back. The ambient CDA poll is 1 Hz, so a 1.2 s window always
+    // contains at least one refresh. PMDGNG3DataManager.RequestFreshSnapshotAsync is NOT
+    // used — it is private and documented as unsafe for concurrent callers.
+    private const int SpeedbrakeArmVerifyMs = 1200;
+    private const int SpeedbrakeArmPollMs = 100;
+    // Press-and-hold for the third rung, matching the warning-test press/release shape.
+    private const int SpeedbrakeArmHoldMs = 120;
 
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
@@ -220,8 +229,12 @@ public class AircraftActionExecutor : IFoActionExecutor
         // Same SDK mouse-click family as the flap detents above (sub-detent event ids
         // 6791–6795, like the flaps' 7141–7149): they commit ONLY with
         // MOUSE_FLAG_LEFTSINGLE. The old Simple dispatch (bare param) was a silent
-        // no-op — the Landing flow's "Speedbrake: ARMED" never armed. Live-verified
-        // 2026-07-03: CDA + LEFTSINGLE on _ARM lit MAIN_annunSPEEDBRAKE_ARMED.
+        // no-op — the Landing flow's "Speedbrake: ARMED" never armed.
+        // 2026-08-25: that 2026-07-03 verification no longer reproduces — the owner
+        // reports the lever not arming. The FO path therefore no longer trusts a single
+        // transport: ArmSpeedbrakeAsync escalates CDA click -> transmit click -> transmit
+        // press/release and reads MAIN_annunSPEEDBRAKE_ARMED back between each. This
+        // table entry still governs the non-FO callers of these detent events.
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"]    = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"]     = new(Dispatch.MouseFlag),
         ["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50PCT"]   = new(Dispatch.MouseFlag),
@@ -252,6 +265,10 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "WXR_TEST":     return WxrTestAsync();
                 case "OXY_TEST_CAPT": return OxygenTestCaptAsync();
                 case "OXY_TEST_FO":   return OxygenTestFOAsync();
+                // Closed-loop, verified arm — see ArmSpeedbrakeAsync. The plain event
+                // name is NOT used from the flow any more, because a bare dispatch
+                // reports success whether or not the lever moved.
+                case SpeedbrakeArmLadder.PseudoKey: return ArmSpeedbrakeAsync();
             }
         }
         return step.ActionType switch
@@ -502,6 +519,89 @@ public class AircraftActionExecutor : IFoActionExecutor
         finally { _dispatchGate.Release(); }
     }
 
+    /// <summary>
+    /// Arms the speedbrake and PROVES it, escalating across transports.
+    ///
+    /// The old path dispatched one CDA + LEFTSINGLE click and reported success
+    /// unconditionally — so when it did not take, the Landing flow said "Speedbrake:
+    /// ARMED" and the checklist item ticked while the lever stayed down. The NG3 has a
+    /// documented family of CDA-deaf controls that only move on TransmitClientEvent
+    /// mouse-clicks, and which family the speedbrake detents belong to could not be
+    /// settled from the repo, so each rung is tried and READ BACK in turn (see
+    /// <see cref="SpeedbrakeArmLadder"/>).
+    ///
+    /// Holds <c>_dispatchGate</c> across the whole ladder and uses <c>DispatchCoreAsync</c>
+    /// / the raw send methods internally — never <c>DispatchAsync</c>, which would deadlock
+    /// on the gate. Worst case is roughly four seconds, which
+    /// <c>ChecklistManager.RunCheckActionWithGraceAsync</c> already covers: it holds revert
+    /// until the action completes AND the dispatch gate drains, which is what the
+    /// multi-second transponder walk relies on.
+    /// </summary>
+    /// <returns>true once MAIN_annunSPEEDBRAKE_ARMED confirms; false if no rung took.</returns>
+    public async Task<bool> ArmSpeedbrakeAsync()
+    {
+        const string ev = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
+        var sc = _sc;
+        if (sc == null || !PMDG737Definition.EventIds.TryGetValue(ev, out int evId))
+            return false;
+        uint id = (uint)evId;
+
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            for (int i = 0; i < SpeedbrakeArmLadder.Attempts.Count; i++)
+            {
+                await PaceAsync();
+                switch (SpeedbrakeArmLadder.Attempts[i])
+                {
+                    case SpeedbrakeArmTransport.CdaClick:
+                        sc.SendPMDGEvent(ev, id, MouseFlagLeftSingle);
+                        break;
+                    case SpeedbrakeArmTransport.TransmitClick:
+                        sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
+                        break;
+                    case SpeedbrakeArmTransport.TransmitPressRelease:
+                        sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
+                        await Task.Delay(SpeedbrakeArmHoldMs);
+                        sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftReleaseU);
+                        break;
+                }
+                _lastWriteUtc = DateTime.UtcNow;
+
+                bool armed = await WaitForSpeedbrakeArmedAsync();
+                if (armed) return true;
+
+                bool doNotArm = FieldOn(SpeedbrakeArmLadder.DoNotArmField);
+                if (!SpeedbrakeArmLadder.ShouldContinue(i, armed, doNotArm))
+                {
+                    Log.Debug("FirstOfficer",
+                        doNotArm
+                            ? "Speedbrake arm abandoned: DO NOT ARM is lit (auto-speedbrake fault)."
+                            : "Speedbrake arm failed: no transport moved the lever to ARM.");
+                    return false;
+                }
+            }
+            return false;
+        }
+        finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>Polls the ARMED annunciator for <c>SpeedbrakeArmVerifyMs</c>. Returns as
+    /// soon as it reads true.</summary>
+    private async Task<bool> WaitForSpeedbrakeArmedAsync()
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(SpeedbrakeArmVerifyMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (FieldOn(SpeedbrakeArmLadder.ArmedField)) return true;
+            await Task.Delay(SpeedbrakeArmPollMs);
+        }
+        return FieldOn(SpeedbrakeArmLadder.ArmedField);
+    }
+
+    private bool FieldOn(string field)
+        => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
+
     /// <summary>TCAS self-test: quick press of the transponder panel TEST button.
     /// Aural "TCAS TEST" then ~8 s later "TCAS TEST PASS" — audio is the verification
     /// (no readable state). Live-verified 2026-07-13.</summary>
@@ -686,7 +786,6 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetGearLever(int p)      => Fire("EVT_GEAR_LEVER", p);                      // 0=UP,2=DOWN
     public bool SetAutobrake(int p)      => Fire("EVT_MPM_AUTOBRAKE_SELECTOR", p);          // 0=RTO,1=OFF..5=MAX
     public bool SetAltFlapsPos(int p)    => Fire("EVT_OH_ALT_FLAPS_POS_SWITCH", p);
-    public bool SetSpeedbrakeArmed()     => Fire("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", 1);
     public bool SetSpeedbrakeDown()      => Fire("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", 1);
 
     // Flap lever (per-detent momentary press): 0=UP,1,2,5,10,15,25,30,40

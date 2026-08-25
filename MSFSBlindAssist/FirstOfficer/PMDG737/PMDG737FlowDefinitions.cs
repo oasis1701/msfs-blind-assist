@@ -397,7 +397,14 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             Multi("LD_START_CONT", "Engine start switches: CONT", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
-            SW("LD_SPDBRK", "Speedbrake: ARMED", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null, isMomentary: true),
+            // Verified arm via the SPEEDBRAKE_ARM pseudo-key (intercepted in
+            // AircraftActionExecutor.ExecuteStepAsync, same mechanism as GPWS_TEST /
+            // TCAS_TEST). A bare dispatch of the real event reported success whether or
+            // not the lever moved; this one proves it against the ARMED annunciator, and
+            // the Skip failure policy means a genuine failure is announced without
+            // aborting the rest of the Landing flow.
+            SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
+               SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDC_SPDBRK"),
             Captain("LD_MISSED", "Set the missed approach altitude."),
         }
     };
