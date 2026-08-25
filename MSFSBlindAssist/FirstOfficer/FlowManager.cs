@@ -59,6 +59,18 @@ public class FlowManager<TExec, TState>
     // delivered. Only the Skip branch contributes: Stop and an exhausted RetryThenStop both
     // raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
     // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
+    //
+    // NOT UNIT-TESTED, and not for want of trying: reaching this bookkeeping needs a real
+    // FlowManager run, and the constructor takes a concrete ScreenReaderAnnouncer — no
+    // parameterless ctor, no interface, no virtual members, and a real ctor that loads the
+    // Tolk native DLL and starts an NVDA client, so a test process would drive whatever
+    // screen reader is running on the machine. Passing null! fails immediately: RunFlowAsync
+    // announces "flow started" before it examines a single step. The same blocker is already
+    // recorded in IFly737AutoManagerTests / IFly737ExecutorTests. The CONSUMER half is
+    // covered — FoFlowCompletionExclusionTests pins what MarkGroupComplete does with this
+    // set — so what rests on reading is only which ids land in it and when it clears.
+    // Treat the Clear() below and the Skip branch's Add() as load-bearing: deleting either
+    // silently un-ticks a later flow's items, with no test to catch it.
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
