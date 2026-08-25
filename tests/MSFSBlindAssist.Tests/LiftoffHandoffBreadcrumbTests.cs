@@ -1,16 +1,25 @@
-// Pins the spoken breadcrumb the liftoff auto-handoff plays, and the announcement mute that
-// protects it.
+// Pins the spoken cue the liftoff auto-handoff plays, and the announcement mute that protects
+// it — as ONE decision, because they are one decision in the production type too.
 //
-// WHY THE MUTE EXISTS: nobody pressed a key, so this one phrase is the entire spoken record
-// that takeoff assist stopped and hand fly took over. Hand fly's own pitch/bank/heading
-// callouts pass their announce gates within a frame of activation and use AnnounceImmediate,
-// which INTERRUPTS — so without a mute the breadcrumb is cut off after a syllable.
+// WHY THE MUTE EXISTS: nobody pressed a key, so this phrase is the only cue the handoff itself
+// speaks. Hand fly's own pitch/bank/heading callouts pass their announce gates within a frame
+// of activation and use AnnounceImmediate, which INTERRUPTS — so without a mute the cue is cut
+// off after a syllable.
 //
-// WHY IT HAD TO SHRINK: the mute was a flat 3500 ms sized for the old, much longer phrase, and
-// it lands exactly on rotation. Measured on a live Fenix A320 takeoff (2026-08-25): takeoff
-// assist was calling pitch every ~0.5 s through a steady 1°-per-half-second rotation ramp, then
-// the handoff opened a 3.504 s hole in which pitch went 11.6° → 12.6° with nothing spoken at
-// all. Shortening the phrase is what buys the mute back.
+// WHY THE PHRASE IS ONE SENTENCE: measured by rendering through SAPI at the Rate = 0 the app
+// hardcodes (~206 wpm) and segmenting on the energy envelope, "Airborne. Hand fly." segments as
+// [0.11-0.67] [1.56-2.16] — SAPI's inter-sentence pause is ~0.89 s, longer than all the
+// phonation in "Hand fly" — so against a 1500 ms mute the second clause was NEVER SPOKEN AT
+// ALL. The comma form measures ~1.05 s end to end and fits with headroom down to ~135 wpm. The
+// sentence pause, not the word count, is the dominant cost.
+//
+// WHY THE MUTE HAD TO SHRINK, stated correctly: the flat 3500 ms was NOT a value left behind by
+// a shortened phrase — git shows it was introduced already sized for the phrase it shipped with.
+// It shrank because it lands on ROTATION, where a multi-second hole in the pitch callouts is
+// unaffordable: measured on a live Fenix A320 takeoff (2026-08-25), takeoff assist was calling
+// pitch every ~0.5 s through a 1°-per-half-second ramp, then the handoff opened a 3.504 s hole
+// in which pitch went 11.6° → 12.6° with nothing spoken. Shrinking the mute required shrinking
+// the phrase, which is why the two must stay one decision.
 
 using MSFSBlindAssist.Services;
 
@@ -19,33 +28,48 @@ namespace MSFSBlindAssist.Tests;
 public class LiftoffHandoffBreadcrumbTests
 {
     [Fact]
-    public void ActivatingHandFlyNamesTheModeTheHandoffJustEntered()
+    public void ActivatingHandFlyNamesTheModeInASingleSentence()
     {
-        Assert.Equal("Airborne. Hand fly.",
-            LiftoffHandoffBreadcrumb.Compose(activatedHandFly: true, quickKeysRegistered: true));
+        var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: true);
+
+        Assert.Equal("Airborne, hand fly.", cue.Text);
+        Assert.Equal(LiftoffHandoffBreadcrumb.GraceMs, cue.GraceMs);
+    }
+
+    [Fact]
+    public void TheSpokenPhraseIsOneSentenceSoTheSentencePauseCannotEatIt()
+    {
+        // Guards the actual defect rather than the literal: a second sentence re-introduces
+        // SAPI's ~0.89 s inter-sentence pause, which alone is over half the mute.
+        foreach (bool keysOk in new[] { true, false })
+        {
+            string text = LiftoffHandoffBreadcrumb.For(true, keysOk).Text;
+            string beforeWarning = text.Replace(LiftoffHandoffBreadcrumb.QuickKeysWarning, "").Trim();
+
+            Assert.Equal(1, beforeWarning.Count(c => c == '.'));
+        }
     }
 
     [Fact]
     public void APreArmedHandFlyIsNotAnnouncedAsIfItJustStarted()
     {
         // The pilot armed hand fly manually on the ground; it never stopped talking. The only
-        // news is that the aircraft is airborne and takeoff assist has stood down.
-        Assert.Equal("Airborne.",
-            LiftoffHandoffBreadcrumb.Compose(activatedHandFly: false, quickKeysRegistered: true));
+        // news is that the aircraft is airborne.
+        var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: false, quickKeysRegistered: true);
+
+        Assert.Equal("Airborne.", cue.Text);
     }
 
     [Fact]
     public void AFailedQuickKeyRegistrationIsFoldedIntoTheSameUtterance()
     {
-        // It cannot be a separate announcement: the breadcrumb's AnnounceImmediate cancels
-        // pending speech on every backend, so a standalone warning would be swallowed and the
-        // pilot would never learn the quick-access keys are dead.
-        string message = LiftoffHandoffBreadcrumb.Compose(
-            activatedHandFly: true, quickKeysRegistered: false);
+        // It cannot be a separate announcement: the cue's AnnounceImmediate cancels pending
+        // speech on every backend, so a standalone warning would be swallowed and the pilot
+        // would never learn the quick-access keys are dead.
+        var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: false);
 
-        Assert.StartsWith("Airborne. Hand fly.", message);
-        Assert.Contains("Quick access keys unavailable", message);
-        Assert.Contains("H, V, Q", message);
+        Assert.StartsWith("Airborne, hand fly.", cue.Text);
+        Assert.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning, cue.Text);
     }
 
     [Fact]
@@ -53,48 +77,58 @@ public class LiftoffHandoffBreadcrumbTests
     {
         // OnHandFlyModeActiveChanged did not fire during this handoff, so the flag describes an
         // earlier registration the pilot already heard about in full when they armed hand fly.
-        Assert.Equal("Airborne.",
-            LiftoffHandoffBreadcrumb.Compose(activatedHandFly: false, quickKeysRegistered: false));
+        var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: false, quickKeysRegistered: false);
+
+        Assert.Equal("Airborne.", cue.Text);
     }
 
     [Fact]
     public void TheNormalHandoffMutesCalloutsForFarLessThanASecondAndAHalfOfRotation()
     {
-        int grace = LiftoffHandoffBreadcrumb.GraceMsFor(
-            activatedHandFly: true, quickKeysRegistered: true);
+        int grace = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: true).GraceMs;
 
         // The measured hole was 3504 ms. Anything at or above the old flat value would leave
         // the defect in place.
         Assert.True(grace <= 1500, $"expected a short mute, got {grace} ms");
-        Assert.True(grace > 0, "the breadcrumb still has to survive");
+        Assert.True(grace > 0, "the cue still has to survive");
     }
 
     [Fact]
     public void TheWarningVariantKeepsTheLongerMuteItNeeds()
     {
-        int normal = LiftoffHandoffBreadcrumb.GraceMsFor(true, quickKeysRegistered: true);
-        int warned = LiftoffHandoffBreadcrumb.GraceMsFor(true, quickKeysRegistered: false);
+        int normal = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: true).GraceMs;
+        int warned = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: false).GraceMs;
 
-        // Roughly four times the words, and it is a warning the pilot cannot get back. This
-        // path is not made worse than it already was.
+        // Several times the words, and it is a warning the pilot cannot get back. This path is
+        // not made worse than it already was.
         Assert.True(warned > normal, "the longer phrase needs the longer mute");
     }
 
     [Fact]
-    public void TheMuteAlwaysMatchesThePhraseThatIsActuallySpoken()
+    public void ThePhraseAndItsMuteComeFromOneDecisionSoTheyCannotDisagree()
     {
-        // A grace sized for a phrase other than the one spoken is how this drifted the first
-        // time: the phrase was shortened and the constant was not.
+        // The whole reason this type exists. One call returns both, so there is no second
+        // predicate to leave behind — the previous shape had Compose and GraceMsFor each
+        // re-deriving `activatedHandFly && !quickKeysRegistered` by hand.
         foreach (bool activated in new[] { true, false })
         foreach (bool keysOk in new[] { true, false })
         {
-            string message = LiftoffHandoffBreadcrumb.Compose(activated, keysOk);
-            int grace = LiftoffHandoffBreadcrumb.GraceMsFor(activated, keysOk);
-            bool carriesWarning = message.Contains("Quick access keys unavailable");
+            var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
+            bool carriesWarning = cue.Text.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning);
 
             Assert.Equal(carriesWarning
                 ? LiftoffHandoffBreadcrumb.GraceWithWarningMs
-                : LiftoffHandoffBreadcrumb.GraceMs, grace);
+                : LiftoffHandoffBreadcrumb.GraceMs, cue.GraceMs);
         }
+    }
+
+    [Fact]
+    public void TheStandaloneWarningAndTheCueShareOneWording()
+    {
+        // MainForm.Hotkeys.cs speaks this same sentence when a MANUAL arm fails to register the
+        // keys. It used to hold a byte-identical copy, so rewording one would have given the
+        // pilot two different sentences for one condition depending on how hand fly was armed.
+        Assert.Equal("Quick access keys unavailable. Use output mode for H, V, Q.",
+            LiftoffHandoffBreadcrumb.QuickKeysWarning);
     }
 }

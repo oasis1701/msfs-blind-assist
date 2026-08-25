@@ -1074,19 +1074,18 @@ public partial class MainForm
             // announce) and would interrupt the breadcrumb after a syllable. Mute
             // the callout stream (never the tone) until the breadcrumb has finished;
             // this covers the pre-armed case too, where the stream is already running.
-            // The wording and its matching mute both live in LiftoffHandoffBreadcrumb —
-            // including why the quick-access-keys warning has to ride INSIDE this one
-            // utterance rather than be spoken separately.
+            // The wording and its matching mute are ONE decision in LiftoffHandoffBreadcrumb —
+            // including why the phrase is a single sentence (SAPI's inter-sentence pause is
+            // longer than the mute can afford) and why the quick-access-keys warning has to
+            // ride INSIDE this one utterance rather than be spoken separately.
             //
             // Ordering: the grace MUST be set AFTER handFlyManager.Toggle() — the
             // activation branch clears any stale grace window. _handFlyQuickKeysRegistered
             // is written by OnHandFlyModeActiveChanged, which that same Toggle() raised, so
             // it is already current here.
-            string breadcrumb = LiftoffHandoffBreadcrumb.Compose(
-                activatedHandFly, _handFlyQuickKeysRegistered);
-            handFlyManager.SuppressAnnouncementsFor(
-                LiftoffHandoffBreadcrumb.GraceMsFor(activatedHandFly, _handFlyQuickKeysRegistered));
-            announcer.AnnounceImmediate(breadcrumb);
+            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered);
+            handFlyManager.SuppressAnnouncementsFor(cue.GraceMs);
+            announcer.AnnounceImmediate(cue.Text);
         });
     }
 

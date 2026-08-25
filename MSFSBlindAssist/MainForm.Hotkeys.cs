@@ -603,8 +603,11 @@ public partial class MainForm
             _handFlyQuickKeysRegistered = hotkeysRegistered;
             if (!hotkeysRegistered)
             {
-                // Registration failed - likely another application is using H, V, or Q keys
-                announcer.Announce("Hand fly mode active. Quick access keys unavailable. Use output mode for H, V, Q.");
+                // Registration failed - likely another application is using H, V, or Q keys.
+                // The warning sentence is shared with the liftoff handoff's cue, which folds it
+                // into its own utterance — one wording, so the pilot cannot hear two different
+                // sentences for one condition depending on how hand fly was armed.
+                announcer.Announce($"Hand fly mode active. {LiftoffHandoffBreadcrumb.QuickKeysWarning}");
             }
         }
         else
