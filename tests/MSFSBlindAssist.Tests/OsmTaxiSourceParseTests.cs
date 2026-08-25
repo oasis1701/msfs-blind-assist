@@ -64,4 +64,179 @@ public class OsmTaxiSourceParseTests
         var hp = Assert.Single(data.HoldingPoints);
         Assert.Equal("DASSO", hp.Name);
     }
+
+    // ---- Stand / gate coverage (added 2026-08-25) ----------------------------------
+    //
+    // Element shapes are real Overpass "out tags geom" output, sampled live from
+    // overpass-api.de around EGLL (51.4700,-0.4543) and KDTW (42.2124,-83.3534):
+    //   EGLL   70 parking_position nodes vs 304 ways;  148 aeroway=gate nodes
+    //   KDTW    0 parking_position nodes vs 176 ways;  133 aeroway=gate nodes
+    // i.e. the previous node-only query saw NOTHING at KDTW. That is the regression
+    // these tests pin.
+
+    // A stand mapped as a WAY (the painted guidance line) — the dominant shape at hubs.
+    private const string StandWay =
+        @"{""elements"":[
+            {""type"":""way"",""id"":1,""tags"":{""aeroway"":""parking_position"",""ref"":""A46A""},
+             ""geometry"":[{""lat"":42.2100,""lon"":-83.3500},{""lat"":42.2110,""lon"":-83.3500}]}
+          ]}";
+
+    [Fact]
+    public void Parking_position_mapped_as_a_way_is_collected()
+    {
+        var data = OsmTaxiSource.Parse(StandWay);
+
+        var stand = Assert.Single(data.Parking);
+        Assert.Equal("A46A", stand.Name);
+    }
+
+    [Fact]
+    public void A_stand_way_reports_the_midpoint_of_its_line_not_an_endpoint()
+    {
+        var data = OsmTaxiSource.Parse(StandWay);
+
+        var stand = Assert.Single(data.Parking);
+        Assert.Equal(42.2105, stand.Lat, 6);
+        Assert.Equal(-83.3500, stand.Lon, 6);
+    }
+
+    [Fact]
+    public void Parking_position_mapped_as_a_node_still_uses_its_own_position()
+    {
+        string json =
+            @"{""elements"":[
+                {""type"":""node"",""id"":2,""lat"":51.4700,""lon"":-0.4543,
+                 ""tags"":{""aeroway"":""parking_position"",""ref"":""531""}}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        var stand = Assert.Single(data.Parking);
+        Assert.Equal("531", stand.Name);
+        Assert.Equal(51.4700, stand.Lat, 6);
+        Assert.Equal(-0.4543, stand.Lon, 6);
+    }
+
+    [Fact]
+    public void Aeroway_gate_contributes_a_stand_designator()
+    {
+        // KDTW's gate nodes carry exactly the terminal-side numbering a controller says ("A24").
+        string json =
+            @"{""elements"":[
+                {""type"":""node"",""id"":3,""lat"":42.2124,""lon"":-83.3534,
+                 ""tags"":{""aeroway"":""gate"",""ref"":""A24""}}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        var gate = Assert.Single(data.Parking);
+        Assert.Equal("A24", gate.Name);
+    }
+
+    [Fact]
+    public void A_stand_or_gate_without_a_ref_is_dropped_even_when_it_has_a_name()
+    {
+        // "name" is free prose on aeroway features ("Terminal 3"), which StandId would parse as
+        // stand number 3 and alias onto an unrelated gate. Every gate/stand in the live sample
+        // carried a ref, so ref-only costs no coverage.
+        string json =
+            @"{""elements"":[
+                {""type"":""node"",""id"":4,""lat"":42.2124,""lon"":-83.3534,
+                 ""tags"":{""aeroway"":""gate"",""name"":""Terminal 3""}},
+                {""type"":""way"",""id"":5,""tags"":{""aeroway"":""parking_position""},
+                 ""geometry"":[{""lat"":42.2100,""lon"":-83.3500},{""lat"":42.2110,""lon"":-83.3500}]}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        Assert.Empty(data.Parking);
+    }
+
+    [Fact]
+    public void A_stand_way_with_no_geometry_is_skipped_rather_than_placed_at_null_island()
+    {
+        string json =
+            @"{""elements"":[
+                {""type"":""way"",""id"":6,""tags"":{""aeroway"":""parking_position"",""ref"":""B12""}}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        Assert.Empty(data.Parking);
+    }
+
+    [Fact]
+    public void Taxiway_ways_and_holding_position_nodes_are_unaffected_by_the_stand_changes()
+    {
+        string json =
+            @"{""elements"":[
+                {""type"":""way"",""id"":7,""tags"":{""aeroway"":""taxiway"",""ref"":""A""},
+                 ""geometry"":[{""lat"":51.4700,""lon"":-0.4543},{""lat"":51.4710,""lon"":-0.4543},
+                               {""lat"":51.4720,""lon"":-0.4543}]},
+                {""type"":""node"",""id"":8,""lat"":51.4705,""lon"":-0.4540,
+                 ""tags"":{""aeroway"":""holding_position"",""ref"":""A2"",
+                           ""holding_position:type"":""runway""}}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        Assert.Equal(2, data.Taxiways.Count);          // 3 vertices -> 2 segments
+        Assert.All(data.Taxiways, s => Assert.Equal("A", s.Name));
+
+        var hold = Assert.Single(data.HoldingPoints);
+        Assert.Equal("A2", hold.Name);
+        Assert.Equal("runway", hold.Kind);
+        Assert.Empty(data.Parking);
+    }
+
+    [Fact]
+    public void A_gate_way_uses_its_geometry_midpoint_like_a_stand_way()
+    {
+        string json =
+            @"{""elements"":[
+                {""type"":""way"",""id"":9,""tags"":{""aeroway"":""gate"",""ref"":""19""},
+                 ""geometry"":[{""lat"":51.4700,""lon"":-0.4560},{""lat"":51.4700,""lon"":-0.4540}]}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        var gate = Assert.Single(data.Parking);
+        Assert.Equal("19", gate.Name);
+        Assert.Equal(51.4700, gate.Lat, 6);
+        Assert.Equal(-0.4550, gate.Lon, 6);
+    }
+
+    [Fact]
+    public void The_midpoint_is_by_ARC_LENGTH_so_a_densely_noded_end_does_not_drag_it()
+    {
+        // Four vertices, three of them bunched at the start: a vertex AVERAGE would sit at
+        // ~lat 42.20025, the arc-length midpoint sits at the true middle of the line.
+        string json =
+            @"{""elements"":[
+                {""type"":""way"",""id"":10,""tags"":{""aeroway"":""parking_position"",""ref"":""C7""},
+                 ""geometry"":[{""lat"":42.2000,""lon"":-83.3500},{""lat"":42.2001,""lon"":-83.3500},
+                               {""lat"":42.2002,""lon"":-83.3500},{""lat"":42.2100,""lon"":-83.3500}]}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        var stand = Assert.Single(data.Parking);
+        Assert.Equal(42.2050, stand.Lat, 6);
+    }
+
+    [Fact]
+    public void A_stand_way_across_the_antimeridian_stays_on_the_line()
+    {
+        // NZ/Fiji-side aprons: a raw (lon1+lon2)/2 would land on the far side of the planet.
+        string json =
+            @"{""elements"":[
+                {""type"":""way"",""id"":11,""tags"":{""aeroway"":""parking_position"",""ref"":""7""},
+                 ""geometry"":[{""lat"":-17.7550,""lon"":179.9990},{""lat"":-17.7550,""lon"":-179.9990}]}
+              ]}";
+
+        var data = OsmTaxiSource.Parse(json);
+
+        var stand = Assert.Single(data.Parking);
+        Assert.Equal(180.0, Math.Abs(stand.Lon), 4);
+    }
 }
