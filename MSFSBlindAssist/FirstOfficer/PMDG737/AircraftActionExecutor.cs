@@ -551,6 +551,15 @@ public class AircraftActionExecutor : IFoActionExecutor
         await _dispatchGate.WaitAsync();
         try
         {
+            // Already armed, or already deployed (auto-speedbrake fired on touchdown, or
+            // manually raised): a click here is a click toward the DOWN/RETRACT side of
+            // the detent travel, which on this lever means yanking the ground spoilers
+            // back in during rollout. Before this ladder existed, a re-run of the Landing
+            // flow (or a manual re-tick) fired exactly one such click; the escalation would
+            // otherwise fire up to three. Bail out honestly-true instead.
+            if (FieldOn(SpeedbrakeArmLadder.ArmedField) || FieldOn(SpeedbrakeArmLadder.ExtendedField))
+                return true;
+
             for (int i = 0; i < SpeedbrakeArmLadder.Attempts.Count; i++)
             {
                 await PaceAsync();
@@ -560,6 +569,10 @@ public class AircraftActionExecutor : IFoActionExecutor
                         sc.SendPMDGEvent(ev, id, MouseFlagLeftSingle);
                         break;
                     case SpeedbrakeArmTransport.TransmitClick:
+                        // No release sent — matches the walked-rotary precedent in this
+                        // file (e.g. EVT_TCAS_MODE), where a bare LEFTSINGLE is the whole
+                        // click. Rung 3 (TransmitPressRelease) is the different shape
+                        // WarningTestAsync's momentary buttons need.
                         sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
                         break;
                     case SpeedbrakeArmTransport.TransmitPressRelease:

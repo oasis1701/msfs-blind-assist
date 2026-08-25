@@ -314,8 +314,31 @@ precisely why the decision is extracted into `GroundPowerGate`.
    checklist. Then untick and re-tick that checklist item with the lever down — it must arm.
 3. **737 landing** — lever DOWN, run the Landing flow. Confirm the lever reaches ARM
    (`switch_679_73X` = 100, and the app's own speed-brake monitor announces "Speed brake
-   armed"). Repeat by ticking `LDA_SPDBRK` on the Landing group. If either fails, the item
-   must now **revert and report**, not tick silently.
+   armed"). Repeat by ticking `LDA_SPDBRK` on the Landing group; it must arm the same way.
+
+   Then test the failure side of each path (block the lever, or disconnect the linkage, so
+   the arm genuinely cannot take):
+   - **Running the Landing flow** with the lever unable to arm: expect to hear
+     `"Skipping: Speedbrake: ARMED"` a couple of seconds into the flow. Then, once the flow
+     finishes, expect `LDA_SPDBRK`/`LDC_SPDBRK` to be ticked anyway and latched — see the
+     Known limitation note below; this is pre-existing `MarkGroupComplete` behaviour, not a
+     regression from this branch, and is deliberately out of scope here.
+   - **Ticking `LDA_SPDBRK` by hand** with the lever unable to arm: expect the checkbox to
+     silently un-tick itself on the next auto-detect poll (no announcement — it is a visual
+     revert only, via `RefreshTreeNodeForItem`).
+
+   **Known limitation (PMDG 737, pre-existing, shared by all six aircraft profiles):**
+   `FirstOfficerForm.OnFlowCompleted` calls `ChecklistManager.MarkGroupComplete` for every
+   group related to a completed flow, and that method unconditionally ticks every
+   non-`Informational` item in the group and sets `group.CompletionLatched = true` —
+   regardless of whether the flow's own steps actually succeeded. So a flow that reports a
+   step as skipped or failed can still force-tick and permanently latch the checklist item
+   that step was meant to complete, and `CompletionLatched` is exactly what blocks a later
+   auto-detect revert. This is not specific to the speedbrake or to the 737; it applies to
+   every `AutoAsync`/`RevertToState` checklist item reachable from a flow, on every
+   profile. The owner has deliberately scoped a fix out of this branch. The fix, when
+   undertaken, would have `OnFlowCompleted` skip force-ticking any item that was the
+   `CompletesChecklistItemId` of a step which reported `StepSkipped`/`StepFailed`.
 4. **737 transport probe** — with the 737 loaded, `tools/PMDGDispatchTester`: send
    `EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM` as (a) CDA + `0x20000000`, (b) transmit +
    `0x20000000`, (c) transmit `0x20000000` then `0x00020000`, reading

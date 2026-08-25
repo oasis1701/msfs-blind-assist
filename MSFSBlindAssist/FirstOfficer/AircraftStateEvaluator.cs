@@ -83,7 +83,6 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsBatteryOn()         => IsOn("ELEC_Battery_Sw_ON");
     public bool IsGpuPower1On()       => IsOn("ELEC_annunExtPowr_ON_0");
     public bool IsGpuPower2On()       => IsOn("ELEC_annunExtPowr_ON_1");
-    public bool IsAnyGpuOn()          => IsGpuPower1On() || IsGpuPower2On();
     public bool IsApuGenOn()          => IsOn("ELEC_APUGen_Sw_ON");
     public bool IsBusTie1Auto()       => IsOn("ELEC_BusTie_Sw_AUTO_0");
     public bool IsBusTie2Auto()       => IsOn("ELEC_BusTie_Sw_AUTO_1");

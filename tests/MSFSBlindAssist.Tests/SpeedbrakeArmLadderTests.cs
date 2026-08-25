@@ -66,6 +66,7 @@ public class SpeedbrakeArmLadderTests
     {
         Assert.Equal("MAIN_annunSPEEDBRAKE_ARMED", SpeedbrakeArmLadder.ArmedField);
         Assert.Equal("MAIN_annunSPEEDBRAKE_DO_NOT_ARM", SpeedbrakeArmLadder.DoNotArmField);
+        Assert.Equal("MAIN_annunSPEEDBRAKE_EXTENDED", SpeedbrakeArmLadder.ExtendedField);
         Assert.Equal("SPEEDBRAKE_ARM", SpeedbrakeArmLadder.PseudoKey);
     }
 }

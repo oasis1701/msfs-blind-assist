@@ -330,6 +330,16 @@ public static class PMDG737ChecklistDefinitions
             // without it a failed arm ticked the item anyway.) The annunciator reflects
             // the auto-speedbrake system being ARMED rather than raw lever position, so it
             // will not light cold-and-dark; this item only exists in the Landing phase.
+            //
+            // Because this is AutoAsync (RevertToState), the item can un-tick on its own:
+            // the auto-speedbrake deploys on touchdown, ARMED extinguishes, and — unless the
+            // group was already latched by a completed flow run (see ChecklistManager.
+            // MarkGroupComplete) — the checklist visibly reverts this item mid-rollout. A
+            // pilot tidying it back up by hand then re-fires the arm action against a
+            // DEPLOYED lever. That is exactly what ArmSpeedbrakeAsync's already-armed/
+            // already-extended guard exists to make safe: it reads back ArmedField OR
+            // ExtendedField before touching the lever at all, so a re-tick here on rollout
+            // is a same-frame no-op, not a click toward retracting the ground spoilers.
             AutoAsync("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED",
                 SpeedbrakeArmLadder.ArmedField, v => v > 0.5,
                 (e, _) => e.ArmSpeedbrakeAsync()),

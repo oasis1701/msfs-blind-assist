@@ -47,6 +47,12 @@ public static class SpeedbrakeArmLadder
     /// announced independently, so the pilot hears the real reason.</summary>
     public const string DoNotArmField = "MAIN_annunSPEEDBRAKE_DO_NOT_ARM";
 
+    /// <summary>PMDGNG3DataStruct field meaning the speedbrake is already DEPLOYED
+    /// (auto-deployed on touchdown, or manually raised). Clicking ARM here would retract
+    /// the ground spoilers — see the already-armed/already-extended guard at the top of
+    /// AircraftActionExecutor.ArmSpeedbrakeAsync.</summary>
+    public const string ExtendedField = "MAIN_annunSPEEDBRAKE_EXTENDED";
+
     /// <summary>Flow-step EventName that AircraftActionExecutor.ExecuteStepAsync
     /// intercepts (same mechanism as FIRE_TEST / GPWS_TEST / TCAS_TEST). Not a real
     /// PMDG event name — it must never appear in PMDG737Definition.EventIds.</summary>
