@@ -27,6 +27,74 @@ namespace MSFSBlindAssist.Tests;
 
 public class LiftoffHandoffBreadcrumbTests
 {
+    // Measured by rendering each phrase through System.Speech at Rate = 0 -- the rate
+    // ScreenReaderAnnouncer hardcodes for its SAPI fallback, and so the only SAPI rate this app
+    // produces -- with trailing silence trimmed off the buffer. These are EVIDENCE, not a
+    // words-per-minute estimate: an estimate put "Airborne, hand fly." at ~1.05 s when it is
+    // really 1.68 s, and a mute was sized against the estimate.
+    private static readonly Dictionary<string, double> MeasuredSeconds = new()
+    {
+        ["Airborne."]                           = 0.63,
+        ["Airborne, hand fly."]                 = 1.68,
+        ["Airborne, hand fly, quick keys off."] = 3.00,
+    };
+
+    // The callout hole measured on the live Fenix A320 takeoff this area exists to close. No
+    // mute may reach it -- that is the ceiling the phrases are written to fit, not a target.
+    private const int MeasuredDefectMs = 3504;
+
+    [Fact]
+    public void EveryCueIsMutedForLongerThanItTakesToSpeak()
+    {
+        // THE point of this type. A mute shorter than its own phrase clips the phrase; a mute
+        // longer than it needs is a pitch callout the pilot does not get at rotation. Both are
+        // the same defect, and both have shipped.
+        foreach (bool activated in new[] { true, false })
+        foreach (bool keysOk in new[] { true, false })
+        {
+            var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
+
+            Assert.True(MeasuredSeconds.ContainsKey(cue.Text),
+                $"unmeasured phrase \"{cue.Text}\" -- render it through SAPI at Rate 0 and add it, " +
+                "rather than guessing a mute for it");
+
+            int spokenMs = (int)(MeasuredSeconds[cue.Text] * 1000);
+            Assert.True(cue.GraceMs >= spokenMs,
+                $"\"{cue.Text}\" takes {spokenMs} ms to say but is muted for only {cue.GraceMs} ms");
+        }
+    }
+
+    [Fact]
+    public void NoCueIsMutedForAnythingLikeTheHoleThisAreaExistsToClose()
+    {
+        foreach (bool activated in new[] { true, false })
+        foreach (bool keysOk in new[] { true, false })
+        {
+            var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
+
+            Assert.True(cue.GraceMs <= MeasuredDefectMs,
+                $"\"{cue.Text}\" mutes callouts for {cue.GraceMs} ms, at or past the {MeasuredDefectMs} ms " +
+                "hole that was reported as the defect -- shorten the phrase, do not widen the mute");
+        }
+    }
+
+    [Fact]
+    public void NoCueWastesMoreThanHalfAgainOfItsOwnSpeech()
+    {
+        // The other direction: muting far past the phrase is silence bought for nothing. The
+        // pre-armed cue used to hold a 1500 ms floor for 0.63 s of speech.
+        foreach (bool activated in new[] { true, false })
+        foreach (bool keysOk in new[] { true, false })
+        {
+            var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
+            int spokenMs = (int)(MeasuredSeconds[cue.Text] * 1000);
+
+            Assert.True(cue.GraceMs <= spokenMs * 1.5,
+                $"\"{cue.Text}\" takes {spokenMs} ms but is muted for {cue.GraceMs} ms — " +
+                "the excess is pitch callouts the pilot loses at rotation for no phrase");
+        }
+    }
+
     [Fact]
     public void ActivatingHandFlyNamesTheModeInASingleSentence()
     {
@@ -44,9 +112,8 @@ public class LiftoffHandoffBreadcrumbTests
         foreach (bool keysOk in new[] { true, false })
         {
             string text = LiftoffHandoffBreadcrumb.For(true, keysOk).Text;
-            string beforeWarning = text.Replace(LiftoffHandoffBreadcrumb.QuickKeysWarning, "").Trim();
 
-            Assert.Equal(1, beforeWarning.Count(c => c == '.'));
+            Assert.Equal(1, text.Count(c => c == '.'));
         }
     }
 
@@ -68,8 +135,21 @@ public class LiftoffHandoffBreadcrumbTests
         // would never learn the quick-access keys are dead.
         var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: false);
 
-        Assert.StartsWith("Airborne, hand fly.", cue.Text);
-        Assert.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning, cue.Text);
+        Assert.StartsWith("Airborne, hand fly", cue.Text);
+        Assert.Contains(LiftoffHandoffBreadcrumb.QuickKeysShortWarning, cue.Text);
+    }
+
+    [Fact]
+    public void TheRotationWarningIsTheShortFormNotTheFullSentence()
+    {
+        // The full wording measures 8.15 s and could only be delivered by muting the pitch
+        // callouts for more than twice the hole this area exists to close. The short form is
+        // what fits the budget; the full one still reaches the pilot through the unbounded,
+        // queued MainForm.Hotkeys path when they re-arm hand fly.
+        var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: false);
+
+        Assert.DoesNotContain(LiftoffHandoffBreadcrumb.QuickKeysWarning, cue.Text);
+        Assert.DoesNotContain("H, V, Q", cue.Text);
     }
 
     [Fact]
@@ -83,14 +163,25 @@ public class LiftoffHandoffBreadcrumbTests
     }
 
     [Fact]
-    public void TheNormalHandoffMutesCalloutsForFarLessThanASecondAndAHalfOfRotation()
+    public void TheNormalHandoffMutesCalloutsForWellUnderTheMeasuredHole()
     {
         int grace = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: true).GraceMs;
 
-        // The measured hole was 3504 ms. Anything at or above the old flat value would leave
-        // the defect in place.
-        Assert.True(grace <= 1500, $"expected a short mute, got {grace} ms");
-        Assert.True(grace > 0, "the cue still has to survive");
+        // Not an arbitrary bound: the phrase measures 1.68 s, so a mute under ~1700 ms clips it
+        // (1500 ms did), while 3504 ms is the hole that was reported as the defect.
+        Assert.True(grace >= 1680, $"the phrase takes 1.68 s to say, mute is only {grace} ms");
+        Assert.True(grace < MeasuredDefectMs, $"expected well under the measured hole, got {grace} ms");
+    }
+
+    [Fact]
+    public void ThePreArmedCueIsMutedForLessThanTheOthers()
+    {
+        // It is one word (0.63 s) AND it is the path where hand fly was already speaking, so
+        // every extra millisecond costs a callout the pilot would otherwise have had.
+        int preArmed = LiftoffHandoffBreadcrumb.For(false, quickKeysRegistered: true).GraceMs;
+        int normal = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: true).GraceMs;
+
+        Assert.True(preArmed < normal, "the shortest phrase must not hold the longest mute");
     }
 
     [Fact]
@@ -99,9 +190,11 @@ public class LiftoffHandoffBreadcrumbTests
         int normal = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: true).GraceMs;
         int warned = LiftoffHandoffBreadcrumb.For(true, quickKeysRegistered: false).GraceMs;
 
-        // Several times the words, and it is a warning the pilot cannot get back. This path is
-        // not made worse than it already was.
+        // More words, and a warning the pilot cannot get back at this moment. This path is not
+        // made worse than it already was: the mute is unchanged and the phrase was shortened to
+        // fit inside it.
         Assert.True(warned > normal, "the longer phrase needs the longer mute");
+        Assert.Equal(3500, warned);
     }
 
     [Fact]
@@ -114,20 +207,23 @@ public class LiftoffHandoffBreadcrumbTests
         foreach (bool keysOk in new[] { true, false })
         {
             var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
-            bool carriesWarning = cue.Text.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning);
+            bool carriesWarning = cue.Text.Contains(LiftoffHandoffBreadcrumb.QuickKeysShortWarning);
 
-            Assert.Equal(carriesWarning
-                ? LiftoffHandoffBreadcrumb.GraceWithWarningMs
-                : LiftoffHandoffBreadcrumb.GraceMs, cue.GraceMs);
+            int expected = carriesWarning ? LiftoffHandoffBreadcrumb.GraceWithWarningMs
+                : activated ? LiftoffHandoffBreadcrumb.GraceMs
+                : LiftoffHandoffBreadcrumb.GracePreArmedMs;
+
+            Assert.Equal(expected, cue.GraceMs);
         }
     }
 
     [Fact]
-    public void TheStandaloneWarningAndTheCueShareOneWording()
+    public void TheStandaloneWarningKeepsTheFullWordingItCanAfford()
     {
-        // MainForm.Hotkeys.cs speaks this same sentence when a MANUAL arm fails to register the
-        // keys. It used to hold a byte-identical copy, so rewording one would have given the
-        // pilot two different sentences for one condition depending on how hand fly was armed.
+        // MainForm.Hotkeys.cs speaks this when a MANUAL arm fails to register the keys. That
+        // path is queued and nothing is racing it, so it keeps the remedy and the key names --
+        // the rotation cue cannot, and the two live together here so they cannot come to
+        // describe different conditions.
         Assert.Equal("Quick access keys unavailable. Use output mode for H, V, Q.",
             LiftoffHandoffBreadcrumb.QuickKeysWarning);
     }

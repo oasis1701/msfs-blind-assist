@@ -26,68 +26,106 @@ namespace MSFSBlindAssist.Services;
 public static class LiftoffHandoffBreadcrumb
 {
     /// <summary>
-    /// How long hand fly's spoken callouts hold after the handoff. The tone is NEVER affected.
+    /// EVERY mute below is sized from a MEASURED phrase duration, not estimated from a
+    /// words-per-minute model. The model does not work here: spelled letters ("H, V, Q") and
+    /// comma pauses cost far more than their word count, and SAPI's inter-sentence pause
+    /// (~0.9 s) can exceed all the phonation around it. Rendered through
+    /// System.Speech at Rate = 0 — the rate ScreenReaderAnnouncer hardcodes for its SAPI
+    /// fallback, and therefore the only SAPI rate this app actually produces — with trailing
+    /// silence trimmed off the buffer:
     ///
-    /// This lands exactly on rotation, so it is deliberately short. It used to be a flat
-    /// 3500 ms, which opened a measured 3.504 s hole in the pitch callouts on a live Fenix
-    /// A320 takeoff (2026-08-25) — takeoff assist had been calling pitch every ~0.5 s through
-    /// the rotation ramp, and then nothing at all while pitch went 11.6° → 12.6°.
+    ///     "Airborne."                            0.63 s
+    ///     "Airborne, hand fly."                  1.68 s
+    ///     "Airborne, hand fly, quick keys off."  3.00 s
     ///
-    /// 1500 ms is only safe because the phrase is ONE SENTENCE — see <see cref="For"/>.
-    /// Residual, recorded rather than tuned away: the pre-armed "Airborne." measures ~0.66 s at
-    /// SAPI Rate 0, so it holds this same floor for ~0.8 s longer than its own phrase needs,
-    /// rather than being given a third separately-tuned constant.
+    /// Each mute is that number plus roughly a fifth, rounded. NVDA and Tolk run at the
+    /// pilot's own rate, which the app cannot read; Rate 0 is the honest reference because it
+    /// is the one this process can produce, and a faster reader simply finishes early.
+    ///
+    /// The ceiling on all of them is 3504 ms — the callout hole measured on a live Fenix A320
+    /// takeoff (2026-08-25) that this whole area exists to close, with takeoff assist calling
+    /// pitch every ~0.5 s through the rotation ramp and then nothing while pitch went
+    /// 11.6° → 12.6°. No mute here may reach it. That ceiling is what caps the phrase length,
+    /// not the other way round: see <see cref="For"/>.
+    ///
+    /// The mute never affects the TONE, only the spoken callouts.
     /// </summary>
-    public const int GraceMs = 1500;
+    public const int GraceMs = 2000;
 
     /// <summary>
-    /// The mute for the quick-access-keys variant, which is several times the words and
-    /// carries a warning the pilot cannot get back. Left at the value the flat mute always
-    /// used: this rare failure path is not made worse than it already was, and it is not
-    /// widened either. Note it remains badly under-muted — measured 8.62 s of speech at SAPI
-    /// Rate 0 against 3500 ms — which is pre-existing and not addressed here.
+    /// The mute for the pre-armed cue, which is one word. Sized separately rather than sharing
+    /// <see cref="GraceMs"/>: hand fly was ALREADY speaking on this path, so every millisecond
+    /// of mute is a callout the pilot would otherwise have had, and "Airborne." needs less than
+    /// half of what "Airborne, hand fly." does.
+    /// </summary>
+    public const int GracePreArmedMs = 900;
+
+    /// <summary>
+    /// The mute for the quick-access-keys variant. Held at the value the old flat mute used, so
+    /// this path is never made worse — and the PHRASE was shortened to fit it rather than the
+    /// mute widened to fit the phrase, because widening past ~3.5 s reaches the very hole this
+    /// area exists to close. The old wording ran 8.15 s against this window, so 57% of a warning
+    /// the pilot needs was cut off mid-word.
     /// </summary>
     public const int GraceWithWarningMs = 3500;
 
     /// <summary>
-    /// The quick-access-keys warning, shared with MainForm.Hotkeys.cs's standalone
-    /// announcement for a failed MANUAL arm. One wording, one place: a byte-identical copy
-    /// used to live in both, so rewording one would have given the pilot two different
-    /// sentences for the same condition depending on how hand fly was armed.
+    /// The FULL quick-access-keys warning, used by MainForm.Hotkeys.cs's standalone
+    /// announcement for a failed MANUAL arm. It names the remedy and the three keys, and it can
+    /// afford to: that path is queued, not spoken over a rotation, so nothing is racing it.
+    ///
+    /// It lives here beside <see cref="QuickKeysShortWarning"/> so the two cannot drift into
+    /// saying different things about the same condition — they are deliberately different
+    /// LENGTHS for deliberately different time budgets, which is not the same as different
+    /// meanings.
     /// </summary>
     public const string QuickKeysWarning =
         "Quick access keys unavailable. Use output mode for H, V, Q.";
+
+    /// <summary>
+    /// The rotation-budget form of the same warning, folded into the cue. Measured at 3.00 s
+    /// for the whole cue, against a 3500 ms mute; the full wording above measures 8.15 s and
+    /// could only be delivered by muting the pitch callouts for longer than the defect this
+    /// area exists to fix. It drops the remedy on purpose — a pilot at rotation cannot act on
+    /// it anyway, the condition is persistent, and re-arming hand fly later replays the full
+    /// sentence through the standalone (unbounded, queued) path.
+    /// </summary>
+    public const string QuickKeysShortWarning = "quick keys off";
 
     /// <summary>
     /// The cue to speak and the mute to apply for it, as ONE decision. Naming the mode hand
     /// fly just ENTERED rather than reciting both state changes: "takeoff assist off" cost
     /// about a second of rotation to say.
     ///
-    /// WHY ONE SENTENCE. Measured by rendering through SAPI and segmenting on the energy
-    /// envelope, at the Rate = 0 this app hardcodes (ScreenReaderAnnouncer, ~206 wpm):
-    /// "Airborne. Hand fly." segments as [0.11-0.67] [1.56-2.16] — SAPI's inter-sentence pause
-    /// is ~0.89 s, longer than all the phonation in "Hand fly" — so against the 1500 ms mute
-    /// the second clause was NEVER SPOKEN AT ALL, and the cue carried no information beyond
-    /// "Airborne." The comma form measures ~1.05 s and fits with headroom down to ~135 wpm.
-    /// Do NOT restore a second sentence here without re-measuring: the sentence pause, not the
-    /// word count, is the dominant cost.
+    /// WHY ONE SENTENCE, AND WHY SO FEW WORDS. Every phrase here is spoken over a rotation, so
+    /// its length is bought with pitch callouts the pilot does not get. Two costs dominate, and
+    /// neither is word count: SAPI's inter-sentence pause is ~0.9 s, and spelled letters with
+    /// commas ("H, V, Q") are far slower than they look. Measured at Rate 0,
+    /// "Airborne. Hand fly." runs 2.13 s and does not even BEGIN its second clause until
+    /// 1.56 s, so against a 1500 ms mute those words were never spoken at all; the comma form
+    /// runs 1.68 s. Do NOT add a sentence, a spelled letter list, or a clause here without
+    /// re-measuring and re-sizing the matching mute — and if the new mute would approach
+    /// 3.5 s, shorten the phrase instead. That ceiling is the defect this area exists to fix.
     /// </summary>
     public static (string Text, int GraceMs) For(bool activatedHandFly, bool quickKeysRegistered)
     {
         // Pre-armed: hand fly never stopped talking, so announcing it as newly active would be
-        // wrong. The only news is that the aircraft is airborne.
+        // wrong. The only news is that the aircraft is airborne — and because the callout
+        // stream is already running here, this one gets the shortest mute of the three.
         if (!activatedHandFly)
         {
-            return ("Airborne.", GraceMs);
+            return ("Airborne.", GracePreArmedMs);
         }
 
         // The warning MUST ride inside this utterance. AnnounceImmediate cancels pending speech
         // on all three backends, so OnHandFlyModeActiveChanged's standalone (queued) warning
-        // would be silently swallowed and the pilot would never learn the keys are dead.
-        // Excluded for a pre-armed hand fly above: that handler did not fire during this
-        // handoff, and the pilot already heard the warning in full when they armed it manually.
+        // would be silently swallowed and the pilot would never learn the keys are dead. It
+        // rides in its SHORT form — the full sentence cannot be delivered inside a mute this
+        // area can afford. Excluded for a pre-armed hand fly above: that handler did not fire
+        // during this handoff, and the pilot already heard the warning in full when they armed
+        // it manually.
         return quickKeysRegistered
             ? ("Airborne, hand fly.", GraceMs)
-            : ($"Airborne, hand fly. {QuickKeysWarning}", GraceWithWarningMs);
+            : ($"Airborne, hand fly, {QuickKeysShortWarning}.", GraceWithWarningMs);
     }
 }
