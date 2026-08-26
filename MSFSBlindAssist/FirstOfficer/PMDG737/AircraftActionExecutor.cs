@@ -651,7 +651,8 @@ public class AircraftActionExecutor : IFoActionExecutor
         => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
 
     /// <summary>
-    /// Attempts to move the gear lever to OFF and PROVES it, rather than assuming it.
+    /// Attempts to move the gear lever to OFF, and uses <see cref="GearOffLadder.StateField"/>
+    /// internally to decide when to stop trying — but always REPORTS success.
     ///
     /// The old path dispatched EVT_GEAR_LEVER as a fire-and-forget SetSwitch and
     /// reported success unconditionally — a safety defect, since the checklist ticked
@@ -659,23 +660,32 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// three more since) all left <see cref="GearOffLadder.StateField"/> unchanged, so
     /// this was replaced with a Reminder (acknowledge-only) item. New ground testing
     /// (2026-08-26) found TransmitClientEvent clicks on EVT_GEAR_LEVER audibly reach the
-    /// aircraft, which is why this method exists again — but it always reads
-    /// <see cref="GearOffLadder.StateField"/> back afterward and reports honestly if it
-    /// does not confirm OFF, rather than trusting the click.
+    /// aircraft, which is why this method makes a real attempt again — but 2026-08-26
+    /// owner decision: the OFF detent has no functional consequence in the simulator,
+    /// and the checklist item must tick and stay ticked regardless of the outcome
+    /// (never re-litigate this; it is deliberate and informed, not a shortcut). The
+    /// per-rung read-back of <see cref="GearOffLadder.StateField"/> stays load-bearing
+    /// for a DIFFERENT reason than reporting: every rung here is a DOWN-direction click,
+    /// so if an earlier rung already moved the lever UP→OFF, firing a later rung would
+    /// click it further, OFF→DOWN, extending the gear in flight. The read-back is what
+    /// stops the ladder the instant OFF is confirmed — do not remove it as "redundant"
+    /// just because the return value no longer depends on it.
     ///
     /// Holds <c>_dispatchGate</c> across the whole call and uses the raw send methods
     /// internally, exactly like <see cref="ArmSpeedbrakeAsync"/> — never
     /// <c>DispatchAsync</c>, which would deadlock on the gate.
     /// </summary>
-    /// <returns>true once the lever is confirmed at OFF, already was, or is at DOWN
-    /// (never clicked from there); false if no rung moved it off UP.</returns>
+    /// <returns>Always true. The attempt is still made and still stops as soon as it
+    /// verifies OFF (see remarks); a failed attempt is logged via
+    /// <c>MSFSBlindAssist.Utils.Logging.Log</c> but never reported as a failure, so the
+    /// checklist item and flow step complete either way.</returns>
     public async Task<bool> SetGearLeverOffAsync()
     {
         var sc = _sc;
         if (sc == null
             || !PMDG737Definition.EventIds.TryGetValue("EVT_GEAR_LEVER", out int gearEvId)
             || !PMDG737Definition.EventIds.TryGetValue("EVT_GEAR_LEVER_UNLOCK", out int unlockEvId))
-            return false;
+            return true;
         uint id = (uint)gearEvId;
         uint unlockId = (uint)unlockEvId;
 
@@ -716,6 +726,10 @@ public class AircraftActionExecutor : IFoActionExecutor
                 }
                 _lastWriteUtc = DateTime.UtcNow;
 
+                // This read-back is a SAFETY check, not a reporting one: every rung is
+                // a DOWN-direction click, so it is what stops the ladder from clicking
+                // an already-confirmed OFF lever on toward DOWN. Keep it even though the
+                // method's return value no longer depends on it.
                 bool reachedOff = await WaitForGearOffAsync();
                 if (reachedOff)
                 {
@@ -729,10 +743,18 @@ public class AircraftActionExecutor : IFoActionExecutor
                     Log.Debug("FirstOfficer",
                         $"Gear lever OFF attempt failed: no transport moved the lever off UP " +
                         $"(observed MAIN_GearLever={GearLeverValue()}).");
-                    return false;
+                    break;
                 }
             }
-            return false;
+
+            // Deliberate product decision (owner-confirmed 2026-08-26), not a bug: the
+            // OFF detent has no functional consequence in the simulator, so a failed
+            // attempt above is reported as success. The checklist item ticks and stays
+            // ticked either way — the pilot should never have to consult debug.log to
+            // get a complete checklist. Which rung (if any) actually worked is still
+            // recorded above, which is how we can later collapse this ladder to a
+            // single rung the way SpeedbrakeArmLadder was.
+            return true;
         }
         finally { _dispatchGate.Release(); }
     }

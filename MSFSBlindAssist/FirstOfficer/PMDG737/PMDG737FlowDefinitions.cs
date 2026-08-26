@@ -348,13 +348,15 @@ public static class PMDG737FlowDefinitions
             // Verified attempt via the GEAR_LEVER_OFF pseudo-key (intercepted in
             // AircraftActionExecutor.ExecuteStepAsync, same mechanism as SPEEDBRAKE_ARM).
             // GearOffLadder tries three transports and this step reads MAIN_GearLever
-            // back afterward — it never claims success on a bare dispatch, and the Skip
-            // failure policy means a genuine failure is announced ("Skipping: Gear
-            // lever: OFF") without aborting the rest of the After Takeoff flow. See
-            // docs/pmdg-737.md for why this is a verified attempt rather than a Captain
-            // item or a fire-and-forget write.
+            // back internally and stops trying further transports as soon as OFF is
+            // confirmed (every remaining rung is a DOWN-direction click, so continuing
+            // past a confirmed OFF risks driving the lever on to DOWN in flight). This
+            // step carries no verification field, so it always reports success —
+            // owner-confirmed 2026-08-26: the OFF detent has no functional consequence
+            // in the simulator, and the checklist item must tick and stay ticked either
+            // way. See docs/pmdg-737.md for the full history.
             SW("AT_GEAR_OFF", "Gear lever: OFF", GearOffLadder.PseudoKey, null,
-               GearOffLadder.StateField, v => Math.Abs(v - 1) < 0.5, "ATKO_GEAR_OFF"),
+               checklistItemId: "ATKO_GEAR_OFF"),
             SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
         }
     };

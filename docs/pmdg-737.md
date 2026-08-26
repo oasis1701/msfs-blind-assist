@@ -394,10 +394,13 @@ precedent — unlock, delay, move); (3) `RotorBrakeClick` — the `K:ROTOR_BRAKE
 tried last because it is reported silent for this control, but it costs one more cheap
 attempt and the mouse-code table is partly inferred. After each attempt the method reads
 `MAIN_GearLever` back (same 1.2 s / 100 ms poll shape as the speedbrake's
-`WaitForSpeedbrakeArmedAsync`) and only reports success once it confirms OFF (within 0.5
-of 1); a failure is logged with the observed lever value through
+`WaitForSpeedbrakeArmedAsync`) and stops the ladder the instant it confirms OFF (within
+0.5 of 1) — see "Current First Officer behaviour" below for why the RETURN VALUE no
+longer depends on that confirmation (an owner decision made the same day this ladder
+shipped). A failure is still logged with the observed lever value through
 `MSFSBlindAssist.Utils.Logging.Log`, so ordinary flights tell us which rung (if any)
-actually works, instead of more probing sessions. The already-OFF and DOWN guards mirror
+actually works, instead of more probing sessions — the pilot just never has to read it.
+The already-OFF and DOWN guards mirror
 `ArmSpeedbrakeAsync`'s already-armed/already-extended guard: OFF is a same-frame no-op,
 and DOWN (on the ground, or gear being extended) is never clicked toward, since a click
 there is a click toward UP.
@@ -457,25 +460,37 @@ ever reads it.
 
 `FirstOfficer/PMDG737/PMDG737FlowDefinitions.cs`'s After Takeoff flow's `AT_GEAR_OFF`
 step dispatches `GearOffLadder.PseudoKey` (intercepted in
-`AircraftActionExecutor.ExecuteStepAsync`, same mechanism as `SPEEDBRAKE_ARM`) and
-verifies `MAIN_GearLever` afterward, same shape as the Landing flow's `LD_SPDBRK` step. A
-failed attempt uses the Skip failure policy: the pilot hears "Skipping: Gear lever: OFF"
-and the After Takeoff flow continues rather than stopping.
+`AircraftActionExecutor.ExecuteStepAsync`, same mechanism as `SPEEDBRAKE_ARM`), the same
+ladder attempt as before, but the step carries **no verification field**, so it always
+reports success and can never be skipped.
 `FirstOfficer/PMDG737/PMDG737ChecklistDefinitions.cs`'s `ATKO_GEAR_OFF` item is
-`AutoAsync` (auto-detectable, `RevertToState`) on `MAIN_GearLever` within 0.5 of 1,
-exactly like the Landing checklist's `LDA_SPDBRK` speedbrake item: a manual tick fires
-`SetGearLeverOffAsync`, and if the lever never actually reaches OFF the item un-ticks
-itself and `ChecklistManager` raises `ItemActionFailed` ("Unable to complete: Gear lever:
-OFF") rather than standing complete. The state-verified gear check lives on the After
-Takeoff *Checklist*'s separate `ATC_GEAR` item ("Landing gear: UP and OFF"), which was
-already detection-only and whose wider `v < 1.5` condition is satisfied by UP alone —
-unaffected by any of this.
+`ActionManualAsync` (Actionable, manual-tick, deliberately **no `StateFieldName`**) — a
+tick (by hand, or via the flow step above) fires `SetGearLeverOffAsync`, and the item
+ticks and **stays ticked** regardless of the outcome. The state-verified gear check
+lives on the After Takeoff *Checklist*'s separate `ATC_GEAR` item ("Landing gear: UP and
+OFF"), which was already detection-only and whose wider `v < 1.5` condition is satisfied
+by UP alone — unaffected by any of this.
 
-Never re-add a write that does not read `MAIN_GearLever` back, and never accept the
-audible click `TransmitClientEvent`+mouse-flag makes on `EVT_GEAR_LEVER` as proof by
-itself — see the trap note above. The 21-shapes-inert history and the ruled-out matrix
-above remain true and load-bearing: they are exactly why this ships as a verified,
-honestly-reporting attempt rather than a claim of success.
+This is a deliberate, informed product decision (owner-confirmed 2026-08-26), not a
+regression: the OFF detent has no functional consequence in the simulator, and the pilot
+does not want to consult `debug.log` to get a completed checklist, nor does he want the
+item un-ticking itself. **Do not re-litigate this or add hedging behaviour he did not
+ask for** (e.g. a "may not have actually moved" reminder, or reintroducing
+`RevertToState`).
+
+What did **not** change, and must not: `SetGearLeverOffAsync` still reads
+`MAIN_GearLever` back after every rung and stops the ladder the instant OFF is
+confirmed. That read-back is a SAFETY behavior now, not a reporting one — every
+remaining rung is a DOWN-direction click, so continuing to fire rungs after an earlier
+one already reached OFF risks clicking the lever on to DOWN, extending the gear in
+flight. Never re-add a write that skips this read-back, and never accept the audible
+click `TransmitClientEvent`+mouse-flag makes on `EVT_GEAR_LEVER` as proof by itself —
+see the trap note above. The 21-shapes-inert history and the ruled-out matrix above
+remain true and load-bearing: they are exactly why an attempt is still made at all,
+even though the checklist no longer depends on it succeeding. A failed attempt is
+still logged via `Log.Debug("FirstOfficer", …)` — cheap to keep, and it is how a future
+rung collapse (mirroring the speedbrake's) would be decided — but the pilot is never
+required to read it.
 
 **Known limitation — this is not FO-only.** `PMDG737Definition.cs:1225` still exposes a
 pilot-facing panel combo, `Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN")`,

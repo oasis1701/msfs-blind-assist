@@ -1,1 +1,1 @@
-The 737 First Officer now makes a real attempt to move the gear lever to OFF after takeoff and checks the lever afterward instead of assuming it worked — if the lever does not actually reach OFF, it tells you it skipped the step rather than either claiming success or leaving the item to you unattempted.
+The 737 First Officer now tries to move the gear lever to OFF after takeoff, and the "Gear lever: OFF" checklist item completes and stays complete either way — it no longer un-ticks itself or asks you to check a log to see a finished checklist.

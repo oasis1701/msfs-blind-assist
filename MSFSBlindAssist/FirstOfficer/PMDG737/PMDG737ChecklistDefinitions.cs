@@ -283,17 +283,20 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
-            // Detected on MAIN_GearLever (see GearOffLadder). Ticking this by hand fires
-            // a real, closed-loop, verified attempt at the OFF detent — the ladder tries
-            // three transports and reads the lever back afterward, so a manual tick that
-            // does not actually land un-ticks itself and ChecklistManager raises
-            // ItemActionFailed ("Unable to complete: Gear lever: OFF"), rather than
-            // silently standing complete for a lever still at UP. The state-verified
-            // gear check on the After Takeoff Checklist's ATC_GEAR ("Landing gear: UP
-            // and OFF") is unaffected — its wider v < 1.5 condition is satisfied by UP
-            // alone.
-            AutoAsync("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
-                GearOffLadder.StateField, v => Math.Abs(v - 1) < 0.5,
+            // Actionable, not Auto-detectable — deliberately NO StateFieldName, so
+            // nothing can ever revert this item once ticked (owner-confirmed 2026-08-26:
+            // the OFF detent has no functional consequence in the simulator, and a
+            // checklist item that can permanently un-tick itself over a cosmetic detent
+            // is worse for the pilot than one that reads complete). Ticking it — by hand
+            // or via the After Takeoff flow's AT_GEAR_OFF step — still fires a real
+            // attempt at the OFF detent through GearOffLadder/SetGearLeverOffAsync,
+            // which still verifies MAIN_GearLever internally and stops as soon as OFF is
+            // confirmed (safety-critical: every remaining rung is a DOWN-direction
+            // click), but the executor now reports success unconditionally, so the tick
+            // always sticks. The state-verified gear check on the After Takeoff
+            // Checklist's ATC_GEAR ("Landing gear: UP and OFF") is unaffected — its
+            // wider v < 1.5 condition is satisfied by UP alone.
+            ActionManualAsync("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
                 (e, _) => e.SetGearLeverOffAsync()),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),

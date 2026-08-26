@@ -264,36 +264,42 @@ public class FoPr160ProcedureFixTests
             .ContainsKey(SbLadder.PseudoKey));
     }
 
-    // -- 737 gear lever OFF: a real, closed-loop, verified attempt ---------
+    // -- 737 gear lever OFF: ticks and stays ticked -------------------------
 
-    // The gear-off item used to be a Reminder (acknowledge-only) because a fire-and-
-    // forget SetSwitch dispatch reported success while the lever never moved. It is
-    // now Auto-detectable and drives a verified arm ladder just like the speedbrake —
-    // it ticks only when MAIN_GearLever is confirmed at OFF.
+    // Owner-confirmed 2026-08-26: the OFF detent has no functional consequence in the
+    // simulator, and a checklist item that can permanently un-tick itself over a
+    // cosmetic detent is worse for the pilot than one that reads complete. The item is
+    // Actionable (manual-tick, no StateFieldName) so nothing can ever auto-revert it —
+    // the flow still attempts the move via GearOffLadder/SetGearLeverOffAsync, and that
+    // attempt still verifies internally (see AircraftActionExecutorTests / the executor
+    // itself), but the checklist no longer depends on the outcome to stay complete.
     [Fact]
-    public void Pmdg737_AfterTakeoffChecklistGearOff_IsAutoDetectableAndActuates()
+    public void Pmdg737_AfterTakeoffChecklistGearOff_IsActionableAndNeverAutoReverts()
     {
         var item = Pmdg737Checklist.Build()
             .Single(g => g.Id == "AFTER_TAKEOFF").Items
             .Single(i => i.Id == "ATKO_GEAR_OFF");
 
-        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
-        Assert.Equal(GoLadder.StateField, item.StateFieldName);
-        Assert.Equal(RevertBehavior.RevertToState, item.RevertBehavior);
+        Assert.Equal(ChecklistItemType.Actionable, item.Type);
+        Assert.Null(item.StateFieldName);
         Assert.NotNull(item.CheckAction);
     }
 
     [Fact]
-    public void Pmdg737_AfterTakeoffFlowGear_GoesThroughTheVerifiedPseudoKey()
+    public void Pmdg737_AfterTakeoffFlowGear_StillAttemptsTheMoveButNeverReportsFailure()
     {
         var step = Pmdg737Flows.Build()
             .Single(f => f.Id == "AFTER_TAKEOFF").Steps
             .Single(s => s.Id == "AT_GEAR_OFF");
 
+        // The attempt is still made through the same ladder pseudo-key...
         Assert.Equal(GoLadder.PseudoKey, step.EventName);
-        Assert.Equal(GoLadder.StateField, step.VerifyFieldName);
         Assert.Equal("ATKO_GEAR_OFF", step.CompletesChecklistItemId);
-        Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
+        // ...but the step no longer carries a verification condition, so a lever that
+        // never reaches OFF cannot fail this step or exclude the checklist item from
+        // MarkGroupComplete.
+        Assert.Null(step.VerifyFieldName);
+        Assert.Null(step.VerifyCondition);
     }
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------
