@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Hotkeys;
+﻿using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Utils.Logging;
@@ -449,11 +449,21 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
             // =================================================================
             // HYDRAULIC
+            //
+            // The SDK array index is NOT a side. The 777 panel is two rows, and
+            // EVT_OH_HYD_* (SDK ids 35-42) traces them left to right:
+            //   PRIMARY  39 ENG1  40 ELEC1  41 ELEC2  42 ENG2
+            //   DEMAND   35 DEMAND_ELEC1  36 AIR1  37 AIR2  38 DEMAND_ELEC2
+            // So [0]/[1] means LEFT/RIGHT for the engine primaries and the
+            // electric demands, but CENTER 1/CENTER 2 for the electric primaries
+            // and the air demands - the centre system carries both of those
+            // pairs. Labels said "1"/"2" until 2026-08, which read as left/right
+            // and named four centre pumps after sides they are not on.
             // =================================================================
             ["HYD_PrimEngPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_PrimaryEngPump_Sw_ON_0",
-                DisplayName = "Primary Engine Pump 1",
+                DisplayName = "Primary Engine Pump Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -462,7 +472,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_PrimEngPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_PrimaryEngPump_Sw_ON_1",
-                DisplayName = "Primary Engine Pump 2",
+                DisplayName = "Primary Engine Pump Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -471,7 +481,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_PrimElecPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_PrimaryElecPump_Sw_ON_0",
-                DisplayName = "Primary Electric Pump 1",
+                DisplayName = "Primary Electric Pump Center 1",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -480,7 +490,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_PrimElecPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_PrimaryElecPump_Sw_ON_1",
-                DisplayName = "Primary Electric Pump 2",
+                DisplayName = "Primary Electric Pump Center 2",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -489,7 +499,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_DemandElecPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_DemandElecPump_Selector_0",
-                DisplayName = "Demand Electric Pump 1",
+                DisplayName = "Demand Electric Pump Left",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -498,7 +508,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_DemandElecPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_DemandElecPump_Selector_1",
-                DisplayName = "Demand Electric Pump 2",
+                DisplayName = "Demand Electric Pump Right",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -507,7 +517,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_DemandAirPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_DemandAirPump_Selector_0",
-                DisplayName = "Demand Air Pump 1",
+                DisplayName = "Demand Air Pump Center 1",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -516,7 +526,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_DemandAirPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_DemandAirPump_Selector_1",
-                DisplayName = "Demand Air Pump 2",
+                DisplayName = "Demand Air Pump Center 2",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -535,7 +545,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunPrimEngPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunPrimaryEngPumpFAULT_0",
-                DisplayName = "Primary Engine Pump 1 FAULT Light",
+                DisplayName = "Primary Engine Pump Left FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -545,7 +555,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunPrimEngPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunPrimaryEngPumpFAULT_1",
-                DisplayName = "Primary Engine Pump 2 FAULT Light",
+                DisplayName = "Primary Engine Pump Right FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -555,7 +565,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunPrimElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunPrimaryElecPumpFAULT_0",
-                DisplayName = "Primary Electric Pump 1 FAULT Light",
+                DisplayName = "Primary Electric Pump Center 1 FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -565,7 +575,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunPrimElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunPrimaryElecPumpFAULT_1",
-                DisplayName = "Primary Electric Pump 2 FAULT Light",
+                DisplayName = "Primary Electric Pump Center 2 FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -575,7 +585,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunDemandElecPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunDemandElecPumpFAULT_0",
-                DisplayName = "Demand Electric Pump 1 FAULT Light",
+                DisplayName = "Demand Electric Pump Left FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -585,7 +595,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunDemandElecPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunDemandElecPumpFAULT_1",
-                DisplayName = "Demand Electric Pump 2 FAULT Light",
+                DisplayName = "Demand Electric Pump Right FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -595,7 +605,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunDemandAirPumpFAULT_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunDemandAirPumpFAULT_0",
-                DisplayName = "Demand Air Pump 1 FAULT Light",
+                DisplayName = "Demand Air Pump Center 1 FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -605,7 +615,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["HYD_annunDemandAirPumpFAULT_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "HYD_annunDemandAirPumpFAULT_1",
-                DisplayName = "Demand Air Pump 2 FAULT Light",
+                DisplayName = "Demand Air Pump Center 2 FAULT Light",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
