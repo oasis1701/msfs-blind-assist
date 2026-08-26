@@ -1059,6 +1059,20 @@ public partial class MainForm
             bool activatedHandFly = !handFlyManager.IsActive;
             if (activatedHandFly)
             {
+                // Leave output hotkey mode FIRST, or the quick-access keys never come up.
+                // RegisterHandFlyHotkeys early-returns false while outputHotkeyModeActive is
+                // set, skipping registration wholesale — and nothing re-acquires the keys when
+                // output mode later exits, so they stay dead for the rest of the session while
+                // the pilot has been told only "quick keys failed". Output mode has no
+                // auto-timeout (it "stays active until used or escape pressed"), so a pilot who
+                // armed it and was then distracted really can still be in it at rotation.
+                // HotkeyManager's own two entry points (HOTKEY_HAND_FLY_MODE and
+                // HOTKEY_VISUAL_GUIDANCE) already guard exactly this by deactivating before they
+                // toggle; this path calls Toggle() directly and so has to do it itself.
+                // Silent by construction: OnOutputHotkeyModeChanged speaks only for Activated
+                // and Cancelled, and this raises Deactivated. Idempotent when not in the mode.
+                hotkeyManager.ExitOutputHotkeyMode();
+
                 handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
             }
 
