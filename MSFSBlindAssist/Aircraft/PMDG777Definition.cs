@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Hotkeys;
+﻿using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Utils.Logging;
@@ -82,7 +82,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 "Electrical", "ADIRU", "Hydraulic", "Fuel", "Engines", "Bleed Air",
                 "Air Conditioning", "Pressurization", "Anti-Ice", "Fire",
-                "Lights", "Signs", "Oxygen", "Wipers", "Panel Lighting"
+                "Exterior Lights", "Interior Lights", "Signs", "Oxygen",
+                "Emergency and Service", "Wipers"
             },
             ["Overhead Maintenance"] = new List<string>
             {
@@ -90,7 +91,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Glareshield"] = new List<string>
             {
-                "EFIS Captain", "EFIS First Officer", "MCP", "Display Select Panel"
+                "EFIS Captain", "MCP", "EFIS First Officer", "Display Select Panel",
+                "Warning"
             },
             ["Forward Panel"] = new List<string>
             {
@@ -98,8 +100,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             },
             ["Pedestal"] = new List<string>
             {
-                "Control Stand", "Transponder/TCAS",
-                "Evacuation", "Warning", "Engine Fire", "Radio", "Calls",
+                "Forward Aisle Stand", "Control Stand", "Engine Fire", "Radio",
+                "Transponder/TCAS", "Calls", "Aft Aisle Stand", "Evacuation",
                 "Boris Audio Works"
             },
             ["Cockpit"] = new List<string>
@@ -4982,38 +4984,36 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["Electrical"] = new List<string>
             {
                 "ELEC_Battery", "ELEC_APUGen", "ELEC_APU_Selector", "ELEC_APU_Start",
-                "ELEC_ExtPwrPrim", "ELEC_ExtPwrSec",
-                "ELEC_BusTie_1", "ELEC_BusTie_2",
-                "ELEC_Gen_1", "ELEC_Gen_2",
-                "ELEC_BackupGen_1", "ELEC_BackupGen_2",
-                "ELEC_IDGDisc_1", "ELEC_IDGDisc_2",
-                "ELEC_CabUtil", "ELEC_IFEPassSeats", "ELEC_StandbyPwr",
-                "ELEC_GndTest"
+                "ELEC_BusTie_1", "ELEC_BusTie_2", "ELEC_ExtPwrPrim", "ELEC_ExtPwrSec",
+                "ELEC_Gen_1", "ELEC_Gen_2", "ELEC_BackupGen_1", "ELEC_BackupGen_2",
+                "ELEC_IDGDisc_1", "ELEC_IDGDisc_2", "ELEC_IFEPassSeats", "ELEC_CabUtil",
+                "ELEC_StandbyPwr", "ELEC_GndTest"
             },
 
             // Overhead — Hydraulic
             ["Hydraulic"] = new List<string>
             {
-                "HYD_PrimEngPump_1", "HYD_PrimEngPump_2",
-                "HYD_PrimElecPump_1", "HYD_PrimElecPump_2",
-                "HYD_DemandElecPump_1", "HYD_DemandElecPump_2",
-                "HYD_DemandAirPump_1", "HYD_DemandAirPump_2",
+                "HYD_DemandElecPump_1", "HYD_DemandAirPump_1", "HYD_DemandAirPump_2", "HYD_DemandElecPump_2",
+                "HYD_PrimEngPump_1", "HYD_PrimElecPump_1", "HYD_PrimElecPump_2", "HYD_PrimEngPump_2",
                 "HYD_RAT"
             },
 
             // Overhead — Fuel
             ["Fuel"] = new List<string>
             {
-                "FUEL_FwdPump_1", "FUEL_FwdPump_2",
-                "FUEL_AftPump_1", "FUEL_AftPump_2",
-                "FUEL_CtrPump_1", "FUEL_CtrPump_2",
-                "FUEL_CrossfeedFwd", "FUEL_CrossfeedAft",
-                "FUEL_JettisonNozzleL", "FUEL_JettisonNozzleR",
-                "FUEL_JettisonArm", "FUEL_FuelToRemainPulled",
+                "FUEL_JettisonNozzleL", "FUEL_JettisonNozzleR", "FUEL_JettisonArm", "FUEL_FwdPump_1",
+                "FUEL_FwdPump_2", "FUEL_AftPump_1", "FUEL_AftPump_2", "FUEL_CrossfeedFwd",
+                "FUEL_CrossfeedAft", "FUEL_CtrPump_1", "FUEL_CtrPump_2", "FUEL_FuelToRemainPulled",
                 "FUEL_AuxPump"
             },
 
             // Overhead — Engines
+            // Overhead — Engines. DELIBERATELY NOT in panel order, and not to be
+            // "corrected" by a future layout sweep. The fuel control switches are on the
+            // pedestal control stand (EVT_CONTROL_STAND_ENG1/2_START_LEVER), but each
+            // engine's start selector and its own fuel control belong side by side for a
+            // MANUAL start. A sighted pilot glances between overhead and stand for free; a
+            // blind pilot pays a panel switch mid-start for the same thing.
             ["Engines"] = new List<string>
             {
                 "ENG_EECMode_L", "ENG_EECMode_R",
@@ -5025,31 +5025,25 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Overhead — Bleed Air
             ["Bleed Air"] = new List<string>
             {
-                "AIR_EngBleed_1", "AIR_EngBleed_2", "AIR_APUBleed",
-                "AIR_IsolationValve_L", "AIR_IsolationValve_R", "AIR_CtrIsolationValve"
+                "AIR_EngBleed_1", "AIR_EngBleed_2", "AIR_APUBleed", "AIR_IsolationValve_L",
+                "AIR_CtrIsolationValve", "AIR_IsolationValve_R"
             },
 
             // Overhead — Air Conditioning
             ["Air Conditioning"] = new List<string>
             {
-                "AIR_Pack_1", "AIR_Pack_2",
-                "AIR_TrimAir_1", "AIR_TrimAir_2",
-                "AIR_RecircFanUpper", "AIR_RecircFanLower",
-                "AIR_EquipCooling", "AIR_Gasper", "AIR_AltnVent",
-                "AIR_TempKnobFlightDeck", "AIR_TempKnobCabin",
-                "AIR_CargoTempAftSel", "AIR_CargoTempBulkSel",
-                "AIR_CargoTempKnobMainDeckFwd", "AIR_CargoTempKnobMainDeckAft",
-                "AIR_CargoTempKnobLowerFwd", "AIR_CargoTempKnobLowerAft",
-                "AIR_AirCondReset",
-                "AIR_MainDeckFlow"
+                "AIR_Pack_1", "AIR_Pack_2", "AIR_TrimAir_1", "AIR_TrimAir_2",
+                "AIR_AirCondReset", "AIR_RecircFanUpper", "AIR_RecircFanLower", "AIR_EquipCooling",
+                "AIR_Gasper", "AIR_CargoTempAftSel", "AIR_CargoTempBulkSel", "AIR_CargoTempKnobMainDeckFwd",
+                "AIR_CargoTempKnobMainDeckAft", "AIR_CargoTempKnobLowerFwd", "AIR_CargoTempKnobLowerAft", "AIR_MainDeckFlow",
+                "AIR_AltnVent", "AIR_TempKnobFlightDeck", "AIR_TempKnobCabin"
             },
 
             // Overhead — Pressurization
             ["Pressurization"] = new List<string>
             {
-                "AIR_OutflowValveFwd", "AIR_OutflowValveAft",
-                "AIR_LdgAltPulled",
-                "AIR_OutflowValve_Fwd", "AIR_OutflowValve_Aft"
+                "AIR_OutflowValveFwd", "AIR_OutflowValveAft", "AIR_OutflowValve_Fwd", "AIR_OutflowValve_Aft",
+                "AIR_LdgAltPulled"
             },
 
             // Overhead — Anti-Ice
@@ -5062,19 +5056,29 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Overhead — Fire
             ["Fire"] = new List<string>
             {
-                "FIRE_CargoFireArmFwd", "FIRE_CargoFireArmAft", "FIRE_CargoFireArmMainDeck",
-                "FIRE_CargoFireDisch", "FIRE_CargoDepr", "FIRE_FireOvhtTest",
-                "FIRE_APUHandle", "FIRE_APUHandleUnlock"
+                "FIRE_APUHandle", "FIRE_CargoFireArmFwd", "FIRE_CargoFireArmAft", "FIRE_CargoFireDisch",
+                "FIRE_FireOvhtTest", "FIRE_CargoFireArmMainDeck", "FIRE_CargoDepr", "FIRE_APUHandleUnlock"
             },
 
-            // Overhead — Lights
-            ["Lights"] = new List<string>
+            // Overhead — Exterior Lights. Split from the old single "Lights" panel, which
+            // mixed eleven exterior switches with the storm and camera lights. Interior and
+            // exterior is how the real overhead is arranged, how the checklists read, and
+            // what the Fenix, both FlyByWire buses and the iFly 737 already do here.
+["Exterior Lights"] = new List<string>
             {
-                "LTS_LandingLightL", "LTS_LandingLightR", "LTS_LandingLightNose",
-                "LTS_RunwayTurnoffL", "LTS_RunwayTurnoffR",
-                "LTS_Taxi", "LTS_Strobe", "LTS_Beacon",
-                "LTS_NAV", "LTS_Logo", "LTS_Wing", "LTS_Storm",
-                "LTS_CameraLights"
+                "LTS_LandingLightL", "LTS_LandingLightNose", "LTS_LandingLightR", "LTS_Beacon",
+                "LTS_NAV", "LTS_Logo", "LTS_Wing", "LTS_RunwayTurnoffL",
+                "LTS_RunwayTurnoffR", "LTS_Taxi", "LTS_Strobe"
+            },
+
+            // Overhead — Interior Lights. Absorbs the old "Panel Lighting" panel, which
+            // was two switches and misnamed: the master brightness control and the indicator
+            // lights test are flight-deck lighting, not panel backlighting. Camera lights are
+            // PMDG's model-lighting helper rather than an aircraft system, but interior is
+            // the least wrong home for them.
+["Interior Lights"] = new List<string>
+            {
+                "LTS_CameraLights", "LTS_Storm", "LTS_IndLightsTest", "LTS_MasterBrightSw"
             },
 
             // Overhead — Signs
@@ -5086,22 +5090,22 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Overhead — Oxygen
             ["Oxygen"] = new List<string>
             {
-                "OXY_PassOxygen", "OXY_Suprnmry",
-                "OXY_TestReset_L", "OXY_TestReset_R"
+                "OXY_PassOxygen", "OXY_TestReset_L", "OXY_TestReset_R", "OXY_Suprnmry"
+            },
+
+            // Overhead — Emergency and Service. Emergency exit lights and the service
+            // interphone sit together on the forward overhead (SDK 49-51), beside
+            // passenger oxygen. Neither belongs to panel lighting or to the pedestal
+            // call panel, which is where they used to be filed.
+            ["Emergency and Service"] = new List<string>
+            {
+                "LTS_EmerLights", "COMM_ServiceInterphone"
             },
 
             // Overhead — Wipers
             ["Wipers"] = new List<string>
             {
                 "WIPERS_Left", "WIPERS_Right"
-            },
-
-            // Overhead — Panel Lighting
-            ["Panel Lighting"] = new List<string>
-            {
-                "LTS_MasterBrightSw",
-                "LTS_IndLightsTest",
-                "LTS_EmerLights"
             },
 
             // Overhead — ADIRU
@@ -5113,10 +5117,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Overhead Maintenance — Flight Controls
             ["Flight Controls"] = new List<string>
             {
-                "FCTL_WingHydValve_L", "FCTL_WingHydValve_R", "FCTL_WingHydValve_C",
-                "FCTL_TailHydValve_L", "FCTL_TailHydValve_R", "FCTL_TailHydValve_C",
-                "FCTL_PrimFltComputers",
-                "FCTL_ThrustAsymComp"
+                "FCTL_ThrustAsymComp", "FCTL_PrimFltComputers", "FCTL_WingHydValve_L", "FCTL_WingHydValve_C",
+                "FCTL_WingHydValve_R", "FCTL_TailHydValve_L", "FCTL_TailHydValve_C", "FCTL_TailHydValve_R"
             },
 
             // Overhead Maintenance — Backup Systems
@@ -5130,43 +5132,37 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Overhead Maintenance — EEC/APU Maintenance
             ["EEC/APU Maintenance"] = new List<string>
             {
-                "ENG_EECTest_L", "ENG_EECTest_R", "APU_PowerTest"
+                "APU_PowerTest", "ENG_EECTest_L", "ENG_EECTest_R"
             },
 
             // Glareshield — EFIS Captain
             ["EFIS Captain"] = new List<string>
             {
-                "EFIS_MinsSelBARO_Capt", "EFIS_BaroSelHPA_Capt",
-                "EFIS_VORADFSel1_Capt", "EFIS_VORADFSel2_Capt",
-                "EFIS_ModeSel_Capt", "EFIS_RangeSel_Capt",
-                "EFIS_MinsRST_Capt", "EFIS_BaroSTD_Capt",
-                "EFIS_ModeCTR_Capt", "EFIS_RangeTFC_Capt",
-                "EFIS_WXR_Capt", "EFIS_STA_Capt", "EFIS_WPT_Capt",
-                "EFIS_ARPT_Capt", "EFIS_DATA_Capt", "EFIS_POS_Capt", "EFIS_TERR_Capt",
-                "EFIS_FPV_Capt", "EFIS_MTRS_Capt"
+                "EFIS_MinsSelBARO_Capt", "EFIS_MinsRST_Capt", "EFIS_VORADFSel1_Capt", "EFIS_ModeSel_Capt",
+                "EFIS_ModeCTR_Capt", "EFIS_RangeSel_Capt", "EFIS_RangeTFC_Capt", "EFIS_VORADFSel2_Capt",
+                "EFIS_BaroSelHPA_Capt", "EFIS_BaroSTD_Capt", "EFIS_FPV_Capt", "EFIS_MTRS_Capt",
+                "EFIS_WXR_Capt", "EFIS_STA_Capt", "EFIS_WPT_Capt", "EFIS_ARPT_Capt",
+                "EFIS_DATA_Capt", "EFIS_POS_Capt", "EFIS_TERR_Capt"
             },
 
             // Glareshield — EFIS First Officer
             ["EFIS First Officer"] = new List<string>
             {
-                "EFIS_MinsSelBARO_FO", "EFIS_BaroSelHPA_FO",
-                "EFIS_VORADFSel1_FO", "EFIS_VORADFSel2_FO",
-                "EFIS_ModeSel_FO", "EFIS_RangeSel_FO",
-                "EFIS_MinsRST_FO", "EFIS_BaroSTD_FO",
-                "EFIS_ModeCTR_FO", "EFIS_RangeTFC_FO",
-                "EFIS_WXR_FO", "EFIS_STA_FO", "EFIS_WPT_FO",
-                "EFIS_ARPT_FO", "EFIS_DATA_FO", "EFIS_POS_FO", "EFIS_TERR_FO",
-                "EFIS_FPV_FO", "EFIS_MTRS_FO"
+                "EFIS_MinsSelBARO_FO", "EFIS_MinsRST_FO", "EFIS_VORADFSel1_FO", "EFIS_ModeSel_FO",
+                "EFIS_ModeCTR_FO", "EFIS_RangeSel_FO", "EFIS_RangeTFC_FO", "EFIS_VORADFSel2_FO",
+                "EFIS_BaroSelHPA_FO", "EFIS_BaroSTD_FO", "EFIS_FPV_FO", "EFIS_MTRS_FO",
+                "EFIS_WXR_FO", "EFIS_STA_FO", "EFIS_WPT_FO", "EFIS_ARPT_FO",
+                "EFIS_DATA_FO", "EFIS_POS_FO", "EFIS_TERR_FO"
             },
 
             // Glareshield — Mode Control Panel
             ["MCP"] = new List<string>
             {
-                "MCP_AP_L", "MCP_AP_R", "MCP_FD_L", "MCP_FD_R",
-                "MCP_ATArm_L", "MCP_ATArm_R", "MCP_AT",
-                "MCP_LNAV", "MCP_HDG_HOLD", "MCP_LOC",
-                "MCP_VNAV", "MCP_FLCH", "MCP_ALT_HOLD", "MCP_VS_FPA", "MCP_APP",
-                "MCP_BankLimitSel", "MCP_DisengageBar"
+                "MCP_FD_L", "MCP_AP_L", "MCP_ATArm_L", "MCP_ATArm_R",
+                "MCP_AT", "MCP_LNAV", "MCP_VNAV", "MCP_FLCH",
+                "MCP_DisengageBar", "MCP_HDG_HOLD", "MCP_VS_FPA", "MCP_ALT_HOLD",
+                "MCP_LOC", "MCP_APP", "MCP_AP_R", "MCP_FD_R",
+                "MCP_BankLimitSel"
             },
 
             // Glareshield — Display Select Panel
@@ -5180,13 +5176,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Forward Panel — Landing Gear
             ["Landing Gear"] = new List<string>
             {
-                "GEAR_Lever", "GEAR_LockOvrd", "GEAR_AltnGearDown"
+                "GEAR_AltnGearDown", "GEAR_Lever", "GEAR_LockOvrd"
             },
 
             // Forward Panel — Brakes
             ["Brakes"] = new List<string>
             {
-                "BRAKES_AutobrakeSelector", "BRAKES_ParkingBrake"
+                "BRAKES_AutobrakeSelector"
             },
 
             // Forward Panel — GPWS
@@ -5199,32 +5195,43 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Forward Panel — Instruments
             ["Instruments"] = new List<string>
             {
-                "ISP_Nav_L", "ISP_DsplCtrl_L", "ISP_AirDataAtt_L",
-                "ISP_Nav_R", "ISP_DsplCtrl_R", "ISP_AirDataAtt_R",
-                "ISP_DsplCtrl_C", "ISP_FMC_Selector",
-                "DSP_InbdDspl_L", "DSP_InbdDspl_R",
-                "EFIS_HdgRef",
-                "ISFD_Baro", "ISFD_RST", "ISFD_Minus", "ISFD_Plus", "ISFD_APP", "ISFD_HP_IN",
+                "ISP_Nav_L", "ISP_DsplCtrl_L", "ISP_AirDataAtt_L", "ISP_Nav_R",
+                "ISP_DsplCtrl_R", "ISP_AirDataAtt_R", "DSP_InbdDspl_R", "ISP_FMC_Selector",
+                "EFIS_HdgRef", "DSP_InbdDspl_L", "ISFD_APP", "ISFD_HP_IN",
+                "ISFD_Plus", "ISFD_Minus", "ISFD_RST", "ISFD_Baro",
                 "STBY_ASI_Push", "STBY_ALT_Push"
             },
 
             // Pedestal — Control Stand
             ["Control Stand"] = new List<string>
             {
-                "FCTL_Flaps",
-                "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
-                "FCTL_StabCutout_C", "FCTL_StabCutout_R",
-                "FCTL_AltnPitch", "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel",
-                "BRAKES_ParkingBrake",
-                "ENG_TOGA_1", "ENG_TOGA_2", "ENG_ATDisengage_1", "ENG_ATDisengage_2"
+                "FCTL_AltnPitch", "ENG_TOGA_1", "ENG_ATDisengage_1", "ENG_TOGA_2",
+                "ENG_ATDisengage_2", "FCTL_Flaps", "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
+                "BRAKES_ParkingBrake", "FCTL_StabCutout_C", "FCTL_StabCutout_R"
+            },
+
+            // Pedestal — Forward Aisle Stand. The CENTRE display control panel is here
+            // (EVT_PED_DSPL_CTRL_SOURCE_C), not on the forward panel with the left and
+            // right ones, which are instrument source select.
+            ["Forward Aisle Stand"] = new List<string>
+            {
+                "ISP_DsplCtrl_C"
+            },
+
+            // Pedestal — Aft Aisle Stand. The aileron and rudder trim controls are here
+            // (SDK "Aft Aisle Stand - Various"), not on the control stand. The radio,
+            // weather radar, TCAS, call and evacuation panels are on this stand too but
+            // are real named panels in their own right and keep their names.
+            ["Aft Aisle Stand"] = new List<string>
+            {
+                "FCTL_AileronTrim", "FCTL_RudderTrim", "FCTL_RudderTrimCancel"
             },
 
             // Pedestal — Transponder/TCAS
             ["Transponder/TCAS"] = new List<string>
             {
-                "XPDR_XpndrSelector", "XPDR_AltSource",
-                "XPDR_ModeSel", "XPDR_Ident", "XPDR_Test",
-                "TRANSPONDER_CODE_SET"
+                "XPDR_AltSource", "XPDR_Ident", "XPDR_ModeSel", "XPDR_XpndrSelector",
+                "XPDR_Test", "TRANSPONDER_CODE_SET"
             },
 
             // Pedestal — CDU
@@ -5259,9 +5266,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Pedestal — Calls
             ["Calls"] = new List<string>
             {
-                "CALL_Ground", "CALL_CrewRest", "CALL_Suprnmry",
-                "CALL_Cargo", "CALL_CargoAudio", "CALL_MainDeckAlert",
-                "COMM_ServiceInterphone"
+                "CALL_Ground", "CALL_CrewRest", "CALL_Suprnmry", "CALL_Cargo",
+                "CALL_CargoAudio", "CALL_MainDeckAlert"
             },
 
             // Pedestal — Boris Audio Works Soundpack
