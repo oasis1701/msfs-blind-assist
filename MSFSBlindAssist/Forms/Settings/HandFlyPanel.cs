@@ -626,7 +626,9 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     // ticks to crackle. 3 deg/s over TestTonePlayer's 100 ms tick.
     private const double MaxPitchDeltaPerTick = 3.0 * 0.1;
 
-    // Slow enough that the rate limiter above can still track it to the full ±10° range.
+    // Slow enough that the rate limiter above can still track it to this demo's own ±10° sweep.
+    // NOTE that ±10° is NOT the full span of the tone's mapping — see StepPitch. The travel
+    // budget below is stated against this demo's sweep, not against the mapping's −10°/+20°.
     //
     // This deliberately covers only HALF a cycle over the demo's 60 ticks (0..1.5 rad), so the
     // pitch demo sweeps nose-up only. Do NOT "harmonise" it onto TestTonePan.FullCycle the way
@@ -684,8 +686,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         return tone;
     }
 
-    /// <summary>One rate-limited step of the pitch demo: pitch sweeps toward ±10°, which is the
-    /// full 200-800 Hz span of the tone's pitch mapping.</summary>
+    /// <summary>One rate-limited step of the pitch demo: pitch sweeps to +10°, which under the
+    /// tone's default mapping is 650 Hz — NOT the top of the range. The mapping runs to +20°
+    /// (800 Hz) because hand fly is auto-activated at liftoff, where an airliner is already
+    /// 12–18° nose up, so this preview deliberately demonstrates only the lower part of what
+    /// the tone actually plays in flight. Extending it would need MaxPitchDeltaPerTick
+    /// re-tuned (60 ticks × 0.3° = 18° of travel, short of the 20° needed), and that is a
+    /// crackle-avoidance number judgeable only by ear against real hardware.</summary>
     private static double StepPitch(double currentPitch, int tick)
     {
         double targetPitch = Math.Sin(tick * PitchSweepRadPerTick) * 10.0;
