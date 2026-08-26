@@ -603,11 +603,13 @@ public partial class MainForm
             _handFlyQuickKeysRegistered = hotkeysRegistered;
             if (!hotkeysRegistered)
             {
-                // Registration failed - likely another application is using H, V, or Q keys.
-                // The warning sentence is shared with the liftoff handoff's cue, which folds it
-                // into its own utterance — one wording, so the pilot cannot hear two different
-                // sentences for one condition depending on how hand fly was armed.
-                announcer.Announce($"Hand fly mode active. {LiftoffHandoffBreadcrumb.QuickKeysWarning}");
+                // Registration failed - another application holds one of the quick-access keys,
+                // or output mode was already active. The warning fragment is shared with the
+                // liftoff handoff's cue, which folds it into its own utterance — one wording, so
+                // the pilot cannot hear two different phrasings for one condition depending on
+                // how hand fly was armed. It names neither the keys nor a remedy; which keys
+                // hand fly captures is documentation, not something to recite on every failure.
+                announcer.Announce($"Hand fly mode active, {LiftoffHandoffBreadcrumb.QuickKeysWarning}.");
             }
         }
         else

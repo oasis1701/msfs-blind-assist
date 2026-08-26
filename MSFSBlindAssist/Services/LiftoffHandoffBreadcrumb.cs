@@ -70,27 +70,23 @@ public static class LiftoffHandoffBreadcrumb
     public const int GraceWithWarningMs = 3500;
 
     /// <summary>
-    /// The FULL quick-access-keys warning, used by MainForm.Hotkeys.cs's standalone
-    /// announcement for a failed MANUAL arm. It names the remedy and the three keys, and it can
-    /// afford to: that path is queued, not spoken over a rotation, so nothing is racing it.
+    /// The quick-access-keys warning — ONE wording, used both by the cue below and by
+    /// MainForm.Hotkeys.cs's standalone announcement for a failed MANUAL arm, so the pilot
+    /// cannot hear two different sentences for one condition depending on how hand fly was
+    /// armed. A lower-case FRAGMENT rather than a sentence, because both callers fold it into a
+    /// clause: making it a second sentence costs SAPI's ~0.9 s inter-sentence pause, which at
+    /// rotation does not fit.
     ///
-    /// It lives here beside <see cref="QuickKeysShortWarning"/> so the two cannot drift into
-    /// saying different things about the same condition — they are deliberately different
-    /// LENGTHS for deliberately different time budgets, which is not the same as different
-    /// meanings.
+    /// It deliberately does NOT name the affected keys or a remedy. It used to read
+    /// "Quick access keys unavailable. Use output mode for H, V, Q.", which was both wrong and
+    /// expensive: hand fly captures NINE keys (H, V, Q, S, D, B, P, A, F — see
+    /// HotkeyManager.QuickAccessKeys), so naming three understated what the pilot had lost, and
+    /// the spelled letter list was most of the cost — 8.15 s of speech against a 3500 ms mute,
+    /// i.e. 57% of it cut off mid-word. Which keys hand fly captures is documented
+    /// (docs/visual-guidance.md, "Quick-access hotkeys"); an announcement spoken over a
+    /// rotation is not the place to recite them.
     /// </summary>
-    public const string QuickKeysWarning =
-        "Quick access keys unavailable. Use output mode for H, V, Q.";
-
-    /// <summary>
-    /// The rotation-budget form of the same warning, folded into the cue. Measured at 3.00 s
-    /// for the whole cue, against a 3500 ms mute; the full wording above measures 8.15 s and
-    /// could only be delivered by muting the pitch callouts for longer than the defect this
-    /// area exists to fix. It drops the remedy on purpose — a pilot at rotation cannot act on
-    /// it anyway, the condition is persistent, and re-arming hand fly later replays the full
-    /// sentence through the standalone (unbounded, queued) path.
-    /// </summary>
-    public const string QuickKeysShortWarning = "quick keys off";
+    public const string QuickKeysWarning = "quick keys off";
 
     /// <summary>
     /// The cue to speak and the mute to apply for it, as ONE decision. Naming the mode hand
@@ -126,6 +122,6 @@ public static class LiftoffHandoffBreadcrumb
         // it manually.
         return quickKeysRegistered
             ? ("Airborne, hand fly.", GraceMs)
-            : ($"Airborne, hand fly, {QuickKeysShortWarning}.", GraceWithWarningMs);
+            : ($"Airborne, hand fly, {QuickKeysWarning}.", GraceWithWarningMs);
     }
 }

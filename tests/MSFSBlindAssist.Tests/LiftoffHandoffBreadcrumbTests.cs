@@ -136,20 +136,21 @@ public class LiftoffHandoffBreadcrumbTests
         var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: false);
 
         Assert.StartsWith("Airborne, hand fly", cue.Text);
-        Assert.Contains(LiftoffHandoffBreadcrumb.QuickKeysShortWarning, cue.Text);
+        Assert.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning, cue.Text);
     }
 
     [Fact]
-    public void TheRotationWarningIsTheShortFormNotTheFullSentence()
+    public void TheWarningNamesNeitherTheKeysNorARemedy()
     {
-        // The full wording measures 8.15 s and could only be delivered by muting the pitch
-        // callouts for more than twice the hole this area exists to close. The short form is
-        // what fits the budget; the full one still reaches the pilot through the unbounded,
-        // queued MainForm.Hotkeys path when they re-arm hand fly.
+        // It used to read "Quick access keys unavailable. Use output mode for H, V, Q." -- wrong
+        // as well as long, because hand fly captures NINE keys (H, V, Q, S, D, B, P, A, F), so
+        // naming three understated the loss. The spelled list was also most of its 8.15 s, which
+        // is 57% cut off against a 3500 ms mute. Which keys are captured is documented; an
+        // announcement over a rotation does not recite them.
         var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly: true, quickKeysRegistered: false);
 
-        Assert.DoesNotContain(LiftoffHandoffBreadcrumb.QuickKeysWarning, cue.Text);
         Assert.DoesNotContain("H, V, Q", cue.Text);
+        Assert.DoesNotContain("output mode", cue.Text);
     }
 
     [Fact]
@@ -207,7 +208,7 @@ public class LiftoffHandoffBreadcrumbTests
         foreach (bool keysOk in new[] { true, false })
         {
             var cue = LiftoffHandoffBreadcrumb.For(activated, keysOk);
-            bool carriesWarning = cue.Text.Contains(LiftoffHandoffBreadcrumb.QuickKeysShortWarning);
+            bool carriesWarning = cue.Text.Contains(LiftoffHandoffBreadcrumb.QuickKeysWarning);
 
             int expected = carriesWarning ? LiftoffHandoffBreadcrumb.GraceWithWarningMs
                 : activated ? LiftoffHandoffBreadcrumb.GraceMs
@@ -218,13 +219,14 @@ public class LiftoffHandoffBreadcrumbTests
     }
 
     [Fact]
-    public void TheStandaloneWarningKeepsTheFullWordingItCanAfford()
+    public void OneWordingServesBothTheCueAndTheStandaloneWarning()
     {
-        // MainForm.Hotkeys.cs speaks this when a MANUAL arm fails to register the keys. That
-        // path is queued and nothing is racing it, so it keeps the remedy and the key names --
-        // the rotation cue cannot, and the two live together here so they cannot come to
-        // describe different conditions.
-        Assert.Equal("Quick access keys unavailable. Use output mode for H, V, Q.",
-            LiftoffHandoffBreadcrumb.QuickKeysWarning);
+        // MainForm.Hotkeys.cs folds this same fragment into "Hand fly mode active, ..." when a
+        // MANUAL arm fails to register the keys. A lower-case fragment rather than a sentence:
+        // both callers fold it into a clause, and a second sentence would cost SAPI's ~0.9 s
+        // inter-sentence pause, which the rotation budget cannot afford.
+        Assert.Equal("quick keys off", LiftoffHandoffBreadcrumb.QuickKeysWarning);
+        Assert.Equal(LiftoffHandoffBreadcrumb.QuickKeysWarning,
+            LiftoffHandoffBreadcrumb.QuickKeysWarning.ToLowerInvariant());
     }
 }
