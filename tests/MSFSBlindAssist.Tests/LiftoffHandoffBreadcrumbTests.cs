@@ -7,11 +7,11 @@
 // off after a syllable.
 //
 // WHY THE PHRASE IS ONE SENTENCE: measured by rendering through SAPI at the Rate = 0 the app
-// hardcodes (~206 wpm) and segmenting on the energy envelope, "Airborne. Hand fly." segments as
-// [0.11-0.67] [1.56-2.16] — SAPI's inter-sentence pause is ~0.89 s, longer than all the
-// phonation in "Hand fly" — so against a 1500 ms mute the second clause was NEVER SPOKEN AT
-// ALL. The comma form measures ~1.05 s end to end and fits with headroom down to ~135 wpm. The
-// sentence pause, not the word count, is the dominant cost.
+// hardcodes and segmenting on the energy envelope, "Airborne. Hand fly." runs 2.13 s and does
+// not even BEGIN its second clause until 1.56 s — SAPI's inter-sentence pause is ~0.9 s, longer
+// than all the phonation in "Hand fly" — so against a 1500 ms mute those words were NEVER
+// SPOKEN AT ALL. The comma form runs 1.68 s. The sentence pause, not the word count, is the
+// dominant cost, which is why shortening words is not a substitute for dropping a sentence.
 //
 // WHY THE MUTE HAD TO SHRINK, stated correctly: the flat 3500 ms was NOT a value left behind by
 // a shortened phrase — git shows it was introduced already sized for the phrase it shipped with.
@@ -34,9 +34,9 @@ public class LiftoffHandoffBreadcrumbTests
     // really 1.68 s, and a mute was sized against the estimate.
     private static readonly Dictionary<string, double> MeasuredSeconds = new()
     {
-        ["Airborne."]                           = 0.63,
-        ["Airborne, hand fly."]                 = 1.68,
-        ["Airborne, hand fly, quick keys off."] = 3.00,
+        ["Airborne."]                              = 0.63,
+        ["Airborne, hand fly."]                    = 1.68,
+        ["Airborne, hand fly, quick keys failed."] = 3.09,
     };
 
     // The callout hole measured on the live Fenix A320 takeoff this area exists to close. No
@@ -225,7 +225,7 @@ public class LiftoffHandoffBreadcrumbTests
         // MANUAL arm fails to register the keys. A lower-case fragment rather than a sentence:
         // both callers fold it into a clause, and a second sentence would cost SAPI's ~0.9 s
         // inter-sentence pause, which the rotation budget cannot afford.
-        Assert.Equal("quick keys off", LiftoffHandoffBreadcrumb.QuickKeysWarning);
+        Assert.Equal("quick keys failed", LiftoffHandoffBreadcrumb.QuickKeysWarning);
         Assert.Equal(LiftoffHandoffBreadcrumb.QuickKeysWarning,
             LiftoffHandoffBreadcrumb.QuickKeysWarning.ToLowerInvariant());
     }

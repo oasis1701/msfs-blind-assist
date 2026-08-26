@@ -77,6 +77,14 @@ public static class LiftoffHandoffBreadcrumb
     /// clause: making it a second sentence costs SAPI's ~0.9 s inter-sentence pause, which at
     /// rotation does not fit.
     ///
+    /// "FAILED", not "off" — this is an ERROR CONDITION that should not normally arise, and the
+    /// word has to say so. "Off" reads like a setting the pilot chose and can flip back; there
+    /// is no such setting. Registration fails only when another application already owns one of
+    /// the bare letter keys globally, or when hand fly was activated while output hotkey mode
+    /// was still up — and HotkeyManager already calls DeactivateOutputHotkeyMode() before
+    /// toggling on both hotkey entry points precisely so that second case cannot happen there,
+    /// which is what leaves "failed" the honest description of what is left.
+    ///
     /// It deliberately does NOT name the affected keys or a remedy. It used to read
     /// "Quick access keys unavailable. Use output mode for H, V, Q.", which was both wrong and
     /// expensive: hand fly captures NINE keys (H, V, Q, S, D, B, P, A, F — see
@@ -86,7 +94,7 @@ public static class LiftoffHandoffBreadcrumb
     /// (docs/visual-guidance.md, "Quick-access hotkeys"); an announcement spoken over a
     /// rotation is not the place to recite them.
     /// </summary>
-    public const string QuickKeysWarning = "quick keys off";
+    public const string QuickKeysWarning = "quick keys failed";
 
     /// <summary>
     /// The cue to speak and the mute to apply for it, as ONE decision. Naming the mode hand
