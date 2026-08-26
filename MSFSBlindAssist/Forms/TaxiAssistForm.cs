@@ -125,6 +125,20 @@ public class TaxiAssistForm : Form
     // pilot toggles the checkbox themselves and on every airport load. The occupancy
     // WARNING still reaches them at Calculate (CheckGateOccupancy).
     private bool _suppressOccupiedFilter;
+    // Same shape, same lifetime, for the wingspan "show fitting only" filter — and for
+    // a stronger reason. The occupancy filter reads a live traffic feed; this one reads
+    // SCENERY-AUTHORED size data (a navdata parking radius, or a GSX max wing span), and
+    // that data is frequently wrong. So a stand the controller NAMED, at an airport the
+    // aircraft is really going to, outranks a number saying it will not fit: the pilot
+    // was told to go there. Left applied, the whole gate half of a SayIntentions import
+    // failed at once — PopulateDestinations drops a non-fitting spot BEFORE its label
+    // reaches the combo and the two maps behind it, so the name, this scenery's aliases
+    // and the published coordinate all had nothing to match against, and a known arrival
+    // announced "this scenery has no stand under that label" for a stand it does have.
+    // Latched on a successful seat (a later rebuild — the Calculate-path and show-path
+    // gate-source refreshes both repopulate — must not drop the stand being taxied to);
+    // cleared when the pilot toggles the checkbox themselves and on every airport load.
+    private bool _suppressFitFilter;
     // CAT III / low-visibility hold (runway destinations only). When ticked, a
     // runway-destination route holds at the CAT III / ILS hold-short (further
     // back, protects the ILS critical area — e.g. EGKK A3/C3/M3) instead of the
@@ -495,7 +509,13 @@ public class TaxiAssistForm : Form
             AccessibleName = "Show only fitting parking spots",
             AccessibleDescription = "When checked, only shows parking spots large enough for your aircraft"
         };
-        chkFitFilter.CheckedChanged += (s, e) => { if (cmbDestType.SelectedIndex == 1) PopulateDestinations(); };
+        chkFitFilter.CheckedChanged += (s, e) =>
+        {
+            // The pilot asserting the filter outranks an import's latched suppression
+            // (same rule as chkHideOccupied below).
+            _suppressFitFilter = false;
+            if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+        };
         y += 20;
 
         // Hide stands that currently have an aircraft parked on them. Default ON — an
@@ -1231,11 +1251,16 @@ public class TaxiAssistForm : Form
         if (txtGateSearch.Text.Length > 0) txtGateSearch.Text = "";
 
         // Same reasoning for the occupied-stands filter (see _suppressOccupiedFilter):
-        // an assigned stand with AI parked on it must still be resolvable. The explicit
+        // an assigned stand with AI parked on it must still be resolvable. And for the
+        // wingspan filter (see _suppressFitFilter), which is ticked by DEFAULT whenever
+        // wingspan data exists and drops stands on scenery size data that is often
+        // wrong: a stand ATC named must still be resolvable too. The explicit
         // rebuild is needed because SelectDestinationType only repopulates when the type
         // actually CHANGES — already in gate mode, the stale filtered list would stand.
         bool priorSuppressOccupied = _suppressOccupiedFilter;
+        bool priorSuppressFit = _suppressFitFilter;
         _suppressOccupiedFilter = true;
+        _suppressFitFilter = true;
         if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
 
         List<string>? runwayLabels = null;
@@ -1337,9 +1362,11 @@ public class TaxiAssistForm : Form
             return true;
         }
 
-        // Nothing was seated, so nothing needs the occupied stand kept visible: put the
-        // pilot's own filter back (and rebuild under it) before restoring the rest.
+        // Nothing was seated, so nothing needs a stand kept visible that the pilot's own
+        // filters would hide: put both filters back (and rebuild under them) before
+        // restoring the rest. Probing leaves no mark.
         _suppressOccupiedFilter = priorSuppressOccupied;
+        _suppressFitFilter = priorSuppressFit;
         if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
 
         RestoreDestinationState(
@@ -1955,9 +1982,11 @@ public class TaxiAssistForm : Form
         _cachedGateSpots = null;
         _cachedGateSpotsIcao = "";
         _cachedGateSpotsSourceToken = "";
-        // A previous import's occupied-stand suppression belonged to that airport's
-        // assigned gate; the pilot's own filter setting owns the new airport's list.
+        // A previous import's occupied-stand and wingspan suppressions belonged to that
+        // airport's assigned gate; the pilot's own filter settings own the new airport's
+        // list.
         _suppressOccupiedFilter = false;
+        _suppressFitFilter = false;
         _destinationNodeMap.Clear();
         _destinationHeadingMap.Clear();
 
@@ -2134,6 +2163,24 @@ public class TaxiAssistForm : Form
         try { cmbDestination.SelectedIndex = index; }
         finally { _suppressHoldingPointAnnounce = prior; }
     }
+
+    /// <summary>Whether the wingspan "show fitting only" filter applies to this
+    /// <see cref="PopulateDestinations"/> pass.
+    ///
+    /// Three conditions, and the middle one is the fix this method exists to carry: an
+    /// EXTERNAL clearance's gate is never wingspan-filtered. That data is authored by
+    /// the scenery (<see cref="ParkingSpot.FitsAircraft"/> reads a navdata parking radius
+    /// or a GSX max wing span) and is often wrong, while a stand SayIntentions named is a
+    /// stand a controller told the pilot to taxi to. Filtered out, the label never reaches
+    /// the combo or the maps behind it, so the name, alias and published-coordinate steps
+    /// of <see cref="TryResolveExternalDestination"/> all miss together and a known
+    /// arrival fails loudly for a stand the airport has.
+    ///
+    /// The pilot's own tick still decides for their own browsing, and a zero wingspan
+    /// means there is nothing to filter against at all.</summary>
+    internal static bool ShouldApplyFitFilter(
+        bool fitFilterChecked, bool suppressedForExternalDestination, double aircraftWingspanFeet)
+        => fitFilterChecked && !suppressedForExternalDestination && aircraftWingspanFeet > 0;
 
     private void PopulateDestinations()
     {
@@ -2411,7 +2458,10 @@ public class TaxiAssistForm : Form
             // authoritative max wing span (metres); navdata spots use the physical
             // parking radius (feet). The old "Radius >= wingspan/2" mixed units for
             // GSX spots (metres vs a feet threshold) and filtered nearly everything out.
-            if (chkFitFilter.Checked && _aircraftWingspan > 0)
+            // Inert while an external clearance's gate is being resolved or is seated
+            // (see _suppressFitFilter) — that size data is scenery-authored and often
+            // wrong, and the pilot was TOLD to go to that stand.
+            if (ShouldApplyFitFilter(chkFitFilter.Checked, _suppressFitFilter, _aircraftWingspan))
                 filtered = filtered.Where(r => r.spot.FitsAircraft(_aircraftWingspan));
 
             // Occupied-stand filter: a stand with an aircraft parked on it is not a
