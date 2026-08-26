@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 using MSFSBlindAssist.FirstOfficer;
@@ -260,4 +262,98 @@ public class FoPr160ProcedureFixTests
         Assert.False(MSFSBlindAssist.Aircraft.PMDG737Definition.EventIds
             .ContainsKey(SbLadder.PseudoKey));
     }
+
+    // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------
+
+    // On an A320 APU START pushbutton the upper legend is ON — it lights while the
+    // start sequence runs and extinguishes once the APU reaches ~95% N (a TRANSIENT
+    // signal). The lower legend is AVAIL and stays lit for as long as the APU is
+    // running (a PERSISTENT signal). The FO was reading I_OH_ELEC_APU_START_U (the
+    // upper/ON lamp) everywhere it meant "the APU is available," so with the APU
+    // already running _U reads 0: a Before Start skip-check failed to skip (pressing
+    // START again on a running APU) and the subsequent WaitForField then waited on a
+    // lamp that would never light again, timing out at 180s and aborting the whole
+    // flow with "Unable to complete: Waiting for APU available" on a healthy APU.
+    // Fix: read I_OH_ELEC_APU_START_L (the AVAIL lamp) everywhere instead — matching
+    // this repo's own Fenix panel control for S_OH_ELEC_APU_START (already _L) and
+    // the sibling FBW A32NX profile, which waits on the unambiguous
+    // A32NX_OVHD_APU_START_PB_IS_AVAILABLE. NOTE: the _U/_L convention is NOT
+    // universal across A320 pushbuttons — on EXT PWR it is reversed (_U is AVAIL
+    // there) — so never port a lamp choice from one pushbutton to another by analogy.
+
+    [Fact]
+    public void Fenix_BeforeStartChecklist_ApuItem_ReadsTheAvailLamp()
+    {
+        var item = FenixChecklist.Build()
+            .Single(g => g.Id == "BEFORE_START").Items
+            .Single(i => i.Id == "BS_APU");
+
+        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+    }
+
+    [Fact]
+    public void Fenix_AfterLandingChecklist_ApuItem_ReadsTheAvailLamp()
+    {
+        var item = FenixChecklist.Build()
+            .Single(g => g.Id == "AFTER_LANDING").Items
+            .Single(i => i.Id == "AL_APU");
+
+        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+    }
+
+    [Fact]
+    public void Fenix_AfterLandingChecklistChecklist_ApuItem_ReadsTheAvailLamp()
+    {
+        var item = FenixChecklist.Build()
+            .Single(g => g.Id == "AFTER_LANDING_CL").Items
+            .Single(i => i.Id == "ALC_APU");
+
+        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+    }
+
+    [Fact]
+    public void Fenix_BeforeStartFlow_ApuAvailWait_ReadsTheAvailLamp()
+    {
+        // A WaitForCondition step (WaitForField) carries its field on
+        // ConditionFieldName, not VerifyFieldName (that property belongs to a
+        // set-and-verify SW step, e.g. the PMDG 777 speedbrake-arm step above).
+        var step = FenixFlows.Build()
+            .Single(f => f.Id == "BEFORE_START").Steps
+            .Single(s => s.Id == "BS_APU_AVAIL");
+
+        Assert.Equal("I_OH_ELEC_APU_START_L", step.ConditionFieldName);
+    }
+
+    [Fact]
+    public void Fenix_AfterLandingFlow_ApuAvailWait_ReadsTheAvailLamp()
+    {
+        var step = FenixFlows.Build()
+            .Single(f => f.Id == "AFTER_LANDING").Steps
+            .Single(s => s.Id == "AL_APU_AVAIL");
+
+        Assert.Equal("I_OH_ELEC_APU_START_L", step.ConditionFieldName);
+    }
+
+    // Every other field the Fenix FO reads/writes/waits on is exposed as a plain
+    // string, but the flow Skip(...) predicates are opaque Func<TState,bool> lambdas
+    // baked in at Build() time — there is no public way to introspect which field name
+    // a lambda closed over. Rather than fight that, this pins the regression class at
+    // the source level: neither Fenix First-Officer definition file may contain the
+    // wrong (transient ON-lamp) variable name anywhere at all, which also covers the
+    // BS_APU_START / AL_APU_MASTER / AL_APU_DWELL / AL_APU_START skip predicates that
+    // the strongly-typed asserts above cannot reach directly.
+    [Theory]
+    [InlineData("FenixFlowDefinitions.cs")]
+    [InlineData("FenixChecklistDefinitions.cs")]
+    public void FenixFirstOfficerSource_NeverReferencesTheTransientOnLamp(string fileName)
+    {
+        string source = File.ReadAllText(FenixFirstOfficerSourcePath(fileName));
+        Assert.DoesNotContain("I_OH_ELEC_APU_START_U", source);
+    }
+
+    private static string FenixFirstOfficerSourcePath(string fileName,
+        [CallerFilePath] string thisTestFilePath = "") =>
+        Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisTestFilePath)!,
+            "..", "..", "MSFSBlindAssist", "FirstOfficer", "Fenix", fileName));
 }

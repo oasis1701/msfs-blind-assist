@@ -139,8 +139,19 @@ public static class FenixChecklistDefinitions
         Items = new()
         {
             // Master ON → dwell → START pulse; the AVAIL light is the running state.
+            // The A320 APU START pushbutton has TWO legends: upper = ON, which lights
+            // only while the start sequence runs and goes OUT once the APU reaches
+            // ~95% N (transient); lower = AVAIL, which stays lit for as long as the
+            // APU is running (persistent). "Available" means the AVAIL lamp, i.e.
+            // I_OH_ELEC_APU_START_L — reading _U here made a running/available APU
+            // read as "not available" the moment start finished, so this item never
+            // auto-completed and the sibling flow step below re-pressed START on an
+            // APU that was already running. NOTE: the _U/_L convention is NOT
+            // consistent across A320 pushbuttons — it is REVERSED on EXT PWR, where
+            // _U is the AVAIL lamp — so never infer one pushbutton's wiring from
+            // another's.
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON and available",
-                "I_OH_ELEC_APU_START_U", v => v > 0.5, (e, _) => e.StartApuAsync()),
+                "I_OH_ELEC_APU_START_L", v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON",
                 "S_OH_PNEUMATIC_APU_BLEED", v => v > 0.5, (e, _) => e.Set("S_OH_PNEUMATIC_APU_BLEED", 1)),
             Auto("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ALL ON",
@@ -350,8 +361,9 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.SetLandingLights(1)),
             Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose light: TAXI",
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.SetNoseLight(1)),
+            // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
             AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON and available",
-                "I_OH_ELEC_APU_START_U", v => v > 0.5, (e, _) => e.StartApuAsync()),
+                "I_OH_ELEC_APU_START_L", v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("AL_ANTIICE_OFF", "AFTER_LANDING", "Engine and wing anti-ice: OFF",
                 "S_OH_PNEUMATIC_ENG1_ANTI_ICE", v => v < 0.5,
                 new[] { "S_OH_PNEUMATIC_ENG2_ANTI_ICE", "S_OH_PNEUMATIC_WING_ANTI_ICE" },
@@ -566,8 +578,9 @@ public static class FenixChecklistDefinitions
                 "S_FC_FLAPS", v => v < 0.5, action: null),
             Auto("ALC_SPOILERS", "AFTER_LANDING_CL", "Spoilers: DISARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v - 1) < 0.5, action: null),
+            // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
             Auto("ALC_APU", "AFTER_LANDING_CL", "APU: STARTED",
-                "I_OH_ELEC_APU_START_U", v => v > 0.5, action: null),
+                "I_OH_ELEC_APU_START_L", v => v > 0.5, action: null),
             Auto("ALC_WXR", "AFTER_LANDING_CL", "Radar: OFF",                          // [RADAR]
                 "S_WR_SYS", v => Math.Abs(v - 1) < 0.5, action: null),                 // [RADAR]
             Auto("ALC_PWS", "AFTER_LANDING_CL", "Predictive windshear: OFF",           // [RADAR]
