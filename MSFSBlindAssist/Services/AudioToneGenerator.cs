@@ -146,41 +146,144 @@ public class AudioToneGenerator : IDisposable
 
     // Default pitch→frequency mapping. Min = dive (negative pitch), max = climb (positive pitch),
     // center = level flight. Per-instance overrides via Configure(...) before Start().
-    private const float DEFAULT_MIN_FREQUENCY = 200f;
-    private const float DEFAULT_MAX_FREQUENCY = 800f;
-    private const double DEFAULT_PITCH_RANGE_DEG = 10.0;
+    //
+    // internal rather than private ONLY so AudioTonePitchMappingTests can assert against the
+    // SHIPPED numbers instead of re-typing them. Reached via Properties/InternalsVisibleTo.cs.
+    // Do NOT re-add a second `internal const` alias per value: a const is inlined into the
+    // consuming assembly's IL, so an alias is a compile-time COPY, not a reference — precisely
+    // the drift it would claim to prevent.
+    internal const float DEFAULT_MIN_FREQUENCY = 200f;
+    internal const float DEFAULT_MAX_FREQUENCY = 800f;
+    // ASYMMETRIC BY DESIGN, and these defaults ARE hand fly's mapping. TWO consumers never call
+    // Configure AND drive pitch: HandFlyManager, and the settings panel's Test Tone preview
+    // (HandFlyPanel.StartTestTone). Five more construction sites never call Configure either
+    // (AudioPanel, TaxiGuidancePanel, TaxiSteeringTone, ProximityBeeper, TakeoffAssistManager)
+    // and are unaffected ONLY because none of them calls UpdatePitch — add a pitch cue to any
+    // of those and it silently inherits this mapping, kink and all.
+    //
+    // Nose-down stays at the long-standing 10° (an airliner rarely exceeds it in normal
+    // operation, and leaving it alone keeps every already-learned nose-down cue identical).
+    // Nose-up is 20° because hand fly is AUTO-ACTIVATED AT LIFTOFF, where the aircraft is
+    // already 12–18° nose up: at 10° the tone was past saturation from its very first update
+    // and stayed pinned at maximum for the whole initial climb. See PitchToFrequency. The price
+    // is nose-up resolution — 30 → 15 Hz/°, for the whole flight, cruise included.
+    //
+    // KNOWN LIMITATION: 20° is an AIRFRAME-shaped number sitting on a shared class const. A
+    // Cessna climbs at ~8° and an A320 TOGA/windshear escape reaches 20–25°, so a second
+    // airframe needing a different climb range means moving this onto VisualGuidanceProfile
+    // (the LandingFlareAssistManager profile lambda in MainForm is the established idiom).
+    // Deliberately not done now: no airframe currently needs a different value, and
+    // per-airframe numbers would need fly-testing.
+    internal const double DEFAULT_PITCH_DOWN_RANGE_DEG = 10.0;
+    internal const double DEFAULT_PITCH_UP_RANGE_DEG = 20.0;
+
     private const double DEFAULT_BANK_RANGE_DEG = 10.0;  // bank (degrees) at which pan saturates to ±1.0
 
     // Effective mapping (defaults preserved when Configure is not called).
     private float minFrequency = DEFAULT_MIN_FREQUENCY;
     private float maxFrequency = DEFAULT_MAX_FREQUENCY;
-    private double pitchRangeDeg = DEFAULT_PITCH_RANGE_DEG;
+    private double pitchDownRangeDeg = DEFAULT_PITCH_DOWN_RANGE_DEG;
+    private double pitchUpRangeDeg = DEFAULT_PITCH_UP_RANGE_DEG;
     private double bankRangeDeg = DEFAULT_BANK_RANGE_DEG;
     private float CenterFrequency => (minFrequency + maxFrequency) / 2f;
+
+    /// <summary>
+    /// The captured attitude→audio mapping, for AudioToneConfigureTests. Internal (reached via
+    /// Properties/InternalsVisibleTo.cs) because the fields are private and <see cref="UpdatePitch"/>
+    /// needs a live WASAPI endpoint, so there is otherwise NO way for CI to observe that
+    /// <see cref="Configure"/> put each argument on the field it names — the same gap
+    /// AudioToneGeneratorTests records for the registration contract. Read-only; nothing in
+    /// production reads this.
+    /// </summary>
+    internal (float Min, float Max, double Down, double Up, double Bank) MappingForTests
+        => (minFrequency, maxFrequency, pitchDownRangeDeg, pitchUpRangeDeg, bankRangeDeg);
 
     /// <summary>
     /// Optional per-instance configuration for both axes of the attitude→audio mapping. Call
     /// BEFORE <see cref="Start"/> (config is captured at Start time).
     ///
-    /// The class-level defaults are 200–800 Hz over ±10° pitch and pan saturation at ±10° bank
-    /// — appropriate for hand-fly mode's tone (which never calls Configure). Tightening the
-    /// ranges increases the matching slope: more Hz of beat per degree of pitch error, more
-    /// pan delta per degree of bank error. Visual landing guidance currently uses ±6° pitch
-    /// (50 Hz/°) and ±5° bank (0.20 pan/°) by default — see <c>VisualGuidanceProfile</c>. The
-    /// trade-off is earlier saturation outside the approach envelope. Widen the ranges for
-    /// aircraft with larger attitude envelopes (aerobatic, fighter) via the profile.
+    /// The pitch range is SYMMETRIC here: <paramref name="pitchRangeDegrees"/> saturates the
+    /// tone in both directions, which makes <see cref="PitchToFrequency"/> collapse to a single
+    /// straight line. The class-level defaults are deliberately NOT symmetric (200–800 Hz over
+    /// −10°/+20° pitch, pan saturation at ±10° bank) because they belong to hand-fly mode,
+    /// which never calls Configure — see <see cref="PitchToFrequency"/> for why the nose-up
+    /// half is wider.
+    ///
+    /// There is intentionally NO asymmetric overload. Nothing needs one — every caller here
+    /// configures a symmetric range — and a second overload differing only by a trailing
+    /// double made `Configure(min, max, 6.0, 5.0, 12.0)` bind silently with the bank range
+    /// landing on the nose-up range and pan saturation moving to 12°. If a per-airframe
+    /// asymmetric range is ever needed, put it on <c>VisualGuidanceProfile</c> rather than
+    /// re-adding a positional overload.
+    ///
+    /// Tightening the ranges increases the matching slope: more Hz of beat per degree of pitch
+    /// error, more pan delta per degree of bank error. Visual landing guidance currently uses
+    /// ±6° pitch (50 Hz/°) and ±5° bank (0.20 pan/°) by default — see
+    /// <c>VisualGuidanceProfile</c>. The trade-off is earlier saturation outside the approach
+    /// envelope. Widen the ranges for aircraft with larger attitude envelopes (aerobatic,
+    /// fighter) via the profile.
     /// </summary>
     public void Configure(float minFrequencyHz, float maxFrequencyHz, double pitchRangeDegrees, double bankRangeDegrees)
     {
         if (isPlaying)
             return;  // mapping is captured at Start(); change before starting
-        if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz && pitchRangeDegrees > 0 && bankRangeDegrees > 0)
+
+        if (minFrequencyHz > 0 && maxFrequencyHz > minFrequencyHz
+            && pitchRangeDegrees > 0 && bankRangeDegrees > 0)
         {
             minFrequency = minFrequencyHz;
             maxFrequency = maxFrequencyHz;
-            pitchRangeDeg = pitchRangeDegrees;
+            pitchDownRangeDeg = pitchRangeDegrees;
+            pitchUpRangeDeg = pitchRangeDegrees;
             bankRangeDeg = bankRangeDegrees;
+            return;
         }
+
+        // Rejecting the whole configuration leaves this instance on the CLASS DEFAULTS, and
+        // those are hand fly's ASYMMETRIC −10°/+20° mapping — not the symmetric ±10° a caller
+        // reading this method would assume, and not what it asked for. For a visual-guidance
+        // tone pair that means a kinked mapping instead of the straight line its zero-beat
+        // design rests on. Silent rejection is kept (a tone must never take down a flight),
+        // but it is no longer invisible.
+        Log.Warn("Audio", $"AudioToneGenerator.Configure rejected ({minFrequencyHz} Hz, {maxFrequencyHz} Hz, " +
+                          $"±{pitchRangeDegrees}° pitch, ±{bankRangeDegrees}° bank); keeping the asymmetric " +
+                          $"class defaults (−{DEFAULT_PITCH_DOWN_RANGE_DEG}°/+{DEFAULT_PITCH_UP_RANGE_DEG}°)");
+    }
+
+    /// <summary>
+    /// Maps pitch (degrees) onto tone frequency (Hz). PIECEWISE and anchored at the centre
+    /// frequency: 0° always sits at the centre, −<paramref name="pitchDownRangeDeg"/> saturates
+    /// to <paramref name="minFrequency"/> and +<paramref name="pitchUpRangeDeg"/> saturates to
+    /// <paramref name="maxFrequency"/>. Equal ranges collapse to the single straight line this
+    /// replaced, so every symmetric caller (visual guidance, the landing-flare assist) is
+    /// unaffected — pinned by AudioTonePitchMappingTests.
+    ///
+    /// The centre anchor and the resulting KINK at 0° are deliberate, not an oversight of a
+    /// simpler end-to-end line. Level flight is the reference a pilot listens for, so it must
+    /// not move when a range changes; anchoring it also leaves the nose-down half numerically
+    /// identical whatever the nose-up range is, so widening the top to cover a climb-out costs
+    /// nothing already learned by ear.
+    ///
+    /// WHY ASYMMETRY EXISTS AT ALL: hand fly is auto-activated at LIFTOFF, where an airliner is
+    /// already 12–18° nose up. Under the old symmetric ±10° default that is past saturation, so
+    /// the tone was pinned at maximum from its first update and stayed there for the whole
+    /// initial climb — the pilot hears a constant tone carrying no information at the exact
+    /// moment attitude matters most. Measured on a live Fenix A320 takeoff (2026-08-25): pitch
+    /// crossed 10° 0.7 s BEFORE the handoff and never came back below it during the session.
+    /// </summary>
+    internal static double PitchToFrequency(double pitchDegrees, float minFrequency, float maxFrequency,
+        double pitchDownRangeDeg, double pitchUpRangeDeg)
+    {
+        double centre = (minFrequency + maxFrequency) / 2.0;
+
+        if (pitchDegrees >= 0)
+        {
+            double clamped = Math.Min(pitchDegrees, pitchUpRangeDeg);
+            return centre + (clamped * ((maxFrequency - centre) / pitchUpRangeDeg));
+        }
+
+        double clampedDown = Math.Max(pitchDegrees, -pitchDownRangeDeg);
+        return centre + (clampedDown * ((centre - minFrequency) / pitchDownRangeDeg));
     }
 
     /// <summary>
@@ -548,11 +651,8 @@ public class AudioToneGenerator : IDisposable
         if (osc == null || !isPlaying)
             return;
 
-        // Map pitch (degrees) to frequency (Hz). ±pitchRangeDeg saturates to min/max frequency;
-        // 0° pitch sits at the centre frequency. Default mapping: ±10° → 200–800 Hz (500 Hz centre).
-        double clampedPitch = Math.Clamp(pitchDegrees, -pitchRangeDeg, pitchRangeDeg);
-        double halfFrequencyRange = (maxFrequency - minFrequency) / 2.0;
-        double targetFrequency = CenterFrequency + (clampedPitch * (halfFrequencyRange / pitchRangeDeg));
+        double targetFrequency = PitchToFrequency(
+            pitchDegrees, minFrequency, maxFrequency, pitchDownRangeDeg, pitchUpRangeDeg);
 
         // Phase-continuous oscillator smoothly transitions to new frequency (no clicks/pops)
         osc.SetFrequency(targetFrequency);

@@ -56,7 +56,11 @@ public sealed class VisualGuidanceProfile
     /// <summary>Pitch (degrees) at which the tone frequency saturates to the min/max. Default
     /// is ±6°, which covers the transport-jet approach envelope (-3° glideslope, +6° flare
     /// AoA at the saturation edge) and gives a **50 Hz/° matching slope** — 67% more sensitive
-    /// than the AudioToneGenerator's native ±10° default (30 Hz/°). At this slope a 0.1° pitch
+    /// than the AudioToneGenerator's native nose-DOWN default (−10°, 30 Hz/°). That native
+    /// default is ASYMMETRIC: its nose-up half is +20° at 15 Hz/°, widened for hand fly's
+    /// liftoff auto-activation, so against that half the gain is larger still. This value is
+    /// applied SYMMETRICALLY (Configure takes one pitch range), which is what keeps the
+    /// visual-guidance mapping a single straight line. At this slope a 0.1° pitch
     /// error produces a 5 Hz beat (slow audible wobble); 0.5° produces a 25 Hz beat (clear
     /// fluttering). Wider envelopes (aerobatic, fighter) should raise this; tighter envelopes
     /// can lower it further for even finer resolution near zero (at the cost of earlier

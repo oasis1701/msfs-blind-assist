@@ -321,13 +321,6 @@ public partial class MainForm : Form
     // a fresh one-shot position read (SimOnGround + ground speed) before
     // performing the handoff; see PerformLiftoffHandoffIfValid.
     private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
-    // How long the handoff mutes Hand Fly's own spoken pitch/bank/heading/VS
-    // callouts so the breadcrumb ("Airborne. Takeoff assist off, hand fly
-    // active.") can finish — the first post-activation callouts pass their
-    // announce gates within one sim frame and AnnounceImmediate interrupts,
-    // which would clip the breadcrumb after a syllable. The tone is unaffected;
-    // spoken pitch resumes right after the window.
-    private const int    LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS = 3500;
     // Outcome of the most recent RegisterHandFlyHotkeys() call, recorded by
     // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
     // quick-access-keys warning into its breadcrumb: the breadcrumb's
