@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Hotkeys;
+﻿using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.Utils.Logging;
@@ -5326,6 +5326,36 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Altimeter announcement suppression (initial value)
     private double _lastAnnouncedAltimeter = double.NaN;
 
+    // Each side's EFIS BARO IN/HPA selector, as last reported. The background baro
+    // announcement runs inside ProcessSimVarUpdate, which has no SimConnect handle to
+    // pull them with, so they are recorded as they arrive. Null until the aircraft has
+    // actually said - never defaulted to false, because false means INCHES and would
+    // announce an inches setting on an aeroplane set to hectopascals.
+    private bool? _baroHpaCapt;
+    private bool? _baroHpaFO;
+
+    // Last SimConnect handle this definition was given. ProcessSimVarUpdate is handed no
+    // handle, and the baro units cannot be learned from it anyway: MainForm's
+    // initial-snapshot fast path RETURNS before ProcessSimVarUpdate is called, so the
+    // values the aircraft loads with never arrive there - only a later CHANGE does. A pilot
+    // who never touches an IN/HPA selector would therefore leave the cache empty for the
+    // whole flight, which is exactly how the readout kept announcing both units. Captured
+    // from whichever user-driven call comes first so the background path can pull instead.
+    private SimConnect.SimConnectManager? _simConnectRef;
+
+    /// <summary>
+    /// Fills any unknown baro unit from the live PMDG snapshot. Null stays null when there
+    /// is nothing to read: every PMDG field reads 0.0 before the first CDA snapshot and 0
+    /// means INCHES, so a defaulted read would announce inches on an aeroplane set to HPA.
+    /// </summary>
+    private void EnsureBaroUnits()
+    {
+        if (_baroHpaCapt.HasValue && _baroHpaFO.HasValue) return;
+        if (_simConnectRef?.PMDGDataManager is not { IsReady: true } dm) return;
+        _baroHpaCapt ??= dm.GetFieldValue("EFIS_BaroSelHPA_0") > 0.5;
+        _baroHpaFO   ??= dm.GetFieldValue("EFIS_BaroSelHPA_1") > 0.5;
+    }
+
     // Headphone-simulation (switch_622_a / LOCALVAR_A20) announce tracker.
     // -1 = unseen (first poll suppressed). Declared 2-state (0 / 100), but
     // PMDG can transiently land on a mid-detent during a ROTOR_BRAKE click —
@@ -5825,6 +5855,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     public override bool IsPanelControlVisible(string varKey, SimConnect.SimConnectManager? simConnect)
     {
+        if (simConnect != null) _simConnectRef = simConnect;
         bool isCargoKnob = IsCargoTempKnobKey(varKey);
         if (!isCargoKnob && varKey != "AIR_TempKnobCabin")
         {
@@ -5865,6 +5896,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        _simConnectRef = simConnect;
         // System Display page selector (accessible synoptic read-out).
         if (varKey == SdPageKey)
             return HandleSystemDisplaySelect(value, simConnect, announcer);
@@ -6356,6 +6388,21 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // EFIS BARO IN/HPA selectors, recorded for the baro readout's unit choice.
+        //
+        // This MUST come before the base call and MUST NOT return: the base handles any
+        // var carrying ValueDescriptions + IsAnnounced - which these do, they announce as
+        // "Baro Unit (Capt): HPA" - and returns true, so anything placed below it never
+        // runs for them. That is how this shipped twice: first matching the struct field
+        // name (which the key translation makes unmatchable), then matching the right key
+        // but from underneath the base call. Either way the cache stayed null all session
+        // and the readout announced both units forever.
+        //
+        // Falling through rather than returning is deliberate - the selectors still
+        // announce through the generic path like any other switch.
+        if (varName == "EFIS_BaroSelHPA_Capt") _baroHpaCapt = value > 0.5;
+        else if (varName == "EFIS_BaroSelHPA_FO") _baroHpaFO = value > 0.5;
+
         if (base.ProcessSimVarUpdate(varName, value, announcer))
         {
             return true;
@@ -6431,31 +6478,20 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             return true;
         }
 
-        // Altimeter setting — announce changes, suppress initial value
+        // Altimeter setting — announce changes, suppress the initial value. Same phrase
+        // the output + B hotkey speaks, so the two can never disagree.
         if (varName == "ALTIMETER_SETTING")
         {
-            double inHg = value;
-
-            // First update: store silently
-            if (double.IsNaN(_lastAnnouncedAltimeter))
+            if (double.IsNaN(_lastAnnouncedAltimeter))    // first read: seed silently
             {
-                _lastAnnouncedAltimeter = inHg;
+                _lastAnnouncedAltimeter = value;
                 return true;
             }
+            if (Math.Abs(value - _lastAnnouncedAltimeter) < 0.005) return true;   // debounce
+            _lastAnnouncedAltimeter = value;
 
-            // Debounce — skip if less than 0.005 inHg change
-            if (Math.Abs(inHg - _lastAnnouncedAltimeter) < 0.005)
-                return true;
-
-            _lastAnnouncedAltimeter = inHg;
-
-            if (Math.Abs(inHg - 29.92) < 0.005)
-                announcer.Announce("Altimeter standard");
-            else
-            {
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.Announce($"Altimeter: {hpa}, {inHg:0.00}");
-            }
+            EnsureBaroUnits();
+            announcer.Announce(Pmdg777AltimeterUnits.Describe(value, _baroHpaCapt, _baroHpaFO));
             return true;
         }
 
@@ -6705,6 +6741,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        _simConnectRef = simConnect;
         switch (action)
         {
             // ------------------------------------------------------------------
@@ -6849,18 +6886,22 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                     return true;
                 }
 
-                double inHg = inHgRaw.Value;
+                // The unit follows the EFIS BARO selectors. Read them directly rather than
+                // from the cache the background path uses: that cache only fills when a
+                // selector CHANGES, so on a flight where nobody has touched one it would
+                // still be null. Gated on IsReady - every PMDG field reads 0.0 before the
+                // first snapshot and 0 means INCHES.
+                bool? captHpa = dm.IsReady ? dm.GetFieldValue("EFIS_BaroSelHPA_0") > 0.5 : _baroHpaCapt;
+                bool? foHpa   = dm.IsReady ? dm.GetFieldValue("EFIS_BaroSelHPA_1") > 0.5 : _baroHpaFO;
 
-                // Detect STD: 29.92 inHg (1013.25 hPa) is standard pressure
-                if (Math.Abs(inHg - 29.92) < 0.005)
-                {
-                    announcer.AnnounceImmediate("Altimeter standard");
-                    return true;
-                }
+                // Seed the background path's cache from this authoritative read. That cache
+                // fills only when a selector CHANGES, so on a flight where nobody touches
+                // one it would otherwise stay empty and the auto-announce would keep reading
+                // both units. One press of this key is enough to settle it for the session.
+                _baroHpaCapt = captHpa; _baroHpaFO = foHpa;
 
-                // Report in both units (hPa first, matching Fenix format)
-                int hpa = (int)Math.Round(inHg * 33.8639);
-                announcer.AnnounceImmediate($"Altimeter: {hpa}, {inHg:0.00}");
+                announcer.AnnounceImmediate(
+                    Pmdg777AltimeterUnits.Describe(inHgRaw.Value, captHpa, foHpa));
                 return true;
             }
 
