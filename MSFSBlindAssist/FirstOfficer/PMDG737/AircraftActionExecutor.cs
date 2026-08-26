@@ -99,6 +99,14 @@ public class AircraftActionExecutor : IFoActionExecutor
     // Press-and-hold for the third rung, matching the warning-test press/release shape.
     private const int SpeedbrakeArmHoldMs = 120;
 
+    // Gear-off read-back. Same 1 Hz ambient poll as the speedbrake, same window/interval.
+    private const int GearOffVerifyMs = 1200;
+    private const int GearOffPollMs = 100;
+    // Delay either side of the click on the held-unlock rung (TransmitUnlockHeldClick) —
+    // the ordering (unlock, delay, move, delay, release), not the exact figure, is what
+    // matters, following the PullFireHandleAsync precedent in PMDG737Definition.cs.
+    private const int GearOffUnlockDelayMs = 150;
+
     // Serializes ALL CDA dispatch so two concurrent spaced sequences (e.g. a checklist tick
     // landing while a flow's MultiAsync is mid-spacing, or two quick multi-write ticks) can't
     // interleave their writes into the same sim frame — which would re-introduce the exact
@@ -274,6 +282,8 @@ public class AircraftActionExecutor : IFoActionExecutor
                 // name is NOT used from the flow any more, because a bare dispatch
                 // reports success whether or not the lever moved.
                 case SpeedbrakeArmLadder.PseudoKey: return ArmSpeedbrakeAsync();
+                // Closed-loop, verified gear-off attempt — see SetGearLeverOffAsync.
+                case GearOffLadder.PseudoKey: return SetGearLeverOffAsync();
             }
         }
         return step.ActionType switch
@@ -639,6 +649,111 @@ public class AircraftActionExecutor : IFoActionExecutor
     // false-0 must BLOCK an on-write, this is a read-only verification check).
     private bool FieldOn(string field)
         => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
+
+    /// <summary>
+    /// Attempts to move the gear lever to OFF and PROVES it, rather than assuming it.
+    ///
+    /// The old path dispatched EVT_GEAR_LEVER as a fire-and-forget SetSwitch and
+    /// reported success unconditionally — a safety defect, since the checklist ticked
+    /// for a lever that never moved. 21 probing shapes (18 recorded 2026-08-25, plus
+    /// three more since) all left <see cref="GearOffLadder.StateField"/> unchanged, so
+    /// this was replaced with a Reminder (acknowledge-only) item. New ground testing
+    /// (2026-08-26) found TransmitClientEvent clicks on EVT_GEAR_LEVER audibly reach the
+    /// aircraft, which is why this method exists again — but it always reads
+    /// <see cref="GearOffLadder.StateField"/> back afterward and reports honestly if it
+    /// does not confirm OFF, rather than trusting the click.
+    ///
+    /// Holds <c>_dispatchGate</c> across the whole call and uses the raw send methods
+    /// internally, exactly like <see cref="ArmSpeedbrakeAsync"/> — never
+    /// <c>DispatchAsync</c>, which would deadlock on the gate.
+    /// </summary>
+    /// <returns>true once the lever is confirmed at OFF, already was, or is at DOWN
+    /// (never clicked from there); false if no rung moved it off UP.</returns>
+    public async Task<bool> SetGearLeverOffAsync()
+    {
+        var sc = _sc;
+        if (sc == null
+            || !PMDG737Definition.EventIds.TryGetValue("EVT_GEAR_LEVER", out int gearEvId)
+            || !PMDG737Definition.EventIds.TryGetValue("EVT_GEAR_LEVER_UNLOCK", out int unlockEvId))
+            return false;
+        uint id = (uint)gearEvId;
+        uint unlockId = (uint)unlockEvId;
+
+        await _dispatchGate.WaitAsync();
+        try
+        {
+            // Already OFF — nothing to do.
+            if (IsGearOff()) return true;
+
+            // DOWN (on the ground, or the gear is being extended): a click here is a
+            // click toward UP, which could pull the gear up or fight the pilot's own
+            // hand on the lever. Only ever attempt the move from UP.
+            if (GearLeverValue() > 1.5) return true;
+
+            for (int i = 0; i < GearOffLadder.Attempts.Count; i++)
+            {
+                await PaceAsync();
+                switch (GearOffLadder.Attempts[i])
+                {
+                    case GearOffTransport.TransmitClick:
+                        // No release sent — matches the walked-rotary/speedbrake
+                        // TransmitClick precedent: a bare LEFTSINGLE is the whole click.
+                        sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
+                        break;
+                    case GearOffTransport.TransmitUnlockHeldClick:
+                        sc.SendPMDGEventViaTransmitWithTarget(unlockId, MouseFlagLeftSingleU);
+                        await Task.Delay(GearOffUnlockDelayMs);
+                        sc.SendPMDGEventViaTransmitWithTarget(id, MouseFlagLeftSingleU);
+                        await Task.Delay(GearOffUnlockDelayMs);
+                        sc.SendPMDGEventViaTransmitWithTarget(unlockId, MouseFlagLeftReleaseU);
+                        break;
+                    case GearOffTransport.RotorBrakeClick:
+                        // param = (eventId - THIRD_PARTY_EVENT_ID_MIN) * 100 + mouseCode
+                        // (01 = left-single). See PMDG777Definition.cs:6188-6209 for the
+                        // existing use of this channel.
+                        sc.SendEvent("ROTOR_BRAKE", 45501);
+                        break;
+                }
+                _lastWriteUtc = DateTime.UtcNow;
+
+                bool reachedOff = await WaitForGearOffAsync();
+                if (reachedOff)
+                {
+                    Log.Debug("FirstOfficer",
+                        $"Gear lever reached OFF via {GearOffLadder.Attempts[i]} (attempt {i + 1}).");
+                    return true;
+                }
+
+                if (!GearOffLadder.ShouldContinue(i, reachedOff))
+                {
+                    Log.Debug("FirstOfficer",
+                        $"Gear lever OFF attempt failed: no transport moved the lever off UP " +
+                        $"(observed MAIN_GearLever={GearLeverValue()}).");
+                    return false;
+                }
+            }
+            return false;
+        }
+        finally { _dispatchGate.Release(); }
+    }
+
+    /// <summary>Polls <see cref="GearOffLadder.StateField"/> for <c>GearOffVerifyMs</c>.
+    /// Returns as soon as it reads OFF.</summary>
+    private async Task<bool> WaitForGearOffAsync()
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(GearOffVerifyMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (IsGearOff()) return true;
+            await Task.Delay(GearOffPollMs);
+        }
+        return IsGearOff();
+    }
+
+    private double GearLeverValue()
+        => _sc?.PMDGDataManager?.GetFieldValue(GearOffLadder.StateField) ?? 0.0;
+
+    private bool IsGearOff() => Math.Abs(GearLeverValue() - 1) < 0.5;
 
     /// <summary>TCAS self-test: quick press of the transponder panel TEST button.
     /// Aural "TCAS TEST" then ~8 s later "TCAS TEST PASS" — audio is the verification

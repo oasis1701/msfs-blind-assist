@@ -283,17 +283,18 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
-            // Acknowledgement only, permanently: no external write can position the NG3
-            // gear lever's OFF detent — see the AT_GEAR_OFF comment in
-            // PMDG737FlowDefinitions. It is reachable only by a mouse click/drag in the
-            // virtual cockpit, which is unavailable to this app AND to a blind pilot (the
-            // stock UP/DOWN key bindings don't reach OFF either). So this is a Captain
-            // reminder like BTOC_FLAPS/DSA_AB, not a state check — the state-verified
-            // gear check lives on ATC_GEAR ("Landing gear: UP and OFF"), which UP alone
-            // satisfies. The label makes the tick's meaning unambiguous: it does not
-            // claim the lever moved.
-            Reminder("ATKO_GEAR_OFF", "AFTER_TAKEOFF",
-                "Gear lever: OFF — acknowledge only, this app cannot move the lever"),
+            // Detected on MAIN_GearLever (see GearOffLadder). Ticking this by hand fires
+            // a real, closed-loop, verified attempt at the OFF detent — the ladder tries
+            // three transports and reads the lever back afterward, so a manual tick that
+            // does not actually land un-ticks itself and ChecklistManager raises
+            // ItemActionFailed ("Unable to complete: Gear lever: OFF"), rather than
+            // silently standing complete for a lever still at UP. The state-verified
+            // gear check on the After Takeoff Checklist's ATC_GEAR ("Landing gear: UP
+            // and OFF") is unaffected — its wider v < 1.5 condition is satisfied by UP
+            // alone.
+            AutoAsync("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
+                GearOffLadder.StateField, v => Math.Abs(v - 1) < 0.5,
+                (e, _) => e.SetGearLeverOffAsync()),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }

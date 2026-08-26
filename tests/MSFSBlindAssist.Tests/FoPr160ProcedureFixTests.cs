@@ -16,6 +16,7 @@ using Pmdg777Checklist = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinition
 using Pmdg737Flows = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions;
 using Pmdg737Checklist = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737ChecklistDefinitions;
 using SbLadder = MSFSBlindAssist.FirstOfficer.PMDG737.SpeedbrakeArmLadder;
+using GoLadder = MSFSBlindAssist.FirstOfficer.PMDG737.GearOffLadder;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -261,6 +262,38 @@ public class FoPr160ProcedureFixTests
     {
         Assert.False(MSFSBlindAssist.Aircraft.PMDG737Definition.EventIds
             .ContainsKey(SbLadder.PseudoKey));
+    }
+
+    // -- 737 gear lever OFF: a real, closed-loop, verified attempt ---------
+
+    // The gear-off item used to be a Reminder (acknowledge-only) because a fire-and-
+    // forget SetSwitch dispatch reported success while the lever never moved. It is
+    // now Auto-detectable and drives a verified arm ladder just like the speedbrake —
+    // it ticks only when MAIN_GearLever is confirmed at OFF.
+    [Fact]
+    public void Pmdg737_AfterTakeoffChecklistGearOff_IsAutoDetectableAndActuates()
+    {
+        var item = Pmdg737Checklist.Build()
+            .Single(g => g.Id == "AFTER_TAKEOFF").Items
+            .Single(i => i.Id == "ATKO_GEAR_OFF");
+
+        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
+        Assert.Equal(GoLadder.StateField, item.StateFieldName);
+        Assert.Equal(RevertBehavior.RevertToState, item.RevertBehavior);
+        Assert.NotNull(item.CheckAction);
+    }
+
+    [Fact]
+    public void Pmdg737_AfterTakeoffFlowGear_GoesThroughTheVerifiedPseudoKey()
+    {
+        var step = Pmdg737Flows.Build()
+            .Single(f => f.Id == "AFTER_TAKEOFF").Steps
+            .Single(s => s.Id == "AT_GEAR_OFF");
+
+        Assert.Equal(GoLadder.PseudoKey, step.EventName);
+        Assert.Equal(GoLadder.StateField, step.VerifyFieldName);
+        Assert.Equal("ATKO_GEAR_OFF", step.CompletesChecklistItemId);
+        Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
     }
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------

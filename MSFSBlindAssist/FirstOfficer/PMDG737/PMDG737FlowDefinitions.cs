@@ -345,18 +345,16 @@ public static class PMDG737FlowDefinitions
             Multi("AT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
             Multi("AT_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             Multi("AT_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
-            // CAPTAIN ITEM, and it must stay one: the NG3 gear lever cannot be positioned
-            // by an external client. Live-probed 2026-08-25 against a real 737-800 — 18
-            // write shapes across four transports (CDA and TransmitClientEvent, plain
-            // params and mouse flags, on EVT_GEAR_LEVER and EVT_GEAR_LEVER_OFF, with and
-            // without EVT_GEAR_LEVER_UNLOCK, plus the switch_455_73X L:var and the
-            // ROTOR_BRAKE encoded channel) were ALL inert, while MAIN_GearLever proved
-            // live by tracking the pilot's own hand movement of the lever.
-            // Sending EVT_GEAR_LEVER as a SetSwitch reported success every time and moved
-            // nothing, so the checklist stood complete for a lever still at UP.
-            // TRAP: transmit + mouse-flag on EVT_GEAR_LEVER makes an AUDIBLE CLICK without
-            // moving the lever. Do not accept a click as proof.
-            Captain("AT_GEAR_OFF", "Gear lever: OFF"),
+            // Verified attempt via the GEAR_LEVER_OFF pseudo-key (intercepted in
+            // AircraftActionExecutor.ExecuteStepAsync, same mechanism as SPEEDBRAKE_ARM).
+            // GearOffLadder tries three transports and this step reads MAIN_GearLever
+            // back afterward — it never claims success on a bare dispatch, and the Skip
+            // failure policy means a genuine failure is announced ("Skipping: Gear
+            // lever: OFF") without aborting the rest of the After Takeoff flow. See
+            // docs/pmdg-737.md for why this is a verified attempt rather than a Captain
+            // item or a fire-and-forget write.
+            SW("AT_GEAR_OFF", "Gear lever: OFF", GearOffLadder.PseudoKey, null,
+               GearOffLadder.StateField, v => Math.Abs(v - 1) < 0.5, "ATKO_GEAR_OFF"),
             SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
         }
     };
