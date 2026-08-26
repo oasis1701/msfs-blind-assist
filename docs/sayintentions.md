@@ -1509,6 +1509,38 @@ is the selected destination type — a runway candidate probed in between repopu
 with runway entries — so `SelectDestinationType(false)` is made once for the pair, ahead
 of either.
 
+**All three steps see only what the gate list LISTED, so every browsing filter on that
+list has to come off before the probe.** `PopulateDestinations` drops a filtered-out spot
+before its label reaches the combo, `_destinationSpotMap` and `_destinationThresholdMap`
+alike, so a hidden stand does not merely fail the name step — the alias and the coordinate
+have nothing to match against either, and the three "weaker evidence" steps all go blind
+together. There are three such filters and `TryResolveExternalDestination` neutralises all
+three: the **gate search box** (blanked — a search left over from a manual lookup reads
+exactly like "this airport has no such gate"), the **occupied-stands filter**
+(`_suppressOccupiedFilter` — an assigned stand with AI parked on it is still the assigned
+stand; the occupancy warning still reaches the pilot at Calculate via `CheckGateOccupancy`),
+and the **wingspan "show fitting only" filter** (`_suppressFitFilter`).
+
+The wingspan one is the strongest case of the three, because its data is the least
+trustworthy thing in the comparison. `ParkingSpot.FitsAircraft` reads a navdata parking
+**radius** or a GSX **max wing span**, both authored by the scenery, and both are
+frequently wrong — a stand that really does take the airframe is routinely marked too
+small. The box is ticked by **default** whenever wingspan data exists, so this was the
+normal configuration, not an edge case: a SayIntentions clearance to a gate simply could
+not seat it, and on a known arrival that is the loud `ComposeUnresolvedArrivalGateMessage`
+abort — *"this scenery has no stand under that label"* — for a stand the scenery has and
+the aircraft fits. A controller naming the stand outranks a scenery number saying it will
+not fit: the pilot was **told** to go there. `TaxiAssistForm.ShouldApplyFitFilter` carries
+the rule so it is pinned by test rather than by a condition inline in a 200-line method.
+
+Both suppressions are **latched on a successful seat**, not restored — `PopulateDestinations`
+runs again on the Calculate-path and show-path gate-source refreshes, and a rebuild that
+dropped the seated stand would clear the selection and abort the very import that seated
+it ("Gate list updated from GSX. Please choose the destination again."). They are cleared
+when the pilot toggles that checkbox themselves (their own assertion outranks the latch)
+and on every airport load. On a **failed** probe both are restored and the list rebuilt
+under them, like everything else in `TryResolveExternalDestination`: probing leaves no mark.
+
 **The coordinate test is the stand's own radius, doubled.** Not a number of metres, and no
 longer plain containment. A radius multiple is what keeps it self-scaling with nothing to
 tune: a Gate Extra states ~50 m of scale, a medium gate ~21 m, a packed GA spot a few
