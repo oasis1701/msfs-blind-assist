@@ -357,7 +357,15 @@ public partial class TaxiGuidanceManager
             // with no pause — illegal in real life and a runway-incursion risk on
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
-            InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+            var crossedRunways = InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+            // One line per built route naming every runway it crosses. Answering "did that
+            // route really drive across 08L?" for the 2026-08-27 KATL arrival meant
+            // reconstructing segment coordinates against the navdata by hand; the route
+            // pipeline already knows the answer at build time.
+            _guidanceLog.Info(crossedRunways.Count > 0
+                ? $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} " +
+                  $"crosses={string.Join(",", crossedRunways)}"
+                : $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} crosses=(none)");
 
             // Progressive "after crossing" terminator: the pilot is cleared to
             // cross the terminator runway, so strip the auto hold-short for it
@@ -1357,14 +1365,15 @@ public partial class TaxiGuidanceManager
     /// hold-short. Skip duplicate consecutive hold-shorts of the same runway
     /// (one approach, multiple internal segments on the runway pavement).
     /// </summary>
-    private void InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
+    private List<string> InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
     {
-        if (route == null || route.Segments.Count < 2) return;
-        if (_graph == null || _graph.RunwayCenterlines.Count == 0) return;
+        if (route == null || route.Segments.Count < 2) return new List<string>();
+        if (_graph == null || _graph.RunwayCenterlines.Count == 0) return new List<string>();
 
         // Tracks the runway whose hold-short was most recently inserted, so we
         // don't tag every consecutive segment that's on the same runway pavement.
         string lastTaggedRunway = "";
+        var crossed = new List<string>();
 
         // The destination name arrives prefixed ("Runway 33L"), but the crossed
         // runway is a bare designator ("33L"). Normalise so the destination
@@ -1421,7 +1430,10 @@ public partial class TaxiGuidanceManager
             if (newLabel != null)
                 holdSeg.HoldShortRunway = newLabel;
             lastTaggedRunway = crossedRwy;
+            crossed.Add(crossedRwy);
         }
+
+        return crossed;
     }
 
     /// <summary>
