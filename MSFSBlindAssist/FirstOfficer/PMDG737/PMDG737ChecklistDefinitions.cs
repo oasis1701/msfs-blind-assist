@@ -150,7 +150,7 @@ public static class PMDG737ChecklistDefinitions
             AutoAsync("PF_FD", "PREFLIGHT", "Flight directors: ON", "MCP_FDSw_0", v => v > 0.5,
                 new[] { "MCP_FDSw_1" }, (e, s) => e.SetFlightDirectorsAsync(1, s)),
             Auto("PF_AB", "PREFLIGHT", "Autobrake: RTO", "MAIN_AutobrakeSelector", v => v < 0.5, (e, _) => e.SetAutobrake(0)),
-            Auto("PF_XPDR", "PREFLIGHT", "Transponder: STBY", "XPDR_ModeSel", v => v < 0.5, (e, _) => e.SetTransponderMode(0)),
+            Auto("PF_XPDR", "PREFLIGHT", "Transponder: ALT RPTG OFF", "XPDR_ModeSel", v => v < 1.5, (e, _) => e.SetTransponderMode(1)),
             Auto("PF_EFIS_MODE", "PREFLIGHT", "EFIS mode: MAP", "EFIS_ModeSel_0", v => v > 1.5 && v < 2.5, (e, _) => e.SetEFISModeCapt(2)),
             Auto("PF_EFIS_RANGE", "PREFLIGHT", "EFIS range: 40", "EFIS_RangeSel_0", v => v > 2.5 && v < 3.5, (e, _) => e.SetEFISRangeCapt(3)),
             Reminder("PF_ALT", "PREFLIGHT", "Altimeters: SET to local QNH"),
@@ -424,7 +424,7 @@ public static class PMDG737ChecklistDefinitions
                 new[] { "HYD_PumpSw_eng_1" }, (e, _) => e.SetEngHydPumps(0)),
             Auto("SD_WINHEAT", "SHUTDOWN", "Window heat: OFF", "ICE_WindowHeatSw_0", v => v < 0.5,
                 new[] { "ICE_WindowHeatSw_1", "ICE_WindowHeatSw_2", "ICE_WindowHeatSw_3" }, (e, _) => e.SetWindowHeat(0)),
-            Auto("SD_XPDR", "SHUTDOWN", "Transponder: STBY", "XPDR_ModeSel", v => v < 0.5, (e, _) => e.SetTransponderMode(0)),
+            Auto("SD_XPDR", "SHUTDOWN", "Transponder: ALT RPTG OFF", "XPDR_ModeSel", v => v < 1.5, (e, _) => e.SetTransponderMode(1)),
         }
     };
 

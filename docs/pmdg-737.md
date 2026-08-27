@@ -502,3 +502,73 @@ something the First Officer fix introduced or can paper over — the combo still
 `MAIN_GearLever`'s live state correctly, it just cannot write it. Left unchanged
 deliberately (out of scope for this pass; removing the control or making it announce its
 own no-op needs its own decision).
+
+## Transponder STBY is unreachable — the FO targets ALT RPTG OFF (live-probed 2026-08-27)
+
+`XPDR_ModeSel` is documented in the SDK header as `0: STBY  1: ALT RPTG OFF ... 4: TA/RA`,
+and STBY is a fully-implemented state — but **no input path can select it**. Probed live
+against a running NG3: every transport that reaches the knob steps it 4→3→2→1 and is then
+inert at 1.
+
+Tried and inert at position 1, all of them:
+
+- `TransmitClientEvent` on `EVT_TCAS_MODE` (70432) with `LEFTSINGLE`, `WHEEL_DOWN`,
+  `LEFTDOUBLE`, `MIDDLESINGLE`, `LEFTDRAG`, `DOWN_REPEAT`, `LEFTRELEASE`, and an absolute
+  parameter of 0
+- `K:ROTOR_BRAKE` action codes 0–9 on index 800 (`80000`–`80009`)
+- the CDA position write (a documented no-op on this rotary anyway)
+- the undocumented `+20000` alias event, `90432` (`keyEventHandler` opens with
+  `alt = eventId > 89632; if (alt) eventId -= 20000;`)
+- a direct write to `L:switch_800_73X` — reverts within a frame, PMDG-owned read-back
+- a write to `A:TRANSPONDER STATE:1` — reverts too; `CTCAS::updateSquawkbox` rewrites the
+  stock simvar every frame from PMDG's own state
+
+**This is not an MSFSBA transport bug, and re-probing it is wasted effort.** Three
+independent corroborations:
+
+1. **The VC's own click is the same code we send.** `73X_Cockpit_Behavior.xml` (readable,
+   not compiled) gives the knob's mouse rect as `800 100 * (>L:SwitchID)` then
+   `+1` for a left-half `LeftSingle` / `+2` right-half / `+7` `WheelUp` / `+8` `WheelDown`,
+   then `(L:SwitchID) (>K:ROTOR_BRAKE)`. A left-half click emits `ROTOR_BRAKE 80001` —
+   exactly what we send. A human clicking the knob cannot reach STBY either.
+2. **PMDG's own checklist never asks for STBY.** `B738_Checklist.xml`: "Transponder panel
+   — Set", "Transponder — As needed", "Transponder — As Required", "Transponder mode
+   selector — As needed".
+3. **FSFO V6 fails identically.** `FSFO_V6.Aircraft.PMDG_B737` calls
+   `RotateLeftRightSwitch("switch_800_73X", 0, 8000, 1000)` → `ROTOR_BRAKE 80001`, gives up
+   after 5 clicks, and verifies `switch_800_73X == 0` — a test that can never pass. It just
+   never says so.
+
+WASM disassembly (`737NG3.wasm`, C++ symbols intact) confirms 0 is real, not vestigial:
+`CTCAS::keyEventHandler` routes event 70432 to one of two `CPanelElement`s depending on
+`this->byte[39524] & 1` (digital transponder panel installed → `this+8728`, else
+`this+7096`); `CTCAS::setMode()`'s analog branch writes `XPDR_ModeSel = getValue(this+7096)`
+directly and has a live `case 0`; `CTCAS::update()` has a `mode == 0` branch; and `setMode`
+is the **only** writer of that field (`update`/`runTCAS` only read it).
+`CPanelElement::getMouseAction`'s decrement clamp is a literal `0`, not a min field. The
+value simply never arrives.
+
+**So the First Officer targets ALT RPTG OFF (1)** — the lowest reachable position and the
+real-world step above STBY: the transponder still replies to Mode A but suppresses Mode C
+altitude (measured: `A:TRANSPONDER STATE:1` reads 3 "On" at position 1 versus 4 "Alt" at
+every higher position). Be clear on the consequence — **there is no reachable
+non-transmitting state on this airframe**; "silence the transponder before pushback" is not
+achievable by any means.
+
+The accept predicate is `v < 1.5`, not `v < 0.5` and not `v == 1`: it admits STBY **and**
+ALT RPTG OFF so the item still passes on an airframe where STBY IS reachable, without a
+second code path. Do not narrow it.
+
+`BS_XPDR` / `BTKO_XPDR` (TA/RA, 4) are reachable and unaffected.
+
+**Untested lead, recorded so it is not re-derived from scratch:** a second, digital
+transponder panel is modelled — a `STBY/ON/AUTO` switch (`switch_1299`, event
+`THIRD_PARTY_EVENT_ID_MIN + 1299` = 70931, absent from the SDK header) plus a NUM 0–7
+keypad (`switch_1301`–`switch_1309`) — selected by the livery `options.ini` airframe key
+**`Transponder New Style Installed`** (the L:var `XpndrOption`; only 8 of the shipped
+liveries set it, 7 to 0 and 1 to 1). On an airframe without it, `switch_1299_73X` is frozen
+at 50 and ignores every input. Expect it NOT to fix this even where installed:
+`setMode()`'s digital branch maps that panel's four positions to modes 1, 2, 3, 4 and never
+produces 0, so the aircraft would likely enter standby while `XPDR_ModeSel` still reads 1 —
+a working STBY the verification field cannot see, which is worse than today. Measure before
+acting on it.

@@ -151,7 +151,7 @@ public static class PMDG737FlowDefinitions
             MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn()),
             Momentary("PF_FF", "Fuel flow: RESET", "EVT_MPM_FUEL_FLOW_SWITCH"),
             SW("PF_AB_RTO", "Autobrake: RTO", "EVT_MPM_AUTOBRAKE_SELECTOR", 0),
-            SW("PF_XPDR", "Transponder: STBY", "EVT_TCAS_MODE", 0),
+            SW("PF_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1),
             SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2),
             SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
@@ -486,7 +486,7 @@ public static class PMDG737FlowDefinitions
             Multi("SD_WINHEAT_OFF", "Window heat: OFF",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
-            SW("SD_XPDR", "Transponder: STBY", "EVT_TCAS_MODE", 0),
+            SW("SD_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1),
         }
     };
 
