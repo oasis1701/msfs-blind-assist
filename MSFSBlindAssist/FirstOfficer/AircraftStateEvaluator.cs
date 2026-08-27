@@ -9,7 +9,17 @@ namespace MSFSBlindAssist.FirstOfficer;
 /// </summary>
 public class AircraftStateEvaluator : IFoStateEvaluator
 {
+    // N2 (percent) at/above which an engine is treated as RUNNING (stabilised near idle).
+    // Same threshold as both 737 profiles.
+    public const double EngineRunningN2 = 50.0;
+
     private PMDG777DataManager? _dm;
+
+    // Engine N2 (percent), pushed from the shared FO background timer via SetEngineN2.
+    // NaN (not 0) until the first push: before then "engine N2" is genuinely UNKNOWN, never
+    // "engine stopped", and ChecklistManager treats NaN as "skip both auto-tick and revert".
+    private double _eng1N2 = double.NaN;
+    private double _eng2N2 = double.NaN;
 
     public AircraftStateEvaluator() { }
 
@@ -46,6 +56,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
                 : (FuelSystemLogic.BeforeStartFuelPumpsOk(
                        AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
                        FuelCenterLbs() > CenterFuelPumpAutomation.OffThresholdLbs) ? 1 : 0);
+
+        // Engine N2 comes from SimConnect, NOT the PMDG CDA — so it is served BEFORE the
+        // CdaReady gate below. Gating it would return NaN for the whole session whenever the
+        // CDA snapshot has not landed, which is precisely when an engine start happens.
+        if (fieldName == "FO_ENG1_N2") return System.Threading.Volatile.Read(ref _eng1N2);
+        if (fieldName == "FO_ENG2_N2") return System.Threading.Volatile.Read(ref _eng2N2);
 
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
@@ -273,11 +289,16 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public void SetTakeoffFlaps(int flaps) => _takeoffFlaps = flaps;
 
     /// <summary>
-    /// Store both engines' N2 (interface parity with the 737, which uses it for engine-start
-    /// detection). The 777 reads N1/N3 from its own data struct, so this is currently unused
-    /// here, but the form calls it generically.
+    /// Store both engines' N2, fed by the shared FirstOfficerForm timer for every profile.
+    /// Read back as the synthetic FO_ENG{1,2}_N2 fields — the ENGINE_START selector items
+    /// latch off them, because the start selector springs back at cutout and so cannot be
+    /// detected from its own position.
     /// </summary>
-    public void SetEngineN2(double eng1N2, double eng2N2) { /* not used by the 777 evaluator */ }
+    public void SetEngineN2(double eng1N2, double eng2N2)
+    {
+        System.Threading.Volatile.Write(ref _eng1N2, eng1N2);
+        System.Threading.Volatile.Write(ref _eng2N2, eng2N2);
+    }
 
     /// <summary>
     /// Interface parity with the 737 (which sets pressurization FLT/LAND ALT from the

@@ -70,15 +70,31 @@ public class IFly737ProfileStructureTests
                 $"{g.Id}.{i.Id} is a readback item but has a non-null CheckAction"));
     }
 
+    /// <summary>
+    /// Auto items are live-state mirrors, with ONE sanctioned exception: the engine-start
+    /// SELECTOR items (owner-approved 2026-08-27). The selector is held by the starter
+    /// solenoid and springs back at cutout, so it cannot be detected from its own position;
+    /// they latch off engine N2 instead, and a start is a historical event that must not
+    /// un-tick when N2 falls again at shutdown. See EngineStartSelectorLatchTests. The
+    /// exception is named EXPLICITLY here so a third latched item cannot appear silently.
+    /// </summary>
     [Fact]
-    public void AutoItems_AreRevertToState()
+    public void AutoItems_AreRevertToState_ExceptTheEngineStartSelectors()
     {
+        var latched = new[] { "ES_E1_GRD", "ES_E2_GRD" };
         var groups = Groups();
         var autoItems = groups.SelectMany(g => g.Items)
             .Where(i => i.Type == ChecklistItemType.AutoDetectable)
             .ToArray();
         Assert.NotEmpty(autoItems);
-        Assert.All(autoItems, i => Assert.Equal(RevertBehavior.RevertToState, i.RevertBehavior));
+
+        Assert.All(autoItems.Where(i => !latched.Contains(i.Id)),
+            i => Assert.Equal(RevertBehavior.RevertToState, i.RevertBehavior));
+
+        // The carve-out is exactly those two — and they really are latched.
+        Assert.All(autoItems.Where(i => latched.Contains(i.Id)),
+            i => Assert.Equal(RevertBehavior.StayComplete, i.RevertBehavior));
+        Assert.Equal(latched.Length, autoItems.Count(i => latched.Contains(i.Id)));
     }
 
     [Fact]

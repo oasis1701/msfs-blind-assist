@@ -399,13 +399,15 @@ public static class PMDG777ChecklistDefinitions
         {
             // Start selectors spring back to NORM once the start completes, so these are
             // action-only (an auto-detect on the transient START position would untick).
-            ActionManual("ES_ENG2_START_SEL", "ENGINE_START", "Engine 2 Start/Ignition selector: START",
+            AutoLatch("ES_ENG2_START_SEL", "ENGINE_START", "Engine 2 Start/Ignition selector: START",
+                "FO_ENG2_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector2(0)),  // 0=START/GND
             Auto("ES_ENG2_FUEL_CTRL", "ENGINE_START", "Engine 2 Fuel Control: RUN",
                 "ENG_FuelControl_Sw_RUN_1", v => v > 0.5,
                 action: (e, _) => e.SetFuelControl2(1)),  // logical 1=RUN
             Manual("ES_ENG2_OIL_PRESS", "ENGINE_START", "Engine 2 Oil Pressure: Verify increases"),
-            ActionManual("ES_ENG1_START_SEL", "ENGINE_START", "Engine 1 Start/Ignition selector: START",
+            AutoLatch("ES_ENG1_START_SEL", "ENGINE_START", "Engine 1 Start/Ignition selector: START",
+                "FO_ENG1_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector1(0)),  // 0=START/GND
             Auto("ES_ENG1_FUEL_CTRL", "ENGINE_START", "Engine 1 Fuel Control: RUN",
                 "ENG_FuelControl_Sw_RUN_0", v => v > 0.5,
@@ -842,6 +844,35 @@ public static class PMDG777ChecklistDefinitions
         => action == null ? null : (e, s) => { action(e, s); return Task.CompletedTask; };
 
     /// <summary>AutoDetectable item — state is read from sim vars; optional CheckAction fires on manual check.</summary>
+
+    // Engine-start SELECTOR item: auto-detects off the engine's N2 and LATCHES
+    // (StayComplete). The start selector is held by the starter solenoid and springs back
+    // at cutout, so a condition on its own position would un-tick the instant the start
+    // succeeded — and an Actionable item could only ever be hand-ticked, which left the
+    // ENGINE_START group permanently incomplete for a pilot who started from the panel or
+    // the cockpit. A start is a HISTORICAL event, so once the engine has run the tick must
+    // survive N2 falling again at shutdown.
+    //
+    // This is the ONE sanctioned StayComplete in these state groups. The reason the rest are
+    // RevertToState does not apply: that rule guards against a target state that coincidentally
+    // matches an EARLIER phase (packs OFF at cold-and-dark, APU OFF before it was ever started)
+    // latching complete while the switch is not where the item claims. "Engine running" is
+    // false at cold-and-dark and unreachable without a start actually happening.
+    private static Item AutoLatch(string id, string groupId, string label,
+        string field, Func<double, bool> condition, Action<AircraftActionExecutor, AircraftStateEvaluator>? action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.AutoDetectable,
+        AutoCompleteAllowed = true,
+        ManualCompletionAllowed = true,
+        StateFieldName = field,
+        StateCondition = condition,
+        RevertBehavior = RevertBehavior.StayComplete,
+        AdditionalStateFields = Array.Empty<string>(),
+        AdditionalStateCondition = condition,
+        CheckAction = AsCheckAction(action),
+    };
+
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,
         string[]? additionalFields = null,

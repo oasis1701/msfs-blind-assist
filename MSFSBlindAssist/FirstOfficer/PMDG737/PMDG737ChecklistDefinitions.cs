@@ -212,11 +212,13 @@ public static class PMDG737ChecklistDefinitions
             // The lever items detect off the derived ENG_StartLever fields (1 = RUN,
             // from the fuel-valve annunciator), so a lever moved in the cockpit or via
             // the panels auto-ticks too.
-            ActionManual("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
+            AutoLatch("ES_E2_GRD", "ENGINE_START", "Engine 2 start switch: GRD",
+                "FO_ENG2_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector2(0)),
             Auto("ES_E2_RUN", "ENGINE_START", "Engine 2 start lever: IDLE (at 25 percent N2)",
                 "ENG_StartLever_1", v => v > 0.5, (e, _) => e.SetFuelControl2(1)),
-            ActionManual("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
+            AutoLatch("ES_E1_GRD", "ENGINE_START", "Engine 1 start switch: GRD",
+                "FO_ENG1_N2", v => v >= AircraftStateEvaluator.EngineRunningN2,
                 (e, _) => e.SetEngStartSelector1(0)),
             Auto("ES_E1_RUN", "ENGINE_START", "Engine 1 start lever: IDLE (at 25 percent N2)",
                 "ENG_StartLever_0", v => v > 0.5, (e, _) => e.SetFuelControl1(1)),
@@ -617,6 +619,35 @@ public static class PMDG737ChecklistDefinitions
 
     private static Func<AircraftActionExecutor, AircraftStateEvaluator, Task>? AsCheckAction(Act? action)
         => action == null ? null : (e, s) => { action(e, s); return Task.CompletedTask; };
+
+
+    // Engine-start SELECTOR item: auto-detects off the engine's N2 and LATCHES
+    // (StayComplete). The start selector is held by the starter solenoid and springs back
+    // at cutout, so a condition on its own position would un-tick the instant the start
+    // succeeded — and an Actionable item could only ever be hand-ticked, which left the
+    // ENGINE_START group permanently incomplete for a pilot who started from the panel or
+    // the cockpit. A start is a HISTORICAL event, so once the engine has run the tick must
+    // survive N2 falling again at shutdown.
+    //
+    // This is the ONE sanctioned StayComplete in these state groups. The reason the rest are
+    // RevertToState does not apply: that rule guards against a target state that coincidentally
+    // matches an EARLIER phase (packs OFF at cold-and-dark, APU OFF before it was ever started)
+    // latching complete while the switch is not where the item claims. "Engine running" is
+    // false at cold-and-dark and unreachable without a start actually happening.
+    private static Item AutoLatch(string id, string groupId, string label,
+        string field, Func<double, bool> condition, Act? action) => new()
+    {
+        Id = id, GroupId = groupId, Label = label,
+        Type = ChecklistItemType.AutoDetectable,
+        AutoCompleteAllowed = true,
+        ManualCompletionAllowed = true,
+        StateFieldName = field,
+        StateCondition = condition,
+        RevertBehavior = RevertBehavior.StayComplete,
+        AdditionalStateFields = Array.Empty<string>(),
+        AdditionalStateCondition = condition,
+        CheckAction = AsCheckAction(action),
+    };
 
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,

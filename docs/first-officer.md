@@ -352,3 +352,51 @@ ONE "Fuel pumps" checklist item per phase, on both PMDG jets:**
 
 **Verification:** no automated test project (SimConnect-driven UI). Build the SOLUTION x64 (`dotnet build MSFSBlindAssist.sln -c Debug`); behavior is human-verified via the in-sim test plan. Pure-logic invariants (e.g. the `*_CL` action-free rule) are checked structurally.
 
+
+## Engine-start SELECTOR items latch on N2 (2026-08-27)
+
+The Boeing ENGINE_START selector items — PMDG 737 / iFly 737 `ES_E1_GRD`, `ES_E2_GRD`, and
+PMDG 777 `ES_ENG1_START_SEL`, `ES_ENG2_START_SEL` — auto-tick once the engine is actually
+running, off the synthetic `FO_ENG{1,2}_N2` field against each profile's
+`EngineRunningN2` (50.0 on all three), latched `RevertBehavior.StayComplete`.
+
+They were `ActionManual` (Actionable, no `StateFieldName`, no `AutoCompleteAllowed`), so
+nothing could ever tick them but a hand tick. A pilot who started the engines from the
+MSFSBA panel or in the cockpit got three of the five 737 items ticking (packs off, both
+start levers) and the group sat permanently at 3/5. **The Airbus profiles were never
+affected** — Fenix / A32NX / A380 engine masters and mode selector are persistent switch
+positions that auto-detect on any start path.
+
+Two things make this shape mandatory rather than a preference:
+
+- **Not `RevertToState` on the switch position.** The start selector is held by the starter
+  solenoid and springs back to OFF/NORM at cutout, so a condition on its own position would
+  un-tick itself the moment the start succeeded. That is why the items were action-only in
+  the first place — the original comment says so.
+- **Not `RevertToState` on N2 either.** A start is a HISTORICAL event. Latched, the tick
+  survives N2 falling again at shutdown or on the next leg's secure.
+
+**This is the ONE sanctioned `StayComplete` in these state groups** (owner-approved
+2026-08-27) and the reason the blanket rule exists does not apply here. That rule guards
+against an item whose target state coincidentally matches an EARLIER phase — packs OFF at
+cold-and-dark, APU OFF before it was ever started, the whole Shutdown/Secure set at session
+start — latching complete while the switch is not where the item claims. "Engine running"
+is false at cold-and-dark and cannot be reached without a start having actually happened,
+so there is no coincidental match to latch on.
+
+It is **not** a reintroduction of the separate "Engine 1/2: running" items removed by user
+request 2026-08-16 and pinned out by `EngineStartChecklistShapeTests` — no item is added;
+N2 is the DETECTION for the existing selector item. Hand-ticking still fires the selector
+(`CheckAction` is unchanged), and the start-LEVER / fuel-control items stay `RevertToState`
+live-state mirrors — the latch must not spread across the group.
+
+The 777 evaluator needed wiring first: its `SetEngineN2` was a deliberate no-op ("not used
+by the 777 evaluator") even though the shared `FirstOfficerForm` feeds it for every profile.
+It now stores both values and serves `FO_ENG{1,2}_N2` **ahead of the `CdaReady` gate** —
+N2 comes from SimConnect, not the PMDG CDA, so gating it would return NaN for the whole
+session whenever the CDA snapshot has not landed, which is precisely when a start happens.
+Both start NaN, never 0: before the first push N2 is genuinely unknown, not "engine
+stopped", and `ChecklistManager` treats NaN as "skip both auto-tick and revert".
+
+Pinned by `EngineStartSelectorLatchTests`; `IFly737ProfileStructureTests` names the two
+latched ids explicitly so a third cannot appear silently.
