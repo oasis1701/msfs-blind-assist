@@ -224,9 +224,17 @@ public sealed class GsxRemoteGateSelector
     {
         try
         {
+            // Quoted key=value tokens, not free prose. This field used to render
+            // `{UiName} (gate={Gate} number=... bglName=...)` -- unquoted, with spaces and
+            // parentheses -- which is the one formatter in either GSX log that breaks the
+            // channel's stated shape rule ("no unquoted value may contain a space"), and the
+            // shape test did not reach it.
             string resolved = result.ResolvedGate is { } g
-                ? $"{g.UiName} (gate={g.Gate} number={g.Number?.ToString() ?? "?"} bglName={g.BglName})"
-                : "(none)";
+                ? $"resolvedUiName={GsxDiagnosticLog.QuoteVerbatim(g.UiName)} " +
+                  $"resolvedGate={GsxDiagnosticLog.QuoteVerbatim(g.Gate)} " +
+                  $"resolvedNumber={(g.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(none)")} " +
+                  $"resolvedBglName={GsxDiagnosticLog.QuoteVerbatim(g.BglName)}"
+                : "resolvedUiName=(none) resolvedGate=(none) resolvedNumber=(none) resolvedBglName=(none)";
             string warnings = result.Warnings.Count > 0 ? string.Join(",", result.Warnings) : "(none)";
             // GSX's OWN error text, not ours. It is the single most useful field for
             // diagnosing not_found / bad_args / no_airport -- the codes that produce a
@@ -248,9 +256,10 @@ public sealed class GsxRemoteGateSelector
             // anomaly worth grepping ("GSX prepared a stand I did not ask for") has a token.
             string mismatch = result.ResolvedGateContradictsRequest ? " resolvedMismatch=true" : "";
             GateSelectLog.Info(
-                $"target={GsxDiagnosticLog.Quote(label)} identifierSent={GsxDiagnosticLog.Quote(identifier)} " +
+                $"target={GsxDiagnosticLog.Quote(label)} " +
+                $"identifierSent={GsxDiagnosticLog.QuoteVerbatim(identifier)} " +
                 $"revokeServices={revokeServices} " +
-                $"outcome={result.Outcome} resolvedGate={resolved} warnings={warnings} " +
+                $"outcome={result.Outcome} {resolved} warnings={warnings} " +
                 $"rawCode={result.RawCode ?? "(none)"} message={message}{mismatch}");
         }
         catch { /* logging must never break the selector */ }

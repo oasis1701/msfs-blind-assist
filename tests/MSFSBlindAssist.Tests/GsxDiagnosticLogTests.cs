@@ -279,4 +279,48 @@ public class GsxDiagnosticLogTests
                 Assert.True(f.Contains('='), $"'{f}' is not a key=value pair in: {line}");
         }
     }
+
+    // GSX's own uiGateName carries a LEADING SPACE on 281 of KATL's 294 stands (" Gate 5").
+    // Flatten ends with .Trim(), so gsx-gate-select.log printed identifierSent="Gate 5" for an
+    // identifier that was actually " Gate 5" -- the whole story, invisible in the one log built
+    // to explain it. Live-verified 2026-08-27.
+    [Fact]
+    public void QuoteVerbatim_keeps_a_leading_space()
+    {
+        Assert.Equal("\" Gate 5\"", GsxDiagnosticLog.QuoteVerbatim(" Gate 5"));
+    }
+
+    [Fact]
+    public void QuoteVerbatim_keeps_a_trailing_space()
+    {
+        Assert.Equal("\"Concourse T (T1-T21) \"", GsxDiagnosticLog.QuoteVerbatim("Concourse T (T1-T21) "));
+    }
+
+    [Fact]
+    public void QuoteVerbatim_renders_a_whitespace_only_value_as_a_quoted_space_not_none()
+    {
+        // Quote() renders this as (none), indistinguishable from null -- the second way the
+        // leading space could hide.
+        Assert.Equal("\" \"", GsxDiagnosticLog.QuoteVerbatim(" "));
+    }
+
+    [Fact]
+    public void QuoteVerbatim_still_maps_newlines_and_collapses_runs()
+    {
+        // The documented reason Flatten exists: a wrapped entry breaks the one-line-per-event
+        // scan the whole channel is read by. Only the trim is dropped.
+        Assert.Equal("\"a b\"", GsxDiagnosticLog.QuoteVerbatim("a\n\n\tb"));
+    }
+
+    [Fact]
+    public void QuoteVerbatim_renders_null_as_none()
+    {
+        Assert.Equal("(none)", GsxDiagnosticLog.QuoteVerbatim(null));
+    }
+
+    [Fact]
+    public void QuoteVerbatim_escapes_an_embedded_double_quote()
+    {
+        Assert.Equal("\"say 'hi'\"", GsxDiagnosticLog.QuoteVerbatim("say \"hi\""));
+    }
 }
