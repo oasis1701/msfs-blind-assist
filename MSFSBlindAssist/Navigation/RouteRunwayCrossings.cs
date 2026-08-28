@@ -140,18 +140,45 @@ public static class RouteRunwayCrossings
     ///    summary announces crossings of a runway the route never crosses and
     ///    the tactical callout names the wrong pavement.
     /// </summary>
-    public static string? ComposeCrossingLabel(string? existingLabel, string crossedRwy)
+    /// <param name="preferredDesignator">The designator this crossing should be ANNOUNCED
+    /// under, when that is not the one geometry reported — i.e. the destination runway, on a
+    /// route that crosses its own strip. TaxiGraph.Build names a hold node after whichever
+    /// runway END is nearer it, so on the destination strip the DB label routinely carries
+    /// the reciprocal; without this the "already names this pavement" rule below kept it and
+    /// the pilot heard "hold short of runway 22R" while taxiing to 04L. The rewrite swaps
+    /// only the designator TOKEN, so the hold point and the label's shape survive (both
+    /// "runway 22R at D5" and "D5, Runway 22R" are Build outputs). Null/empty = no
+    /// preference, and then every rule below behaves exactly as it always has.</param>
+    public static string? ComposeCrossingLabel(
+        string? existingLabel, string crossedRwy, string? preferredDesignator = null)
     {
-        if (string.IsNullOrEmpty(existingLabel)) return $"runway {crossedRwy}";
+        string announceAs = string.IsNullOrWhiteSpace(preferredDesignator)
+            ? crossedRwy : preferredDesignator.Trim();
+
+        if (string.IsNullOrEmpty(existingLabel)) return $"runway {announceAs}";
+        // User intent always wins, on the destination's own strip as everywhere else.
         if (existingLabel.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase))
             return null;
         string? named = ExtractRunwayDesignator(existingLabel);
-        if (named == null) return $"runway {crossedRwy} at {existingLabel}";
+        if (named == null) return $"runway {announceAs} at {existingLabel}";
+
+        string want = NormalizeDesignator(announceAs);
+        // Already announced under the designator we want (padding aside) — nothing to do.
+        if (named.Equals(want, StringComparison.OrdinalIgnoreCase)) return null;
+
         string cross = NormalizeDesignator(crossedRwy);
         if (named.Equals(cross, StringComparison.OrdinalIgnoreCase) ||
             named.Equals(Reciprocal(cross), StringComparison.OrdinalIgnoreCase))
-            return null;
-        return $"runway {crossedRwy}";
+        {
+            // Names THIS pavement, but not under the designator the pilot chose. With no
+            // preference that is the scenery's own correct name and it is kept; with one,
+            // swap just the designator token so the hold point rides along.
+            if (string.IsNullOrWhiteSpace(preferredDesignator)) return null;
+            return RunwayToken.Replace(
+                existingLabel,
+                m => m.Value.Replace(m.Groups[1].Value, announceAs), 1);
+        }
+        return $"runway {announceAs}";
     }
 
     /// <summary>

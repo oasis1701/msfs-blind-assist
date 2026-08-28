@@ -50,6 +50,20 @@ public class TaxiGraph
         public string Name2 = "";          // designator at opposite end (e.g. "09R")
         public double HeadingDeg1;         // heading from end 1 (0..360, true)
         public double HalfWidthMeters;     // centerline → edge tolerance
+
+        // The PAVEMENT, as the runway table describes it. Lat1..Lon2 above come from the
+        // navdata `start` rows, which SnapStartToRunwayCenterline repairs only LATERALLY —
+        // at a displaced threshold the along-track position stays hundreds of metres inside
+        // the pavement (LPPT 20: 626 m; 7,123 of 95,989 fs2024 runway ends are more than
+        // 50 m inboard, 344 by over 400 m), and HalfWidthMeters is a fixed 75 ft default
+        // while 5,127 of 48,040 runways are wider than 150 ft. Any caller asking "is this
+        // node ON the runway?" needs these, not those. ADDITIVE on purpose: the start-row
+        // fields keep their tuned behaviour for every existing consumer (hold-short naming,
+        // DescribeLocation, crossing detection). Falls back to the start-row values when
+        // Build was given no runway table (tests, probes), so those callers are unchanged.
+        public double PavementLat1, PavementLon1;
+        public double PavementLat2, PavementLon2;
+        public double PavementHalfWidthMeters;
     }
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
@@ -502,6 +516,38 @@ public class TaxiGraph
         const double DEFAULT_HALF_WIDTH_FT = 75.0;
         var paired = new HashSet<int>();
 
+        // Pavement geometry for the centerlines below, from the runway table when the caller
+        // supplied one. See RunwayCenterline's Pavement* fields for why the start rows are
+        // not good enough for an "is this ON the runway?" test.
+        var runwayByName = new Dictionary<string, Runway>(StringComparer.OrdinalIgnoreCase);
+        if (runways != null)
+            foreach (var r in runways)
+                if (!string.IsNullOrEmpty(r.RunwayID)) runwayByName.TryAdd(r.RunwayID.Trim(), r);
+
+        // Fills the pavement fields from the runway table, falling back to the start-row
+        // endpoints + default half-width so a caller without a runway table is unchanged.
+        void ApplyPavement(RunwayCenterline cl, string? name1, string? name2)
+        {
+            cl.PavementLat1 = cl.Lat1; cl.PavementLon1 = cl.Lon1;
+            cl.PavementLat2 = cl.Lat2; cl.PavementLon2 = cl.Lon2;
+            cl.PavementHalfWidthMeters = cl.HalfWidthMeters;
+
+            if (!runwayByName.TryGetValue(name1?.Trim() ?? "", out var rwy) &&
+                !runwayByName.TryGetValue(name2?.Trim() ?? "", out rwy))
+                return;
+
+            // The runway row is stored per END, so its Start* may be either end of this
+            // line. Orient it to match Lat1/Lon1 (which carries Name1).
+            bool startMatchesEnd1 =
+                string.Equals(rwy.RunwayID?.Trim(), name1?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+            cl.PavementLat1 = startMatchesEnd1 ? rwy.StartLat : rwy.EndLat;
+            cl.PavementLon1 = startMatchesEnd1 ? rwy.StartLon : rwy.EndLon;
+            cl.PavementLat2 = startMatchesEnd1 ? rwy.EndLat : rwy.StartLat;
+            cl.PavementLon2 = startMatchesEnd1 ? rwy.EndLon : rwy.StartLon;
+            if (rwy.Width > 0) cl.PavementHalfWidthMeters = rwy.Width * 0.3048 / 2.0;
+        }
+
         for (int i = 0; i < runwayStarts.Count; i++)
         {
             if (paired.Contains(i)) continue;
@@ -531,7 +577,7 @@ public class TaxiGraph
                     a.Latitude, a.Longitude, b.Latitude, b.Longitude);
                 if (Math.Abs(NormalizeAngle(designatorHdg - actualHdg)) > 45.0) continue;
 
-                graph.RunwayCenterlines.Add(new RunwayCenterline
+                var clDesignator = new RunwayCenterline
                 {
                     Lat1 = a.Latitude, Lon1 = a.Longitude,
                     Lat2 = b.Latitude, Lon2 = b.Longitude,
@@ -541,7 +587,9 @@ public class TaxiGraph
                     // measured one, which is also what every consumer of this line means.
                     HeadingDeg1 = actualHdg,
                     HalfWidthMeters = (DEFAULT_HALF_WIDTH_FT * 0.3048),
-                });
+                };
+                ApplyPavement(clDesignator, a.RunwayName, b.RunwayName);
+                graph.RunwayCenterlines.Add(clDesignator);
                 paired.Add(i);
                 paired.Add(j);
                 break;
@@ -567,7 +615,7 @@ public class TaxiGraph
                 double sep = FastDistanceMeters(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
                 if (sep < 200.0 || sep > 6000.0) continue;
 
-                graph.RunwayCenterlines.Add(new RunwayCenterline
+                var clHeading = new RunwayCenterline
                 {
                     Lat1 = a.Latitude, Lon1 = a.Longitude,
                     Lat2 = b.Latitude, Lon2 = b.Longitude,
@@ -575,7 +623,9 @@ public class TaxiGraph
                     Name2 = b.RunwayName,
                     HeadingDeg1 = a.Heading,
                     HalfWidthMeters = (DEFAULT_HALF_WIDTH_FT * 0.3048),
-                });
+                };
+                ApplyPavement(clHeading, a.RunwayName, b.RunwayName);
+                graph.RunwayCenterlines.Add(clHeading);
                 paired.Add(i);
                 paired.Add(j);
                 break;
@@ -1031,6 +1081,234 @@ public class TaxiGraph
         if (string.IsNullOrEmpty(name))
             return Array.Empty<int>();
         return _taxiwayNodeIndex.TryGetValue(name, out var nodes) ? nodes : Array.Empty<int>();
+    }
+
+    /// <summary>
+    /// Destination node for a RUNWAY departure: the node a route should end at when the
+    /// lineup target is <paramref name="lineupLat"/>/<paramref name="lineupLon"/>. Normally
+    /// this is simply <see cref="FindNearestNode"/> of the lineup point, and that is what is
+    /// returned — this method only does something different when that node is more than
+    /// <paramref name="maxAcceptableCrossM"/> laterally off the runway centerline, i.e.
+    /// EXACTLY the case that today produces TaxiGuidanceManager's "this route does not reach
+    /// Runway X" warning. Below that threshold nothing changes, so no route that works today
+    /// can be affected.
+    ///
+    /// <para>The failure it fixes: the lineup point comes from the navdata <c>start</c> row,
+    /// which is trusted for WHERE ALONG the runway the departure begins — correct at a
+    /// displaced threshold, and the reason <see cref="SnapStartToRunwayCenterline"/> exists.
+    /// But nothing guarantees a taxiway MEETS the runway at that point. LPPT 20 has a 1955 ft
+    /// (596 m) displaced threshold and its start row sits on it, ~619 m into the takeoff run,
+    /// while the taxi network touches that centerline only at S3 (~70 m, the full-length end)
+    /// and U5/U6 (~1396 m). Nearest-node therefore returned an S3 node 204 m away and 201 m
+    /// OFF TO THE SIDE — abeam the runway, not on it. The route dead-ended there and the
+    /// lineup intercept would have dragged the aircraft across ~200 m of grass.</para>
+    ///
+    /// <para>The replacement is a real runway ENTRANCE: on the pavement (within half-width),
+    /// on the runway proper, and connected to something off-runway
+    /// (<see cref="HasOffRunwayNeighbour"/> — the same entrance test
+    /// <see cref="FindBacktrackEntryNode"/> uses), in the same connected component as the
+    /// nearest node so it stays reachable. Only candidates AT OR BEHIND the lineup point are
+    /// eligible, nearest first: an entrance further down the runway is an intersection
+    /// departure, i.e. LESS runway than the pilot selected, and that must never be
+    /// substituted silently (the intersection-departure checkbox exists for that and
+    /// announces it). At LPPT 20 this resolves to the S3 entrance at the full-length end —
+    /// on the centerline, full length, correct.</para>
+    ///
+    /// <para>When no entrance qualifies the plain nearest node is returned unchanged, so a runway
+    /// whose lineup point the taxi network genuinely cannot reach still trips the warning rather
+    /// than being silently retargeted somewhere arbitrary. Do NOT label that case "PHNL 04L" —
+    /// the original 2026-06-13 failure was a route TRUNCATED to a hold beside the runway, not a
+    /// bad destination node: measured 2026-08-24, PHNL 04L's lineup point has a taxiway-F node
+    /// 3.7 m away and 3.2 m off the centerline. See docs/taxi-guidance.md.</para>
+    /// </summary>
+    /// <param name="aircraftLat">Optional: where the aircraft is. Used ONLY to anchor the
+    /// connected-component filter, the way <see cref="FindBacktrackEntryNode"/> does — an
+    /// entrance is only useful if the aircraft can actually taxi to it. Anchoring on the
+    /// nearest node to the LINEUP POINT instead is wrong in the one case that matters: when
+    /// that node is on an isolated taxi island (a documented shape here — GCLP S5 — and a
+    /// plausible cause of the &gt;120 m offset that triggers this search), every real entrance
+    /// is filtered out and the island node becomes the route destination. Null (the form
+    /// before SimConnect has reported a position) keeps the previous anchor exactly.</param>
+    public TaxiNode? FindRunwayLineupEntryNode(
+        double lineupLat, double lineupLon,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double halfWidthMeters, double maxAcceptableCrossM,
+        double? aircraftLat = null, double? aircraftLon = null)
+    {
+        var plain = FindNearestNode(lineupLat, lineupLon);
+        if (plain == null) return null;
+
+        int reachableComponentId = plain.ComponentId;
+        if (aircraftLat.HasValue && aircraftLon.HasValue)
+        {
+            var acNode = FindNearestNode(aircraftLat.Value, aircraftLon.Value);
+            if (acNode != null) reachableComponentId = acNode.ComponentId;
+        }
+
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return plain;
+
+        var (plainPerp, _, _, _) = ProjectOntoCenterline(
+            plain.Latitude, plain.Longitude, thrLat, thrLon, farLat, farLon);
+        if (plainPerp <= maxAcceptableCrossM) return plain;
+
+        var (_, lineupAlong, _, _) = ProjectOntoCenterline(
+            lineupLat, lineupLon, thrLat, thrLon, farLat, farLon);
+
+        // Same tolerances as FindBacktrackEntryNode: a few metres of slop above the
+        // stored half-width for navdata rounding at the runway edge, and a far-end
+        // margin so a nub past the end of the usable pavement can't win.
+        double maxPerp = halfWidthMeters + 5.0;
+        const double MIN_REMAINING_M = 45.0;
+        // A meeting point within this much of the lineup point IS the lineup point's own
+        // entrance (connector geometry rarely lands exactly on it), so it counts as at
+        // the lineup point rather than as an intersection departure.
+        const double AT_LINEUP_TOLERANCE_M = 25.0;
+        // How far BEHIND the runway_end pavement edge an entrance may sit. A starter
+        // extension puts both the lineup point and its only entrance behind that edge —
+        // iniBuilds EGLL 09L is entered only from AB13, 300-355 m back, and EGKK 26L
+        // departs 406 m back — so an `along >= 0` floor rejects exactly the entrance
+        // those runways depend on. Same phenomenon the holding-point entry floor's
+        // fallback scan exists for.
+        const double MAX_BEHIND_THRESHOLD_M = 500.0;
+
+        TaxiNode? best = null; double bestGap = double.MaxValue;
+
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId != reachableComponentId) continue;
+            // A node planted on a painted hold LINE is not a runway entrance. It sits close
+            // to the centerline by construction, so it clears the perpendicular filter and
+            // (through its far end on the taxiway) HasOffRunwayNeighbour, and it can beat
+            // the real junction on along-track proximity — which would make it the ROUTE
+            // DESTINATION. ResolveHoldingPointEntries' scan has always skipped these for
+            // the same reason; the graph can carry them here because
+            // NamedHoldingPointResolver inserts into the live graph and TaxiAssistForm
+            // re-runs PopulateDestinations on every destination-type change.
+            if (IsHoldingPointProjectionNode(node.NodeId)) continue;
+            var (perp, along, _, _) = ProjectOntoCenterline(
+                node.Latitude, node.Longitude, thrLat, thrLon, farLat, farLon);
+            if (perp > maxPerp) continue;
+            if (along < -MAX_BEHIND_THRESHOLD_M || totalLen - along < MIN_REMAINING_M) continue;
+            // AT OR BEHIND the lineup point ONLY. An entrance further DOWN the runway is
+            // an intersection departure, and taking one here would silently hand the
+            // pilot a shorter takeoff run than the runway they selected — measured over
+            // the whole fs2020 DB, allowing it moved 2,209 runway ends, EGLL 09L by
+            // 755 m and EHAM 36R by 1,417 m, with nothing spoken. Where only a
+            // downfield entrance exists, the plain nearest node is returned instead and
+            // TaxiGuidanceManager's reach warning fires exactly as it does today: an
+            // honest "reprogram this route" beats a silently shortened runway. The pilot
+            // can still take that entrance deliberately via the intersection-departure
+            // checkbox, which announces what it is doing.
+            if (along > lineupAlong + AT_LINEUP_TOLERANCE_M) continue;
+            if (!HasOffRunwayNeighbour(node, thrLat, thrLon, farLat, farLon, maxPerp)) continue;
+
+            double gap = Math.Abs(lineupAlong - along);
+            if (gap < bestGap) { bestGap = gap; best = node; }
+        }
+
+        return best ?? plain;
+    }
+
+    /// <summary>
+    /// The <see cref="RunwayCenterline"/> for a runway DESIGNATOR ("04L", or the "Runway 04L"
+    /// form the destination dropdown uses), or null when this graph built no line for it
+    /// (`Build` needs both ends to pair — see the centerline-pairing section in
+    /// docs/taxi-guidance.md, where several airports legitimately end up with none). Matching is
+    /// on either end's name, so the caller gets the same physical line whichever direction it
+    /// asks for; callers that care about direction must order the endpoints themselves.
+    ///
+    /// <para>Both sides go through <see cref="RouteRunwayCrossings.NormalizeDesignator"/>, whose
+    /// own doc requires it of every designator compare in this codebase: the centerline is named
+    /// from the <c>start</c> table while a destination name comes from <c>runway_end</c>, two
+    /// tables that need not agree on zero-padding, and a miss here fails SILENTLY in the
+    /// safe-looking direction — RouteEndWalkToRunwayMeters reads null as "no answer", which
+    /// disarms the ended-short warning entirely. Normalization is exact, not fuzzy: 09L still
+    /// never matches 09R.</para>
+    /// </summary>
+    public RunwayCenterline? FindCenterlineByName(string designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return null;
+        string bare = designator.Trim();
+        if (bare.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase))
+            bare = bare.Substring("Runway ".Length).Trim();
+        bare = RouteRunwayCrossings.NormalizeDesignator(bare);
+
+        foreach (var cl in RunwayCenterlines)
+        {
+            if (string.Equals(RouteRunwayCrossings.NormalizeDesignator(cl.Name1 ?? ""), bare,
+                    StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(RouteRunwayCrossings.NormalizeDesignator(cl.Name2 ?? ""), bare,
+                    StringComparison.OrdinalIgnoreCase))
+                return cl;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Graph (taxi-network) distance in metres from <paramref name="fromNodeId"/> to the nearest
+    /// node lying ON the given runway's pavement — i.e. "how much further would this aircraft
+    /// have to taxi to be on the runway". Returns 0 when the node is already on it, and
+    /// <see cref="double.PositiveInfinity"/> when no on-runway node is reachable within
+    /// <paramref name="maxSearchMeters"/>.
+    ///
+    /// <para>This is the reachability question a route's END has to answer, and it is NOT the
+    /// same as the perpendicular distance to the centerline. A set-back CAT II/III hold sits far
+    /// off the perpendicular (EGKK A3, 162 m) yet is one short taxi from the runway, while a
+    /// taxiway that merely PARALLELS the runway can be closer in a straight line and still have
+    /// no connector at all. Nor is it distance to the LINEUP node: the runway pavement is not a
+    /// continuous corridor in the taxi graph, so a node sitting on the runway 900 m downfield
+    /// measures over a kilometre to the lineup point (PHNL 04L taxiway E: 0.1 m perpendicular,
+    /// 1,399 m of graph to the lineup node, 0 m to the pavement).</para>
+    ///
+    /// <para>Dijkstra from the single source, stopping at the first on-runway node popped, and
+    /// bounded by <paramref name="maxSearchMeters"/> so a disconnected end can never walk the
+    /// whole airport. Called once per route load, never per frame.</para>
+    /// </summary>
+    public double GraphWalkToRunwayPavement(
+        int fromNodeId,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double halfWidthMeters, double maxSearchMeters)
+    {
+        if (!Nodes.ContainsKey(fromNodeId)) return double.PositiveInfinity;
+
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return double.PositiveInfinity;
+        double maxPerp = halfWidthMeters + 5.0;
+
+        bool OnRunway(TaxiNode n)
+        {
+            var (perp, along, _, _) = ProjectOntoCenterline(
+                n.Latitude, n.Longitude, thrLat, thrLon, farLat, farLon);
+            return perp <= maxPerp && along >= -50.0 && along <= totalLen + 50.0;
+        }
+
+        if (OnRunway(Nodes[fromNodeId])) return 0.0;
+
+        var dist = new Dictionary<int, double> { [fromNodeId] = 0.0 };
+        var pq = new PriorityQueue<int, double>();
+        pq.Enqueue(fromNodeId, 0.0);
+
+        while (pq.TryDequeue(out int cur, out double d))
+        {
+            if (d > maxSearchMeters) return double.PositiveInfinity;
+            if (d > dist.GetValueOrDefault(cur, double.MaxValue)) continue;
+            if (OnRunway(Nodes[cur])) return d;
+            if (!Adjacency.TryGetValue(cur, out var edges)) continue;
+            foreach (var e in edges)
+            {
+                int other = e.FromNodeId == cur ? e.ToNodeId : e.FromNodeId;
+                if (!Nodes.ContainsKey(other)) continue;
+                double nd = d + e.DistanceMeters;
+                if (nd > maxSearchMeters) continue;
+                if (nd < dist.GetValueOrDefault(other, double.MaxValue))
+                {
+                    dist[other] = nd;
+                    pq.Enqueue(other, nd);
+                }
+            }
+        }
+        return double.PositiveInfinity;
     }
 
     /// <summary>
