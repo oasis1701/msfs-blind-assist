@@ -998,9 +998,15 @@ public partial class SimConnectManager
 
                 string direction = crossTrackError < 0 ? "left" : "right";
 
+                // TRUE angular deviation, not |crossTrackError|: the latter is
+                // 180 minus the real angle for an aircraft behind the threshold, which is
+                // every aircraft on final. See NavigationCalculator.AngularDeviationFromCenterlineDeg.
+                double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCenterlineDeg(
+                    distanceToLocalizer, distanceToThreshold);
+
                 announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +
                               $"{distanceToLocalizer:F1} nautical miles {direction} of centerline, " +
-                              $"{Math.Abs(crossTrackError):F0} degrees {direction} of centerline.{glideslopeInfo} " +
+                              $"{angularDeviationDeg:F0} degrees {direction} of centerline.{glideslopeInfo} " +
                               $"Fly heading {directHeading:000} for 60 degree intercept, " +
                               $"{mediumHeading:000} for 45 degree intercept, " +
                               $"or {shallowHeading:000} for 30 degree intercept.";

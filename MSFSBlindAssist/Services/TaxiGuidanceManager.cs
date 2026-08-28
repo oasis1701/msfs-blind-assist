@@ -466,11 +466,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // this threshold, speak a one-shot turn-direction cue (sign matches the tone)
     // so the pilot knows which way to come around. One-shot, reset on LoadRoute /
     // StopGuidance (NOT on recalc — mid-taxi recalcs use the normal turn cues).
-    private const double INITIAL_TURN_CUE_DEG = 100.0;
-    // Above this heading error the initial cue is phrased as a U-turn / "behind
-    // you" rather than a "sharp turn" — the boundary between "come around" and
-    // "turn hard onto the first taxiway".
-    private const double INITIAL_TURN_UTURN_DEG = 135.0;
+    // The thresholds and the wording now live in Navigation/RouteStartTurnCue
+    // (SharpTurnDeg 100°, TurnaroundDeg 135° — the boundary between "come around"
+    // and "turn hard onto the first taxiway"). They moved there so the cue has ONE
+    // owner: it is composed at LoadRoute and delivered either inside the form's
+    // single standstill utterance or by the one-shot below, and two composers would
+    // be two wordings and two chances to disagree on left versus right. The local
+    // INITIAL_TURN_CUE_DEG / INITIAL_TURN_UTURN_DEG consts were deleted rather than
+    // left in place, so nobody tunes a number here and wonders why nothing changes.
     private bool _initialTurnCueAnnounced = false;
     // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
     // and taxiway-change callouts so they don't stomp that (longer, safety-
@@ -880,6 +883,21 @@ public partial class TaxiGuidanceManager : IDisposable
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
     private DateTime _lastUndershootRetargetTime = DateTime.MinValue;
+    // Timestamp of the last handoff declined because the re-routed path re-crossed
+    // the landing runway (RolloutRunwayReCrossing). DateTime.MinValue = no decline
+    // yet this rollout. See ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why this exists.
+    private DateTime _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+    // One-shot latch for the spoken "keep rolling to the exit" instruction that a
+    // runway-re-crossing decline speaks. The decline itself repeats at the retry floor
+    // (~1 Hz); the SENTENCE must not. Reset alongside _rolloutCrossingDeclinedUtc at all
+    // four rollout reset sites, PLUS a fifth: RetargetLandingExit re-arms it when the
+    // targeted exit actually changes, so a decline latched for the abandoned exit can't
+    // silently swallow the announcement for the new one (PR review, 2026-08-27). The
+    // retry floor _rolloutCrossingDeclinedUtc is deliberately NOT given that fifth reset
+    // — it only bounds CPU/log churn, so a stale floor costs under a second, while a
+    // stale latch withholds information from the pilot. See
+    // RolloutRunwayReCrossing.ComposeContinueToExit.
+    private bool _rolloutCrossingDeclineAnnounced = false;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
     // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
@@ -984,6 +1002,56 @@ public partial class TaxiGuidanceManager : IDisposable
     // the cutoff GS still lines up.
     private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
     private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
+
+    // Minimum gap before the handoff block is re-entered after a handoff was DECLINED
+    // for re-crossing the landing runway (see the RolloutRunwayReCrossing guard in
+    // UpdateLandingRollout). Every other exit from that block either moves the state
+    // out of LandingRollout or stops guidance, so the block is one-shot today and needs
+    // no latch; the crossing decline is the first path that stays in LandingRollout and
+    // returns, which makes it re-entrant on the very next position frame.
+    //
+    // That matters because the block runs at SIM_FRAME rate (StartTaxiGuidanceMonitoring
+    // requests SIMCONNECT_PERIOD.SIM_FRAME) on the UI thread, and it performs an
+    // unconditional LoadRoute — a full-graph A* — before the guard is reached. Without a
+    // floor an aircraft stopped short of the exit would run that A* 30-60 times a second
+    // forever, against the hot-path perf invariants, and the decline would churn
+    // landing_exit.log through its 5 MB x 3 rotation — evicting the evidence for exactly
+    // the incident class this guard exists to catch. The write volume per decline is
+    // higher than the two unthrottled RolloutDiag lines it looks like: the decline's
+    // SetState(LandingRollout) completes a RouteLoaded -> LandingRollout round trip, and
+    // each SetState both writes its own diag line and raises StateChanged, which MainForm.
+    // OnTaxiGuidanceStateChanged also logs. That is roughly 8 lines per decline, not 1-2 —
+    // another reason the floor must not shrink. The two triggers that persist
+    // frame-to-frame (speedNearExitHandoff, trulyStopped) both require !pastExit, which IS
+    // the decline condition, so the loop is guaranteed in precisely the case the decline
+    // branch is for.
+    //
+    // A FLOOR, deliberately, not a per-exit latch: a latch would also block a legitimate
+    // turnBegun handoff if the pilot does turn onto the exit, and the route recomputed
+    // from that new position would very likely no longer cross. One second bounds the cost
+    // to ~1 A* per second while still re-evaluating often enough that a real turn is picked
+    // up promptly and the conclude branch fires as soon as the aircraft reaches the exit.
+    // The delay costs the pilot nothing audible: the rollout stays in LandingRollout, where
+    // the tone remains rollout-driven, and the ~59 frames a second that the floor suppresses
+    // are exactly the frames on which that tone is updated.
+    private const double ROLLOUT_CROSSING_RETRY_FLOOR_SEC = 1.0;
+
+    // How far ahead the crossing-decline utterance looks when deciding which rollout callouts
+    // it supersedes. A TIME, converted to distance at the aircraft's own ground speed by
+    // Navigation.RolloutRunwayReCrossing.DeclineSupersedesCallout: it must cover the utterance
+    // itself, so that a callout the aircraft is about to reach is folded in rather than left
+    // to fire an AnnounceImmediate over a one-shot sentence that can never be re-spoken.
+    // Four seconds comfortably spans the longest form ("Continue rolling to taxiway Alpha,
+    // 1500 feet ahead. Slow down."). Sizing it is low-stakes in both directions — too short
+    // returns a narrow band to the pre-fix behaviour, too long retires a coarse distance
+    // restatement slightly early — and it is NOT the kind of speech-duration estimate
+    // CLAUDE.md's liftoff-handoff rule forbids: nothing here mutes speech.
+    private const double ROLLOUT_DECLINE_CALLOUT_LEAD_SEC = 4.0;
+
+    // Distance from the chosen exit at which the rollout speaks "turn now". Not a
+    // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
+    // callout's lower bound is deliberately the same number so the two never overlap.
+    private const double ROLLOUT_TURN_NOW_FT = 150.0;
 
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
@@ -1109,6 +1177,31 @@ public partial class TaxiGuidanceManager : IDisposable
     /// AFTER StartGuidance so it isn't stomped by the first-taxiway callout.
     /// </summary>
     public string? LastRouteReachWarning { get; private set; }
+
+    /// <summary>
+    /// The route-start turn cue for the route just built, or null when the first leg needs
+    /// no words. Composed ONCE by LoadRoute — the same pattern LastRouteReachWarning uses,
+    /// and for the same reason: an AnnounceImmediate from inside LoadRoute is stomped by
+    /// StartGuidance's own first-taxiway callout milliseconds later.
+    /// <para>
+    /// The form folds it into its single standstill utterance and calls
+    /// <see cref="ConsumeInitialTurnCue"/>. Whatever is left unconsumed is spoken by the
+    /// per-frame one-shot instead, so routes the form did not start (landing-exit handoffs,
+    /// announceSummary:false) keep the cue. One text, two delivery paths, never both.
+    /// </para>
+    /// </summary>
+    public string? LastRouteInitialTurnCue { get; private set; }
+
+    /// <summary>
+    /// Takes the cue and clears it, so the per-frame one-shot will not repeat it.
+    /// </summary>
+    public string? ConsumeInitialTurnCue()
+    {
+        string? cue = LastRouteInitialTurnCue;
+        LastRouteInitialTurnCue = null;
+        return cue;
+    }
+
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
@@ -1949,26 +2042,8 @@ public partial class TaxiGuidanceManager : IDisposable
 
         // Calculate heading error for steering tone using LOOK-AHEAD target
         // This prevents tone jitter from very short segments (5-15m in navdata)
-        var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
-        double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
-        double headingError;
-        if (_rolloutHandoffActive)
-        {
-            // During the post-handoff exit phase, use segment bearing instead of
-            // bearing-to-waypoint. The exit node sits north of the runway; while the
-            // aircraft is still on the pavement, bearing-to-node is nearly due north
-            // (~350° for a westward runway), giving ~80° of right pan regardless of
-            // actual heading. That drove the pilot far past the exit arc and into a loop.
-            // Segment bearing tracks the arc itself (288.6° → 289.7° → 296.2° for a
-            // shallow RET) and decays correctly to zero as the aircraft aligns.
-            // _rolloutHandoffActive clears at turnBegunPH (15° from runway heading),
-            // by which point the aircraft is physically on the exit and look-ahead works.
-            headingError = NormalizeAngle(currentSeg.BearingDegrees - headingTrue);
-        }
-        else
-        {
-            headingError = NormalizeAngle(bearingToTarget - headingTrue);
-        }
+        double headingError = ComputeSteeringHeadingError(
+            lat, lon, headingTrue, out double targetLat, out double targetLon);
 
         // Initial big-turn cue (one-shot, first taxiing frame). When guidance
         // starts with the aircraft pointing well away from the route's first
@@ -1981,18 +2056,18 @@ public partial class TaxiGuidanceManager : IDisposable
         if (!_initialTurnCueAnnounced)
         {
             _initialTurnCueAnnounced = true;
-            double absInitErr = Math.Abs(headingError);
-            if (absInitErr >= INITIAL_TURN_CUE_DEG && LastRouteReachWarning == null)
-            {
-                string dir = headingError < 0 ? "left" : "right";
-                bool hasTw = !string.IsNullOrEmpty(_lastAnnouncedTaxiway);
-                string cue = absInitErr >= INITIAL_TURN_UTURN_DEG
-                    ? (hasTw ? $"Taxiway {_lastAnnouncedTaxiway} is behind you. Turn {dir} to come around."
-                             : $"Make a U-turn to the {dir}.")
-                    : (hasTw ? $"Sharp turn {dir} onto taxiway {_lastAnnouncedTaxiway}."
-                             : $"Sharp turn {dir}.");
+            // The cue is composed once by LoadRoute and owned by RouteStartTurnCue. Speak
+            // it here only if the form did not fold it into its standstill utterance --
+            // routes the form did not start (landing-exit handoffs, announceSummary:false)
+            // have nobody else to say it. Never recomposed here: two composers would be two
+            // wordings and, worse, two chances to disagree on left versus right.
+            //
+            // Still suppressed entirely when the route does not reach its runway: that
+            // warning is the priority, the form speaks it after StartGuidance, and a turn
+            // cue would be moot (the pilot will reprogram) AND would stomp it.
+            string? cue = ConsumeInitialTurnCue();
+            if (cue != null && LastRouteReachWarning == null)
                 AnnounceInstruction(cue);
-            }
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
@@ -2363,6 +2438,101 @@ public partial class TaxiGuidanceManager : IDisposable
             GUIDANCE_LOOK_AHEAD_MIN_M, GUIDANCE_LOOK_AHEAD_MAX_M);
         return GuidanceGeometry.WalkTarget(
             lats, lons, _currentSegmentIndex, aircraftLat, aircraftLon, lookAhead);
+    }
+
+    /// <summary>
+    /// THE definition of the steering error: the signed angle (negative = left) between
+    /// where the aircraft points and where the route wants it to go. Read by the steering
+    /// tone every frame, and — through <c>LoadRoute</c> — by the route-start turn cue.
+    ///
+    /// <para><b>Both callers must read THIS, not an approximation of it.</b> The tone pans
+    /// on the sign; the cue speaks the sign as the words "left" or "right". A blind pilot
+    /// hears both and has no third source to break a tie, so the two must be the same
+    /// quantity by construction rather than by two sites happening to compute something
+    /// similar. The cue previously took <c>Segments[0].BearingDegrees - headingTrue</c>
+    /// instead, which is a genuinely different number — measured 35° apart on the live
+    /// KATL 2026-08-27 route (−143.6° against the tone's −175.8°). Sign disagreement needs
+    /// only the two to straddle ±180°, which is precisely the near-U-turn band this cue
+    /// exists for, and 35° is a far wider flip window than the ~5.5° magnetic bias the
+    /// preceding fix removed.</para>
+    ///
+    /// <para>Two properties come free from reading the look-ahead walk rather than a raw
+    /// segment bearing, and are the reason the walk exists: navdata's 5–15 m segments make
+    /// raw bearings unrepresentative of the turn actually being asked for, and
+    /// <see cref="GuidanceGeometry"/> skips sub-<c>DEGENERATE_SEG_M</c> segments before
+    /// projecting — which matters most at <c>Segments[0]</c>, where
+    /// <c>TaxiGraph.SplitEdgeAtPoint</c> can leave an arbitrarily short snap stub whose
+    /// bearing is a phantom axis.</para>
+    /// </summary>
+    private double ComputeSteeringHeadingError(double lat, double lon, double headingTrue)
+        => ComputeSteeringHeadingError(lat, lon, headingTrue, out _, out _);
+
+    /// <summary>
+    /// Composes (or clears) <see cref="LastRouteInitialTurnCue"/> for the route and segment
+    /// cursor CURRENTLY set, from the aircraft's live position and TRUE heading. The one
+    /// composer, so the cue is always the tone's own quantity and one wording.
+    ///
+    /// <para>Called by <c>LoadRoute</c> with the cursor at 0, and again by the landing-exit
+    /// handoff's re-anchor. That second call is not tidiness: when the handoff re-route
+    /// FAILS, guidance continues on the TOUCHDOWN route, whose cue was composed rolling
+    /// straight down the runway — heading error ≈ 0, so <c>Compose</c> returned null — and
+    /// the re-anchor then moves the cursor to a segment that can sit behind the aircraft.
+    /// The pilot would get the hard-panned tone of a turnaround with no words, on the
+    /// degraded path where they are least able to infer it, because the pre-composition
+    /// design computed this cue fresh on the first taxiing frame and this one does not.
+    /// Recomposing restores that, without giving the cue a second wording.</para>
+    ///
+    /// <para>The taxiway is the first NAMED leg at or after the cursor — the first leg
+    /// actually ahead, which for a re-anchored cursor is not <c>Segments[0]</c>.</para>
+    /// </summary>
+    private void ComposeInitialTurnCue(double lat, double lon, double headingTrue)
+    {
+        LastRouteInitialTurnCue = null;
+        if (_route == null || _route.Segments.Count == 0) return;
+
+        double initialErr = ComputeSteeringHeadingError(lat, lon, headingTrue);
+        string? firstNamed = null;
+        for (int i = Math.Max(0, _currentSegmentIndex); i < _route.Segments.Count; i++)
+        {
+            if (string.IsNullOrEmpty(_route.Segments[i].TaxiwayName)) continue;
+            firstNamed = _route.Segments[i].TaxiwayName;
+            break;
+        }
+        LastRouteInitialTurnCue = Navigation.RouteStartTurnCue.Compose(initialErr, firstNamed);
+    }
+
+    /// <inheritdoc cref="ComputeSteeringHeadingError(double, double, double)"/>
+    /// <remarks>
+    /// The out-parameter overload also hands back the look-ahead walk target, so the
+    /// per-frame diagnostic trace can log it without walking the polyline a second time on
+    /// a ~30 Hz path. The target is computed unconditionally (even on the rollout-handoff
+    /// branch that does not steer by it) so the trace keeps the exact shape it had before
+    /// this computation was extracted.
+    /// </remarks>
+    private double ComputeSteeringHeadingError(
+        double lat, double lon, double headingTrue,
+        out double targetLat, out double targetLon)
+    {
+        (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
+
+        if (_rolloutHandoffActive && _route != null
+            && _currentSegmentIndex < _route.Segments.Count)
+        {
+            // During the post-handoff exit phase, use segment bearing instead of
+            // bearing-to-waypoint. The exit node sits north of the runway; while the
+            // aircraft is still on the pavement, bearing-to-node is nearly due north
+            // (~350° for a westward runway), giving ~80° of right pan regardless of
+            // actual heading. That drove the pilot far past the exit arc and into a loop.
+            // Segment bearing tracks the arc itself (288.6° → 289.7° → 296.2° for a
+            // shallow RET) and decays correctly to zero as the aircraft aligns.
+            // _rolloutHandoffActive clears at turnBegunPH (15° from runway heading),
+            // by which point the aircraft is physically on the exit and look-ahead works.
+            return NormalizeAngle(
+                _route.Segments[_currentSegmentIndex].BearingDegrees - headingTrue);
+        }
+
+        double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
+        return NormalizeAngle(bearingToTarget - headingTrue);
     }
 
     /// <summary>
@@ -3028,6 +3198,8 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+        _rolloutCrossingDeclineAnnounced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
         _backtrackDeparture = false;

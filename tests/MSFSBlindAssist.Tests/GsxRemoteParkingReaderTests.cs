@@ -514,4 +514,49 @@ public class GsxRemoteParkingReaderTests
     {
         Assert.Empty(GsxRemoteParkingReader.Read(Parse(rawJson), Kjfk));
     }
+
+    // ── Real-capture-backed tests (KATL, 8 stands) — GsxUiName ──────────────
+
+    private static IReadOnlyList<ParkingSpot> ReadKatl()
+    {
+        string json = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "Fixtures", "gsx-handlerdata-parkings-katl.json"));
+        using var doc = JsonDocument.Parse(json);
+        // Unlike the KJFK fixture (whose root IS the handlerData.airport sub-object Read()
+        // expects), this capture is wrapped one level deeper under "airport" -- unwrap it
+        // before handing it to Read(), which does not accept the full handlerData frame.
+        return GsxRemoteParkingReader.Read(doc.RootElement.GetProperty("airport"), "KATL");
+    }
+
+    // Live KATL 2026-08-27. GSX publishes uiName as the fully-qualified stand identity:
+    // "Concourse T (T1-T21) | Gate 5". uiGateName alone is " Gate 5" -- shared with Delta
+    // Tech Ops -- and 235 of the airport's 294 stands share theirs with another stand.
+    [Fact]
+    public void GsxUiName_is_read_verbatim()
+    {
+        var spot = ReadKatl().Single(s =>
+            s.GsxUiName == "Concourse T (T1-T21) | Gate 5");
+        Assert.Equal(" Gate 5", spot.GsxIdentifier);
+        // The concourse letter ("T") comes only from GsxConcourseLetterFiller, which
+        // GateDataSource runs AFTER this reader -- Read() alone parses Name from
+        // uiGateName only, and " Gate 5" carries no letter of its own.
+        Assert.Equal("", spot.Name);
+        Assert.Equal(5, spot.Number);
+    }
+
+    [Fact]
+    public void Two_stands_share_a_uiGateName_and_are_separated_only_by_uiName()
+    {
+        var spots = ReadKatl().Where(s => s.GsxIdentifier == " Gate 5").ToList();
+        Assert.Equal(2, spots.Count);
+        Assert.Equal(2, spots.Select(s => s.GsxUiName).Distinct().Count());
+    }
+
+    [Fact]
+    public void GsxUiName_is_null_when_GSX_publishes_none()
+    {
+        // KATL's unnamed GA ramps carry no uiName key at all (13 of 294).
+        var ramp = ReadKatl().First(s => s.GsxIdentifier == "Ramp 1");
+        Assert.Null(ramp.GsxUiName);
+    }
 }
