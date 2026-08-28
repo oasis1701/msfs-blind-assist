@@ -1000,8 +1000,8 @@ public partial class SimConnectManager
 
                 // TRUE angular deviation, not |crossTrackError|: the latter is
                 // 180 minus the real angle for an aircraft behind the threshold, which is
-                // every aircraft on final. See NavigationCalculator.AngularDeviationFromCentrelineDeg.
-                double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCentrelineDeg(
+                // every aircraft on final. See NavigationCalculator.AngularDeviationFromCenterlineDeg.
+                double angularDeviationDeg = NavigationCalculator.AngularDeviationFromCenterlineDeg(
                     distanceToLocalizer, distanceToThreshold);
 
                 announcement = $"{rangeWarning}{distanceToThreshold:F1} nautical miles from threshold, " +

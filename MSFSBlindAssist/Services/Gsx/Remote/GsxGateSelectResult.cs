@@ -236,10 +236,15 @@ public sealed class GsxGateSelectResult
     /// </para>
     /// <para>
     /// The limit is now narrower but real: a stand GSX publishes no <c>uiName</c> for (KATL's
-    /// unnamed GA ramps, 13 of 294) or a spot from the navdata/<c>.ini</c> fallback carries no
-    /// <see cref="ExpectedUiName"/>, so it falls back to the identifier comparison and the
-    /// paragraph above applies to it unchanged. Do not let a future reader conclude from a green
-    /// result on THAT path that GSX prepared the stand the pilot picked — there it only means
+    /// unnamed GA ramps, 13 of 294) carries no <see cref="ExpectedUiName"/>, so it falls
+    /// through — and on the usual path that is to the NUMBER comparison, not the identifier
+    /// comparison, because <c>GsxGateSelectPlan</c> sends a stand's number whenever it has one.
+    /// The number is the WEAKER guarantee of the two: KATL's Concourse T and Delta Tech Ops
+    /// both answer to 5, so an echoed number matches whichever stand GSX picked. Only a spot
+    /// that went as a STRING (a numberless stand's verbatim identifier, or a <c>bglName</c>
+    /// resolved out of an <c>ambiguous</c> reply) reaches the identifier comparison the
+    /// paragraph above describes. Do not let a future reader conclude from a green result on
+    /// EITHER of those paths that GSX prepared the stand the pilot picked — there it only means
     /// GSX did not name a different one.
     /// </para>
     /// <para>

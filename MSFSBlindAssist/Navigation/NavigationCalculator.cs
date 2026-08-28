@@ -134,7 +134,7 @@ public class NavigationCalculator
     }
 
     /// <summary>
-    /// TRUE angular deviation from the extended runway centreline, in degrees, as seen
+    /// TRUE angular deviation from the extended runway centerline, in degrees, as seen
     /// from the threshold: <c>asin(perpendicular / slant distance)</c>. Always 0-90 and
     /// UNSIGNED — pair it with <see cref="CalculateCrossTrackError"/>'s sign for a
     /// left/right word.
@@ -143,18 +143,20 @@ public class NavigationCalculator
     /// That function returns <c>bearing(threshold -> aircraft) - localizerHeading</c>,
     /// which for an aircraft on final — BEHIND the threshold — has magnitude
     /// <c>180 - the true angle</c>. Live KATL 2026-08-27: 3.1 nm off at 17.4 nm
-    /// (10.1 degrees) was spoken as "170 degrees right of centerline", and the number got
+    /// (10.26 degrees — <c>asin(3.1/17.4)</c>, which is what this method computes; an
+    /// earlier version of this comment said 10.1, the <c>atan</c> value, and the readout
+    /// rounds to "10" either way) was spoken as "170 degrees right of centerline", and the number got
     /// WORSE the closer the aircraft came to being lined up. Its SIGN is correct in both
     /// geometries and its three other callers use only the sign, so it is left untouched;
     /// the same defect was fixed once before in docking (commit 3d186b62) the same way, by
     /// changing the caller rather than the function.</para>
     /// </summary>
     /// <param name="perpendicularDistanceNm">
-    /// Perpendicular distance to the localizer centreline, nautical miles, unsigned —
+    /// Perpendicular distance to the localizer centerline, nautical miles, unsigned —
     /// <see cref="CalculateDistanceToLocalizer"/>.
     /// </param>
     /// <param name="distanceToThresholdNm">Slant distance from aircraft to threshold, nautical miles.</param>
-    public static double AngularDeviationFromCentrelineDeg(
+    public static double AngularDeviationFromCenterlineDeg(
         double perpendicularDistanceNm, double distanceToThresholdNm)
     {
         if (distanceToThresholdNm <= 0.0) return 0.0;
