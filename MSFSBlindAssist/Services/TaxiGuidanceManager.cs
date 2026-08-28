@@ -843,12 +843,23 @@ public partial class TaxiGuidanceManager : IDisposable
 
     // Search bound for that walk. Comfortably past the threshold so the answer is never a
     // truncation artefact, and small enough that an end disconnected from the runway cannot walk
-    // the whole airport. Route-load only, never per frame.
+    // the whole airport. Route load and (rarely) an accepted off-route recalc — never per frame.
+    //
+    // Exceeding it yields PositiveInfinity, and that value is passed through to
+    // RunwayReachGate UNCHANGED. It must never be mapped onto this constant to make it
+    // "exceed the threshold": the number then reaches the pilot as a spoken distance, and
+    // "about 1500 metres of taxiing away" is a confident, fabricated figure for a route that
+    // has NO path at all. RunwayReachGate.DescribeFailure gives infinity its own wording.
     private const double RUNWAY_REACH_WALK_SEARCH_M = 1500.0;
-    // During LiningUp, cross-track this far off the centerline (≈122 m, again
-    // above the ~90 m legitimate-hold-short ceiling) sustained for
-    // LINEUP_UNREACHABLE_SEC without converging means the route never reached
-    // the runway — fire the one-shot spoken bailout.
+    // During LiningUp, cross-track this far off the centerline (≈122 m) sustained for
+    // LINEUP_UNREACHABLE_SEC without converging means the route never reached the runway —
+    // fire the one-shot spoken bailout.
+    //
+    // Do NOT re-justify this by a "~90 m legitimate hold-short ceiling" (the rationale this
+    // comment used to carry, and which RUNWAY_REACH_MAX_CROSS_M above retracts with
+    // measurements): real hold lines reach 151-183 m in this DB. What makes 400 ft safe here
+    // is the 12-second CONVERGENCE requirement, not the distance — a lineup that legitimately
+    // starts far off the perpendicular is closing, and the timer resets as soon as it does.
     private const double LINEUP_UNREACHABLE_CROSS_FEET = 400.0;
     private const double LINEUP_UNREACHABLE_SEC = 12.0;
     private DateTime _lineupHugeCrossTrackSince = DateTime.MinValue;

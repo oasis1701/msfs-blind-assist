@@ -2253,10 +2253,16 @@ public class TaxiAssistForm : Form
                 // RUNWAY_REACH_MAX_CROSS_M of the centerline, so routes that work today are
                 // untouched.
                 double rwyHalfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+                // The aircraft position anchors the reachability filter (same rule
+                // FindBacktrackEntryNode uses). (0,0) means SimConnect has not reported one
+                // yet — the same "haveOwnPosition" test the gate list uses — and the search
+                // then falls back to its previous anchor rather than snapping to null island.
+                bool haveOwnPos = _aircraftLat != 0 || _aircraftLon != 0;
                 var nearNode = _graph.FindRunwayLineupEntryNode(
                     lineupLat, lineupLon,
                     rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon,
-                    rwyHalfWidthM, TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M);
+                    rwyHalfWidthM, TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M,
+                    haveOwnPos ? _aircraftLat : null, haveOwnPos ? _aircraftLon : null);
                 if (nearNode != null)
                 {
                     string name = $"Runway {rwy.RunwayID}";

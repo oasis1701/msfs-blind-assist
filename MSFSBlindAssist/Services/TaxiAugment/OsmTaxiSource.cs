@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
@@ -41,49 +42,100 @@ public sealed class OsmTaxiSource : ITaxiDataSource
     private static readonly ConcurrentDictionary<string, DateTime> CooldownUntilUtc = new();
     private static readonly TimeSpan MirrorCooldown = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// Longest any ONE mirror may hold the request before we move on. Without it the
+    /// per-attempt timeout is the caller's WHOLE budget (AugmentingAirportDataProvider
+    /// gives all sources 60 s, and the shared HttpClient's own Timeout is 60 s too), so a
+    /// single blackholed mirror consumed everything and mirrors 2-7 were never contacted —
+    /// i.e. exactly the stall the mirror list and the cooldown were widened for, and the
+    /// reason the documented "second pass over the cooled-down mirrors" could never run.
+    /// Sized above a healthy Overpass answer and well below the caller's budget so several
+    /// mirrors fit inside it.
+    /// </summary>
+    private static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(12);
+
+    /// <summary>
+    /// The Overpass QL for one airport. Every embedded coordinate is formatted with
+    /// <see cref="CultureInfo.InvariantCulture"/>: `.` in a custom numeric format is the
+    /// decimal-point PLACEHOLDER, so under the current culture a comma-decimal locale
+    /// (de-DE, fr-FR, pt-BR, tr-TR) emits `around:5000,51,4706,-0,4614` — a five-token
+    /// clause Overpass answers 400 to, on every mirror, killing the whole online layer for
+    /// those users. Internal so the culture behaviour is pinned by a test.
+    ///
+    /// <para>Stands/gates are queried as BOTH node and way. At large hubs OSM maps a stand
+    /// as the painted guidance LINE (a way), not a point: measured 2026-08-25, EGLL has 70
+    /// stand nodes against 304 stand ways, and KDTW has ZERO nodes against 176 ways — so a
+    /// node-only query returned nothing at all there and the whole gate-alias layer was dead
+    /// at exactly the hub airports where a controller-assigned stand name needs translating.
+    /// aeroway=gate adds the terminal-side gate numbering (KDTW 133, EGLL 148, all with a
+    /// ref).</para>
+    ///
+    /// <para>ref ONLY, never a name fallback (unlike taxiways/holding points): a stand's
+    /// designator is always the ref — measured across both airports, every gate/stand
+    /// carries one and NONE is ref-less-but-named — while aeroway names are free prose
+    /// ("Terminal 3"), which StandId would parse as stand number 3 and alias onto an
+    /// unrelated gate.</para>
+    /// </summary>
+    internal static string BuildQuery(double lat, double lon)
+    {
+        string around = string.Format(
+            CultureInfo.InvariantCulture, "(around:5000,{0:0.######},{1:0.######});", lat, lon);
+
+        return "[out:json][timeout:50];(" +
+               $"way[\"aeroway\"=\"taxiway\"]{around}" +
+               $"node[\"aeroway\"=\"parking_position\"]{around}" +
+               $"way[\"aeroway\"=\"parking_position\"]{around}" +
+               $"node[\"aeroway\"=\"gate\"]{around}" +
+               $"way[\"aeroway\"=\"gate\"]{around}" +
+               $"node[\"aeroway\"=\"holding_position\"]{around}" +
+               ");out tags geom;";
+    }
+
     public async Task<AirportTaxiData?> FetchAsync(string icao, double lat, double lon, CancellationToken ct)
     {
-        // Stands/gates are queried as BOTH node and way. At large hubs OSM maps a stand as the
-        // painted guidance LINE (a way), not a point: measured 2026-08-25, EGLL has 70 stand nodes
-        // against 304 stand ways, and KDTW has ZERO nodes against 176 ways — so a node-only query
-        // returned nothing at all there and the whole gate-alias layer was dead at exactly the hub
-        // airports where a controller-assigned stand name needs translating. aeroway=gate adds the
-        // terminal-side gate numbering (KDTW 133, EGLL 148, all carrying a ref).
-        //
-        // ref ONLY, never a name fallback (unlike taxiways/holding points): a stand's designator is
-        // always the ref — measured across both airports, every gate/stand carries one and NONE is
-        // ref-less-but-named — while aeroway names are free prose ("Terminal 3"), which StandId
-        // would happily parse as stand number 3 and alias onto an unrelated gate.
-        string q = $"[out:json][timeout:50];(" +
-                   $"way[\"aeroway\"=\"taxiway\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"node[\"aeroway\"=\"parking_position\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"way[\"aeroway\"=\"parking_position\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"node[\"aeroway\"=\"gate\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"way[\"aeroway\"=\"gate\"](around:5000,{lat:0.######},{lon:0.######});" +
-                   $"node[\"aeroway\"=\"holding_position\"](around:5000,{lat:0.######},{lon:0.######}););out tags geom;";
+        string q = BuildQuery(lat, lon);
 
+        // ONE snapshot of the cooldown map, partitioned in a single pass. Two separate
+        // `Where` passes over the shared static dictionary are not atomic: a concurrent
+        // fetch for another airport removing or adding an entry between them could drop a
+        // mirror from BOTH lists (never attempted) or put it in both (attempted twice),
+        // which breaks this class's own "may only ever REORDER the attempts, never reduce
+        // them" guarantee. Fetches for different ICAOs genuinely overlap — the in-flight
+        // map in AugmentingAirportDataProvider dedupes per ICAO only.
         var now = DateTime.UtcNow;
-        var fresh = Mirrors.Where(m => !IsCoolingDown(m, now)).ToList();
-        var cooling = Mirrors.Where(m => IsCoolingDown(m, now)).ToList();
+        var fresh = new List<string>(Mirrors.Length);
+        var cooling = new List<string>(Mirrors.Length);
+        foreach (var m in Mirrors)
+            (IsCoolingDown(m, now) ? cooling : fresh).Add(m);
 
         // Fresh mirrors first, then the cooled-down ones as a last resort (see MirrorCooldown).
         foreach (var url in fresh.Concat(cooling))
         {
+            if (ct.IsCancellationRequested) return null;
+
+            // Per-attempt budget, linked so the caller's own cancellation still wins.
+            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            attemptCts.CancelAfter(PerMirrorTimeout);
             try
             {
                 using var resp = await _http.PostAsync(url,
-                    new FormUrlEncodedContent(new[]{ new KeyValuePair<string,string>("data", q) }), ct);
+                    new FormUrlEncodedContent(new[]{ new KeyValuePair<string,string>("data", q) }),
+                    attemptCts.Token);
                 if (!resp.IsSuccessStatusCode) { MarkFailed(url); continue; }
                 CooldownUntilUtc.TryRemove(url, out _);
-                return Parse(await resp.Content.ReadAsStringAsync(ct));
+                return Parse(await resp.Content.ReadAsStringAsync(attemptCts.Token));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // The caller gave up (airport switch / shutdown) — not the mirror's fault, so it
-                // must not be blacklisted for the next airport.
-                throw;
+                // The CALLER gave up (its 60 s budget expired, an airport switch, shutdown).
+                // Not the mirror's fault, so it must not be blacklisted for the next airport
+                // — and we must NOT rethrow: this method's contract is "null on failure",
+                // and its only caller awaits Task.WhenAll over this source AND the X-Plane
+                // one, so throwing here discarded a successful apt.dat result together with
+                // the cache write, the name merge and the AirportDataUpdated event.
+                return null;
             }
-            catch { MarkFailed(url); /* try next mirror */ }
+            catch { MarkFailed(url); /* this mirror timed out or failed — try the next */ }
         }
         return null;
     }

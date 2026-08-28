@@ -126,27 +126,138 @@ public class RunwayLineupEntryTests
     [Fact]
     public void An_entrance_behind_the_pavement_edge_still_counts_starter_extension()
     {
-        // Starter extension: both the lineup point and the only entrance sit BEHIND the
-        // runway_end pavement edge (negative along-track). iniBuilds EGLL 09L is entered
-        // only from AB13, ~300-355 m back, so an along >= 0 floor would reject exactly
-        // the entrance that runway depends on.
-        const double BehindLon = -0.0027;   // ~-300 m along
-        const double BehindLineupLon = -0.0023;
+        // Starter extension: the only entrance sits BEHIND the runway_end pavement edge
+        // (negative along-track). iniBuilds EGLL 09L is entered only from AB13, ~300-355 m
+        // back, so an along >= 0 floor would reject exactly the entrance that runway
+        // depends on.
+        //
+        // The lineup point must be placed so the NEAREST node to it is the spine node, not
+        // the entrance: otherwise plainPerp is 0, FindRunwayLineupEntryNode returns at its
+        // `plainPerp <= maxAcceptableCrossM` early return, and the candidate loop —
+        // MAX_BEHIND_THRESHOLD_M included — never runs at all. (The earlier fixture had the
+        // entrance itself as the nearest node, so it passed with the constant set to zero.)
+        var g = BuildStarterExtension(entranceLon: BehindEntranceLon);
+
+        // Sanity: the scan is genuinely entered, i.e. the nearest node is 201 m off.
+        var nearest = g.FindNearestNode(0, StarterLineupLon);
+        Assert.NotNull(nearest);
+        Assert.Equal(SpineLat, nearest!.Latitude, 6);
+
+        var entry = StarterEntry(g);
+
+        Assert.NotNull(entry);
+        Assert.Equal(0.0, entry!.Latitude, 6);
+        Assert.Equal(BehindEntranceLon, entry.Longitude, 6);
+    }
+
+    [Fact]
+    public void An_entrance_further_back_than_the_starter_extension_budget_is_refused()
+    {
+        // ~-600 m, past MAX_BEHIND_THRESHOLD_M. Nothing qualifies, so the plain nearest node
+        // is returned unchanged and TaxiGuidanceManager's honest reach warning still fires.
+        // This is the assertion that gives the constant's MAGNITUDE regression cover — the
+        // test above only proves the floor is not zero.
+        var g = BuildStarterExtension(entranceLon: TooFarBehindLon);
+
+        var entry = StarterEntry(g);
+
+        Assert.NotNull(entry);
+        Assert.Equal(SpineLat, entry!.Latitude, 6);   // the spine node, i.e. unchanged
+    }
+
+    private const double BehindEntranceLon = -0.0027;  // ~-300 m along (EGLL 09L via AB13)
+    private const double TooFarBehindLon = -0.0054;    // ~-600 m along, past the 500 m budget
+    private const double StarterLineupLon = 0.0001;    // ~11 m along — the lineup spot
+
+    /// <summary>
+    /// A spine 201 m north with a node abeam the lineup spot (so that node, not the
+    /// entrance, is nearest to it) and a single connector down onto the centreline at
+    /// <paramref name="entranceLon"/>, behind the pavement edge.
+    /// </summary>
+    private static TaxiGraph BuildStarterExtension(double entranceLon)
+    {
         var paths = new List<TaxiPath>
         {
-            new TaxiPath { StartLat = SpineLat, StartLon = BehindLon, EndLat = SpineLat, EndLon = LineupLon },
-            new TaxiPath { StartLat = SpineLat, StartLon = BehindLon, EndLat = 0, EndLon = BehindLon },
+            new TaxiPath { StartLat = SpineLat, StartLon = entranceLon,      EndLat = SpineLat, EndLon = StarterLineupLon },
+            new TaxiPath { StartLat = SpineLat, StartLon = StarterLineupLon, EndLat = SpineLat, EndLon = LineupLon },
+            new TaxiPath { StartLat = SpineLat, StartLon = entranceLon,      EndLat = 0,        EndLon = entranceLon },
         };
-        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
+    private static TaxiNode? StarterEntry(TaxiGraph g) =>
+        g.FindRunwayLineupEntryNode(
+            lineupLat: 0, lineupLon: StarterLineupLon,
+            thrLat: 0, thrLon: 0, farLat: 0, farLon: FarLon,
+            halfWidthMeters: HalfWidthM, maxAcceptableCrossM: MaxCrossM);
+
+    // ---- Reachability is anchored on the AIRCRAFT, not on the stranded node --------------
+    //
+    // The scan restricts candidates to one connected component, and the node it used to
+    // anchor that on was `plain` — the very node the method exists because it is wrong. An
+    // isolated taxi island is a documented shape in this navdata (GCLP S5), and an island
+    // beside the lineup point is a plausible CAUSE of the >120 m nearest-node offset that
+    // triggers the search in the first place. Anchored there, every real entrance is
+    // filtered out and the island node is returned as the ROUTE DESTINATION — after which
+    // LoadRoute filters its start-node candidates to the island's component too, and the
+    // route begins where the aircraft is not. FindBacktrackEntryNode, whose scan this one
+    // mirrors, has always anchored on the aircraft.
+
+    private const double IslandLat = 0.00181;   // ~201 m north — an isolated stub
+    private const double MainSpineLat = 0.0027; // ~300 m north — the real taxi network
+
+    private static TaxiGraph BuildWithIslandBesideTheLineupPoint()
+    {
+        var paths = new List<TaxiPath>
+        {
+            // The real network: a spine with a connector onto the runway 70 m along.
+            new TaxiPath { StartLat = MainSpineLat, StartLon = NearLon, EndLat = MainSpineLat, EndLon = LineupLon },
+            new TaxiPath { StartLat = MainSpineLat, StartLon = NearLon, EndLat = 0,            EndLon = NearLon },
+            // An isolated island, closer to the lineup point than the spine is.
+            new TaxiPath { StartLat = IslandLat, StartLon = LineupLon, EndLat = IslandLat, EndLon = LineupLon + 0.0005 },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
+    [Fact]
+    public void An_island_beside_the_lineup_point_does_not_trap_the_entrance_search()
+    {
+        var g = BuildWithIslandBesideTheLineupPoint();
+
+        // Sanity: the nearest node to the lineup point IS the island, and it is on a
+        // different component from the real network.
+        var nearest = g.FindNearestNode(0, LineupLon);
+        Assert.NotNull(nearest);
+        Assert.Equal(IslandLat, nearest!.Latitude, 6);
+        var realEntrance = g.Nodes.Values.Single(n =>
+            Math.Abs(n.Latitude) < 1e-9 && Math.Abs(n.Longitude - NearLon) < 1e-9);
+        Assert.NotEqual(nearest.ComponentId, realEntrance.ComponentId);
 
         var entry = g.FindRunwayLineupEntryNode(
-            lineupLat: 0, lineupLon: BehindLineupLon,
+            lineupLat: 0, lineupLon: LineupLon,
+            thrLat: 0, thrLon: 0, farLat: 0, farLon: FarLon,
+            halfWidthMeters: HalfWidthM, maxAcceptableCrossM: MaxCrossM,
+            aircraftLat: MainSpineLat, aircraftLon: LineupLon);
+
+        Assert.NotNull(entry);
+        Assert.Equal(0.0, entry!.Latitude, 6);
+        Assert.Equal(NearLon, entry.Longitude, 6);
+    }
+
+    [Fact]
+    public void Without_an_aircraft_position_the_entrance_search_is_unchanged()
+    {
+        // The form only knows where the aircraft is once SimConnect has reported it; until
+        // then the anchor must stay what it was, not FindNearestNode(0, 0).
+        var g = BuildWithIslandBesideTheLineupPoint();
+
+        var entry = g.FindRunwayLineupEntryNode(
+            lineupLat: 0, lineupLon: LineupLon,
             thrLat: 0, thrLon: 0, farLat: 0, farLon: FarLon,
             halfWidthMeters: HalfWidthM, maxAcceptableCrossM: MaxCrossM);
 
         Assert.NotNull(entry);
-        Assert.Equal(0.0, entry!.Latitude, 6);
-        Assert.Equal(BehindLon, entry.Longitude, 6);
+        Assert.Equal(IslandLat, entry!.Latitude, 6);   // the plain nearest node, unchanged
     }
 
     [Fact]
@@ -200,5 +311,54 @@ public class RunwayLineupEntryTests
         Assert.NotNull(entry);
         Assert.Equal(0.0, entry!.Latitude, 6);
         Assert.Equal(FarEntryLon, entry.Longitude, 6);
+    }
+
+    // ---- Painted-holding-point projection nodes are not runway entrances ----------------
+    //
+    // NamedHoldingPointResolver.SnapOrInsert splits a live graph edge to plant a node on a
+    // painted hold LINE, and TaxiAssistForm re-runs PopulateDestinations whenever the
+    // destination type changes — so by the second visit to the Runway list the graph can
+    // contain such nodes. A hold line sits close to the centreline by construction, so the
+    // projection node passes the perpendicular filter and (via its far end on the spine)
+    // HasOffRunwayNeighbour, and beats the real junction on along-track proximity. The
+    // sibling scan in ResolveHoldingPointEntries has always skipped them, documenting
+    // exactly this hazard; this scan picks the ROUTE DESTINATION, so it matters more here.
+
+    private const double StubLon = 0.0036;      // a stub meeting the runway ~400 m along
+    private const double StubTipLat = 0.00009;  // its tip ~10 m off the centreline
+    private const double PaintedLat = 0.00018;  // the painted hold line ~20 m off
+
+    private static TaxiGraph BuildWithPaintedHoldStub()
+    {
+        var paths = new List<TaxiPath>
+        {
+            // Spine 201 m north, split at every branch so the nodes exist.
+            new TaxiPath { StartLat = SpineLat, StartLon = NearLon,   EndLat = SpineLat, EndLon = StubLon },
+            new TaxiPath { StartLat = SpineLat, StartLon = StubLon,   EndLat = SpineLat, EndLon = LineupLon },
+            // The real full-length entrance, ON the centreline 70 m along.
+            new TaxiPath { StartLat = SpineLat, StartLon = NearLon,   EndLat = 0,          EndLon = NearLon },
+            // A stub reaching down toward the runway ~400 m along but stopping short of it.
+            new TaxiPath { StartLat = SpineLat, StartLon = StubLon,   EndLat = StubTipLat, EndLon = StubLon },
+        };
+
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+        var painted = g.InsertHoldingPointNodeOnEdge(PaintedLat, StubLon, maxPerpMeters: 5.0);
+        Assert.NotNull(painted);
+        Assert.True(g.IsHoldingPointProjectionNode(painted!.NodeId));
+        return g;
+    }
+
+    [Fact]
+    public void A_painted_holding_point_projection_node_is_never_the_runway_destination()
+    {
+        var g = BuildWithPaintedHoldStub();
+
+        var entry = Entry(g);
+
+        Assert.NotNull(entry);
+        Assert.False(g.IsHoldingPointProjectionNode(entry!.NodeId));
+        // The real entrance, on the centreline at the full-length end.
+        Assert.Equal(0.0, entry.Latitude, 6);
+        Assert.Equal(NearLon, entry.Longitude, 6);
     }
 }

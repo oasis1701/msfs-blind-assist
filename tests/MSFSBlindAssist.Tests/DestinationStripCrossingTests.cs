@@ -66,16 +66,61 @@ public class DestinationStripCrossingTests
     [Fact]
     public void A_hold_node_already_naming_this_strip_keeps_its_own_label()
     {
-        // The scenery's own name for the line wins when it already names this pavement, from
-        // either end — ComposeCrossingLabel's existing reciprocal tolerance, which the
-        // designator swap above must not disturb.
+        // With NO preferred designator — an ordinary crossing of some other runway — the
+        // scenery's own name for the line wins when it already names this pavement, from
+        // either end. That is ComposeCrossingLabel's reciprocal tolerance, unchanged.
         Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel("runway 22R", "04L"));
         Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel("runway 04L", "04L"));
+    }
+
+    // --- the destination strip: the pilot's own designator wins ---------------------------
+    //
+    // TaxiGraph.Build names every hold node after whichever runway END is nearer it, so on
+    // the destination's own strip the DB label routinely carries the RECIPROCAL — and that
+    // is precisely the case ComposeCrossingLabel's "already names this pavement" rule kept.
+    // The rename to the pilot's designator was therefore a no-op on the normal path: the
+    // pilot still heard "hold short of runway 22R" while taxiing to 04L. Passing the
+    // destination designator as `preferredDesignator` makes the rename actually happen,
+    // keeping the hold point so the crossing stays distinct from the destination's own
+    // "Stop. Hold short of Runway 04L".
+
+    [Theory]
+    // Both shapes TaxiGraph.Build emits for a hold-short name.
+    [InlineData("runway 22R at D5", "runway 04L at D5")]
+    [InlineData("D5, Runway 22R", "D5, Runway 04L")]
+    [InlineData("runway 22R", "runway 04L")]
+    public void A_destination_strip_crossing_is_renamed_to_the_pilots_designator(
+        string dbLabel, string expected)
+    {
+        Assert.Equal(expected,
+            RouteRunwayCrossings.ComposeCrossingLabel(dbLabel, "22R", preferredDesignator: "04L"));
+    }
+
+    [Fact]
+    public void A_label_that_already_uses_the_pilots_designator_is_left_alone()
+    {
+        Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel(
+            "runway 04L at D5", "22R", preferredDesignator: "04L"));
+        // Zero-padding is not a difference worth rewriting for.
+        Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel(
+            "runway 4L at D5", "22R", preferredDesignator: "04L"));
+    }
+
+    [Fact]
+    public void A_bare_hold_point_name_still_gains_the_pilots_designator()
+    {
+        Assert.Equal("runway 04L at D5",
+            RouteRunwayCrossings.ComposeCrossingLabel("D5", "22R", preferredDesignator: "04L"));
+        Assert.Equal("runway 04L",
+            RouteRunwayCrossings.ComposeCrossingLabel(null, "22R", preferredDesignator: "04L"));
     }
 
     [Fact]
     public void A_user_end_of_taxiway_terminator_is_still_never_overwritten()
     {
         Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel("end of taxiway B", "04L"));
+        // ...including on the destination's own strip, where the rename is in play.
+        Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel(
+            "end of taxiway B", "22R", preferredDesignator: "04L"));
     }
 }

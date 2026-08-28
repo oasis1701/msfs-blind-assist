@@ -239,4 +239,48 @@ public class OsmTaxiSourceParseTests
         var stand = Assert.Single(data.Parking);
         Assert.Equal(180.0, Math.Abs(stand.Lon), 4);
     }
+
+    // ---- The Overpass query itself -----------------------------------------------------
+    //
+    // The query embeds the airport's coordinates as bare decimals inside an `around:`
+    // clause. Interpolating them under the CURRENT culture emits a comma decimal separator
+    // on de-DE / fr-FR / pt-BR / tr-TR, which turns `around:5000,51.4706,-0.4614` into a
+    // five-token clause Overpass rejects with a 400 — silently killing the whole online
+    // taxiway/holding-point/stand layer for every user on such a machine, and (since the
+    // per-mirror cooldown landed) blacklisting all seven mirrors while it does so.
+
+    [Fact]
+    public void The_overpass_query_uses_invariant_decimal_separators()
+    {
+        var prev = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture =
+                new System.Globalization.CultureInfo("de-DE");
+
+            string q = OsmTaxiSource.BuildQuery(51.4706, -0.4614);
+
+            Assert.Contains("51.4706", q);
+            Assert.Contains("-0.4614", q);
+            Assert.DoesNotContain("51,4706", q);
+            Assert.DoesNotContain("0,4614", q);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = prev; }
+    }
+
+    [Fact]
+    public void The_overpass_query_asks_for_stands_and_gates_as_node_and_way()
+    {
+        // At hubs a stand is mapped as the painted guidance LINE, not a point (KDTW: zero
+        // stand nodes against 176 ways), so dropping either spelling silently empties the
+        // gate-alias layer at exactly the airports that need it.
+        string q = OsmTaxiSource.BuildQuery(42.2124, -83.3534);
+
+        Assert.Contains("node[\"aeroway\"=\"parking_position\"]", q);
+        Assert.Contains("way[\"aeroway\"=\"parking_position\"]", q);
+        Assert.Contains("node[\"aeroway\"=\"gate\"]", q);
+        Assert.Contains("way[\"aeroway\"=\"gate\"]", q);
+        Assert.Contains("way[\"aeroway\"=\"taxiway\"]", q);
+        Assert.Contains("node[\"aeroway\"=\"holding_position\"]", q);
+    }
 }
