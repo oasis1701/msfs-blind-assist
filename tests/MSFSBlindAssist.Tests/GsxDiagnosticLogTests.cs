@@ -260,6 +260,34 @@ public class GsxDiagnosticLogTests
             GsxDiagnosticLog.FormatVerb("gate.select", "error", "not_found", "no such gate", 12),
             GsxDiagnosticLog.FormatSession("ENGM", new[] { "menu", "gate" }, 4),
             GsxDiagnosticLog.FormatConnection(true, 1),
+            // The sibling channel's attempt line. It is the one formatter in either GSX log
+            // that BROKE this rule (it used to render the resolved gate as unquoted prose
+            // `{UiName} (gate=... number=...)`), it was re-authored on this branch, and the
+            // spec promised it would be brought under this test -- so it is. Every field here
+            // carries a space on purpose: GSX's own uiGateName leads with one on 281 of KATL's
+            // 294 stands, uiName and bglName are multi-word, and message is vendor free text.
+            GsxRemoteGateSelector.FormatAttempt(
+                "Concourse T Gate 5 - Gate Medium",
+                " Gate 5",
+                revokeServices: false,
+                GsxGateSelectResult.FromFrame(GsxFrame.Parse(
+                    """
+                    { "type": "result", "id": "g-1", "ok": true,
+                      "payload": { "code": "ok", "status": "prepared",
+                                   "gate": { "uiName": "Concourse T Gate 5", "gate": " Gate 5",
+                                             "number": 5, "bglName": "Parking 5 Gate T" },
+                                   "warnings": ["too_small"] } }
+                    """))),
+            GsxRemoteGateSelector.FormatAttempt(
+                "A 1 - Gate Small",
+                "A 1",
+                revokeServices: true,
+                GsxGateSelectResult.FromFrame(GsxFrame.Parse(
+                    """
+                    { "type": "result", "id": "g-2", "ok": false,
+                      "error": { "code": "not_found",
+                                 "message": "no such gate at this airport" } }
+                    """))),
         ];
 
         foreach (string line in lines)
@@ -288,6 +316,24 @@ public class GsxDiagnosticLogTests
     public void QuoteVerbatim_keeps_a_leading_space()
     {
         Assert.Equal("\" Gate 5\"", GsxDiagnosticLog.QuoteVerbatim(" Gate 5"));
+    }
+
+    // ...and the one field that has to keep it. gsx-gate-select.log is the documented first
+    // stop for "GSX did not prepare my stand", and identifierSent is the field that answers it:
+    // a Quote()d " Gate 5" reads as "Gate 5", i.e. as an identifier that was never sent. This
+    // is the defect the branch is named after, and nothing else stops a revert of that one
+    // call from QuoteVerbatim back to Quote.
+    [Fact]
+    public void The_gate_select_attempt_line_preserves_a_leading_space_in_the_identifier_sent()
+    {
+        string line = GsxRemoteGateSelector.FormatAttempt(
+            "Concourse T Gate 5 - Gate Medium",
+            " Gate 5",
+            revokeServices: false,
+            GsxGateSelectResult.FromFrame(GsxFrame.Parse(
+                """{"type":"result","id":"g-1","ok":false,"error":{"code":"not_found"}}""")));
+
+        Assert.Contains("identifierSent=\" Gate 5\"", line, StringComparison.Ordinal);
     }
 
     [Fact]

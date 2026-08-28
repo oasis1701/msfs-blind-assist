@@ -300,44 +300,62 @@ public sealed class GsxRemoteGateSelector
     {
         try
         {
-            // Quoted key=value tokens, not free prose. This field used to render
-            // `{UiName} (gate={Gate} number=... bglName=...)` -- unquoted, with spaces and
-            // parentheses -- which is the one formatter in either GSX log that breaks the
-            // channel's stated shape rule ("no unquoted value may contain a space"), and the
-            // shape test did not reach it.
-            string resolved = result.ResolvedGate is { } g
-                ? $"resolvedUiName={GsxDiagnosticLog.QuoteVerbatim(g.UiName)} " +
-                  $"resolvedGate={GsxDiagnosticLog.QuoteVerbatim(g.Gate)} " +
-                  $"resolvedNumber={(g.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(none)")} " +
-                  $"resolvedBglName={GsxDiagnosticLog.QuoteVerbatim(g.BglName)}"
-                : "resolvedUiName=(none) resolvedGate=(none) resolvedNumber=(none) resolvedBglName=(none)";
-            string warnings = result.Warnings.Count > 0 ? string.Join(",", result.Warnings) : "(none)";
-            // GSX's OWN error text, not ours. It is the single most useful field for
-            // diagnosing not_found / bad_args / no_airport -- the codes that produce a
-            // silent no-op the pilot can only investigate through this log -- and it was
-            // parsed and then discarded until now. Safe to log: it is GSX's own short
-            // diagnostic string, never a raw frame (handlerData carries user data).
-            //
-            // Quoted through GsxDiagnosticLog.Quote, the sibling channel's formatter, rather
-            // than by hand. The hand-rolled version mapped \r and \n but not \t, did not
-            // collapse whitespace runs, and -- the one that matters -- did NOT escape embedded
-            // double quotes. This field is vendor free text, so a GSX message containing a "
-            // closed the field early and broke the target=… identifierSent=… scan this log is
-            // read by eye for: unparseable exactly on the malformed input that prompted the
-            // report. Quote() also renders an empty value as (none), which is what the manual
-            // IsNullOrWhiteSpace branch was doing.
-            string message = GsxDiagnosticLog.Quote(result.Message);
-            // Appended ONLY when true, so an ordinary line keeps the exact
-            // target=… identifierSent=… shape this log is scanned by eye for, while the one
-            // anomaly worth grepping ("GSX prepared a stand I did not ask for") has a token.
-            string mismatch = result.ResolvedGateContradictsRequest ? " resolvedMismatch=true" : "";
-            GateSelectLog.Info(
-                $"target={GsxDiagnosticLog.Quote(label)} " +
-                $"identifierSent={GsxDiagnosticLog.QuoteVerbatim(identifier)} " +
-                $"revokeServices={revokeServices} " +
-                $"outcome={result.Outcome} {resolved} warnings={warnings} " +
-                $"rawCode={result.RawCode ?? "(none)"} message={message}{mismatch}");
+            GateSelectLog.Info(FormatAttempt(label, identifier, revokeServices, result));
         }
         catch { /* logging must never break the selector */ }
+    }
+
+    /// <summary>
+    /// One <c>gsx-gate-select.log</c> attempt line. Split out from <see cref="LogAttempt"/>
+    /// purely as a test seam: this is the one formatter in either GSX log that BROKE the
+    /// channel's stated shape rule ("no unquoted value may contain a space"), it has just been
+    /// re-authored, and <c>GsxDiagnosticLogTests.No_unquoted_value_contains_a_space</c> reached
+    /// only the five <c>GsxDiagnosticLog.Format*</c> helpers. Nothing else stopped a revert of
+    /// <c>identifierSent</c> from <see cref="GsxDiagnosticLog.QuoteVerbatim"/> back to
+    /// <see cref="GsxDiagnosticLog.Quote"/> — which would re-hide the LEADING SPACE in GSX's
+    /// own stand name (281 of KATL's 294 stands) that this whole package exists to expose.
+    /// Internal, reached via Properties/InternalsVisibleTo.cs — the same pattern as
+    /// <c>GsxMenuAnnounceResolver</c> and <c>GsxRangeBoundsResolver</c>.
+    /// </summary>
+    internal static string FormatAttempt(
+        string label, string identifier, bool revokeServices, GsxGateSelectResult result)
+    {
+        // Quoted key=value tokens, not free prose. This field used to render
+        // `{UiName} (gate={Gate} number=... bglName=...)` -- unquoted, with spaces and
+        // parentheses -- which made it the one formatter in either GSX log that broke the
+        // channel's stated shape rule ("no unquoted value may contain a space"). The shape
+        // test did not reach it either; it does now, through FormatAttempt.
+        string resolved = result.ResolvedGate is { } g
+            ? $"resolvedUiName={GsxDiagnosticLog.QuoteVerbatim(g.UiName)} " +
+              $"resolvedGate={GsxDiagnosticLog.QuoteVerbatim(g.Gate)} " +
+              $"resolvedNumber={(g.Number?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(none)")} " +
+              $"resolvedBglName={GsxDiagnosticLog.QuoteVerbatim(g.BglName)}"
+            : "resolvedUiName=(none) resolvedGate=(none) resolvedNumber=(none) resolvedBglName=(none)";
+        string warnings = result.Warnings.Count > 0 ? string.Join(",", result.Warnings) : "(none)";
+        // GSX's OWN error text, not ours. It is the single most useful field for
+        // diagnosing not_found / bad_args / no_airport -- the codes that produce a
+        // silent no-op the pilot can only investigate through this log -- and it was
+        // parsed and then discarded until now. Safe to log: it is GSX's own short
+        // diagnostic string, never a raw frame (handlerData carries user data).
+        //
+        // Quoted through GsxDiagnosticLog.Quote, the sibling channel's formatter, rather
+        // than by hand. The hand-rolled version mapped \r and \n but not \t, did not
+        // collapse whitespace runs, and -- the one that matters -- did NOT escape embedded
+        // double quotes. This field is vendor free text, so a GSX message containing a "
+        // closed the field early and broke the target=… identifierSent=… scan this log is
+        // read by eye for: unparseable exactly on the malformed input that prompted the
+        // report. Quote() also renders an empty value as (none), which is what the manual
+        // IsNullOrWhiteSpace branch was doing.
+        string message = GsxDiagnosticLog.Quote(result.Message);
+        // Appended ONLY when true, so an ordinary line keeps the exact
+        // target=… identifierSent=… shape this log is scanned by eye for, while the one
+        // anomaly worth grepping ("GSX prepared a stand I did not ask for") has a token.
+        string mismatch = result.ResolvedGateContradictsRequest ? " resolvedMismatch=true" : "";
+        return
+            $"target={GsxDiagnosticLog.Quote(label)} " +
+            $"identifierSent={GsxDiagnosticLog.QuoteVerbatim(identifier)} " +
+            $"revokeServices={revokeServices} " +
+            $"outcome={result.Outcome} {resolved} warnings={warnings} " +
+            $"rawCode={result.RawCode ?? "(none)"} message={message}{mismatch}";
     }
 }
