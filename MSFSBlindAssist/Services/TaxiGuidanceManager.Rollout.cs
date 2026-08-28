@@ -802,12 +802,19 @@ public partial class TaxiGuidanceManager
                         // words, stationary on an active runway with nothing telling them what
                         // to do.
                         //
-                        // Fired on the FIRST decline, not on a later "stopped" test. Every
-                        // trigger that can reach this branch is already slow and near the exit
-                        // (exitedLaterally and alignedWithExit are excluded by the two conjuncts
-                        // above; turnBegun, speedNearExitHandoff and trulyStopped are what is
-                        // left), so this is never spoken over a fast rollout. Waiting for
-                        // trulyStopped would instead leave the CREEPING case silent: a
+                        // Fired on the FIRST decline, not on a later "stopped" test. The
+                        // triggers that can reach this branch (exitedLaterally and
+                        // alignedWithExit are excluded by the two conjuncts above; turnBegun,
+                        // speedNearExitHandoff and trulyStopped are what is left) are near the
+                        // exit, but NOT all slow: RolloutExitGate.IsExitTurnBegun permits up to
+                        // TurnMaxGroundSpeedKts (90 kt), well above the 30 kt this file treats
+                        // as taxi speed, so turnBegun can reach this branch at rollout speed —
+                        // corrected 2026-08-27, an earlier version of this comment claimed
+                        // otherwise. That does not change the outcome: the sentence is still
+                        // accurate and useful at 90 kt (the exit genuinely is still ahead), and
+                        // it is one-shot, so speaking it early costs nothing even on a fast
+                        // frame. Waiting for trulyStopped would instead leave the CREEPING case
+                        // silent: a
                         // speedNearExitHandoff decline reaches here anywhere inside
                         // ROLLOUT_NEAR_EXIT_FT (500 ft), and 300–500 ft of that overlaps the
                         // turn-window Silent band — so an aircraft crawling at 4 kt, above
@@ -1880,6 +1887,23 @@ public partial class TaxiGuidanceManager
 
             if (error == null)
             {
+                // The crossing-decline ANNOUNCEMENT latch is scoped to whichever exit it last
+                // fired for, not to the rollout as a whole (PR review, 2026-08-27). Retargeting
+                // here to a DIFFERENT exit (e.g. the undershoot retarget below) must re-arm it:
+                // if X's crossing route already declined and announced, and the graph's
+                // no-runway-edges defect produces a crossing route for Y too, a stale latch
+                // would silently withhold "Continue rolling to Y..." — leaving the pilot
+                // stationary and silent again, for a different exit, which is exactly the
+                // hazard this announcement exists to close. Deliberately NOT mirrored to
+                // _rolloutCrossingDeclinedUtc (the retry floor, a few lines below the latch's
+                // field declaration): that field only bounds CPU/log churn, and a stale floor
+                // merely delays the new exit's first handoff attempt by under a second — cheap
+                // enough that widening this reset to it too would just be an extra line with no
+                // benefit. The floor and the latch protect different things; don't fold them
+                // back into one reset just because they sit next to each other.
+                if (_rolloutExit.NodeId != candidate.NodeId)
+                    _rolloutCrossingDeclineAnnounced = false;
+
                 _rolloutExit = candidate;
                 _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
                 ResetRolloutApproachLatches();

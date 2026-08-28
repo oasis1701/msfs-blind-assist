@@ -887,7 +887,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // One-shot latch for the spoken "keep rolling to the exit" instruction that a
     // runway-re-crossing decline speaks. The decline itself repeats at the retry floor
     // (~1 Hz); the SENTENCE must not. Reset alongside _rolloutCrossingDeclinedUtc at all
-    // four rollout reset sites. See RolloutRunwayReCrossing.ComposeContinueToExit.
+    // four rollout reset sites, PLUS a fifth: RetargetLandingExit re-arms it when the
+    // targeted exit actually changes, so a decline latched for the abandoned exit can't
+    // silently swallow the announcement for the new one (PR review, 2026-08-27). The
+    // retry floor _rolloutCrossingDeclinedUtc is deliberately NOT given that fifth reset
+    // — it only bounds CPU/log churn, so a stale floor costs under a second, while a
+    // stale latch withholds information from the pilot. See
+    // RolloutRunwayReCrossing.ComposeContinueToExit.
     private bool _rolloutCrossingDeclineAnnounced = false;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call

@@ -103,7 +103,12 @@ public static class RolloutRunwayReCrossing
     /// <param name="distanceAheadFeet">
     /// Straight-line feet to the exit node — the same quantity the 1500/900/500 ft approach
     /// callouts use, so the number is calibrated against what the pilot has already heard.
-    /// Zero or less drops the distance clause rather than announcing "0 feet".
+    /// Zero or less drops the distance clause rather than announcing "0 feet"; so does any
+    /// positive input that <see cref="Services.DistanceFormatter.FromFeet"/> itself rounds
+    /// down to zero (feet mode rounds to the nearest 25 ft below 200 ft, so anything under
+    /// ~12.5 ft, or ~2.5 m in metres mode, still renders "0 feet"/"0 metres" despite passing
+    /// the raw &lt;= 0.0 check — reviewer-confirmed, e.g. 8 ft and 10 ft both produced
+    /// "0 feet ahead").
     /// </param>
     public static string ComposeContinueToExit(string? taxiwayName, double distanceAheadFeet)
     {
@@ -113,6 +118,14 @@ public static class RolloutRunwayReCrossing
         if (distanceAheadFeet <= 0.0)
             return $"Continue rolling to {exit}.";
         string dist = Services.DistanceFormatter.FromFeet(distanceAheadFeet);
+        // Inspect the FORMATTED string rather than duplicating DistanceFormatter's rounding
+        // thresholds (25 ft / 5 m step sizes) here as a second magic-number guard: a "0 " lead
+        // is true whenever the display would say zero, in either unit, and stays true if those
+        // step sizes ever change. The method's own doc promises the distance clause is dropped
+        // rather than announcing "0 feet" — this is what makes that hold for every input, not
+        // just literal zero.
+        if (dist.StartsWith("0 ", StringComparison.Ordinal))
+            return $"Continue rolling to {exit}.";
         return $"Continue rolling to {exit}, {dist} ahead.";
     }
 }

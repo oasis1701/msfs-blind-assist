@@ -166,6 +166,55 @@ public class RolloutCrossingDeclinePhraseTests
             RolloutRunwayReCrossing.ComposeContinueToExit("B1", -30));
     }
 
+    // A positive input can still round DOWN to zero: DistanceFormatter.FromFeet rounds to the
+    // nearest 25 ft below 200 ft, so 12.5 ft is the round-half-to-even tie and anything at or
+    // below it renders "0 feet" — reviewer-confirmed live with 8 ft and 10 ft, both producing
+    // "Continue rolling to taxiway B1, 0 feet ahead." before this fix. This window was entirely
+    // unmeasured by the existing zero/negative case above (that only pins the raw input <= 0.0
+    // path, a different code branch).
+    [Theory]
+    [InlineData(0.1)]
+    [InlineData(8.0)]
+    [InlineData(10.0)]
+    [InlineData(12.0)]
+    [InlineData(12.5)]
+    public void A_distance_that_rounds_down_to_zero_feet_drops_the_clause(double feet)
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        Assert.Equal("Continue rolling to taxiway B1.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", feet));
+    }
+
+    [Fact]
+    public void A_distance_just_above_the_rounds_to_zero_feet_window_still_speaks_it()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        Assert.Equal("Continue rolling to taxiway B1, 25 feet ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 13.0));
+    }
+
+    // Same rounds-to-zero hazard in metres mode: below ~2.5 m (~8.2 ft) FromFeet's 5 m step
+    // rounds down to zero too, on an entirely independent code path from the feet case above.
+    [Fact]
+    public void A_distance_that_rounds_down_to_zero_metres_drops_the_clause()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Metres;
+        Assert.Equal("Continue rolling to taxiway B1.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 8.0));
+    }
+
+    [Fact]
+    public void A_distance_just_above_the_rounds_to_zero_metres_window_still_speaks_it()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Metres;
+        Assert.Equal("Continue rolling to taxiway B1, 5 metres ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 9.0));
+    }
+
     // The safety constraints, stated as tests so a later reword cannot quietly break them.
     [Theory]
     [InlineData("B1", 1500.0)]
