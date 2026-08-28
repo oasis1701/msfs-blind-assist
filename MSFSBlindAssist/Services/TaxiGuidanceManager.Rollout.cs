@@ -82,6 +82,7 @@ public partial class TaxiGuidanceManager
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
+            _rolloutCrossingDeclinedUtc = DateTime.MinValue;
             // Defense in depth: clear no-exit/runway-end state from any prior
             // rollout. StopGuidance does this; matching the pattern here
             // ensures we never inherit stale flags when starting a fresh
@@ -211,6 +212,7 @@ public partial class TaxiGuidanceManager
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
+            _rolloutCrossingDeclinedUtc = DateTime.MinValue;
             _rolloutNoExitMode = false;
             _rolloutHandoffActive = false;
             _rolloutEnd1500Announced = false;
@@ -468,7 +470,19 @@ public partial class TaxiGuidanceManager
         bool speedNearExitHandoff = atTaxiSpeed && nearExit && !pastExit
                                     && _rolloutExit.ExitType != "High-speed";
 
-        if (turnBegun || exitedLaterally || alignedWithExit || speedNearExitHandoff || trulyStopped)
+        // Retry floor after a runway-re-crossing decline. Every other exit from this block
+        // leaves LandingRollout or stops guidance, so it is one-shot and needs no latch;
+        // the crossing decline below is the only path that stays and returns, which makes
+        // the block re-entrant on the very next SIM_FRAME. See
+        // ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why that has to be bounded — and why this
+        // is a floor rather than a latch. DateTime.MinValue (no decline this rollout)
+        // makes the term trivially true, so the normal path is unchanged.
+        bool crossingRetryFloorElapsed =
+            (DateTime.UtcNow - _rolloutCrossingDeclinedUtc).TotalSeconds
+                >= ROLLOUT_CROSSING_RETRY_FLOOR_SEC;
+
+        if ((turnBegun || exitedLaterally || alignedWithExit || speedNearExitHandoff || trulyStopped)
+            && crossingRetryFloorElapsed)
         {
             RolloutDiag($"UpdateLandingRollout HANDOFF -> Taxiing: " +
                 $"turnBegun={turnBegun} exitedLaterally={exitedLaterally} alignedWithExit={alignedWithExit} " +
@@ -700,6 +714,66 @@ public partial class TaxiGuidanceManager
                         $"aircraft off the runway — concluding rather than steering across it");
                     // Same reason split as the guard's original site: only claim "short of X"
                     // when an early vacate was actually established.
+                    if (_landingExitVacatedEarlyPlannedName != null)
+                        _landingExitVacatedEarly = true;
+                    else
+                        _landingExitRouteUnreachable = true;
+                    _rolloutHandoffActive = false;
+                    SetState(TaxiGuidanceState.Taxiing);
+                    HandleArrival();
+                    return;
+                }
+
+                // Second WHOLE-ROUTE guard, on the same footing as the reachability guard
+                // above: after the re-anchor, judged from _currentSegmentIndex — the segment
+                // the tone is actually about to steer at.
+                //
+                // KATL 26R 2026-08-27: the aircraft rolled past B1 without turning, the
+                // overshoot monitor retargeted to exit A on the NORTH side, and A* — which
+                // has no runway edges to route along — built a 427 m loop: off at B1 to the
+                // south, west along B, then back north across the 08L threshold at 22 kt.
+                // The reachability guard passed it, and could not have caught it: it
+                // measures only the FIRST segment's cross-track, and B1 started right at
+                // the aircraft.
+                var landingCenterline = Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
+                    _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID);
+                if (Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
+                        _route.Segments, _currentSegmentIndex, landingCenterline))
+                {
+                    string rwyName = _rolloutRunway?.RunwayID ?? "the runway";
+
+                    // Still SHORT of the exit → the exit is AHEAD and reachable by simply
+                    // continuing. Decline the handoff and keep flying the rollout: state
+                    // stays LandingRollout, so the rollout's own exit-bearing tone keeps
+                    // steering and the pilot rolls to the turnoff. That is the whole
+                    // distinction — turning off onto a taxiway on the far side is a vacate,
+                    // driving across the pavement to reach it is not.
+                    if (signedAlongPastFt < 0.0)
+                    {
+                        RolloutDiag($"Handoff route re-crosses runway {rwyName} and the exit is still " +
+                            $"{-signedAlongPastFt:F0} ft ahead — declining the handoff, staying in " +
+                            $"LandingRollout and steering to the exit");
+                        // Stamped so the block is not re-entered on the very next frame:
+                        // see ROLLOUT_CROSSING_RETRY_FLOOR_SEC. This is the only path out
+                        // of this block that stays in LandingRollout, so it is the only one
+                        // that needs it.
+                        _rolloutCrossingDeclinedUtc = DateTime.UtcNow;
+                        // Restore the pre-handoff value: the top of this block armed the
+                        // post-handoff overshoot monitor on the assumption it ends in Taxiing.
+                        _rolloutHandoffActive = false;
+                        SetState(TaxiGuidanceState.LandingRollout);
+                        return;
+                    }
+
+                    // At or past the exit with no route off this side. Conclude, with the
+                    // same reason split the reachability guard uses: only claim "short of X"
+                    // when an early vacate was actually established, so a pilot who turned
+                    // off AT or BEYOND their exit is never told they left the runway short
+                    // of it. Read from the carried-across local's field, restored above
+                    // after LoadRoute's fresh-route reset blanked it.
+                    RolloutDiag($"Handoff route re-crosses runway {rwyName} at or past the exit " +
+                        $"(signedAlongPast={signedAlongPastFt:F0} ft) — concluding rather than " +
+                        $"driving back across it; exits considered {DescribeExits(_rolloutAllExits)}");
                     if (_landingExitVacatedEarlyPlannedName != null)
                         _landingExitVacatedEarly = true;
                     else
@@ -1357,6 +1431,56 @@ public partial class TaxiGuidanceManager
                 // only clears the paused flag on a disposed generator.
                 return true;
             }
+
+            // Same whole-route crossing guard as the UpdateLandingRollout handoff —
+            // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
+            // identically, and this method was the last ungated one once before
+            // (commit 29b8bcbf). See the other site for the KATL 26R defect.
+            var landingCenterline = Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
+                _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID);
+            if (Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
+                    _route.Segments, _currentSegmentIndex, landingCenterline))
+            {
+                RolloutDiag($"TryEarlyExitHandoff: route re-crosses runway " +
+                    $"{_rolloutRunway?.RunwayID ?? "?"} — declining the early handoff and " +
+                    $"staying in LandingRollout");
+
+                // Unwind everything this method set after the bearing-sanity reject above,
+                // so the machine is left exactly as if the attempt had never run.
+                //
+                // Discard the rejected route, mirroring that reject's own rationale — it
+                // "would feed the off-route detector once state moves to Taxiing" — which
+                // applies with more force here: a route that drives across the landing
+                // runway is the last thing that detector should be chasing. Nothing good is
+                // lost, since the LoadRoute above already overwrote the touchdown route.
+                // This does NOT collide with the "a path landing in Taxiing with a null
+                // _route must stop the steering tone first" rule: that rule is about
+                // Taxiing, where the tone is driven by _route. We stay in LandingRollout,
+                // where UpdateLandingRollout drives the tone from the exit BEARING and
+                // never reads _route — so the pilot keeps a steering cue throughout.
+                _route = null;
+                _destinationNodeId = 0;
+                _postHighSpeedExitMinBearing = 0.0;
+                // Was false before this method ran; the handoff is being declined, so the
+                // post-handoff overshoot monitor must not be left armed. Harmless today
+                // only because both of its consumers sit behind a _state == Taxiing gate,
+                // which is exactly the kind of accidental safety this file has been bitten
+                // by before.
+                _rolloutHandoffActive = false;
+
+                // No retry floor is needed here (unlike the UpdateLandingRollout site): the
+                // caller latches _rolloutEarlyHandoffDone = true before calling, so this
+                // method is genuinely one-shot per exit and cannot re-enter per frame.
+                //
+                // FALSE, not true: false means "handoff declined, keep flying the rollout",
+                // which is exactly right here — the early handoff fires SHORT of the exit,
+                // so the exit is by construction still ahead and reachable by continuing.
+                // LoadRoute left state at RouteLoaded, so restore LandingRollout the way the
+                // bearing-sanity reject above does, or the machine is stranded with no tone
+                // and "Where am I" reporting no active route.
+                SetState(TaxiGuidanceState.LandingRollout);
+                return false;
+            }
         }
 
         SetState(TaxiGuidanceState.Taxiing);
@@ -1959,6 +2083,12 @@ public partial class TaxiGuidanceManager
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        // Defence in depth, matching the _rolloutEnd*Announced resets above: setting
+        // _rolloutNoExitMode below makes UpdateLandingRollout divert into
+        // UpdateRunwayEndCountdown before the handoff block can be reached at all, so
+        // this cannot currently be stale here — but the rollout latches are reset at all
+        // four sites by rule, not by whichever of them happens to be reachable today.
+        _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _rolloutNoExitMode = true;
         _offRouteSince = DateTime.MinValue;
         _steeringTone.Pause();

@@ -880,6 +880,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
     private DateTime _lastUndershootRetargetTime = DateTime.MinValue;
+    // Timestamp of the last handoff declined because the re-routed path re-crossed
+    // the landing runway (RolloutRunwayReCrossing). DateTime.MinValue = no decline
+    // yet this rollout. See ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why this exists.
+    private DateTime _rolloutCrossingDeclinedUtc = DateTime.MinValue;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
     // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
@@ -984,6 +988,33 @@ public partial class TaxiGuidanceManager : IDisposable
     // the cutoff GS still lines up.
     private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
     private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
+
+    // Minimum gap before the handoff block is re-entered after a handoff was DECLINED
+    // for re-crossing the landing runway (see the RolloutRunwayReCrossing guard in
+    // UpdateLandingRollout). Every other exit from that block either moves the state
+    // out of LandingRollout or stops guidance, so the block is one-shot today and needs
+    // no latch; the crossing decline is the first path that stays in LandingRollout and
+    // returns, which makes it re-entrant on the very next position frame.
+    //
+    // That matters because the block runs at SIM_FRAME rate (StartTaxiGuidanceMonitoring
+    // requests SIMCONNECT_PERIOD.SIM_FRAME) on the UI thread, and it performs an
+    // unconditional LoadRoute — a full-graph A* — before the guard is reached. Without a
+    // floor an aircraft stopped short of the exit would run that A* 30-60 times a second
+    // forever, against the hot-path perf invariants, and the decline's unthrottled
+    // RolloutDiag lines would churn landing_exit.log through its 5 MB x 3 rotation in
+    // minutes — evicting the evidence for exactly the incident class this guard exists
+    // to catch. The two triggers that persist frame-to-frame (speedNearExitHandoff,
+    // trulyStopped) both require !pastExit, which IS the decline condition, so the loop
+    // is guaranteed in precisely the case the decline branch is for.
+    //
+    // A FLOOR, deliberately, not a per-exit latch: a latch would also block a legitimate
+    // turnBegun / exitedLaterally handoff if the pilot does turn onto the exit, and the
+    // route recomputed from that new position would very likely no longer cross. One
+    // second bounds the cost to ~1 A* per second while still re-evaluating often enough
+    // that a real turn is picked up promptly and the conclude branch fires as soon as the
+    // aircraft reaches the exit. The delay costs the pilot nothing audible: the rollout
+    // stays in LandingRollout, where its own exit-bearing steering tone keeps sounding.
+    private const double ROLLOUT_CROSSING_RETRY_FLOOR_SEC = 1.0;
 
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
@@ -3028,6 +3059,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
         _backtrackDeparture = false;
