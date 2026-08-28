@@ -128,4 +128,89 @@ public static class RolloutRunwayReCrossing
             return $"Continue rolling to {exit}.";
         return $"Continue rolling to {exit}, {dist} ahead.";
     }
+
+    /// <summary>
+    /// The declining frame's ONE utterance: <see cref="ComposeContinueToExit"/> plus the only
+    /// content the rollout callouts it retires would have added that the instruction does not
+    /// already carry.
+    ///
+    /// <para>Why it is one utterance and not two announcements (PR review, 2026-08-27). The
+    /// decline speaks through <c>AnnounceInstruction</c>, i.e. <c>AnnounceImmediate</c>, and
+    /// then RETURNS — before the approach/turn-now callout block, so none of that block's
+    /// latches are set. On the very next frame (~16 ms) the crossing retry floor skips the
+    /// handoff block, execution reaches the callouts, and one of them fires its own
+    /// <c>AnnounceImmediate</c>, truncating a sentence that is one-shot and therefore
+    /// unrecoverable. It is not a coincidence either: <c>speedNearExitHandoff</c> requires
+    /// <c>distToExitFeet &lt; ROLLOUT_NEAR_EXIT_FT</c> (500 ft) and the 500 ft approach
+    /// milestone triggers on that same boundary, so on any rollout already at taxi speed at
+    /// 500 ft — the live 22 kt KATL trace included — both are true on ONE frame.</para>
+    ///
+    /// <para>This is the sixth instance of this codebase's two-announcements-stomp-each-other
+    /// pattern, and every previous resolution (<c>4837e45d</c>, <c>6891c0e7</c>,
+    /// <c>86744893</c>, <c>b772e845</c>, <c>c2b69455</c>) landed on the same remedy: compose
+    /// ONE utterance rather than let two race. The alternative shapes were both worse. Setting
+    /// the approach latch and saying nothing else throws away the <i>"Slow down."</i> advice
+    /// and the turn direction. Suppressing the decline and letting the callout carry it throws
+    /// away the instruction itself — <i>"Taxiway A, 500 feet. Slow down."</i> tells a pilot who
+    /// has braked to a stop on an active runway neither that the exit is still ahead nor to
+    /// keep rolling to it, which is the entire state this announcement exists to end.</para>
+    /// </summary>
+    /// <param name="slowDown">
+    /// The 500 ft cue's own <i>"Slow down."</i> suffix, when that cue is being retired and its
+    /// conditions hold (not a high-speed exit, above taxi speed). Nothing else of that cue is
+    /// folded in: it renders as "{name}, 500 feet.", and the sentence in front of it already
+    /// gives the same name with a LIVE distance.
+    /// </param>
+    /// <param name="turnPhrase">
+    /// "Turn left" / "Gentle right" when the turn-now cue is being retired — the one thing it
+    /// carries that no distance sentence can. Null or blank adds nothing. It lands LAST
+    /// because it is the action and the sentence ahead of it is the action's premise.
+    /// </param>
+    public static string ComposeDeclineUtterance(
+        string? taxiwayName, double distanceAheadFeet, bool slowDown, string? turnPhrase)
+    {
+        string s = ComposeContinueToExit(taxiwayName, distanceAheadFeet);
+        if (slowDown) s += " Slow down.";
+        if (!string.IsNullOrWhiteSpace(turnPhrase)) s += $" {turnPhrase.Trim()} now.";
+        return s;
+    }
+
+    /// <summary>Feet per second in one knot. Matches <c>GroundTrafficMonitor</c>'s own.</summary>
+    private const double FeetPerSecondPerKnot = 1.6878;
+
+    /// <summary>
+    /// True when a rollout callout armed at <paramref name="calloutTriggerFeet"/> is superseded
+    /// by a crossing-decline utterance spoken at <paramref name="distanceAheadFeet"/> — i.e.
+    /// the caller should mark it announced and fold whatever it uniquely adds into that one
+    /// utterance instead of letting it fire on its own.
+    ///
+    /// <para>TWO halves, and both are needed. "Already inside" (<c>distance &lt;= trigger</c>)
+    /// is what closes the structural 500 ft collision described on
+    /// <see cref="ComposeDeclineUtterance"/>. The speed-derived lead closes the band just ABOVE
+    /// a trigger, where the callout is a frame or two away and would truncate the sentence just
+    /// as completely — a <c>trulyStopped</c> or <c>turnBegun</c> decline at 1,501 ft reaches the
+    /// 1,500 ft milestone in a fifth of a second.</para>
+    ///
+    /// <para>The lead is a TIME, converted to distance at the aircraft's own ground speed,
+    /// rather than a tuned distance constant: it then self-scales across the 0–90 kt range the
+    /// decline branch actually spans (<c>RolloutExitGate.IsExitTurnBegun</c> permits up to
+    /// 90 kt) and it degrades correctly at rest — a stopped aircraft can never reach the next
+    /// trigger, so it supersedes nothing ahead of it and keeps its whole countdown. Getting the
+    /// time slightly wrong is mild in both directions: too short returns a narrow band to
+    /// today's behaviour, too long retires a distance restatement marginally early. It is NOT
+    /// the kind of speech-duration estimate CLAUDE.md forbids — nothing here mutes speech.</para>
+    ///
+    /// <para>Deliberately NOT applied to the turn-now cue's own trigger by the caller: "now" is
+    /// time-critical, and retiring it a lead-window early would speak it hundreds of feet out
+    /// at rollout speed. See the call site for the truncation that asymmetry accepts.</para>
+    /// </summary>
+    public static bool DeclineSupersedesCallout(
+        double distanceAheadFeet, double calloutTriggerFeet,
+        double groundSpeedKts, double leadSeconds)
+    {
+        if (distanceAheadFeet <= calloutTriggerFeet) return true;
+        if (groundSpeedKts <= 0.0 || leadSeconds <= 0.0) return false;
+        return distanceAheadFeet - calloutTriggerFeet
+            <= groundSpeedKts * FeetPerSecondPerKnot * leadSeconds;
+    }
 }

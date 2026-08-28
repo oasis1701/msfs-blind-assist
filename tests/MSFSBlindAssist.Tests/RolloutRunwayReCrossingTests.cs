@@ -233,3 +233,177 @@ public class RolloutCrossingDeclinePhraseTests
         Assert.StartsWith("Continue rolling to ", s, System.StringComparison.Ordinal);
     }
 }
+
+// The decline sentence is an AnnounceImmediate, and the branch that speaks it RETURNS before
+// the approach/turn-now callout block, so those callouts' latches are left unset. The very
+// next frame (~16 ms) the crossing retry floor skips the handoff block, execution reaches the
+// callouts, and one of them fires its own AnnounceImmediate -- truncating a one-shot sentence
+// that can never be re-spoken. Not a corner case: speedNearExitHandoff needs
+// distToExitFeet < ROLLOUT_NEAR_EXIT_FT (500 ft) and the 500 ft approach milestone triggers on
+// that same boundary, so on any rollout already at taxi speed at 500 ft -- the live 22 kt KATL
+// trace included -- both are true on the SAME frame.
+//
+// Sixth instance of this codebase's two-announcements-stomp-each-other pattern. The house
+// remedy every previous time (4837e45d, 6891c0e7, 86744893, b772e845, c2b69455) is ONE
+// utterance, so the decline composes one: its own instruction plus whatever the callouts it
+// retires would have added that it does not already carry.
+[Collection("DistanceUnitGlobalState")]
+public class RolloutCrossingDeclineUtteranceTests
+{
+    private static void Feet() =>
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+
+    [Fact]
+    public void With_nothing_folded_in_it_is_exactly_the_continue_sentence()
+    {
+        Feet();
+        Assert.Equal(
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 900),
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 900, slowDown: false, turnPhrase: null));
+    }
+
+    // "Slow down." is the ONLY thing the 500 ft cue adds that the continue sentence does not
+    // already carry -- that cue is "{name}, 500 feet." plus the suffix, and the continue
+    // sentence gives the same name with a LIVE distance.
+    [Fact]
+    public void The_slow_down_advice_the_five_hundred_foot_cue_would_have_added_is_folded_in()
+    {
+        Feet();
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 450 feet ahead. Slow down.",
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 450, slowDown: true, turnPhrase: null));
+    }
+
+    // The turn DIRECTION is the one thing the turn-now cue carries that no distance sentence
+    // can. It lands last: it is the action, and the sentence in front of it is its premise.
+    [Fact]
+    public void The_turn_direction_lands_last_in_the_one_utterance()
+    {
+        Feet();
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 125 feet ahead. Turn left now.",
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 125, slowDown: false, turnPhrase: "Turn left"));
+    }
+
+    [Fact]
+    public void Both_extras_read_as_one_ordered_utterance()
+    {
+        Feet();
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 150 feet ahead. Slow down. Gentle right now.",
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 150, slowDown: true, turnPhrase: "Gentle right"));
+    }
+
+    [Fact]
+    public void A_blank_turn_phrase_adds_nothing()
+    {
+        Feet();
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 300 feet ahead.",
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 300, slowDown: false, turnPhrase: "   "));
+    }
+
+    // The base sentence's own rules survive the fold: a distance that renders as zero still
+    // drops the clause rather than announcing "0 feet ahead".
+    [Fact]
+    public void A_rounds_to_zero_distance_still_drops_the_clause_with_extras_folded_in()
+    {
+        Feet();
+        Assert.Equal(
+            "Continue rolling to taxiway B1. Turn left now.",
+            RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 8.0, slowDown: false, turnPhrase: "Turn left"));
+    }
+
+    // The same three safety constraints ComposeContinueToExit is pinned against, re-checked
+    // over the folded form -- the fold is where a later edit could smuggle "hold" back in.
+    [Theory]
+    [InlineData(true, "Turn left")]
+    [InlineData(true, null)]
+    [InlineData(false, "Gentle right")]
+    public void It_never_says_stop_or_hold_and_never_claims_the_runway_is_clear(
+        bool slowDown, string? turnPhrase)
+    {
+        Feet();
+        string s = RolloutRunwayReCrossing.ComposeDeclineUtterance("B1", 400, slowDown, turnPhrase);
+        Assert.DoesNotContain("stop", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hold", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("clear", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("vacat", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Continue rolling to ", s, System.StringComparison.Ordinal);
+    }
+}
+
+// Which callouts a decline retires. The "already inside" half is what closes the structural
+// 500 ft collision; the speed-derived lead half closes the near-miss band just above a
+// trigger, where the callout is only a frame or two away and would truncate just as
+// completely.
+public class RolloutCrossingDeclineSupersedeTests
+{
+    private const double Lead = 4.0;
+
+    [Fact]
+    public void A_callout_the_aircraft_is_already_inside_is_superseded()
+    {
+        // The live KATL shape: speedNearExitHandoff fires below 500 ft, the 500 ft milestone
+        // triggers at 500 ft, so both are true on one frame.
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(475, 500, 22, Lead));
+    }
+
+    [Fact]
+    public void The_boundary_itself_counts_as_inside()
+    {
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(500, 500, 22, Lead));
+    }
+
+    // 22 kt is 37.1 ft/s, so four seconds of lead is ~148 ft: a callout 100 ft ahead would
+    // fire inside the utterance and is retired; one 200 ft ahead is left armed and speaks
+    // normally later, which is the countdown the pilot still wants.
+    [Fact]
+    public void A_callout_reachable_within_the_lead_window_is_superseded()
+    {
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(600, 500, 22, Lead));
+    }
+
+    [Fact]
+    public void A_callout_beyond_the_lead_window_stays_armed()
+    {
+        Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(700, 500, 22, Lead));
+    }
+
+    // A stopped aircraft can never reach the next trigger, so nothing ahead of it is
+    // superseded and the countdown is preserved intact for when it starts rolling again.
+    // trulyStopped is one of the triggers that reaches the decline branch, so this is a real
+    // state, not a defensive one.
+    [Fact]
+    public void A_stopped_aircraft_supersedes_nothing_ahead_of_it()
+    {
+        Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(501, 500, 0, Lead));
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(499, 500, 0, Lead));
+    }
+
+    [Fact]
+    public void The_lead_scales_with_speed()
+    {
+        // 90 kt is the ceiling IsExitTurnBegun permits, and covers ~608 ft in four seconds.
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(1000, 500, 90, Lead));
+        Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(1000, 500, 22, Lead));
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    public void A_non_positive_lead_degrades_to_the_inside_test_alone(double lead)
+    {
+        Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(501, 500, 90, lead));
+        Assert.True(RolloutRunwayReCrossing.DeclineSupersedesCallout(500, 500, 90, lead));
+    }
+
+    [Fact]
+    public void A_negative_ground_speed_never_supersedes_anything_ahead()
+    {
+        // Defensive: a SimConnect ground speed should never be negative, but a lead computed
+        // from one would run BACKWARDS and retire a callout the aircraft is moving away from.
+        Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(600, 500, -20, Lead));
+    }
+}

@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -814,8 +814,7 @@ public partial class TaxiGuidanceManager
                         // accurate and useful at 90 kt (the exit genuinely is still ahead), and
                         // it is one-shot, so speaking it early costs nothing even on a fast
                         // frame. Waiting for trulyStopped would instead leave the CREEPING case
-                        // silent: a
-                        // speedNearExitHandoff decline reaches here anywhere inside
+                        // silent: a speedNearExitHandoff decline reaches here anywhere inside
                         // ROLLOUT_NEAR_EXIT_FT (500 ft), and 300–500 ft of that overlaps the
                         // turn-window Silent band — so an aircraft crawling at 4 kt, above
                         // ROLLOUT_NO_EXIT_STOPPED_GS_KTS and therefore never "stopped", would
@@ -826,12 +825,92 @@ public partial class TaxiGuidanceManager
                         // Latched, NOT floored: the decline repeats at ~1 Hz and a sentence a
                         // second would be worse than silence. AnnounceInstruction, the same
                         // call the neighbouring rollout callouts use — no new speech path.
+                        //
+                        // ONE utterance, composed here, NOT two announcements racing (PR
+                        // review, 2026-08-27). AnnounceInstruction is AnnounceImmediate and
+                        // this branch RETURNS before the approach/turn-now callout block
+                        // below, so that block's latches are never set. On the very next
+                        // frame (~16 ms) the crossing retry floor suppresses the handoff
+                        // block, execution reaches the callouts, and one of them fires its own
+                        // AnnounceImmediate — truncating a sentence that is one-shot and
+                        // therefore unrecoverable (Ctrl+Y replays the later callout, not
+                        // this). Structural, not coincidental: speedNearExitHandoff requires
+                        // distToExitFeet < ROLLOUT_NEAR_EXIT_FT (500 ft) and the 500 ft
+                        // milestone triggers on that same boundary, so on any rollout already
+                        // at taxi speed at 500 ft — the live 22 kt KATL trace included — both
+                        // are true on ONE frame. Sixth instance of this codebase's
+                        // two-announcements-stomp-each-other pattern; see
+                        // RolloutRunwayReCrossing.ComposeDeclineUtterance for why the house
+                        // remedy (one utterance) beats the two alternatives here.
                         if (!_rolloutCrossingDeclineAnnounced)
                         {
                             _rolloutCrossingDeclineAnnounced = true;
+
+                            // Every approach milestone this sentence supersedes is RETIRED
+                            // rather than folded in: each renders as "{exit name}, {round
+                            // number}", and the sentence about to be spoken gives the same
+                            // name with a LIVE distance. Only what they uniquely add is
+                            // folded — the 500 ft cue's "Slow down.", and (inside the turn
+                            // window) the turn DIRECTION. Milestones still further ahead than
+                            // the lead window are left armed and speak normally later, so the
+                            // countdown a rolling pilot depends on survives the decline.
+                            //
+                            // _rolloutExit captured once: the compiler's null-state for the
+                            // field is reset by the intervening calls, and
+                            // UpdateLandingRollout's own null-exit guard has already run.
+                            var declineExit = _rolloutExit!;
+                            var xmDecline = DistanceMilestones.ExitApproach();
+                            bool Supersedes(double triggerMetres) =>
+                                Navigation.RolloutRunwayReCrossing.DeclineSupersedesCallout(
+                                    distToExitFeet,
+                                    triggerMetres / DistanceFormatter.MetresPerFoot,
+                                    groundSpeedKts,
+                                    ROLLOUT_DECLINE_CALLOUT_LEAD_SEC);
+
+                            bool retire1500 = !_rolloutApproach1500Announced && Supersedes(xmDecline[0].TriggerMetres);
+                            bool retire900  = !_rolloutApproach900Announced  && Supersedes(xmDecline[1].TriggerMetres);
+                            bool retire500  = !_rolloutApproach500Announced  && Supersedes(xmDecline[2].TriggerMetres);
+
+                            // Turn-now uses the STRICT inside test, no lead window: "now" is
+                            // time-critical, and a speed-derived lead would speak it up to
+                            // ~600 ft out at the 90 kt IsExitTurnBegun permits. The accepted
+                            // cost is a moving decline between ROLLOUT_TURN_NOW_FT and roughly
+                            // twice it, where turn-now comes due mid-sentence and truncates
+                            // it. That is the one truncation worth having: "Turn left now,
+                            // taxiway A." carries the exit name AND the more urgent
+                            // instruction, so the pilot is never left silent or uninformed —
+                            // which is the state this whole announcement exists to prevent.
+                            bool retireTurnNow = !_rolloutTurnNowAnnounced
+                                && distToExitFeet <= ROLLOUT_TURN_NOW_FT;
+
+                            bool slowDown = retire500
+                                && declineExit.ExitType != "High-speed"
+                                && groundSpeedKts > ROLLOUT_TAXI_GS_KTS;
+
+                            if (retire1500) _rolloutApproach1500Announced = true;
+                            if (retire900) _rolloutApproach900Announced = true;
+                            if (retire500) _rolloutApproach500Announced = true;
+                            if (retireTurnNow)
+                            {
+                                _rolloutTurnNowAnnounced = true;
+                                // The turn-now block's own side effect, reproduced because
+                                // retiring it means that block will never run. Normal exits
+                                // (50–110°): reset the heading-error smoother so the
+                                // ExitBearingTrue-based tone starts with a sharp hard-pan.
+                                if (declineExit.ExitType == "Normal" && declineExit.ExitBearingTrue > 0.0)
+                                    _headingErrorInitialized = false;
+                            }
+
+                            RolloutDiag($"Crossing-decline utterance: distToExit={distToExitFeet:F0}ft " +
+                                $"gs={groundSpeedKts:F1}kt retire1500={retire1500} retire900={retire900} " +
+                                $"retire500={retire500} retireTurnNow={retireTurnNow} slowDown={slowDown}");
+
                             AnnounceInstruction(
-                                Navigation.RolloutRunwayReCrossing.ComposeContinueToExit(
-                                    _rolloutExit?.TaxiwayName, distToExitFeet));
+                                Navigation.RolloutRunwayReCrossing.ComposeDeclineUtterance(
+                                    declineExit.TaxiwayName,
+                                    distToExitFeet,
+                                    slowDown,
+                                    retireTurnNow ? ComposeExitTurnPhrase(lat, lon, headingTrue) : null));
                         }
 
                         SetState(TaxiGuidanceState.LandingRollout);
@@ -1134,7 +1213,7 @@ public partial class TaxiGuidanceManager
                 _rolloutApproach900Announced = true;
             }
 
-            if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > 150.0)   // feet — turn-now handoff boundary (not a milestone)
+            if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > ROLLOUT_TURN_NOW_FT)
             {
                 RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
                 // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
@@ -1147,23 +1226,13 @@ public partial class TaxiGuidanceManager
             }
         }
 
-        if (!_rolloutTurnNowAnnounced && distToExitFeet <= 150.0)
+        if (!_rolloutTurnNowAnnounced && distToExitFeet <= ROLLOUT_TURN_NOW_FT)
         {
             RolloutDiag($"Turn-now callout firing: distToExit={distToExitFeet:F0}ft");
-            // Direction = bearing-from-aircraft-to-exit minus aircraft heading.
-            // Sign tells us turn left vs right; magnitude is unused here.
-            double bearingToExit = NavigationCalculator.CalculateBearing(
-                lat, lon, _rolloutExit.Latitude, _rolloutExit.Longitude);
-            double turnDelta = NormalizeAngle(bearingToExit - headingTrue);
-            string dir = turnDelta < 0 ? "left" : "right";
-            // < 20°: chord taxiways and shallow curved-RET entries need a small
-            // initial input, not a committed turn — "gentle" prevents over-rotation.
-            // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.
-            string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
             string exitName = string.IsNullOrEmpty(_rolloutExit.TaxiwayName)
                 ? "exit"
                 : $"taxiway {_rolloutExit.TaxiwayName}";
-            AnnounceInstruction($"{turnWord} {dir} now, {exitName}.");
+            AnnounceInstruction($"{ComposeExitTurnPhrase(lat, lon, headingTrue)} now, {exitName}.");
             _rolloutTurnNowAnnounced = true;
             // Normal exits (50–110°): reset the heading-error smoother immediately
             // so the ExitBearingTrue-based tone below starts with a sharp hard-pan
@@ -1949,6 +2018,29 @@ public partial class TaxiGuidanceManager
         => Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
             _rolloutAllExits,
             afterExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT);
+
+    /// <summary>
+    /// "Turn left" / "Gentle right" for the currently targeted landing exit, from the
+    /// aircraft's own position and heading. ONE owner for that wording, so the turn-now
+    /// callout and the crossing-decline utterance that can RETIRE it (see the decline branch
+    /// in <c>UpdateLandingRollout</c>) can never drift apart — a folded direction that
+    /// contradicted the standalone cue would be worse than either alone.
+    /// <para>Callers must have passed <c>UpdateLandingRollout</c>'s null-exit guard.</para>
+    /// </summary>
+    private string ComposeExitTurnPhrase(double lat, double lon, double headingTrue)
+    {
+        // Direction = bearing-from-aircraft-to-exit minus aircraft heading.
+        // Sign tells us turn left vs right; magnitude is unused here.
+        double bearingToExit = NavigationCalculator.CalculateBearing(
+            lat, lon, _rolloutExit!.Latitude, _rolloutExit.Longitude);
+        double turnDelta = NormalizeAngle(bearingToExit - headingTrue);
+        string dir = turnDelta < 0 ? "left" : "right";
+        // < 20°: chord taxiways and shallow curved-RET entries need a small
+        // initial input, not a committed turn — "gentle" prevents over-rotation.
+        // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.
+        string turnWord = _rolloutExit.ExitAngleDegrees < 20.0 ? "Gentle" : "Turn";
+        return $"{turnWord} {dir}";
+    }
 
     /// <summary>
     /// Compact "name@distance" rendering of an exit list for the rollout diagnostic. The

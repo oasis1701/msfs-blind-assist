@@ -1036,6 +1036,23 @@ public partial class TaxiGuidanceManager : IDisposable
     // are exactly the frames on which that tone is updated.
     private const double ROLLOUT_CROSSING_RETRY_FLOOR_SEC = 1.0;
 
+    // How far ahead the crossing-decline utterance looks when deciding which rollout callouts
+    // it supersedes. A TIME, converted to distance at the aircraft's own ground speed by
+    // Navigation.RolloutRunwayReCrossing.DeclineSupersedesCallout: it must cover the utterance
+    // itself, so that a callout the aircraft is about to reach is folded in rather than left
+    // to fire an AnnounceImmediate over a one-shot sentence that can never be re-spoken.
+    // Four seconds comfortably spans the longest form ("Continue rolling to taxiway Alpha,
+    // 1500 feet ahead. Slow down."). Sizing it is low-stakes in both directions — too short
+    // returns a narrow band to the pre-fix behaviour, too long retires a coarse distance
+    // restatement slightly early — and it is NOT the kind of speech-duration estimate
+    // CLAUDE.md's liftoff-handoff rule forbids: nothing here mutes speech.
+    private const double ROLLOUT_DECLINE_CALLOUT_LEAD_SEC = 4.0;
+
+    // Distance from the chosen exit at which the rollout speaks "turn now". Not a
+    // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
+    // callout's lower bound is deliberately the same number so the two never overlap.
+    private const double ROLLOUT_TURN_NOW_FT = 150.0;
+
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
     // Chosen to give the pilot ~2 s of directional preview before the
