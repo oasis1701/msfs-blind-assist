@@ -135,7 +135,7 @@ public class NavigationCalculator
 
     /// <summary>
     /// TRUE angular deviation from the extended runway centerline, in degrees, as seen
-    /// from the threshold: <c>asin(perpendicular / slant distance)</c>. Always 0-90 and
+    /// from the threshold: <c>asin(perpendicular / distance to threshold)</c>. Always 0-90 and
     /// UNSIGNED — pair it with <see cref="CalculateCrossTrackError"/>'s sign for a
     /// left/right word.
     ///
@@ -155,7 +155,13 @@ public class NavigationCalculator
     /// Perpendicular distance to the localizer centerline, nautical miles, unsigned —
     /// <see cref="CalculateDistanceToLocalizer"/>.
     /// </param>
-    /// <param name="distanceToThresholdNm">Slant distance from aircraft to threshold, nautical miles.</param>
+    /// <param name="distanceToThresholdNm">
+    /// Horizontal (great-circle) distance from aircraft to threshold, nautical miles — what
+    /// the sole caller passes (<see cref="CalculateDistance"/>), and what pairs correctly with
+    /// a perpendicular measured in the same horizontal plane. An earlier version of this doc
+    /// called it a SLANT distance; nothing on this path has ever supplied one, and a genuine
+    /// slant range would make the computed angle read low on a high approach.
+    /// </param>
     public static double AngularDeviationFromCenterlineDeg(
         double perpendicularDistanceNm, double distanceToThresholdNm)
     {

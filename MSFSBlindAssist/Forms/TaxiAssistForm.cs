@@ -4494,14 +4494,17 @@ public class TaxiAssistForm : Form
         // The route-start turn cue rides INSIDE this one utterance rather than interrupting
         // it. Live KATL 2026-08-27: it fired as its own AnnounceImmediate 50 ms after this
         // block spoke, and cut the SayIntentions import summary off mid-word -- the fifth
-        // time two announcements at Calculate have stomped each other here. An instruction,
-        // not a warning, so it sits after the route details and before the reach warning,
-        // which stays the last thing said.
+        // time two announcements at Calculate have stomped each other here.
         //
-        // Consumed UNCONDITIONALLY so the per-frame one-shot can never repeat it, but only
-        // SPOKEN when the route reaches its runway -- preserving the suppression the
-        // one-shot has always applied: the reach warning is the priority, and a turn cue
-        // would be moot (the pilot will reprogram) as well as extra words in front of it.
+        // The two are MUTUALLY EXCLUSIVE, and that is the design, not an accident of this
+        // if/else: whichever applies is the LAST thing said. A reach warning means the route
+        // never gets to the runway, so the pilot will reprogram and a turn cue is both moot
+        // and extra words in front of the warning -- exactly the suppression the per-frame
+        // one-shot has always applied. Never "fix" this into two Add calls: that reinstates
+        // an utterance the design deliberately excludes.
+        //
+        // The cue is consumed UNCONDITIONALLY, warning present or not, so the per-frame
+        // one-shot can never repeat it behind this utterance's back.
         string? turnCue = _guidanceManager.ConsumeInitialTurnCue();
         if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
         {

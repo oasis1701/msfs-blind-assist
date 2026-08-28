@@ -811,6 +811,45 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
     actually changes, so a latch left over from an abandoned exit cannot swallow the new
     one's callout; the retry floor deliberately gets no such reset — a stale floor costs
     under a second, a stale latch withholds information from the pilot.
+  - **That sentence is composed as ONE utterance with the callouts it supersedes** —
+    `ComposeDeclineUtterance` + `DeclineSupersedesCallout`, never spoken beside them. The
+    decline branch RETURNS before the approach/turn-now callout block, so none of that
+    block's latches get set; on the very next frame (~16 ms) the crossing retry floor
+    suppresses the handoff block, execution reaches the callouts, and one of them fires its
+    own `AnnounceImmediate` over a sentence that is one-shot and therefore unrecoverable
+    (Ctrl+Y replays the later callout, not this). The collision is STRUCTURAL, not a
+    coincidence: `speedNearExitHandoff` requires `distToExitFeet < ROLLOUT_NEAR_EXIT_FT`
+    (500 ft) and the 500 ft milestone triggers on that same boundary, so on any rollout
+    already at taxi speed at 500 ft — the live 22 kt KATL trace included — both are true on
+    ONE frame. This is the sixth instance of this codebase's
+    two-announcements-stomp-each-other pattern (`4837e45d`, `6891c0e7`, `86744893`,
+    `b772e845`, `c2b69455`) and the house remedy is the same every time: compose one
+    utterance rather than let two race.
+    - Every superseded APPROACH milestone is **retired, not folded**: each renders as
+      "{exit name}, {round number}", and the decline sentence already gives that name with
+      a LIVE distance. Only what they uniquely add rides along — the 500 ft cue's
+      *"Slow down."* and, inside the turn window, the turn DIRECTION (composed by the one
+      `ComposeExitTurnPhrase` the turn-now callout itself uses, so the two can never
+      diverge). Milestones still further ahead stay armed and speak normally later, so a
+      rolling pilot keeps the countdown.
+    - The supersede window is a **time** (`ROLLOUT_DECLINE_CALLOUT_LEAD_SEC`, 4 s)
+      converted to distance at the aircraft's own ground speed, not a tuned distance: it
+      self-scales across the 0–90 kt range the decline branch spans, and a stopped aircraft
+      supersedes nothing ahead of it (it can never reach the next trigger) so it keeps its
+      whole countdown. Without the lead half, a decline at 1,501 ft would still be truncated
+      — the 1,500 ft milestone is a fifth of a second away.
+    - **Turn-now uses the STRICT inside test, no lead window**, because "now" is
+      time-critical and a speed-derived lead would speak it up to ~600 ft out at the 90 kt
+      `IsExitTurnBegun` permits. The accepted cost is a moving decline between
+      `ROLLOUT_TURN_NOW_FT` and roughly twice it, where turn-now comes due mid-sentence and
+      truncates it — the one truncation worth having, since *"Turn left now, taxiway A."*
+      carries the exit name AND the more urgent instruction, so the pilot is never left
+      silent or uninformed, which is the state the announcement exists to prevent.
+    - The two alternatives were both worse. Setting the approach latch and saying nothing
+      else throws away the *"Slow down."* advice and the turn direction. Suppressing the
+      decline and letting the callout carry it throws away the instruction itself:
+      *"Taxiway A, 500 feet. Slow down."* tells a pilot who has braked to a stop on an
+      active runway neither that the exit is still ahead nor to keep rolling to it.
 - `MatchEarlyVacateExit` must measure along-track PER EXIT, never against
   `DistanceFromThresholdFeet`. That field is measured from the LANDING threshold including
   `ThresholdOffset` (KJFK 13R 2,055 ft), while an aircraft's along-runway position is
@@ -1558,10 +1597,16 @@ cue would only be extra words in front of it.
   utterance.
 - **Two delivery paths, never both.** `TaxiAssistForm` folds it into its single
   standstill utterance and calls `ConsumeInitialTurnCue()`; whatever is left unconsumed
-  is spoken by the per-frame one-shot, so routes the form did not start (landing-exit
-  handoffs, `announceSummary:false`) keep the cue. The form consumes it
-  UNCONDITIONALLY and speaks it only when there is no reach warning, so the suppression
-  above survives the move.
+  is spoken by the per-frame one-shot, so routes the form did not start keep the cue.
+  The form consumes it UNCONDITIONALLY and speaks it only when there is no reach
+  warning, so the suppression above survives the move.
+  ⚠️ **The form does not fold it on EVERY path**, and the invariant must not be read as
+  though it did: the **Progressive Taxi** branch of `OnCalculateClicked` calls
+  `StartGuidance` and RETURNS well before the standstill block, so there the cue is still
+  delivered by the per-frame one-shot — as are landing-exit handoffs and any
+  `announceSummary:false` caller. That is unchanged from before the fold and is NOT a
+  defect to fix: a progressive leg builds no route summary, no reach warning and no
+  destination confirmation, so there is no second utterance for the cue to stomp.
 - **The angle must be `ComputeSteeringHeadingError`'s value**, read against the route
   and segment cursor `LoadRoute` has just assigned, with BOTH sides TRUE north — the
   same look-ahead walk target the tone will read on its first frame. Never
