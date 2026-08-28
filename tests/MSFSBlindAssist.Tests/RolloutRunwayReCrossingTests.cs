@@ -104,3 +104,83 @@ public class RolloutRunwayReCrossingTests
         Assert.Null(RolloutRunwayReCrossing.FindLandingRunwayCenterline(all, ""));
     }
 }
+
+// The sentence a runway-re-crossing DECLINE speaks, once, on the pilot's behalf.
+//
+// The decline keeps the aircraft in LandingRollout on the reasoning that the rollout tone
+// is a live cue. That only holds inside RolloutExitGate.ExitToneArmFeet (300 ft). Beyond it
+// SelectToneMode has two states that make no sound for a stopped, aligned aircraft -- the
+// 300-1,000 ft turn-window Silent, and a sub-DriftToneSilentDeg DriftCorrection, which is a
+// heading cue at zero volume -- and `trulyStopped` carries no distance gate. So a pilot who
+// brakes to a stop 1,500 ft short of the exit could sit in the decline loop indefinitely,
+// stationary on an ACTIVE RUNWAY with no tone and no words.
+//
+// These pin the three safety-bearing wording constraints: never claim the aircraft is clear
+// of the runway, never say "stop" or "hold" (the other landing-exit closures do, and that
+// wording is only safe off the pavement), and always carry BOTH the exit name and the
+// distance. DistanceFormatter.UnitProvider is process-global, hence the shared collection.
+[Collection("DistanceUnitGlobalState")]
+public class RolloutCrossingDeclinePhraseTests
+{
+    [Fact]
+    public void It_names_the_exit_and_the_distance_ahead()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 900 feet ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 900));
+    }
+
+    [Fact]
+    public void It_follows_the_active_distance_unit()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Metres;
+        Assert.Equal(
+            "Continue rolling to taxiway B1, 250 metres ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 820));
+    }
+
+    [Fact]
+    public void An_unnamed_exit_still_reads_as_a_sentence()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        Assert.Equal(
+            "Continue rolling to the exit, 500 feet ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit(null, 500));
+        Assert.Equal(
+            "Continue rolling to the exit, 500 feet ahead.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("   ", 500));
+    }
+
+    [Fact]
+    public void A_non_positive_distance_drops_the_clause_rather_than_saying_zero_feet()
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        Assert.Equal("Continue rolling to taxiway B1.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", 0));
+        Assert.Equal("Continue rolling to taxiway B1.",
+            RolloutRunwayReCrossing.ComposeContinueToExit("B1", -30));
+    }
+
+    // The safety constraints, stated as tests so a later reword cannot quietly break them.
+    [Theory]
+    [InlineData("B1", 1500.0)]
+    [InlineData(null, 1500.0)]
+    [InlineData("B1", 0.0)]
+    public void It_never_says_stop_or_hold_and_never_claims_the_runway_is_clear(
+        string? name, double feet)
+    {
+        MSFSBlindAssist.Services.DistanceFormatter.UnitProvider =
+            () => MSFSBlindAssist.Settings.DistanceUnit.Feet;
+        string s = RolloutRunwayReCrossing.ComposeContinueToExit(name, feet);
+        Assert.DoesNotContain("stop", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("hold", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("clear", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("vacat", s, System.StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("Continue rolling to ", s, System.StringComparison.Ordinal);
+    }
+}

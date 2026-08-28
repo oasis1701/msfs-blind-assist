@@ -83,6 +83,7 @@ public partial class TaxiGuidanceManager
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
             _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+            _rolloutCrossingDeclineAnnounced = false;
             // Defense in depth: clear no-exit/runway-end state from any prior
             // rollout. StopGuidance does this; matching the pattern here
             // ensures we never inherit stale flags when starting a fresh
@@ -213,6 +214,7 @@ public partial class TaxiGuidanceManager
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
             _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+            _rolloutCrossingDeclineAnnounced = false;
             _rolloutNoExitMode = false;
             _rolloutHandoffActive = false;
             _rolloutEnd1500Announced = false;
@@ -745,10 +747,19 @@ public partial class TaxiGuidanceManager
                     // Still ON the runway and SHORT of the exit → the exit is AHEAD and
                     // reachable by simply continuing. Decline the handoff and keep flying the
                     // rollout: state stays LandingRollout, so the tone remains rollout-driven
-                    // (RolloutExitGate.SelectToneMode still owns it, including its Silent mode
-                    // above 50 kt) and the pilot rolls to the turnoff. That is the whole
-                    // distinction — turning off onto a taxiway on the far side is a vacate,
-                    // driving across the pavement to reach it is not.
+                    // (RolloutExitGate.SelectToneMode still owns it) and the pilot rolls to the
+                    // turnoff. That is the whole distinction — turning off onto a taxiway on the
+                    // far side is a vacate, driving across the pavement to reach it is not.
+                    //
+                    // "Rollout-driven" is NOT "audible". Naming SelectToneMode's above-50-kt
+                    // Silent mode here would be naming the one silent state that cannot apply,
+                    // since every trigger that reaches this branch is a slow-speed one. The two
+                    // that CAN leave a stopped aircraft with no sound are: the 300–1,000 ft
+                    // turn-window Silent (≥ DriftToneSilentDeg of deviation toward a known exit
+                    // side), and DriftCorrection itself, which is a heading cue and therefore
+                    // zero volume for an aircraft aligned with the runway. Beyond
+                    // ExitToneArmFeet (300 ft) one of those two always owns the tone. That is
+                    // why the decline SPEAKS once — see the announcement below.
                     //
                     // !offRunwayAtHandoff is the load-bearing second conjunct, not a belt-and-
                     // braces extra (PR review, 2026-08-27). "Continue and the exit comes to
@@ -782,6 +793,40 @@ public partial class TaxiGuidanceManager
                         // Restore the pre-handoff value: the top of this block armed the
                         // post-handoff overshoot monitor on the assumption it ends in Taxiing.
                         _rolloutHandoffActive = false;
+
+                        // Say the decline's own premise, ONCE: the exit is ahead, keep rolling
+                        // to it. Without this a pilot who brakes to a stop short of the exit
+                        // sits in this loop indefinitely — no tone (trulyStopped carries no
+                        // distance gate, and beyond ExitToneArmFeet a stopped aligned aircraft
+                        // gets turn-window Silent or a zero-volume DriftCorrection) and no
+                        // words, stationary on an active runway with nothing telling them what
+                        // to do.
+                        //
+                        // Fired on the FIRST decline, not on a later "stopped" test. Every
+                        // trigger that can reach this branch is already slow and near the exit
+                        // (exitedLaterally and alignedWithExit are excluded by the two conjuncts
+                        // above; turnBegun, speedNearExitHandoff and trulyStopped are what is
+                        // left), so this is never spoken over a fast rollout. Waiting for
+                        // trulyStopped would instead leave the CREEPING case silent: a
+                        // speedNearExitHandoff decline reaches here anywhere inside
+                        // ROLLOUT_NEAR_EXIT_FT (500 ft), and 300–500 ft of that overlaps the
+                        // turn-window Silent band — so an aircraft crawling at 4 kt, above
+                        // ROLLOUT_NO_EXIT_STOPPED_GS_KTS and therefore never "stopped", would
+                        // hear nothing at all. That is precisely the state this exists to close.
+                        // One-shot per rollout, so the cost of speaking early is a single
+                        // sentence either way.
+                        //
+                        // Latched, NOT floored: the decline repeats at ~1 Hz and a sentence a
+                        // second would be worse than silence. AnnounceInstruction, the same
+                        // call the neighbouring rollout callouts use — no new speech path.
+                        if (!_rolloutCrossingDeclineAnnounced)
+                        {
+                            _rolloutCrossingDeclineAnnounced = true;
+                            AnnounceInstruction(
+                                Navigation.RolloutRunwayReCrossing.ComposeContinueToExit(
+                                    _rolloutExit?.TaxiwayName, distToExitFeet));
+                        }
+
                         SetState(TaxiGuidanceState.LandingRollout);
                         return;
                     }
@@ -1545,7 +1590,16 @@ public partial class TaxiGuidanceManager
                 // _isLandingExitRoute and _landingExitOffPavement. All are behaviourally inert
                 // on the path taken. The smoother re-converges within a few frames of rollout
                 // tone updates. _landingExitOffPavement is read only by HandleArrival, which
-                // this path does not reach. _isLandingExitRoute has two other readers, and both
+                // this path does not reach — and, because the field PERSISTS past this frame,
+                // that on its own is not enough: what makes it inert is that every later route
+                // to HandleArrival re-decides it. The UpdateLandingRollout crossing guard's
+                // on-runway conclude arm assigns _landingExitOffPavement = false outright, so
+                // nothing stale survives it; its off-runway arm sets _landingExitVacatedEarly or
+                // _landingExitRouteUnreachable, both of which order AHEAD of the offPavement
+                // branch in HandleArrival, so that branch is never reached from there. (The
+                // value left standing here is in any case the restored PRE-handoff one — the
+                // restore at the top of this method already put it back — not something this
+                // attempt invented.) _isLandingExitRoute has two other readers, and both
                 // are unreachable from here: one requires _state == Taxiing (this stays in
                 // LandingRollout) and the other requires a route on its final segment (_route is
                 // nulled below) — and any later LoadRoute resets the flag before either can see
@@ -1563,8 +1617,15 @@ public partial class TaxiGuidanceManager
                 // where UpdateLandingRollout drives the tone from the exit BEARING and never
                 // reads _route — so the tone stays rollout-driven rather than being stranded
                 // panned at a route that no longer exists. Rollout-driven is not the same as
-                // always audible: RolloutExitGate.SelectToneMode has a Silent mode above
-                // 50 kt, by design.
+                // always audible, and the above-50-kt Silent mode is the wrong one to name:
+                // this method only runs at low speed. The two of RolloutExitGate.SelectToneMode's
+                // states that can genuinely produce no sound here are the 300–1,000 ft
+                // turn-window Silent and a sub-DriftToneSilentDeg DriftCorrection, which is a
+                // heading cue and so goes to zero volume once the aircraft is aligned. This
+                // decline fires within ExitToneArmFeet (300 ft), where the tone is ExitBearing
+                // and audible, so it does not need its own callout — and if the aircraft then
+                // stops short, the UpdateLandingRollout decline speaks the shared one-shot
+                // "keep rolling to the exit" instruction.
                 _route = null;
                 _destinationNodeId = 0;
                 _postHighSpeedExitMinBearing = 0.0;
@@ -2196,6 +2257,7 @@ public partial class TaxiGuidanceManager
         // this cannot currently be stale here — but the rollout latches are reset at all
         // four sites by rule, not by whichever of them happens to be reachable today.
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+        _rolloutCrossingDeclineAnnounced = false;
         _rolloutNoExitMode = true;
         _offRouteSince = DateTime.MinValue;
         _steeringTone.Pause();

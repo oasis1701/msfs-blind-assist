@@ -884,6 +884,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // the landing runway (RolloutRunwayReCrossing). DateTime.MinValue = no decline
     // yet this rollout. See ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why this exists.
     private DateTime _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+    // One-shot latch for the spoken "keep rolling to the exit" instruction that a
+    // runway-re-crossing decline speaks. The decline itself repeats at the retry floor
+    // (~1 Hz); the SENTENCE must not. Reset alongside _rolloutCrossingDeclinedUtc at all
+    // four rollout reset sites. See RolloutRunwayReCrossing.ComposeContinueToExit.
+    private bool _rolloutCrossingDeclineAnnounced = false;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
     // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
@@ -3066,6 +3071,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
+        _rolloutCrossingDeclineAnnounced = false;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
         _backtrackDeparture = false;

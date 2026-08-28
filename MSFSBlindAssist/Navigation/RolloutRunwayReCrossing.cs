@@ -76,4 +76,43 @@ public static class RolloutRunwayReCrossing
         }
         return false;
     }
+
+    /// <summary>
+    /// The one thing a pilot is told when this rule declines a handoff: the exit is still
+    /// AHEAD, so keep rolling to it.
+    ///
+    /// <para>Why it exists (PR review, 2026-08-27). The decline stays in LandingRollout and
+    /// speaks nothing, on the reasoning that the rollout tone is a live cue. That only holds
+    /// inside <see cref="RolloutExitGate.ExitToneArmFeet"/>. Further out
+    /// <see cref="RolloutExitGate.SelectToneMode"/> has two states that produce no sound at
+    /// all for an aircraft sitting still and aligned: the 300–1,000 ft turn-window
+    /// <see cref="RolloutToneMode.Silent"/>, and a <see cref="RolloutToneMode.DriftCorrection"/>
+    /// under <see cref="RolloutExitGate.DriftToneSilentDeg"/> of heading error, which is zero
+    /// volume. And <c>trulyStopped</c> carries no distance gate, so a pilot who brakes to a
+    /// stop 1,500 ft short of the exit could sit in the decline loop indefinitely with no
+    /// tone and no words, stationary on an active runway.</para>
+    ///
+    /// <para>Three wording constraints, all safety-bearing. It must NOT claim the aircraft is
+    /// clear of the runway (it is not). It must NOT say "stop" or "hold" — the other
+    /// landing-exit closures do, and that wording is only safe off the pavement. And it must
+    /// carry BOTH the exit name and the distance, because those are the two things a blind
+    /// pilot needs to act. Shape follows the neighbouring rollout callouts
+    /// ("Missed X. Retargeting taxiway Y, 400 feet ahead.").</para>
+    /// </summary>
+    /// <param name="taxiwayName">The exit's taxiway name; null/blank renders as "the exit".</param>
+    /// <param name="distanceAheadFeet">
+    /// Straight-line feet to the exit node — the same quantity the 1500/900/500 ft approach
+    /// callouts use, so the number is calibrated against what the pilot has already heard.
+    /// Zero or less drops the distance clause rather than announcing "0 feet".
+    /// </param>
+    public static string ComposeContinueToExit(string? taxiwayName, double distanceAheadFeet)
+    {
+        string exit = string.IsNullOrWhiteSpace(taxiwayName)
+            ? "the exit"
+            : $"taxiway {taxiwayName.Trim()}";
+        if (distanceAheadFeet <= 0.0)
+            return $"Continue rolling to {exit}.";
+        string dist = Services.DistanceFormatter.FromFeet(distanceAheadFeet);
+        return $"Continue rolling to {exit}, {dist} ahead.";
+    }
 }
