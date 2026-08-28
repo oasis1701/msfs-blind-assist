@@ -242,10 +242,16 @@ public static class GsxRemoteParkingReader
             VdgsType = string.IsNullOrWhiteSpace(vdgs) ? null : vdgs,
             GateDistanceThreshold = Double(p, "gateDistanceThreshold"),
 
-            // GSX's own identifier, verbatim and UNCHANGED by any of the parsing above --
-            // GsxRemoteGateSelector sends exactly this to gate.select. Never rebuild it from
-            // Name/Number/Suffix or Describe(): that round-trip is exactly how the wrong
-            // stand gets selected (spec ruling).
+            // GSX's own identifier, verbatim and UNCHANGED by any of the parsing above.
+            // Never rebuild it from Name/Number/Suffix or Describe(): that round-trip is
+            // exactly how the wrong stand gets selected (spec ruling), and that rule is
+            // unconditional -- it governs this value wherever it goes.
+            //
+            // It is NOT what gate.select answers to. Live-probed against a running GSX
+            // (KATL, 2026-08-27), sending this value returns not_found, as do its trimmed
+            // form and uiName; only a stand NUMBER (JSON int) or a bglName resolve.
+            // GsxGateSelectPlan owns the attempt order, and this is its LAST-RESORT attempt,
+            // sent only after the number route has been tried.
             GsxIdentifier = uiGateName,
 
             // GSX's fully-qualified name, verbatim. Unlike uiGateName it is unique at a real

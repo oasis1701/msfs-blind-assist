@@ -128,7 +128,12 @@ public sealed class GsxGateSelectResult
 
     /// <summary>
     /// The identifier <see cref="GsxRemoteGateSelector"/> actually put in <c>gate.select</c>'s
-    /// <c>gate</c> argument — <see cref="Database.Models.ParkingSpot.GsxIdentifier"/>, verbatim.
+    /// <c>gate</c> argument, rendered as invariant text — the stand's NUMBER, a <c>bglName</c>
+    /// GSX handed back in an <c>ambiguous</c> reply, or (last resort)
+    /// <see cref="Database.Models.ParkingSpot.GsxIdentifier"/> verbatim, whichever the attempt
+    /// sequence in <see cref="GsxGateSelectPlan"/> got as far as. Rendered rather than typed
+    /// because the number goes on the wire as a JSON int and this is a comparison field, not a
+    /// re-send value — the selector re-sends the ORIGINAL object, never this string.
     /// A result frame does not echo the request, so <see cref="FromFrame"/> never sets this; the
     /// selector stamps it after the fact. Null for a locally-decided result (nothing was sent)
     /// and for any frame parsed without the selector's involvement.
@@ -138,6 +143,19 @@ public sealed class GsxGateSelectResult
     /// </para>
     /// </summary>
     public string? RequestedIdentifier { get; internal set; }
+
+    /// <summary>
+    /// The stand's own <c>ParkingSpot.GsxUiName</c> — GSX's fully-qualified name for the
+    /// stand the pilot picked. Stamped by <c>GsxRemoteGateSelector</c> alongside
+    /// <see cref="RequestedIdentifier"/>; null when the stand carries no <c>uiName</c>.
+    /// <para>
+    /// This is what finally closes the collision problem
+    /// <see cref="ResolvedGateContradictsRequest"/> documents as structural. <c>uiGateName</c>
+    /// is shared by 235 of KATL's 294 stands, so comparing GSX's echo against it proves
+    /// nothing; <c>uiName</c> is unique for 281 of 294.
+    /// </para>
+    /// </summary>
+    public string? ExpectedUiName { get; internal set; }
 
     /// <summary>
     /// True when GSX named a stand that answers to NEITHER of the identifiers it echoes for
@@ -161,16 +179,24 @@ public sealed class GsxGateSelectResult
     /// or one whose strings are all blank — is NOT a mismatch: say nothing rather than cry wolf.
     /// </para>
     /// <para>
-    /// <b>It CANNOT detect the collision it was added for, and that is a structural limit of
-    /// GSX's API rather than a flaw here.</b> When two different stands share an IDENTICAL
-    /// <c>uiGateName</c> — the case above, "Gate 2" naming five physically different KJFK stands
-    /// — GSX echoes that same string back whichever one it resolved to, so the echo equals what
-    /// we sent and this property is false, exactly as it would be for a correct resolution.
-    /// Nothing available to us disambiguates them: the four identity fields §8.14 says
-    /// <c>gate.select</c> accepts carry no terminal, and <c>bglName</c>/<c>index</c> are not
-    /// published in <c>handlerData.airport.parkings</c> at all (the committed KJFK capture has
-    /// neither). So no amount of care with this comparison closes the collision problem — only a
-    /// GSX-side identity field we do not have would.
+    /// <b><see cref="ExpectedUiName"/> is what closes the collision case the identifier
+    /// comparison alone could not.</b> When two different stands share an IDENTICAL
+    /// <c>uiGateName</c> — the case above, "Gate 2" naming five physically different KJFK
+    /// stands — GSX echoes that same string back whichever one it resolved to, so the identifier
+    /// comparison is false exactly as it would be for a correct resolution. GSX's
+    /// fully-qualified <c>uiName</c> does not collide the same way (unique for 281 of KATL's
+    /// 294 stands where <c>uiGateName</c> is shared by 235), and it IS published per parking —
+    /// the earlier claim that nothing available to us disambiguates them was written before
+    /// <c>ParkingSpot.GsxUiName</c> carried it. When both sides have one it decides, and this
+    /// property finally answers the question it was named for.
+    /// </para>
+    /// <para>
+    /// The limit is now narrower but real: a stand GSX publishes no <c>uiName</c> for (KATL's
+    /// unnamed GA ramps, 13 of 294) or a spot from the navdata/<c>.ini</c> fallback carries no
+    /// <see cref="ExpectedUiName"/>, so it falls back to the identifier comparison and the
+    /// paragraph above applies to it unchanged. Do not let a future reader conclude from a green
+    /// result on THAT path that GSX prepared the stand the pilot picked — there it only means
+    /// GSX did not name a different one.
     /// </para>
     /// <para>
     /// The check is still worth having, and must not be removed on the strength of that: it
@@ -186,6 +212,23 @@ public sealed class GsxGateSelectResult
         {
             string requested = RequestedIdentifier?.Trim() ?? string.Empty;
             if (requested.Length == 0 || ResolvedGate is not { } echoed) return false;
+
+            // Prefer the fully-qualified name when BOTH sides have one: it is unique where
+            // the identifier is not, so this is the one comparison that can actually catch
+            // GSX resolving to a different stand. Same conservative rules as below --
+            // trimmed, ordinal-ignore-case, and an uninterpretable echo (a blank uiName) is
+            // never a mismatch, it just falls through to the identifier comparison.
+            //
+            // Deliberately BELOW the "nothing was sent / nothing was echoed" early return
+            // above, so a locally-decided result (capability gate, no identifier) can never
+            // report a contradiction no matter what is stamped on it.
+            if (!string.IsNullOrWhiteSpace(ExpectedUiName)
+                && !string.IsNullOrWhiteSpace(echoed.UiName))
+            {
+                return !string.Equals(
+                    echoed.UiName.Trim(), ExpectedUiName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
 
             string uiName = echoed.UiName?.Trim() ?? string.Empty;
             string gate = echoed.Gate?.Trim() ?? string.Empty;

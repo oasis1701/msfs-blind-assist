@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using MSFSBlindAssist.Services.Gsx.Remote;
 
 namespace MSFSBlindAssist.Tests;
@@ -348,5 +348,62 @@ public class GsxGateSelectResultTests
 
         var assignedToOther = Frame("""{"type":"result","id":"g-7","ok":false,"error":{"code":"assigned_to_other","gate":42}}""");
         Assert.Null(GsxGateSelectResult.FromFrame(assignedToOther).ResolvedGate);
+    }
+
+    // ── ExpectedUiName: the comparison that can actually catch a wrong stand ──
+
+    [Fact]
+    public void ExpectedUiName_decides_when_both_sides_carry_one()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Delta Tech Ops (E1-21) | Gate 5","gate":" Gate 5","number":5,"bglName":"Gate E 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void ExpectedUiName_agreeing_is_never_a_mismatch()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Concourse T (T1-T21) | Gate 5","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_blank_expected_uiName_falls_back_to_the_identifier_comparison()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = " Gate 5";
+        r.ExpectedUiName = null;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void An_uninterpretable_echo_is_not_a_mismatch_even_with_an_expected_uiName()
+    {
+        // GSX echoed a stand whose uiName is blank. The fully-qualified comparison has
+        // nothing to work with, so it must defer to the identifier fallback rather than
+        // declare a mismatch -- a false alarm teaches the pilot to ignore the real one.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = " Gate 5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.False(r.ResolvedGateContradictsRequest);
     }
 }

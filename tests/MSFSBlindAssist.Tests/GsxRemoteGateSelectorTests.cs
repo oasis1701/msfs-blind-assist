@@ -94,6 +94,58 @@ public class GsxRemoteGateSelectorTests
         return e.ValueKind == JsonValueKind.Object && e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.True;
     }
 
+    private static int? ExtractInt(object? args, string prop)
+    {
+        var e = ToJson(args);
+        return e.ValueKind == JsonValueKind.Object && e.TryGetProperty(prop, out var v)
+               && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)
+            ? i : null;
+    }
+
+    /// <summary>The `gate` argument as text, whether it went as a JSON int or a string.</summary>
+    private static string? ExtractGateAsText(object? args)
+    {
+        var e = ToJson(args);
+        if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("gate", out var v)) return null;
+        return v.ValueKind switch
+        {
+            JsonValueKind.String => v.GetString(),
+            JsonValueKind.Number => v.GetRawText(),
+            _ => null,
+        };
+    }
+
+    private static GsxFrame AmbiguousGate5Frame() => GsxFrame.Parse("""
+        { "type": "result", "id": "g-1", "ok": false,
+          "error": { "code": "ambiguous", "message": "multiple parkings match '5'",
+                     "candidates": [
+                       { "uiName": "Concourse T (T1-T21) | Gate 5", "gate": " Gate 5", "number": 5, "bglName": "Gate T 5" },
+                       { "uiName": "Delta Tech Ops (E1-21) | Gate 5", "gate": " Gate 5", "number": 5, "bglName": "Gate E 5" } ] } }
+        """);
+
+    private static GsxFrame PreparedGateT5Frame() => GsxFrame.Parse("""
+        { "type": "result", "id": "g-2", "ok": true,
+          "payload": { "code": "ok", "status": "prepared",
+                       "gate": { "uiName": "Concourse T (T1-T21) | Gate 5", "gate": " Gate 5", "number": 5, "bglName": "Gate T 5" },
+                       "warnings": [] } }
+        """);
+
+    private static GsxFrame NotFoundFrame() => GsxFrame.Parse("""
+        { "type": "result", "id": "g-1", "ok": false,
+          "error": { "code": "not_found", "message": "no parking matches" } }
+        """);
+
+    /// <summary>The KATL Concourse T stand, with GSX's own strings including their spaces.</summary>
+    private static ParkingSpot KatlT5() => new()
+    {
+        Name = "Totally Unrelated Label",
+        Number = 5,
+        Suffix = "Z",
+        Source = GateSource.Gsx,
+        GsxIdentifier = " Gate 5",
+        GsxUiName = "Concourse T (T1-T21) | Gate 5",
+    };
+
     // ── Capability gate ─────────────────────────────────────────────────────
 
     [Fact]
@@ -171,8 +223,13 @@ public class GsxRemoteGateSelectorTests
 
     // ── Identifier: GSX's own value, never Describe() ───────────────────────
 
+    // REPLACES Happy_path_sends_gate_select_with_the_raw_identifier_verbatim.
+    // gate.select does not answer to uiGateName -- live-probed 2026-08-27 at KATL, it
+    // returns not_found for the verbatim identifier, the trimmed form and uiName alike.
+    // The number goes first. SpotWithIdentifier's Number is 999, deliberately unrelated to
+    // "Gate A12", so this cannot pass by the two coinciding.
     [Fact]
-    public async Task Happy_path_sends_gate_select_with_the_raw_identifier_verbatim()
+    public async Task Happy_path_sends_the_stand_number_as_a_json_int()
     {
         string? sentVerb = null;
         object? sentArgs = null;
@@ -183,11 +240,100 @@ public class GsxRemoteGateSelectorTests
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
 
         Assert.Equal("gate.select", sentVerb);
-        Assert.Equal("Gate A12", ExtractString(sentArgs, "gate"));
+        Assert.Equal(999, ExtractInt(sentArgs, "gate"));
+        Assert.Null(ExtractString(sentArgs, "gate"));   // an int, not a string
         Assert.False(ExtractBool(sentArgs, "revokeServices"));
         Assert.False(ExtractBool(sentArgs, "force"));
         Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
-        Assert.Equal("Gate A12", result.ResolvedGate!.UiName);
+    }
+
+    [Fact]
+    public async Task A_numberless_stand_still_sends_the_verbatim_identifier()
+    {
+        object? sentArgs = null;
+        var target = SpotWithIdentifier(" Gate 5");
+        target.Number = 0;
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => { sentArgs = args; return Task.FromResult<GsxFrame?>(PreparedFrame()); },
+            HasGateCapability);
+
+        await selector.SelectGateAsync(target);
+
+        Assert.Equal(" Gate 5", ExtractString(sentArgs, "gate"));
+    }
+
+    [Fact]
+    public async Task An_ambiguous_reply_is_retried_with_the_matched_candidates_bglName()
+    {
+        var sent = new List<string?>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                sent.Add(ExtractGateAsText(args));
+                return Task.FromResult<GsxFrame?>(
+                    sent.Count == 1 ? AmbiguousGate5Frame() : PreparedGateT5Frame());
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(KatlT5());
+
+        Assert.Equal(2, sent.Count);
+        Assert.Equal("5", sent[0]);              // the number, as an int
+        Assert.Equal("Gate T 5", sent[1]);       // the candidate's own bglName
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.False(result.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public async Task An_ambiguous_reply_with_no_unique_match_is_surfaced_not_guessed()
+    {
+        var sent = new List<string?>();
+        var target = KatlT5();
+        target.GsxUiName = "Concourse D (D1-D46) | Gate 5";   // matches neither candidate
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => { sent.Add(ExtractGateAsText(args)); return Task.FromResult<GsxFrame?>(AmbiguousGate5Frame()); },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(target);
+
+        // One send. No second guess. The announcer's Ambiguous arm speaks as it always did.
+        Assert.Single(sent);
+        Assert.Equal(GsxGateSelectOutcome.Ambiguous, result.Outcome);
+        Assert.Equal(2, result.Candidates.Count);
+    }
+
+    [Fact]
+    public async Task GSX_naming_a_different_stand_is_flagged()
+    {
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedGateT5Frame()),
+            HasGateCapability);
+
+        var target = KatlT5();
+        target.GsxUiName = "Delta Tech Ops (E1-21) | Gate 5";   // we asked for a DIFFERENT stand
+        var result = await selector.SelectGateAsync(target);
+
+        Assert.True(result.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public async Task A_not_found_falls_back_to_the_verbatim_identifier()
+    {
+        // The last resort: exactly what this app sent before, so a build or an airport where
+        // the number route does not apply is never worse off than it was.
+        var sent = new List<string?>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                sent.Add(ExtractGateAsText(args));
+                return Task.FromResult<GsxFrame?>(sent.Count == 1 ? NotFoundFrame() : PreparedFrame());
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(new[] { "999", "Gate A12" }, sent);
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
     }
 
     [Fact]
@@ -195,18 +341,19 @@ public class GsxRemoteGateSelectorTests
     {
         string? sentGate = null;
         var selector = new GsxRemoteGateSelector(
-            (verb, args) => { sentGate = ExtractString(args, "gate"); return Task.FromResult<GsxFrame?>(PreparedFrame()); },
+            (verb, args) => { sentGate = ExtractGateAsText(args); return Task.FromResult<GsxFrame?>(PreparedFrame()); },
             HasGateCapability);
 
         var target = SpotWithIdentifier("Gate A12");
         string describe = target.Describe();
-        // Guard the guard: if this ever failed, the test below would pass by accident.
+        // Guard the guard: if this ever failed, the assertion below would pass by accident.
         Assert.NotEqual("Gate A12", describe);
 
         await selector.SelectGateAsync(target);
 
-        Assert.Equal("Gate A12", sentGate);
         Assert.NotEqual(describe, sentGate);
+        // Nor a label rebuilt from Name/Number/Suffix.
+        Assert.NotEqual("Totally Unrelated Label 999Z", sentGate);
     }
 
     [Fact]
@@ -291,8 +438,11 @@ public class GsxRemoteGateSelectorTests
 
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate B7"));
 
-        Assert.Equal("Gate B7", result.RequestedIdentifier);
-        // PreparedFrame() resolves to "Gate A12"/"A12" -- neither answers to "Gate B7", so
+        // The string rendering of what was FINALLY sent -- the number, since that is what
+        // gate.select answers to. It must survive the int path, or the comparison below
+        // silently disarms.
+        Assert.Equal("999", result.RequestedIdentifier);
+        // PreparedFrame() resolves to "Gate A12"/"A12" -- neither answers to what we sent, so
         // this is the silent wrong-stand case the check exists for.
         Assert.True(result.ResolvedGateContradictsRequest);
     }
@@ -312,8 +462,58 @@ public class GsxRemoteGateSelectorTests
 
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
 
-        Assert.Equal("Gate A12", result.RequestedIdentifier);
-        Assert.False(result.ResolvedGateContradictsRequest); // uiName echo answers to it
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.Equal("999", result.RequestedIdentifier);
+    }
+
+    [Fact]
+    public async Task The_services_active_retry_resends_the_number_as_an_int_not_as_text()
+    {
+        // The retry must re-send what ACTUALLY reached GSX -- and a number rendered back to
+        // a string is a DIFFERENT request: live probing has "5" returning not_found where 5
+        // returns a usable answer. Carrying the rendered string here would make every
+        // revoke-and-reprepare fail.
+        var kinds = new List<JsonValueKind>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                var e = ToJson(args);
+                kinds.Add(e.GetProperty("gate").ValueKind);
+                return Task.FromResult<GsxFrame?>(
+                    ExtractBool(args, "revokeServices") ? PreparedFrame() : ServicesActiveFrame());
+            },
+            HasGateCapability);
+
+        await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(new[] { JsonValueKind.Number, JsonValueKind.Number }, kinds);
+    }
+
+    [Fact]
+    public async Task The_services_active_retry_resends_the_bglName_once_the_ambiguity_resolved_it()
+    {
+        // Ordering matters: number -> ambiguous -> bglName -> services_active -> retry.
+        // The retry must carry the bglName, never regress to the number that was already
+        // answered with "several stands match".
+        var sent = new List<string?>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                sent.Add(ExtractGateAsText(args));
+                return Task.FromResult<GsxFrame?>(sent.Count switch
+                {
+                    1 => AmbiguousGate5Frame(),
+                    2 => ServicesActiveFrame(),
+                    _ => PreparedGateT5Frame(),
+                });
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(KatlT5());
+
+        Assert.Equal(new[] { "5", "Gate T 5", "Gate T 5" }, sent);
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.True(result.WasRevokedAndReprepared);
     }
 
     [Fact]

@@ -126,11 +126,11 @@ public sealed class GsxRemoteGateSelector
                 "GSX does not advertise the 'gate' capability, so gate.select is unavailable.");
         }
 
-        // GSX's OWN identifier, verbatim — never a label rebuilt from Describe() or
-        // from Name/Number/Suffix. A round-trip through our own formatting is exactly
-        // how the wrong stand gets selected (spec ruling).
-        string? identifier = target?.GsxIdentifier;
-        if (string.IsNullOrWhiteSpace(identifier))
+        // GSX's OWN values only -- a number it published, or a bglName it handed back.
+        // Never a label rebuilt from Name/Number/Suffix or Describe(): a round-trip through
+        // our own formatting is how the wrong stand gets selected (spec ruling).
+        object? firstAttempt = GsxGateSelectPlan.FirstAttempt(target);
+        if (firstAttempt is null)
         {
             LogNoSend(label, "target spot has no GsxIdentifier", GsxGateSelectOutcome.BadArgs);
             return GsxGateSelectResult.Local(
@@ -138,8 +138,44 @@ public sealed class GsxRemoteGateSelector
                 "No GSX identifier is available for this spot.");
         }
 
-        GsxGateSelectResult result = await SendSelectAsync(identifier, revokeServices: false).ConfigureAwait(false);
-        LogAttempt(label, identifier, revokeServices: false, result);
+        // Whatever ACTUALLY reached GSX last, kept as the object it was sent as. The
+        // services_active retry below re-sends THIS, so it must never regress to an earlier
+        // attempt -- and must never be re-derived from result.RequestedIdentifier, which is a
+        // string rendering: re-sending the number 5 as the text "5" is a different request
+        // that live probing showed returns not_found.
+        object lastSent = firstAttempt;
+
+        GsxGateSelectResult result = await SendSelectAsync(firstAttempt, target, revokeServices: false)
+            .ConfigureAwait(false);
+        LogAttempt(label, Render(firstAttempt), revokeServices: false, result);
+
+        // Ambiguous: GSX refused to guess between same-numbered stands and handed back the
+        // full candidate list -- the ONLY place a client can obtain a bglName, which is the
+        // only identifier gate.select accepts. Resolve it to OUR stand and re-send. If the
+        // match is not unique we do NOT guess either: the Ambiguous result falls through and
+        // GsxGateSelectAnnouncer surfaces it exactly as it does today.
+        if (result.Outcome == GsxGateSelectOutcome.Ambiguous)
+        {
+            var matched = GsxGateCandidateMatcher.Match(
+                result.Candidates, target?.GsxUiName, target?.GsxIdentifier, target?.Number ?? 0);
+            if (matched != null)
+            {
+                lastSent = matched.BglName;
+                result = await SendSelectAsync(matched.BglName, target, revokeServices: false)
+                    .ConfigureAwait(false);
+                LogAttempt(label, matched.BglName, revokeServices: false, result);
+            }
+        }
+
+        // Last resort: the verbatim identifier -- today's behaviour, so a build or an
+        // airport where the number route does not apply is never worse than before.
+        if (result.Outcome == GsxGateSelectOutcome.NotFound
+            && GsxGateSelectPlan.FallbackAttempt(target) is { } fallback)
+        {
+            lastSent = fallback;
+            result = await SendSelectAsync(fallback, target, revokeServices: false).ConfigureAwait(false);
+            LogAttempt(label, fallback, revokeServices: false, result);
+        }
 
         // services_active: GSX is already committed at a gate. Retry EXACTLY once
         // with revokeServices: true -- the pilot asked for a different stand, and
@@ -148,8 +184,8 @@ public sealed class GsxRemoteGateSelector
         // back with -- success, services_active again, or anything else -- is final.
         if (result.Outcome == GsxGateSelectOutcome.ServicesActive)
         {
-            result = await SendSelectAsync(identifier, revokeServices: true).ConfigureAwait(false);
-            LogAttempt(label, identifier, revokeServices: true, result);
+            result = await SendSelectAsync(lastSent, target, revokeServices: true).ConfigureAwait(false);
+            LogAttempt(label, Render(lastSent), revokeServices: true, result);
 
             // Mark the retry's own success so a caller can tell "prepared immediately"
             // apart from "prepared after tearing down the previous stand's services" --
@@ -165,14 +201,23 @@ public sealed class GsxRemoteGateSelector
         return result;
     }
 
-    private async Task<GsxGateSelectResult> SendSelectAsync(string identifier, bool revokeServices)
+    /// <summary>
+    /// Sends one <c>gate.select</c>. <paramref name="identifier"/> is deliberately
+    /// <see cref="object"/>: gate.select accepts a stand NUMBER as a JSON int (which is what
+    /// it actually resolves -- live-probed 2026-08-27) as well as a string, and the two are
+    /// different requests on the wire. The declared type must stay <c>object</c> all the way
+    /// into the anonymous type, or System.Text.Json would have no runtime type to serialise
+    /// the int as a JSON number.
+    /// </summary>
+    private async Task<GsxGateSelectResult> SendSelectAsync(
+        object identifier, ParkingSpot? target, bool revokeServices)
     {
         GsxFrame? frame;
         try
         {
             frame = await _send("gate.select", new
             {
-                gate = identifier,
+                gate = identifier,   // int OR string -- the guide accepts both
                 revokeServices,
                 force = false,   // NEVER true here, and no parameter above ever
                                   // threads a caller-supplied value in: force
@@ -199,9 +244,23 @@ public sealed class GsxRemoteGateSelector
         // what lets GsxGateSelectResult.ResolvedGateContradictsRequest catch GSX resolving
         // a colliding uiGateName to a DIFFERENT stand -- which at KJFK is 128 of 231 stands'
         // worth of opportunity, and used to be completely silent.
-        result.RequestedIdentifier = identifier;
+        //
+        // The invariant string rendering of whatever was FINALLY sent, so the comparison can
+        // never silently disarm on the int path.
+        result.RequestedIdentifier = Render(identifier);
+        // GSX's fully-qualified name for the stand the pilot picked. uiGateName collides (235
+        // of KATL's 294 stands share one) so comparing GSX's echo against it proves nothing;
+        // uiName is unique for 281 of 294 and is what makes the check above able to answer.
+        result.ExpectedUiName = target?.GsxUiName;
         return result;
     }
+
+    /// <summary>The wire value as text, for the stamp and the log. Invariant culture, so a
+    /// number never renders with a locale's own digits or separators.</summary>
+    private static string Render(object identifier)
+        => identifier as string
+           ?? Convert.ToString(identifier, System.Globalization.CultureInfo.InvariantCulture)
+           ?? "";
 
     private static string DescribeForLog(ParkingSpot? target)
     {
