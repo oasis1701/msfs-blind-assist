@@ -67,7 +67,28 @@ public partial class TaxiGuidanceManager
         // (TaxiGraph.RunwayIntersection.HoldNodeId), while destinationNodeId stays that
         // point's runway ENTRY node. The route is pinned through it so the pilot taxis up
         // the stub they named — see ApplyHoldingPointPin. Null/0 for every other route.
-        int? holdingPointHoldNodeId = null)
+        int? holdingPointHoldNodeId = null,
+        // Magnetic variation (EAST POSITIVE) that converts `aircraftHeading` to TRUE.
+        // Pass 0 when `aircraftHeading` is ALREADY true — every in-manager caller
+        // (the three Rollout re-routes and LandingExitPlanner) passes a `headingTrue`,
+        // so they correctly leave this at the default. The two TaxiAssistForm callers
+        // pass SimConnect's HeadingMagnetic and MUST supply the variation.
+        //
+        // Used ONLY to compose LastRouteInitialTurnCue. It exists because the route's
+        // segment bearings are GEODETIC TRUE (TaxiGraph -> NavigationCalculator
+        // .CalculateBearing), while the tone the cue must agree with pans on
+        // (bearingToTarget - headingTrue). Subtracting a MAGNETIC heading from a TRUE
+        // bearing biases the angle by exactly the variation, and near +/-180 deg -- the
+        // near-U-turn case this cue exists for -- that bias FLIPS THE SIGN, so the words
+        // say one direction while the tone pans the other. A blind pilot has no third
+        // source to break that tie.
+        //
+        // Not hypothetical: the live KATL 2026-08-27 incident this cue was repaired for
+        // had a first-frame error of -175.78 deg (a LEFT turnaround) where the variation
+        // is about -5.5 deg. Uncorrected that computes as -181.28 -> +178.72 -> "turn
+        // RIGHT to come around", contradicting the tone on the exact flight being fixed.
+        // Do not remove this conversion.
+        double aircraftHeadingMagVar = 0.0)
     {
         lock (_stateLock)
         {
@@ -474,6 +495,38 @@ public partial class TaxiGuidanceManager
             _lastAnnouncedTaxiway = "";
             _headingErrorInitialized = false;
             _initialTurnCueAnnounced = false;
+            // Composed here, not on the first taxiing frame, so the form can fold it into
+            // its single standstill utterance instead of interrupting it 50 ms later.
+            // The taxiway comes from the ROUTE (the first named leg) rather than
+            // _lastAnnouncedTaxiway, which this same reset block has just blanked and which
+            // is therefore always empty on that frame -- the reason the live KATL cue
+            // degraded to a bare "Make a U-turn to the left".
+            //
+            // The angle is the FIRST SEGMENT's bearing against the aircraft heading, not the
+            // look-ahead walk target the per-frame site used. They differ a little -- live
+            // KATL: segment 0 bore 210.4 against a 354.0 heading (-143.6) where the walk
+            // target gave -175.8 -- but both land in the same band, and the segment bearing
+            // is the only one that exists before the first position frame. It is also
+            // deterministic, which the walk target is not.
+            //
+            // BOTH sides must be TRUE north. The segment bearing is geodetic true, so the
+            // aircraft heading is converted with aircraftHeadingMagVar (0 for the callers
+            // that already pass a true heading). See that parameter's comment for why a
+            // magnetic heading here can invert the spoken direction against the tone.
+            LastRouteInitialTurnCue = null;
+            if (route.Segments.Count > 0)
+            {
+                double aircraftHeadingTrue = aircraftHeading + aircraftHeadingMagVar;
+                double initialErr = NormalizeAngle(route.Segments[0].BearingDegrees - aircraftHeadingTrue);
+                string? firstNamed = null;
+                foreach (var seg in route.Segments)
+                {
+                    if (string.IsNullOrEmpty(seg.TaxiwayName)) continue;
+                    firstNamed = seg.TaxiwayName;
+                    break;
+                }
+                LastRouteInitialTurnCue = Navigation.RouteStartTurnCue.Compose(initialErr, firstNamed);
+            }
             // Reset the tone slew-limiter baseline too. LoadRoute is only ever a
             // FRESH route (the form's Calculate path doesn't call StopGuidance
             // first, and recalcs swap the route in place via TryRecalculateRoute

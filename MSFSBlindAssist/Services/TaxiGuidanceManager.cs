@@ -466,11 +466,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // this threshold, speak a one-shot turn-direction cue (sign matches the tone)
     // so the pilot knows which way to come around. One-shot, reset on LoadRoute /
     // StopGuidance (NOT on recalc — mid-taxi recalcs use the normal turn cues).
-    private const double INITIAL_TURN_CUE_DEG = 100.0;
-    // Above this heading error the initial cue is phrased as a U-turn / "behind
-    // you" rather than a "sharp turn" — the boundary between "come around" and
-    // "turn hard onto the first taxiway".
-    private const double INITIAL_TURN_UTURN_DEG = 135.0;
+    // The thresholds and the wording now live in Navigation/RouteStartTurnCue
+    // (SharpTurnDeg 100°, TurnaroundDeg 135° — the boundary between "come around"
+    // and "turn hard onto the first taxiway"). They moved there so the cue has ONE
+    // owner: it is composed at LoadRoute and delivered either inside the form's
+    // single standstill utterance or by the one-shot below, and two composers would
+    // be two wordings and two chances to disagree on left versus right. The local
+    // INITIAL_TURN_CUE_DEG / INITIAL_TURN_UTURN_DEG consts were deleted rather than
+    // left in place, so nobody tunes a number here and wonders why nothing changes.
     private bool _initialTurnCueAnnounced = false;
     // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
     // and taxiway-change callouts so they don't stomp that (longer, safety-
@@ -1157,6 +1160,31 @@ public partial class TaxiGuidanceManager : IDisposable
     /// AFTER StartGuidance so it isn't stomped by the first-taxiway callout.
     /// </summary>
     public string? LastRouteReachWarning { get; private set; }
+
+    /// <summary>
+    /// The route-start turn cue for the route just built, or null when the first leg needs
+    /// no words. Composed ONCE by LoadRoute — the same pattern LastRouteReachWarning uses,
+    /// and for the same reason: an AnnounceImmediate from inside LoadRoute is stomped by
+    /// StartGuidance's own first-taxiway callout milliseconds later.
+    /// <para>
+    /// The form folds it into its single standstill utterance and calls
+    /// <see cref="ConsumeInitialTurnCue"/>. Whatever is left unconsumed is spoken by the
+    /// per-frame one-shot instead, so routes the form did not start (landing-exit handoffs,
+    /// announceSummary:false) keep the cue. One text, two delivery paths, never both.
+    /// </para>
+    /// </summary>
+    public string? LastRouteInitialTurnCue { get; private set; }
+
+    /// <summary>
+    /// Takes the cue and clears it, so the per-frame one-shot will not repeat it.
+    /// </summary>
+    public string? ConsumeInitialTurnCue()
+    {
+        string? cue = LastRouteInitialTurnCue;
+        LastRouteInitialTurnCue = null;
+        return cue;
+    }
+
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
@@ -2029,18 +2057,18 @@ public partial class TaxiGuidanceManager : IDisposable
         if (!_initialTurnCueAnnounced)
         {
             _initialTurnCueAnnounced = true;
-            double absInitErr = Math.Abs(headingError);
-            if (absInitErr >= INITIAL_TURN_CUE_DEG && LastRouteReachWarning == null)
-            {
-                string dir = headingError < 0 ? "left" : "right";
-                bool hasTw = !string.IsNullOrEmpty(_lastAnnouncedTaxiway);
-                string cue = absInitErr >= INITIAL_TURN_UTURN_DEG
-                    ? (hasTw ? $"Taxiway {_lastAnnouncedTaxiway} is behind you. Turn {dir} to come around."
-                             : $"Make a U-turn to the {dir}.")
-                    : (hasTw ? $"Sharp turn {dir} onto taxiway {_lastAnnouncedTaxiway}."
-                             : $"Sharp turn {dir}.");
+            // The cue is composed once by LoadRoute and owned by RouteStartTurnCue. Speak
+            // it here only if the form did not fold it into its standstill utterance --
+            // routes the form did not start (landing-exit handoffs, announceSummary:false)
+            // have nobody else to say it. Never recomposed here: two composers would be two
+            // wordings and, worse, two chances to disagree on left versus right.
+            //
+            // Still suppressed entirely when the route does not reach its runway: that
+            // warning is the priority, the form speaks it after StartGuidance, and a turn
+            // cue would be moot (the pilot will reprogram) AND would stomp it.
+            string? cue = ConsumeInitialTurnCue();
+            if (cue != null && LastRouteReachWarning == null)
                 AnnounceInstruction(cue);
-            }
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the

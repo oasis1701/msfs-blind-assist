@@ -278,6 +278,12 @@ public class TaxiAssistForm : Form
     /// </summary>
     private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
+    // Magnetic variation (east positive) matching _aircraftHeading, which is MAGNETIC.
+    // Only the route-start turn cue consumes it (passed to LoadRoute as
+    // aircraftHeadingMagVar) — it must be composed in TRUE north like the steering tone,
+    // or the spoken direction can contradict the tone near a U-turn. Left at 0 until a
+    // position sample supplies one, which is the same no-conversion behaviour as before.
+    private double _aircraftMagVar;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
     // connection per call, so caching the (session-stable) runway set for the
@@ -4041,6 +4047,10 @@ public class TaxiAssistForm : Form
             _aircraftLat = pos.Latitude;
             _aircraftLon = pos.Longitude;
             _aircraftHeading = pos.HeadingMagnetic;
+            // Captured alongside the heading it belongs to: the heading above is MAGNETIC,
+            // and the route-start turn cue must be composed in TRUE north to agree with the
+            // steering tone. Both LoadRoute calls below are downstream of this refresh.
+            _aircraftMagVar = pos.MagneticVariation;
         }
 
         // Progressive Taxi: resolve the last-row terminator to a destination
@@ -4214,6 +4224,8 @@ public class TaxiAssistForm : Form
                 destNode, progDestName,
                 progSeq.Count > 0 ? progSeq : null,
                 progHoldShorts,
+                // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
+                aircraftHeadingMagVar: _aircraftMagVar,
                 destinationHeading: null,
                 destinationThresholdLat: null, destinationThresholdLon: null,
                 destinationHeadingTrue: null,
@@ -4385,7 +4397,9 @@ public class TaxiAssistForm : Form
             // — otherwise the approach corridor is a free A* choice and can run up a
             // NEIGHBOURING stub that merges with this one short of the runway (EGLL 27R:
             // picked A2, taxied and held at A3). See ApplyHoldingPointPin.
-            holdingPointHoldNodeId: holdingPointEntry?.HoldNodeId);
+            holdingPointHoldNodeId: holdingPointEntry?.HoldNodeId,
+            // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
+            aircraftHeadingMagVar: _aircraftMagVar);
 
         if (error != null)
         {
@@ -4466,8 +4480,26 @@ public class TaxiAssistForm : Form
                 $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
+        // The route-start turn cue rides INSIDE this one utterance rather than interrupting
+        // it. Live KATL 2026-08-27: it fired as its own AnnounceImmediate 50 ms after this
+        // block spoke, and cut the SayIntentions import summary off mid-word -- the fifth
+        // time two announcements at Calculate have stomped each other here. An instruction,
+        // not a warning, so it sits after the route details and before the reach warning,
+        // which stays the last thing said.
+        //
+        // Consumed UNCONDITIONALLY so the per-frame one-shot can never repeat it, but only
+        // SPOKEN when the route reaches its runway -- preserving the suppression the
+        // one-shot has always applied: the reach warning is the priority, and a turn cue
+        // would be moot (the pilot will reprogram) as well as extra words in front of it.
+        string? turnCue = _guidanceManager.ConsumeInitialTurnCue();
         if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
+        {
             standstillParts.Add(_guidanceManager.LastRouteReachWarning);
+        }
+        else if (!string.IsNullOrEmpty(turnCue))
+        {
+            standstillParts.Add(turnCue);
+        }
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
