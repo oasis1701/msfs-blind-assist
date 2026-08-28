@@ -248,6 +248,14 @@ public sealed class GsxRemoteGateSelector
         // The invariant string rendering of whatever was FINALLY sent, so the comparison can
         // never silently disarm on the int path.
         result.RequestedIdentifier = Render(identifier);
+        // The number ONLY when the request actually went as one -- a JSON int and the string
+        // "5" are different requests to gate.select, and Render() flattens that distinction
+        // away. This is what lets a matching echoed number clear the contradiction check on
+        // the int path without a numeric-looking STRING request borrowing the same clearance.
+        result.RequestedNumber = identifier as int?;
+        // The stand as the PILOT knows it (their dropdown's own label), for speech only --
+        // never sent. Without it the mismatch warning reads "you selected 5".
+        result.RequestedLabel = SpokenLabel(target);
         // GSX's fully-qualified name for the stand the pilot picked. uiGateName collides (235
         // of KATL's 294 stands share one) so comparing GSX's echo against it proves nothing;
         // uiName is unique for 281 of 294 and is what makes the check above able to answer.
@@ -261,6 +269,15 @@ public sealed class GsxRemoteGateSelector
         => identifier as string
            ?? Convert.ToString(identifier, System.Globalization.CultureInfo.InvariantCulture)
            ?? "";
+
+    /// <summary>The stand's pilot-facing label — what its dropdown entry read — or null when
+    /// there is no target to name. SPOKEN only; it must never reach the wire.</summary>
+    private static string? SpokenLabel(ParkingSpot? target)
+    {
+        if (target is null) return null;
+        try { return target.Describe(); }
+        catch { return null; }
+    }
 
     private static string DescribeForLog(ParkingSpot? target)
     {

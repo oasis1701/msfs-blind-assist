@@ -146,6 +146,31 @@ public class GsxRemoteGateSelectorTests
         GsxUiName = "Concourse T (T1-T21) | Gate 5",
     };
 
+    /// <summary>
+    /// A KATL GA ramp, as the committed handlerData fixture publishes it: GSX gives it a
+    /// <c>uiGateName</c> ("Ramp 1") but NO <c>uiName</c> at all — 3 of that fixture's 8
+    /// stands, 13 of the airport's 294. So <c>ExpectedUiName</c> is null, the
+    /// fully-qualified comparison cannot run, and the echoed NUMBER is the only identity
+    /// left that can prove GSX resolved the stand we asked for.
+    /// </summary>
+    private static ParkingSpot KatlRamp1() => new()
+    {
+        Name = "",                 // StandId.Parse("Ramp 1") drops the stand-type word
+        Number = 1,
+        Suffix = "",
+        Type = 2,                  // Ramp GA
+        Source = GateSource.Gsx,
+        GsxIdentifier = "Ramp 1",
+        GsxUiName = null,
+    };
+
+    private static GsxFrame PreparedRamp1Frame() => GsxFrame.Parse("""
+        { "type": "result", "id": "g-2", "ok": true,
+          "payload": { "code": "ok", "status": "prepared",
+                       "gate": { "uiName": "", "gate": "Ramp 1", "number": 1, "bglName": "Ramp 1" },
+                       "warnings": [] } }
+        """);
+
     // ── Capability gate ─────────────────────────────────────────────────────
 
     [Fact]
@@ -452,18 +477,80 @@ public class GsxRemoteGateSelectorTests
     {
         // The retry builds a SECOND result; the stamp has to be on whichever one is returned,
         // or a revoke-and-reprepare would silently lose the comparison.
+        //
+        // Deliberately a CORRECT-stand fixture: GSX resolved exactly the stand that was
+        // asked for, so the comparison must come back clean. That last assertion is the
+        // only one in the suite pinning "a right answer is NOT flagged", and a false alarm
+        // here teaches the pilot to ignore the real one.
         var selector = new GsxRemoteGateSelector(
             (verb, args) =>
             {
                 bool revoke = ExtractBool(args, "revokeServices");
-                return Task.FromResult<GsxFrame?>(revoke ? PreparedFrame() : ServicesActiveFrame());
+                return Task.FromResult<GsxFrame?>(revoke ? PreparedRamp1Frame() : ServicesActiveFrame());
             },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(KatlRamp1());
+
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.Equal("1", result.RequestedIdentifier);
+        Assert.False(result.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public async Task A_correct_selection_of_a_stand_with_no_uiName_is_not_flagged_as_a_mismatch()
+    {
+        // The regression this exists for. The NUMBER goes on the wire, so
+        // RequestedIdentifier renders as "1" -- which no echoed TEXT field can ever equal.
+        // With ExpectedUiName null (GSX publishes no uiName for this stand) the comparison
+        // fell through to the echoed strings and reported a contradiction on a perfectly
+        // correct resolution: "Careful: you selected 1, but GSX prepared Ramp 1." It also
+        // wrote resolvedMismatch=true into gsx-gate-select.log -- the one token that log
+        // reserves for the single anomaly worth grepping.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedRamp1Frame()),
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(KatlRamp1());
+
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+        Assert.Equal(1, result.RequestedNumber);
+        Assert.False(result.ResolvedGateContradictsRequest);
+        Assert.DoesNotContain("Careful", GsxGateSelectAnnouncer.Describe(result)!,
+                              StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_number_that_resolved_to_a_DIFFERENT_stand_is_still_flagged()
+    {
+        // The other half of the same rule: a matching number clears the check, a different
+        // one must not. PreparedFrame() echoes number 12 against a request for 999.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
             HasGateCapability);
 
         var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
 
-        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
-        Assert.Equal("999", result.RequestedIdentifier);
+        Assert.Equal(999, result.RequestedNumber);
+        Assert.True(result.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public async Task A_string_send_stamps_no_number_so_a_coincidental_echo_cannot_clear_it()
+    {
+        // A numberless stand goes as a STRING, and gate.select treats "5" and 5 as
+        // different requests -- so an echoed number proves nothing about a string send.
+        // RequestedNumber must be null on this path, which is exactly why the sent number
+        // is stamped rather than re-parsed out of RequestedIdentifier.
+        var target = SpotWithIdentifier(" Gate 5");
+        target.Number = 0;
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(target);
+
+        Assert.Null(result.RequestedNumber);
     }
 
     [Fact]
@@ -777,5 +864,160 @@ public class GsxRemoteGateSelectorTests
         Assert.Equal((1, false), calls[0]);
         Assert.Equal((1, true), calls[1]);
         Assert.Equal((2, false), calls[2]);
+    }
+
+    // ── The lower rungs of the ladder: revoke/force, wire types, three sends ──
+
+    [Fact]
+    public async Task The_bglName_rung_also_sends_revokeServices_false_and_force_false()
+    {
+        // Only the plain first send and the services_active retry were pinned on these two.
+        // Every rung below them carries the same rules: never revoke on an ordinary
+        // attempt, and NEVER force -- force overrides a stand GSX assigned to AI traffic,
+        // which would put a blind pilot nose-to-nose with an aircraft they cannot see.
+        var revokes = new List<bool>();
+        var forces = new List<bool>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                revokes.Add(ExtractBool(args, "revokeServices"));
+                forces.Add(ExtractBool(args, "force"));
+                return Task.FromResult<GsxFrame?>(
+                    revokes.Count == 1 ? AmbiguousGate5Frame() : PreparedGateT5Frame());
+            },
+            HasGateCapability);
+
+        await selector.SelectGateAsync(KatlT5());
+
+        Assert.Equal(new[] { false, false }, revokes);
+        Assert.Equal(new[] { false, false }, forces);
+    }
+
+    [Fact]
+    public async Task The_fallback_rung_also_sends_revokeServices_false_and_force_false()
+    {
+        var revokes = new List<bool>();
+        var forces = new List<bool>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                revokes.Add(ExtractBool(args, "revokeServices"));
+                forces.Add(ExtractBool(args, "force"));
+                return Task.FromResult<GsxFrame?>(
+                    revokes.Count == 1 ? NotFoundFrame() : PreparedFrame());
+            },
+            HasGateCapability);
+
+        await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Equal(new[] { false, false }, revokes);
+        Assert.Equal(new[] { false, false }, forces);
+    }
+
+    [Fact]
+    public async Task The_ambiguity_rungs_send_a_json_int_then_a_json_string()
+    {
+        // ExtractGateAsText renders a JSON number and a JSON string identically, so the
+        // ordering assertions above constrain the VALUES but not the TYPES -- and the type
+        // is the whole point of this ladder: live probing has 5 returning a usable answer
+        // where "5" returns not_found.
+        var kinds = new List<JsonValueKind>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                kinds.Add(ToJson(args).GetProperty("gate").ValueKind);
+                return Task.FromResult<GsxFrame?>(
+                    kinds.Count == 1 ? AmbiguousGate5Frame() : PreparedGateT5Frame());
+            },
+            HasGateCapability);
+
+        await selector.SelectGateAsync(KatlT5());
+
+        Assert.Equal(new[] { JsonValueKind.Number, JsonValueKind.String }, kinds);
+    }
+
+    [Fact]
+    public async Task An_ambiguity_resolved_to_a_bglName_GSX_then_rejects_still_falls_back()
+    {
+        // The full three-rung ladder, untested until now: number -> ambiguous -> bglName ->
+        // not_found -> the verbatim identifier. Each rung has to be reachable from the rung
+        // above it, not only from the first send.
+        var sent = new List<string?>();
+        var kinds = new List<JsonValueKind>();
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) =>
+            {
+                sent.Add(ExtractGateAsText(args));
+                kinds.Add(ToJson(args).GetProperty("gate").ValueKind);
+                return Task.FromResult<GsxFrame?>(sent.Count switch
+                {
+                    1 => AmbiguousGate5Frame(),
+                    2 => NotFoundFrame(),
+                    _ => PreparedGateT5Frame(),
+                });
+            },
+            HasGateCapability);
+
+        var result = await selector.SelectGateAsync(KatlT5());
+
+        Assert.Equal(new[] { "5", "Gate T 5", " Gate 5" }, sent);
+        Assert.Equal(new[] { JsonValueKind.Number, JsonValueKind.String, JsonValueKind.String }, kinds);
+        Assert.Equal(GsxGateSelectOutcome.Prepared, result.Outcome);
+    }
+
+    // ── What the pilot HEARS names the stand, never the wire value ───────────
+
+    [Fact]
+    public async Task A_genuine_mismatch_names_the_stand_the_pilot_picked_not_the_number_sent()
+    {
+        // The wire value is a bare number now, and "you selected 999" is not something a
+        // pilot can act on. The label they picked out of the dropdown is.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            HasGateCapability);
+
+        var target = SpotWithIdentifier("Gate A12");
+        var result = await selector.SelectGateAsync(target);
+
+        Assert.True(result.ResolvedGateContradictsRequest);
+        Assert.Equal(target.Describe(), result.RequestedLabel);
+
+        string phrase = GsxGateSelectAnnouncer.Describe(result)!;
+        Assert.Contains(target.Describe(), phrase);
+        // Not the bare wire rendering. (The label itself contains "999" -- the stand number
+        // is part of its name -- so only the naked form can be asserted absent.)
+        Assert.DoesNotContain("selected 999,", phrase);
+    }
+
+    [Fact]
+    public async Task A_not_found_names_the_stand_the_pilot_picked_not_the_number_sent()
+    {
+        // Same rule on the other reachable path: "GSX could not find 999" tells the pilot
+        // nothing at all about which stand GSX could not find.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(NotFoundFrame()),
+            HasGateCapability);
+
+        var target = SpotWithIdentifier("Gate A12");
+        var result = await selector.SelectGateAsync(target);
+
+        string phrase = GsxGateSelectAnnouncer.Describe(result)!;
+        Assert.Contains(target.Describe(), phrase);
+        Assert.DoesNotContain("find 999,", phrase);
+    }
+
+    [Fact]
+    public async Task A_locally_refused_request_carries_no_spoken_label_either()
+    {
+        // Nothing was sent, so there is no request to name -- the announcer's own generic
+        // fallbacks depend on being able to tell that apart from a real send.
+        var selector = new GsxRemoteGateSelector(
+            (verb, args) => Task.FromResult<GsxFrame?>(PreparedFrame()),
+            NoGateCapability);
+
+        var result = await selector.SelectGateAsync(SpotWithIdentifier("Gate A12"));
+
+        Assert.Null(result.RequestedLabel);
+        Assert.Null(result.RequestedNumber);
     }
 }
