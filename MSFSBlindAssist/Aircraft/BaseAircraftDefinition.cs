@@ -701,6 +701,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>
     /// Stock-fuel resolution: read FUELSYSTEM TANK WEIGHT and map it onto the slot table.
     /// PMDG overrides this wholesale (its stock fuel vars read 0 — legacy fuel model).
+    ///
+    /// <paramref name="onReady"/> is ALWAYS invoked — with null when the request could not
+    /// be issued at all (no slot table, or SimConnect is down). Letting a failed request
+    /// simply return left the caller waiting on a reply that was never coming, which the
+    /// Fuel Tanks window could not tell apart from a slow one.
     /// </summary>
     public virtual void RequestFuelTankReadings(
         SimConnect.SimConnectManager simConnect,
@@ -708,8 +713,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     {
         var slots = GetFuelTankSlots();
         if (slots == null || slots.Count == 0) { onReady(null); return; }
-        simConnect.RequestFuelTankWeights(
+        bool issued = simConnect.RequestFuelTankWeights(
             weights => onReady(Services.FuelTankReadout.Resolve(slots, weights)));
+        if (!issued) onReady(null);
     }
 
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override

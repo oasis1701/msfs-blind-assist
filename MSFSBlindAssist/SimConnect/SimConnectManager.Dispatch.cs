@@ -359,8 +359,14 @@ public partial class SimConnectManager
                 break;
 
             case DATA_REQUESTS.REQUEST_FUEL_TANK_WEIGHTS:
-                FuelTankWeightsReceived?.Invoke(this, (FuelTankWeightsData)data.dwData[0]);
+            {
+                // Take and clear the pending callback before invoking it, so a reply that
+                // arrives after the window closed cannot be delivered twice.
+                var fuelCb = fuelTankCallback;
+                fuelTankCallback = null;
+                fuelCb?.Invoke(((FuelTankWeightsData)data.dwData[0]).ToArray());
                 break;
+            }
 
             case DATA_REQUESTS.REQUEST_FUEL_QUANTITY: // Fenix: pounds
                 SingleValue fuelData = (SingleValue)data.dwData[0];

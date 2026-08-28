@@ -815,13 +815,14 @@ public partial class MainForm
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
-    // Per-tank fuel readout (output Ctrl+1..9 = pounds, Alt+1..9 = kilograms).
-    // The slot table comes from the aircraft definition; the weights are a one-shot
-    // stock-fuel-system read, formatted by the pure FuelTankReadout helper.
     /// <summary>
     /// Opens the Fuel Tanks window (output Alt+U). Re-pressing focuses the existing window
     /// rather than stacking a second one — it refreshes itself, so a duplicate would only
     /// add another timer reading the same fuel.
+    ///
+    /// The open must ACTIVATE, not merely Show: the window is opened from output mode with
+    /// the simulator in the foreground, and its first-letter type-ahead is useless without
+    /// keyboard focus. Same sequence every other readout window here uses.
     /// </summary>
     private void ShowFuelTanksWindow()
     {
@@ -832,12 +833,32 @@ public partial class MainForm
             _fuelTanksForm.Activate();
             return;
         }
-        _fuelTanksForm = new Forms.FuelTanksForm(currentAircraft, simConnectManager);
+        _fuelTanksForm = new Forms.FuelTanksForm(currentAircraft, simConnectManager, announcer);
         _fuelTanksForm.FormClosed += (_, _) => _fuelTanksForm = null;
         _fuelTanksForm.Show();
+        _fuelTanksForm.BringToFront();
+        _fuelTanksForm.Activate();
     }
 
+    /// <summary>
+    /// The open Fuel Tanks window, if any. Bound to ONE aircraft definition at
+    /// construction, so <c>SwitchAircraft</c> closes it — see CloseFuelTanksWindow.
+    /// </summary>
     private Forms.FuelTanksForm? _fuelTanksForm;
+
+    /// <summary>
+    /// Closes the Fuel Tanks window on an aircraft switch. It captures the aircraft
+    /// definition at construction, so a surviving window would keep reading the OUTGOING
+    /// aircraft — showing a fuelled PMDG as bone dry under A380 tank names, or freezing the
+    /// previous jet's numbers on screen with no cue that they stopped moving.
+    /// </summary>
+    private void CloseFuelTanksWindow()
+    {
+        if (_fuelTanksForm == null) return;
+        var form = _fuelTanksForm;
+        _fuelTanksForm = null;
+        if (!form.IsDisposed) form.Dispose();
+    }
 
     protected override void WndProc(ref Message m)
     {

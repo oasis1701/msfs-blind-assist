@@ -36,9 +36,9 @@ Fuel:
   F          Read Total Fuel (pounds)
   Shift+F    Read Total Fuel (kilograms)
   Alt+U      Open the Fuel Tanks window (every tank, live, pounds and kilograms):
-             Left main, Right main, Center, Aux (only when it holds fuel), and a
-             Total. Type a tank's first letter to jump straight to it -- "c" for
-             Center. Escape closes.
+             Left main, Right main, Center, Aux, and a Total. Aux is always listed,
+             reading 0 when it is empty or not fitted. Type a tank's first letter to
+             jump straight to it -- "c" for Center. Escape closes.
 
 Weight:
   W          Read Gross Weight (pounds)

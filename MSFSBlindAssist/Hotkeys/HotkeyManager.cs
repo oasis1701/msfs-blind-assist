@@ -1343,9 +1343,7 @@ public class HotkeyManager : IDisposable
         ReadTrackSlot3,
         ReadTrackSlot4,
         ReadTrackSlot5,
-        // Per-tank fuel readout — each run MUST stay contiguous and in 1..9 order:
-        // the WndProc handler maps the hotkey-id ranges onto them by offset arithmetic.
-        ShowFuelTanks,
+        ShowFuelTanks,          // Alt+U (output) — the Fuel Tanks window
         ReadFuelInfo,
         ReadDisplayPFD,
         ReadDisplayLowerECAM,

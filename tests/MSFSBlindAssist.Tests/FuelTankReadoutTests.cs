@@ -25,20 +25,20 @@ public class FuelTankReadoutTests
     public void Single_tank_row_leads_with_label_then_both_units()
     {
         // 17739 lb × 0.453592 = 8046.3 → 8046
-        Assert.Equal("Feed 1  17,739 lb (8,046 kg)", FuelTankReadout.FormatRow(Row("Feed 1", 17739)));
+        Assert.Equal("Feed 1  17,739 pounds (8,046 kilograms)", FuelTankReadout.FormatRow(Row("Feed 1", 17739)));
     }
 
     [Fact]
     public void Label_leads_the_line_so_type_ahead_can_reach_every_row()
     {
-        // The window replaced nine digit chords with first-letter navigation, which the
+        // The window is navigated by first-letter type-ahead, which the
         // native ListBox incremental search does on the row's LEADING characters. If a
         // number or unit ever leads, that navigation silently stops working.
         var lines = FuelTankReadout.BuildLines(new[]
         {
-            Row("Centre", 1000), Row("Feed 1", 2000)
+            Row("Center", 1000), Row("Feed 1", 2000)
         });
-        Assert.StartsWith("Centre", lines[0]);
+        Assert.StartsWith("Center", lines[0]);
         Assert.StartsWith("Feed 1", lines[1]);
         Assert.StartsWith("Total", lines[2]);
     }
@@ -48,14 +48,14 @@ public class FuelTankReadoutTests
     {
         var reading = new FuelTankReading("Outer",
             new List<(string?, double)> { ("left", 8818), ("right", 8000) });
-        Assert.Equal("Outer  left 8,818 lb (4,000 kg), right 8,000 lb (3,629 kg)",
+        Assert.Equal("Outer  left 8,818 pounds (4,000 kilograms), right 8,000 pounds (3,629 kilograms)",
             FuelTankReadout.FormatRow(reading));
     }
 
     [Fact]
     public void Empty_tank_reads_zero_not_silence()
     {
-        Assert.Equal("Mid  0 lb (0 kg)", FuelTankReadout.FormatRow(Row("Mid", 0)));
+        Assert.Equal("Mid  0 pounds (0 kilograms)", FuelTankReadout.FormatRow(Row("Mid", 0)));
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class FuelTankReadoutTests
         // Never a separate simvar read — a total that disagrees with the visible rows
         // reads as a bug even when both numbers are individually right.
         var lines = FuelTankReadout.BuildLines(new[] { Row("A", 1000), Row("B", 2500) });
-        Assert.Equal("Total  3,500 lb (1,588 kg)", lines[^1]);
+        Assert.Equal("Total  3,500 pounds (1,588 kilograms)", lines[^1]);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class FuelTankReadoutTests
     {
         var pair = new FuelTankReading("Outer",
             new List<(string?, double)> { ("left", 1000), ("right", 1000) });
-        Assert.Equal("Total  2,000 lb (907 kg)", FuelTankReadout.BuildLines(new[] { pair })[^1]);
+        Assert.Equal("Total  2,000 pounds (908 kilograms)", FuelTankReadout.BuildLines(new[] { pair })[^1]);
     }
 
     [Fact]
@@ -83,7 +83,8 @@ public class FuelTankReadoutTests
         try
         {
             CultureInfo.CurrentCulture = new CultureInfo("de-DE");
-            Assert.Equal("Feed 1  17,739 lb (8,046 kg)", FuelTankReadout.FormatRow(Row("Feed 1", 17739)));
+            Assert.Equal("Feed 1  17,739 pounds (8,046 kilograms)",
+                FuelTankReadout.FormatRow(Row("Feed 1", 17739)));
         }
         finally { CultureInfo.CurrentCulture = previous; }
     }
@@ -93,7 +94,7 @@ public class FuelTankReadoutTests
     {
         var slots = new[] { new FuelTankSlot("Outer", ("left", 1), ("right", 10)) };
         var rows = FuelTankReadout.Resolve(slots, LiveA380);
-        Assert.Equal("Outer  left 8,818 lb (4,000 kg), right 8,818 lb (4,000 kg)",
+        Assert.Equal("Outer  left 8,818 pounds (4,000 kilograms), right 8,818 pounds (4,000 kilograms)",
             FuelTankReadout.FormatRow(rows[0]));
     }
 
@@ -101,7 +102,7 @@ public class FuelTankReadoutTests
     public void Resolve_reads_an_out_of_range_tank_index_as_zero()
     {
         var rows = FuelTankReadout.Resolve(new[] { new FuelTankSlot("Ghost", (null, 42)) }, LiveA380);
-        Assert.Equal("Ghost  0 lb (0 kg)", FuelTankReadout.FormatRow(rows[0]));
+        Assert.Equal("Ghost  0 pounds (0 kilograms)", FuelTankReadout.FormatRow(rows[0]));
     }
 
     [Fact]
@@ -112,7 +113,48 @@ public class FuelTankReadoutTests
         Assert.Equal(8, slots!.Count);
         var indices = slots.SelectMany(s => s.Tanks.Select(t => t.TankIndex)).OrderBy(i => i).ToArray();
         Assert.Equal(new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, indices);
-        // The old nine-digit-chord ceiling is GONE with the hotkeys — a window can list any
-        // number of tanks, so no upper bound is asserted here on purpose.
+    }
+
+    [Fact]
+    public void A380_slot_table_puts_each_sim_tank_index_under_the_right_label()
+    {
+        // The index set alone (test above) is blind to WHICH label each index sits under,
+        // so a transposed pair — Feed 2 for Feed 3, or Mid for Inner — would ship green
+        // while the pilot is told one tank's quantity under another tank's name, and a
+        // swapped left/right reads an imbalance check backwards. This pins the rendering
+        // of the real table against the live capture the indices were verified from.
+        var slots = new FlyByWireA380Definition().GetFuelTankSlots();
+        var lines = FuelTankReadout.BuildLines(FuelTankReadout.Resolve(slots!, LiveA380));
+
+        Assert.Equal(new[]
+        {
+            "Feed 1  17,739 pounds (8,046 kilograms)",
+            "Feed 2  18,760 pounds (8,509 kilograms)",
+            "Feed 3  18,723 pounds (8,493 kilograms)",
+            "Feed 4  17,520 pounds (7,947 kilograms)",
+            "Outer tanks  left 8,818 pounds (4,000 kilograms), right 8,818 pounds (4,000 kilograms)",
+            "Mid tanks  left 0 pounds (0 kilograms), right 0 pounds (0 kilograms)",
+            "Inner tanks  left 0 pounds (0 kilograms), right 0 pounds (0 kilograms)",
+            "Trim tank  18,163 pounds (8,239 kilograms)",
+            "Total  108,541 pounds (49,234 kilograms)",
+        }, lines);
+    }
+
+    [Fact]
+    public void Total_kilograms_equals_the_sum_of_the_printed_row_kilograms()
+    {
+        // Summing raw pounds and converting once put the A380's own live capture 1 kg
+        // below the sum of the kilogram figures printed above it — a pilot adding the
+        // rows up cannot tell a rounding artefact from a missing tank.
+        var slots = new FlyByWireA380Definition().GetFuelTankSlots();
+        var rows = FuelTankReadout.Resolve(slots!, LiveA380);
+        var lines = FuelTankReadout.BuildLines(rows);
+
+        long PrintedKg(string line) => long.Parse(
+            line.Split('(').Last().Replace(" kilograms)", "").Replace(",", ""),
+            CultureInfo.InvariantCulture);
+
+        long rowKg = rows.Sum(r => r.Values.Sum(v => (long)Math.Round(v.Lbs * 0.453592)));
+        Assert.Equal(rowKg, PrintedKg(lines[^1]));
     }
 }

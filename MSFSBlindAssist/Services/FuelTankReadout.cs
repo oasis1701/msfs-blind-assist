@@ -16,8 +16,13 @@ public static class FuelTankReadout
     private const double LbsToKg = 0.453592;
 
     /// <summary>
-    /// Builds one list row: <c>"Centre  12,345 lb (5,600 kg)"</c>, or for a symmetric pair
-    /// <c>"Outer  left 8,818 lb (4,000 kg), right 8,818 lb (4,000 kg)"</c>.
+    /// Builds one list row: <c>"Center  12,345 pounds (5,600 kilograms)"</c>, or for a
+    /// symmetric pair <c>"Outer tanks  left 8,818 pounds (4,000 kilograms), right …"</c>.
+    ///
+    /// The units are SPELLED OUT because this line is read aloud: a screen reader says
+    /// "ell bee" for lb and "kay gee" for kg. Same rule the SayIntentions altimeter line
+    /// follows ("inches", never "inHg"), and the one the existing fuel readouts already
+    /// keep ("Fuel on board 12724 kilograms").
     ///
     /// BOTH units on every row, pounds first with kilograms in brackets. The app has users
     /// on each, and this is a lookup surface rather than a spoken sentence — a unit toggle
@@ -47,23 +52,32 @@ public static class FuelTankReadout
     /// resolved, NOT a separate simvar read — so it can never disagree with the numbers
     /// printed above it (a total that does not match the visible rows reads as a bug even
     /// when both values are individually right).
+    ///
+    /// It sums the ROUNDED figures each row actually prints, in each unit separately.
+    /// Summing raw pounds and converting once instead let the Total's kilograms miss the
+    /// sum of the printed kilograms (the A380's own live capture is off by 1), and the
+    /// pounds too whenever the sim reports fractional pounds — which in flight it always
+    /// does. A pilot adding the rows up must land exactly on the Total.
     /// </summary>
     public static IReadOnlyList<string> BuildLines(IReadOnlyList<FuelTankReading> readings)
     {
         var lines = readings.Select(FormatRow).ToList();
-        double totalLbs = readings.Sum(r => r.Values.Sum(v => v.Lbs));
-        lines.Add($"Total  {Both(totalLbs)}");
+        long totalLbs = readings.Sum(r => r.Values.Sum(v => RoundLbs(v.Lbs)));
+        long totalKg = readings.Sum(r => r.Values.Sum(v => RoundKg(v.Lbs)));
+        lines.Add($"Total  {Format(totalLbs, totalKg)}");
         return lines;
     }
 
-    /// <summary>"12,345 lb (5,600 kg)" — both units, rounded to the pound/kilogram.</summary>
-    private static string Both(double lbs)
-    {
-        long roundedLbs = (long)Math.Round(lbs);
-        long roundedKg = (long)Math.Round(lbs * LbsToKg);
-        return $"{roundedLbs.ToString("N0", CultureInfo.InvariantCulture)} lb "
-             + $"({roundedKg.ToString("N0", CultureInfo.InvariantCulture)} kg)";
-    }
+    /// <summary>"12,345 pounds (5,600 kilograms)" — both units, rounded to the whole unit.</summary>
+    private static string Both(double lbs) => Format(RoundLbs(lbs), RoundKg(lbs));
+
+    private static long RoundLbs(double lbs) => (long)Math.Round(lbs);
+
+    private static long RoundKg(double lbs) => (long)Math.Round(lbs * LbsToKg);
+
+    private static string Format(long lbs, long kg)
+        => $"{lbs.ToString("N0", CultureInfo.InvariantCulture)} pounds "
+         + $"({kg.ToString("N0", CultureInfo.InvariantCulture)} kilograms)";
 
     /// <summary>
     /// Resolves a static slot table against the 16-wide FUELSYSTEM tank-weight array

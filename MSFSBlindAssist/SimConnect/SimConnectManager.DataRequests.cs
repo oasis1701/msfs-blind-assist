@@ -491,41 +491,54 @@ public partial class SimConnectManager
         }
     }
 
-    // Per-tank fuel readout (output-mode Ctrl/Alt+digit). One-shot read of
+    // Per-tank fuel readout (the Fuel Tanks window, output Alt+U). One-shot read of
     // FUELSYSTEM TANK WEIGHT:1..16 in pounds; the callback receives all 16 values
-    // (0 for tank indices the loaded aircraft doesn't model). The definition is
-    // rebuilt per call (same dynamic-def pattern as RequestSingleValue) because
-    // this is an on-demand readout, not a monitored stream.
-    public void RequestFuelTankWeights(Action<double[]> callback)
+    // (0 for tank indices the loaded aircraft doesn't model).
+    //
+    // The definition is built ONCE per connection, not per call. Its content is fixed
+    // (16 constant simvar names, one constant unit), which is exactly the case SC-12
+    // converted to register-once — RequestSingleValue stays dynamic only because ITS
+    // simvar/units vary per aircraft for one numeric id. Rebuilding per call also meant
+    // clearing the definition while the previous PERIOD.ONCE request could still be in
+    // flight, which SafelyClearDataDefinition's own header calls out as a crash risk;
+    // this window polls once a second, so that window was reopened every second.
+    //
+    // Returns FALSE when the request could not be issued, so the caller can answer its
+    // own callback instead of waiting forever for a reply that will never come.
+    public bool RequestFuelTankWeights(Action<double[]> callback)
     {
-        if (!IsConnected || simConnect == null || callback == null) return;
+        if (!IsConnected || simConnect == null || callback == null) return false;
 
         try
         {
-            EventHandler<FuelTankWeightsData>? handler = null;
-            handler = (sender, data) =>
-            {
-                FuelTankWeightsReceived -= handler!;
-                callback(data.ToArray());
-            };
-            FuelTankWeightsReceived += handler;
-
             var defId = DATA_DEFINITIONS.DEF_FUEL_TANK_WEIGHTS;
-            SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
-            for (int i = 1; i <= 16; i++)
+            if (!fuelTankDefRegistered)
             {
-                simConnect.AddToDataDefinition(defId,
-                    $"FUELSYSTEM TANK WEIGHT:{i}", "pounds",
-                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                for (int i = 1; i <= FUEL_TANK_WEIGHT_SLOTS; i++)
+                {
+                    simConnect.AddToDataDefinition(defId,
+                        $"FUELSYSTEM TANK WEIGHT:{i}", "pounds",
+                        SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                }
+                simConnect.RegisterDataDefineStruct<FuelTankWeightsData>(defId);
+                fuelTankDefRegistered = true;
             }
-            simConnect.RegisterDataDefineStruct<FuelTankWeightsData>(defId);
+
+            // ONE pending callback, replaced rather than accumulated. The previous shape
+            // subscribed a self-unsubscribing event handler per call and removed it only
+            // when a reply arrived, so every unanswered 1 Hz tick leaked a closure that
+            // pinned the window — and a later reply fanned out to all of them at once.
+            fuelTankCallback = callback;
             simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FUEL_TANK_WEIGHTS,
                 defId, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            return true;
         }
         catch (Exception ex)
         {
+            fuelTankCallback = null;
             Log.Debug("SimConnect", $"Error requesting fuel tank weights: {ex.Message}");
+            return false;
         }
     }
 

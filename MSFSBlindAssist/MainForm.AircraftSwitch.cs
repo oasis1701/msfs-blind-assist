@@ -709,6 +709,10 @@ public partial class MainForm
             checklistForm = null;
         }
 
+        // Same for the Fuel Tanks window — it captures the aircraft definition at
+        // construction, so a surviving window keeps reading the OUTGOING aircraft.
+        CloseFuelTanksWindow();
+
         // Dispose A380 monitor manager when switching aircraft
         if (fbwA380MonitorManagerForm != null && !fbwA380MonitorManagerForm.IsDisposed)
         {

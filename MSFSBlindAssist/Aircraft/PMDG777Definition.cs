@@ -6699,11 +6699,19 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     }
 
     /// <summary>
-    /// Per-tank fuel for the Fuel Tanks window: Left main, Right main, Center, and Aux
-    /// only when it actually holds fuel. The 777 FCOM names the wing tanks left/right
-    /// main (unlike the 737's numbered Main Tank No. 1/2). Reads the PMDG SDK tank fields
-    /// rather than the base class's stock FUELSYSTEM path — those vars read 0 on this
-    /// aircraft (legacy fuel model). Synchronous: the CDA snapshot is already in hand.
+    /// Per-tank fuel for the Fuel Tanks window: Left main, Right main, Center and Aux.
+    /// The 777 FCOM names the wing tanks left/right main (unlike the 737's numbered Main
+    /// Tank No. 1/2). Reads the PMDG SDK tank fields rather than the base class's stock
+    /// FUELSYSTEM path — those vars read 0 on this aircraft (legacy fuel model).
+    /// Synchronous: the CDA snapshot is already in hand.
+    ///
+    /// Aux is listed ALWAYS, including at zero. Hiding it when empty made "aux emptied
+    /// into the mains" acoustically identical to "no aux fitted", and since the total
+    /// readouts no longer break fuel out per tank, the figure was then reachable from
+    /// nowhere in the app. A fixed row set also keeps the reader's cursor still: rows
+    /// appearing and disappearing under a 1 Hz refresh silently move it onto a different
+    /// tank, because the in-place reconcile restores the selection by ROW TEXT and every
+    /// row's text changes as fuel burns.
     /// </summary>
     public override void RequestFuelTankReadings(
         SimConnect.SimConnectManager simConnect,
@@ -6715,17 +6723,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         // window says out loud instead.
         if (dm == null || !dm.IsReady) { onReady(null); return; }
 
-        var rows = new List<FuelTankReading>
+        onReady(new List<FuelTankReading>
         {
             Row("Left main", dm.GetFieldValue("FUEL_QtyLeft")),
             Row("Right main", dm.GetFieldValue("FUEL_QtyRight")),
             Row("Center", dm.GetFieldValue("FUEL_QtyCenter")),
-        };
-        // Aux is fitted on some 777 variants only; an empty aux is indistinguishable from
-        // an absent one over the SDK, so it appears only when it is carrying fuel.
-        double auxLbs = dm.GetFieldValue("FUEL_QtyAux");
-        if (auxLbs > 0.5) rows.Add(Row("Aux", auxLbs));
-        onReady(rows);
+            Row("Aux", dm.GetFieldValue("FUEL_QtyAux")),
+        });
 
         static FuelTankReading Row(string label, double lbs)
             => new(label, new List<(string?, double)> { (null, lbs) });
@@ -6826,7 +6830,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int right  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight"));
                 int aux    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux"));
                 int total  = left + center + right + aux;
-                // Per-tank breakdown moved to the dedicated output Ctrl+1..4 keys.
+                // Per-tank breakdown moved to the Fuel Tanks window (output Alt+U).
                 announcer.AnnounceImmediate($"Total fuel {total} pounds");
                 return true;
             }
@@ -7089,7 +7093,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 int rightKg  = (int)Math.Round(dm.GetFieldValue("FUEL_QtyRight") * 0.453592);
                 int auxKg    = (int)Math.Round(dm.GetFieldValue("FUEL_QtyAux") * 0.453592);
                 int totalKg  = leftKg + centerKg + rightKg + auxKg;
-                // Per-tank breakdown moved to the dedicated output Alt+1..4 keys.
+                // Per-tank breakdown moved to the Fuel Tanks window (output Alt+U).
                 announcer.AnnounceImmediate($"Total fuel {totalKg} kilograms");
                 return true;
             }

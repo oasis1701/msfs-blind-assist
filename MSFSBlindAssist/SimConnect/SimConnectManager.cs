@@ -48,7 +48,6 @@ public partial class SimConnectManager
     public event EventHandler<string>? SimulatorVersionDetected;
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
-    public event EventHandler<FuelTankWeightsData>? FuelTankWeightsReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     // Fired when a RequestAiTrafficData sweep delivers its final entry
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
@@ -760,6 +759,12 @@ public partial class SimConnectManager
             IsConnected = true;  // Set IMMEDIATELY so StartContinuousMonitoring() can run
             reconnectTimer.Stop();
 
+            // Fresh session: nothing registered on it yet. Reset here as well as in
+            // Disconnect(), so a drop that never ran the teardown path cannot leave the
+            // per-tank fuel definition marked as built against a SimConnect that is gone.
+            fuelTankDefRegistered = false;
+            fuelTankCallback = null;
+
             SetupDataDefinitions();
             SetupEvents();
             RegisterClientEvents();
@@ -835,6 +840,16 @@ public partial class SimConnectManager
     {
         public double value;
     }
+
+    // How many FUELSYSTEM TANK WEIGHT slots the definition and the struct below carry.
+    // The two MUST agree, so both are driven from this one constant.
+    public const int FUEL_TANK_WEIGHT_SLOTS = 16;
+
+    // The single pending per-tank-fuel callback, and whether its (fixed-content) data
+    // definition has been built on this connection. Both are reset on disconnect, because
+    // data definitions do not survive a SimConnect session.
+    private Action<double[]>? fuelTankCallback;
+    private bool fuelTankDefRegistered;
 
     // Per-tank fuel weights (pounds), FUELSYSTEM TANK WEIGHT:1..16. Fixed 16 slots so the
     // data definition always matches the struct regardless of how many tanks the loaded
@@ -1040,6 +1055,12 @@ public partial class SimConnectManager
         reconnectTimer.Stop();
         _detectRetryTimer.Stop();
         Log.Debug("SimConnect", "Reconnect timer stopped");
+
+        // Data definitions do not survive a session, so the per-tank fuel def must be
+        // rebuilt on the next connection; drop any callback still waiting on a reply that
+        // is now never coming (the Fuel Tanks window shows this as stale, not as live).
+        fuelTankDefRegistered = false;
+        fuelTankCallback = null;
 
         // Disconnect MobiFlight WASM module
         if (mobiFlightWasm != null)
