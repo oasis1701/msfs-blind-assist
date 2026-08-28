@@ -762,6 +762,94 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   KSEA that was 1,678 m up the parallel taxiway T and back down Z toward the runway.
   Retarget to the exit actually vacated at (`MatchEarlyVacateExit`) or conclude with the
   "left the runway short of X" closure.
+- **A handoff route that RE-CROSSES the runway just landed on is refused at BOTH handoff
+  sites** — the `UpdateLandingRollout` handoff and `TryEarlyExitHandoff` — by
+  `Navigation/RolloutRunwayReCrossing`. Motivating defect, KATL 26R 2026-08-27: the
+  aircraft rolled past its planned exit B1 (south side) without turning, the overshoot
+  monitor retargeted to the only remaining exit A at 8,843 ft (NORTH side), and A* — with
+  no runway edges to route along — built a 427 m horseshoe: off at B1 to the south, west
+  along B, then back north on H across the 08L threshold, 15–20 m inside the runway's own
+  threshold, at 22 kt. The pilot heard it as "very windy and curvy" and ended up on the
+  wrong side of the field. `RolloutExitGate.IsHandoffRouteReachable` could not catch it: it
+  measures only the FIRST segment's cross-track, and B1 started right at the aircraft.
+  - **The test is geometric**, `TaxiGraph.EdgeCrossesRunwayStatic` — a segment-vs-segment
+    intersection, never the point-on-pavement test, which silently missed every crossing
+    whose flanking nodes sit more than half-width + 5 m out (the KBOS 33L case above).
+    Reciprocal-aware through `RouteRunwayCrossings.NormalizeDesignator`, so 26R and 08L are
+    one piece of pavement (and "8L" and "08L" one string). Judged from
+    `_currentSegmentIndex` onward — the segment the tone is about to steer at — because a
+    crossing already behind the aircraft is history, not a route it is about to fly.
+  - **DECLINE only while still ON the runway with the exit AHEAD** — `signedAlongPastFt < 0`
+    **and** `!offRunwayAtHandoff`. Both conjuncts are load-bearing: "keep rolling and the
+    exit comes to you" is a claim about an aircraft on the pavement. Off it the overshoot
+    detector cannot fire and `!pastExit` holds, so an `exitedLaterally`-triggered decline
+    would repeat at the retry floor forever with no closure and no route. Everything else
+    CONCLUDES.
+  - **The conclude splits on WHERE THE AIRCRAFT IS.** Two of the three landing-exit
+    closures order ahead of the still-on-runway one and both say "Stop and hold position",
+    which is safe only off the pavement — and unlike the reachability guard (which can only
+    conclude off-runway), `turnBegun` and `alignedWithExit` reach this one ON it. An
+    on-runway conclude is therefore steered to `HandleArrival`'s final branch, "you may
+    still be on the runway — continue ahead until clear".
+  - **`TryEarlyExitHandoff`'s decline returns FALSE and must restore `LandingRollout`
+    itself** — `LoadRoute` left the machine at `RouteLoaded`, so without the restore it is
+    stranded with no tone and "Where am I" reporting no active route. It also discards the
+    rejected route (`_route = null`), which is safe precisely because the rollout tone is
+    driven from the exit BEARING and never reads `_route`. Its off-runway arm concludes and
+    returns TRUE (the caller must stop processing the frame).
+  - **The `UpdateLandingRollout` decline SPEAKS, once** —
+    `RolloutRunwayReCrossing.ComposeContinueToExit`, e.g. *"Continue rolling to taxiway A,
+    900 feet ahead."* It names the exit AND the distance, never says "stop" or "hold", and
+    never claims the aircraft is clear of the runway. It is needed because "the rollout tone
+    is a live cue" only holds inside `ExitToneArmFeet` (300 ft): beyond it a stopped, aligned
+    aircraft gets either the 300–1,000 ft turn-window `Silent` or a sub-`DriftToneSilentDeg`
+    `DriftCorrection`, which is zero volume — and `trulyStopped` carries no distance gate, so
+    a pilot braking 1,500 ft short would sit stationary on an active runway with no tone and
+    no words. Latched (`_rolloutCrossingDeclineAnnounced`), not floored: the decline itself
+    repeats at `ROLLOUT_CROSSING_RETRY_FLOOR_SEC` (~1 Hz) and a sentence a second would be
+    worse than silence. The latch is re-armed by `RetargetLandingExit` when the targeted exit
+    actually changes, so a latch left over from an abandoned exit cannot swallow the new
+    one's callout; the retry floor deliberately gets no such reset — a stale floor costs
+    under a second, a stale latch withholds information from the pilot.
+  - **That sentence is composed as ONE utterance with the callouts it supersedes** —
+    `ComposeDeclineUtterance` + `DeclineSupersedesCallout`, never spoken beside them. The
+    decline branch RETURNS before the approach/turn-now callout block, so none of that
+    block's latches get set; on the very next frame (~16 ms) the crossing retry floor
+    suppresses the handoff block, execution reaches the callouts, and one of them fires its
+    own `AnnounceImmediate` over a sentence that is one-shot and therefore unrecoverable
+    (Ctrl+Y replays the later callout, not this). The collision is STRUCTURAL, not a
+    coincidence: `speedNearExitHandoff` requires `distToExitFeet < ROLLOUT_NEAR_EXIT_FT`
+    (500 ft) and the 500 ft milestone triggers on that same boundary, so on any rollout
+    already at taxi speed at 500 ft — the live 22 kt KATL trace included — both are true on
+    ONE frame. This is the sixth instance of this codebase's
+    two-announcements-stomp-each-other pattern (`4837e45d`, `6891c0e7`, `86744893`,
+    `b772e845`, `c2b69455`) and the house remedy is the same every time: compose one
+    utterance rather than let two race.
+    - Every superseded APPROACH milestone is **retired, not folded**: each renders as
+      "{exit name}, {round number}", and the decline sentence already gives that name with
+      a LIVE distance. Only what they uniquely add rides along — the 500 ft cue's
+      *"Slow down."* and, inside the turn window, the turn DIRECTION (composed by the one
+      `ComposeExitTurnPhrase` the turn-now callout itself uses, so the two can never
+      diverge). Milestones still further ahead stay armed and speak normally later, so a
+      rolling pilot keeps the countdown.
+    - The supersede window is a **time** (`ROLLOUT_DECLINE_CALLOUT_LEAD_SEC`, 4 s)
+      converted to distance at the aircraft's own ground speed, not a tuned distance: it
+      self-scales across the 0–90 kt range the decline branch spans, and a stopped aircraft
+      supersedes nothing ahead of it (it can never reach the next trigger) so it keeps its
+      whole countdown. Without the lead half, a decline at 1,501 ft would still be truncated
+      — the 1,500 ft milestone is a fifth of a second away.
+    - **Turn-now uses the STRICT inside test, no lead window**, because "now" is
+      time-critical and a speed-derived lead would speak it up to ~600 ft out at the 90 kt
+      `IsExitTurnBegun` permits. The accepted cost is a moving decline between
+      `ROLLOUT_TURN_NOW_FT` and roughly twice it, where turn-now comes due mid-sentence and
+      truncates it — the one truncation worth having, since *"Turn left now, taxiway A."*
+      carries the exit name AND the more urgent instruction, so the pilot is never left
+      silent or uninformed, which is the state the announcement exists to prevent.
+    - The two alternatives were both worse. Setting the approach latch and saying nothing
+      else throws away the *"Slow down."* advice and the turn direction. Suppressing the
+      decline and letting the callout carry it throws away the instruction itself:
+      *"Taxiway A, 500 feet. Slow down."* tells a pilot who has braked to a stop on an
+      active runway neither that the exit is still ahead nor to keep rolling to it.
 - `MatchEarlyVacateExit` must measure along-track PER EXIT, never against
   `DistanceFromThresholdFeet`. That field is measured from the LANDING threshold including
   `ThresholdOffset` (KJFK 13R 2,055 ft), while an aircraft's along-runway position is
@@ -1490,14 +1578,51 @@ softened) and resets only on `StopGuidance` (so a fresh session snaps on frame
 one). Applied **after** the rate-lead projection, so it also bounds lead-driven
 swings. Taxiing only — lineup/docking keep their own precision profiles.
 
-**Initial big-turn cue.** At guidance start the aircraft often points well away
-from the route's first segment (post-pushback the tug leaves it facing one way,
-the route leaves the gate another). A tone alone starts at full pan and can't
-convey "turn around, which way." On the first taxiing frame, if the heading error
-exceeds `INITIAL_TURN_CUE_DEG`, a one-shot cue speaks ("Taxiway A is behind you.
-Turn left to come around." / "Sharp turn left onto taxiway A."), direction sign
-matching the tone. One-shot, reset on `LoadRoute` / `StopGuidance` (not on
-recalc). Skipped when a reach warning is present (that warning is the priority).
+**Initial big-turn cue (route-start turn cue).** At guidance start the aircraft often
+points well away from the route's first segment (post-pushback the tug leaves it
+facing one way, the route leaves the gate another). A tone alone starts at full pan
+and can't convey "turn around, which way." Above `RouteStartTurnCue.SharpTurnDeg`
+(100°) a cue speaks *"Sharp turn left onto taxiway A."*; above `TurnaroundDeg` (135°)
+*"Taxiway A is behind you. Turn left to come around."* Direction sign matches the
+tone. Reset on `LoadRoute` / `StopGuidance` (not on recalc). Skipped when a reach
+warning is present — that warning is the priority, the pilot will reprogram, and the
+cue would only be extra words in front of it.
+
+- **The wording has ONE owner, `Navigation/RouteStartTurnCue`, and the cue is composed
+  ONCE by `LoadRoute` — never on the first taxiing frame.** Live KATL 2026-08-27: it
+  fired there as an interrupting `AnnounceImmediate` ~50 ms after the SayIntentions
+  import summary and cut it off mid-word, taking the destination, the applied taxiways
+  and "hold short of runway 08L" with it. That is the fifth time two announcements at
+  Calculate have stomped each other in this codebase, and the established remedy is one
+  utterance.
+- **Two delivery paths, never both.** `TaxiAssistForm` folds it into its single
+  standstill utterance and calls `ConsumeInitialTurnCue()`; whatever is left unconsumed
+  is spoken by the per-frame one-shot, so routes the form did not start keep the cue.
+  The form consumes it UNCONDITIONALLY and speaks it only when there is no reach
+  warning, so the suppression above survives the move.
+  ⚠️ **The form does not fold it on EVERY path**, and the invariant must not be read as
+  though it did: the **Progressive Taxi** branch of `OnCalculateClicked` calls
+  `StartGuidance` and RETURNS well before the standstill block, so there the cue is still
+  delivered by the per-frame one-shot — as are landing-exit handoffs and any
+  `announceSummary:false` caller. That is unchanged from before the fold and is NOT a
+  defect to fix: a progressive leg builds no route summary, no reach warning and no
+  destination confirmation, so there is no second utterance for the cue to stomp.
+- **The angle must be `ComputeSteeringHeadingError`'s value**, read against the route
+  and segment cursor `LoadRoute` has just assigned, with BOTH sides TRUE north — the
+  same look-ahead walk target the tone will read on its first frame. Never
+  `route.Segments[0].BearingDegrees`: that is a different number (35° apart on the live
+  KATL route), and a spoken left/right that contradicts the pan leaves a blind pilot
+  with nothing to break the tie.
+- ⚠️ **It names the ROUTE's first named leg, and that is a robustness fix, not the
+  cause of the live defect.** Commit `fec4b05a`'s message and the first version of
+  `RouteStartTurnCue`'s doc both blamed the bare *"Make a U-turn to the left"* on
+  `_lastAnnouncedTaxiway` being blanked by `LoadRoute`. That does not survive reading
+  the code: `StartGuidance` re-sets that field from an identical first-named-segment
+  walk and runs synchronously before the first taxiing frame on both form paths, so on
+  the Calculate path the old cue would have named the taxiway too. Naming from the
+  route helps the paths that call `LoadRoute` WITHOUT `StartGuidance` — the three
+  `Rollout` re-routes and `LandingExitPlanner` — where the field genuinely is still
+  empty. The commit message cannot be rewritten; this is the correction.
 
 ## Tuning & Constants Reference
 
@@ -1540,7 +1665,7 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `LINEUP_UNREACHABLE_CROSS_FEET` | 400.0 | During lineup, cross-track beyond this (~122 m) for `LINEUP_UNREACHABLE_SEC` with no convergence ⇒ the route never reached the runway → one-shot spoken bailout |
 | `LINEUP_UNREACHABLE_SEC` | 12.0 | Sustain time for the lineup unreachable-runway bailout |
 | `TAXI_TONE_MAX_SLEW_DEG_PER_SEC` | 60.0 | Slew-rate cap on the Taxiing tone's heading error. A genuine turn changes the error gradually (≈ yaw rate, well under the cap) and passes through; a one-frame target discontinuity (segment-index skip on a sharp corner, or a route recalc) is stretched into a smooth ~1–1.5 s sweep instead of a hard L↔R pan slam. Applied after the rate-lead projection, Taxiing only |
-| `INITIAL_TURN_CUE_DEG` | 100.0 | At guidance start, if the heading error to the first segment exceeds this, speak a one-shot turn-direction cue (matches the tone) so the pilot knows which way to come around — the normal post-pushback case. Skipped when a reach warning is present |
+| `RouteStartTurnCue.SharpTurnDeg` / `.TurnaroundDeg` | 100.0 / 135.0 | At guidance start, if the heading error to the route's first target exceeds these, compose a one-shot turn-direction cue (matches the tone) so the pilot knows which way to come around — the normal post-pushback case. Skipped when a reach warning is present. **Not in this file:** the local `INITIAL_TURN_CUE_DEG`/`INITIAL_TURN_UTURN_DEG` consts were DELETED, not left in place, so nobody tunes a number here and wonders why nothing changes — the cue has one owner, `Navigation/RouteStartTurnCue` |
 | `REACH_WARNING_CHATTER_GRACE_SEC` | 8.0 | After a reach warning, hold the informational taxiway-crossing / taxiway-change callouts this long so they don't stomp the (longer, safety-critical) warning at guidance start. Hold-shorts, runway-crossing callouts, and the lineup bailout are NOT gated |
 
 ### TaxiSteeringTone

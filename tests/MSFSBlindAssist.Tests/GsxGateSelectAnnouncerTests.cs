@@ -371,6 +371,66 @@ public class GsxGateSelectAnnouncerTests
         Assert.Null(GsxGateSelectAnnouncer.Describe(GsxGateSelectResult.FromFrame(GsxFrame.Parse("not json"))));
     }
 
+    // ── The pilot hears the STAND, never the wire value ─────────────────────
+
+    [Fact]
+    public void The_spoken_label_outranks_the_wire_identifier_on_a_mismatch()
+    {
+        // What goes in gate.select's `gate` argument is now a bare stand NUMBER, so
+        // RequestedIdentifier renders as "5" -- and "you selected 5" is not something a
+        // blind pilot can act on. RequestedLabel carries the stand as their dropdown
+        // showed it, and every phrase that names the pilot's own pick must prefer it.
+        var result = ResultFor(PreparedNoWarnings, "5");
+        result.RequestedLabel = "B 25 - Gate Medium";
+
+        string? phrase = GsxGateSelectAnnouncer.Describe(result);
+
+        Assert.NotNull(phrase);
+        Assert.Contains("B 25 - Gate Medium", phrase);
+        Assert.DoesNotContain("selected 5,", phrase);
+        Assert.Contains("Gate A12", phrase);   // still names what GSX actually prepared
+    }
+
+    [Theory]
+    // Every branch that names the pilot's own pick, not just the mismatch one.
+    [InlineData("""{ "type": "result", "id": "g-1", "ok": false, "error": { "code": "not_found" } }""")]
+    [InlineData(AlreadyThere)]
+    [InlineData("""{ "type": "result", "id": "g-1", "ok": true, "payload": { "status": "prepared" } }""")]
+    public void Every_branch_that_names_the_request_uses_the_spoken_label(string json)
+    {
+        var result = ResultFor(json, "5");
+        result.RequestedLabel = "B 25 - Gate Medium";
+
+        string? phrase = GsxGateSelectAnnouncer.Describe(result);
+
+        Assert.NotNull(phrase);
+        Assert.Contains("B 25 - Gate Medium", phrase);
+    }
+
+    [Fact]
+    public void Without_a_spoken_label_the_wire_identifier_is_still_used()
+    {
+        // A result built by anything other than the selector carries no label. Naming the
+        // identifier is still far better than a bare "the stand", so the chain degrades
+        // rather than dropping to the generic fallback.
+        string? phrase = GsxGateSelectAnnouncer.Describe(ResultFor(PreparedNoWarnings, "Gate B7"));
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Gate B7", phrase);
+    }
+
+    [Fact]
+    public void A_blank_spoken_label_falls_through_rather_than_speaking_nothing()
+    {
+        var result = ResultFor(PreparedNoWarnings, "Gate B7");
+        result.RequestedLabel = "   ";
+
+        string? phrase = GsxGateSelectAnnouncer.Describe(result);
+
+        Assert.NotNull(phrase);
+        Assert.Contains("Gate B7", phrase);
+    }
+
     // ── The 4.0.8 message: a constant, deliberately outside Describe ─────────
 
     [Fact]

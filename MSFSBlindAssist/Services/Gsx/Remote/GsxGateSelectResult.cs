@@ -128,7 +128,12 @@ public sealed class GsxGateSelectResult
 
     /// <summary>
     /// The identifier <see cref="GsxRemoteGateSelector"/> actually put in <c>gate.select</c>'s
-    /// <c>gate</c> argument — <see cref="Database.Models.ParkingSpot.GsxIdentifier"/>, verbatim.
+    /// <c>gate</c> argument, rendered as invariant text — the stand's NUMBER, a <c>bglName</c>
+    /// GSX handed back in an <c>ambiguous</c> reply, or (last resort)
+    /// <see cref="Database.Models.ParkingSpot.GsxIdentifier"/> verbatim, whichever the attempt
+    /// sequence in <see cref="GsxGateSelectPlan"/> got as far as. Rendered rather than typed
+    /// because the number goes on the wire as a JSON int and this is a comparison field, not a
+    /// re-send value — the selector re-sends the ORIGINAL object, never this string.
     /// A result frame does not echo the request, so <see cref="FromFrame"/> never sets this; the
     /// selector stamps it after the fact. Null for a locally-decided result (nothing was sent)
     /// and for any frame parsed without the selector's involvement.
@@ -138,6 +143,59 @@ public sealed class GsxGateSelectResult
     /// </para>
     /// </summary>
     public string? RequestedIdentifier { get; internal set; }
+
+    /// <summary>
+    /// The stand NUMBER that went in <c>gate.select</c>'s <c>gate</c> argument as a JSON int,
+    /// or null when the request went as a string (a numberless stand's verbatim identifier,
+    /// or a <c>bglName</c> resolved out of an <c>ambiguous</c> reply) and null for a
+    /// locally-decided result. Stamped by <c>GsxRemoteGateSelector</c> alongside
+    /// <see cref="RequestedIdentifier"/>.
+    /// <para>
+    /// It is STAMPED rather than re-parsed out of <see cref="RequestedIdentifier"/>, and that
+    /// is load-bearing: a rendered <c>"5"</c> cannot be told apart from a numberless stand
+    /// whose <c>uiGateName</c> genuinely IS <c>"5"</c>, and <c>gate.select</c> treats those as
+    /// two different requests (live-probed — the int resolves, the string returns
+    /// <c>not_found</c>). Reading a number back out of the rendering would let an echoed
+    /// number clear <see cref="ResolvedGateContradictsRequest"/> on a request that never
+    /// carried one.
+    /// </para>
+    /// </summary>
+    public int? RequestedNumber { get; internal set; }
+
+    /// <summary>
+    /// The stand as the PILOT knows it — <c>ParkingSpot.Describe()</c>, the base of the label
+    /// their dropdown showed. Stamped by <c>GsxRemoteGateSelector</c>; null for a
+    /// locally-decided result and for any frame parsed without the selector's involvement.
+    /// <para>
+    /// <c>Describe()</c> deliberately, not <c>ToString()</c>: the combo carries
+    /// <c>ToString()</c>, which appends any online aliases (", also A24 (online)") — useful to
+    /// read on screen, a recital in a spoken warning. Everything a pilot identifies the stand
+    /// by is in <c>Describe()</c>.
+    /// </para>
+    /// <para>
+    /// This is a SPOKEN label and nothing else. <see cref="RequestedIdentifier"/> is the wire
+    /// value and stays exactly that (<c>gsx-gate-select.log</c>'s <c>identifierSent=</c> field
+    /// depends on it), but the wire value is now usually a bare stand number, and
+    /// <i>"Careful: you selected 5"</i> gives a blind pilot nothing to act on. This must never
+    /// be SENT — a label rebuilt from our own parsed fields is precisely how the wrong stand
+    /// gets selected (see <c>ParkingSpot.GsxIdentifier</c>); it exists only so
+    /// <see cref="GsxGateSelectAnnouncer"/> can name the stand rather than the number.
+    /// </para>
+    /// </summary>
+    public string? RequestedLabel { get; internal set; }
+
+    /// <summary>
+    /// The stand's own <c>ParkingSpot.GsxUiName</c> — GSX's fully-qualified name for the
+    /// stand the pilot picked. Stamped by <c>GsxRemoteGateSelector</c> alongside
+    /// <see cref="RequestedIdentifier"/>; null when the stand carries no <c>uiName</c>.
+    /// <para>
+    /// This is what finally closes the collision problem
+    /// <see cref="ResolvedGateContradictsRequest"/> documents as structural. <c>uiGateName</c>
+    /// is shared by 235 of KATL's 294 stands, so comparing GSX's echo against it proves
+    /// nothing; <c>uiName</c> is unique for 281 of 294.
+    /// </para>
+    /// </summary>
+    public string? ExpectedUiName { get; internal set; }
 
     /// <summary>
     /// True when GSX named a stand that answers to NEITHER of the identifiers it echoes for
@@ -154,23 +212,43 @@ public sealed class GsxGateSelectResult
     /// </para>
     /// <para>
     /// Deliberately CONSERVATIVE, because a false alarm here teaches the pilot to ignore a real
-    /// one. Both echoed strings are compared (trimmed, ordinal-ignore-case) and matching EITHER
-    /// clears it: the guide's own shape pairs a full <c>uiName</c> ("Gate A12") with a bare
-    /// <c>gate</c> ("A12"), so which one equals what we sent depends on GSX's spelling, not on
-    /// whether it picked the right stand. An echo we cannot interpret — no resolved gate at all,
-    /// or one whose strings are all blank — is NOT a mismatch: say nothing rather than cry wolf.
+    /// one. Matching ANY identity GSX echoes for what we sent clears it. Both echoed strings
+    /// are compared (trimmed, ordinal-ignore-case): the guide's own shape pairs a full
+    /// <c>uiName</c> ("Gate A12") with a bare <c>gate</c> ("A12"), so which one equals what we
+    /// sent depends on GSX's spelling, not on whether it picked the right stand. So is the
+    /// echoed <c>bglName</c>, which is what an <c>ambiguous</c> reply's resend actually puts
+    /// on the wire — clearing ONLY, never counted as an identity worth judging against. So is
+    /// the
+    /// echoed <c>number</c>, whenever the request itself went as a number
+    /// (<see cref="RequestedNumber"/>) — which since <c>GsxGateSelectPlan</c> is the usual
+    /// case, and is the ONLY identity available for a stand GSX publishes no <c>uiName</c> for.
+    /// An echo we cannot interpret — no resolved gate at all, or one whose strings are all
+    /// blank — is NOT a mismatch: say nothing rather than cry wolf.
     /// </para>
     /// <para>
-    /// <b>It CANNOT detect the collision it was added for, and that is a structural limit of
-    /// GSX's API rather than a flaw here.</b> When two different stands share an IDENTICAL
-    /// <c>uiGateName</c> — the case above, "Gate 2" naming five physically different KJFK stands
-    /// — GSX echoes that same string back whichever one it resolved to, so the echo equals what
-    /// we sent and this property is false, exactly as it would be for a correct resolution.
-    /// Nothing available to us disambiguates them: the four identity fields §8.14 says
-    /// <c>gate.select</c> accepts carry no terminal, and <c>bglName</c>/<c>index</c> are not
-    /// published in <c>handlerData.airport.parkings</c> at all (the committed KJFK capture has
-    /// neither). So no amount of care with this comparison closes the collision problem — only a
-    /// GSX-side identity field we do not have would.
+    /// <b><see cref="ExpectedUiName"/> is what closes the collision case the identifier
+    /// comparison alone could not.</b> When two different stands share an IDENTICAL
+    /// <c>uiGateName</c> — the case above, "Gate 2" naming five physically different KJFK
+    /// stands — GSX echoes that same string back whichever one it resolved to, so the identifier
+    /// comparison is false exactly as it would be for a correct resolution. GSX's
+    /// fully-qualified <c>uiName</c> does not collide the same way (unique for 281 of KATL's
+    /// 294 stands where <c>uiGateName</c> is shared by 235), and it IS published per parking —
+    /// the earlier claim that nothing available to us disambiguates them was written before
+    /// <c>ParkingSpot.GsxUiName</c> carried it. When both sides have one it decides, and this
+    /// property finally answers the question it was named for.
+    /// </para>
+    /// <para>
+    /// The limit is now narrower but real: a stand GSX publishes no <c>uiName</c> for (KATL's
+    /// unnamed GA ramps, 13 of 294) carries no <see cref="ExpectedUiName"/>, so it falls
+    /// through — and on the usual path that is to the NUMBER comparison, not the identifier
+    /// comparison, because <c>GsxGateSelectPlan</c> sends a stand's number whenever it has one.
+    /// The number is the WEAKER guarantee of the two: KATL's Concourse T and Delta Tech Ops
+    /// both answer to 5, so an echoed number matches whichever stand GSX picked. Only a spot
+    /// that went as a STRING (a numberless stand's verbatim identifier, or a <c>bglName</c>
+    /// resolved out of an <c>ambiguous</c> reply) reaches the identifier comparison the
+    /// paragraph above describes. Do not let a future reader conclude from a green result on
+    /// EITHER of those paths that GSX prepared the stand the pilot picked — there it only means
+    /// GSX did not name a different one.
     /// </para>
     /// <para>
     /// The check is still worth having, and must not be removed on the strength of that: it
@@ -187,8 +265,69 @@ public sealed class GsxGateSelectResult
             string requested = RequestedIdentifier?.Trim() ?? string.Empty;
             if (requested.Length == 0 || ResolvedGate is not { } echoed) return false;
 
+            // Prefer the fully-qualified name when BOTH sides have one: it is unique where
+            // the identifier is not, so this is the one comparison that can actually catch
+            // GSX resolving to a different stand. Same conservative rules as below --
+            // trimmed, ordinal-ignore-case, and an uninterpretable echo (a blank uiName) is
+            // never a mismatch, it just falls through to the identifier comparison.
+            //
+            // Deliberately BELOW the "nothing was sent / nothing was echoed" early return
+            // above, so a locally-decided result (capability gate, no identifier) can never
+            // report a contradiction no matter what is stamped on it.
+            if (!string.IsNullOrWhiteSpace(ExpectedUiName)
+                && !string.IsNullOrWhiteSpace(echoed.UiName))
+            {
+                return !string.Equals(
+                    echoed.UiName.Trim(), ExpectedUiName.Trim(),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+
+            // The NUMBER is one of the identities we actually send -- since gate.select
+            // answers to a JSON int and to almost nothing else, it is now the USUAL one --
+            // so a matching echoed number clears the check exactly as a matching string
+            // does. Without this, a stand GSX publishes no uiName for (KATL's GA ramps, 13
+            // of 294) falls straight through to the string comparison below, which a
+            // rendered number ("1") can essentially never satisfy: a perfectly correct
+            // resolution announced "Careful: you selected 1, but GSX prepared Ramp 1." and
+            // wrote resolvedMismatch=true into the log. A false alarm here teaches the pilot
+            // to ignore the real one.
+            //
+            // Strictly BELOW the fully-qualified comparison above, and that ordering is
+            // load-bearing: the KATL ambiguity this path exists for is two stands SHARING a
+            // number (Concourse T and Delta Tech Ops both answer to 5), so the number
+            // matches whichever one GSX picked. Clearing on it first would silently disarm
+            // the check in exactly the collision case it was written for.
+            //
+            // RequestedNumber, never a number re-parsed out of RequestedIdentifier: a
+            // numberless stand whose identifier IS "5" went as a string, which gate.select
+            // treats as a different request, and an echoed number would then be a
+            // coincidence of digits rather than evidence.
+            if (RequestedNumber is { } requestedNumber && echoed.Number == requestedNumber)
+                return false;
+
             string uiName = echoed.UiName?.Trim() ?? string.Empty;
             string gate = echoed.Gate?.Trim() ?? string.Empty;
+
+            // The echoed bglName CLEARS, and only clears. It is one of the identities we
+            // actually send -- the selector re-sends a matched candidate's bglName to resolve
+            // an `ambiguous` reply, and that send stamps it as RequestedIdentifier with
+            // RequestedNumber NULL, because it went as a string. On that rung the uiName
+            // comparison is skipped whenever the echo carries no uiName and the number
+            // comparison cannot run at all, so comparing uiName/gate alone reported a
+            // contradiction for the one value GSX had just confirmed: a bglName resend of
+            // "Gate T 5" echoing {uiName:"", gate:" Gate 5", bglName:"Gate T 5"} announced
+            // "Careful: you selected ..., but GSX prepared ..." on a CORRECT selection.
+            //
+            // Placed ABOVE the interpretability guard and deliberately NOT added to it, so
+            // this can only ever turn a mismatch into a match. Were bglName also to count as
+            // "something interpretable", an echo with both strings blank would start being
+            // JUDGED on a namespace of GSX's own that need not resemble what we sent -- new
+            // false alarms, in the one property whose whole design rule is that a false alarm
+            // teaches the pilot to ignore the real one.
+            string bglName = echoed.BglName?.Trim() ?? string.Empty;
+            if (bglName.Length > 0 && bglName.Equals(requested, StringComparison.OrdinalIgnoreCase))
+                return false;
+
             if (uiName.Length == 0 && gate.Length == 0) return false; // nothing interpretable
 
             return !uiName.Equals(requested, StringComparison.OrdinalIgnoreCase)

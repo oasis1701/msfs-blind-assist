@@ -278,6 +278,12 @@ public class TaxiAssistForm : Form
     /// </summary>
     private string _graphSourceToken = "";
     private double _aircraftLat, _aircraftLon, _aircraftHeading;
+    // Magnetic variation (east positive) matching _aircraftHeading, which is MAGNETIC.
+    // Only the route-start turn cue consumes it (passed to LoadRoute as
+    // aircraftHeadingMagVar) — it must be composed in TRUE north like the steering tone,
+    // or the spoken direction can contradict the tone near a U-turn. Left at 0 until a
+    // position sample supplies one, which is the same no-conversion behaviour as before.
+    private double _aircraftMagVar;
     // Per-ICAO memo of GetRunways for the intersection picker, which re-lists on
     // every checkbox toggle / runway change. GetRunways opens a fresh SQLite
     // connection per call, so caching the (session-stable) runway set for the
@@ -4041,6 +4047,21 @@ public class TaxiAssistForm : Form
             _aircraftLat = pos.Latitude;
             _aircraftLon = pos.Longitude;
             _aircraftHeading = pos.HeadingMagnetic;
+            // Captured alongside the heading it belongs to: the heading above is MAGNETIC,
+            // and the route-start turn cue must be composed in TRUE north to agree with the
+            // steering tone.
+            //
+            // What is guaranteed: the two fields are written TOGETHER here, so whenever this
+            // branch runs the variation matches the heading, and both LoadRoute calls later
+            // in OnCalculateClicked see that pair. What is NOT guaranteed: this branch is
+            // conditional on LastKnownPosition being available, and three other sites
+            // (SetAircraftPosition and friends) write _aircraftHeading WITHOUT touching
+            // _aircraftMagVar. So a Calculate with no LastKnownPosition can pair a heading
+            // from one of those sites with a variation from an earlier position — or with
+            // 0.0 if there has never been one. That is a fraction of a degree in any
+            // realistic case (variation drifts slowly and a taxi never leaves the airport),
+            // but the fields are not structurally coupled and must not be assumed to be.
+            _aircraftMagVar = pos.MagneticVariation;
         }
 
         // Progressive Taxi: resolve the last-row terminator to a destination
@@ -4214,6 +4235,8 @@ public class TaxiAssistForm : Form
                 destNode, progDestName,
                 progSeq.Count > 0 ? progSeq : null,
                 progHoldShorts,
+                // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
+                aircraftHeadingMagVar: _aircraftMagVar,
                 destinationHeading: null,
                 destinationThresholdLat: null, destinationThresholdLon: null,
                 destinationHeadingTrue: null,
@@ -4385,7 +4408,9 @@ public class TaxiAssistForm : Form
             // — otherwise the approach corridor is a free A* choice and can run up a
             // NEIGHBOURING stub that merges with this one short of the runway (EGLL 27R:
             // picked A2, taxied and held at A3). See ApplyHoldingPointPin.
-            holdingPointHoldNodeId: holdingPointEntry?.HoldNodeId);
+            holdingPointHoldNodeId: holdingPointEntry?.HoldNodeId,
+            // _aircraftHeading is MAGNETIC — see aircraftHeadingMagVar on LoadRoute.
+            aircraftHeadingMagVar: _aircraftMagVar);
 
         if (error != null)
         {
@@ -4466,8 +4491,29 @@ public class TaxiAssistForm : Form
                 $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
+        // The route-start turn cue rides INSIDE this one utterance rather than interrupting
+        // it. Live KATL 2026-08-27: it fired as its own AnnounceImmediate 50 ms after this
+        // block spoke, and cut the SayIntentions import summary off mid-word -- the fifth
+        // time two announcements at Calculate have stomped each other here.
+        //
+        // The two are MUTUALLY EXCLUSIVE, and that is the design, not an accident of this
+        // if/else: whichever applies is the LAST thing said. A reach warning means the route
+        // never gets to the runway, so the pilot will reprogram and a turn cue is both moot
+        // and extra words in front of the warning -- exactly the suppression the per-frame
+        // one-shot has always applied. Never "fix" this into two Add calls: that reinstates
+        // an utterance the design deliberately excludes.
+        //
+        // The cue is consumed UNCONDITIONALLY, warning present or not, so the per-frame
+        // one-shot can never repeat it behind this utterance's back.
+        string? turnCue = _guidanceManager.ConsumeInitialTurnCue();
         if (!string.IsNullOrEmpty(_guidanceManager.LastRouteReachWarning))
+        {
             standstillParts.Add(_guidanceManager.LastRouteReachWarning);
+        }
+        else if (!string.IsNullOrEmpty(turnCue))
+        {
+            standstillParts.Add(turnCue);
+        }
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 

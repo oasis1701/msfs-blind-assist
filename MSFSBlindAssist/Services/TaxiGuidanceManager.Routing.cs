@@ -67,7 +67,27 @@ public partial class TaxiGuidanceManager
         // (TaxiGraph.RunwayIntersection.HoldNodeId), while destinationNodeId stays that
         // point's runway ENTRY node. The route is pinned through it so the pilot taxis up
         // the stub they named — see ApplyHoldingPointPin. Null/0 for every other route.
-        int? holdingPointHoldNodeId = null)
+        int? holdingPointHoldNodeId = null,
+        // Magnetic variation (EAST POSITIVE) that converts `aircraftHeading` to TRUE.
+        // Pass 0 when `aircraftHeading` is ALREADY true — every in-manager caller
+        // (the three Rollout re-routes and LandingExitPlanner) passes a `headingTrue`,
+        // so they correctly leave this at the default. The two TaxiAssistForm callers
+        // pass SimConnect's HeadingMagnetic and MUST supply the variation.
+        //
+        // Used ONLY to compose LastRouteInitialTurnCue. It exists because the cue's angle
+        // comes from ComputeSteeringHeadingError -- the tone's own definition, which is
+        // (geodetic TRUE bearing to the look-ahead walk target) - headingTrue. Subtracting
+        // a MAGNETIC heading from a TRUE bearing biases the angle by exactly the variation,
+        // and near +/-180 deg -- the near-U-turn case this cue exists for -- that bias
+        // FLIPS THE SIGN, so the words say one direction while the tone pans the other.
+        // A blind pilot has no third source to break that tie.
+        //
+        // Not hypothetical: the live KATL 2026-08-27 incident this cue was repaired for
+        // had a first-frame error of -175.78 deg (a LEFT turnaround) where the variation
+        // is about -5.5 deg. Uncorrected that computes as -181.28 -> +178.72 -> "turn
+        // RIGHT to come around", contradicting the tone on the exact flight being fixed.
+        // Do not remove this conversion.
+        double aircraftHeadingMagVar = 0.0)
     {
         lock (_stateLock)
         {
@@ -357,7 +377,15 @@ public partial class TaxiGuidanceManager
             // with no pause — illegal in real life and a runway-incursion risk on
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
-            InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+            var crossedRunways = InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
+            // One line per built route naming every runway it crosses. Answering "did that
+            // route really drive across 08L?" for the 2026-08-27 KATL arrival meant
+            // reconstructing segment coordinates against the navdata by hand; the route
+            // pipeline already knows the answer at build time.
+            _guidanceLog.Info(crossedRunways.Count > 0
+                ? $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} " +
+                  $"crosses={string.Join(",", crossedRunways)}"
+                : $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} crosses=(none)");
 
             // Progressive "after crossing" terminator: the pilot is cleared to
             // cross the terminator runway, so strip the auto hold-short for it
@@ -466,6 +494,37 @@ public partial class TaxiGuidanceManager
             _lastAnnouncedTaxiway = "";
             _headingErrorInitialized = false;
             _initialTurnCueAnnounced = false;
+            // Composed here, not on the first taxiing frame, so the form can fold it into
+            // its single standstill utterance instead of interrupting it 50 ms later —
+            // which is the defect this cue was repaired for (live KATL 2026-08-27: the cue
+            // fired as an AnnounceImmediate ~50 ms after the import summary and cut it off
+            // mid-word).
+            //
+            // The angle MUST be the same quantity the steering tone pans on, or the spoken
+            // "left"/"right" can contradict the pan and a blind pilot has nothing to break
+            // the tie. That is enforced structurally, not by similarity: this calls the very
+            // method the per-frame tone site calls (ComputeSteeringHeadingError), against
+            // the route and segment cursor just assigned above (_route = route,
+            // _currentSegmentIndex = 0) — so it reads the look-ahead walk target the tone
+            // will read on its first frame, degenerate-segment guard and all. Do not
+            // "simplify" this back to route.Segments[0].BearingDegrees: that is a different
+            // number (35° apart on the live KATL route) and the walk exists precisely
+            // because raw navdata segment bearings are unrepresentative.
+            //
+            // BOTH sides are TRUE north. The walk target's bearing is geodetic true, so the
+            // aircraft heading is converted with aircraftHeadingMagVar (0 for the callers
+            // that already pass a true heading). See that parameter's comment for why a
+            // magnetic heading here can invert the spoken direction against the tone.
+            //
+            // The taxiway comes from the ROUTE (the first named leg). Note this is NOT what
+            // made the live cue say a bare "Make a U-turn to the left": the old cue read
+            // _lastAnnouncedTaxiway, which LoadRoute blanks but StartGuidance re-sets from
+            // an identical first-named-segment walk before the first taxiing frame, so on
+            // the form's Calculate path the old cue would have named the taxiway too.
+            // Naming from the route is a robustness improvement for the paths that run
+            // LoadRoute WITHOUT StartGuidance — the three Rollout re-routes and
+            // LandingExitPlanner — where _lastAnnouncedTaxiway really is still empty.
+            ComposeInitialTurnCue(aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar);
             // Reset the tone slew-limiter baseline too. LoadRoute is only ever a
             // FRESH route (the form's Calculate path doesn't call StopGuidance
             // first, and recalcs swap the route in place via TryRecalculateRoute
@@ -1357,14 +1416,15 @@ public partial class TaxiGuidanceManager
     /// hold-short. Skip duplicate consecutive hold-shorts of the same runway
     /// (one approach, multiple internal segments on the runway pavement).
     /// </summary>
-    private void InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
+    private List<string> InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
     {
-        if (route == null || route.Segments.Count < 2) return;
-        if (_graph == null || _graph.RunwayCenterlines.Count == 0) return;
+        if (route == null || route.Segments.Count < 2) return new List<string>();
+        if (_graph == null || _graph.RunwayCenterlines.Count == 0) return new List<string>();
 
         // Tracks the runway whose hold-short was most recently inserted, so we
         // don't tag every consecutive segment that's on the same runway pavement.
         string lastTaggedRunway = "";
+        var crossed = new List<string>();
 
         // The destination name arrives prefixed ("Runway 33L"), but the crossed
         // runway is a bare designator ("33L"). Normalise so the destination
@@ -1421,7 +1481,10 @@ public partial class TaxiGuidanceManager
             if (newLabel != null)
                 holdSeg.HoldShortRunway = newLabel;
             lastTaggedRunway = crossedRwy;
+            crossed.Add(crossedRwy);
         }
+
+        return crossed;
     }
 
     /// <summary>
@@ -1494,16 +1557,14 @@ public partial class TaxiGuidanceManager
             // directly avoids the closer-threshold pitfall where naming a
             // crossing by the nearer reciprocal designator would return the
             // OTHER end's name and silently miss the user's pick.
-            TaxiGraph.RunwayCenterline? targetRwy = null;
-            foreach (var rwy in _graph.RunwayCenterlines)
-            {
-                if (rwy.Name1.Equals(runwayId, StringComparison.OrdinalIgnoreCase) ||
-                    rwy.Name2.Equals(runwayId, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetRwy = rwy;
-                    break;
-                }
-            }
+            //
+            // Through the shared matcher, which also folds the leading zero: this compare
+            // was a raw Equals, so a user pick spelled "9L" against navdata's "09L" (or one
+            // carrying stray whitespace) silently reported the runway as absent from the
+            // airport and dropped their hold-short.
+            TaxiGraph.RunwayCenterline? targetRwy =
+                Navigation.RouteRunwayCrossings.FindCenterlineForDesignator(
+                    _graph.RunwayCenterlines, runwayId);
             if (targetRwy == null)
             {
                 unmatched.Add($"runway {runwayId} (not in airport runway data)");
