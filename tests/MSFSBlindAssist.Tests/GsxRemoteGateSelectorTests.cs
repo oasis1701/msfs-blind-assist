@@ -19,17 +19,22 @@ public class GsxRemoteGateSelectorTests
     // ── Fixtures ────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// A GSX-sourced spot whose Name/Number/Suffix are DELIBERATELY unrelated to
+    /// A GSX-sourced spot whose Name/Number are DELIBERATELY unrelated to
     /// <paramref name="identifier"/>, so a test asserting the sent value equals
     /// <paramref name="identifier"/> cannot pass by accident of the two strings
     /// coinciding — it only passes if the code actually reads GsxIdentifier and
     /// never rebuilds a label from Describe()/Name/Number.
+    /// <para>Suffix is EMPTY, and that is not noise: Number and Suffix are both
+    /// StandId.Parse's reading of the same uiGateName, and a SUFFIXED stand does not send
+    /// its base number at all (GsxGateSelectPlan) — planting an unrelated suffix here would
+    /// model a stand that cannot exist and would silently move every test in this file onto
+    /// the identifier rung. The suffix rule has its own tests in GsxGateSelectPlanTests.</para>
     /// </summary>
     private static ParkingSpot SpotWithIdentifier(string? identifier) => new()
     {
         Name = "Totally Unrelated Label",
         Number = 999,
-        Suffix = "Z",
+        Suffix = "",
         Source = GateSource.Gsx,
         GsxIdentifier = identifier,
     };
@@ -140,7 +145,7 @@ public class GsxRemoteGateSelectorTests
     {
         Name = "Totally Unrelated Label",
         Number = 5,
-        Suffix = "Z",
+        Suffix = "",               // StandId.Parse(" Gate 5") -- no suffix on this stand
         Source = GateSource.Gsx,
         GsxIdentifier = " Gate 5",
         GsxUiName = "Concourse T (T1-T21) | Gate 5",

@@ -107,14 +107,28 @@ public class NavigationCalculator
     }
 
     /// <summary>
-    /// Calculates cross-track error (degrees left or right of ILS centerline)
+    /// SIGN of the aircraft's side of the ILS centerline: negative = left, positive = right.
+    ///
+    /// <para><b>Use the SIGN only. The MAGNITUDE is not the angular deviation.</b> This
+    /// returns <c>bearing(threshold -> aircraft) - localizerHeading</c>, so for an aircraft
+    /// on final — BEHIND the threshold, which is every approach — the magnitude is
+    /// <c>180 - the true angle</c>, and it reads WORSE the closer the aircraft comes to
+    /// being lined up. Live KATL 2026-08-27: 3.1 nm off at 17.4 nm (10.26 degrees) was
+    /// spoken to a blind pilot as "170 degrees right of centerline". For a number a pilot
+    /// hears, call <see cref="AngularDeviationFromCenterlineDeg"/> and take the left/right
+    /// word from this function's sign — which is correct in both geometries, and is all
+    /// this method's other callers (takeoff assist, flare assist, visual guidance) use.
+    /// The behaviour is left as-is deliberately: those callers are correct against it, and
+    /// the same defect was fixed once before in docking (commit 3d186b62) the same way, by
+    /// changing the caller rather than the function.</para>
     /// </summary>
     /// <param name="aircraftLat">Aircraft latitude in degrees</param>
     /// <param name="aircraftLon">Aircraft longitude in degrees</param>
     /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
     /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
     /// <param name="localizerHeading">Localizer true heading in degrees</param>
-    /// <returns>Degrees off centerline (negative = left, positive = right)</returns>
+    /// <returns>Negative = left of centerline, positive = right. Magnitude is NOT the
+    /// angular deviation behind the threshold — see the remarks above.</returns>
     public static double CalculateCrossTrackError(double aircraftLat, double aircraftLon,
                                                    double runwayThresholdLat, double runwayThresholdLon,
                                                    double localizerHeading)

@@ -169,7 +169,16 @@ public sealed class GsxRemoteGateSelector
 
         // Last resort: the verbatim identifier -- today's behaviour, so a build or an
         // airport where the number route does not apply is never worse than before.
-        if (result.Outcome == GsxGateSelectOutcome.NotFound
+        //
+        // BadArgs as well as NotFound. Both mean "that argument bought nothing", and the
+        // promise this rung exists to keep is that no airport ends up worse off than it was
+        // before the number was tried first. Gated on NotFound alone, a GSX build that
+        // rejects the int-typed argument outright ends the sequence having never made the
+        // attempt the old code always made -- the claim held everywhere except the one
+        // reply shape that would need it. The fallback is idempotent and last-resort, so
+        // widening the gate costs one wasted frame in the case where it cannot help.
+        if ((result.Outcome == GsxGateSelectOutcome.NotFound
+                || result.Outcome == GsxGateSelectOutcome.BadArgs)
             && GsxGateSelectPlan.FallbackAttempt(target) is { } fallback)
         {
             lastSent = fallback;

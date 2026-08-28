@@ -18,14 +18,19 @@ namespace MSFSBlindAssist.Tests;
 
 public class GsxGateSelectPlanTests
 {
-    private static ParkingSpot Spot(string? identifier, string? uiName, int number)
+    // Suffix defaults to EMPTY because Number and Suffix are both StandId.Parse's reading of
+    // the SAME uiGateName -- a stand identified as " Gate 5" really does carry Suffix "". The
+    // fixture used to plant an unrelated "Z" as noise against a label being rebuilt from
+    // Name/Number/Suffix; the unrelated Name still covers that, and a suffixed stand now has
+    // its own tests below, because the suffix decides whether the number may be sent at all.
+    private static ParkingSpot Spot(string? identifier, string? uiName, int number, string suffix = "")
         => new()
         {
             AirportICAO = "KATL",
             // Deliberately unrelated to the identifier so nothing can pass by coincidence.
             Name = "Totally Unrelated Label",
             Number = number,
-            Suffix = "Z",
+            Suffix = suffix,
             GsxIdentifier = identifier,
             GsxUiName = uiName,
             Source = GateSource.Gsx,
@@ -85,6 +90,28 @@ public class GsxGateSelectPlanTests
     }
 
     [Fact]
+    public void A_SUFFIXED_stand_never_sends_its_base_number()
+    {
+        // "Gate 12A" parses to Number 12 + Suffix "A", so the number ALONE names a different
+        // stand -- and at an airport that also has a plain "Gate 12" the request is wrong by
+        // construction, not merely ambiguous. Worse, for a stand GSX publishes no uiName for,
+        // the echoed number then matches RequestedNumber and CLEARS
+        // ResolvedGateContradictsRequest: GSX prepares "Ramp 5" for a pilot who picked
+        // "Ramp 5B" and nothing is spoken. Send the verbatim identifier instead -- which is
+        // the pre-existing behaviour, failing loudly with not_found.
+        object? first = GsxGateSelectPlan.FirstAttempt(Spot(" Gate 12A", null, 12, "A"));
+        Assert.Equal(" Gate 12A", Assert.IsType<string>(first));
+    }
+
+    [Fact]
+    public void A_SUFFIXED_stand_has_no_fallback_because_the_identifier_already_went_first()
+    {
+        // The two methods share one predicate so the sequence cannot drift: the fallback
+        // offers the identifier exactly when the number went first.
+        Assert.Null(GsxGateSelectPlan.FallbackAttempt(Spot(" Gate 12A", null, 12, "A")));
+    }
+
+    [Fact]
     public void The_plan_never_rebuilds_a_label_from_our_own_fields()
     {
         var spot = Spot(" Gate 5", "Concourse T (T1-T21) | Gate 5", 5);
@@ -92,6 +119,11 @@ public class GsxGateSelectPlanTests
         string? fallback = GsxGateSelectPlan.FallbackAttempt(spot);
         Assert.NotEqual(spot.Describe(), first?.ToString());
         Assert.NotEqual(spot.Describe(), fallback);
-        Assert.NotEqual("Totally Unrelated Label 5Z", fallback);
+        Assert.NotEqual("Totally Unrelated Label 5", fallback);
+
+        // Same, on the path where a suffix IS present: never "5A", never the label.
+        var suffixed = Spot(" Gate 5A", null, 5, "A");
+        Assert.NotEqual("5A", GsxGateSelectPlan.FirstAttempt(suffixed)?.ToString());
+        Assert.NotEqual(suffixed.Describe(), GsxGateSelectPlan.FirstAttempt(suffixed)?.ToString());
     }
 }

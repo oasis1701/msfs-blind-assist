@@ -51,6 +51,39 @@ public static class RouteRunwayCrossings
     /// scenery) — every designator compare in this codebase must go through
     /// this so "9" and "09" can never silently fail to match.
     /// </summary>
+    /// <summary>
+    /// Whether a centerline is the pavement named by <paramref name="designator"/> — matched
+    /// on EITHER of its reciprocal designators through <see cref="NormalizeDesignator"/>, so
+    /// 26R and 08L are one runway and "8L" and "08L" are one spelling.
+    ///
+    /// <para>THE by-designator comparison for centerlines. It exists because three sites grew
+    /// their own — a raw <c>Equals</c> with no trim, a <c>Trim</c> with no zero-folding, and
+    /// this normalized form — so a designator-format drift one site tolerated another silently
+    /// rejected, invisibly until a particular airport's naming triggered it. Add a caller
+    /// here rather than a fourth spelling elsewhere.</para>
+    /// </summary>
+    public static bool CenterlineHasDesignator(TaxiGraph.RunwayCenterline centerline, string? designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return false;
+        string want = NormalizeDesignator(designator);
+        return string.Equals(NormalizeDesignator(centerline.Name1 ?? ""), want, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(NormalizeDesignator(centerline.Name2 ?? ""), want, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The centerline for <paramref name="designator"/>, or null when the graph does not
+    /// carry it. Matched by <see cref="CenterlineHasDesignator"/>.
+    /// </summary>
+    public static TaxiGraph.RunwayCenterline? FindCenterlineForDesignator(
+        IReadOnlyList<TaxiGraph.RunwayCenterline>? centerlines, string? designator)
+    {
+        if (centerlines is null || string.IsNullOrWhiteSpace(designator)) return null;
+        foreach (var c in centerlines)
+            if (CenterlineHasDesignator(c, designator))
+                return c;
+        return null;
+    }
+
     public static string NormalizeDesignator(string designator)
     {
         if (string.IsNullOrWhiteSpace(designator)) return designator ?? "";

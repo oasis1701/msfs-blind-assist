@@ -2467,6 +2467,40 @@ public partial class TaxiGuidanceManager : IDisposable
     private double ComputeSteeringHeadingError(double lat, double lon, double headingTrue)
         => ComputeSteeringHeadingError(lat, lon, headingTrue, out _, out _);
 
+    /// <summary>
+    /// Composes (or clears) <see cref="LastRouteInitialTurnCue"/> for the route and segment
+    /// cursor CURRENTLY set, from the aircraft's live position and TRUE heading. The one
+    /// composer, so the cue is always the tone's own quantity and one wording.
+    ///
+    /// <para>Called by <c>LoadRoute</c> with the cursor at 0, and again by the landing-exit
+    /// handoff's re-anchor. That second call is not tidiness: when the handoff re-route
+    /// FAILS, guidance continues on the TOUCHDOWN route, whose cue was composed rolling
+    /// straight down the runway — heading error ≈ 0, so <c>Compose</c> returned null — and
+    /// the re-anchor then moves the cursor to a segment that can sit behind the aircraft.
+    /// The pilot would get the hard-panned tone of a turnaround with no words, on the
+    /// degraded path where they are least able to infer it, because the pre-composition
+    /// design computed this cue fresh on the first taxiing frame and this one does not.
+    /// Recomposing restores that, without giving the cue a second wording.</para>
+    ///
+    /// <para>The taxiway is the first NAMED leg at or after the cursor — the first leg
+    /// actually ahead, which for a re-anchored cursor is not <c>Segments[0]</c>.</para>
+    /// </summary>
+    private void ComposeInitialTurnCue(double lat, double lon, double headingTrue)
+    {
+        LastRouteInitialTurnCue = null;
+        if (_route == null || _route.Segments.Count == 0) return;
+
+        double initialErr = ComputeSteeringHeadingError(lat, lon, headingTrue);
+        string? firstNamed = null;
+        for (int i = Math.Max(0, _currentSegmentIndex); i < _route.Segments.Count; i++)
+        {
+            if (string.IsNullOrEmpty(_route.Segments[i].TaxiwayName)) continue;
+            firstNamed = _route.Segments[i].TaxiwayName;
+            break;
+        }
+        LastRouteInitialTurnCue = Navigation.RouteStartTurnCue.Compose(initialErr, firstNamed);
+    }
+
     /// <inheritdoc cref="ComputeSteeringHeadingError(double, double, double)"/>
     /// <remarks>
     /// The out-parameter overload also hands back the look-ahead walk target, so the

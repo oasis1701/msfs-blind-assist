@@ -29,19 +29,11 @@ public static class RolloutRunwayReCrossing
     /// of pavement, which is exactly the semantics wanted here, and the normalizer also
     /// makes "8L" and "08L" the same string.
     /// </summary>
+    // Delegates to the one by-designator centerline matcher rather than keeping a
+    // fourth spelling of it beside the three that had already drifted.
     public static TaxiGraph.RunwayCenterline? FindLandingRunwayCenterline(
         IReadOnlyList<TaxiGraph.RunwayCenterline>? centerlines, string? runwayId)
-    {
-        if (centerlines is null || string.IsNullOrWhiteSpace(runwayId)) return null;
-        string want = RouteRunwayCrossings.NormalizeDesignator(runwayId);
-        foreach (var c in centerlines)
-        {
-            if (string.Equals(RouteRunwayCrossings.NormalizeDesignator(c.Name1), want, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(RouteRunwayCrossings.NormalizeDesignator(c.Name2), want, StringComparison.OrdinalIgnoreCase))
-                return c;
-        }
-        return null;
-    }
+        => RouteRunwayCrossings.FindCenterlineForDesignator(centerlines, runwayId);
 
     /// <summary>
     /// True when any segment from <paramref name="fromSegmentIndex"/> onward crosses the

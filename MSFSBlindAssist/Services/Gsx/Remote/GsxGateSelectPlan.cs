@@ -44,7 +44,7 @@ public static class GsxGateSelectPlan
         // Silent wrong-stand selection is exactly the failure this whole path exists to avoid.
         if (spot is null || string.IsNullOrWhiteSpace(spot.GsxIdentifier)) return null;
 
-        return spot.Number > 0 ? spot.Number : spot.GsxIdentifier;
+        return SendsNumberFirst(spot) ? spot.Number : spot.GsxIdentifier;
     }
 
     /// <summary>
@@ -54,7 +54,29 @@ public static class GsxGateSelectPlan
     /// </summary>
     public static string? FallbackAttempt(ParkingSpot? spot)
     {
-        if (spot is null || spot.Number <= 0) return null;
+        if (spot is null || !SendsNumberFirst(spot)) return null;
         return string.IsNullOrWhiteSpace(spot.GsxIdentifier) ? null : spot.GsxIdentifier;
     }
+
+    /// <summary>
+    /// Whether the stand's NUMBER is what <see cref="FirstAttempt"/> puts on the wire. The
+    /// two methods share this one predicate so the sequence cannot drift: the fallback must
+    /// offer the identifier exactly when the number went first, and re-testing the rule
+    /// separately in each is how one of them silently stops matching the other.
+    ///
+    /// <para>A SUFFIXED stand is excluded, and that half is the load-bearing one. The number
+    /// is not a field GSX publishes per parking — it is <c>StandId.Parse</c>'s reading of
+    /// <c>uiGateName</c>, so "Gate 12A" yields 12 and the suffix is DISCARDED. Sending 12
+    /// asks GSX for a stand the pilot did not pick, and where the airport also has a plain
+    /// "Gate 12" the request is wrong by construction rather than merely ambiguous: for a
+    /// stand GSX publishes no <c>uiName</c> for, the echoed number then matches
+    /// <c>RequestedNumber</c> and clears
+    /// <see cref="GsxGateSelectResult.ResolvedGateContradictsRequest"/>, so GSX prepares
+    /// "Ramp 5" for a pilot who picked "Ramp 5B" and NOTHING is spoken. A suffixed stand
+    /// goes as its verbatim identifier instead — the pre-existing behaviour, which fails
+    /// loudly with <c>not_found</c> and leaves the pilot on the GSX menu. Losing the stand
+    /// is recoverable; silently servicing the wrong one is not.</para>
+    /// </summary>
+    private static bool SendsNumberFirst(ParkingSpot spot)
+        => spot.Number > 0 && string.IsNullOrEmpty(spot.Suffix);
 }

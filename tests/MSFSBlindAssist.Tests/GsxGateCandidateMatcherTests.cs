@@ -61,14 +61,33 @@ public class GsxGateCandidateMatcherTests
     }
 
     [Fact]
-    public void A_leading_space_is_significant_in_the_gate_fallback()
+    public void A_leading_space_is_NOT_significant_in_the_gate_fallback()
     {
+        // Opposite of the uiName branch on purpose. GSX's per-parking uiGateName carries a
+        // leading space on 281 of KATL's 294 stands, but the guide's candidate shape pairs a
+        // full uiName ("Gate A12") with a BARE gate ("A12") -- so the branch must survive the
+        // two being spelled differently, or it never fires and the ambiguity is never
+        // resolved. The number conjunct still carries the discrimination.
         var candidates = new List<GsxGateSelectCandidate>
         {
             C("", " Gate 1", 1, "Gate A 1"),
         };
-        Assert.Null(GsxGateCandidateMatcher.Match(candidates, null, "Gate 1", 1));
+        Assert.NotNull(GsxGateCandidateMatcher.Match(candidates, null, "Gate 1", 1));
         Assert.NotNull(GsxGateCandidateMatcher.Match(candidates, null, " Gate 1", 1));
+    }
+
+    [Fact]
+    public void Whitespace_only_gate_differences_still_resolve_to_nothing_when_not_unique()
+    {
+        // Trimming widens what matches, so pin that it cannot manufacture a unique answer:
+        // two candidates that differ only in whitespace share the number too, and the
+        // announcer must still hear the ambiguity.
+        var candidates = new List<GsxGateSelectCandidate>
+        {
+            C("", " Gate 1", 1, "Gate A 1"),
+            C("", "Gate 1", 1, "Gate B 1"),
+        };
+        Assert.Null(GsxGateCandidateMatcher.Match(candidates, null, " Gate 1", 1));
     }
 
     [Fact]

@@ -513,6 +513,41 @@ public class GsxGateSelectResultTests
     }
 
     [Fact]
+    public void The_echoed_bglName_clears_a_bglName_resend()
+    {
+        // The ambiguity rung: the selector re-sends a matched candidate's bglName, which
+        // stamps RequestedIdentifier as that string and leaves RequestedNumber NULL. With a
+        // blank echoed uiName the fully-qualified comparison cannot run and the number
+        // comparison has nothing to run on, so before the bglName was consulted this
+        // announced "Careful: you selected ..., but GSX prepared ..." over a CORRECT
+        // selection -- GSX had echoed back the very value it had just been given.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "Gate T 5";
+        r.RequestedNumber = null;
+        r.ExpectedUiName = null;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_bglName_resend_GSX_resolved_elsewhere_is_still_flagged()
+    {
+        // The clearing identity must not become a blanket amnesty: a DIFFERENT bglName is
+        // exactly the differently-named-stand resolution the check exists to catch.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate E 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "Gate T 5";
+        r.RequestedNumber = null;
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
     public void An_echo_with_no_interpretable_identity_at_all_is_still_not_a_mismatch()
     {
         // Both strings blank AND the number disagrees: an echo this poor says nothing

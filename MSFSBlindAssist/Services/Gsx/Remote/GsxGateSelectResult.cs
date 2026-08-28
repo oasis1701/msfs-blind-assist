@@ -216,6 +216,9 @@ public sealed class GsxGateSelectResult
     /// are compared (trimmed, ordinal-ignore-case): the guide's own shape pairs a full
     /// <c>uiName</c> ("Gate A12") with a bare <c>gate</c> ("A12"), so which one equals what we
     /// sent depends on GSX's spelling, not on whether it picked the right stand. So is the
+    /// echoed <c>bglName</c>, which is what an <c>ambiguous</c> reply's resend actually puts
+    /// on the wire — clearing ONLY, never counted as an identity worth judging against. So is
+    /// the
     /// echoed <c>number</c>, whenever the request itself went as a number
     /// (<see cref="RequestedNumber"/>) — which since <c>GsxGateSelectPlan</c> is the usual
     /// case, and is the ONLY identity available for a stand GSX publishes no <c>uiName</c> for.
@@ -304,6 +307,27 @@ public sealed class GsxGateSelectResult
 
             string uiName = echoed.UiName?.Trim() ?? string.Empty;
             string gate = echoed.Gate?.Trim() ?? string.Empty;
+
+            // The echoed bglName CLEARS, and only clears. It is one of the identities we
+            // actually send -- the selector re-sends a matched candidate's bglName to resolve
+            // an `ambiguous` reply, and that send stamps it as RequestedIdentifier with
+            // RequestedNumber NULL, because it went as a string. On that rung the uiName
+            // comparison is skipped whenever the echo carries no uiName and the number
+            // comparison cannot run at all, so comparing uiName/gate alone reported a
+            // contradiction for the one value GSX had just confirmed: a bglName resend of
+            // "Gate T 5" echoing {uiName:"", gate:" Gate 5", bglName:"Gate T 5"} announced
+            // "Careful: you selected ..., but GSX prepared ..." on a CORRECT selection.
+            //
+            // Placed ABOVE the interpretability guard and deliberately NOT added to it, so
+            // this can only ever turn a mismatch into a match. Were bglName also to count as
+            // "something interpretable", an echo with both strings blank would start being
+            // JUDGED on a namespace of GSX's own that need not resemble what we sent -- new
+            // false alarms, in the one property whose whole design rule is that a false alarm
+            // teaches the pilot to ignore the real one.
+            string bglName = echoed.BglName?.Trim() ?? string.Empty;
+            if (bglName.Length > 0 && bglName.Equals(requested, StringComparison.OrdinalIgnoreCase))
+                return false;
+
             if (uiName.Length == 0 && gate.Length == 0) return false; // nothing interpretable
 
             return !uiName.Equals(requested, StringComparison.OrdinalIgnoreCase)

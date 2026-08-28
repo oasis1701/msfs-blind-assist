@@ -45,10 +45,23 @@ public static class GsxGateCandidateMatcher
 
         // No uiName (KATL's unnamed GA ramps, 13 of 294). Fall back to the pair that GSX
         // does echo, requiring BOTH to agree -- gate alone is shared, number alone is shared.
+        //
+        // TRIMMED on both sides, unlike the uiName branch above, and the asymmetry is
+        // deliberate. The stored uiGateName is GSX's per-parking string, which carries a
+        // leading space on 281 of KATL's 294 stands; the guide's own candidate shape pairs a
+        // full uiName ("Gate A12") with a BARE gate ("A12"), so the two need not be spelled
+        // alike and an un-trimmed compare could match nothing at all -- a branch that reads
+        // as live logic while never once firing. Trimming cannot manufacture a wrong answer
+        // here: two candidates differing only in whitespace share the number conjunct too,
+        // so Single sees both survive and returns null rather than guessing. Case stays
+        // significant (see Gate_fallback_case_is_significant).
         if (!string.IsNullOrEmpty(uiGateName))
+        {
+            string wantGate = uiGateName.Trim();
             return Single(candidates, c =>
-                string.Equals(c.Gate, uiGateName, StringComparison.Ordinal)
+                string.Equals(c.Gate?.Trim() ?? string.Empty, wantGate, StringComparison.Ordinal)
                 && c.Number.HasValue && c.Number.Value == number);
+        }
 
         return null;
     }

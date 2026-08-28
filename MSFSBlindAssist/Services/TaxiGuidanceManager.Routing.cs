@@ -524,21 +524,7 @@ public partial class TaxiGuidanceManager
             // Naming from the route is a robustness improvement for the paths that run
             // LoadRoute WITHOUT StartGuidance — the three Rollout re-routes and
             // LandingExitPlanner — where _lastAnnouncedTaxiway really is still empty.
-            LastRouteInitialTurnCue = null;
-            if (route.Segments.Count > 0)
-            {
-                double aircraftHeadingTrue = aircraftHeading + aircraftHeadingMagVar;
-                double initialErr = ComputeSteeringHeadingError(
-                    aircraftLat, aircraftLon, aircraftHeadingTrue);
-                string? firstNamed = null;
-                foreach (var seg in route.Segments)
-                {
-                    if (string.IsNullOrEmpty(seg.TaxiwayName)) continue;
-                    firstNamed = seg.TaxiwayName;
-                    break;
-                }
-                LastRouteInitialTurnCue = Navigation.RouteStartTurnCue.Compose(initialErr, firstNamed);
-            }
+            ComposeInitialTurnCue(aircraftLat, aircraftLon, aircraftHeading + aircraftHeadingMagVar);
             // Reset the tone slew-limiter baseline too. LoadRoute is only ever a
             // FRESH route (the form's Calculate path doesn't call StopGuidance
             // first, and recalcs swap the route in place via TryRecalculateRoute
@@ -1571,16 +1557,14 @@ public partial class TaxiGuidanceManager
             // directly avoids the closer-threshold pitfall where naming a
             // crossing by the nearer reciprocal designator would return the
             // OTHER end's name and silently miss the user's pick.
-            TaxiGraph.RunwayCenterline? targetRwy = null;
-            foreach (var rwy in _graph.RunwayCenterlines)
-            {
-                if (rwy.Name1.Equals(runwayId, StringComparison.OrdinalIgnoreCase) ||
-                    rwy.Name2.Equals(runwayId, StringComparison.OrdinalIgnoreCase))
-                {
-                    targetRwy = rwy;
-                    break;
-                }
-            }
+            //
+            // Through the shared matcher, which also folds the leading zero: this compare
+            // was a raw Equals, so a user pick spelled "9L" against navdata's "09L" (or one
+            // carrying stray whitespace) silently reported the runway as absent from the
+            // airport and dropped their hold-short.
+            TaxiGraph.RunwayCenterline? targetRwy =
+                Navigation.RouteRunwayCrossings.FindCenterlineForDesignator(
+                    _graph.RunwayCenterlines, runwayId);
             if (targetRwy == null)
             {
                 unmatched.Add($"runway {runwayId} (not in airport runway data)");

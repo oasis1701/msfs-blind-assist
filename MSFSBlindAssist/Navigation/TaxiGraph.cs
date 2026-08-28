@@ -2054,9 +2054,10 @@ public class TaxiGraph
     {
         foreach (var cl in RunwayCenterlines)
         {
-            if (string.Equals(cl.Name1?.Trim(), runwayName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(cl.Name2?.Trim(), runwayName, StringComparison.OrdinalIgnoreCase))
-                continue;
+            // Shared matcher: this compare trimmed but did not fold the leading zero, so a
+            // "9L"/"09L" spelling difference let a runway fail to recognise ITSELF here and
+            // claim its own point.
+            if (RouteRunwayCrossings.CenterlineHasDesignator(cl, runwayName)) continue;
             double len = FastDistanceMeters(cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);
             if (len < 1.0) continue;
             var (perp, along, _, _) = ProjectOntoCenterline(lat, lon, cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2);

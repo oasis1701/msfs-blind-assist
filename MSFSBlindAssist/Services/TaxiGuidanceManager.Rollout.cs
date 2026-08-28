@@ -686,6 +686,21 @@ public partial class TaxiGuidanceManager
                 _currentSegmentIndex = FindNearestSegmentIndexFullRoute(lat, lon);
                 RolloutDiag($"Handoff re-anchored _currentSegmentIndex={_currentSegmentIndex} " +
                     $"of {_route.Segments.Count}");
+
+                // Recompose the route-start turn cue against the cursor just re-anchored.
+                // The surviving cue belongs to the TOUCHDOWN route: it was composed rolling
+                // straight down the runway, so its heading error was ~0 and it is null — yet
+                // the segment now under the cursor can sit behind the aircraft, which is
+                // exactly the turnaround the cue exists to speak. Left alone, the pilot gets
+                // the hard pan with no words (or, if the touchdown angle happened to clear
+                // the threshold, a cue composed thousands of feet ago against a different
+                // cursor, which can name the wrong direction). _initialTurnCueAnnounced is
+                // still false here — the Taxiing branch never ran during the rollout — but it
+                // is cleared explicitly so this does not depend on that remaining true.
+                _initialTurnCueAnnounced = false;
+                ComposeInitialTurnCue(lat, lon, headingTrue);
+                if (LastRouteInitialTurnCue != null)
+                    RolloutDiag($"Handoff re-anchor turn cue: {LastRouteInitialTurnCue}");
             }
 
             // Reachability guard: never hand the steering tone a target the aircraft is not
@@ -714,15 +729,9 @@ public partial class TaxiGuidanceManager
                     RolloutDiag($"Handoff route unreachable: {crossToFirstM:F0} m from segment " +
                         $"{_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
                         $"aircraft off the runway — concluding rather than steering across it");
-                    // Same reason split as the guard's original site: only claim "short of X"
-                    // when an early vacate was actually established.
-                    if (_landingExitVacatedEarlyPlannedName != null)
-                        _landingExitVacatedEarly = true;
-                    else
-                        _landingExitRouteUnreachable = true;
-                    _rolloutHandoffActive = false;
-                    SetState(TaxiGuidanceState.Taxiing);
-                    HandleArrival();
+                    // Off the runway by IsHandoffRouteReachable's own early return, so the
+                    // off-runway closure is the right one.
+                    ConcludeLandingExitOffRunway();
                     return;
                 }
 
@@ -737,10 +746,7 @@ public partial class TaxiGuidanceManager
                 // The reachability guard passed it, and could not have caught it: it
                 // measures only the FIRST segment's cross-track, and B1 started right at
                 // the aircraft.
-                var landingCenterline = Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
-                    _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID);
-                if (Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
-                        _route.Segments, _currentSegmentIndex, landingCenterline))
+                if (HandoffRouteReCrossesLandingRunway())
                 {
                     string rwyName = _rolloutRunway?.RunwayID ?? "the runway";
 
@@ -935,39 +941,13 @@ public partial class TaxiGuidanceManager
                     // alignment past the exit node. Telling a blind pilot to stop and hold on
                     // an active runway is the hazard HandleArrival's own final branch exists to
                     // prevent.
+                    // Off the pavement reads the planned-exit name restored above after
+                    // LoadRoute's fresh-route reset blanked it; on it, the closure must not
+                    // say "hold". Both sequences live on the two Conclude helpers.
                     if (offRunwayAtHandoff)
-                    {
-                        // Off the pavement. Same reason split the reachability guard uses: only
-                        // claim "short of X" when an early vacate was actually established, so a
-                        // pilot who turned off AT or BEYOND their exit is never told they left
-                        // the runway short of it. Read from the field, restored above after
-                        // LoadRoute's fresh-route reset blanked it.
-                        if (_landingExitVacatedEarlyPlannedName != null)
-                            _landingExitVacatedEarly = true;
-                        else
-                            _landingExitRouteUnreachable = true;
-                    }
+                        ConcludeLandingExitOffRunway();
                     else
-                    {
-                        // Still on the runway. Steer HandleArrival to its final branch — the
-                        // only closure that does not say "hold": "You may still be on the
-                        // runway — continue ahead until clear". No new wording: _landingExit-
-                        // OffPavement already means "guidance ended with the aircraft still on
-                        // the pavement", which is exactly what is happening. The other two flags
-                        // are cleared rather than merely left alone so the ordering in
-                        // HandleArrival cannot be defeated by a stale value — both are provably
-                        // false here (every setter of either requires offRunwayAtHandoff, and
-                        // each concludes on the frame it sets), so clearing them can only ever
-                        // remove a stale claim, never a real one. _landingExitMissed is not
-                        // touched: it is set only from the Taxiing branch of UpdatePosition,
-                        // which concludes to Arrived immediately, so it can never be live here.
-                        _landingExitVacatedEarly = false;
-                        _landingExitRouteUnreachable = false;
-                        _landingExitOffPavement = false;
-                    }
-                    _rolloutHandoffActive = false;
-                    SetState(TaxiGuidanceState.Taxiing);
-                    HandleArrival();
+                        ConcludeLandingExitOnRunway();
                     return;
                 }
             }
@@ -1590,21 +1570,13 @@ public partial class TaxiGuidanceManager
                 RolloutDiag($"TryEarlyExitHandoff: route unreachable — {crossToFirstM:F0} m from " +
                     $"segment {_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
                     $"aircraft off the runway — concluding rather than steering across it");
-                // Same reason split as the guard's other site: only claim "short of X" when
-                // an early vacate was actually established. From HERE that name is always
-                // null — the LoadRoute above nulls it and this path never restores it, unlike
-                // the UpdateLandingRollout site which deliberately carries it across — so
-                // every refusal here takes _landingExitRouteUnreachable, whose closure makes
-                // no positional claim. That is the correct closure for this path: the early
-                // handoff fires short of the exit, where "short of X" would be unearned. The
-                // dead branch is kept so the two sites stay one rule, not two.
-                if (_landingExitVacatedEarlyPlannedName != null)
-                    _landingExitVacatedEarly = true;
-                else
-                    _landingExitRouteUnreachable = true;
-                _rolloutHandoffActive = false;
-                SetState(TaxiGuidanceState.Taxiing);
-                HandleArrival();
+                // Off the runway by IsHandoffRouteReachable's own early return. From HERE the
+                // shared rule always lands on _landingExitRouteUnreachable — the LoadRoute
+                // above nulls the planned-exit name and this path never restores it, unlike
+                // the UpdateLandingRollout site which deliberately carries it across — and
+                // that is the correct closure: the early handoff fires short of the exit,
+                // where "short of X" would be unearned.
+                ConcludeLandingExitOffRunway();
                 // TRUE, not false: false means "handoff declined, keep flying the rollout"
                 // and the caller falls through to the bearing-to-junction fallback tone and
                 // the rest of UpdateLandingRollout. Guidance has CONCLUDED here, so the
@@ -1618,10 +1590,7 @@ public partial class TaxiGuidanceManager
             // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
             // identically, and this method was the last ungated one once before
             // (commit 29b8bcbf). See the other site for the KATL 26R defect.
-            var landingCenterline = Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
-                _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID);
-            if (Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
-                    _route.Segments, _currentSegmentIndex, landingCenterline))
+            if (HandoffRouteReCrossesLandingRunway())
             {
                 // Gated identically to the UpdateLandingRollout site: DECLINE only while the
                 // aircraft is still ON the runway with the exit ahead; otherwise CONCLUDE.
@@ -1634,23 +1603,17 @@ public partial class TaxiGuidanceManager
                 // would leave the pilot with no route, no closure and — because
                 // _rolloutEarlyHandoffDone latches this method to one shot per exit — no second
                 // attempt either. Conclude instead, matching the reachability guard above
-                // exactly: same reason split, same TRUE return meaning "guidance concluded,
+                // exactly: same closure helper, same TRUE return meaning "guidance concluded,
                 // stop processing the frame". The planned-exit name is always null on this path
-                // (LoadRoute nulls it and nothing here restores it), so this always takes
-                // _landingExitRouteUnreachable, whose "Stop and hold position" wording is safe
-                // precisely because this branch is off-runway only.
+                // (LoadRoute nulls it and nothing here restores it), so the shared rule always
+                // lands on _landingExitRouteUnreachable, whose "Stop and hold position" wording
+                // is safe precisely because this branch is off-runway only.
                 if (offRunwayAtHandoff)
                 {
                     RolloutDiag($"TryEarlyExitHandoff: route re-crosses runway " +
                         $"{_rolloutRunway?.RunwayID ?? "?"} with the aircraft off the runway — " +
                         $"concluding rather than driving back across it");
-                    if (_landingExitVacatedEarlyPlannedName != null)
-                        _landingExitVacatedEarly = true;
-                    else
-                        _landingExitRouteUnreachable = true;
-                    _rolloutHandoffActive = false;
-                    SetState(TaxiGuidanceState.Taxiing);
-                    HandleArrival();
+                    ConcludeLandingExitOffRunway();
                     return true;
                 }
 
@@ -2018,6 +1981,82 @@ public partial class TaxiGuidanceManager
         => Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
             _rolloutAllExits,
             afterExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT);
+
+    /// <summary>
+    /// Ends landing-exit guidance with the aircraft OFF the runway, and picks the closure
+    /// reason: only claim "short of X" when an early vacate was actually established, so a
+    /// pilot who turned off AT or BEYOND their exit is never told they left the runway short
+    /// of it. Both closures say "Stop and hold position", which is safe only off the pavement
+    /// — on it, use <see cref="ConcludeLandingExitOnRunway"/>.
+    ///
+    /// <para>ONE owner for the whole conclude sequence (reason split → clear the handoff flag
+    /// → Taxiing → HandleArrival). It was hand-copied at four guard sites, whose identity
+    /// CLAUDE.md requires and which nothing enforced; this method is that enforcement. Note
+    /// the two <c>TryEarlyExitHandoff</c> sites can only ever take the
+    /// <c>_landingExitRouteUnreachable</c> arm — that method's <c>LoadRoute</c> nulls the
+    /// planned-exit name and never restores it — and calling the shared rule from there
+    /// anyway is the point: one rule, not two that happen to agree today.</para>
+    /// </summary>
+    private void ConcludeLandingExitOffRunway()
+    {
+        if (_landingExitVacatedEarlyPlannedName != null)
+            _landingExitVacatedEarly = true;
+        else
+            _landingExitRouteUnreachable = true;
+        FinishLandingExitConclude();
+    }
+
+    /// <summary>
+    /// Ends landing-exit guidance with the aircraft still ON the pavement. Steers
+    /// <see cref="HandleArrival"/> to its final branch — the only closure that does not say
+    /// "hold": "You may still be on the runway — continue ahead until clear". Telling a blind
+    /// pilot to stop and hold on an active runway is the hazard that branch exists to prevent.
+    ///
+    /// <para>The other two flags are CLEARED rather than left alone so the ordering in
+    /// <see cref="HandleArrival"/> cannot be defeated by a stale value. Both are provably
+    /// false here (every setter of either requires the aircraft to be off the runway, and each
+    /// concludes on the frame it sets), so clearing them can only remove a stale claim, never a
+    /// real one. <c>_landingExitMissed</c> is deliberately untouched: it is set only from the
+    /// Taxiing branch of <c>UpdatePosition</c>, which concludes to Arrived immediately, so it
+    /// can never be live here.</para>
+    /// </summary>
+    private void ConcludeLandingExitOnRunway()
+    {
+        _landingExitVacatedEarly = false;
+        _landingExitRouteUnreachable = false;
+        _landingExitOffPavement = false;
+        FinishLandingExitConclude();
+    }
+
+    /// <summary>
+    /// The tail both closures share. <c>_rolloutHandoffActive</c> is cleared FIRST: the top of
+    /// the handoff block arms the post-handoff overshoot monitor on the assumption the handoff
+    /// ends in Taxiing, and a conclude is not that.
+    /// </summary>
+    private void FinishLandingExitConclude()
+    {
+        _rolloutHandoffActive = false;
+        SetState(TaxiGuidanceState.Taxiing);
+        HandleArrival();
+    }
+
+    /// <summary>
+    /// Whether the route the handoff is about to steer at re-crosses the runway just landed
+    /// on, judged from <c>_currentSegmentIndex</c> onward (a crossing already behind the
+    /// aircraft is history, not a route it is about to fly).
+    ///
+    /// <para>ONE chokepoint for the verdict, so the two handoff sites cannot drift on WHICH
+    /// segments, cursor or runway they judge — the responses they take differ legitimately,
+    /// the question does not. This method was the last ungated handoff site once before
+    /// (commit 29b8bcbf), and a future third site should call this rather than re-derive it.</para>
+    /// </summary>
+    private bool HandoffRouteReCrossesLandingRunway()
+        => _route != null
+           && Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
+                  _route.Segments,
+                  _currentSegmentIndex,
+                  Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
+                      _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID));
 
     /// <summary>
     /// "Turn left" / "Gentle right" for the currently targeted landing exit, from the
