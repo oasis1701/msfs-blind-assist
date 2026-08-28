@@ -72,6 +72,51 @@ public class GsxGateCandidateMatcherTests
     }
 
     [Fact]
+    public void UiName_case_is_significant()
+    {
+        // Nothing in the wire format guarantees two differently-sourced GSX strings agree on
+        // casing. A case-insensitive compare here would match a candidate whose uiName differs
+        // only in case from ours -- the pilot would be sent to a stand nobody chose.
+        var candidates = new List<GsxGateSelectCandidate>
+        {
+            C("Concourse T (T1-T21) | Gate 5", " Gate 5", 5, "Gate T 5"),
+        };
+        Assert.NotNull(GsxGateCandidateMatcher.Match(
+            candidates, "Concourse T (T1-T21) | Gate 5", " Gate 5", 5));
+        Assert.Null(GsxGateCandidateMatcher.Match(
+            candidates, "concourse t (t1-t21) | gate 5", " Gate 5", 5));
+    }
+
+    [Fact]
+    public void Gate_fallback_case_is_significant()
+    {
+        // Same rule as UiName_case_is_significant, for the uiGateName fallback branch used by
+        // KATL's 13 unnamed GA ramps.
+        var candidates = new List<GsxGateSelectCandidate>
+        {
+            C("", " Gate 1", 1, "Gate A 1"),
+        };
+        Assert.NotNull(GsxGateCandidateMatcher.Match(candidates, null, " Gate 1", 1));
+        Assert.Null(GsxGateCandidateMatcher.Match(candidates, null, " gate 1", 1));
+    }
+
+    [Fact]
+    public void A_trailing_space_is_significant_in_uiName()
+    {
+        // GSX's live uiTerminalName-derived uiName strings carry trailing whitespace (unlike
+        // the leading-space case already pinned for the gate fallback above). Trimming before
+        // comparison would falsely match a candidate whose uiName differs only by that space.
+        var candidates = new List<GsxGateSelectCandidate>
+        {
+            C("Concourse T (T1-T21) | Gate 5 ", " Gate 5", 5, "Gate T 5"),
+        };
+        Assert.Null(GsxGateCandidateMatcher.Match(
+            candidates, "Concourse T (T1-T21) | Gate 5", " Gate 5", 5));
+        Assert.NotNull(GsxGateCandidateMatcher.Match(
+            candidates, "Concourse T (T1-T21) | Gate 5 ", " Gate 5", 5));
+    }
+
+    [Fact]
     public void Two_survivors_resolve_to_nothing()
     {
         var candidates = new List<GsxGateSelectCandidate>
