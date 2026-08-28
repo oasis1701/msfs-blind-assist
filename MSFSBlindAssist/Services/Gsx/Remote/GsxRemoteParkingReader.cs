@@ -248,6 +248,11 @@ public static class GsxRemoteParkingReader
             // stand gets selected (spec ruling).
             GsxIdentifier = uiGateName,
 
+            // GSX's fully-qualified name, verbatim. Unlike uiGateName it is unique at a real
+            // airport (KATL: 281 of 294), which is what lets a gate.select ambiguity list be
+            // resolved to THIS stand rather than a same-numbered one elsewhere on the field.
+            GsxUiName = Str(p, "uiName"),
+
             // Left null on purpose -- the API never publishes a stop position (stopPosition
             // is null on all 238 KJFK stands). GsxStopPositionJoiner (a later task) fills
             // these from the GSX .ini when one exists for this airport.

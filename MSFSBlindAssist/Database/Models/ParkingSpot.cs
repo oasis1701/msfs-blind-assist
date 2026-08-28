@@ -40,13 +40,44 @@ public class ParkingSpot
     /// <see cref="Suffix"/>. Null for navdata-only spots and for any GSX spot the reader could
     /// not resolve one for.
     /// <para>
-    /// <c>GsxRemoteGateSelector</c> sends THIS value to <c>gate.select</c> verbatim — never a
-    /// label rebuilt from <see cref="Describe"/> or from <see cref="Name"/>/<see cref="Number"/>/
-    /// <see cref="Suffix"/>. A round-trip through our own formatting is exactly how the wrong
-    /// stand gets selected (spec ruling, docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md).
+    /// It is carried VERBATIM and must never be a label rebuilt from <see cref="Describe"/>
+    /// or from <see cref="Name"/>/<see cref="Number"/>/<see cref="Suffix"/> — a round-trip
+    /// through our own formatting is how the wrong stand gets selected.
+    /// </para>
+    /// <para>
+    /// It is NOT, however, what <c>gate.select</c> answers to. Live-probed against a running
+    /// GSX (KATL, 2026-08-27): sending this value verbatim returns <c>not_found</c>, as does
+    /// the trimmed form and <see cref="GsxUiName"/>. Only a stand NUMBER (as a JSON int) or a
+    /// <c>bglName</c> resolve — and <c>bglName</c> is not published in
+    /// <c>handlerData.airport.parkings</c> at all, reaching a client only inside an
+    /// <c>ambiguous</c> reply's candidate list. <c>GsxGateSelectPlan</c> owns that sequence;
+    /// this value remains the last-resort attempt.
     /// </para>
     /// </summary>
     public string? GsxIdentifier { get; set; }
+
+    /// <summary>
+    /// GSX's FULLY-QUALIFIED name for this stand — the raw <c>uiName</c> from
+    /// <c>handlerData.airport.parkings</c> ("Concourse T (T1-T21) | Gate 5"), carried
+    /// verbatim. Null for navdata and <c>.ini</c> spots, and for the stands GSX publishes
+    /// no <c>uiName</c> for (KATL's unnamed GA ramps — 13 of 294).
+    /// <para>
+    /// It exists because <see cref="GsxIdentifier"/> is NOT unique: at KATL 235 of 294
+    /// stands share their <c>uiGateName</c> with another stand, and <c>" Gate 5"</c> names
+    /// both Concourse T and Delta Tech Ops. <c>uiName</c> is unique for 281 of 294. Two
+    /// consumers need that: <c>GsxGateCandidateMatcher</c> picks our stand out of a
+    /// <c>gate.select</c> ambiguity list with it, and
+    /// <c>GsxGateSelectResult.ResolvedGateContradictsRequest</c> uses it to tell whether
+    /// GSX prepared the stand the pilot actually picked — a check the old identifier could
+    /// not make.
+    /// </para>
+    /// <para>
+    /// It takes NO part in <see cref="Describe"/> (which is pinned at 231 stands / 231
+    /// distinct labels over the KJFK capture), is not copied by <c>GsxStandNameOverlay</c>
+    /// (which copies the concourse letter only), and does not reach <c>GetNamedSpots</c>.
+    /// </para>
+    /// </summary>
+    public string? GsxUiName { get; set; }
 
     /// <summary>
     /// The terminal/concourse this stand belongs to, as GSX's Remote API publishes it
