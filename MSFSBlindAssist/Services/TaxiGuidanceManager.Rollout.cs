@@ -742,13 +742,34 @@ public partial class TaxiGuidanceManager
                 {
                     string rwyName = _rolloutRunway?.RunwayID ?? "the runway";
 
-                    // Still SHORT of the exit → the exit is AHEAD and reachable by simply
-                    // continuing. Decline the handoff and keep flying the rollout: state
-                    // stays LandingRollout, so the rollout's own exit-bearing tone keeps
-                    // steering and the pilot rolls to the turnoff. That is the whole
+                    // Still ON the runway and SHORT of the exit → the exit is AHEAD and
+                    // reachable by simply continuing. Decline the handoff and keep flying the
+                    // rollout: state stays LandingRollout, so the tone remains rollout-driven
+                    // (RolloutExitGate.SelectToneMode still owns it, including its Silent mode
+                    // above 50 kt) and the pilot rolls to the turnoff. That is the whole
                     // distinction — turning off onto a taxiway on the far side is a vacate,
                     // driving across the pavement to reach it is not.
-                    if (signedAlongPastFt < 0.0)
+                    //
+                    // !offRunwayAtHandoff is the load-bearing second conjunct, not a belt-and-
+                    // braces extra (PR review, 2026-08-27). "Continue and the exit comes to
+                    // you" is only true of an aircraft still ON the pavement, and three separate
+                    // defects live in the off-runway half of this branch:
+                    //   • exitedLaterally is DEFINED as !IsWithinRolloutRunwayLaterally(...)
+                    //     plus a proximity/heading term, so an exitedLaterally-triggered decline
+                    //     is always off-runway. There the overshoot detector cannot fire
+                    //     (stillOnRunway is false) and trulyStopped / speedNearExitHandoff hold
+                    //     !pastExit true, so the decline repeats at the retry floor forever with
+                    //     no closure and no route.
+                    //   • The early-vacate branch above is itself gated on offRunwayAtHandoff.
+                    //     Reaching a decline after it swapped _rolloutExit would return without
+                    //     speaking pendingVacateAnnouncement and without restoring the planned
+                    //     exit — silently repointing the tone at a different exit, the exact
+                    //     thing that announcement exists to prevent.
+                    //   • The conclude branch below is the only other way out, and its
+                    //     _landingExitRouteUnreachable closure says "Stop and hold position".
+                    // With this conjunct the off-runway cases all fall through to conclude,
+                    // where "stop and hold" is safe and a closure is always spoken.
+                    if (signedAlongPastFt < 0.0 && !offRunwayAtHandoff)
                     {
                         RolloutDiag($"Handoff route re-crosses runway {rwyName} and the exit is still " +
                             $"{-signedAlongPastFt:F0} ft ahead — declining the handoff, staying in " +
@@ -765,19 +786,54 @@ public partial class TaxiGuidanceManager
                         return;
                     }
 
-                    // At or past the exit with no route off this side. Conclude, with the
-                    // same reason split the reachability guard uses: only claim "short of X"
-                    // when an early vacate was actually established, so a pilot who turned
-                    // off AT or BEYOND their exit is never told they left the runway short
-                    // of it. Read from the carried-across local's field, restored above
-                    // after LoadRoute's fresh-route reset blanked it.
-                    RolloutDiag($"Handoff route re-crosses runway {rwyName} at or past the exit " +
-                        $"(signedAlongPast={signedAlongPastFt:F0} ft) — concluding rather than " +
-                        $"driving back across it; exits considered {DescribeExits(_rolloutAllExits)}");
-                    if (_landingExitVacatedEarlyPlannedName != null)
-                        _landingExitVacatedEarly = true;
+                    // Everything else concludes: at or past the exit, or already off the
+                    // runway. No route leaves this side without crossing the pavement, and
+                    // neither of those states is fixed by continuing.
+                    RolloutDiag($"Handoff route re-crosses runway {rwyName} — concluding rather " +
+                        $"than driving back across it (signedAlongPast={signedAlongPastFt:F0} ft, " +
+                        $"offRunway={offRunwayAtHandoff}); exits considered {DescribeExits(_rolloutAllExits)}");
+
+                    // The closure splits on WHERE THE AIRCRAFT IS, because two of the three
+                    // landing-exit closures order ahead of the still-on-runway one and both
+                    // say "Stop and hold position". That wording is safe only off the pavement.
+                    // The sibling reachability guard can only ever conclude off the runway
+                    // (RolloutExitGate.IsHandoffRouteReachable early-returns true while the
+                    // aircraft is on it), so its reason split assumed a precondition this guard
+                    // does not share: turnBegun and alignedWithExit both reach here ON the
+                    // pavement — the first seconds of a turnoff, and a shallow rapid-exit
+                    // alignment past the exit node. Telling a blind pilot to stop and hold on
+                    // an active runway is the hazard HandleArrival's own final branch exists to
+                    // prevent.
+                    if (offRunwayAtHandoff)
+                    {
+                        // Off the pavement. Same reason split the reachability guard uses: only
+                        // claim "short of X" when an early vacate was actually established, so a
+                        // pilot who turned off AT or BEYOND their exit is never told they left
+                        // the runway short of it. Read from the field, restored above after
+                        // LoadRoute's fresh-route reset blanked it.
+                        if (_landingExitVacatedEarlyPlannedName != null)
+                            _landingExitVacatedEarly = true;
+                        else
+                            _landingExitRouteUnreachable = true;
+                    }
                     else
-                        _landingExitRouteUnreachable = true;
+                    {
+                        // Still on the runway. Steer HandleArrival to its final branch — the
+                        // only closure that does not say "hold": "You may still be on the
+                        // runway — continue ahead until clear". No new wording: _landingExit-
+                        // OffPavement already means "guidance ended with the aircraft still on
+                        // the pavement", which is exactly what is happening. The other two flags
+                        // are cleared rather than merely left alone so the ordering in
+                        // HandleArrival cannot be defeated by a stale value — both are provably
+                        // false here (every setter of either requires offRunwayAtHandoff, and
+                        // each concludes on the frame it sets), so clearing them can only ever
+                        // remove a stale claim, never a real one. _landingExitMissed is not
+                        // touched: it is set only from the Taxiing branch of UpdatePosition,
+                        // which concludes to Arrived immediately, so it can never be live here.
+                        _landingExitVacatedEarly = false;
+                        _landingExitRouteUnreachable = false;
+                        _landingExitOffPavement = false;
+                    }
                     _rolloutHandoffActive = false;
                     SetState(TaxiGuidanceState.Taxiing);
                     HandleArrival();
@@ -1402,8 +1458,13 @@ public partial class TaxiGuidanceManager
                 firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
                 firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
 
+            // Hoisted out of the reachability call below because the crossing guard after it
+            // needs the same verdict, from the same lat/lon, under the same name the
+            // UpdateLandingRollout site uses. One definition of "off the runway", two guards.
+            bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
+
             if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
-                    !IsWithinRolloutRunwayLaterally(lat, lon), crossToFirstM, firstSeg.PathWidth))
+                    offRunwayAtHandoff, crossToFirstM, firstSeg.PathWidth))
             {
                 RolloutDiag($"TryEarlyExitHandoff: route unreachable — {crossToFirstM:F0} m from " +
                     $"segment {_currentSegmentIndex} (width {firstSeg.PathWidth:F0} ft) with the " +
@@ -1441,12 +1502,55 @@ public partial class TaxiGuidanceManager
             if (Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
                     _route.Segments, _currentSegmentIndex, landingCenterline))
             {
+                // Gated identically to the UpdateLandingRollout site: DECLINE only while the
+                // aircraft is still ON the runway with the exit ahead; otherwise CONCLUDE.
+                // The caller's precondition (!pastExit) already supplies "the exit is ahead"
+                // here, so offRunwayAtHandoff is the only term left to test.
+                //
+                // Off the pavement the decline's premise fails: "keep flying the rollout and
+                // the exit comes to you" is a claim about an aircraft on the runway. Off it,
+                // the overshoot detector cannot fire and !pastExit holds, so returning false
+                // would leave the pilot with no route, no closure and — because
+                // _rolloutEarlyHandoffDone latches this method to one shot per exit — no second
+                // attempt either. Conclude instead, matching the reachability guard above
+                // exactly: same reason split, same TRUE return meaning "guidance concluded,
+                // stop processing the frame". The planned-exit name is always null on this path
+                // (LoadRoute nulls it and nothing here restores it), so this always takes
+                // _landingExitRouteUnreachable, whose "Stop and hold position" wording is safe
+                // precisely because this branch is off-runway only.
+                if (offRunwayAtHandoff)
+                {
+                    RolloutDiag($"TryEarlyExitHandoff: route re-crosses runway " +
+                        $"{_rolloutRunway?.RunwayID ?? "?"} with the aircraft off the runway — " +
+                        $"concluding rather than driving back across it");
+                    if (_landingExitVacatedEarlyPlannedName != null)
+                        _landingExitVacatedEarly = true;
+                    else
+                        _landingExitRouteUnreachable = true;
+                    _rolloutHandoffActive = false;
+                    SetState(TaxiGuidanceState.Taxiing);
+                    HandleArrival();
+                    return true;
+                }
+
                 RolloutDiag($"TryEarlyExitHandoff: route re-crosses runway " +
                     $"{_rolloutRunway?.RunwayID ?? "?"} — declining the early handoff and " +
                     $"staying in LandingRollout");
 
-                // Unwind everything this method set after the bearing-sanity reject above,
-                // so the machine is left exactly as if the attempt had never run.
+                // Unwind what this method set, in the shape of the bearing-sanity reject above.
+                // NOT a full restore — an earlier version of this comment claimed the machine
+                // is "left exactly as if the attempt had never run", which is not true and is
+                // corrected here. Four things this method wrote are deliberately left standing:
+                // _smoothedHeadingError / _headingErrorInitialized (zeroed just above),
+                // _isLandingExitRoute and _landingExitOffPavement. All are behaviourally inert
+                // on the path taken. The smoother re-converges within a few frames of rollout
+                // tone updates. _landingExitOffPavement is read only by HandleArrival, which
+                // this path does not reach. _isLandingExitRoute has two other readers, and both
+                // are unreachable from here: one requires _state == Taxiing (this stays in
+                // LandingRollout) and the other requires a route on its final segment (_route is
+                // nulled below) — and any later LoadRoute resets the flag before either can see
+                // it. Left standing rather than cleared because clearing them would be a
+                // behaviour change dressed as tidying.
                 //
                 // Discard the rejected route, mirroring that reject's own rationale — it
                 // "would feed the off-route detector once state moves to Taxiing" — which
@@ -1456,8 +1560,11 @@ public partial class TaxiGuidanceManager
                 // This does NOT collide with the "a path landing in Taxiing with a null
                 // _route must stop the steering tone first" rule: that rule is about
                 // Taxiing, where the tone is driven by _route. We stay in LandingRollout,
-                // where UpdateLandingRollout drives the tone from the exit BEARING and
-                // never reads _route — so the pilot keeps a steering cue throughout.
+                // where UpdateLandingRollout drives the tone from the exit BEARING and never
+                // reads _route — so the tone stays rollout-driven rather than being stranded
+                // panned at a route that no longer exists. Rollout-driven is not the same as
+                // always audible: RolloutExitGate.SelectToneMode has a Silent mode above
+                // 50 kt, by design.
                 _route = null;
                 _destinationNodeId = 0;
                 _postHighSpeedExitMinBearing = 0.0;

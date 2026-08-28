@@ -1000,20 +1000,26 @@ public partial class TaxiGuidanceManager : IDisposable
     // requests SIMCONNECT_PERIOD.SIM_FRAME) on the UI thread, and it performs an
     // unconditional LoadRoute — a full-graph A* — before the guard is reached. Without a
     // floor an aircraft stopped short of the exit would run that A* 30-60 times a second
-    // forever, against the hot-path perf invariants, and the decline's unthrottled
-    // RolloutDiag lines would churn landing_exit.log through its 5 MB x 3 rotation in
-    // minutes — evicting the evidence for exactly the incident class this guard exists
-    // to catch. The two triggers that persist frame-to-frame (speedNearExitHandoff,
-    // trulyStopped) both require !pastExit, which IS the decline condition, so the loop
-    // is guaranteed in precisely the case the decline branch is for.
+    // forever, against the hot-path perf invariants, and the decline would churn
+    // landing_exit.log through its 5 MB x 3 rotation — evicting the evidence for exactly
+    // the incident class this guard exists to catch. The write volume per decline is
+    // higher than the two unthrottled RolloutDiag lines it looks like: the decline's
+    // SetState(LandingRollout) completes a RouteLoaded -> LandingRollout round trip, and
+    // each SetState both writes its own diag line and raises StateChanged, which MainForm.
+    // OnTaxiGuidanceStateChanged also logs. That is roughly 8 lines per decline, not 1-2 —
+    // another reason the floor must not shrink. The two triggers that persist
+    // frame-to-frame (speedNearExitHandoff, trulyStopped) both require !pastExit, which IS
+    // the decline condition, so the loop is guaranteed in precisely the case the decline
+    // branch is for.
     //
     // A FLOOR, deliberately, not a per-exit latch: a latch would also block a legitimate
-    // turnBegun / exitedLaterally handoff if the pilot does turn onto the exit, and the
-    // route recomputed from that new position would very likely no longer cross. One
-    // second bounds the cost to ~1 A* per second while still re-evaluating often enough
-    // that a real turn is picked up promptly and the conclude branch fires as soon as the
-    // aircraft reaches the exit. The delay costs the pilot nothing audible: the rollout
-    // stays in LandingRollout, where its own exit-bearing steering tone keeps sounding.
+    // turnBegun handoff if the pilot does turn onto the exit, and the route recomputed
+    // from that new position would very likely no longer cross. One second bounds the cost
+    // to ~1 A* per second while still re-evaluating often enough that a real turn is picked
+    // up promptly and the conclude branch fires as soon as the aircraft reaches the exit.
+    // The delay costs the pilot nothing audible: the rollout stays in LandingRollout, where
+    // the tone remains rollout-driven, and the ~59 frames a second that the floor suppresses
+    // are exactly the frames on which that tone is updated.
     private const double ROLLOUT_CROSSING_RETRY_FLOOR_SEC = 1.0;
 
     // Distance from the chosen exit at which the rollout tone snaps from
