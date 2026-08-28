@@ -74,14 +74,13 @@ public partial class TaxiGuidanceManager
         // so they correctly leave this at the default. The two TaxiAssistForm callers
         // pass SimConnect's HeadingMagnetic and MUST supply the variation.
         //
-        // Used ONLY to compose LastRouteInitialTurnCue. It exists because the route's
-        // segment bearings are GEODETIC TRUE (TaxiGraph -> NavigationCalculator
-        // .CalculateBearing), while the tone the cue must agree with pans on
-        // (bearingToTarget - headingTrue). Subtracting a MAGNETIC heading from a TRUE
-        // bearing biases the angle by exactly the variation, and near +/-180 deg -- the
-        // near-U-turn case this cue exists for -- that bias FLIPS THE SIGN, so the words
-        // say one direction while the tone pans the other. A blind pilot has no third
-        // source to break that tie.
+        // Used ONLY to compose LastRouteInitialTurnCue. It exists because the cue's angle
+        // comes from ComputeSteeringHeadingError -- the tone's own definition, which is
+        // (geodetic TRUE bearing to the look-ahead walk target) - headingTrue. Subtracting
+        // a MAGNETIC heading from a TRUE bearing biases the angle by exactly the variation,
+        // and near +/-180 deg -- the near-U-turn case this cue exists for -- that bias
+        // FLIPS THE SIGN, so the words say one direction while the tone pans the other.
+        // A blind pilot has no third source to break that tie.
         //
         // Not hypothetical: the live KATL 2026-08-27 incident this cue was repaired for
         // had a first-frame error of -175.78 deg (a LEFT turnaround) where the variation
@@ -496,28 +495,41 @@ public partial class TaxiGuidanceManager
             _headingErrorInitialized = false;
             _initialTurnCueAnnounced = false;
             // Composed here, not on the first taxiing frame, so the form can fold it into
-            // its single standstill utterance instead of interrupting it 50 ms later.
-            // The taxiway comes from the ROUTE (the first named leg) rather than
-            // _lastAnnouncedTaxiway, which this same reset block has just blanked and which
-            // is therefore always empty on that frame -- the reason the live KATL cue
-            // degraded to a bare "Make a U-turn to the left".
+            // its single standstill utterance instead of interrupting it 50 ms later —
+            // which is the defect this cue was repaired for (live KATL 2026-08-27: the cue
+            // fired as an AnnounceImmediate ~50 ms after the import summary and cut it off
+            // mid-word).
             //
-            // The angle is the FIRST SEGMENT's bearing against the aircraft heading, not the
-            // look-ahead walk target the per-frame site used. They differ a little -- live
-            // KATL: segment 0 bore 210.4 against a 354.0 heading (-143.6) where the walk
-            // target gave -175.8 -- but both land in the same band, and the segment bearing
-            // is the only one that exists before the first position frame. It is also
-            // deterministic, which the walk target is not.
+            // The angle MUST be the same quantity the steering tone pans on, or the spoken
+            // "left"/"right" can contradict the pan and a blind pilot has nothing to break
+            // the tie. That is enforced structurally, not by similarity: this calls the very
+            // method the per-frame tone site calls (ComputeSteeringHeadingError), against
+            // the route and segment cursor just assigned above (_route = route,
+            // _currentSegmentIndex = 0) — so it reads the look-ahead walk target the tone
+            // will read on its first frame, degenerate-segment guard and all. Do not
+            // "simplify" this back to route.Segments[0].BearingDegrees: that is a different
+            // number (35° apart on the live KATL route) and the walk exists precisely
+            // because raw navdata segment bearings are unrepresentative.
             //
-            // BOTH sides must be TRUE north. The segment bearing is geodetic true, so the
+            // BOTH sides are TRUE north. The walk target's bearing is geodetic true, so the
             // aircraft heading is converted with aircraftHeadingMagVar (0 for the callers
             // that already pass a true heading). See that parameter's comment for why a
             // magnetic heading here can invert the spoken direction against the tone.
+            //
+            // The taxiway comes from the ROUTE (the first named leg). Note this is NOT what
+            // made the live cue say a bare "Make a U-turn to the left": the old cue read
+            // _lastAnnouncedTaxiway, which LoadRoute blanks but StartGuidance re-sets from
+            // an identical first-named-segment walk before the first taxiing frame, so on
+            // the form's Calculate path the old cue would have named the taxiway too.
+            // Naming from the route is a robustness improvement for the paths that run
+            // LoadRoute WITHOUT StartGuidance — the three Rollout re-routes and
+            // LandingExitPlanner — where _lastAnnouncedTaxiway really is still empty.
             LastRouteInitialTurnCue = null;
             if (route.Segments.Count > 0)
             {
                 double aircraftHeadingTrue = aircraftHeading + aircraftHeadingMagVar;
-                double initialErr = NormalizeAngle(route.Segments[0].BearingDegrees - aircraftHeadingTrue);
+                double initialErr = ComputeSteeringHeadingError(
+                    aircraftLat, aircraftLon, aircraftHeadingTrue);
                 string? firstNamed = null;
                 foreach (var seg in route.Segments)
                 {

@@ -12,11 +12,28 @@ namespace MSFSBlindAssist.Navigation;
 /// disagreeing.</para>
 ///
 /// <para>Live KATL 2026-08-27: the SayIntentions import spoke its summary and 50 ms later
-/// this cue fired as an interrupting announcement, cutting it off mid-word; the pilot got a
-/// fragment and then a taxiway-less "Make a U-turn to the left". That is the fifth time
-/// two announcements at Calculate have stomped each other in this codebase (4837e45d,
-/// 6891c0e7, 86744893, b772e845, c2b69455), and the established remedy is one
-/// utterance.</para>
+/// this cue fired as an interrupting <c>AnnounceImmediate</c> on the first position frame,
+/// cutting the summary off mid-word; the pilot got a fragment, then the cue. That is the
+/// fifth time two announcements at Calculate have stomped each other in this codebase
+/// (4837e45d, 6891c0e7, 86744893, b772e845, c2b69455), and the established remedy is one
+/// utterance. That collision is the whole reason this type exists.</para>
+///
+/// <para><b>Correction to the record.</b> The commit that introduced this type (fec4b05a),
+/// and the first version of this comment, also blamed the taxiway-less wording of that live
+/// cue on <c>_lastAnnouncedTaxiway</c> being blanked by <c>LoadRoute</c> and still empty on
+/// the first frame. That does not survive reading the code: <c>StartGuidance</c> re-sets
+/// <c>_lastAnnouncedTaxiway</c> from an identical first-named-segment walk, and it runs
+/// synchronously between <c>LoadRoute</c> and the first taxiing frame on both form paths —
+/// so on the Calculate path the old cue would have named the taxiway. That commit message
+/// cannot be rewritten; this note is the correction. Naming the taxiway from the ROUTE is a
+/// robustness improvement for the paths that call <c>LoadRoute</c> WITHOUT
+/// <c>StartGuidance</c> (the three <c>Rollout</c> re-routes and <c>LandingExitPlanner</c>),
+/// where the field genuinely is still empty — not the cause of a bare U-turn call.</para>
+///
+/// <para>The angle handed to <see cref="Compose"/> must be
+/// <c>TaxiGuidanceManager.ComputeSteeringHeadingError</c>'s value — the same quantity the
+/// steering tone pans on — so the spoken direction can never contradict the pan. See that
+/// method for why an approximation of it is not good enough.</para>
 /// </summary>
 public static class RouteStartTurnCue
 {

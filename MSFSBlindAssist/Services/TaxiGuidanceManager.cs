@@ -2025,26 +2025,8 @@ public partial class TaxiGuidanceManager : IDisposable
 
         // Calculate heading error for steering tone using LOOK-AHEAD target
         // This prevents tone jitter from very short segments (5-15m in navdata)
-        var (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
-        double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
-        double headingError;
-        if (_rolloutHandoffActive)
-        {
-            // During the post-handoff exit phase, use segment bearing instead of
-            // bearing-to-waypoint. The exit node sits north of the runway; while the
-            // aircraft is still on the pavement, bearing-to-node is nearly due north
-            // (~350° for a westward runway), giving ~80° of right pan regardless of
-            // actual heading. That drove the pilot far past the exit arc and into a loop.
-            // Segment bearing tracks the arc itself (288.6° → 289.7° → 296.2° for a
-            // shallow RET) and decays correctly to zero as the aircraft aligns.
-            // _rolloutHandoffActive clears at turnBegunPH (15° from runway heading),
-            // by which point the aircraft is physically on the exit and look-ahead works.
-            headingError = NormalizeAngle(currentSeg.BearingDegrees - headingTrue);
-        }
-        else
-        {
-            headingError = NormalizeAngle(bearingToTarget - headingTrue);
-        }
+        double headingError = ComputeSteeringHeadingError(
+            lat, lon, headingTrue, out double targetLat, out double targetLon);
 
         // Initial big-turn cue (one-shot, first taxiing frame). When guidance
         // starts with the aircraft pointing well away from the route's first
@@ -2439,6 +2421,67 @@ public partial class TaxiGuidanceManager : IDisposable
             GUIDANCE_LOOK_AHEAD_MIN_M, GUIDANCE_LOOK_AHEAD_MAX_M);
         return GuidanceGeometry.WalkTarget(
             lats, lons, _currentSegmentIndex, aircraftLat, aircraftLon, lookAhead);
+    }
+
+    /// <summary>
+    /// THE definition of the steering error: the signed angle (negative = left) between
+    /// where the aircraft points and where the route wants it to go. Read by the steering
+    /// tone every frame, and — through <c>LoadRoute</c> — by the route-start turn cue.
+    ///
+    /// <para><b>Both callers must read THIS, not an approximation of it.</b> The tone pans
+    /// on the sign; the cue speaks the sign as the words "left" or "right". A blind pilot
+    /// hears both and has no third source to break a tie, so the two must be the same
+    /// quantity by construction rather than by two sites happening to compute something
+    /// similar. The cue previously took <c>Segments[0].BearingDegrees - headingTrue</c>
+    /// instead, which is a genuinely different number — measured 35° apart on the live
+    /// KATL 2026-08-27 route (−143.6° against the tone's −175.8°). Sign disagreement needs
+    /// only the two to straddle ±180°, which is precisely the near-U-turn band this cue
+    /// exists for, and 35° is a far wider flip window than the ~5.5° magnetic bias the
+    /// preceding fix removed.</para>
+    ///
+    /// <para>Two properties come free from reading the look-ahead walk rather than a raw
+    /// segment bearing, and are the reason the walk exists: navdata's 5–15 m segments make
+    /// raw bearings unrepresentative of the turn actually being asked for, and
+    /// <see cref="GuidanceGeometry"/> skips sub-<c>DEGENERATE_SEG_M</c> segments before
+    /// projecting — which matters most at <c>Segments[0]</c>, where
+    /// <c>TaxiGraph.SplitEdgeAtPoint</c> can leave an arbitrarily short snap stub whose
+    /// bearing is a phantom axis.</para>
+    /// </summary>
+    private double ComputeSteeringHeadingError(double lat, double lon, double headingTrue)
+        => ComputeSteeringHeadingError(lat, lon, headingTrue, out _, out _);
+
+    /// <inheritdoc cref="ComputeSteeringHeadingError(double, double, double)"/>
+    /// <remarks>
+    /// The out-parameter overload also hands back the look-ahead walk target, so the
+    /// per-frame diagnostic trace can log it without walking the polyline a second time on
+    /// a ~30 Hz path. The target is computed unconditionally (even on the rollout-handoff
+    /// branch that does not steer by it) so the trace keeps the exact shape it had before
+    /// this computation was extracted.
+    /// </remarks>
+    private double ComputeSteeringHeadingError(
+        double lat, double lon, double headingTrue,
+        out double targetLat, out double targetLon)
+    {
+        (targetLat, targetLon) = GetGuidanceTarget(lat, lon);
+
+        if (_rolloutHandoffActive && _route != null
+            && _currentSegmentIndex < _route.Segments.Count)
+        {
+            // During the post-handoff exit phase, use segment bearing instead of
+            // bearing-to-waypoint. The exit node sits north of the runway; while the
+            // aircraft is still on the pavement, bearing-to-node is nearly due north
+            // (~350° for a westward runway), giving ~80° of right pan regardless of
+            // actual heading. That drove the pilot far past the exit arc and into a loop.
+            // Segment bearing tracks the arc itself (288.6° → 289.7° → 296.2° for a
+            // shallow RET) and decays correctly to zero as the aircraft aligns.
+            // _rolloutHandoffActive clears at turnBegunPH (15° from runway heading),
+            // by which point the aircraft is physically on the exit and look-ahead works.
+            return NormalizeAngle(
+                _route.Segments[_currentSegmentIndex].BearingDegrees - headingTrue);
+        }
+
+        double bearingToTarget = NavigationCalculator.CalculateBearing(lat, lon, targetLat, targetLon);
+        return NormalizeAngle(bearingToTarget - headingTrue);
     }
 
     /// <summary>

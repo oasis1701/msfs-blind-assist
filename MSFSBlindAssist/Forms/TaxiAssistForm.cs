@@ -4049,7 +4049,18 @@ public class TaxiAssistForm : Form
             _aircraftHeading = pos.HeadingMagnetic;
             // Captured alongside the heading it belongs to: the heading above is MAGNETIC,
             // and the route-start turn cue must be composed in TRUE north to agree with the
-            // steering tone. Both LoadRoute calls below are downstream of this refresh.
+            // steering tone.
+            //
+            // What is guaranteed: the two fields are written TOGETHER here, so whenever this
+            // branch runs the variation matches the heading, and both LoadRoute calls later
+            // in OnCalculateClicked see that pair. What is NOT guaranteed: this branch is
+            // conditional on LastKnownPosition being available, and three other sites
+            // (SetAircraftPosition and friends) write _aircraftHeading WITHOUT touching
+            // _aircraftMagVar. So a Calculate with no LastKnownPosition can pair a heading
+            // from one of those sites with a variation from an earlier position — or with
+            // 0.0 if there has never been one. That is a fraction of a degree in any
+            // realistic case (variation drifts slowly and a taxi never leaves the airport),
+            // but the fields are not structurally coupled and must not be assumed to be.
             _aircraftMagVar = pos.MagneticVariation;
         }
 
