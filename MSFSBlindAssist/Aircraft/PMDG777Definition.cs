@@ -466,31 +466,38 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // =================================================================
             // HYDRAULIC
             //
-            // An SDK array index is a SLOT, never a side NUMBER. What the slot
-            // means comes from the PMDG array convention recorded in
-            // docs/pmdg-777.md ("Hydraulic pump array index"): PMDG orders an
-            // array SIDES FIRST, CENTER LAST - 0=Left, 1=Right, 2=Center. So on
-            // these 2-element arrays [0]/[1] is Left/Right wherever the pair IS
-            // a pair of sides, which on the 777 is the engine primaries and the
-            // electric demands. The other two pairs are not sides at all: the
-            // Center hydraulic system carries BOTH electric primaries and BOTH
-            // air demand pumps, so those read Center 1 / Center 2.
+            // An SDK array index is a SLOT, never a side NUMBER. PMDG_777X_SDK.h
+            // declares these four arrays with NO index comment, so the slot
+            // meaning comes from the convention the header states everywhere it
+            // DOES annotate a pair: SIDES FIRST, CENTER LAST. Checked against the
+            // header - FCTL_WingHydValve_Sw_SHUT_OFF[3] "left/right/center",
+            // LTS_LandingLights_Sw_ON[3] "Left/Right/Nose", COMM_SelectedMic[3]
+            // "0=capt, 1=F/O, 2=observer", and every annotated 2-element pair
+            // (AIR_Pack_Sw_AUTO, AIR_TrimAir_Sw_On, ENG_EECMode_Sw_NORM,
+            // FUEL_PumpFwd_Sw ...) reads "left / right". So [0]/[1] is
+            // Left/Right wherever the pair IS a pair of sides, which here is the
+            // engine primaries and the electric demands. The other two pairs are
+            // not sides at all: the Center hydraulic system carries BOTH electric
+            // primaries and BOTH air demand pumps, so those read Center 1/Center 2.
             //
             // Do NOT re-derive this from event-id order. Ids order EVENTS, not
-            // array slots, and the two disagree in this very file: the 3-element
-            // FCTL_*HydValve arrays below are [0]=Left [1]=Right [2]=Center
-            // while their ids run WING_L 69692 < WING_C 69695 < WING_R 69698,
-            // and ELEC_ExtPwr* (see _simpleEventMap) has the event NAMES swapped
+            // array slots, and the SDK header itself disproves the equivalence:
+            // FCTL_WingHydValve_Sw_SHUT_OFF[3] is annotated "left/right/center"
+            // while its ids run WING_L +60 < WING_C +63 < WING_R +66. And
+            // ELEC_ExtPwr* (see _simpleEventMap) has the event NAMES swapped
             // against the array outright. As corroboration only, these eight ids
-            // do happen to ascend with the labels - DEMAND_ELEC1 69667, AIR1
-            // 69668, AIR2 69669, DEMAND_ELEC2 69670, ENG1 69671, ELEC1 69672,
-            // ELEC2 69673, ENG2 69674 (event_base 69632). That is 8 of the 22
+            // do happen to trace the panel rows - DEMAND_ELEC1 +35, AIR1 +36,
+            // AIR2 +37, DEMAND_ELEC2 +38, then ENG1 +39, ELEC1 +40, ELEC2 +41,
+            // ENG2 +42 (THIRD_PARTY_EVENT_ID_MIN 69632). That is 8 of the 22
             // EVT_OH_HYD_* events; the RAM_AIR and VLV_PWR ones are excluded
             // precisely because they do not follow it.
             //
             // The C1/C2 ORDER within each center pair is the one part inferred
-            // rather than corroborated, and the NG3 SDK inverts exactly this
-            // array on the 737 (PMDG737Definition, HYD_PumpSw_elec) - so it is
+            // rather than corroborated - the header annotates neither array, and
+            // the NG3 SDK inverts exactly this array on the 737
+            // (PMDG737Definition, HYD_PumpSw_elec). What the 737 inversion was
+            // spotted BY is absent here though: there ELEC2 carries the LOWER
+            // id, while on the 777 ELEC1 +40 < ELEC2 +41 runs in order. Still
             // called out for in-sim confirmation rather than presented as settled.
             //
             // The dictionary KEYS keep their _1/_2 suffixes: Ctrl+M persists a
