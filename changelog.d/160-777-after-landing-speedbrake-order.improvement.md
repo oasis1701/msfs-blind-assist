@@ -1,0 +1,1 @@
+The PMDG 777 After Landing flow now brings the speedbrake lever down first, which is where PMDG's own procedure puts it and where its own checklist already listed it — it used to do it fifth, after the autobrake and flaps, so running the flow ticked the After Landing boxes out of order.

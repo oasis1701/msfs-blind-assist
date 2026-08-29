@@ -354,6 +354,68 @@ public class Pmdg777FlowOrderingTests
         AssertOrder(FlowStepIds("BEFORE_START"), "BS_BEACON", "BS_GND_PWR_1");
     }
 
+    // =====================================================================
+    // 7. Flow and checklist never disagree about ORDER
+    //
+    // A flow step that names a CompletesChecklistItemId is the one machine-checkable
+    // link between the two lists. Ticks must walk each group top-to-bottom in the order
+    // the flow performs them — otherwise a pilot running the flow hears boxes tick out of
+    // sequence, which is exactly what the oxygen pair did (flow step 7, checklist item 44).
+    // =====================================================================
+
+    [Fact]
+    public void Every_flow_ticks_its_checklist_items_in_the_order_they_are_listed()
+    {
+        var groups = PMDG777ChecklistDefinitions.Build();
+
+        foreach (var flow in PMDG777FlowDefinitions.Build())
+        {
+            // Group the flow's linked ticks by the group each item belongs to, keeping
+            // flow order, then assert each group's indices only ever increase.
+            var linked = flow.Steps
+                .Select(s => s.CompletesChecklistItemId)
+                .Where(id => !string.IsNullOrEmpty(id))
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                var ids = group.Items.Select(i => i.Id).ToList();
+                var walked = linked.Where(id => ids.Contains(id!)).ToList();
+                int prev = -1;
+                foreach (var id in walked)
+                {
+                    int at = ids.IndexOf(id!);
+                    Assert.True(at > prev,
+                        $"flow '{flow.Id}' ticks '{id}' (index {at} of group '{group.Id}') " +
+                        $"after an item at index {prev} — the two lists disagree about order");
+                    prev = at;
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Every_flow_tick_names_an_item_that_exists_in_one_of_the_flows_own_groups()
+    {
+        // BS_BEACON used to tick BSCL_BEACON — an item of the read-back group, not of its
+        // own. A step must deliver an item of a group the flow declares.
+        var groups = PMDG777ChecklistDefinitions.Build();
+
+        foreach (var flow in PMDG777FlowDefinitions.Build())
+        {
+            var related = flow.RelatedChecklistGroupIds.ToHashSet();
+            foreach (var step in flow.Steps)
+            {
+                if (string.IsNullOrEmpty(step.CompletesChecklistItemId)) continue;
+                bool found = groups.Any(g => related.Contains(g.Id)
+                                          && g.Items.Any(i => i.Id == step.CompletesChecklistItemId));
+                Assert.True(found,
+                    $"flow '{flow.Id}' step '{step.Id}' ticks '{step.CompletesChecklistItemId}', " +
+                    "which is not an item of any group the flow declares as related");
+            }
+        }
+    }
+
     [Fact]
     public void PreflightChecklist_and_CockpitPrepFlow_agree_on_where_the_tests_run()
     {

@@ -547,6 +547,13 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
+            // Speed brake FIRST — it is the vendor's first After Landing checkpoint
+            // ("Speed Brake Lever — Down") and it is the first thing a crew does once the
+            // aircraft is slowing. It used to run fifth, after the autobrake and flaps,
+            // which put it out of order against its own checklist group (where it is item
+            // 1) — so running the flow ticked the group's boxes out of sequence.
+            Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeDown()),
             Skip(SW("AL_TURNOFF_OFF",  "Runway turnoff: OFF",    "EVT_OH_LIGHTS_LR_TURNOFF",    0),
                 s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
             Skip(Multi("AL_LANDING_OFF",  "Landing lights: OFF",
@@ -560,8 +567,6 @@ public static class PMDG777FlowDefinitions
             Skip(SW("AL_FLAPS_UP",     "Flaps: UP",              "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
                true, "FCTL_Flaps_Lever", v => v < 0.5, "AL_FLAPS_UP"),
                 s => s.AreFlapsUp()),
-            Skip(Momentary("AL_SPEEDBRAKE_DN", "Speedbrake: DOWN", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "AL_SPEEDBRAKE"),
-                s => s.IsSpeedbrakeDown()),
             // Transponder → STBY moved to the Shutdown flow (SD_XPNDR_STBY); after landing
             // it must stay active so ground/tower still see the aircraft.
             // APU Start sequence for on-ground power. Skip policy (not Stop): engines are
