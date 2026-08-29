@@ -190,11 +190,15 @@ public class AircraftActionExecutor : IFoActionExecutor
     public bool SetApuSelector(int position)
         => ExecuteSingle("EVT_OH_ELEC_APU_SEL_SWITCH", position, false, false);
 
-    // Ground power (momentary)
+    // Ground power (momentary). Named for the ANNUNCIATOR each one moves, because PMDG's
+    // event names are reversed against the annunciator array — see
+    // GroundPowerGate.EventForAnnunciatorIndex. Every caller pairs "Primary" with
+    // IsGpuPower1On()/ELEC_annunExtPowr_ON_0, so these keep their names and route through
+    // the gate rather than naming the event directly.
     public bool PushGroundPowerPrimary()
-        => ExecuteSingle("EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH", null, false, true);
+        => ExecuteSingle(GroundPowerGate.EventForAnnunciatorIndex(0), null, false, true);
     public bool PushGroundPowerSecondary()
-        => ExecuteSingle("EVT_OH_ELEC_GRD_PWR_SEC_SWITCH", null, false, true);
+        => ExecuteSingle(GroundPowerGate.EventForAnnunciatorIndex(1), null, false, true);
 
     // Minimum gap between CDA writes (same-frame writes coalesce — see class doc).
     private const int CdaWriteSpacingMs = 350;

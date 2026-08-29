@@ -6634,17 +6634,19 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         // Speed brake — custom formatting for lever position
         if (varName == "FCTL_Speedbrake")
         {
-            int lever = (int)Math.Round(value);
-            if (lever <= 0)
+            // Measured detents: DOWN 0, ARM 50, half-deployed 75, UP 100 (see
+            // FirstOfficer/Pmdg777SpeedbrakeLever — the SDK header's "25: ARMED" is wrong).
+            // This call-out's original thresholds were already correct against that scale
+            // and are preserved exactly; only the literals move into the shared class.
+            // Anything at or below the arm detent reads "armed" — the lever has no resting
+            // position between DOWN and ARM, so those values are travel, not deployment.
+            if (FirstOfficer.Pmdg777SpeedbrakeLever.IsDown(value))
                 announcer.Announce("Speed brake down");
-            else if (lever <= 50)
+            else if (!FirstOfficer.Pmdg777SpeedbrakeLever.IsDeployed(value))
                 announcer.Announce("Speed brake armed");
             else
-            {
-                // 51-100 = deployed, map to percentage
-                int pct = (int)Math.Round((lever - 50.0) / 50.0 * 100);
-                announcer.Announce($"Speed brake {pct} percent");
-            }
+                announcer.Announce(
+                    $"Speed brake {FirstOfficer.Pmdg777SpeedbrakeLever.DeployedPercent(value)} percent");
             return true;
         }
 

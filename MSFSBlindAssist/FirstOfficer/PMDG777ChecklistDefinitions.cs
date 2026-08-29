@@ -151,6 +151,23 @@ public static class PMDG777ChecklistDefinitions
                 "ELEC_BackupGen_Sw_ON_0", v => v > 0.5,
                 new[] { "ELEC_BackupGen_Sw_ON_1" },
                 (e, _) => e.SetBackupGenerators(1)),
+            // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
+            // ruling 2026-08-16). Each tick fires only its own side's quick TEST press, and
+            // the flow's matching step ticks the matching item. The single "Oxygen: Tested
+            // 100%" line the crew reads back lives in PREFLIGHT_CL and stays one item. No
+            // readable "test performed" state — same rule as the fire/TCAS/WXR tests.
+            //
+            // These sit HERE, immediately before the fire test, to MIRROR the Cockpit Prep
+            // flow — which runs them here deliberately, "before the fire test so the flow
+            // sound never sits under the fire bell". (PMDG's own printed procedure puts
+            // oxygen much later, in the forward-panel block; the audio-separation reason
+            // and flow/checklist agreement outrank that.) When the single PF_OXYGEN item
+            // was split per side it kept the old item's slot near the bottom of the group,
+            // so a blind pilot met them 35 rows after the flow ticked them.
+            ActionManualAsync("PF_OXY_TEST_CAPT", "PREFLIGHT", "Oxygen test (captain)",
+                (e, _) => e.OxygenTestCaptAsync()),
+            ActionManualAsync("PF_OXY_TEST_FO", "PREFLIGHT", "Oxygen test (first officer)",
+                (e, _) => e.OxygenTestFOAsync()),
             // Manual-tick held test — no persistent state for "test performed"
             // (Fenix PF_FIRE_* pattern); ticking runs the same held test as the flow.
             ActionManualAsync("PF_FIRE_TEST", "PREFLIGHT", "Fire and overheat test",
@@ -171,9 +188,13 @@ public static class PMDG777ChecklistDefinitions
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
-            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: AUTO",
-                "SIGNS_SeatBeltsSelector", v => v >= 1,
-                action: (e, _) => e.SetSeatBelts(1)),
+            // ON (2), not AUTO (1) — a deliberate deviation from PMDG's printed procedure
+            // (owner ruling 2026-08-29); see the CP_SEAT_BELTS note in the flow. The old
+            // condition "v >= 1" also accepted AUTO, so a line labelled AUTO ticked on ON
+            // and vice versa.
+            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: ON",
+                "SIGNS_SeatBeltsSelector", v => v > 1.5,
+                action: (e, _) => e.SetSeatBelts(2)),
             Auto("PF_NO_SMOKING", "PREFLIGHT", "No Smoking selector: ON",
                 "SIGNS_NoSmokingSelector", v => v > 1.5,
                 action: (e, _) => e.SetNoSmoking(2)),
@@ -195,6 +216,13 @@ public static class PMDG777ChecklistDefinitions
                 (e, _) => e.SetFuelJettisonOff()),
             ActionManual("PF_CROSSFEED_OFF", "PREFLIGHT", "Crossfeed switches: OFF",
                 (e, _) => e.SetCrossfeeds(0)),
+            // Vendor runs "CROSSFEED switches — OFF" then "FUEL PUMP switches — OFF" then
+            // the fire test; this sat ~20 items later, after the fuel control switches.
+            Auto("PF_FUEL_PUMPS_OFF", "PREFLIGHT", "Fuel pumps: OFF",
+                "FUEL_PumpFwd_Sw_0", v => v < 0.5,
+                new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1",
+                        "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
+                (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
             Auto("PF_WING_ANTI_ICE", "PREFLIGHT", "Wing Anti-Ice: AUTO",
                 "ICE_WingAntiIceSw", v => v > 0.5,
                 action: (e, _) => e.SetWingAntiIce(1)),  // 1=Auto (panel ValueDescriptions: 0=Off,1=Auto,2=On)
@@ -202,12 +230,13 @@ public static class PMDG777ChecklistDefinitions
                 "ICE_EngAntiIceSw_0", v => v > 0.5,
                 new[] { "ICE_EngAntiIceSw_1" },
                 (e, _) => e.SetEngAntiIce(1)),            // 1=Auto
-            Auto("PF_NAV_LIGHTS", "PREFLIGHT", "Navigation light: ON",
-                "LTS_NAV_Sw_ON", v => v > 0.5,
-                action: (e, _) => e.SetNavLights(1)),
+            // Vendor order: BEACON light switch OFF, then NAVIGATION light switch ON.
             Auto("PF_BEACON_OFF", "PREFLIGHT", "Beacon light: OFF",
                 "LTS_Beacon_Sw_ON", v => v < 0.5,
                 action: (e, _) => e.SetBeacon(0)),
+            Auto("PF_NAV_LIGHTS", "PREFLIGHT", "Navigation light: ON",
+                "LTS_NAV_Sw_ON", v => v > 0.5,
+                action: (e, _) => e.SetNavLights(1)),
             Auto("PF_WING_LIGHTS", "PREFLIGHT", "Wing lights: ON",
                 "LTS_Wing_Sw_ON", v => v > 0.5,
                 action: (e, _) => e.SetWingLights(1)),
@@ -240,6 +269,10 @@ public static class PMDG777ChecklistDefinitions
                 "AIR_OutflowValve_Sw_AUTO_0", v => v > 0.5,
                 new[] { "AIR_OutflowValve_Sw_AUTO_1" },
                 (e, _) => e.SetOutflowValves(1)),
+            // Baro belongs in the forward-panel block, ahead of the ND selectors (vendor:
+            // BAROMETRIC reference / BAROMETRIC selector / VOR-ADF / ND mode / ND range).
+            // It used to sit ~10 items later, after the CDU and FMC work.
+            Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
             ActionManual("PF_EFIS_SET", "PREFLIGHT", "EFIS: Mode MAP, range 40nm",
                 (e, _) => { e.SetEFISModeCapt(2); e.SetEFISModeFO(2); e.SetEFISRangeCapt(2); e.SetEFISRangeFO(2); }),
             Auto("PF_FD_ON", "PREFLIGHT", "Flight Director switches: ON",
@@ -250,6 +283,10 @@ public static class PMDG777ChecklistDefinitions
                 "MCP_ATArm_Sw_On_0", v => v > 0.5,
                 new[] { "MCP_ATArm_Sw_On_1" },
                 (e, s) => { e.SetATArmLeft(1, s); e.SetATArmRight(1, s); }),
+            // Vendor order: "Landing gear lever — Down" then "AUTOBRAKE selector — RTO".
+            Auto("PF_GEAR_DOWN", "PREFLIGHT", "Landing gear lever: DOWN",
+                "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
+                action: (e, _) => e.SetGearLever(1)),
             Auto("PF_AUTOBRAKE_RTO", "PREFLIGHT", "Autobrake selector: RTO",
                 "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1,
                 action: (e, _) => e.SetAutobrake(0)),
@@ -257,26 +294,8 @@ public static class PMDG777ChecklistDefinitions
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
                 (e, _) => e.SetFuelControlLevers(0)),
-            Auto("PF_FUEL_PUMPS_OFF", "PREFLIGHT", "Fuel pumps: OFF",
-                "FUEL_PumpFwd_Sw_0", v => v < 0.5,
-                new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1",
-                        "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
-                (e, _) => { e.SetWingFuelPumps(0); e.SetCenterFuelPumps(0); }),
-            Auto("PF_GEAR_DOWN", "PREFLIGHT", "Landing gear lever: DOWN",
-                "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
-                action: (e, _) => e.SetGearLever(1)),
             Manual("PF_CDU_PREFLIGHT", "PREFLIGHT", "CDU Preflight: Complete"),
             Manual("PF_FMC_PERF", "PREFLIGHT", "Performance data: Entered in FMC"),
-            // Oxygen test: ONE ITEM PER SIDE, so each mask can be tested on its own (user
-            // ruling 2026-08-16). Each tick fires only its own side's quick TEST press, and
-            // the flow's matching step ticks the matching item. The single "Oxygen: Tested
-            // 100%" line the crew reads back lives in PREFLIGHT_CL and stays one item. No
-            // readable "test performed" state — same rule as the fire/TCAS/WXR tests.
-            ActionManualAsync("PF_OXY_TEST_CAPT", "PREFLIGHT", "Oxygen test (captain)",
-                (e, _) => e.OxygenTestCaptAsync()),
-            ActionManualAsync("PF_OXY_TEST_FO", "PREFLIGHT", "Oxygen test (first officer)",
-                (e, _) => e.OxygenTestFOAsync()),
-            Manual("PF_BARO_SET", "PREFLIGHT", "Barometric reference: Set local setting"),
             Reminder("PF_RESET_CL", "PREFLIGHT", "Reset checklists and obtain IFR clearance"),
             Reminder("PF_ATIS", "PREFLIGHT", "Obtain ATIS"),
             // WXR test last (mirrors the flow) so its callout never overlaps TCAS's;
@@ -314,33 +333,28 @@ public static class PMDG777ChecklistDefinitions
         Id = "BEFORE_START", Name = "Before Start",
         Items = new()
         {
+            // Order follows PMDG's own shipped "Before Start Procedure"
+            // (B777_Checklist.xml): CDU / IAS-MACH V2 / LNAV / VNAV / heading / altitude /
+            // doors / windows / seat belts / clearance to pressurize / hydraulic pumps /
+            // fuel pumps / beacon / CANCEL-RECALL / transponder / trim / checklist.
+            // Two MSFSBA-only items are interleaved where the flow performs them: the APU
+            // start (the vendor page has none, but ground power cannot come off until the
+            // APU is running) and the ground-power disconnect, placed after the beacon to
+            // match the flow — the two lists used to disagree by four mirrored pairs.
             Manual("BS_CDU_COMPLETE", "BEFORE_START", "CDU Preflight: Verify complete"),
             Manual("BS_V2_SET", "BEFORE_START", "IAS/MACH selector: Set V2"),
-            Manual("BS_VNAV_ARM", "BEFORE_START", "VNAV: ARM"),
+            // Vendor order is LNAV ("Arm as needed") then VNAV ("Arm"); these were inverted.
             Manual("BS_LNAV_SET", "BEFORE_START", "LNAV: Arm as needed"),
+            Manual("BS_VNAV_ARM", "BEFORE_START", "VNAV: ARM"),
             Manual("BS_INIT_HDG", "BEFORE_START", "Initial heading or track: Set"),
             Manual("BS_INIT_ALT", "BEFORE_START", "Initial altitude: Set"),
-            // Trim follows the MCP setup here — the flow briefs MCP → LNAV/VNAV → trim,
-            // and the trim wheel is easier to reach before the start clutter begins.
-            Manual("BS_STAB_TRIM", "BEFORE_START", "Stabilizer trim: Set for takeoff, verify green band"),
-            Manual("BS_AIL_TRIM", "BEFORE_START", "Aileron trim: 0 degrees"),
-            Manual("BS_RUD_TRIM", "BEFORE_START", "Rudder trim: 0 degrees"),
             Reminder("BS_DOORS_VERIFY", "BEFORE_START", "Exterior doors: Verify closed"),
             Reminder("BS_WINDOWS", "BEFORE_START", "Flight deck windows: Closed and locked"),
-            Auto("BS_SEAT_BELTS", "BEFORE_START", "Seat Belts selector: AUTO",
-                "SIGNS_SeatBeltsSelector", v => v >= 1,
-                action: (e, _) => e.SetSeatBelts(1)),
+            Auto("BS_SEAT_BELTS", "BEFORE_START", "Seat Belts selector: ON",
+                "SIGNS_SeatBeltsSelector", v => v > 1.5,
+                action: (e, _) => e.SetSeatBelts(2)),
             ActionManualAsync("BS_APU_START", "BEFORE_START", "APU: START (ON then START; wait for self-sustaining)",
                 (e, _) => e.StartApuAsync()),
-            // GPU buttons are momentary TOGGLES — disconnect only the side that is
-            // actually on, or ticking with no GPU connected would CONNECT one.
-            Auto("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
-                "FO_ANY_GPU_ON", v => v < 0.5,
-                action: (e, s) =>
-                {
-                    if (s.IsGpuPower1On()) e.PushGroundPowerPrimary();
-                    if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
-                }),
             Manual("BS_HYD_PRESSURIZE", "BEFORE_START", "Obtain clearance to pressurize hydraulics"),
             Auto("BS_HYD_PUMPS_ON", "BEFORE_START", "Engine and Electric primary hydraulic pumps: ON",
                 "HYD_PrimaryEngPump_Sw_ON_0", v => v > 0.5,
@@ -356,11 +370,28 @@ public static class PMDG777ChecklistDefinitions
             Auto("BS_BEACON_ON", "BEFORE_START", "Beacon light: ON",
                 "LTS_Beacon_Sw_ON", v => v > 0.5,
                 action: (e, _) => e.SetBeacon(1)),
+            // GPU buttons are momentary TOGGLES — disconnect only the side that is
+            // actually on, or ticking with no GPU connected would CONNECT one. Each side's
+            // press is routed by ANNUNCIATOR INDEX (GroundPowerGate), because PMDG's event
+            // names are reversed against the annunciator array.
+            Auto("BS_EXT_PWR_OFF", "BEFORE_START", "External power: Disconnect when APU available",
+                "FO_ANY_GPU_ON", v => v < 0.5,
+                action: (e, s) =>
+                {
+                    if (s.IsGpuPower1On()) e.PushGroundPowerPrimary();
+                    if (s.IsGpuPower2On()) e.PushGroundPowerSecondary();
+                }),
             ActionManual("BS_CANCEL_RECALL", "BEFORE_START", "Cancel/Recall: PUSH, verify expected alerts",
                 (e, _) => e.PushCancelRecall()),
             Auto("BS_TRANSPONDER", "BEFORE_START", "Transponder: XPNDR",
                 "XPDR_ModeSel", v => v > 1.5 && v < 2.5,
                 action: (e, _) => e.SetTransponderMode(2)),
+            // Trim is the LAST operational block of the vendor's Before Start Procedure,
+            // after the transponder — not the third thing after the MCP setup, where it sat
+            // ahead of every hydraulic pump and of the whole APU start.
+            Manual("BS_STAB_TRIM", "BEFORE_START", "Stabilizer trim: Set for takeoff, verify green band"),
+            Manual("BS_AIL_TRIM", "BEFORE_START", "Aileron trim: Verify 0 degrees"),
+            Manual("BS_RUD_TRIM", "BEFORE_START", "Rudder trim: Verify 0 degrees"),
             Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
             Reminder("BS_TAXI_CLR", "BEFORE_START", "Obtain pushback and start clearance"),
         }
@@ -376,7 +407,7 @@ public static class PMDG777ChecklistDefinitions
         {
             Reminder("BSCL_DOOR", "BEFORE_START_CL", "Flight Deck Door: Closed and locked"),
             Auto("BSCL_SIGNS", "BEFORE_START_CL", "Passenger Signs: Set",
-                "SIGNS_SeatBeltsSelector", v => v >= 1,
+                "SIGNS_SeatBeltsSelector", v => v > 1.5,
                 action: null),
             Manual("BSCL_MCP", "BEFORE_START_CL", "MCP: Set speed, heading and altitude"),
             Manual("BSCL_V_SPEEDS", "BEFORE_START_CL", "Takeoff Speeds: Set V1, VR and V2 from CDU"),
@@ -444,7 +475,10 @@ public static class PMDG777ChecklistDefinitions
                 new[] { "AIR_Pack_Sw_AUTO_1" },
                 (e, _) => e.SetPacks(1)),
             Manual("BT_FCTL_CHECK", "BEFORE_TAXI", "Flight controls: CHECK"),
-            Reminder("BT_SET_TRIM", "BEFORE_TAXI", "Set stabiliser trim for takeoff"),
+            // No trim item here: PMDG's Before Taxi Procedure, Before Taxi Checklist and
+            // Before Takeoff Checklist carry no trim checkpoint at all. Trim is set at the
+            // end of Before Start (BS_STAB_TRIM/BS_AIL_TRIM/BS_RUD_TRIM) and read back on
+            // BSCL_TRIM, so this was a third instruction for the same one action.
             ActionManual("BT_RECALL", "BEFORE_TAXI", "Recall: Check",
                 (e, _) => e.PushCancelRecall()),
         }
@@ -490,12 +524,19 @@ public static class PMDG777ChecklistDefinitions
             Auto("BTKO_XPNDR", "BEFORE_TAKEOFF", "Transponder: TA/RA",
                 "XPDR_ModeSel", v => v > 3.5,
                 action: (e, _) => e.SetTransponderMode(4)),
-            // LNAV/VNAV pushes are TOGGLES — press only when the annunciator shows unarmed,
-            // or a tick on an already-armed mode would disarm it (the FD-switch trap).
-            Auto("BTKO_LNAV", "BEFORE_TAKEOFF", "LNAV: ARM",
+            // LNAV/VNAV are ARMED in Before Start — that is where PMDG's printed procedure
+            // puts them, and the only place. These two lines are the SAFETY NET, not a
+            // second arming: they read as a verification, and the tick still presses the
+            // button if the annunciator shows the mode unarmed, because the 777 profile has
+            // no other LNAV/VNAV automation and an unarmed VNAV on the runway is the
+            // failure this catches. Labelled "Verify armed" so the pair no longer reads as
+            // a competing instruction to the Before Start items.
+            // The pushes are TOGGLES — press only when the annunciator shows unarmed, or a
+            // tick on an already-armed mode would disarm it (the FD-switch trap).
+            Auto("BTKO_LNAV", "BEFORE_TAKEOFF", "LNAV: Verify armed",
                 "MCP_annunLNAV", v => v > 0.5,
                 action: (e, s) => { if (!s.IsOn("MCP_annunLNAV")) e.PushLNAV(); }),
-            Auto("BTKO_VNAV", "BEFORE_TAKEOFF", "VNAV: ARM",
+            Auto("BTKO_VNAV", "BEFORE_TAKEOFF", "VNAV: Verify armed",
                 "MCP_annunVNAV", v => v > 0.5,
                 action: (e, s) => { if (!s.IsOn("MCP_annunVNAV")) e.PushVNAV(); }),
         }
@@ -632,9 +673,15 @@ public static class PMDG777ChecklistDefinitions
             // pilot who ticked it on an unarmed lever got a tick and nothing else. The
             // ARM detent is absolute (not a toggle), so a tick on an already-armed lever
             // is a harmless no-op.
+            // The condition reads the SDK's ARMED value (25) through
+            // Pmdg777SpeedbrakeLever. It used to test "v > 0.5 && v < 1.5" — a detent
+            // index this analog 0–100 lever never produces — so ticking the item armed
+            // the lever, failed the check, reverted, and spoke "Unable to complete".
+            // The action no-ops on an already-DEPLOYED lever: the ARM detent is an
+            // absolute click position, so clicking it over a raised lever RETRACTS it.
             Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
-                "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5,
-                action: (e, _) => e.SetSpeedbrakeArmed()),
+                "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsArmed,
+                action: (e, s) => { if (!s.IsSpeedbrakeDeployed()) e.SetSpeedbrakeArmed(); }),
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
                 "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
                 action: null),
@@ -653,7 +700,7 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Auto("AL_SPEEDBRAKE", "AFTER_LANDING", "Speed Brake lever: DOWN",
-                "FCTL_Speedbrake_Lever", v => v < 0.5,
+                "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsDown,
                 action: (e, _) => e.SetSpeedbrakeDown()),
             Auto("AL_EXT_LIGHTS", "AFTER_LANDING", "Landing and turnoff lights: OFF",
                 "LTS_LandingLights_Sw_ON_0", v => v < 0.5,

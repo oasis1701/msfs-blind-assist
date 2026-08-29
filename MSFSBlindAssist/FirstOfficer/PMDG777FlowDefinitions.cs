@@ -80,9 +80,9 @@ public static class PMDG777FlowDefinitions
             // connecting the primary made it true and the SECONDARY step skipped itself —
             // the secondary receptacle was never connected, and Secure then found only one
             // side to disconnect. See GroundPowerGate.
-            Skip(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
+            Skip(Momentary("EPU_GND_PWR_PRIM", "Ground power primary: PUSH",  GroundPowerGate.EventForAnnunciatorIndex(0)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: true)),
-            Skip(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
+            Skip(Momentary("EPU_GND_PWR_SEC",  "Ground power secondary: PUSH", GroundPowerGate.EventForAnnunciatorIndex(1)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: true)),
             Wait("EPU_WAIT_GPU", "Waiting for GPU power", 8),
             Skip(SW("EPU_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1),
@@ -160,8 +160,13 @@ public static class PMDG777FlowDefinitions
             Skip(Multi("CP_ENG_PUMPS", "Engine pumps: ON",
                 ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
                 s => s.IsEngPump1On() && s.IsEngPump2On()),
-            Skip(SW("CP_SEAT_BELTS",   "Seat belts: AUTO",          "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   1),
-                s => s.SeatBeltsSelector() == 1),
+            // ON (2), not AUTO (1). PMDG's own printed procedure says AUTO, and this is a
+            // deliberate deviation from it (owner ruling 2026-08-29): both 737 profiles
+            // already select ON, and this aircraft's OWN seat-belt automation writes only
+            // ON/OFF (AircraftActionExecutor.SetSeatbeltSign), so AUTO here contradicted the
+            // automation that follows it.
+            Skip(SW("CP_SEAT_BELTS",   "Seat belts: ON",            "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   2),
+                s => s.SeatBeltsSelector() == 2),
             SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2),
             SW("CP_LIGHTS_MASTER","Lights master: ON",         "EVT_OH_LIGHTS_IND_LTS_SWITCH",       1),
             SW("CP_CARGO_FIRE_FWD","Cargo fire arm fwd: OFF",  "EVT_OH_FIRE_CARGO_ARM_FWD",          0),
@@ -243,7 +248,10 @@ public static class PMDG777FlowDefinitions
         {
             Captain("BS_MCP_SPEEDS",  "Set MCP: speed, heading and altitude"),
             Captain("BS_LNAV_VNAV",   "Arm LNAV / VNAV as required"),
-            Captain("BS_TRIM_SET",    "Set elevator, aileron, and rudder trim"),
+            // Trim is NOT briefed here any more — it moved to the end of this flow, where
+            // PMDG's own Before Start Procedure puts it (after the transponder) and where
+            // the hydraulic pumps that move the surfaces are actually running. It used to
+            // be step 3 of 17: ahead of the entire APU start and of every pump.
             // APU Start — always done here regardless of GPU status.
             // Selector: OFF → ON (1) → START (2, spring-loads back to ON internally).
             // Gate on the SDK's APURunning bool — the same field the System Display reads.
@@ -274,17 +282,35 @@ public static class PMDG777FlowDefinitions
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1),     ("EVT_OH_FUEL_PUMP_2_AFT", 1),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 1),  ("EVT_OH_FUEL_PUMP_R_CENTER", 1)),
                 s => s.AreWingFuelPumpsOn()),
+            // Ticks its OWN group's item. This was the only step in all thirteen 777 flows
+            // whose CompletesChecklistItemId named a read-back (*_CL) item — BSCL_BEACON,
+            // which auto-detects from the same field anyway.
             Skip(SW("BS_BEACON",    "Beacon: ON",  "EVT_OH_LIGHTS_BEACON", 1,
-               "LTS_Beacon_Sw_ON", v => v > 0.5, "BSCL_BEACON"),
+               "LTS_Beacon_Sw_ON", v => v > 0.5, "BS_BEACON_ON"),
                 s => s.IsBeaconOn()),
             // Disconnect ground power only if it is actually connected (APU is now running).
             // Each GPU is checked independently — skip if it is already off.
             Skip(Momentary("BS_GND_PWR_1", "Ground power primary: disconnect",
-                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
+                GroundPowerGate.EventForAnnunciatorIndex(0)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)),
             Skip(Momentary("BS_GND_PWR_2", "Ground power secondary: disconnect",
-                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
+                GroundPowerGate.EventForAnnunciatorIndex(1)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)),
+            // Cancel/Recall and the transponder had NO step in this flow, yet both are
+            // items of the BEFORE_START group — which a finished flow ticks and LATCHES
+            // wholesale (ChecklistManager.MarkGroupComplete). "Transponder: XPNDR"
+            // therefore read complete with the selector untouched, which a blind pilot
+            // has no way to catch. The vendor pushes CANCEL/RECALL twice (verify the
+            // expected alerts, then verify they cancel); one press is enough to satisfy
+            // the single checklist line, and the pilot reads the messages between.
+            Momentary("BS_CANCEL_RECALL", "Cancel/Recall: PUSH", "EVT_DSP_CANC_RCL_SWITCH",
+                "BS_CANCEL_RECALL"),
+            Skip(SW("BS_XPNDR", "Transponder: XPNDR", "EVT_TCAS_MODE", 2,
+               "XPDR_ModeSel", v => v > 1.5 && v < 2.5, "BS_TRANSPONDER"),
+                s => s.IsPosition("XPDR_ModeSel", 2)),
+            // Trim, last operational block — vendor order, and the hydraulics are running.
+            // Stabiliser trim is SET; aileron and rudder trim are VERIFIED at zero.
+            Captain("BS_TRIM_SET", "Set stabiliser trim for takeoff; verify aileron and rudder trim zero"),
             Captain("BS_START_ACARS", "Start ACARS"),
             Captain("BS_TAXI_CLR", "Obtain pushback and start clearance"),
         }
@@ -380,7 +406,8 @@ public static class PMDG777FlowDefinitions
             Skip(SW("BT_PACK_L_AUTO", "Pack left: AUTO",  "EVT_OH_AIRCOND_PACK_SWITCH_L", 1), s => s.IsPack1Auto()),
             Skip(SW("BT_PACK_R_AUTO", "Pack right: AUTO", "EVT_OH_AIRCOND_PACK_SWITCH_R", 1), s => s.IsPack2Auto()),
             Captain("BT_FCTL_CHECK",   "Check flight controls — confirm free and correct"),
-            Captain("BT_SET_TRIM",     "Set stabiliser trim for takeoff"),
+            // No trim reminder here — see the matching note on the Before Taxi checklist
+            // group; trim is set at the end of Before Start and read back on BSCL_TRIM.
         }
     };
 
@@ -407,9 +434,9 @@ public static class PMDG777FlowDefinitions
             SW("BTKOF_XPNDR",     "Transponder: TA/RA",
                // XPDR_ModeSel via EVT_TCAS_MODE: 0=Stby,1=AltRptgOff,2=Xpndr,3=TA Only,4=TA/RA
                "EVT_TCAS_MODE",                                4),
-            Skip(Momentary("BTKOF_LNAV", "LNAV: ARM", "EVT_MCP_LNAV_SWITCH"),
+            Skip(Momentary("BTKOF_LNAV", "LNAV: Verify armed", "EVT_MCP_LNAV_SWITCH"),
                 s => s.IsOn("MCP_annunLNAV")),
-            Skip(Momentary("BTKOF_VNAV", "VNAV: ARM", "EVT_MCP_VNAV_SWITCH"),
+            Skip(Momentary("BTKOF_VNAV", "VNAV: Verify armed", "EVT_MCP_VNAV_SWITCH"),
                 s => s.IsOn("MCP_annunVNAV")),
             Captain("BTKOF_FLAPS_CONFIRM", "Confirm flap setting for takeoff"),
         }
@@ -493,9 +520,16 @@ public static class PMDG777FlowDefinitions
         {
             // Moved out of Approach Setup: too early there. The ARM detent is an ABSOLUTE
             // mouse-click position, not a toggle, so re-arming an already-armed lever is a
-            // no-op and this step needs no skip guard (unlike the ground-power buttons).
-            SW("LD_SPEEDBRAKE_ARM",   "Speedbrake: ARM",   "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null,
-               true, "FCTL_Speedbrake_Lever", v => v > 0.5 && v < 1.5, "LDG_SPEEDBRAKE"),
+            // harmless no-op — but clicking it over a lever the pilot has RAISED would
+            // retract the speedbrake, so the step skips on armed-or-deployed (the same
+            // guard PMDG737.SpeedbrakeArmLadder applies through ExtendedField).
+            // The verify condition reads the SDK's ARMED value (25) via
+            // Pmdg777SpeedbrakeLever; it used to test "v > 0.5 && v < 1.5", which this
+            // analog 0–100 lever can never satisfy — so the flow armed the lever and then
+            // announced "Skipping: Speedbrake: ARM" and left the checklist item unfinished.
+            Skip(SW("LD_SPEEDBRAKE_ARM",   "Speedbrake: ARM",   "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null,
+               true, "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsArmed, "LDG_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeArmed() || s.IsSpeedbrakeDeployed()),
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
@@ -619,10 +653,10 @@ public static class PMDG777FlowDefinitions
             // battery). Each GPU is checked independently — skip if it is already off, so a
             // re-run and a never-connected-GPU both no-op. Mirrors Before Start L243–246.
             Skip(Momentary("SEC_GND_PWR_PRIM", "Ground power primary: PUSH",
-                "EVT_OH_ELEC_GRD_PWR_PRIM_SWITCH"),
+                GroundPowerGate.EventForAnnunciatorIndex(0)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower1On(), wantOn: false)),
             Skip(Momentary("SEC_GND_PWR_SEC", "Ground power secondary: PUSH",
-                "EVT_OH_ELEC_GRD_PWR_SEC_SWITCH"),
+                GroundPowerGate.EventForAnnunciatorIndex(1)),
                 s => GroundPowerGate.ShouldSkip(s.IsGpuPower2On(), wantOn: false)),
             Skip(SW("SEC_BATTERY_OFF","Battery: OFF",         "EVT_OH_ELEC_BATTERY_SWITCH",  0,
                "ELEC_Battery_Sw_ON", v => v < 0.5, "EPD_BATTERY_OFF"),

@@ -1,0 +1,1 @@
+PMDG 777 seat belt signs are now selected ON rather than AUTO during Preflight and Before Start, matching both 737 profiles and the app's own seat-belt automation, which only ever selects ON or OFF. Note this is a deliberate departure from PMDG's printed procedure, which calls for AUTO.
