@@ -268,6 +268,11 @@ public partial class MainForm
             this.Text = "MSFS Blind Assist";
             // Disable announcements when disconnected
             simVarMonitor.Reset();
+            // The FCU/MCP value-change announcer keeps its baselines on the DEF, which survives a
+            // reconnect (only an aircraft switch builds a new one). Without this the first sample
+            // of the next session is diffed against the last flight's FCU and the pilot hears a
+            // burst of callouts they never caused, mid cold-and-dark setup.
+            (currentAircraft as BaseAircraftDefinition)?.ResetFcuValueBaselines();
             // The iFly keeps feeding over shared memory through a SimConnect drop — re-arm
             // the announce grace so its combo announcements resume instead of going silent
             // while the def's self-announced lights keep speaking (PR #163 review).

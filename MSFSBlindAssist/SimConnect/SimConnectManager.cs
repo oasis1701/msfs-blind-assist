@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -283,6 +283,23 @@ public partial class SimConnectManager
     // HighFrequency vars like G_FORCE) do an O(1) TryGetValue instead of an O(n) FirstOrDefault scan.
     private ConcurrentDictionary<int, string> requestIdToVarKey = new ConcurrentDictionary<int, string>();
     private HashSet<string> forceUpdateVariables = new HashSet<string>();  // Track variables that should always fire updates
+
+    /// <summary>
+    /// Vars that carry a STANDING per-var subscription (Continuous + IsAnnounced + ExcludeFromBatch;
+    /// see RegisterAllVariables). A one-shot read of one of these MUST NOT reuse its data-def id as
+    /// the request id — re-issuing a request id with a different period is SimConnect's way of
+    /// REPLACING that request, which is exactly how SafelyClearDataDefinition cancels a recurring
+    /// one. Doing it here silently traded the subscription for a single sample and nothing re-armed
+    /// it, so the first force-read of a var ended its live stream for the rest of the session.
+    /// </summary>
+    private ConcurrentDictionary<string, byte> standingSubscriptionVars = new ConcurrentDictionary<string, byte>();
+
+    /// <summary>Added to a var's data-def id to form a SEPARATE request id for one-shot reads, so a
+    /// force-read and the standing subscription can coexist on the same data definition. Individual
+    /// def ids run 1000..1900 (see IndividualDefCap), and this stays above INDIVIDUAL_VARIABLE_BASE
+    /// so the dispatch still routes it to ProcessIndividualVariableResponse. It is a REQUEST id
+    /// only, never a data-definition id, so it cannot collide with nextTempDefId's write defs.</summary>
+    private const int OneShotRequestIdOffset = 200000;
     // H:/dotted events fired while the MobiFlight WASM bridge is still connecting (the brief window
     // right after aircraft load). These have NO working TransmitClientEvent fallback, so they are queued
     // here and flushed when the bridge connects rather than dropped. Bounded + cleared on teardown.
@@ -1180,6 +1197,7 @@ public partial class SimConnectManager
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
+        standingSubscriptionVars.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)

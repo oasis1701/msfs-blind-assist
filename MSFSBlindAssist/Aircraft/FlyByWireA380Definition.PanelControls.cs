@@ -698,7 +698,7 @@ public partial class FlyByWireA380Definition
             "PFD_GROSS_WEIGHT", "A32NX_AIRFRAME_GW_CG_PERCENT_MAC",
             "PFD_V1", "PFD_VR", "PFD_V2", "PFD_MACH", "PFD_TRACK",
             "PFD_RA", "PFD_VS", "PFD_TRANS_ALT", "PFD_TRANS_LVL",
-            "FCU_SEL_ALT", "FCU_SEL_HDG", "PFD_SAT", "PFD_TAT",
+            "FCU_ALT_VALUE", "FCU_SEL_HDG", "PFD_SAT", "PFD_TAT",
             "A32NX_BETA_TARGET", "A32NX_TCAS_VSPEED_GREEN:1", "A32NX_TCAS_VSPEED_RED:1",
             "PFD_ILS_FREQ", "PFD_ILS_DME", "A32NX_FM_LS_COURSE", "MARKER_BEACON",
             "PFD_VMAX", "PFD_VLS", "PFD_VALPHAPROT", "PFD_VALPHAMAX", "PFD_VSW",

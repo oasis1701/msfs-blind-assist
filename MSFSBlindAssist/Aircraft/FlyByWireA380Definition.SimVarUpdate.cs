@@ -47,6 +47,38 @@ public partial class FlyByWireA380Definition
     private static readonly (int bit, string phrase)[] OansWord1Bits =
         { (11, "Runway ahead") };
 
+    /// <summary>
+    /// The value to SPEAK for an FCU selected-value var, in the units the FCU displays.
+    /// Returns null for anything that is not one of those vars.
+    ///
+    /// ⚠️ FBW #10855 made these L:vars display-unit shims — heading and FPA arrive in DEGREES
+    /// and V/S in FEET PER MINUTE, straight off the FCU. Do NOT re-add a "looks like radians"
+    /// guess or the old x196.85 m/s conversion: the same guess in the readout mangled every
+    /// selected heading of 006 degrees or less, and spoke "98400" for a 500 fpm selection.
+    /// This mirrors the readout in ProcessSimVarUpdate deliberately — the announce path and the
+    /// Shift+H/S/A/V readout speak the same L:vars and must never disagree about their units.
+    /// Pinned by FlyByWireA380FcuAnnounceUnitsTests.
+    /// </summary>
+    /// <remarks>Every announce call site routes its value through here, so the test that pins
+    /// these units is testing the production transform rather than a parallel copy. Keep it that
+    /// way: the speed arm was once bypassed at the call site, which left the pin decorative and a
+    /// re-added x1.943844 free to ship green.</remarks>
+    public static double? FcuAnnounceDisplayValue(string varName, double raw) => varName switch
+    {
+        // Wrap, then round — the same order (and therefore the same answer) as the readout.
+        // A negative raw is the managed/dashes sentinel and passes through UNWRAPPED: wrapping it
+        // would turn -1 into 359, a perfectly plausible heading that the announce phrase could no
+        // longer tell apart from a real selection, and that would also sit in the baseline where a
+        // genuine 359 selection could later match it and be swallowed.
+        "A32NX_AUTOPILOT_HEADING_SELECTED" => raw < 0 ? raw : Math.Round(((raw % 360) + 360) % 360),
+        // Snap to the FCU's 100-fpm detent step; the value is already fpm.
+        "A32NX_AUTOPILOT_VS_SELECTED"      => Math.Round(raw / 100.0) * 100.0,
+        "A32NX_AUTOPILOT_FPA_SELECTED"     => raw,
+        // Mach below 10, knots above — the var holds the target directly, unscaled.
+        "A32NX_AUTOPILOT_SPEED_SELECTED"   => raw,
+        _ => null,
+    };
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         // Cache the ND TO-waypoint packed-word halves for the ND status box decode
@@ -823,58 +855,75 @@ public partial class FlyByWireA380Definition
         if (varName == "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
             return true;
 
-        // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
+        // ---- FCU selected-value CHANGE announcements (hardware knob turns; MCP parity) ----
         // These five vars are Continuous+IsAnnounced so an external hardware dial (MobiFlight,
-        // FSUIPC, the cockpit knob) is spoken as it changes, exactly like the PMDG 777 MCP
-        // ("Heading 250" / "Speed 250 knots" / "Altitude 10000" / "Vertical speed -1500").
-        // This block never consumes the event — the _req* readout branches below still see the
-        // same update — and the fcuValueVar return at the end of the section keeps the generic
-        // monitor from also speaking the raw SI-unit value. MSFSBA's own FCU windows suppress
-        // the echo via SuppressFcuValueChangeEcho() in the SetFCU*/FireFCUButton methods.
+        // FSUIPC, the cockpit knob) is spoken as it changes, the way the PMDG 777 MCP speaks its
+        // own ("MCP heading 250" / "MCP altitude 10000 feet"). The wording here is this aircraft's
+        // — each phrase carries the unit its own Shift+H/S/A/V readout carries, so the dial and the
+        // hotkey never describe one number two ways.
+        // This block does not consume the event; the fcuValueVar return at the end of the section
+        // does, which is what keeps the generic monitor from speaking the value a SECOND time.
+        // (Not "the raw SI-unit value" — since FBW #10855 these arrive already in display units;
+        // see the ⚠️ note on FcuAnnounceDisplayValue.) MSFSBA's own FCU windows suppress the echo
+        // via SuppressFcuValueChangeEcho() in the SetFCU*/SetTrkFpaMode/FireFCUButton methods.
+        // The FCU's vertical channel is ONE number (docs/a380x.md: idFcuShimVsValue and
+        // idFcuShimFpaValue are both fed from selectedFcuAfs.vs_fpa_value), so which of the two
+        // vars is meaningful is decided by TRK/FPA mode alone. Cache it here — the readout's
+        // _pVsMode is transient and nulled once the pair announces.
+        if (varName == "A32NX_TRK_FPA_MODE_ACTIVE") _trkFpaModeActive = value > 0;
+
         bool fcuValueVar = varName is "A32NX_AUTOPILOT_HEADING_SELECTED" or "A32NX_AUTOPILOT_SPEED_SELECTED"
             or "FCU_ALT_VALUE" or "A32NX_AUTOPILOT_VS_SELECTED" or "A32NX_AUTOPILOT_FPA_SELECTED";
-        if (fcuValueVar)
+        // Skip the change announce while a readout is pending for this var: the _req* branch below
+        // is about to speak the same value with AnnounceImmediate, which INTERRUPTS — so without
+        // this gate one force-read produced "Heading 260" cut off mid-word by "FCU heading 260
+        // degrees, selected". The A320 half has always gated this way.
+        bool readoutPending = (_reqHdg && varName == "A32NX_AUTOPILOT_HEADING_SELECTED")
+            || (_reqSpd && varName == "A32NX_AUTOPILOT_SPEED_SELECTED")
+            || (_reqAlt && varName == "FCU_ALT_VALUE")
+            || (_reqVs && varName is "A32NX_AUTOPILOT_VS_SELECTED" or "A32NX_AUTOPILOT_FPA_SELECTED");
+        if (fcuValueVar && !readoutPending)
         {
-            bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariables.Contains(varName);
+            bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
+            // ⚠️ Every arm calls AnnounceFcuValueChanged even for a managed/dashes sentinel, and
+            // says nothing by returning null from the phrase. Skipping the CALL would leave the key
+            // out of the baseline for as long as the knob stayed pushed, so the first selection
+            // after that — on an FMS departure, the pilot's first of the flight — seeded the
+            // baseline silently instead of being announced.
+            double? display = FcuAnnounceDisplayValue(varName, value);
             switch (varName)
             {
                 case "A32NX_AUTOPILOT_HEADING_SELECTED":
-                    // -1 = managed (dashes) — the managed-mode monitor announces that transition.
-                    // Angular L:var arrives in RADIANS (same heuristic as the readout below).
-                    if (value >= 0)
-                    {
-                        double hdgDeg = Math.Abs(value) <= (Math.PI * 2 + 0.05) ? value * 180.0 / Math.PI : value;
-                        hdgDeg = Math.Round(((hdgDeg % 360) + 360) % 360);
-                        AnnounceFcuValueChanged(varName, hdgDeg, 0.5, v => $"Heading {(int)v}", announcer, fcuMuted);
-                    }
+                    AnnounceFcuValueChanged(varName, display!.Value, 0.5,
+                        // -1 = managed (dashes); the managed-mode monitor owns that transition.
+                        v => v < 0 ? null : $"Heading {v:000} degrees", announcer, fcuMuted);
                     break;
                 case "A32NX_AUTOPILOT_SPEED_SELECTED":
-                    // -1 = managed (dashes). The var holds the target directly: a Mach number
-                    // when < 10, otherwise knots (no SI scaling — see the readout note below).
-                    if (value >= 0)
-                        AnnounceFcuValueChanged(varName, value, 0.005,
-                            v => v < 10 ? $"Mach {v:F2}" : $"Speed {(int)v} knots", announcer, fcuMuted);
+                    AnnounceFcuValueChanged(varName, display!.Value, 0.005,
+                        // -1 = managed (dashes). Otherwise the var holds the target directly:
+                        // a Mach number when < 10, else knots (no SI scaling).
+                        v => v < 0 ? null : v < 10 ? $"Mach {v:F2}" : $"Speed {(int)v} knots",
+                        announcer, fcuMuted);
                     break;
                 case "FCU_ALT_VALUE":
-                    // Stock simvar, already feet; follow the metric-alt (MTRS) toggle for the unit.
+                    // Stock simvar, already feet. AltUser applies the metric-alt (MTRS) toggle and
+                    // returns the unit word for BOTH cases — always take the unit from it, or the
+                    // same control speaks a bare "Altitude 10000" in feet and "Altitude 3048
+                    // meters" in metric, with no way to tell which unit the bare one was.
                     AnnounceFcuValueChanged(varName, value, 50, v =>
                     {
-                        if (!_metricAlt) return $"Altitude {(int)v}";
                         var (av, au) = AltUser(v);
                         return $"Altitude {av:0} {au}";
                     }, announcer, fcuMuted);
                     break;
                 case "A32NX_AUTOPILOT_VS_SELECTED":
-                    // SI read: m/s -> fpm, rounded to the FCU's 100-fpm step (same conversion
-                    // as the readout below).
-                    AnnounceFcuValueChanged(varName, Math.Round(value * 196.8503937 / 100.0) * 100.0, 50,
-                        v => $"Vertical speed {(int)v}", announcer, fcuMuted);
+                    AnnounceFcuValueChanged(varName, display!.Value, 50,
+                        v => _trkFpaModeActive ? null : $"Vertical speed {(int)v} feet per minute",
+                        announcer, fcuMuted);
                     break;
                 case "A32NX_AUTOPILOT_FPA_SELECTED":
-                    // Angular: radians when in the radian range (FPA maxes at ~9.9 degrees).
-                    AnnounceFcuValueChanged(varName,
-                        Math.Abs(value) <= 0.2 ? value * 180.0 / Math.PI : value, 0.05,
-                        v => $"FPA {v:F1} degrees", announcer, fcuMuted);
+                    AnnounceFcuValueChanged(varName, display!.Value, 0.05,
+                        v => _trkFpaModeActive ? $"FPA {v:F1} degrees" : null, announcer, fcuMuted);
                     break;
             }
         }
@@ -960,8 +1009,9 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
-        // FCU value vars are def-handled (the change block above + the readout branches) —
-        // never let the generic monitor speak their raw SI-unit values.
+        // FCU value vars are def-handled (the change block above + the readout branches) — never
+        // let the generic monitor speak them a second time. The panel-display bookkeeping for these
+        // runs in MainForm BEFORE this return, so consuming the event here costs no display update.
         if (fcuValueVar) return true;
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
