@@ -306,6 +306,57 @@ public class HeadwindA330Definition : FlyByWireA320Definition
             ValueDescriptions = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" }
         };
 
+        // ==============================================================================
+        // A339X airframe divergences from the A32NX. Each measured against the installed
+        // package; see docs/headwind-a330-first-officer-test-plan.md for the live checks.
+        // ==============================================================================
+
+        // Nav & logo: the A339X has NO A32NX_LIGHTS_NAV_LOGO L:var at all (0 occurrences
+        // in the package; the A32NX has 14). A330_NEO_INTERIOR.xml:2054-2069 binds
+        // SWITCH_OVHD_EXTLT_NAVLOGO to stock LIGHT LOGO / LIGHT NAV via
+        // LOGO_LIGHTS_SET / NAV_LIGHTS_SET at index 0 — a plain two-position switch.
+        // Keep the KEY so the panel combo and the First Officer stay one control
+        // app-wide; repoint its Name at the stock simvar the cockpit actually writes.
+        vars["A32NX_LIGHTS_NAV_LOGO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT NAV",
+            DisplayName = "Nav and Logo Lights",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+
+        // Seat-belt switch POSITION. Three-position on this airframe — 0=On, 1=Auto,
+        // 2=Off (A330_NEO_INTERIOR.xml:1817-1823) — the OPPOSITE encoding to the A32NX's
+        // two-position 1=On/0=Off. Registered so the First Officer can select a position
+        // directly instead of blind-toggling the stock simvar, which the AUTO position's
+        // own 500 ms logic fights back. Detection stays on the sign lamp
+        // (CABIN SEATBELTS ALERT SWITCH), never on this position — the A380 invariant.
+        vars["SEATBELT_SIGN_POSITION"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position",
+            DisplayName = "Seat Belts Switch Position",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" }
+        };
+
+        // Landing-light state. The A339X has ONE two-position ganged switch on stock
+        // LIGHT LANDING indices 2 and 3 (A330_NEO_INTERIOR.xml:2022-2034); the A32NX has
+        // TWO Retractable switches whose state lives in L:LIGHTING_LANDING_2/_3, which
+        // this airframe never writes. There is no RETRACT position here.
+        vars["LIGHT LANDING:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT LANDING:2",
+            DisplayName = "Landing Lights",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+
         return vars;
     }
 
@@ -343,5 +394,28 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         m["A32NX.FCU_EFIS_R_BARO_PUSH"] = "KOHLSMAN SETTING STD:2";
         m["A32NX.FCU_EFIS_R_BARO_PULL"] = "KOHLSMAN SETTING STD:2";
         return m;
+    }
+
+    /// <summary>
+    /// Nav &amp; logo write. The base replays the A32NX's FBW switch RPN, which ends with
+    /// <c>2 (&gt;L:A32NX_LIGHTS_NAV_LOGO)</c> — an L:var this airframe does not have — and
+    /// drives the per-light indexed NAV_LIGHTS_SET the A32NX's six-lamp switch needs.
+    /// The A339X switch is a plain two-simvar toggle at index 0, so replay what FlyByWire's
+    /// own A330 preset procedure writes (config/a339x/a330-941/aircraft_preset_procedures.xml)
+    /// plus the direct simvar writes the cockpit switch itself performs.
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (varKey == "A32NX_LIGHTS_NAV_LOGO")
+        {
+            bool on = value >= 0.5;
+            simConnect.ExecuteCalculatorCode(on
+                ? "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 1 (>K:2:LOGO_LIGHTS_SET) 1 (>K:2:NAV_LIGHTS_SET)"
+                : "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 (>K:2:LOGO_LIGHTS_SET) 0 (>K:2:NAV_LIGHTS_SET)");
+            return true;
+        }
+
+        return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
 }
