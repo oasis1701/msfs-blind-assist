@@ -79,6 +79,7 @@ public partial class MainForm : Form
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>? fbwA380FirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA320.FbwA320ActionExecutor, FirstOfficer.FBWA320.FbwA320StateEvaluator>? fbwA320FirstOfficerForm;
     private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.IFly737.IFly737ActionExecutor, FirstOfficer.IFly737.IFly737StateEvaluator>? ifly737FirstOfficerForm;
+    private Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.HWA330.HwA330ActionExecutor, FirstOfficer.HWA330.HwA330StateEvaluator>? hwA330FirstOfficerForm;
 
     /// <summary>The ONE enumeration of the per-aircraft First Officer form fields, as their
     /// shared non-generic view. Yields only live (created, not disposed) windows. Every
@@ -93,6 +94,7 @@ public partial class MainForm : Form
         if (fbwA380FirstOfficerForm is { IsDisposed: false }) yield return fbwA380FirstOfficerForm;
         if (fbwA320FirstOfficerForm is { IsDisposed: false }) yield return fbwA320FirstOfficerForm;
         if (ifly737FirstOfficerForm is { IsDisposed: false }) yield return ifly737FirstOfficerForm;
+        if (hwA330FirstOfficerForm is { IsDisposed: false }) yield return hwA330FirstOfficerForm;
     }
 
     private Forms.FBWA380.FBWA380MCDUForm? fbwA380MCDUForm;

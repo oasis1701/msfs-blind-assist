@@ -830,6 +830,7 @@ public partial class MainForm
         fbwA380FirstOfficerForm?.Dispose(); fbwA380FirstOfficerForm = null;
         fbwA320FirstOfficerForm?.Dispose(); fbwA320FirstOfficerForm = null;
         ifly737FirstOfficerForm?.Dispose(); ifly737FirstOfficerForm = null;
+        hwA330FirstOfficerForm?.Dispose(); hwA330FirstOfficerForm = null;
 
         if (coherentNDClient != null)
         {
@@ -996,7 +997,10 @@ public partial class MainForm
         fenixFirstOfficerMenuItem.Visible = isFenix;
         bool isFbwA380 = currentAircraft?.AircraftCode == "FBW_A380";
         fbwA380FirstOfficerMenuItem.Visible = isFbwA380;
+        // The A320 item stays gated on an exact code match, so it never shows for the
+        // A330 even though HeadwindA330Definition derives from FlyByWireA320Definition.
         fbwA320FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "A320";
+        hwA330FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "HW_A330";
         ifly737FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "IFLY_737MAX8";
         // First Officer automation settings now live in the unified Settings dialog
         // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.

@@ -586,6 +586,10 @@ public partial class MainForm
 
     private void ShowFbwA320FirstOfficerDialog()
     {
+        // HeadwindA330Definition DERIVES from FlyByWireA320Definition, so a bare
+        // `is FlyByWireA320Definition` also matches an A330 — the same trap
+        // UpdateAircraftMenuItems documents. The A330 has its own profile.
+        if (currentAircraft is HeadwindA330Definition) return;
         if (currentAircraft is not FlyByWireA320Definition a320Def) return;
         if (fbwA320FirstOfficerForm == null || fbwA320FirstOfficerForm.IsDisposed)
         {
@@ -615,6 +619,24 @@ public partial class MainForm
                 new MSFSBlindAssist.Services.SimBriefService());
         }
         ifly737FirstOfficerForm.ShowForm();
+    }
+
+    private void HwA330FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowHwA330FirstOfficerDialog();
+
+    private void ShowHwA330FirstOfficerDialog()
+    {
+        if (currentAircraft is not HeadwindA330Definition a330Def) return;
+        if (hwA330FirstOfficerForm == null || hwA330FirstOfficerForm.IsDisposed)
+        {
+            hwA330FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.HWA330.HwA330ActionExecutor, FirstOfficer.HWA330.HwA330StateEvaluator>(
+                new FirstOfficer.HWA330.HwA330FoProfile(a330Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        hwA330FirstOfficerForm.ShowForm();
     }
 
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
