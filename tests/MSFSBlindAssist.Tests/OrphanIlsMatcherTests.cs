@@ -2,66 +2,30 @@
 // rule that re-links an ORPHANED ils row (one whose loc_airport_ident / loc_runway_name
 // join columns navdatareader left NULL) to the runway end it actually serves.
 //
-// The fixture is REAL DATA, read out of a live fs2024.sqlite built 2026-08-30: all ten
-// KATL runway ends and all ten orphaned KATL ils rows, at full stored precision. KATL is
-// the motivating case because it is five PARALLEL runways all on ~090/270, which is
-// exactly the geometry the predecessor rule (nearest antenna to the threshold) cannot
-// resolve — see KATL_08L_takes_its_own_localizer_not_the_parallel_runways.
-//
-// Ground truth for each ils row is its `name` column ("ILS/GS CAT III RW08L"), which the
-// matcher itself never reads — it is a label, not a join key, and several airports carry
-// a stale one (ENSB's runway ends are name-swapped relative to their headings; FNLF/VAFA
-// were renamed for magnetic drift). It is trustworthy at KATL, where all ten agree with
-// the published plates.
+// The KATL geometry lives in KatlOrphanIlsFixture, which OrphanIlsRunwayLinkTests shares —
+// see that file for its provenance and for why it is stated once rather than transcribed
+// into each suite.
 
 using MSFSBlindAssist.Database;
+using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Tests;
 
 public class OrphanIlsMatcherTests
 {
-    private static OrphanIlsMatcher.RunwayEnd End(string name, double lat, double lon, double hdg)
-        => new(name, lat, lon, hdg);
+    private static OrphanIlsMatcher.RunwayEnd End(string name, double lat, double lon, double hdg,
+        double lengthM = 0.0)
+        => new(name, lat, lon, hdg, lengthM);
 
-    private static OrphanIlsMatcher.IlsCandidate Cand(string ident, double lat, double lon, double locHdg)
-        => new(ident, lat, lon, locHdg);
+    private static ILSData Cand(string ident, double lat, double lon, double locHdg)
+        => new() { Ident = ident, AntennaLatitude = lat, AntennaLongitude = lon, LocalizerHeading = locHdg };
 
-    // Every KATL runway end, exactly as stored (runway_end.name / laty / lonx / heading).
-    private static readonly OrphanIlsMatcher.RunwayEnd[] KatlEnds =
-    [
-        End("08L", 33.649532318115234, -84.43907165527344, 89.98899841308594),
-        End("08R", 33.646785736083984, -84.43846130371094, 89.9749984741211),
-        End("09L", 33.63473129272461, -84.44800567626953, 90.00199890136719),
-        End("09R", 33.631839752197266, -84.44805145263672, 89.97699737548828),
-        End("10", 33.620277404785156, -84.4479751586914, 89.97500610351562),
-        End("26L", 33.64679718017578, -84.40548706054688, 269.9750061035156),
-        End("26R", 33.6495361328125, -84.40937805175781, 269.989013671875),
-        End("27L", 33.63185119628906, -84.4183578491211, 269.97698974609375),
-        End("27R", 33.634727478027344, -84.40718841552734, 270.00201416015625),
-        End("28", 33.62028884887695, -84.41829681396484, 269.9750061035156),
-    ];
-
-    // Every orphaned ils row inside the KATL bounding box, exactly as stored.
-    private static readonly OrphanIlsMatcher.IlsCandidate[] KatlCandidates =
-    [
-        Cand("IAFA", 33.63470458984375, -84.45140075683594, 270.01483154296875),   // RW27R 111.30
-        Cand("IATL", 33.646793365478516, -84.40199279785156, 89.97297668457031),   // RW08R 109.90
-        Cand("IBRU", 33.646785736083984, -84.44181823730469, 269.9911804199219),   // RW26L 108.70
-        Cand("IFSQ", 33.631813049316406, -84.45093536376953, 269.9896240234375),   // RW27L 108.50
-        Cand("IFUN", 33.63182067871094, -84.41452026367188, 89.97322845458984),    // RW09R 108.90
-        Cand("IGXZ", 33.649532318115234, -84.44181060791016, 269.9896240234375),   // RW26R 110.10
-        Cand("IHFW", 33.64954376220703, -84.40640258789062, 89.97322082519531),    // RW08L 109.30
-        Cand("IHZK", 33.634700775146484, -84.40518188476562, 89.99320220947266),   // RW09L 110.50
-        Cand("IOMO", 33.62028884887695, -84.4148941040039, 89.9599609375),         // RW10  111.55
-        Cand("IPKU", 33.620269775390625, -84.45156860351562, 269.976318359375),    // RW28  111.75
-    ];
+    private static readonly OrphanIlsMatcher.RunwayEnd[] KatlEnds = KatlOrphanIlsFixture.MatcherEnds();
+    private static readonly ILSData[] KatlCandidates = KatlOrphanIlsFixture.MatcherCandidates();
 
     private static string? SelectAtKatl(string runwayName)
-    {
-        var target = KatlEnds.Single(e => e.Name == runwayName);
-        int i = OrphanIlsMatcher.SelectBest(target, KatlCandidates, KatlEnds);
-        return i < 0 ? null : KatlCandidates[i].Ident;
-    }
+        => OrphanIlsMatcher.SelectBest(
+            KatlEnds, KatlOrphanIlsFixture.IndexOfEnd(runwayName), KatlCandidates)?.Ident;
 
     // --- The reported defect ------------------------------------------------
 
@@ -79,8 +43,9 @@ public class OrphanIlsMatcherTests
         Assert.Equal("IHFW", SelectAtKatl("08L"));   // 109.30, not IFUN/108.90
     }
 
-    // The same near-tie mis-picked three more east-facing ends (08R and 09L also took
-    // IFUN) and both of 27L/27R took IBRU — the pilot only noticed the pair they compared.
+    // The same near-tie mis-picked two more east-facing ends (08R and 09L also took IFUN)
+    // and both of 27L/27R took IBRU — five of the ten in all, and the pilot only noticed
+    // the pair they compared.
     [Theory]
     [InlineData("08L", "IHFW")]
     [InlineData("08R", "IATL")]
@@ -115,11 +80,14 @@ public class OrphanIlsMatcherTests
     public void Cross_track_separates_parallels_far_more_sharply_than_range()
     {
         var end08L = KatlEnds.Single(e => e.Name == "08L");
-        double own = OrphanIlsMatcher.CrossTrackMetres(end08L, KatlCandidates.Single(c => c.Ident == "IHFW"));
-        double parallel = OrphanIlsMatcher.CrossTrackMetres(end08L, KatlCandidates.Single(c => c.Ident == "IFUN"));
+        var own = KatlCandidates.Single(c => c.Ident == "IHFW");
+        var parallel = KatlCandidates.Single(c => c.Ident == "IFUN");
 
-        Assert.True(own < 5.0, $"own localizer should be on the centerline, was {own:F1} m");
-        Assert.True(parallel > 1000.0, $"parallel runway's localizer should be far off, was {parallel:F1} m");
+        double ownCross = OrphanIlsMatcher.CrossTrackMetres(end08L, own.AntennaLatitude, own.AntennaLongitude);
+        double parallelCross = OrphanIlsMatcher.CrossTrackMetres(end08L, parallel.AntennaLatitude, parallel.AntennaLongitude);
+
+        Assert.True(ownCross < 5.0, $"own localizer should be on the centerline, was {ownCross:F1} m");
+        Assert.True(parallelCross > 1000.0, $"parallel runway's localizer should be far off, was {parallelCross:F1} m");
     }
 
     // A localizer serving this runway lies BEYOND the far end, i.e. ahead of the threshold
@@ -130,7 +98,41 @@ public class OrphanIlsMatcherTests
         var end = End("09", 0.0, 0.0, 90.0);
         // 3 km due WEST of the threshold, on centerline, correct heading — but behind.
         var behind = Cand("XXX", 0.0, -0.0323, 90.0);
-        Assert.Equal(-1, OrphanIlsMatcher.SelectBest(end, [behind], [end]));
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 0, [behind]));
+    }
+
+    // ...and not so far beyond the far end that it must be serving something else. The
+    // centerline is extended forward without limit, so without this ceiling a second
+    // airport on the same bearing is admitted on cross-track alone — the cross-track
+    // backstop cannot catch it, because the two runways are collinear.
+    [Fact]
+    public void Candidate_far_beyond_the_far_end_is_rejected()
+    {
+        var end = End("09", 0.0, 0.0, 90.0, lengthM: 3000.0);
+        // On centerline and ahead, but ~11 km out: 3 km of runway plus 8 km of nothing,
+        // well past the 3,000 m localizer setback allowance.
+        var tooFar = Cand("XXX", 0.0, 0.0988, 90.0);
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 0, [tooFar]));
+    }
+
+    // The ceiling is per-runway, so it must not fire on a legitimately long runway. KEDW's
+    // lakebed runway is 10.7 km; its localizer would sit beyond that.
+    [Fact]
+    public void Candidate_beyond_a_long_runway_is_still_accepted()
+    {
+        var end = End("09", 0.0, 0.0, 90.0, lengthM: 10668.0);
+        var farButLegitimate = Cand("XXX", 0.0, 0.0988, 90.0);   // ~11 km, inside 10668 + 3000
+        Assert.Equal("XXX", OrphanIlsMatcher.SelectBest([end], 0, [farButLegitimate])?.Ident);
+    }
+
+    // An end whose runway length is unknown (0) skips the ceiling rather than risk
+    // dropping a real ILS.
+    [Fact]
+    public void Unknown_runway_length_disables_the_along_track_ceiling()
+    {
+        var end = End("09", 0.0, 0.0, 90.0);   // lengthM defaults to 0
+        var far = Cand("XXX", 0.0, 0.0988, 90.0);
+        Assert.Equal("XXX", OrphanIlsMatcher.SelectBest([end], 0, [far])?.Ident);
     }
 
     // Heading gates the reciprocal end's localizer out.
@@ -139,7 +141,7 @@ public class OrphanIlsMatcherTests
     {
         var end = End("09", 0.0, 0.0, 90.0);
         var reciprocal = Cand("XXX", 0.0, 0.0323, 270.0);
-        Assert.Equal(-1, OrphanIlsMatcher.SelectBest(end, [reciprocal], [end]));
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 0, [reciprocal]));
     }
 
     // The mutual-best rule: a localizer goes to the runway whose centerline it is closest
@@ -156,9 +158,27 @@ public class OrphanIlsMatcherTests
         var north = End("09L", 0.00135, 0.0, 90.0);
         var south = End("09R", 0.0, 0.0, 90.0);
         var northLoc = Cand("INOR", 0.00135, 0.0323, 90.0);
+        OrphanIlsMatcher.RunwayEnd[] ends = [north, south];
 
-        Assert.Equal(0, OrphanIlsMatcher.SelectBest(north, [northLoc], [north, south]));
-        Assert.Equal(-1, OrphanIlsMatcher.SelectBest(south, [northLoc], [north, south]));
+        Assert.Equal("INOR", OrphanIlsMatcher.SelectBest(ends, 0, [northLoc])?.Ident);
+        Assert.Null(OrphanIlsMatcher.SelectBest(ends, 1, [northLoc]));
+    }
+
+    // The target is identified by POSITION, not by name. An airport carrying two ends with
+    // the same name — add-on scenery layered over stock runways, which is the situation
+    // that produced this bug in the first place — must still have the second one compete.
+    // Under a name compare it was skipped as "the target itself", the mutual-best test
+    // passed vacuously, and the parallel-borrowing failure came straight back.
+    [Fact]
+    public void A_same_named_parallel_still_competes()
+    {
+        var north = End("09", 0.00135, 0.0, 90.0);
+        var south = End("09", 0.0, 0.0, 90.0);       // same name, different pavement
+        var northLoc = Cand("INOR", 0.00135, 0.0323, 90.0);
+        OrphanIlsMatcher.RunwayEnd[] ends = [north, south];
+
+        Assert.Equal("INOR", OrphanIlsMatcher.SelectBest(ends, 0, [northLoc])?.Ident);
+        Assert.Null(OrphanIlsMatcher.SelectBest(ends, 1, [northLoc]));
     }
 
     // A runway with no candidate at all returns "no match", which the caller renders as
@@ -167,7 +187,18 @@ public class OrphanIlsMatcherTests
     public void No_candidates_returns_no_match()
     {
         var end = End("09", 0.0, 0.0, 90.0);
-        Assert.Equal(-1, OrphanIlsMatcher.SelectBest(end, [], [end]));
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 0, []));
+    }
+
+    // A runway name the airport does not have resolves to index -1, which must return no
+    // match rather than throw — the provider hands the FindIndex result straight through.
+    [Fact]
+    public void Target_index_out_of_range_returns_no_match()
+    {
+        var end = End("09", 0.0, 0.0, 90.0);
+        var loc = Cand("XXX", 0.0, 0.0323, 90.0);
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], -1, [loc]));
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 5, [loc]));
     }
 
     // An absurdly far off-centerline antenna is refused outright even when it is the only
@@ -178,7 +209,7 @@ public class OrphanIlsMatcherTests
     {
         var end = End("09", 0.0, 0.0, 90.0);
         var wayOff = Cand("XXX", 0.09, 0.0323, 90.0);   // ~10 km north of the centerline
-        Assert.Equal(-1, OrphanIlsMatcher.SelectBest(end, [wayOff], [end]));
+        Assert.Null(OrphanIlsMatcher.SelectBest([end], 0, [wayOff]));
     }
 
     // Longitude degrees shrink with latitude; the cross-track metres conversion must
@@ -189,7 +220,7 @@ public class OrphanIlsMatcherTests
     {
         // 0.01° of longitude at 78°N is ~231 m, not the ~1113 m it spans at the equator.
         var atPole = End("18", 78.0, 0.0, 180.0);
-        double m = OrphanIlsMatcher.CrossTrackMetres(atPole, Cand("X", 78.0, 0.01, 180.0));
+        double m = OrphanIlsMatcher.CrossTrackMetres(atPole, 78.0, 0.01);
         Assert.InRange(m, 200.0, 260.0);
     }
 }

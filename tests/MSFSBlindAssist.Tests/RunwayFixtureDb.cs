@@ -1,4 +1,4 @@
-// Synthetic-SQLite fixture for RunwayInfoAliasingTests.cs — a runway/runway_end/airport/ils
+﻿// Synthetic-SQLite fixture for RunwayInfoAliasingTests.cs — a runway/runway_end/airport/ils
 // schema scoped to exactly the columns
 // MSFSBlindAssist.Forms.ElectronicFlightBagForm.GetRunwayDetailedInfoCore's SQL selects and
 // reads (verified column-by-column against the query and every `reader["..."]`/`ilsReader["..."]`
@@ -132,40 +132,48 @@ CREATE TABLE ils (
             ("marking_flags", 0), ("has_closed_markings", 0), ("has_stol_markings", 0));
 
     public void InsertRunwayEnd(int runwayEndId, string name, string? ilsIdent = null,
-        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0,
-        double offsetThreshold = 0, bool closed = false)
+        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0)
         => Insert("runway_end",
             ("runway_end_id", runwayEndId), ("name", name), ("ils_ident", ilsIdent),
             ("heading", heading), ("altitude", altitude), ("lonx", lonx), ("laty", laty),
-            ("offset_threshold", offsetThreshold), ("has_closed_markings", closed ? 1 : 0),
+            // Columns GetRunways' SQL selects; hardcoded like InsertRunway's pair, since
+            // no test needs to vary them.
+            ("offset_threshold", 0), ("has_closed_markings", 0),
             ("is_takeoff", 1), ("is_landing", 1), ("is_pattern", "Yes"), ("end_type", "PRIMARY"),
             ("left_vasi_type", null), ("left_vasi_pitch", null), ("right_vasi_type", null), ("right_vasi_pitch", null));
 
     /// <summary>
     /// An ORPHANED ils row: correct ident/frequency/position/course, but the
     /// loc_airport_ident / loc_runway_name join columns NULL, exactly as navdatareader
-    /// leaves 192 of them in an fs2024 extraction. Re-linking these to a runway is
-    /// OrphanIlsMatcher's job, reached via LittleNavMapProvider's fallback path.
+    /// leaves a couple of hundred of them in an fs2024 extraction (OrphanIlsMatcher states
+    /// the count). Re-linking these to a runway is OrphanIlsMatcher's job, reached via
+    /// LittleNavMapProvider's fallback path.
     /// </summary>
     public void InsertOrphanIls(string ident, double lonx, double laty, double locHeading,
         double frequency, string? name = null)
-        => Insert("ils",
-            ("ident", ident), ("loc_airport_ident", null), ("loc_runway_name", null),
-            ("frequency", frequency), ("name", name ?? $"ILS/GS {ident}"), ("region", "K1"), ("type", "ILS"),
-            ("loc_heading", locHeading), ("loc_width", 3.0), ("range", 18),
-            ("has_backcourse", 0), ("perf_indicator", "N/A"), ("provider", "N/A"), ("mag_var", 0),
-            ("dme_range", 0), ("dme_altitude", 0), ("dme_lonx", 0), ("dme_laty", 0),
-            ("gs_range", 0), ("gs_pitch", 3.0), ("gs_altitude", 0), ("gs_lonx", 0), ("gs_laty", 0),
-            ("altitude", 0), ("lonx", lonx), ("laty", laty));
+        => InsertIlsRow(ident, null, null, locHeading, frequency, 3.0, 18,
+            name ?? $"ILS/GS {ident}", lonx, laty, gsPitch: 3.0);
 
     public void InsertIls(string ident, string locAirportIdent, string locRunwayName, double locHeading = 0,
         double frequency = 111100, double locWidth = 3.0, double range = 18)
+        => InsertIlsRow(ident, locAirportIdent, locRunwayName, locHeading, frequency, locWidth, range,
+            $"ILS/GS {ident}", lonx: 0, laty: 0, gsPitch: 0);
+
+    /// <summary>
+    /// The single spelling of the `ils` column list. Both InsertIls and InsertOrphanIls go
+    /// through it so a schema change is one edit, not two — the two column lists were
+    /// 17-of-25 identical and a divergence in the shared boilerplate would have been
+    /// invisible: the row still inserts, and the failure reads like a provider bug.
+    /// </summary>
+    private void InsertIlsRow(string ident, string? locAirportIdent, string? locRunwayName,
+        double locHeading, double frequency, double locWidth, double range,
+        string name, double lonx, double laty, double gsPitch)
         => Insert("ils",
             ("ident", ident), ("loc_airport_ident", locAirportIdent), ("loc_runway_name", locRunwayName),
-            ("frequency", frequency), ("name", $"{locRunwayName} ILS"), ("region", "K1"), ("type", "ILS"),
+            ("frequency", frequency), ("name", name), ("region", "K1"), ("type", "ILS"),
             ("loc_heading", locHeading), ("loc_width", locWidth), ("range", range),
             ("has_backcourse", 0), ("perf_indicator", "N/A"), ("provider", "N/A"), ("mag_var", 0),
             ("dme_range", 0), ("dme_altitude", 0), ("dme_lonx", 0), ("dme_laty", 0),
-            ("gs_range", 0), ("gs_pitch", 0), ("gs_altitude", 0), ("gs_lonx", 0), ("gs_laty", 0),
-            ("altitude", 0), ("lonx", 0), ("laty", 0));
+            ("gs_range", 0), ("gs_pitch", gsPitch), ("gs_altitude", 0), ("gs_lonx", 0), ("gs_laty", 0),
+            ("altitude", 0), ("lonx", lonx), ("laty", laty));
 }

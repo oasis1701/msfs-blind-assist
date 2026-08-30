@@ -1,3 +1,6 @@
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
+
 namespace MSFSBlindAssist.Database;
 
 /// <summary>
@@ -6,8 +9,15 @@ namespace MSFSBlindAssist.Database;
 /// An orphan is a row whose <c>loc_airport_ident</c> / <c>loc_runway_name</c> /
 /// <c>loc_runway_end_id</c> join columns navdatareader left NULL. The row itself is
 /// correct — right ident, frequency, position and localizer course — only the link to a
-/// runway is missing, so it has to be recovered geometrically. fs2024 has 192 such rows;
-/// fs2020 has none, so this whole path is a no-op there.
+/// runway is missing, so it has to be recovered geometrically.
+///
+/// <para><b>How many orphans.</b> Roughly two hundred, and THIS FILE IS THE ONE PLACE
+/// THAT NUMBER IS STATED — every other mention defers here rather than carrying its own
+/// figure, because it had drifted to four different values across the tree. Measured 217
+/// in a 2026-08-30 fs2024 extraction; earlier builds counted 192 and 213. The count is
+/// not a constant: it varies with the installed scenery, so treat any exact figure as a
+/// measurement with a date on it and never as an invariant. fs2020 has zero, so this
+/// whole path is a no-op there.
 ///
 /// <para><b>Why cross-track and not range.</b> The predecessor rule picked the orphan
 /// whose antenna was nearest the runway THRESHOLD, on the reasoning that "localizer
@@ -33,20 +43,32 @@ namespace MSFSBlindAssist.Database;
 /// the runway with no localizer of its own then gets nothing, which the caller renders as
 /// "no ILS". Showing a blind pilot the wrong ILS frequency is worse than showing none:
 /// they would tune and fly the localizer for the runway beside them.
+///
+/// <para><b>The competitor set is the requested airport's ends only.</b> The caller's
+/// candidate bounding box spans ~11 km and can reach a neighbouring airport's localizer,
+/// which therefore has nobody to claim it. Widening the competitor scan to every airport
+/// in the box was measured and REJECTED: the 32 localizers currently accepted by ends at
+/// two idents are all DUPLICATE AIRPORT RECORDS for one physical field (UZTT/UTTT,
+/// UZSS/UTSS, OJMS/OJ40, FVBU/FVJN, FNLF/FNBJ, ORSJ/ORSU, VAJA/VEDO…), where both records
+/// describe the same runway and both must keep the localizer. Widening the scan makes the
+/// second record's runway report NO ILS — 32 regressions to close a gap with zero
+/// observed instances. Do not "fix" this without a real case in hand.
 /// </summary>
 public static class OrphanIlsMatcher
 {
-    /// <summary>A runway end, as stored in <c>runway_end</c>. Heading is TRUE degrees.</summary>
-    public readonly record struct RunwayEnd(string Name, double Latitude, double Longitude, double HeadingTrue);
-
-    /// <summary>An orphaned <c>ils</c> row. <paramref name="LocalizerHeadingTrue"/> is <c>loc_heading</c>.</summary>
-    public readonly record struct IlsCandidate(string Ident, double Latitude, double Longitude, double LocalizerHeadingTrue);
+    /// <summary>
+    /// A runway end, as stored in <c>runway_end</c>. Heading is TRUE degrees.
+    /// <paramref name="LengthMetres"/> is the parent runway's length (0 = unknown, which
+    /// disables the along-track ceiling for that end).
+    /// </summary>
+    public readonly record struct RunwayEnd(
+        string Name, double Latitude, double Longitude, double HeadingTrue, double LengthMetres = 0.0);
 
     /// <summary>
     /// How far a candidate's localizer course may differ from the runway heading. Unchanged
     /// from the predecessor rule; it is what gates out the reciprocal end's localizer.
     /// </summary>
-    public const double HeadingToleranceDeg = 5.0;
+    private const double HeadingToleranceDeg = 5.0;
 
     /// <summary>
     /// Absolute ceiling on how far off the runway centerline a localizer may sit and still
@@ -60,54 +82,78 @@ public static class OrphanIlsMatcher
     /// </summary>
     public const double MaxCrossTrackMetres = 300.0;
 
-    private const double MetresPerDegreeLatitude = 111320.0;
+    /// <summary>
+    /// How far BEYOND the far end of the runway a localizer may sit. The centerline is
+    /// extended forward without limit, so without this an aligned antenna arbitrarily far
+    /// downfield — a second airport on the same bearing, or a relocated antenna — is
+    /// admitted on cross-track alone, which the cross-track backstop cannot catch because
+    /// the two runways are collinear. Bounding it by the runway's OWN length keeps the
+    /// rule per-runway instead of adding a second tuned distance: an accepted antenna must
+    /// lie within <c>LengthMetres + MaxLocalizerSetbackMetres</c> of the threshold. The
+    /// widest legitimate setback measured across fs2024 is 1,650 m (UBFI 11), and the
+    /// whole-database result is identical for any allowance from 2,000 m to 4,000 m, so
+    /// 3,000 m is comfortably clear of every genuine match. Ends whose runway length is
+    /// unknown (0) skip the ceiling entirely rather than risk dropping a real ILS.
+    /// </summary>
+    public const double MaxLocalizerSetbackMetres = 3000.0;
 
     /// <summary>
-    /// Perpendicular distance in metres from the candidate's antenna to the runway
-    /// centerline through <paramref name="end"/>, extended in both directions.
+    /// Perpendicular distance in metres from an antenna to the runway centerline through
+    /// <paramref name="end"/>, extended in both directions.
     /// </summary>
-    public static double CrossTrackMetres(RunwayEnd end, IlsCandidate candidate)
+    public static double CrossTrackMetres(RunwayEnd end, double latitude, double longitude)
     {
-        Project(end, candidate, out _, out double crossTrack);
+        Project(FrameFor(end), latitude, longitude, out _, out double crossTrack);
         return crossTrack;
     }
 
     /// <summary>
-    /// Distance in metres from the threshold along the runway heading — positive ahead of
-    /// the threshold (where a localizer serving this end must lie), negative behind it.
-    /// </summary>
-    public static double AlongTrackMetres(RunwayEnd end, IlsCandidate candidate)
-    {
-        Project(end, candidate, out double alongTrack, out _);
-        return alongTrack;
-    }
-
-    /// <summary>
-    /// Returns the index into <paramref name="candidates"/> of the localizer serving
-    /// <paramref name="target"/>, or -1 when none does.
+    /// Returns the localizer serving <paramref name="airportEnds"/>[<paramref name="targetIndex"/>],
+    /// or null when none does.
     /// </summary>
     /// <param name="airportEnds">
-    /// Every runway end at the airport, <paramref name="target"/> included. These are the
-    /// competitors for the mutual-best test; passing only the target degrades this to a
-    /// plain nearest-centerline match.
+    /// Every runway end at the airport, the target included. These are the competitors for
+    /// the mutual-best test; a single-element list degrades this to a plain
+    /// nearest-centerline match.
     /// </param>
-    public static int SelectBest(RunwayEnd target, IReadOnlyList<IlsCandidate> candidates, IReadOnlyList<RunwayEnd> airportEnds)
+    /// <param name="targetIndex">
+    /// Index of the end being matched. The target is identified by POSITION, not by name,
+    /// so an airport carrying two ends with the same name (add-on scenery layered over
+    /// stock runways) still has the second one compete — under a name compare it was
+    /// skipped as "the target itself" and the parallel-borrowing failure came back.
+    /// </param>
+    public static ILSData? SelectBest(
+        IReadOnlyList<RunwayEnd> airportEnds, int targetIndex, IReadOnlyList<ILSData> candidates)
     {
-        int best = -1;
+        if (targetIndex < 0 || targetIndex >= airportEnds.Count)
+            return null;
+
+        // One frame per end, built once: Project is called O(candidates x ends) times and
+        // each frame costs three trig calls.
+        var frames = new RunwayFrame[airportEnds.Count];
+        for (int i = 0; i < airportEnds.Count; i++)
+            frames[i] = FrameFor(airportEnds[i]);
+
+        var target = airportEnds[targetIndex];
+        double alongTrackCeiling = target.LengthMetres > 0
+            ? target.LengthMetres + MaxLocalizerSetbackMetres
+            : double.MaxValue;
+
+        ILSData? best = null;
         double bestCrossTrack = double.MaxValue;
 
-        for (int i = 0; i < candidates.Count; i++)
+        foreach (var candidate in candidates)
         {
-            var candidate = candidates[i];
-
-            if (!HeadingMatches(candidate.LocalizerHeadingTrue, target.HeadingTrue))
+            if (!HeadingMatches(candidate.LocalizerHeading, target.HeadingTrue))
                 continue;
 
-            Project(target, candidate, out double alongTrack, out double crossTrack);
+            Project(frames[targetIndex], candidate.AntennaLatitude, candidate.AntennaLongitude,
+                out double alongTrack, out double crossTrack);
 
             // A localizer serving this end sits beyond the far end, so it is ahead of the
-            // threshold. Anything behind belongs to something else.
-            if (alongTrack <= 0.0)
+            // threshold. Anything behind belongs to something else, and anything past the
+            // far end by more than a localizer's setback serves something further away.
+            if (alongTrack <= 0.0 || alongTrack > alongTrackCeiling)
                 continue;
 
             if (crossTrack > MaxCrossTrackMetres)
@@ -116,11 +162,11 @@ public static class OrphanIlsMatcher
             if (crossTrack >= bestCrossTrack)
                 continue;
 
-            if (IsClaimedByAnotherRunwayEnd(target, candidate, crossTrack, airportEnds))
+            if (IsClaimedByAnotherRunwayEnd(airportEnds, frames, targetIndex, candidate, crossTrack))
                 continue;
 
             bestCrossTrack = crossTrack;
-            best = i;
+            best = candidate;
         }
 
         return best;
@@ -128,21 +174,22 @@ public static class OrphanIlsMatcher
 
     /// <summary>
     /// True when some other runway end at the airport lies closer to this antenna's
-    /// centerline than <paramref name="target"/> does — i.e. the localizer is that
-    /// runway's, not this one's.
+    /// centerline than the target does — i.e. the localizer is that runway's, not this one's.
     /// </summary>
     private static bool IsClaimedByAnotherRunwayEnd(
-        RunwayEnd target, IlsCandidate candidate, double targetCrossTrack, IReadOnlyList<RunwayEnd> airportEnds)
+        IReadOnlyList<RunwayEnd> airportEnds, RunwayFrame[] frames, int targetIndex,
+        ILSData candidate, double targetCrossTrack)
     {
-        foreach (var other in airportEnds)
+        for (int i = 0; i < airportEnds.Count; i++)
         {
-            if (string.Equals(other.Name, target.Name, StringComparison.OrdinalIgnoreCase))
+            if (i == targetIndex)
                 continue;
 
-            if (!HeadingMatches(candidate.LocalizerHeadingTrue, other.HeadingTrue))
+            if (!HeadingMatches(candidate.LocalizerHeading, airportEnds[i].HeadingTrue))
                 continue;
 
-            Project(other, candidate, out double otherAlong, out double otherCross);
+            Project(frames[i], candidate.AntennaLatitude, candidate.AntennaLongitude,
+                out double otherAlong, out double otherCross);
 
             // A runway the antenna sits BEHIND cannot be served by it, so it has no claim.
             if (otherAlong <= 0.0)
@@ -159,24 +206,24 @@ public static class OrphanIlsMatcher
         => Math.Abs(NormalizeHeadingDelta(localizerHeading - runwayHeading)) <= HeadingToleranceDeg;
 
     /// <summary>
-    /// Resolves the antenna's offset from the threshold into runway-relative metres. The
-    /// local flat-earth conversion is exact enough at this scale (antennas sit a few km
-    /// from the threshold) and scales longitude by cos(latitude) so high-latitude airports
-    /// — ENSB at 78°N is the extreme in this database — are not stretched east-west.
+    /// The runway-aligned frame for <paramref name="end"/>. Longitude is scaled at the
+    /// end's own latitude, so high-latitude airports — ENSB at 78°N is the extreme in this
+    /// database — are not stretched east-west.
     /// </summary>
-    private static void Project(RunwayEnd end, IlsCandidate candidate, out double alongTrack, out double crossTrack)
+    private static RunwayFrame FrameFor(RunwayEnd end)
+        => RunwayFrame.For(end.Latitude, end.Longitude, end.HeadingTrue, end.Latitude);
+
+    /// <summary>
+    /// Resolves an antenna's offset from the threshold into runway-relative metres:
+    /// <paramref name="alongTrack"/> positive ahead of the threshold, <paramref name="crossTrack"/>
+    /// unsigned. The projection itself belongs to <see cref="RunwayFrame"/> — this file must
+    /// never grow its own copy of it.
+    /// </summary>
+    private static void Project(RunwayFrame frame, double latitude, double longitude,
+        out double alongTrack, out double crossTrack)
     {
-        double metresPerDegreeLongitude = MetresPerDegreeLatitude * Math.Cos(end.Latitude * Math.PI / 180.0);
-
-        double east = (candidate.Longitude - end.Longitude) * metresPerDegreeLongitude;
-        double north = (candidate.Latitude - end.Latitude) * MetresPerDegreeLatitude;
-
-        double headingRad = end.HeadingTrue * Math.PI / 180.0;
-        double unitEast = Math.Sin(headingRad);
-        double unitNorth = Math.Cos(headingRad);
-
-        alongTrack = east * unitEast + north * unitNorth;
-        crossTrack = Math.Abs(north * unitEast - east * unitNorth);
+        alongTrack = frame.Along(latitude, longitude);
+        crossTrack = Math.Abs(frame.SignedCrossTrack(latitude, longitude));
     }
 
     /// <summary>Signed heading delta wrapped into [-180, 180], so 359° vs 1° is 2°.</summary>
