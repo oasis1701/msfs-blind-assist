@@ -69,4 +69,55 @@ public class HwA330DivergenceTests
         Assert.Equal("LIGHT LANDING:2", v.Name);
         Assert.Equal(SimVarType.SimVar, v.Type);
     }
+
+    // --- Divergence 2: ECAM SD page indices ---------------------------------------
+    // A339X SD bundle: Eng 0, Bleed 1, Press 2, ElecAC 3, ElecDC 4, Hyd 5, Apu 6,
+    // Cond 7, Door 8, Wheel 9, Fctl 10, Fuel 11, Crz 12, Status 13, CB 14.
+    // The A32NX table maps STS=12, which is CRUISE on the A330.
+
+    [Fact]
+    public void A330_ecam_status_page_is_13_not_12()
+    {
+        Assert.Equal(13, MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor
+            .EcamPageIndexMap["ECAM_PAGE_STS"]);
+    }
+
+    [Fact]
+    public void A330_ecam_hyd_and_fuel_pages_are_shifted()
+    {
+        var map = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.EcamPageIndexMap;
+        Assert.Equal(5,  map["ECAM_PAGE_HYD"]);
+        Assert.Equal(11, map["ECAM_PAGE_FUEL"]);
+    }
+
+    [Fact]
+    public void A330_ecam_pages_the_first_officer_uses_are_unchanged()
+    {
+        var map = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.EcamPageIndexMap;
+        Assert.Equal(0, map["ECAM_PAGE_ENG"]);
+        Assert.Equal(6, map["ECAM_PAGE_APU"]);
+        Assert.Equal(8, map["ECAM_PAGE_DOOR"]);
+    }
+
+    // --- Divergence 5: cockpit-lighting potentiometers ----------------------------
+    // Pot 10 = CEILING_LIGHT_CS, pot 11 = MAP_LIGHT_CS on the A339X — the Captain's
+    // ceiling and map lights, both binary click-toggles. The A320 scene writes 50.
+
+    [Fact]
+    public void A330_lighting_scene_does_not_write_the_glareshield_flood_pots()
+    {
+        var keys = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.CockpitLightingKeys;
+        Assert.DoesNotContain("BRIGHT_GLARESHIELD_CAPT_SET", keys);
+        Assert.DoesNotContain("BRIGHT_GLARESHIELD_FO_SET", keys);
+    }
+
+    [Fact]
+    public void A330_lighting_scene_keeps_the_four_shared_potentiometers()
+    {
+        var keys = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.CockpitLightingKeys;
+        Assert.Contains("BRIGHT_GLARESHIELD_INTEG_SET", keys);
+        Assert.Contains("BRIGHT_OVERHEAD_INTEG_SET", keys);
+        Assert.Contains("BRIGHT_MAINPANEL_SET", keys);
+        Assert.Contains("BRIGHT_PEDESTAL_SET", keys);
+    }
 }

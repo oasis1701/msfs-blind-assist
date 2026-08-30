@@ -183,13 +183,20 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
         }
     }
 
-    private static readonly Dictionary<string, int> EcamPageIndex = new()
-    {
-        ["ECAM_PAGE_ENG"]=0, ["ECAM_PAGE_BLEED"]=1, ["ECAM_PAGE_PRESS"]=2,
-        ["ECAM_PAGE_ELEC"]=3, ["ECAM_PAGE_HYD"]=4, ["ECAM_PAGE_FUEL"]=5,
-        ["ECAM_PAGE_APU"]=6, ["ECAM_PAGE_COND"]=7, ["ECAM_PAGE_DOOR"]=8,
-        ["ECAM_PAGE_WHEEL"]=9, ["ECAM_PAGE_FCTL"]=10, ["ECAM_PAGE_STS"]=12,
-    };
+    /// <summary>
+    /// A339X system-display page indices. NOT the A32NX's: the A330 splits ELEC into
+    /// ElecAC(3)/ElecDC(4) and inserts Fuel at 11, so everything above Fctl shifts.
+    /// Measured from the A339X SD bundle. The A32NX table maps STS=12, which renders
+    /// the CRUISE page here. Exposed for HwA330DivergenceTests.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, int> EcamPageIndexMap =
+        new Dictionary<string, int>
+        {
+            ["ECAM_PAGE_ENG"]=0, ["ECAM_PAGE_BLEED"]=1, ["ECAM_PAGE_PRESS"]=2,
+            ["ECAM_PAGE_ELEC"]=3, ["ECAM_PAGE_HYD"]=5, ["ECAM_PAGE_FUEL"]=11,
+            ["ECAM_PAGE_APU"]=6, ["ECAM_PAGE_COND"]=7, ["ECAM_PAGE_DOOR"]=8,
+            ["ECAM_PAGE_WHEEL"]=9, ["ECAM_PAGE_FCTL"]=10, ["ECAM_PAGE_STS"]=13,
+        };
 
     // Direct SD page-index write — held-safe (the earlier ECP press/release pulse could
     // leave a button stuck). PagesContainer reads A32NX_ECAM_SD_CURRENT_PAGE_INDEX as the
@@ -197,11 +204,28 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     // for a checklist callout, same as the A380's real page-index write).
     private Task<bool> FireEcamPageAsync(string pseudoKey)
     {
-        if (!EcamPageIndex.TryGetValue(pseudoKey, out int idx)) return Task.FromResult(false);
+        if (!EcamPageIndexMap.TryGetValue(pseudoKey, out int idx)) return Task.FromResult(false);
         return Task.FromResult(ApplySilent("A32NX_ECAM_SD_CURRENT_PAGE_INDEX", idx));
     }
 
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
+
+    /// <summary>
+    /// The potentiometer/lighting keys the A330 scene writes. Deliberately EXCLUDES
+    /// BRIGHT_GLARESHIELD_CAPT_SET (pot 10) and BRIGHT_GLARESHIELD_FO_SET (pot 11):
+    /// on the A339X those are the Captain's CEILING and MAP lights
+    /// (A330_NEO_INTERIOR.xml:271-283), not glareshield floods, and both are binary
+    /// click-toggles paired with L:A339X_CEILING_LIGHT_CAPTAIN / L:A339X_MAP_LIGHT_CAPTAIN.
+    /// Writing the scene's intermediate value would light an unrelated lamp and leave it
+    /// desynced from its own state var. The A330 has no glareshield flood knobs at all.
+    /// Exposed for HwA330DivergenceTests.
+    /// </summary>
+    public static readonly IReadOnlyList<string> CockpitLightingKeys = new[]
+    {
+        "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
+        "BRIGHT_GLARESHIELD_INTEG_SET", "BRIGHT_OVERHEAD_INTEG_SET",
+        "BRIGHT_MAINPANEL_SET", "BRIGHT_PEDESTAL_SET",
+    };
 
     /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
     /// in-sim. Uses the def's brightness-knob keys (ann/dome/compass/integ/flood).</summary>
@@ -215,15 +239,19 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
             CockpitLightScene.Off           => (1, 0,   0, 0,   0),
             _                               => (1, 100, 1, 100, 50),
         };
-        await Set("A32NX_OVHD_INTLT_ANN", ann);
-        await Set("A32NX_OVHD_INTLT_DOME", dome);
-        await Set("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass);
-        await Set("BRIGHT_GLARESHIELD_INTEG_SET", integ);
-        await Set("BRIGHT_OVERHEAD_INTEG_SET", integ);
-        await Set("BRIGHT_MAINPANEL_SET", flood);
-        await Set("BRIGHT_PEDESTAL_SET", flood);
-        await Set("BRIGHT_GLARESHIELD_CAPT_SET", flood);
-        await Set("BRIGHT_GLARESHIELD_FO_SET", flood);
+        foreach (var (key, val) in new (string, int)[]
+        {
+            ("A32NX_OVHD_INTLT_ANN", ann),
+            ("A32NX_OVHD_INTLT_DOME", dome),
+            ("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass),
+            ("BRIGHT_GLARESHIELD_INTEG_SET", integ),
+            ("BRIGHT_OVERHEAD_INTEG_SET", integ),
+            ("BRIGHT_MAINPANEL_SET", flood),
+            ("BRIGHT_PEDESTAL_SET", flood),
+        })
+        {
+            await Set(key, val);
+        }
         return true;
     }
 
