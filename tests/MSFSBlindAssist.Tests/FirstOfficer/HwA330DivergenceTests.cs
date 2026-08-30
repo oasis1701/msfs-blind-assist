@@ -129,17 +129,77 @@ public class HwA330DivergenceTests
         Assert.Equal(2, MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltPositionOff);
     }
 
+    // The seat-belt divergence is about the WRITE, not the read. An earlier test here
+    // asserted only that the checklist items detect on the sign lamp — a StateFieldName
+    // that is byte-identical in the A320 profile, so it passed whether or not the
+    // divergence had been applied, and it passed while all three FLOW steps were still
+    // firing the A320's bare toggle. The three below pin the write.
+
     [Fact]
-    public void A330_seatbelt_items_detect_on_the_sign_lamp_never_the_switch_position()
+    public void A330_seatbelt_items_read_the_sign_lamp_but_write_the_switch_position()
     {
         var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
             .SelectMany(g => g.Items)
             .Where(i => i.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
             .ToList();
 
+        // Detection stays on the sign LAMP, never the switch position — the A380 invariant.
         Assert.Equal(3, items.Count);
         foreach (var i in items)
             Assert.Equal("CABIN SEATBELTS ALERT SWITCH", i.StateFieldName);
+
+        // ...but the write selects the three-position switch. A bare toggle is fought back
+        // within half a second whenever the switch sits in AUTO(1), whose 500 ms block
+        // re-drives the stock simvar. The A320 has no AUTO and so no analogue to this.
+        Assert.Equal(("SEATBELT_SIGN_POSITION", 0),
+            MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltWritePlan(true));
+        Assert.Equal(("SEATBELT_SIGN_POSITION", 2),
+            MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltWritePlan(false));
+    }
+
+    [Fact]
+    public void A330_seatbelt_flow_steps_route_through_the_seatbelt_sign_pseudo_key()
+    {
+        var steps = MSFSBlindAssist.FirstOfficer.HWA330.HwA330FlowDefinitions.Build()
+            .SelectMany(f => f.Steps)
+            .Where(s => s.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
+            .ToDictionary(s => s.Id);
+
+        Assert.Equal(3, steps.Count);
+
+        // The pseudo-key DispatchCoreAsync claims, so flow, checklist and phase monitor
+        // converge on SetSeatbeltSign — the one path that moves the switch out of AUTO.
+        Assert.Equal("SEATBELT_SIGN",
+            MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltSignKey);
+        foreach (var s in steps.Values)
+            Assert.Equal(MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltSignKey,
+                s.EventName);
+
+        Assert.Equal(1, steps["BS_SEATBELTS"].TargetValue);
+        Assert.Equal(1, steps["DC_SEATBELTS"].TargetValue);
+        Assert.Equal(0, steps["SD_SEATBELTS_OFF"].TargetValue);
+    }
+
+    [Fact]
+    public void No_A330_flow_step_fires_the_bare_stock_seatbelt_toggle_event()
+    {
+        const string BareToggle = "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE";
+
+        var offenders = MSFSBlindAssist.FirstOfficer.HWA330.HwA330FlowDefinitions.Build()
+            .SelectMany(f => f.Steps)
+            .Where(s => s.EventName == BareToggle
+                     || s.MultiActions.Any(m => m.EventName == BareToggle))
+            .Select(s => s.Id)
+            .Order()
+            .ToList();
+
+        // That key is Event-typed with no HandleUIVariableSet branch, so ApplyUIVariable
+        // returns false and ApplySilent's fallback writes a bogus L:var literally named
+        // CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE — then reports success, so the step ticks
+        // its checklist item having done nothing to the aircraft.
+        Assert.True(offenders.Count == 0,
+            "These A330 flow steps still fire the bare stock seat-belt toggle, which reaches "
+            + "no write branch and silently no-ops: " + string.Join(", ", offenders));
     }
 
     [Fact]

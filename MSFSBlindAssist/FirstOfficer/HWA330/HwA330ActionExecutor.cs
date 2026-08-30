@@ -123,6 +123,11 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
             "FCU_PUSH_ALT"      => FireFcu(EvtAltPush),
             "AP1_ENGAGE"        => FireFcu(EvtAp1Push),
             "CABIN_CALL_ALL"    => await FireCabinCallAsync(),
+            // Seat-belt sign. A pseudo-key, NOT the stock CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE
+            // event: that key has no HandleUIVariableSet branch, so it would fall through to
+            // ApplySilent's SetLVar fallback, write a bogus L:var of that name and report
+            // success. See SetSeatbeltSignCoreAsync for why a bare toggle cannot work here.
+            SeatbeltSignKey     => await SetSeatbeltSignCoreAsync((target ?? 1) != 0),
             _ when name.StartsWith("ECAM_PAGE_") => await FireEcamPageAsync(name),
             _                   => ApplySilent(name, target ?? 1),
         };
@@ -398,6 +403,22 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     public const int SeatbeltPositionOff = 2;
 
     /// <summary>
+    /// The dispatch pseudo-key flow steps use for the seat-belt sign, so flow, checklist
+    /// and phase monitor all converge on <see cref="SetSeatbeltSign"/> — the ONE write path
+    /// that moves the switch out of AUTO. Exposed for HwA330DivergenceTests.
+    /// </summary>
+    public const string SeatbeltSignKey = "SEATBELT_SIGN";
+
+    /// <summary>
+    /// Pure: the switch-POSITION write a seat-belt sign command makes — ON selects
+    /// position 0, OFF selects position 2. This, not the stock toggle event, is the
+    /// A330's actual seat-belt write; the A32NX has no analogue because its switch has
+    /// no AUTO position to be moved out of. Exposed for HwA330DivergenceTests.
+    /// </summary>
+    public static (string VarKey, int Value) SeatbeltWritePlan(bool on) =>
+        ("SEATBELT_SIGN_POSITION", on ? SeatbeltPositionOn : SeatbeltPositionOff);
+
+    /// <summary>
     /// Seat-belt sign, in two steps and in this order.
     ///
     /// (1) Write the switch POSITION. This moves the physical switch AND takes the
@@ -414,11 +435,18 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     ///
     /// Detection stays on the sign LAMP, never the switch position — the A380 invariant.
     /// </summary>
-    public async Task<bool> SetSeatbeltSign(bool on)
+    public Task<bool> SetSeatbeltSign(bool on) => DispatchAsync(SeatbeltSignKey, on ? 1 : 0);
+
+    // Must be called inside _gate (dispatched from DispatchCoreAsync's SeatbeltSignKey arm,
+    // so the checklist CheckAction, the flow step and the phase monitor share one path).
+    // SemaphoreSlim is not reentrant, so this calls DispatchCoreAsync directly rather than
+    // Set(), which would re-enter the gate and deadlock.
+    private async Task<bool> SetSeatbeltSignCoreAsync(bool on)
     {
         if (_sc == null) return false;
 
-        await Set("SEATBELT_SIGN_POSITION", on ? SeatbeltPositionOn : SeatbeltPositionOff);
+        var (varKey, position) = SeatbeltWritePlan(on);
+        await DispatchCoreAsync(varKey, position);
 
         bool currentOn = (_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH") ?? (on ? 0.0 : 1.0)) > 0.5;
         if (currentOn != on) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");

@@ -232,8 +232,16 @@ public static class HwA330FlowDefinitions
             // External power off; skip when not on the bus
             Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
                 s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "BS_EXTPWR_OFF"),
-            // Seatbelt signs: 2-position toggle event on the A320 (no AUTO, unlike the A380).
-            Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1),
+            // Seatbelt signs: THREE-position on this airframe (0=On, 1=Auto, 2=Off), unlike
+            // the A320's genuine 2-position toggle. Routed through the SEATBELT_SIGN
+            // pseudo-key so flow, checklist and phase monitor share HwA330ActionExecutor's
+            // SetSeatbeltSign — the one write that selects a switch POSITION. A bare
+            // CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE cannot work here twice over: it reaches no
+            // write branch at all (so it would fall through to the SetLVar fallback and
+            // silently write a bogus L:var of that name), and even if it did, AUTO's 500 ms
+            // block re-drives the stock simvar and undoes the toggle within half a second.
+            // Detection stays on the sign LAMP, never the position — the A380 invariant.
+            Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "BS_SEATBELTS"),
             Done(Skip(SW("BS_BEACON", "Beacon: ON", "BEACON_LIGHTS_SET", 1),
                 s => s.IsOn("LIGHT BEACON")), "BS_BEACON"),
@@ -387,7 +395,8 @@ public static class HwA330FlowDefinitions
             // Landing autobrake is ALWAYS a Captain item (project-wide rule) — never
             // automated in a descent/approach flow.
             Captain("DC_AUTOBRAKE", "Set the landing autobrake — Instrument section, Autobrake panel"),
-            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS for why a bare toggle cannot work here.
+            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "DC_SEATBELTS"),
             // ONE descent-preparation item — see HwA330ChecklistDefinitions.BuildDescent.
             Captain("DC_MCDU",
@@ -486,7 +495,8 @@ public static class HwA330FlowDefinitions
                 s => !s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "SD_LS1"),
             Done(Skip(SW("SD_LS2", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON", 0),
                 s => !s.IsOn("A32NX_EFIS_R_LS_BUTTON_IS_ON")), "SD_LS2"),
-            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS for why a bare toggle cannot work here.
+            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 0),
                 s => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "BEACON_LIGHTS_SET", 0),
                 s => s.IsPosition("LIGHT BEACON", 0)), "SD_BEACON_OFF"),
