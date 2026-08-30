@@ -216,25 +216,21 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
 
     /// <summary>
-    /// The potentiometer/lighting keys the A330 scene writes. Deliberately EXCLUDES
-    /// BRIGHT_GLARESHIELD_CAPT_SET (pot 10) and BRIGHT_GLARESHIELD_FO_SET (pot 11):
-    /// on the A339X those are the Captain's CEILING and MAP lights
-    /// (A330_NEO_INTERIOR.xml:271-283), not glareshield floods, and both are binary
-    /// click-toggles paired with L:A339X_CEILING_LIGHT_CAPTAIN / L:A339X_MAP_LIGHT_CAPTAIN.
-    /// Writing the scene's intermediate value would light an unrelated lamp and leave it
-    /// desynced from its own state var. The A330 has no glareshield flood knobs at all.
-    /// Exposed for HwA330DivergenceTests.
+    /// The ordered (key, value) writes the A330 lighting scene makes — the SINGLE source
+    /// of truth for this scene. <see cref="SetCockpitLighting"/> writes exactly this and
+    /// nothing else, and <see cref="CockpitLightingKeys"/> is derived from it, so a pot
+    /// added here cannot escape the tests that read that list.
+    /// <para>
+    /// Deliberately EXCLUDES BRIGHT_GLARESHIELD_CAPT_SET (pot 10) and
+    /// BRIGHT_GLARESHIELD_FO_SET (pot 11): on the A339X those are the Captain's CEILING
+    /// and MAP lights (A330_NEO_INTERIOR.xml:271-283), not glareshield floods, and both
+    /// are binary click-toggles paired with L:A339X_CEILING_LIGHT_CAPTAIN /
+    /// L:A339X_MAP_LIGHT_CAPTAIN. Writing the scene's intermediate value would light an
+    /// unrelated lamp and leave it desynced from its own state var. The A330 has no
+    /// glareshield flood knobs at all.
+    /// </para>
     /// </summary>
-    public static readonly IReadOnlyList<string> CockpitLightingKeys = new[]
-    {
-        "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
-        "BRIGHT_GLARESHIELD_INTEG_SET", "BRIGHT_OVERHEAD_INTEG_SET",
-        "BRIGHT_MAINPANEL_SET", "BRIGHT_PEDESTAL_SET",
-    };
-
-    /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
-    /// in-sim. Uses the def's brightness-knob keys (ann/dome/compass/integ/flood).</summary>
-    public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
+    public static IReadOnlyList<(string Key, int Value)> CockpitLightingPlan(CockpitLightScene scene)
     {
         (int ann, int dome, int compass, int integ, int flood) = scene switch
         {
@@ -244,7 +240,7 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
             CockpitLightScene.Off           => (1, 0,   0, 0,   0),
             _                               => (1, 100, 1, 100, 50),
         };
-        foreach (var (key, val) in new (string, int)[]
+        return new (string Key, int Value)[]
         {
             ("A32NX_OVHD_INTLT_ANN", ann),
             ("A32NX_OVHD_INTLT_DOME", dome),
@@ -253,10 +249,33 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
             ("BRIGHT_OVERHEAD_INTEG_SET", integ),
             ("BRIGHT_MAINPANEL_SET", flood),
             ("BRIGHT_PEDESTAL_SET", flood),
-        })
-        {
+        };
+    }
+
+    /// <summary>
+    /// The lighting keys the scene writes, DERIVED from <see cref="CockpitLightingPlan"/>
+    /// across every scene — never hand-written. It was hand-written once, and because
+    /// nothing in production read it the glareshield exclusion above could be reverted
+    /// with both of its tests still green. Exposed for HwA330DivergenceTests.
+    /// </summary>
+    public static readonly IReadOnlyList<string> CockpitLightingKeys = BuildCockpitLightingKeys();
+
+    private static IReadOnlyList<string> BuildCockpitLightingKeys()
+    {
+        var keys = new List<string>();
+        foreach (CockpitLightScene scene in Enum.GetValues<CockpitLightScene>())
+            foreach (var (key, _) in CockpitLightingPlan(scene))
+                if (!keys.Contains(key)) keys.Add(key);
+        return keys;
+    }
+
+    /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
+    /// in-sim on <see cref="CockpitLightingPlan"/>, which is the only thing this writes —
+    /// keep it that way, or the plan stops describing what the aircraft is sent.</summary>
+    public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
+    {
+        foreach (var (key, val) in CockpitLightingPlan(scene))
             await Set(key, val);
-        }
         return true;
     }
 

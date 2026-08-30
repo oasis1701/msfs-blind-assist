@@ -3,6 +3,7 @@ using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 using Xunit;
+using A330Exec = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -121,6 +122,52 @@ public class HwA330DivergenceTests
         Assert.Contains("BRIGHT_OVERHEAD_INTEG_SET", keys);
         Assert.Contains("BRIGHT_MAINPANEL_SET", keys);
         Assert.Contains("BRIGHT_PEDESTAL_SET", keys);
+    }
+
+    // CockpitLightingKeys used to be a hand-written array that NO production code read —
+    // SetCockpitLighting looped over its own inline copy — so the two tests above passed
+    // with both glareshield pots restored to the write loop, i.e. with divergence 5
+    // completely reverted. They implied coverage and provided none. The keys are now
+    // DERIVED from CockpitLightingPlan, which SetCockpitLighting is the sole consumer of,
+    // and the two tests below are what hold the derivation together: the first pins that
+    // the tested list is the write path, the second pins the sequence actually written.
+
+    [Fact]
+    public void A330_lighting_key_list_is_derived_from_the_scene_write_path()
+    {
+        // Every scene writes the same keys in the same order, and that order IS
+        // CockpitLightingKeys — so a pot added to the plan shows up in the list the
+        // glareshield test reads, and a pot added to the list alone cannot exist.
+        foreach (var scene in Enum.GetValues<A330Exec.CockpitLightScene>())
+            Assert.Equal(A330Exec.CockpitLightingKeys,
+                A330Exec.CockpitLightingPlan(scene).Select(p => p.Key).ToList());
+    }
+
+    [Fact]
+    public void A330_lighting_scene_plan_is_the_seven_shared_keys_with_the_measured_values()
+    {
+        // The exact ordered (key, value) sequence SetCockpitLighting sends per scene.
+        // Re-adding a glareshield pot lengthens the actual sequence and fails here; a
+        // changed scene value fails here too. Values are unchanged from the A320 scene.
+        AssertPlan(A330Exec.CockpitLightScene.DayPrep,       1, 100, 1, 100, 50);
+        AssertPlan(A330Exec.CockpitLightScene.DimFlight,     2, 20,  1, 50,  30);
+        AssertPlan(A330Exec.CockpitLightScene.ParkingBright, 1, 100, 1, 100, 50);
+        AssertPlan(A330Exec.CockpitLightScene.Off,           1, 0,   0, 0,   0);
+
+        static void AssertPlan(A330Exec.CockpitLightScene scene,
+            int ann, int dome, int compass, int integ, int flood)
+            => Assert.Equal(
+                new[]
+                {
+                    ("A32NX_OVHD_INTLT_ANN", ann),
+                    ("A32NX_OVHD_INTLT_DOME", dome),
+                    ("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass),
+                    ("BRIGHT_GLARESHIELD_INTEG_SET", integ),
+                    ("BRIGHT_OVERHEAD_INTEG_SET", integ),
+                    ("BRIGHT_MAINPANEL_SET", flood),
+                    ("BRIGHT_PEDESTAL_SET", flood),
+                },
+                A330Exec.CockpitLightingPlan(scene));
     }
 
     [Fact]
