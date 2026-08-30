@@ -67,7 +67,7 @@ public sealed class RunwayFixtureDb : IDisposable
     {
         const string sql = @"
 CREATE TABLE airport (
-    airport_id INTEGER PRIMARY KEY, icao TEXT, ident TEXT, mag_var REAL
+    airport_id INTEGER PRIMARY KEY, icao TEXT, ident TEXT, mag_var REAL, lonx REAL, laty REAL
 );
 CREATE TABLE runway (
     runway_id INTEGER PRIMARY KEY, airport_id INTEGER, primary_end_id INTEGER, secondary_end_id INTEGER,
@@ -81,10 +81,12 @@ CREATE TABLE runway (
 CREATE TABLE runway_end (
     runway_end_id INTEGER PRIMARY KEY, name TEXT, ils_ident TEXT,
     heading REAL, altitude REAL, lonx REAL, laty REAL,
+    offset_threshold REAL, has_closed_markings INTEGER,
     is_takeoff INTEGER, is_landing INTEGER, is_pattern TEXT, end_type TEXT,
     left_vasi_type TEXT, left_vasi_pitch REAL, right_vasi_type TEXT, right_vasi_pitch REAL
 );
 CREATE TABLE ils (
+    ils_id INTEGER PRIMARY KEY,
     ident TEXT, loc_airport_ident TEXT, loc_runway_name TEXT, frequency REAL, name TEXT, region TEXT, type TEXT,
     loc_heading REAL, loc_width REAL, range REAL, has_backcourse INTEGER, perf_indicator TEXT, provider TEXT, mag_var REAL,
     dme_range REAL, dme_altitude REAL, dme_lonx REAL, dme_laty REAL,
@@ -110,9 +112,11 @@ CREATE TABLE ils (
         cmd.ExecuteNonQuery();
     }
 
-    public void InsertAirport(int airportId, string icao, string ident, double magVar = 0)
+    public void InsertAirport(int airportId, string icao, string ident, double magVar = 0,
+        double lonx = 0, double laty = 0)
         => Insert("airport",
-            ("airport_id", airportId), ("icao", icao), ("ident", ident), ("mag_var", magVar));
+            ("airport_id", airportId), ("icao", icao), ("ident", ident), ("mag_var", magVar),
+            ("lonx", lonx), ("laty", laty));
 
     public void InsertRunway(int runwayId, int airportId, int primaryEndId, int secondaryEndId,
         double heading = 0, double altitude = 0, double lonx = 0, double laty = 0,
@@ -128,12 +132,31 @@ CREATE TABLE ils (
             ("marking_flags", 0), ("has_closed_markings", 0), ("has_stol_markings", 0));
 
     public void InsertRunwayEnd(int runwayEndId, string name, string? ilsIdent = null,
-        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0)
+        double heading = 0, double altitude = 0, double lonx = 0, double laty = 0,
+        double offsetThreshold = 0, bool closed = false)
         => Insert("runway_end",
             ("runway_end_id", runwayEndId), ("name", name), ("ils_ident", ilsIdent),
             ("heading", heading), ("altitude", altitude), ("lonx", lonx), ("laty", laty),
+            ("offset_threshold", offsetThreshold), ("has_closed_markings", closed ? 1 : 0),
             ("is_takeoff", 1), ("is_landing", 1), ("is_pattern", "Yes"), ("end_type", "PRIMARY"),
             ("left_vasi_type", null), ("left_vasi_pitch", null), ("right_vasi_type", null), ("right_vasi_pitch", null));
+
+    /// <summary>
+    /// An ORPHANED ils row: correct ident/frequency/position/course, but the
+    /// loc_airport_ident / loc_runway_name join columns NULL, exactly as navdatareader
+    /// leaves 192 of them in an fs2024 extraction. Re-linking these to a runway is
+    /// OrphanIlsMatcher's job, reached via LittleNavMapProvider's fallback path.
+    /// </summary>
+    public void InsertOrphanIls(string ident, double lonx, double laty, double locHeading,
+        double frequency, string? name = null)
+        => Insert("ils",
+            ("ident", ident), ("loc_airport_ident", null), ("loc_runway_name", null),
+            ("frequency", frequency), ("name", name ?? $"ILS/GS {ident}"), ("region", "K1"), ("type", "ILS"),
+            ("loc_heading", locHeading), ("loc_width", 3.0), ("range", 18),
+            ("has_backcourse", 0), ("perf_indicator", "N/A"), ("provider", "N/A"), ("mag_var", 0),
+            ("dme_range", 0), ("dme_altitude", 0), ("dme_lonx", 0), ("dme_laty", 0),
+            ("gs_range", 0), ("gs_pitch", 3.0), ("gs_altitude", 0), ("gs_lonx", 0), ("gs_laty", 0),
+            ("altitude", 0), ("lonx", lonx), ("laty", laty));
 
     public void InsertIls(string ident, string locAirportIdent, string locRunwayName, double locHeading = 0,
         double frequency = 111100, double locWidth = 3.0, double range = 18)
