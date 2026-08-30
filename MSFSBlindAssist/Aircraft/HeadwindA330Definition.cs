@@ -400,22 +400,34 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     /// Nav &amp; logo write. The base replays the A32NX's FBW switch RPN, which ends with
     /// <c>2 (&gt;L:A32NX_LIGHTS_NAV_LOGO)</c> — an L:var this airframe does not have — and
     /// drives the per-light indexed NAV_LIGHTS_SET the A32NX's six-lamp switch needs.
-    /// The A339X switch is a plain two-simvar toggle at index 0, so replay what FlyByWire's
-    /// own A330 preset procedure writes (config/a339x/a330-941/aircraft_preset_procedures.xml)
-    /// plus the direct simvar writes the cockpit switch itself performs.
+    /// The A339X switch is a plain two-simvar toggle at index 0, so write the stock simvars
+    /// the cockpit switch itself performs plus the indexed events at index 0 — see
+    /// <see cref="NavLogoRpn"/> for why the index operand is explicit.
     /// </summary>
     public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
         SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
     {
         if (varKey == "A32NX_LIGHTS_NAV_LOGO")
         {
-            bool on = value >= 0.5;
-            simConnect.ExecuteCalculatorCode(on
-                ? "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 1 (>K:2:LOGO_LIGHTS_SET) 1 (>K:2:NAV_LIGHTS_SET)"
-                : "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 (>K:2:LOGO_LIGHTS_SET) 0 (>K:2:NAV_LIGHTS_SET)");
+            simConnect.ExecuteCalculatorCode(NavLogoRpn(value >= 0.5));
             return true;
         }
 
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
+
+    /// <summary>
+    /// The RPN the nav &amp; logo write emits. Pure so the operand count is pinned by test.
+    ///
+    /// ⚠ A <c>K:2:</c> event pops TWO operands, INDEX then VALUE — never one. The A339X
+    /// switch binds SIMVAR_INDEX_1/2 = 0, so the index is 0, but it still has to be
+    /// pushed: hand the event the value alone and it takes whatever is left on the stack
+    /// as its index. This originally emitted the one-operand form copied from FlyByWire's
+    /// own a339x preset procedure file; the base definition's proven two-operand shape
+    /// (FlyByWireA320Definition, <c>"0 1 (&gt;K:2:LOGO_LIGHTS_SET)"</c>) is unambiguous and
+    /// is what every other <c>K:2:</c> site in this repo supplies.
+    /// </summary>
+    public static string NavLogoRpn(bool on) => on
+        ? "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 0 1 (>K:2:LOGO_LIGHTS_SET) 0 1 (>K:2:NAV_LIGHTS_SET)"
+        : "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:LOGO_LIGHTS_SET) 0 0 (>K:2:NAV_LIGHTS_SET)";
 }

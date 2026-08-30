@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
@@ -230,16 +231,59 @@ public class HwA330DivergenceTests
         Assert.False(items["AL_LANDING_OFF"].StateCondition!(2));
     }
 
-    [Fact]
-    public void A330_nav_logo_item_accepts_the_stock_bool()
-    {
-        var item = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
-            .SelectMany(g => g.Items).First(i => i.Id == "EPU_NAVLOGO");
+    // The EPU_NAVLOGO checklist item used to be pinned here as though it were a
+    // divergence. It is not: the A320's item is byte-identical (same key, same
+    // v => v > 0.5), and that condition accepts the A320's SYS2 value of 2 just as
+    // readily as 1 — so the assertion passed on both profiles and its failure message
+    // said something untrue about the A320. What actually makes the item correct on
+    // the A330 is that the KEY resolves to a stock simvar, which the two registration
+    // tests at the top of this file pin. Deleted rather than restated; the write half
+    // of the divergence, which had no test at all, is pinned below instead.
 
-        Assert.Equal("A32NX_LIGHTS_NAV_LOGO", item.StateFieldName);
-        Assert.True(item.StateCondition!(1),
-            "The A330 switch is a stock Bool — ON is 1, not the A320's SYS2 value of 2.");
-        Assert.False(item.StateCondition!(0));
+    // A K:2: event takes TWO stack operands, index then value. The A339X switch binds
+    // SIMVAR_INDEX_1/2 = 0, so the index is 0 — but it still has to be PUSHED. The
+    // original write copied the one-operand form out of FlyByWire's own a339x preset
+    // procedure file, which left each event reading whatever happened to be beneath it
+    // on the stack as its index. Both operands, in the base definition's proven
+    // index-then-value order (FlyByWireA320Definition "0 1 (>K:2:LOGO_LIGHTS_SET)").
+
+    [Fact]
+    public void A330_nav_logo_write_pushes_both_operands_for_every_indexed_event()
+    {
+        foreach (bool on in new[] { true, false })
+        {
+            var tokens = HeadwindA330Definition.NavLogoRpn(on).Split(' ');
+
+            var indexedEvents = tokens
+                .Select((t, i) => (Token: t, Index: i))
+                .Where(x => x.Token.StartsWith("(>K:2:", StringComparison.Ordinal))
+                .ToList();
+
+            Assert.Equal(2, indexedEvents.Count);   // LOGO_LIGHTS_SET and NAV_LIGHTS_SET
+
+            foreach (var (token, index) in indexedEvents)
+            {
+                int operands = 0;
+                for (int i = index - 1; i >= 0 && IsNumericToken(tokens[i]); i--) operands++;
+
+                Assert.True(operands == 2,
+                    $"{token} (on={on}) is handed {operands} operand(s), not 2. A K:2: event "
+                    + "pops index THEN value; supplying only the value makes it read a garbage "
+                    + "index from whatever is left on the stack.");
+            }
+        }
+    }
+
+    [Fact]
+    public void A330_nav_logo_write_keeps_the_direct_simvar_writes_and_index_then_value_order()
+    {
+        Assert.Equal(
+            "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 0 1 (>K:2:LOGO_LIGHTS_SET) 0 1 (>K:2:NAV_LIGHTS_SET)",
+            HeadwindA330Definition.NavLogoRpn(true));
+
+        Assert.Equal(
+            "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:LOGO_LIGHTS_SET) 0 0 (>K:2:NAV_LIGHTS_SET)",
+            HeadwindA330Definition.NavLogoRpn(false));
     }
 
     [Fact]
@@ -248,4 +292,8 @@ public class HwA330DivergenceTests
         Assert.Contains("LIGHT LANDING:2",
             new MSFSBlindAssist.FirstOfficer.HWA330.HwA330StateEvaluator().OnRequestPollFields);
     }
+
+    private static bool IsNumericToken(string t) =>
+        double.TryParse(t, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out _);
 }
