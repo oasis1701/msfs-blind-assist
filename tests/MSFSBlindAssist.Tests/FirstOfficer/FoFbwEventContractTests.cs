@@ -18,6 +18,7 @@
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.FBWA320;
 using MSFSBlindAssist.FirstOfficer.FBWA380;
+using MSFSBlindAssist.FirstOfficer.HWA330;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
@@ -60,6 +61,21 @@ public class FoFbwEventContractTests
             + "silent no-ops in the sim: " + string.Join(", ", unregistered));
     }
 
+    [Fact]
+    public void A330_first_officer_fires_only_events_the_a330_definition_registers()
+    {
+        var registered = RegisteredEvents(new HeadwindA330Definition());
+
+        var unregistered = HwA330ActionExecutor.FiredEventNames
+            .Where(e => !registered.Contains(e))
+            .Order()
+            .ToList();
+
+        Assert.True(unregistered.Count == 0,
+            "Headwind A330 First Officer fires events the A330 definition does not register — "
+            + "these are silent no-ops in the sim: " + string.Join(", ", unregistered));
+    }
+
     /// <summary>
     /// The specific events FBW #10855 retired, shared with the definition-side contract so the
     /// two lists cannot disagree. This says WHY a name is dead rather than only that it is
@@ -73,6 +89,7 @@ public class FoFbwEventContractTests
 
         var stale = FbwA380ActionExecutor.FiredEventNames
             .Concat(FbwA320ActionExecutor.FiredEventNames)
+            .Concat(HwA330ActionExecutor.FiredEventNames)
             .Where(retired.Contains)
             .Distinct()
             .Order()
