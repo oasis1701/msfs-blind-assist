@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX and iFly 737 MAX8. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8 and HeadwindSim A330-900neo. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
 
 ## Overview
 
@@ -99,6 +99,93 @@ carries several LIVE-VERIFY items a code review flagged but could not settle sta
 (the APU-generator-light polarity, a Before-Start re-run
 that is expected to time out and abort today, the pressurization LED-window blank/minus padding,
 the ND range 0..10 scale, and the LNAV switch's value-3 composite edge case).
+
+**HeadwindSim A330-900neo First Officer (branch `feature/first-officer`):** a seventh
+profile, `FirstOfficer/HWA330/`, is a **duplicate** of the A32NX profile — not a
+shared-data variant and not a widened aircraft check. `HeadwindA330Definition` inherits
+`FlyByWireA320Definition`, so an A330 instance already satisfies every type the A32NX FO
+requires and one relaxed line in `MainForm.AircraftSwitch.cs` would have produced a
+working window the same afternoon; it would also have been mislabelled and unaudited. The
+duplicate buys the A330 maximum freedom to diverge, and the price is a drift hazard this
+repository has already paid once (FBW #10855 renamed `A32NX.FCU_TO_AP_HDG_PUSH`, the A380
+*definition* was migrated and `FbwA380ActionExecutor` was not, because it sat in a
+directory the migration never visited — and a K-event nobody registered is swallowed
+silently by the sim). The mitigation is a test, not vigilance: `HwA330ParityTests` fails
+whenever the two profiles drift apart on checklist group ids, item ids, flow ids, step
+order or the fired-event set, unless the difference is named in its
+`KnownStateFieldDivergences` allow-list **with a reason** — and it fails again, from the
+other side, when an allow-list entry stops being a divergence, so the list cannot rot into
+a blanket exemption.
+
+The A339X is a near-exact fork of the A32NX — FBW's own machine-readable procedure file
+(`config/a339x/a330-941/aircraft_preset_procedures.xml`) is byte-identical between the two
+aircraft apart from a single step, the fuel system is a byte-level `flight_model.cfg`
+clone, the flap detents and the whole `A32NX_SPEEDS_*` speed tape transfer unchanged, and
+of the 67 `A32NX_*` names the A320 FO references literally exactly one is absent — so the
+profile diverges in **five** measured places, each corrected and none of which may be
+"harmonized" back to the A320:
+
+- **Nav & logo lights.** `A32NX_LIGHTS_NAV_LOGO` does not exist in the A339X package (A32NX:
+  14 occurrences; A339X: 0). `A330_NEO_INTERIOR.xml:2054-2069` binds
+  `SWITCH_OVHD_EXTLT_NAVLOGO` to stock `LIGHT LOGO` / `LIGHT NAV` through
+  `LOGO_LIGHTS_SET` / `NAV_LIGHTS_SET` at **index 0**. The A320 write path already wrote the
+  stock simvars, so only the *state read* was dead — the pilot who set the lights by hand
+  left the item un-ticked and the FO re-commanded them. `HeadwindA330Definition` keeps the
+  key and repoints it at stock `LIGHT NAV`, with a `HandleUIVariableSet` branch writing the
+  A330 form; keeping one key app-wide means the panel combo and the FO stay one control, and
+  incidentally fixes that combo, which was misreading for the same reason.
+- **ECAM system-display page indices.** The A330 splits ElecAC/ElecDC and adds a CB page,
+  shifting everything above `Fctl`: `Eng=0 Bleed=1 Press=2 ElecAC=3 ElecDC=4 Hyd=5 Apu=6
+  Cond=7 Door=8 Wheel=9 Fctl=10 Fuel=11 Crz=12 Status=13 CB=14`. The A320 table maps
+  `STS=12`, `HYD=4`, `FUEL=5`, which on this airframe select **Cruise**, **ElecDC** and
+  **Hyd**. `HwA330ActionExecutor.EcamPageIndexMap` carries the A339X indices — all of them,
+  including the entries no step uses yet, so a future A330 step cannot inherit a silent
+  mis-selection.
+- **Seat-belt sign.** Same L:var name, opposite encoding: the A32NX
+  (`A320_NEO_INTERIOR.xml:1756-1762`) is two-position `1=On`/`0=Off`, the A339X
+  (`A330_NEO_INTERIOR.xml:1817-1823`) three-position **`0=On`/`1=Auto`/`2=Off`**. Worse, the
+  AUTO position's own block re-drives the stock simvar from engines-running and
+  slats-or-gear on an `Update Frequency="500"`, so the A320's guarded stock toggle was
+  fought back within half a second whenever the switch sat in AUTO, while the cockpit switch
+  never moved at all because nothing wrote the position var. The fix is two steps **in this
+  order** — write the position (0 for ON, 2 for OFF), which moves the physical switch and
+  takes the airframe out of AUTO so nothing contends, then run the existing guarded stock
+  toggle to reconcile the lamp. Detection stays on the sign lamp
+  (`CABIN SEATBELTS ALERT SWITCH`), never on the switch position — the A380 invariant. The
+  reconcile is deliberately belt-and-braces: whether `CODE_POS_0`/`CODE_POS_2` fire on an
+  external L:var write or only on a cockpit click cannot be settled by reading the template,
+  so it is a LIVE-VERIFY item (L1) rather than a guess, and the result is correct either way.
+- **Landing lights.** The A32NX has two `Retractable` switches (RETRACT/OFF/ON) whose state
+  lives in `L:LIGHTING_LANDING_2`/`_3`; the A339X has **one** two-position ganged switch on
+  stock `LIGHT LANDING` indices 2 and 3 (`A330_NEO_INTERIOR.xml:2022-2034`), and
+  `LIGHTING_LANDING_2` appears nowhere in its package outside the preset procedure file. The
+  write actuated already; the read was dead and the RETRACT position `AL_LANDING_OFF` tested
+  for does not exist. The A330 reads `LIGHT LANDING:2` and its after-landing item commands
+  **OFF**, not RETRACT — the two allow-listed parity divergences, and the only two.
+- **Cockpit-lighting scene.** The A320 scene writes six analog knobs; on the A339X
+  potentiometers 10 and 11 are not glareshield floods but the Captain's **ceiling** and **map**
+  lights (`A330_NEO_INTERIOR.xml:271-283`), and both are binary click-toggles whose
+  `LEFT_SINGLE_CODE` flips `L:A339X_CEILING_LIGHT_CAPTAIN` / `L:A339X_MAP_LIGHT_CAPTAIN` and
+  drives the pot to 100 or 0. The scene's intermediate value (50 for DimFlight) is not a
+  valid state there, and writing the pot directly would leave a lamp lit while its own L:var
+  still read off — a desync no cockpit interaction resolves. `HwA330ActionExecutor.CockpitLightingKeys`
+  therefore writes **four** pots, not six; the A330 has no glareshield floods at all, and
+  wiring the real ceiling/map lights is deliberately not done (crew-comfort lamps, in no
+  normal procedure, and a toggle pair rather than a level).
+
+One further fix rides along and is **not** A330-specific: `A32NX_SPEEDS_LANDING_CONF3` is
+read in three places by the FBW-family auto-flaps schedule to cap extension at CONF 3, but
+`FlyByWireA320Definition` never registered it (only the A380 did), so it read NaN and the cap
+could never engage on the A32NX either. It is now registered once in the A320 definition and
+polled by both FBW-family evaluators, which fixes both aircraft together.
+
+Static package evidence proves *absence* reliably and proves nothing about *function*, and
+this airframe is its own proof of that: the FlyByWire baro display words are present in its
+`fbw.wasm` and never reach MSFSBlindAssist's cache, which is why `HeadwindA330Definition`
+reads the stock Kohlsman altimeter instead. So every finding above is a necessary condition
+that was checked, never a sufficient one, and the nine LIVE-VERIFY items are part of this
+work rather than an optional follow-up. In-sim test plan:
+[docs/headwind-a330-first-officer-test-plan.md](docs/headwind-a330-first-officer-test-plan.md).
 
 **Architecture — everything aircraft-specific is injected via `IFoProfile<TExec,TState>`.** The form is identical across aircraft; the profile (`FirstOfficer/Pmdg777FoProfile.cs`, `FirstOfficer/PMDG737/Pmdg737FoProfile.cs`) supplies the executor, state evaluator, checklist + flow data, auto/phase managers, window title, and the data-manager binding. Generic engine pieces: `ChecklistManager` (toggle / auto-detect / revert), `FlowManager` (step runner + events), `FlightPhaseMonitor`, `FOAutoManager`; per-aircraft: `AircraftActionExecutor` (PMDG switch dispatch), `AircraftStateEvaluator` (reads PMDG data fields), `PMDG7x7ChecklistDefinitions`, `PMDG7x7FlowDefinitions`. Interfaces live in `FirstOfficer/IFo*.cs`; models in `FirstOfficer/Models/` (`ChecklistItem`, `ChecklistGroup`, `FlowDefinition`, `FlowStep`).
 
