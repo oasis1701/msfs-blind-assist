@@ -4549,6 +4549,20 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        // Read by FbwA320FOAutoManager/HwA330FOAutoManager to cap flap extension at
+        // CONF 3 when the MFD PERF APPR page selects a CONF 3 landing. Unregistered
+        // until 2026-08-30, so it read NaN and the cap never engaged on either the
+        // A32NX or the A330. The A339X publishes it too (mcdu.js), so the A330
+        // inherits this registration unchanged.
+        ["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_LANDING_CONF3",
+            DisplayName = "Landing CONF 3 Selected",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            ExcludeFromMonitorManager = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "CONF FULL", [1] = "CONF 3" }
+        },
         ["A32NX_SPEEDS_VLS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_VLS",

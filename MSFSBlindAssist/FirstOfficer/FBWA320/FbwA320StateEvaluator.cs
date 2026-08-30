@@ -54,8 +54,10 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_FMGC_1_FD_ENGAGED", "A32NX_FMGC_2_FD_ENGAGED",
         "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
         // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
-        // was removed (Task 12 audit) — confirmed absent from FlyByWireA320Definition.
+        // was previously absent here AND unregistered in the definition, so `conf3` was
+        // permanently NaN and the CONF 3 landing cap could never engage (fixed 2026-08-30).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
+        "A32NX_SPEEDS_LANDING_CONF3",
         "WIPER_LEFT", "WIPER_RIGHT",
         "A32NX_RCDR_GROUND_CONTROL_ON",
     };
