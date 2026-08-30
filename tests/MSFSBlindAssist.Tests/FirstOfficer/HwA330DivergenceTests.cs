@@ -1,5 +1,9 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 using Xunit;
@@ -250,6 +254,99 @@ public class HwA330DivergenceTests
             + "no write branch and silently no-ops: " + string.Join(", ", offenders));
     }
 
+    // The four seat-belt tests above pin the CONSTANTS (0/2), the checklist items'
+    // StateFieldName, the pure SeatbeltWritePlan and the flow steps' pseudo-key — but not
+    // one of them observes that SetSeatbeltSignCoreAsync actually PERFORMS the position
+    // write. A verification pass reduced that method to the bare A320 form (guarded
+    // CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE, no plan call) and the whole suite stayed green
+    // at 4245/0: the plan was still declared, still correct and still asserted over — just
+    // no longer used by anything. That is the CockpitLightingKeys flaw one level deeper,
+    // and here it is the actual airframe bug: the A339X switch is three-position
+    // 0=On/1=Auto/2=Off and its AUTO block re-drives the stock simvar every 500 ms, so a
+    // bare toggle is undone within half a second and the cockpit switch never moves.
+    //
+    // The executor cannot be exercised to catch it. DispatchCoreAsync early-returns unless
+    // IsAvailable, which needs a live SimConnectManager AND a real ScreenReaderAnnouncer
+    // (heavyweight, no parameterless ctor, must never be second-instanced) — and no
+    // instrumented SimConnectManager could see the position write either, because that
+    // guard swallows it before _sc is touched, leaving the correct implementation and the
+    // bare toggle observationally identical. Nor does making the plan "the real write path"
+    // help the way it did for CockpitLightingPlan: a plan can only pin what is written IF
+    // it is written, and the whole regression is that it stops being.
+    //
+    // So the consumption is pinned at the source level — the same instrument
+    // FoPr160ProcedureFixTests uses for the Fenix APU skip predicates, which are opaque for
+    // the same reason. Only the method's own body is read, with comments stripped, so
+    // neither prose about the plan nor its declaration elsewhere in the file can pass for a
+    // call to it.
+
+    [Fact]
+    public void A330_seatbelt_core_write_dispatches_the_position_from_SeatbeltWritePlan()
+    {
+        string body = ExecutorMethodBody("SetSeatbeltSignCoreAsync");
+
+        Assert.True(body.Contains("SeatbeltWritePlan", StringComparison.Ordinal),
+            "SetSeatbeltSignCoreAsync no longer consults SeatbeltWritePlan, so the "
+            + "three-position switch is never written. A bare stock toggle cannot move this "
+            + "switch: the A339X AUTO position re-drives CABIN SEATBELTS ALERT SWITCH every "
+            + "500 ms, so the toggle is undone within half a second while the cockpit switch "
+            + "sits in AUTO. Body was:\n" + body);
+
+        var dispatch = Regex.Match(body, @"DispatchCoreAsync\s*\(\s*(?<args>[^)]*?)\s*\)");
+        Assert.True(dispatch.Success,
+            "SetSeatbeltSignCoreAsync consults SeatbeltWritePlan but never dispatches it. "
+            + "The plan is only a description; DispatchCoreAsync is what reaches the "
+            + "aircraft. Body was:\n" + body);
+
+        // The dispatched arguments must be forwarded values, not literals re-stating the
+        // key and position — a hardcoded copy would drift away from SeatbeltWritePlan
+        // silently, which is the decoration this test exists to prevent.
+        string args = dispatch.Groups["args"].Value;
+        Assert.True(Regex.IsMatch(args, @"^[A-Za-z_]\w*(?:\.\w+)*(?:\s*,\s*[A-Za-z_]\w*(?:\.\w+)*)*$"),
+            "SetSeatbeltSignCoreAsync dispatches literals (" + args + ") rather than the "
+            + "values it bound from SeatbeltWritePlan, so the plan no longer decides what is "
+            + "written. Body was:\n" + body);
+    }
+
+    [Fact]
+    public void A330_seatbelt_core_write_positions_the_switch_before_reconciling_the_sign_lamp()
+    {
+        string body = ExecutorMethodBody("SetSeatbeltSignCoreAsync");
+
+        int plan   = body.IndexOf("SeatbeltWritePlan", StringComparison.Ordinal);
+        int toggle = body.IndexOf("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", StringComparison.Ordinal);
+
+        Assert.True(plan >= 0,
+            "The switch-POSITION half of the seat-belt write is gone — see the sibling test. "
+            + "Body was:\n" + body);
+        Assert.True(toggle >= 0,
+            "The belt-and-braces lamp reconciliation is gone. Whether the switch template's "
+            + "CODE_POS blocks fire on an external L:var write cannot be settled by reading "
+            + "it, so the guarded stock toggle is what lights the sign if they do not. "
+            + "Body was:\n" + body);
+        Assert.True(plan < toggle,
+            "The seat-belt write runs in the wrong order: the switch POSITION must be "
+            + "written first, because that is what takes the airframe out of AUTO. Toggling "
+            + "the sign while still in AUTO is what the 500 ms AUTO block undoes. Body "
+            + "was:\n" + body);
+    }
+
+    [Fact]
+    public void A330_seatbelt_dispatch_arm_still_routes_through_the_core_write()
+    {
+        // Guards the sibling hole: a body that survives the two tests above is worth
+        // nothing if the dispatch arm stops calling it and fires the bare toggle itself.
+        string body = ExecutorMethodBody("DispatchCoreAsync");
+
+        var arm = Regex.Match(body, @"SeatbeltSignKey\s*=>(?<rhs>[^\r\n]*)");
+        Assert.True(arm.Success,
+            "DispatchCoreAsync no longer claims SeatbeltSignKey, so the pseudo-key the flow "
+            + "steps and the checklist actions send falls through to ApplySilent's SetLVar "
+            + "fallback: it writes a bogus L:var literally named SEATBELT_SIGN and reports "
+            + "success. Body was:\n" + body);
+        Assert.Contains("SetSeatbeltSignCoreAsync", arm.Groups["rhs"].Value, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A330_landing_light_items_read_the_stock_simvar_not_the_retractable_lvar()
     {
@@ -343,4 +440,157 @@ public class HwA330DivergenceTests
     private static bool IsNumericToken(string t) =>
         double.TryParse(t, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    // --- source-level helpers for the seat-belt write path ----------------------------
+    // Used only by the three tests above; see the commentary there for why the executor
+    // cannot be exercised instead. Path resolution follows FoPr160ProcedureFixTests
+    // (CallerFilePath, resolved at compile time), one directory deeper.
+
+    private static string ExecutorSourcePath([CallerFilePath] string thisTestFilePath = "")
+    {
+        string path = Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisTestFilePath)!,
+            "..", "..", "..", "MSFSBlindAssist", "FirstOfficer", "HWA330",
+            "HwA330ActionExecutor.cs"));
+        Assert.True(File.Exists(path),
+            "HwA330ActionExecutor.cs was not found at " + path + ". If the file moved, "
+            + "update this path — do not delete the tests that read it; they are the only "
+            + "thing standing between the seat-belt write and a silent revert to the A320 "
+            + "bare toggle.");
+        return path;
+    }
+
+    /// <summary>
+    /// The body of one HwA330ActionExecutor method, comments removed. Only declarations
+    /// are matched (a call site is followed by <c>;</c> or <c>,</c>, never <c>{</c>), so
+    /// the switch arm that CALLS SetSeatbeltSignCoreAsync is skipped in favour of the
+    /// method itself.
+    /// </summary>
+    private static string ExecutorMethodBody(string methodName)
+    {
+        string src = StripCommentsKeepingLiterals(File.ReadAllText(ExecutorSourcePath()));
+
+        foreach (Match m in Regex.Matches(src, $@"\b{Regex.Escape(methodName)}\s*\("))
+        {
+            int open = src.IndexOf('(', m.Index);
+            int closeParen = MatchingBracket(src, open, '(', ')');
+            if (closeParen < 0) continue;
+
+            int j = closeParen + 1;
+            while (j < src.Length && char.IsWhiteSpace(src[j])) j++;
+            if (j >= src.Length || src[j] != '{') continue;   // a call, not the declaration
+
+            int closeBrace = MatchingBracket(src, j, '{', '}');
+            if (closeBrace < 0) continue;
+            return src.Substring(j + 1, closeBrace - j - 1);
+        }
+
+        Assert.Fail($"HwA330ActionExecutor no longer declares a {methodName}(...) method with "
+            + "a block body. If it was renamed, re-point these tests at the new name; if it "
+            + "was inlined away, the seat-belt write path has lost its only guard.");
+        return string.Empty;   // unreachable — Assert.Fail throws
+    }
+
+    /// <summary>
+    /// Strips // and /* */ comments while leaving string and char literals intact (the
+    /// assertions look for a literal event name). Without this, a comment naming
+    /// SeatbeltWritePlan inside a reverted body would read as a call to it.
+    /// </summary>
+    private static string StripCommentsKeepingLiterals(string src)
+    {
+        var sb = new StringBuilder(src.Length);
+        for (int i = 0; i < src.Length; i++)
+        {
+            char c = src[i];
+
+            if (c == '/' && i + 1 < src.Length && src[i + 1] == '/')
+            {
+                while (i < src.Length && src[i] != '\n') i++;
+                if (i < src.Length) sb.Append('\n');
+                continue;
+            }
+            if (c == '/' && i + 1 < src.Length && src[i + 1] == '*')
+            {
+                i += 2;
+                while (i + 1 < src.Length && !(src[i] == '*' && src[i + 1] == '/')) i++;
+                i++;                      // land on '/', the loop's i++ steps past it
+                sb.Append(' ');
+                continue;
+            }
+            if (c == '@' && i + 1 < src.Length && src[i + 1] == '"')
+            {
+                sb.Append(c).Append('"');
+                i += 2;
+                while (i < src.Length)
+                {
+                    if (src[i] == '"')
+                    {
+                        if (i + 1 < src.Length && src[i + 1] == '"') { sb.Append("\"\""); i += 2; continue; }
+                        sb.Append('"');
+                        break;            // i is ON the closing quote; the loop's i++ passes it
+                    }
+                    sb.Append(src[i]);
+                    i++;
+                }
+                continue;
+            }
+            if (c == '"' || c == '\'')
+            {
+                sb.Append(c);
+                i++;
+                while (i < src.Length)
+                {
+                    if (src[i] == '\\' && i + 1 < src.Length)
+                    {
+                        sb.Append(src[i]).Append(src[i + 1]);
+                        i += 2;
+                        continue;
+                    }
+                    sb.Append(src[i]);
+                    if (src[i] == c) break;
+                    i++;
+                }
+                continue;
+            }
+
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Index of the bracket closing the one at <paramref name="start"/>, skipping
+    /// string and char literals (comments are already gone).</summary>
+    private static int MatchingBracket(string s, int start, char open, char close)
+    {
+        int depth = 0;
+        for (int i = start; i < s.Length; i++)
+        {
+            char c = s[i];
+
+            if (c == '"' || c == '\'')
+            {
+                bool verbatim = c == '"' && i > 0 && s[i - 1] == '@';
+                i++;
+                while (i < s.Length)
+                {
+                    if (!verbatim && s[i] == '\\') { i += 2; continue; }
+                    if (s[i] == c)
+                    {
+                        if (verbatim && i + 1 < s.Length && s[i + 1] == '"') { i += 2; continue; }
+                        break;
+                    }
+                    i++;
+                }
+                continue;
+            }
+
+            if (c == open) depth++;
+            else if (c == close)
+            {
+                depth--;
+                if (depth == 0) return i;
+            }
+        }
+        return -1;
+    }
 }
