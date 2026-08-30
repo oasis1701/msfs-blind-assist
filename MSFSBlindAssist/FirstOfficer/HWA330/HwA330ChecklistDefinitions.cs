@@ -294,8 +294,11 @@ public static class HwA330ChecklistDefinitions
             ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
             Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2",
                 v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
-            Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON", "LIGHTING_LANDING_2",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
+            // A339X: ONE two-position ganged switch on stock LIGHT LANDING:2/:3
+            // (A330_NEO_INTERIOR.xml:2022-2034). The A32NX's L:LIGHTING_LANDING_2 is a
+            // Retractable position (0=On/1=Off/2=Retracted) this airframe never writes.
+            Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON", "LIGHT LANDING:2",
+                v => v > 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
             Auto("BT_NOSE_TO", "BEFORE_TAKEOFF", "Nose light: TAKEOFF", "LIGHTING_LANDING_1",
                 v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 0)),
             Auto("BT_STROBE", "BEFORE_TAKEOFF", "Strobes: ON", "LIGHTING_STROBE_0",
@@ -392,8 +395,10 @@ public static class HwA330ChecklistDefinitions
                 v => v < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_POSITION", 0)),
             Auto("AL_STROBE_AUTO", "AFTER_LANDING", "Strobes: AUTO", "LIGHTING_STROBE_0",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 1)),
-            Auto("AL_LANDING_OFF", "AFTER_LANDING", "Landing lights: OFF", "LIGHTING_LANDING_2",
-                v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("LANDING_LIGHTS_OFF_THIRD_PARTY", 1)),
+            // No RETRACT position on the A330 — the A32NX item tested |v-2|<0.5, which
+            // can never be satisfied here.
+            Auto("AL_LANDING_OFF", "AFTER_LANDING", "Landing lights: OFF", "LIGHT LANDING:2",
+                v => v < 0.5, (e, _) => e.Set("LANDING_LIGHTS_OFF_THIRD_PARTY", 1)),
             Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose light: TAXI", "LIGHTING_LANDING_1",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 1)),
             // Same master → dwell → START press as the Before Start item.

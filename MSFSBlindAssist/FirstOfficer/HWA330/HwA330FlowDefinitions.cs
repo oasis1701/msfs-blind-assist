@@ -108,6 +108,9 @@ public static class HwA330FlowDefinitions
             // Harmless no-op if no ground power exists; skipped when already on the bus.
             Done(Skip(SW("EPU_EXTPWR", "External power: ON", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "EPU_EXTPWR"),
+            // A339X: A32NX_LIGHTS_NAV_LOGO is repointed at the stock LIGHT NAV simvar
+            // (see HeadwindA330Definition.BuildVariables) — a Bool, so ON is 1, not the
+            // A32NX switch L:var's SYS2 value of 2. The > 0.5 test is correct for both.
             Done(Skip(SW("EPU_NAVLOGO", "Nav and logo lights: ON", "A32NX_LIGHTS_NAV_LOGO", 1),
                 s => s.GetValue("A32NX_LIGHTS_NAV_LOGO") > 0.5), "EPU_NAVLOGO"),
             // ★ Cockpit lighting (spec §4.1): Bright for ground prep. Flow pulses only the

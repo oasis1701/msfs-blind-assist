@@ -35,7 +35,9 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
         // differ from (or are additional to) the write keys the flow uses.
         "LIGHT WING", "CABIN SEATBELTS ALERT SWITCH",
         "A32NX_SWITCH_TCAS_TRAFFIC_POSITION", "A32NX_SWITCH_TCAS_POSITION", "A32NX_TRANSPONDER_MODE",
-        "LIGHT TAXI:2", "LIGHTING_LANDING_1", "LIGHTING_LANDING_2",
+        // A339X reads the stock LIGHT LANDING:2 — L:LIGHTING_LANDING_2 is the A32NX
+        // Retractable-switch position, which this airframe never writes.
+        "LIGHT TAXI:2", "LIGHTING_LANDING_1", "LIGHT LANDING:2",
         "A32NX_EFIS_L_LS_BUTTON_IS_ON", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
         "A32NX_PARK_BRAKE_LEVER_POS", "A32NX_SPOILERS_ARMED",
         "GEAR_HANDLE_POSITION", "A32NX_FLAPS_HANDLE_INDEX", "ENGINE_MODE_SELECTOR",

@@ -141,4 +141,51 @@ public class HwA330DivergenceTests
         foreach (var i in items)
             Assert.Equal("CABIN SEATBELTS ALERT SWITCH", i.StateFieldName);
     }
+
+    [Fact]
+    public void A330_landing_light_items_read_the_stock_simvar_not_the_retractable_lvar()
+    {
+        var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
+            .SelectMany(g => g.Items)
+            .Where(i => i.Id is "BT_LANDING_LT" or "AL_LANDING_OFF")
+            .ToList();
+
+        Assert.Equal(2, items.Count);
+        foreach (var i in items)
+            Assert.Equal("LIGHT LANDING:2", i.StateFieldName);
+    }
+
+    [Fact]
+    public void A330_landing_light_conditions_are_two_position()
+    {
+        var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
+            .SelectMany(g => g.Items).ToDictionary(i => i.Id);
+
+        // ON accepts 1 and rejects 0; OFF accepts 0 and rejects 1. There is no
+        // RETRACT position on this airframe, so nothing may test for 2.
+        Assert.True(items["BT_LANDING_LT"].StateCondition!(1));
+        Assert.False(items["BT_LANDING_LT"].StateCondition!(0));
+        Assert.True(items["AL_LANDING_OFF"].StateCondition!(0));
+        Assert.False(items["AL_LANDING_OFF"].StateCondition!(1));
+        Assert.False(items["AL_LANDING_OFF"].StateCondition!(2));
+    }
+
+    [Fact]
+    public void A330_nav_logo_item_accepts_the_stock_bool()
+    {
+        var item = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
+            .SelectMany(g => g.Items).First(i => i.Id == "EPU_NAVLOGO");
+
+        Assert.Equal("A32NX_LIGHTS_NAV_LOGO", item.StateFieldName);
+        Assert.True(item.StateCondition!(1),
+            "The A330 switch is a stock Bool — ON is 1, not the A320's SYS2 value of 2.");
+        Assert.False(item.StateCondition!(0));
+    }
+
+    [Fact]
+    public void A330_evaluator_polls_the_stock_landing_light_state()
+    {
+        Assert.Contains("LIGHT LANDING:2",
+            new MSFSBlindAssist.FirstOfficer.HWA330.HwA330StateEvaluator().OnRequestPollFields);
+    }
 }
