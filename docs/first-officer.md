@@ -152,9 +152,14 @@ profile diverges in **five** measured places, each corrected and none of which m
   takes the airframe out of AUTO so nothing contends, then run the existing guarded stock
   toggle to reconcile the lamp. Detection stays on the sign lamp
   (`CABIN SEATBELTS ALERT SWITCH`), never on the switch position — the A380 invariant. The
-  reconcile is deliberately belt-and-braces: whether `CODE_POS_0`/`CODE_POS_2` fire on an
-  external L:var write or only on a cockpit click cannot be settled by reading the template,
-  so it is a LIVE-VERIFY item (L1) rather than a guess, and the result is correct either way.
+  reconcile step is **load-bearing, not belt-and-braces** — this was written as belt-and-braces
+  and the live A339X session on 2026-08-30 (item L1) came back the other way: `CODE_POS_0`/
+  `CODE_POS_2` fire on a **cockpit click only**, never on an external L:var write. Writing
+  position 2 with the sign lit moved the switch to OFF and left the lamp **ON**; only the
+  toggle extinguished it. So the position write alone changes nothing a pilot can hear, and
+  the toggle alone is undone by AUTO — both steps are required, in that order. The same
+  session confirmed AUTO's grip directly: with the lamp off, selecting AUTO re-lit the sign
+  by itself.
 - **Landing lights.** The A32NX has two `Retractable` switches (RETRACT/OFF/ON) whose state
   lives in `L:LIGHTING_LANDING_2`/`_3`; the A339X has **one** two-position ganged switch on
   stock `LIGHT LANDING` indices 2 and 3 (`A330_NEO_INTERIOR.xml:2022-2034`), and
@@ -162,6 +167,11 @@ profile diverges in **five** measured places, each corrected and none of which m
   write actuated already; the read was dead and the RETRACT position `AL_LANDING_OFF` tested
   for does not exist. The A330 reads `LIGHT LANDING:2` and its after-landing item commands
   **OFF**, not RETRACT — the two allow-listed parity divergences, and the only two.
+  Live-measured 2026-08-30 (L5), the read is worse than "dead": `LIGHTING_LANDING_2` returned
+  `0` with the lights **on** and `0` with them **off**. Since the A32NX item accepts `0` as ON,
+  the unported profile does not merely fail to tick — it reports **"Landing lights: ON"
+  permanently, including when they are off**, a false positive on a before-takeoff checklist.
+  That is the sharpest argument in this whole port for not simply reusing the A320 profile.
 - **Cockpit-lighting scene.** The A320 scene writes six analog knobs; on the A339X
   potentiometers 10 and 11 are not glareshield floods but the Captain's **ceiling** and **map**
   lights (`A330_NEO_INTERIOR.xml:271-283`), and both are binary click-toggles whose

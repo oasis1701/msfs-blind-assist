@@ -446,11 +446,17 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     ///     so a bare stock toggle is fought back within half a second while the switch
     ///     sits there. The A32NX has no AUTO position and needs none of this.
     ///
-    /// (2) Reconcile the sign lamp with the guarded stock toggle. Whether CODE_POS_0 /
-    ///     CODE_POS_2 fire on an external L:var write, or only on a cockpit click,
-    ///     cannot be settled by reading the template — so this is belt-and-braces: a
-    ///     no-op if they fire, and what actually lights the sign if they do not.
-    ///     See the L1 item in docs/headwind-a330-first-officer-test-plan.md.
+    /// (2) Reconcile the sign lamp with the guarded stock toggle. This step is LOAD-BEARING,
+    ///     not belt-and-braces — LIVE-MEASURED on the A339X, 2026-08-30. CODE_POS_0 /
+    ///     CODE_POS_2 fire on a COCKPIT CLICK ONLY, never on an external L:var write:
+    ///     writing position 2 with the sign lit moved the switch to OFF and left the lamp
+    ///     ON. So step (1) alone changes nothing a pilot can hear, and this toggle is the
+    ///     only thing that actually moves the sign. Do not "simplify" it away.
+    ///
+    ///     Step (1) is still required and still first: the same session confirmed the AUTO
+    ///     position actively drives the lamp (switch set to AUTO with engines running and
+    ///     gear down re-lit the sign by itself within a second), so a toggle fired while the
+    ///     switch sits in AUTO is undone by the airframe. Position first, then reconcile.
     ///
     /// Detection stays on the sign LAMP, never the switch position — the A380 invariant.
     /// </summary>
