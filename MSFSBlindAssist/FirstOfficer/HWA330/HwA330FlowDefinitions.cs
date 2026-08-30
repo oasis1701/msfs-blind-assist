@@ -6,20 +6,24 @@ using Flow = Models.FlowDefinition<HwA330StateEvaluator>;
 using Step = Models.FlowStep<HwA330StateEvaluator>;
 
 /// <summary>
-/// Data-driven FlyByWire A320 (A32NX) First-Officer flow definitions — the same 12
+/// Data-driven HeadwindSim A330-900neo First-Officer flow definitions — the same 12
 /// phases as <see cref="Fenix.FenixFlowDefinitions"/> (Electrical Power Up through
-/// Secure), re-keyed to A32NX control keys confirmed against
-/// <see cref="MSFSBlindAssist.Aircraft.FlyByWireA320Definition.GetVariables"/>. Flow
-/// steps write A320 varKeys via <see cref="HwA330ActionExecutor"/>, which delegates
-/// most writes to <see cref="MSFSBlindAssist.Aircraft.FlyByWireA320Definition.ApplyUIVariable"/>
-/// — the same verified panel-write path the FBW A320 panels use — plus the executor's
+/// Secure). ORIGINATES as a duplicate of <see cref="FBWA320.FbwA320FlowDefinitions"/>, and
+/// the A339X is built on the A32NX systems, so most control keys keep their <c>A32NX_</c>
+/// names — but they are this airframe's, confirmed against
+/// <see cref="MSFSBlindAssist.Aircraft.HeadwindA330Definition.GetVariables"/> and carrying
+/// the A339X divergences; never read this file as the A320's. Flow
+/// steps write A330 varKeys via <see cref="HwA330ActionExecutor"/>, which delegates
+/// most writes to <see cref="MSFSBlindAssist.Aircraft.HeadwindA330Definition.ApplyUIVariable"/>
+/// — the same verified panel-write path the Headwind A330 panels use — plus the executor's
 /// pseudo-keys (FIRE_TEST_APU/ENG1/ENG2, CVR_TEST, TO_CONFIG_TEST, CABIN_CALL_ALL,
 /// ECAM_PAGE_* (direct SD page-index write), BARO_STD/QNH, FCU_PUSH_SPEED/HEADING/ALT,
 /// AP1_ENGAGE) for non-combo actions.
 ///
 /// Value conventions (from <see cref="HwA330StateEvaluator"/>, <see cref="HwA330ActionExecutor"/>,
-/// and the FlyByWireA320Definition panel definitions — the A320 is 2 engines, no ESS/APU
-/// battery, and seatbelts are a genuine 2-position switch (no AUTO), unlike the A380):
+/// and the HeadwindA330Definition panel definitions — the A330 is 2 engines, no ESS/APU
+/// battery, and the seatbelt switch is 3-position 0=On/1=Auto/2=Off like the A380's, NOT
+/// the A32NX source's 2-position 1=On/0=Off toggle):
 /// - ENGINE_MODE_SELECTOR 0=Crank,1=Norm,2=Ign/Start.
 /// - ENGINE_1_MASTER / ENGINE_2_MASTER 0=Off,1=On (FUELSYSTEM VALVE SWITCH:n underneath).
 /// - SPOILERS_ARM_TOGGLE is a genuine TOGGLE event (no settable position) — Skip guards on
@@ -171,7 +175,7 @@ public static class HwA330FlowDefinitions
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1)), "PF_NOSMOKE"),
             Done(Skip(SW("PF_EMEREXIT", "Emergency exit lights: ARM", "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 1),
                 s => s.IsPosition("XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_POSITION", 1)), "PF_EMEREXIT"),
-            // A32NX_SWITCH_ATC_ALT confirmed registered in FlyByWireA320Definition
+            // A32NX_SWITCH_ATC_ALT confirmed registered in HeadwindA330Definition
             // (Task 12 audit) — automated, mirroring the Fenix S_XPDR_ALTREPORTING step.
             Done(Skip(SW("PF_ALTRPTG", "Altitude reporting: ON", "A32NX_SWITCH_ATC_ALT", 1),
                 s => s.IsOn("A32NX_SWITCH_ATC_ALT")), "PF_ALTRPTG"),

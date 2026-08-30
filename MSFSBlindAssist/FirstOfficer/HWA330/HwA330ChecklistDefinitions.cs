@@ -194,8 +194,12 @@ public static class HwA330ChecklistDefinitions
                 }),
             Auto("BS_EXTPWR_OFF", "BEFORE_START", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0)),
-            // Seatbelt signs: genuine 2-position toggle event on the A320 (no AUTO, unlike
-            // the A380) — guarded so a retick while already on doesn't toggle it back off.
+            // Seatbelt signs: THREE-position on this airframe (0=On, 1=Auto, 2=Off), unlike
+            // the A32NX source's genuine 2-position toggle. Written through
+            // HwA330ActionExecutor.SetSeatbeltSign (the SEATBELT_SIGN pseudo-key), which
+            // selects a switch POSITION rather than toggling — so a retick while already on
+            // is a no-op. Detection stays on the sign LAMP, never the position — the A380
+            // invariant.
             Auto("BS_SEATBELTS", "BEFORE_START", "Seatbelt signs: ON", "CABIN SEATBELTS ALERT SWITCH",
                 v => v > 0.5, (e, _) => e.SetSeatbeltSign(true)),
             Auto("BS_BEACON", "BEFORE_START", "Beacon: ON", "LIGHT BEACON",

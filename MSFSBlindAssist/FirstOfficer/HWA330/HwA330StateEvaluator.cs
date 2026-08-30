@@ -5,9 +5,13 @@ using MSFSBlindAssist.FirstOfficer.Generic;
 namespace MSFSBlindAssist.FirstOfficer.HWA330;
 
 /// <summary>
-/// Reads FlyByWire A32NX control state from the SimConnect cache for the First
-/// Officer's checklist auto-detection. Mirrors <see cref="FBWA380.FbwA380StateEvaluator"/>
-/// with the A320 two-engine key set (confirmed against FlyByWireA320Definition.GetVariables()).
+/// Reads HeadwindSim A330-900neo control state from the SimConnect cache for the First
+/// Officer's checklist auto-detection. ORIGINATES as a duplicate of
+/// <see cref="FBWA320.FbwA320StateEvaluator"/> — the A339X is built on the A32NX systems,
+/// so most poll keys keep their <c>A32NX_</c> names — but the poll list is this airframe's,
+/// confirmed against <see cref="MSFSBlindAssist.Aircraft.HeadwindA330Definition.GetVariables"/>,
+/// and carries the A339X divergences (nav/logo, SD page enum, 3-position seatbelt switch,
+/// ganged landing lights, ceiling/map pots). Never read it as the A320's.
 /// </summary>
 public sealed class HwA330StateEvaluator : LVarStateEvaluator
 {

@@ -8,9 +8,12 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.FirstOfficer.HWA330;
 
 /// <summary>
-/// FlyByWire A320 First Officer profile — wires the shared generic FO engine + window to
-/// the FBW A320 concretes. Unlike the Fenix/PMDG profiles, the executor also needs the live
-/// <see cref="FlyByWireA320Definition"/> instance (its writes delegate to the def's verified
+/// HeadwindSim A330-900neo First Officer profile — wires the shared generic FO engine +
+/// window to the Headwind A330 concretes. ORIGINATES as a duplicate of the FBW A32NX
+/// profile (<see cref="FBWA320.FbwA320FoProfile"/>) and stays deliberately parallel to it,
+/// but it is its own profile with its own A339X divergences — never read it as the A320's.
+/// Unlike the Fenix/PMDG profiles, the executor also needs the live
+/// <see cref="HeadwindA330Definition"/> instance (its writes delegate to the def's verified
 /// <c>ApplyUIVariable</c> panel path), so it is passed into this profile's constructor by the
 /// caller (<c>MainForm.ShowHwA330FirstOfficerDialog</c>) rather than resolved here — the
 /// <see cref="IFoProfile{TExec,TState}"/> contract only ever hands us a
