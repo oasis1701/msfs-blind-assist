@@ -4554,12 +4554,21 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // until 2026-08-30, so it read NaN and the cap never engaged on either the
         // A32NX or the A330. The A339X publishes it too (mcdu.js), so the A330
         // inherits this registration unchanged.
+        //
+        // OnRequest, exactly like the A32NX_SPEEDS_* siblings above and the A380's copy
+        // of this same L:var: its delivery path is FirstOfficerForm's 1 s RequestVariable
+        // poll over the evaluators' OnRequestPollFields, which lists it. It must NOT be
+        // Continuous — every continuous delivery path (the batch gate and
+        // StartContinuousMonitoring in SimConnectManager.Setup.cs, and the per-var
+        // PERIOD.SECOND subscription an ExcludeFromBatch var gets) also requires
+        // IsAnnounced, which this silent input must never have. Continuous without
+        // IsAnnounced would declare a delivery nothing performs.
         ["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_LANDING_CONF3",
             DisplayName = "Landing CONF 3 Selected",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ExcludeFromMonitorManager = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "CONF FULL", [1] = "CONF 3" }
         },
