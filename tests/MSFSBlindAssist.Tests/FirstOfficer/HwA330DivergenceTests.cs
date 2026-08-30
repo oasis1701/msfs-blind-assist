@@ -1,3 +1,4 @@
+using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 using Xunit;
@@ -119,5 +120,25 @@ public class HwA330DivergenceTests
         Assert.Contains("BRIGHT_OVERHEAD_INTEG_SET", keys);
         Assert.Contains("BRIGHT_MAINPANEL_SET", keys);
         Assert.Contains("BRIGHT_PEDESTAL_SET", keys);
+    }
+
+    [Fact]
+    public void A330_seatbelt_on_is_position_zero_and_off_is_two()
+    {
+        Assert.Equal(0, MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltPositionOn);
+        Assert.Equal(2, MSFSBlindAssist.FirstOfficer.HWA330.HwA330ActionExecutor.SeatbeltPositionOff);
+    }
+
+    [Fact]
+    public void A330_seatbelt_items_detect_on_the_sign_lamp_never_the_switch_position()
+    {
+        var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
+            .SelectMany(g => g.Items)
+            .Where(i => i.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
+            .ToList();
+
+        Assert.Equal(3, items.Count);
+        foreach (var i in items)
+            Assert.Equal("CABIN SEATBELTS ALERT SWITCH", i.StateFieldName);
     }
 }

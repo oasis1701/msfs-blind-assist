@@ -197,8 +197,7 @@ public static class HwA330ChecklistDefinitions
             // Seatbelt signs: genuine 2-position toggle event on the A320 (no AUTO, unlike
             // the A380) — guarded so a retick while already on doesn't toggle it back off.
             Auto("BS_SEATBELTS", "BEFORE_START", "Seatbelt signs: ON", "CABIN SEATBELTS ALERT SWITCH",
-                v => v > 0.5, (e, s) => s.IsOn("CABIN SEATBELTS ALERT SWITCH")
-                    ? Task.CompletedTask : e.Set("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1)),
+                v => v > 0.5, (e, _) => e.SetSeatbeltSign(true)),
             Auto("BS_BEACON", "BEFORE_START", "Beacon: ON", "LIGHT BEACON",
                 v => v > 0.5, (e, _) => e.Set("BEACON_LIGHTS_SET", 1)),
             ActionManual("BS_FCUSPD", "BEFORE_START", "FCU speed: managed", (e, _) => e.Set("FCU_PUSH_SPEED", 1)),
@@ -342,8 +341,7 @@ public static class HwA330ChecklistDefinitions
             // Landing autobrake is ALWAYS a Captain item (project-wide rule).
             Reminder("DC_AUTOBRAKE", "DESCENT", "Set the landing autobrake — Instrument section, Autobrake panel"),
             Auto("DC_SEATBELTS", "DESCENT", "Seatbelt signs: ON", "CABIN SEATBELTS ALERT SWITCH",
-                v => v > 0.5, (e, s) => s.IsOn("CABIN SEATBELTS ALERT SWITCH")
-                    ? Task.CompletedTask : e.Set("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1)),
+                v => v > 0.5, (e, _) => e.SetSeatbeltSign(true)),
             // ONE descent-preparation item. The EFB carries no landing-performance answer
             // on the A320 — VAPP comes off the MCDU PERF APPR page from the QNH /
             // temperature / wind / minimums the crew enters. And there is no CRUISE group
@@ -445,8 +443,7 @@ public static class HwA330ChecklistDefinitions
             Auto("SD_LS2", "SHUTDOWN", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_EFIS_R_LS_BUTTON_IS_ON", 0)),
             Auto("SD_SEATBELTS_OFF", "SHUTDOWN", "Seatbelt signs: OFF", "CABIN SEATBELTS ALERT SWITCH",
-                v => v < 0.5, (e, s) => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")
-                    ? Task.CompletedTask : e.Set("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0)),
+                v => v < 0.5, (e, _) => e.SetSeatbeltSign(false)),
             Auto("SD_BEACON_OFF", "SHUTDOWN", "Beacon: OFF", "LIGHT BEACON",
                 v => v < 0.5, (e, _) => e.Set("BEACON_LIGHTS_SET", 0)),
             Auto("SD_FUELPUMPS_OFF", "SHUTDOWN", "Fuel pumps: ALL OFF", "FUEL_PUMP_L1", v => v < 0.5,

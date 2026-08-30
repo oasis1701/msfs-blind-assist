@@ -391,15 +391,37 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     public Task<bool> SetNoseLight(int pos)    => DispatchAsync("LIGHTING_LANDING_1", pos);
     public Task<bool> CabinCall()              => DispatchAsync("CABIN_CALL_ALL", 1);
 
-    /// <summary>Seat-belt sign (2-position, no AUTO). The A320 sign is a stock TOGGLE
-    /// (CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE) with state simvar CABIN SEATBELTS ALERT SWITCH
-    /// (0=Off/1=On). Fire the toggle only when the live state differs from the target —
-    /// mirroring the A380 def's guarded toggle and the panel's stock-event send.</summary>
-    public Task<bool> SetSeatbeltSign(bool on)
+    /// <summary>A339X seat-belt switch positions. Three-position 0=On / 1=Auto / 2=Off
+    /// (A330_NEO_INTERIOR.xml:1817-1823) — the OPPOSITE of the A32NX's two-position
+    /// 1=On / 0=Off. Exposed for HwA330DivergenceTests.</summary>
+    public const int SeatbeltPositionOn  = 0;
+    public const int SeatbeltPositionOff = 2;
+
+    /// <summary>
+    /// Seat-belt sign, in two steps and in this order.
+    ///
+    /// (1) Write the switch POSITION. This moves the physical switch AND takes the
+    ///     airframe out of AUTO — whose CODE_POS_1 block re-drives the stock simvar
+    ///     every 500 ms from engines-running AND (slats out OR a main gear downlocked),
+    ///     so a bare stock toggle is fought back within half a second while the switch
+    ///     sits there. The A32NX has no AUTO position and needs none of this.
+    ///
+    /// (2) Reconcile the sign lamp with the guarded stock toggle. Whether CODE_POS_0 /
+    ///     CODE_POS_2 fire on an external L:var write, or only on a cockpit click,
+    ///     cannot be settled by reading the template — so this is belt-and-braces: a
+    ///     no-op if they fire, and what actually lights the sign if they do not.
+    ///     See the L1 item in docs/headwind-a330-first-officer-test-plan.md.
+    ///
+    /// Detection stays on the sign LAMP, never the switch position — the A380 invariant.
+    /// </summary>
+    public async Task<bool> SetSeatbeltSign(bool on)
     {
-        if (_sc == null) return Task.FromResult(false);
+        if (_sc == null) return false;
+
+        await Set("SEATBELT_SIGN_POSITION", on ? SeatbeltPositionOn : SeatbeltPositionOff);
+
         bool currentOn = (_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH") ?? (on ? 0.0 : 1.0)) > 0.5;
         if (currentOn != on) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
-        return Task.FromResult(true);
+        return true;
     }
 }
