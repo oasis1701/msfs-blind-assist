@@ -347,6 +347,12 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         // LIGHT LANDING indices 2 and 3 (A330_NEO_INTERIOR.xml:2022-2034); the A32NX has
         // TWO Retractable switches whose state lives in L:LIGHTING_LANDING_2/_3, which
         // this airframe never writes. There is no RETRACT position here.
+        //
+        // READ-ONLY on the panel (see BuildPanelControls below, which swaps this key in
+        // for the two dead A32NX rows). Nothing writes "LIGHT LANDING:2" — the actuator
+        // is the LANDING_LIGHTS_ON/OFF_THIRD_PARTY momentary pair already on that panel,
+        // which the First Officer fires too — so rendering it as a settable combo would
+        // just replace two dead controls with a third.
         vars["LIGHT LANDING:2"] = new SimConnect.SimVarDefinition
         {
             Name = "LIGHT LANDING:2",
@@ -354,6 +360,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
             Type = SimConnect.SimVarType.SimVar,
             Units = "Bool",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
@@ -367,16 +374,48 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
         var d = base.GetPanelDisplayVariables();
-        ReplaceDisplayVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
-        ReplaceDisplayVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
+        ReplacePanelVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
+        ReplacePanelVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
         return d;
     }
 
-    private static void ReplaceDisplayVar(Dictionary<string, List<string>> d, string panel, string oldVar, string newVar)
+    /// <summary>
+    /// The inherited Exterior Lighting panel lists the A32NX's TWO Retractable
+    /// landing-light switch positions (<c>L:LIGHTING_LANDING_2</c>/<c>_3</c>, each
+    /// On/Off/RETRACT). Neither switch exists on this airframe and neither L:var is
+    /// ever written by it — LIVE-MEASURED 2026-08-31, <c>LIGHTING_LANDING_2</c> read 0
+    /// with the landing lights ON and 0 with them OFF: frozen. So both combos showed a
+    /// stale position, and their RETRACT option commanded a detent the A339X does not
+    /// have. This is the same defect already corrected for the First Officer (which made
+    /// its checklist report "Landing lights: ON" permanently, including when they were
+    /// off); the panel kept offering it until now.
+    ///
+    /// Swap the pair for the single stock read-back registered in
+    /// <see cref="GetVariables"/>, in place so the row keeps its position between the
+    /// nose light and the strobes. Actuation is unchanged and already on this panel: the
+    /// LANDING_LIGHTS_ON/OFF_THIRD_PARTY momentary buttons, the same actuator the First
+    /// Officer fires.
+    ///
+    /// The A32NX is deliberately untouched — its two Retractable switches are real.
+    /// </summary>
+    protected override Dictionary<string, List<string>> BuildPanelControls()
+    {
+        var c = base.BuildPanelControls();
+        ReplacePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_2", "LIGHT LANDING:2");
+        RemovePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_3");
+        return c;
+    }
+
+    private static void ReplacePanelVar(Dictionary<string, List<string>> d, string panel, string oldVar, string newVar)
     {
         if (!d.TryGetValue(panel, out var list)) return;
         int i = list.IndexOf(oldVar);
         if (i >= 0) list[i] = newVar;
+    }
+
+    private static void RemovePanelVar(Dictionary<string, List<string>> d, string panel, string varKey)
+    {
+        if (d.TryGetValue(panel, out var list)) list.Remove(varKey);
     }
 
     // The EFIS Baro Push/Pull panel buttons' post-press readback keys on

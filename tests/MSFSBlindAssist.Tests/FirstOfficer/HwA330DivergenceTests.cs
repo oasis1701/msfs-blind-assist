@@ -77,6 +77,68 @@ public class HwA330DivergenceTests
         Assert.Equal(SimVarType.SimVar, v.Type);
     }
 
+    // Registering the read-back is only half of it: the First Officer was fixed to use it,
+    // but the inherited Exterior Lighting PANEL still listed the two A32NX Retractable
+    // positions, so a pilot driving the panel by hand could still do the exact harm the FO
+    // fix removed — a combo showing a frozen position (live-measured 2026-08-31:
+    // L:LIGHTING_LANDING_2 read 0 with the lights ON and 0 with them OFF) whose RETRACT
+    // option commands a detent this airframe does not have.
+
+    [Fact]
+    public void A330_exterior_lighting_panel_replaces_the_dead_retractable_keys()
+    {
+        var panel = new HeadwindA330Definition().GetPanelControls()["Exterior Lighting"];
+
+        Assert.DoesNotContain("LIGHTING_LANDING_2", panel);
+        Assert.DoesNotContain("LIGHTING_LANDING_3", panel);
+        Assert.Contains("LIGHT LANDING:2", panel);
+    }
+
+    [Fact]
+    public void A330_offers_the_dead_retractable_keys_on_no_panel_list_at_all()
+    {
+        var a330 = new HeadwindA330Definition();
+
+        foreach (var (listName, lists) in new (string, Dictionary<string, List<string>>)[]
+                 {
+                     ("control", a330.GetPanelControls()),
+                     ("display", a330.GetPanelDisplayVariables()),
+                 })
+        foreach (var (panel, keys) in lists)
+        foreach (var dead in new[] { "LIGHTING_LANDING_2", "LIGHTING_LANDING_3" })
+            Assert.False(keys.Contains(dead),
+                $"The A330 {listName} list for panel '{panel}' still offers {dead}, which this "
+                + "airframe never writes — its landing lights are ONE ganged two-position switch "
+                + "on stock LIGHT LANDING:2/:3.");
+    }
+
+    [Fact]
+    public void A330_landing_light_row_is_a_read_back_beside_the_working_actuator()
+    {
+        var a330 = new HeadwindA330Definition();
+        var panel = a330.GetPanelControls()["Exterior Lighting"];
+
+        // Nothing in the app writes "LIGHT LANDING:2" — the actuator is the pair of
+        // momentary buttons already on this panel (the same one the FO fires). So the
+        // replacement row must be a read-only status field, or it is a settable combo
+        // that silently does nothing: the dead control this fix exists to remove.
+        Assert.True(a330.GetVariables()["LIGHT LANDING:2"].RenderAsReadOnlyStatus);
+        Assert.Contains("LANDING_LIGHTS_ON_THIRD_PARTY", panel);
+        Assert.Contains("LANDING_LIGHTS_OFF_THIRD_PARTY", panel);
+    }
+
+    [Fact]
+    public void A320_exterior_lighting_panel_keeps_both_retractable_switches()
+    {
+        // The two Retractable switches are CORRECT on the A32NX — the fix above must not
+        // reach the airframe that really has them.
+        var panel = new FlyByWireA320Definition().GetPanelControls()["Exterior Lighting"];
+
+        Assert.Contains("LIGHTING_LANDING_2", panel);
+        Assert.Contains("LIGHTING_LANDING_3", panel);
+        Assert.DoesNotContain("LIGHT LANDING:2", panel);
+    }
+
     // --- Divergence 2: ECAM SD page indices ---------------------------------------
     // A339X SD bundle: Eng 0, Bleed 1, Press 2, ElecAC 3, ElecDC 4, Hyd 5, Apu 6,
     // Cond 7, Door 8, Wheel 9, Fctl 10, Fuel 11, Crz 12, Status 13, CB 14.
