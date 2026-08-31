@@ -1,6 +1,6 @@
-namespace MSFSBlindAssist.Aircraft;
-
 using System.Globalization;
+
+namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
 /// The words the PMDG 777 baro readout uses — shared by the output mode + B hotkey and the
@@ -53,10 +53,10 @@ public static class Pmdg777AltimeterPhrase
     /// <summary>The phrase to speak for an altimeter setting in inches of mercury.</summary>
     public static string Describe(double inHg)
     {
-        if (System.Math.Abs(inHg - StandardInHg) < StandardToleranceInHg)
+        if (Math.Abs(inHg - StandardInHg) < StandardToleranceInHg)
             return "Altimeter standard";
 
-        string hpa = ((int)System.Math.Round(inHg * InHgToHpa)).ToString(CultureInfo.InvariantCulture);
+        string hpa = ((int)Math.Round(inHg * InHgToHpa)).ToString(CultureInfo.InvariantCulture);
         return $"QNH {hpa}, Altimeter {inHg.ToString("0.00", CultureInfo.InvariantCulture)}";
     }
 }

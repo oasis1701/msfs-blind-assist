@@ -1,6 +1,7 @@
 // Wording only. Both units are still spoken, so there is no state here and no way for the
 // readout to be wrong -- what these pin is that each number is labelled as the thing it is.
 
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
@@ -69,9 +70,9 @@ public class Pmdg777AltimeterPhraseTests
         // Both sides are pinned, because the fix for one is the bug for the other: widen it
         // and a QNH is swallowed, narrow it past true standard and STD stops registering.
         const double MinMargin = 1.8;
-        double toQnh1013 = System.Math.Abs(
+        double toQnh1013 = Math.Abs(
             Pmdg777AltimeterPhrase.StandardInHg - 1013 / Pmdg777AltimeterPhrase.InHgToHpa);
-        double toTrueStandard = System.Math.Abs(
+        double toTrueStandard = Math.Abs(
             Pmdg777AltimeterPhrase.StandardInHg - 1013.25 / Pmdg777AltimeterPhrase.InHgToHpa);
 
         Assert.True(Pmdg777AltimeterPhrase.StandardToleranceInHg * MinMargin < toQnh1013,
@@ -112,15 +113,15 @@ public class Pmdg777AltimeterPhraseTests
     {
         // The format strings this replaced used the current culture, so a German-locale
         // pilot was told "29,92". InvariantCulture is the fix; nothing else pinned it.
-        var previous = System.Globalization.CultureInfo.CurrentCulture;
+        var previous = CultureInfo.CurrentCulture;
         try
         {
-            System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo("de-DE");
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
             Assert.Equal("QNH 1018, Altimeter 30.06", Pmdg777AltimeterPhrase.Describe(30.06));
         }
         finally
         {
-            System.Globalization.CultureInfo.CurrentCulture = previous;
+            CultureInfo.CurrentCulture = previous;
         }
     }
 }
