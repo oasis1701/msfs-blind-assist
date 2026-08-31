@@ -24,7 +24,12 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 public static class Pmdg777AltimeterPhrase
 {
-    /// <summary>Standard pressure, inches of mercury.</summary>
+    /// <summary>
+    /// Standard pressure, inches of mercury. STD is detected by comparing against this
+    /// rather than by reading a flag, because the 777 publishes no latched STD state:
+    /// <c>EFIS_BaroSTD_Sw_Pushed</c> is a momentary push indication, not a readback of
+    /// which mode the panel is in. Same shape as the NG3's lack of an STD-state readback.
+    /// </summary>
     public const double StandardInHg = 29.92;
 
     /// <summary>

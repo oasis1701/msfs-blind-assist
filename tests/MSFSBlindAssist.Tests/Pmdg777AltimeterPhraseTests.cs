@@ -20,9 +20,11 @@ public class Pmdg777AltimeterPhraseTests
     public void Both_units_are_always_spoken_so_the_readout_cannot_be_wrong()
     {
         // The point of the old readout was never brevity - it was that it states both
-        // numbers and lets the pilot take the one they are working in. Naming a single unit
-        // would need the app to know the EFIS selectors, and a stale answer would announce
-        // the right pressure in the unit the pilot did not ask for.
+        // numbers and lets the pilot take the one they are working in. The app CAN read the
+        // two EFIS BARO selectors, so knowing them is not the obstacle; the obstacle is that
+        // a stale reading, or a pair that legitimately disagrees, would announce the right
+        // pressure in the unit the pilot did not ask for - which is the very complaint a
+        // single-unit readout would exist to answer.
         string p = Pmdg777AltimeterPhrase.Describe(29.98);
         Assert.Contains("QNH", p);
         Assert.Contains("Altimeter", p);
