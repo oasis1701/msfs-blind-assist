@@ -49,8 +49,8 @@ from what the design assumed, and both corrections are recorded in the spec and 
 | L3 | **CONFIRMED, both halves.** | Read: `A:LIGHT NAV` = 1 while `L:A32NX_LIGHTS_NAV_LOGO` = 0. Write: the shipped two-operand RPN drove both lights off and back on. |
 | L4 | **CONFIRMED from the aircraft's own code.** `Status = 13`. | `sd.js` — the same bundle that consumes `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` — defines `Eng 0, Bleed 1, Press 2, ElecAC 3, ElecDC 4, Hyd 5, Apu 6, Cond 7, Door 8, Wheel 9, Fctl 10, Fuel 11, Crz 12, Status 13, CB 14`. ⚠ A LIVE read is **not** a reliable check here: a written index is reclaimed by the aircraft's auto-SD logic within seconds (measured: 13 written, read back as 9/Wheel). Verify from the bundle, not the screen. |
 | L5 | **CONFIRMED, and WORSE than documented.** | `L:LIGHTING_LANDING_2` read `0` with the lights **on** AND `0` with them **off** — it is frozen, never written by this airframe. Because the A320's `BT_LANDING_LT` accepts `0` as "ON", the unported profile does not merely fail to tick: it reports **"Landing lights: ON" permanently, including when they are off** — a false positive on a before-takeoff checklist. |
-| L6 | **PARTIAL.** The L:var delivers. | `A32NX_SPEEDS_LANDING_CONF3` read `0.0` (a real value, not absent). Still to do: select CONF 3 on the MFD PERF APPR page and confirm the value flips and the flap cap engages. |
-| L7 | **NOT RUN.** | Needs an airborne or taxi phase. |
+| L6 | **PARTIAL — inputs confirmed.** | `A32NX_SPEEDS_LANDING_CONF3` reads `0.0` (a real value, not absent). With a flight plan loaded the schedule's other inputs read **F 172 / S 203 / GD 250 kt** — genuine widebody figures (an A320 reads roughly 131/160/200), so the tape both delivers AND self-scales to the airframe, which is why the speed-driven schedule transfers without a numeric change. Still to do: select CONF 3 on the MFD PERF APPR page and confirm the flag flips and the cap engages. |
+| L7 | **CONFIRMED — all seven events exercised.** | Baro, both sides: `FCU_EFIS_L_BARO_PULL` took `KOHLSMAN SETTING STD:1` 0→1 and `_PUSH` returned it 1→0; the `_R_` pair did the same to `STD:2`. **PULL = STD on the A330, same polarity as the A32NX.** FCU: `FCU_SPD_PULL` cleared the managed dot and `FCU_SPD_PUSH` restored it; `FCU_HDG_PUSH` left `A32NX_FMA_LATERAL_ARMED` = 1 (NAV armed). Both sides restored to QNH. |
 | L8 | **NOT RUN.** | Needs a full cold-and-dark cycle. |
 | L9 | **CONFIRMED, harm demonstrated.** | Pot 10 pairs with `L:A339X_CEILING_LIGHT_CAPTAIN` (both read 0). Writing pot 10 = `50` — the A320 scene's DimFlight value — lit the Captain's ceiling light while its own state var stayed `0`: a desync at a brightness the binary switch cannot produce. Restored to 0. |
 
@@ -60,6 +60,15 @@ from what the design assumed, and both corrections are recorded in the spec and 
 `get_simvar` (it throws on the indexed path). Read them by RPN into a scratch L:var
 instead — `(A:LIGHT LANDING:2, Bool) (>L:SCRATCH)` — then read the scratch var. Keep
 calculator strings short; a long multi-read string fails with "negative count".
+
+⚠ **Do not use `A32NX_FCU_HDG_MANAGED_DASHES` to decide whether an HDG push worked.**
+It is a WINDOW-DISPLAY flag, not an armed flag. On the ground, `FCU_HDG_PUSH` arms NAV
+(`A32NX_FMA_LATERAL_ARMED` = 1) while the FCU window keeps showing whatever heading a
+prior pull latched, so the dashes flag stays 0 and the push looks like a no-op when it
+succeeded. Read `A32NX_FMA_LATERAL_ARMED` instead. The same push is idempotent — it does
+not clear `A32NX_AUTOPILOT_HEADING_SELECTED` back to −1, so a pull is not undone by a
+push; the window returns to dashes when NAV actually engages after takeoff. Both
+behaviours are shared FBW FCU code, not A330 divergences.
 
 ## Part B — regression walk
 
