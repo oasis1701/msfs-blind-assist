@@ -52,6 +52,13 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE",
         "A32NX_SWITCH_ATC_ALT",
         "A32NX_FMGC_1_FD_ENGAGED", "A32NX_FMGC_2_FD_ENGAGED",
+        // The FD PUSH events toggle, so FlyByWireA320Definition.FlightDirectorPushEvent
+        // refuses to push a button whose light already reads the target — and refuses again
+        // when the light is UNKNOWN. These two are what keep it known: they are OnRequest and
+        // not IsAnnounced, so this poll is their only route onto the cache the guard reads.
+        // Without them the guard was permanently blind for any pilot who had not opened the
+        // Ctrl+P autopilot window, and the FD steps silently did nothing.
+        "A32NX_FCU_EFIS_L_FD_LIGHT_ON", "A32NX_FCU_EFIS_R_FD_LIGHT_ON",
         "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
         // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
         // was previously absent here AND unregistered in the definition, so `conf3` was

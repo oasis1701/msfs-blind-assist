@@ -8502,6 +8502,61 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // Ground-spoiler ARM (0 disarm / 1 arm).
+        //
+        // ⚠️ The same dead-write shape as ENGINE_MODE_SELECTOR above: an EVENT-typed key with
+        // no branch here fell through to the bottom catch-all — which requires Type == LVar —
+        // and out of the method as FALSE. The First Officer executors' ApplySilent fallback
+        // then wrote a DEAD L:var literally named "SPOILERS_ARM_TOGGLE" and reported SUCCESS,
+        // so the flow step announced done and the checklist item ticked while the lever never
+        // moved. (The panel button keeps its own MainForm path, which is why arming from the
+        // panel always worked; this adds a write path rather than replacing one.)
+        //
+        // The write is ABSOLUTE — the A380's proven form, FlyByWireA380Definition's
+        // A380X_MSFSBA_SPOILERS_ARM branch: the stock ARM_ON / ARM_OFF pair names the position
+        // wanted, so no state guard is needed and a repeat cannot flip the lever. The flow and
+        // checklist comments calling this key "a genuine toggle event" describe the EVENT NAME
+        // upstream, not what this branch emits; their re-run guards are now redundant rather
+        // than load-bearing, and are harmless either way.
+        //
+        // ExecuteCalculatorCodeUnique, NOT ExecuteCalculatorCode: the RPN carries no operand,
+        // so two consecutive writes of the SAME position are byte-identical and the MobiFlight
+        // command channel drops the second. That is not academic — the flows send DISARM in
+        // BOTH After Takeoff and After Landing, so a pilot who armed the lever by hand between
+        // them would have the second disarm silently swallowed (the wiper-toggle failure).
+        if (varKey == "SPOILERS_ARM_TOGGLE")
+        {
+            simConnect.ExecuteCalculatorCodeUnique(SpoilersArmRpn(value > 0.5));
+            return true;
+        }
+
+        // EFIS flight-director pushes — a GUARDED toggle, not a set.
+        //
+        // Same dead-write shape as the two branches above, but the rescue must not be a bare
+        // fire: A32NX.FCU_EFIS_{L,R}_FD_PUSH TOGGLE. Live-measured on the A339X 2026-08-31 —
+        // one fire took L:A32NX_FCU_EFIS_L_FD_LIGHT_ON from 1 to 0, and a second returned it
+        // to 1. Every First Officer step that writes these means ON ("Flight director 1/2:
+        // ON"), so an UNGUARDED branch would switch the flight director OFF on every
+        // already-lit button — an ACTIVE WRONG ACTION, which is worse than the silent no-op it
+        // replaces. FlightDirectorPushEvent owns the decision (and says why an UNKNOWN light
+        // is refused here, unlike the ELEC-gen guard further down).
+        //
+        // The light is read through the FdLeftLightVar / FdRightLightVar virtuals — the seam a
+        // future FBW fork repoints — which name the same vars GetButtonStateMapping already
+        // pairs with these pushes. SendEvent, not ExecuteCalculatorCode: that is the transport
+        // FireFCUButton uses, it keeps the A320 family's TransmitClientEvent fallback for a
+        // pilot with no MobiFlight module (IsFbwFcuEvent is A380-only for exactly that
+        // reason), and it applies the per-call uniqueness prefix centrally when it does take
+        // the calculator path.
+        if (varKey == "A32NX.FCU_EFIS_L_FD_PUSH" || varKey == "A32NX.FCU_EFIS_R_FD_PUSH")
+        {
+            bool left = varKey == "A32NX.FCU_EFIS_L_FD_PUSH";
+            string? fdPush = FlightDirectorPushEvent(varKey, value,
+                simConnect.GetCachedVariableValue(left ? FdLeftLightVar : FdRightLightVar));
+            if (fdPush != null) simConnect.SendEvent(fdPush);
+            return true;
+        }
+
         // Fuel pump combos (state = FUELSYSTEM PUMP/VALVE SWITCH:n, not directly settable):
         // main pumps fire FUELSYSTEM_PUMP_ON/_OFF; centre jet pumps fire FUELSYSTEM_VALVE_
         // OPEN/_CLOSE (same proven path as the engine masters). Pump idx L1=2/L2=5/R1=3/R2=6;
@@ -8921,6 +8976,49 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         return $"{m} (>K:TURBINE_IGNITION_SWITCH_SET1) "
              + $"{m} (>K:TURBINE_IGNITION_SWITCH_SET2) "
              + $"{m} (>L:XMLVAR_ENG_MODE_SEL)";
+    }
+
+    /// <summary>
+    /// The RPN the ground-spoiler ARM write emits. ABSOLUTE, never a toggle: the stock
+    /// SPOILERS_ARM_ON / SPOILERS_ARM_OFF pair names the position wanted, so a repeat is a
+    /// no-op rather than a flip. Same form the A380 definition uses for its own arm combo.
+    /// Pure so the event names are assertable (the <see cref="EngineModeSelectorRpn"/>
+    /// convention).
+    ///
+    /// ⚠️ VALUELESS — a bare K-event with no operand — so every caller must send it through
+    /// <c>ExecuteCalculatorCodeUnique</c>; two consecutive writes of the same position are
+    /// byte-identical and the MobiFlight channel drops the second.
+    /// </summary>
+    public static string SpoilersArmRpn(bool armed) =>
+        armed ? "(>K:SPOILERS_ARM_ON)" : "(>K:SPOILERS_ARM_OFF)";
+
+    /// <summary>
+    /// The EFIS flight-director push to fire for <paramref name="varKey"/>, or null when
+    /// nothing should be fired. Pure so the GUARD — not merely the event name — is assertable.
+    ///
+    /// ⚠️ These events TOGGLE (live-measured on the A339X 2026-08-31: one fire took
+    /// A32NX_FCU_EFIS_L_FD_LIGHT_ON from 1 to 0, a second returned it to 1) while every First
+    /// Officer step writing them means ON. So a push is emitted only when the live light
+    /// DISAGREES with <paramref name="target"/>.
+    ///
+    /// An UNKNOWN light (<paramref name="lightOn"/> null or NaN) refuses the push. That is
+    /// deliberately the OPPOSITE of the two neighbouring guarded toggles in
+    /// HandleUIVariableSet — the ELEC gens and the blue electric pump override, which both
+    /// fire on an unread cache — and the difference is the resting position. Those switches
+    /// rest OFF, so a blind press moves them TOWARDS the state asked for. The FD button is
+    /// commonly already lit (the measurement above found it at 1), so a blind press here is a
+    /// coin flip that can switch the flight director off. A step that silently does nothing is
+    /// recoverable; one that turns off a flight director the pilot was told is on is not.
+    /// The lights are polled onto the cache by FirstOfficerForm via the evaluators'
+    /// OnRequestPollFields, so "unknown" is the first second after the window opens, not the
+    /// standing condition.
+    /// </summary>
+    public static string? FlightDirectorPushEvent(string varKey, double target, double? lightOn)
+    {
+        if (varKey != "A32NX.FCU_EFIS_L_FD_PUSH" && varKey != "A32NX.FCU_EFIS_R_FD_PUSH")
+            return null;
+        if (!lightOn.HasValue || double.IsNaN(lightOn.Value)) return null;
+        return (target > 0.5) == (lightOn.Value > 0.5) ? null : varKey;
     }
 
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
