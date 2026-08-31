@@ -236,6 +236,77 @@ public class HwA330DivergenceTests
                 A330Exec.CockpitLightingPlan(scene));
     }
 
+    // Keeping the two pots out of the FIRST OFFICER's scene was only half of it: the
+    // inherited Interior Lighting PANEL still listed both as brightness combos, so a
+    // pilot driving the panel by hand could still do the exact harm the FO exclusion
+    // removes. DEMONSTRATED LIVE 2026-08-31: writing LIGHT POTENTIOMETER:10 = 50 lit the
+    // Captain's ceiling light while L:A339X_CEILING_LIGHT_CAPTAIN still read 0 — the lamp
+    // on, its own state var saying off, at a brightness a binary switch cannot produce,
+    // and nothing in the cockpit able to resolve the disagreement.
+
+    [Fact]
+    public void A330_interior_lighting_panel_drops_the_two_repurposed_pots()
+    {
+        var panel = new HeadwindA330Definition().GetPanelControls()["Interior Lighting"];
+
+        Assert.DoesNotContain("BRIGHT_GLARESHIELD_CAPT_SET", panel);
+        Assert.DoesNotContain("BRIGHT_GLARESHIELD_FO_SET", panel);
+    }
+
+    [Fact]
+    public void A330_interior_lighting_panel_keeps_the_four_shared_pots()
+    {
+        // Pots 76 / 83 / 85 / 86 all exist on the A339X and mean there what they mean on
+        // the A320 — the same four the FO scene writes. Dropping them too would be an
+        // over-broad fix that takes away working controls.
+        var panel = new HeadwindA330Definition().GetPanelControls()["Interior Lighting"];
+
+        Assert.Contains("BRIGHT_PEDESTAL_SET", panel);          // pot 76
+        Assert.Contains("BRIGHT_GLARESHIELD_INTEG_SET", panel); // pot 83
+        Assert.Contains("BRIGHT_MAINPANEL_SET", panel);         // pot 85
+        Assert.Contains("BRIGHT_OVERHEAD_INTEG_SET", panel);    // pot 86
+
+        // …and the panel's three non-potentiometer rows, which this fix does not touch.
+        Assert.Contains("A32NX_OVHD_INTLT_ANN", panel);
+        Assert.Contains("A32NX_OVHD_INTLT_DOME", panel);
+        Assert.Contains("A32NX_STBY_COMPASS_LIGHT_TOGGLE", panel);
+    }
+
+    [Fact]
+    public void A330_offers_the_repurposed_pots_on_no_panel_list_at_all()
+    {
+        var a330 = new HeadwindA330Definition();
+
+        foreach (var (listName, lists) in new (string, Dictionary<string, List<string>>)[]
+                 {
+                     ("control", a330.GetPanelControls()),
+                     ("display", a330.GetPanelDisplayVariables()),
+                 })
+        foreach (var (panel, keys) in lists)
+        foreach (var repurposed in new[] { "BRIGHT_GLARESHIELD_CAPT_SET", "BRIGHT_GLARESHIELD_FO_SET" })
+            Assert.False(keys.Contains(repurposed),
+                $"The A330 {listName} list for panel '{panel}' still offers {repurposed}. On this "
+                + "airframe that potentiometer is a BINARY click-toggle for a Captain's ceiling / "
+                + "map light (A330_NEO_INTERIOR.xml:271-283), not a glareshield flood knob — "
+                + "setting it to a level lights an unrelated lamp and desyncs it from its own "
+                + "L:A339X_*_LIGHT_CAPTAIN state var.");
+    }
+
+    [Fact]
+    public void A320_interior_lighting_panel_keeps_all_six_pots()
+    {
+        // Pots 10 and 11 really are the Captain's and F/O's glareshield floods on the
+        // A32NX — the fix above must not reach the airframe where the keys are correct.
+        var panel = new FlyByWireA320Definition().GetPanelControls()["Interior Lighting"];
+
+        Assert.Contains("BRIGHT_GLARESHIELD_CAPT_SET", panel);
+        Assert.Contains("BRIGHT_GLARESHIELD_FO_SET", panel);
+        Assert.Contains("BRIGHT_PEDESTAL_SET", panel);
+        Assert.Contains("BRIGHT_GLARESHIELD_INTEG_SET", panel);
+        Assert.Contains("BRIGHT_MAINPANEL_SET", panel);
+        Assert.Contains("BRIGHT_OVERHEAD_INTEG_SET", panel);
+    }
+
     [Fact]
     public void A330_seatbelt_on_is_position_zero_and_off_is_two()
     {

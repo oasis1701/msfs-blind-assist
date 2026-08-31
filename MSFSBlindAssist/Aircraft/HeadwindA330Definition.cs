@@ -397,12 +397,44 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     /// Officer fires.
     ///
     /// The A32NX is deliberately untouched — its two Retractable switches are real.
+    ///
+    /// <para>
+    /// The inherited Interior Lighting panel has the same shape of defect in its
+    /// brightness knobs. It offers <c>BRIGHT_GLARESHIELD_CAPT_SET</c>
+    /// (<c>LIGHT POTENTIOMETER:10</c>) and <c>BRIGHT_GLARESHIELD_FO_SET</c>
+    /// (<c>LIGHT POTENTIOMETER:11</c>) as 0-100 percent flood knobs. On the A339X those
+    /// two pots are entirely different controls: pot 10 is the Captain's CEILING light and
+    /// pot 11 the Captain's MAP light (A330_NEO_INTERIOR.xml:271-283), both BINARY
+    /// click-toggles that write only 0 or 100 and are paired with
+    /// <c>L:A339X_CEILING_LIGHT_CAPTAIN</c> / <c>L:A339X_MAP_LIGHT_CAPTAIN</c>. The A330
+    /// has no glareshield flood knobs at all.
+    /// </para>
+    /// <para>
+    /// DEMONSTRATED LIVE on the aircraft 2026-08-31: writing <c>LIGHT POTENTIOMETER:10</c>
+    /// = 50 lit the Captain's ceiling light while <c>L:A339X_CEILING_LIGHT_CAPTAIN</c>
+    /// still read 0 — the lamp on, its own state var saying off, at a brightness a binary
+    /// switch cannot produce, and nothing in the cockpit able to resolve the disagreement.
+    /// <see cref="FirstOfficer.HWA330.HwA330ActionExecutor.CockpitLightingPlan"/> already
+    /// excludes both pots for exactly this reason; the panel offered them anyway, so a
+    /// pilot driving it by hand could still do the harm the First Officer avoids.
+    /// </para>
+    /// <para>
+    /// DROP the two rows rather than re-point them at the A339X ceiling/map lights: those
+    /// are binary L:var toggles, not levels, so they need a different control shape; they
+    /// are crew-comfort lights in no normal procedure; and inventing that mapping is a
+    /// separate decision the owner has not made. Dropping is the conservative fix, and it
+    /// is what the First Officer already does. The four legitimately shared pots — 76
+    /// pedestal, 83 glareshield integral, 85 main panel, 86 overhead integral, the same
+    /// four the FO scene writes — stay, as do the panel's three non-pot rows.
+    /// </para>
     /// </summary>
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
         var c = base.BuildPanelControls();
         ReplacePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_2", "LIGHT LANDING:2");
         RemovePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_3");
+        RemovePanelVar(c, "Interior Lighting", "BRIGHT_GLARESHIELD_CAPT_SET");
+        RemovePanelVar(c, "Interior Lighting", "BRIGHT_GLARESHIELD_FO_SET");
         return c;
     }
 
