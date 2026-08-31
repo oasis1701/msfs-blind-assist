@@ -6,6 +6,7 @@ using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 
@@ -139,6 +140,26 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
         try
         {
             if (_def!.ApplyUIVariable(varKey, value, _sc!, _announcer)) return true;
+
+            // An EVENT-typed key the definition declined can NOT be rescued by the fallback
+            // below: SetLVar prepends "L:" to the varKEY, so it would create a dead L:var
+            // named after the event and this method would report SUCCESS — the flow step
+            // announces done and the checklist item ticks with the control untouched. Four
+            // keys shipped exactly that way. Refuse instead, so the pilot hears the step
+            // fail; FoUnclaimedKeyPolicy says why an unregistered or L:var key still falls
+            // through. Same stance IFly737ActionExecutor.ApplySilent already takes for every
+            // unrecognised key: a key ApplyUIVariable does not recognise is a MAPPING BUG,
+            // not a control that needs another path.
+            if (!FoUnclaimedKeyPolicy.AllowsLVarFallback(_def.GetVariables(), varKey))
+            {
+                Log.Warn("fo_a320", $"refused write: '{varKey}' is registered as an EVENT and "
+                    + $"FlyByWireA320Definition.HandleUIVariableSet does not claim it, so there "
+                    + $"is no way to fire it (value {value}); nothing was written. "
+                    + "Flow/checklist mapping bug — the key needs a definition branch or an "
+                    + "executor dispatch arm.");
+                return false;
+            }
+
             // Mirror MainForm's combo-set fallback: a key HandleUIVariableSet doesn't
             // claim (returns false) is written as a plain L:var via SetLVar (calc-path
             // routed when MobiFlight is connected). Without this, a key with no def
