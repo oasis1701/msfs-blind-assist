@@ -1835,11 +1835,26 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // ENG MODE knob. The WRITE is HandleUIVariableSet's ENGINE_MODE_SELECTOR branch
+        // (see EngineModeSelectorRpn); the READBACK is the stock ignition-switch simvar
+        // (TURB ENG IGNITION SWITCH EX1:1, Enum 0=Crank/1=Norm/2=Ignition) — the same one
+        // the A380 definition reads, and the one MainForm's engine-mode combo comment
+        // already named. NOT XMLVAR_ENG_MODE_SEL, the knob-position var: it is written for
+        // the cockpit/EWD display, not as the state of the ignition system.
+        //
+        // ⚠️ This was Type = Event with Name = "ENGINE_MODE_SELECTOR" — not a readable
+        // variable at all — so nothing ever reached the value cache: the panel combo could
+        // not track the knob, and the First Officer's IsPosition("ENGINE_MODE_SELECTOR", n)
+        // guards could never match, so every engine-mode flow step ran unconditionally.
+        // Continuous so the combo tracks the real state and a knob change announces.
         ["ENGINE_MODE_SELECTOR"] = new SimConnect.SimVarDefinition
         {
-            Name = "ENGINE_MODE_SELECTOR",
+            Name = "TURB ENG IGNITION SWITCH EX1:1",
             DisplayName = "Engine Mode",
-            Type = SimConnect.SimVarType.Event,  // We'll handle this specially
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Enum",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "CRANK", [1] = "NORM", [2] = "IGN" }
         },
 
@@ -8455,6 +8470,38 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ENG MODE selector (0 CRANK / 1 NORM / 2 IGN START).
+        //
+        // ⚠️ This key is EVENT-typed and had NO branch here, so it fell through to the
+        // bottom catch-all — which requires Type == LVar — and out of the method as FALSE.
+        // The First Officer executor's ApplySilent fallback then wrote a DEAD L:var
+        // literally named "ENGINE_MODE_SELECTOR" and reported SUCCESS, so the flow step
+        // announced done and the checklist item ticked while the knob never moved.
+        // Live-measured on the A339X 2026-08-31: writing L:ENGINE_MODE_SELECTOR = 2 left
+        // L:XMLVAR_ENG_MODE_SEL at 1 and A:TURB ENG IGNITION SWITCH EX1:1 at 1. The A380
+        // definition has carried this branch since its own fix, which is why the A380
+        // First Officer works and both A320-family ones did not.
+        //
+        // The mechanism is MainForm.PanelBuilder's engine-mode combo — the panel path that
+        // always worked — re-verified live on the A339X, where it moved TURB ENG IGNITION
+        // SWITCH EX1:1 from 1 to 2 and back. TWO engines here, not the A380's four. The
+        // knob-position L:var is written as well because the ignition events do not touch
+        // it and the cockpit/EWD read it. An ABSOLUTE set, so no state guard is needed.
+        //
+        // The combo keeps its own branch in MainForm and does not come through here, so
+        // this adds a write path rather than replacing one — which is also why routing the
+        // ignition events through the calculator (this file's convention for K: writes, and
+        // the A380's shape) costs a pilot without the MobiFlight module nothing: their
+        // combo still sends them, and their First Officer wrote a dead L:var before.
+        //
+        // No speech here: a combo set is echo-suppressed by MainForm's _uiSetEcho wrap, and
+        // any other change announces off the ENGINE_MODE_SELECTOR readback.
+        if (varKey == "ENGINE_MODE_SELECTOR")
+        {
+            simConnect.ExecuteCalculatorCode(EngineModeSelectorRpn(value));
+            return true;
+        }
+
         // Fuel pump combos (state = FUELSYSTEM PUMP/VALVE SWITCH:n, not directly settable):
         // main pumps fire FUELSYSTEM_PUMP_ON/_OFF; centre jet pumps fire FUELSYSTEM_VALVE_
         // OPEN/_CLOSE (same proven path as the engine masters). Pump idx L1=2/L2=5/R1=3/R2=6;
@@ -8852,6 +8899,28 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         return false; // Not handled - use generic logic
+    }
+
+    /// <summary>
+    /// The RPN the ENG MODE selector write emits — 0 = CRANK, 1 = NORM, 2 = IGN START.
+    /// Pure so the operand order and the event names are assertable (the
+    /// <see cref="HeadwindA330Definition.NavLogoRpn"/> convention).
+    ///
+    /// Each write pops exactly ONE operand, so each is handed exactly one value token;
+    /// the ignition events drive the real state on both engines and XMLVAR_ENG_MODE_SEL
+    /// keeps the knob position the cockpit/EWD read in step. The value is rounded to the
+    /// nearest detent and clamped to the three the knob has (a NaN falls to CRANK rather
+    /// than throwing), and formatted with InvariantCulture — every calculator write in this
+    /// codebase must be, because the MSFS RPN parser rejects comma-decimal output and a
+    /// locale-specific minus sign.
+    /// </summary>
+    public static string EngineModeSelectorRpn(double mode)
+    {
+        string m = Math.Clamp((int)Math.Round(mode), 0, 2)
+            .ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{m} (>K:TURBINE_IGNITION_SWITCH_SET1) "
+             + $"{m} (>K:TURBINE_IGNITION_SWITCH_SET2) "
+             + $"{m} (>L:XMLVAR_ENG_MODE_SEL)";
     }
 
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
