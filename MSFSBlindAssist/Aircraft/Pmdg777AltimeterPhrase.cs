@@ -27,8 +27,25 @@ public static class Pmdg777AltimeterPhrase
     /// <summary>Standard pressure, inches of mercury.</summary>
     public const double StandardInHg = 29.92;
 
-    /// <summary>How close to <see cref="StandardInHg"/> still counts as STD.</summary>
-    public const double StandardToleranceInHg = 0.005;
+    /// <summary>
+    /// How close to <see cref="StandardInHg"/> still counts as STD.
+    ///
+    /// <para>
+    /// Sized against hectopascals, not inches, because that is the tight side. The nearest
+    /// inches setting a controller can issue is 0.0100 away, but a pilot working in
+    /// hectopascals sets whole units, and <b>QNH 1013 is only 0.0061 away</b> (29.9139 inHg)
+    /// while true standard, 1013.25 hPa, is 0.0012 away (29.9212 inHg). The band has to
+    /// separate those two, and 0.005 did not do it with any margin -- it sat 1.2x below a
+    /// real QNH 1013, so any rounding in the PMDG-to-SimConnect path would have announced a
+    /// set pressure as "Altimeter standard": a number replaced by a state, which is the one
+    /// kind of wrong a pilot cannot hear happening.
+    /// </para>
+    /// <para>
+    /// 0.003 sits 2.4x above the true-standard case and 2.0x below QNH 1013. Do not widen it
+    /// back toward 0.005, and do not narrow it below 0.0012 or genuine STD stops reading.
+    /// </para>
+    /// </summary>
+    public const double StandardToleranceInHg = 0.003;
 
     /// <summary>Inches of mercury to hectopascals.</summary>
     public const double InHgToHpa = 33.8639;
