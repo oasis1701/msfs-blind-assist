@@ -131,14 +131,27 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // "Isolation Valve L CLOSED Light" drifted apart below, so the name is
     // bound once here and the annunciator label is derived from it.
     private const string HydFaultLightSuffix = " FAULT Light";
-    private const string HydPumpPrimEngL     = "Primary Engine Pump Left";
-    private const string HydPumpPrimEngR     = "Primary Engine Pump Right";
-    private const string HydPumpPrimElecC1   = "Primary Electric Pump Center 1";
-    private const string HydPumpPrimElecC2   = "Primary Electric Pump Center 2";
-    private const string HydPumpDemandElecL  = "Demand Electric Pump Left";
-    private const string HydPumpDemandElecR  = "Demand Electric Pump Right";
-    private const string HydPumpDemandAirC1  = "Demand Air Pump Center 1";
-    private const string HydPumpDemandAirC2  = "Demand Air Pump Center 2";
+    private const string HydPumpPrimEngL     = "Left Primary Engine Pump";
+    private const string HydPumpPrimEngR     = "Right Primary Engine Pump";
+    private const string HydPumpPrimElecC1   = "Center 1 Primary Electric Pump";
+    private const string HydPumpPrimElecC2   = "Center 2 Primary Electric Pump";
+    private const string HydPumpDemandElecL  = "Left Demand Electric Pump";
+    private const string HydPumpDemandElecR  = "Right Demand Electric Pump";
+    private const string HydPumpDemandAirC1  = "Center 1 Demand Air Pump";
+    private const string HydPumpDemandAirC2  = "Center 2 Demand Air Pump";
+
+    // The two outflow valves each have THREE rows -- a Manual/Auto mode switch, an
+    // Open/Auto/Close manual selector, and a MAN annunciator -- and each row used a
+    // different convention: "Outflow Valve Forward" vs "Outflow Valve Fwd" vs "Outflow
+    // Valve 1". Two of them collided exactly: the mode switch and the manual selector for
+    // the aft valve were BOTH "Outflow Valve Aft", so "Outflow Valve Aft: Auto" named
+    // either of two different controls with different meanings. Bound once per valve here,
+    // with the role as a suffix, so a fourth spelling cannot appear.
+    private const string OutflowValveFwd            = "Forward Outflow Valve";
+    private const string OutflowValveAft            = "Aft Outflow Valve";
+    private const string OutflowValveModeSuffix     = " Mode";            // Manual / Auto
+    private const string OutflowValveManualSuffix   = " Manual Selector"; // Open / Auto / Close
+    private const string OutflowValveManLightSuffix = " MAN Light";
 
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
     {
@@ -1322,7 +1335,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_OutflowValveFwd"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_OutflowValveManual_Selector_0",
-                DisplayName = "Outflow Valve Forward",
+                DisplayName = OutflowValveFwd + OutflowValveManualSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1331,7 +1344,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_OutflowValveAft"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_OutflowValveManual_Selector_1",
-                DisplayName = "Outflow Valve Aft",
+                DisplayName = OutflowValveAft + OutflowValveManualSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1358,7 +1371,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_OutflowValve_Fwd"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_OutflowValve_Sw_AUTO_0",
-                DisplayName = "Outflow Valve Fwd",
+                DisplayName = OutflowValveFwd + OutflowValveModeSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1367,7 +1380,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_OutflowValve_Aft"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_OutflowValve_Sw_AUTO_1",
-                DisplayName = "Outflow Valve Aft",
+                DisplayName = OutflowValveAft + OutflowValveModeSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1377,7 +1390,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_annunOutflowValveMAN_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunOutflowValve_MAN_0",
-                DisplayName = "Outflow Valve 1 MAN Light",
+                DisplayName = OutflowValveFwd + OutflowValveManLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1387,7 +1400,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_annunOutflowValveMAN_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunOutflowValve_MAN_1",
-                DisplayName = "Outflow Valve 2 MAN Light",
+                DisplayName = OutflowValveAft + OutflowValveManLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,

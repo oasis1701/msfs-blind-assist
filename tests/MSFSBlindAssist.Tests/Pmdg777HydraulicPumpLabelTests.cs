@@ -26,16 +26,16 @@ public class Pmdg777HydraulicPumpLabelTests
     public static TheoryData<string, string, string, string> Pumps() => new()
     {
         // PRIMARY row, left to right: L ENG, C1 ELEC, C2 ELEC, R ENG.
-        { "HYD_PrimEngPump_1",    "HYD_PrimaryEngPump_Sw_ON_0",   "Primary Engine Pump Left",      "HYD_annunPrimEngPumpFAULT_1" },
-        { "HYD_PrimElecPump_1",   "HYD_PrimaryElecPump_Sw_ON_0",  "Primary Electric Pump Center 1","HYD_annunPrimElecPumpFAULT_1" },
-        { "HYD_PrimElecPump_2",   "HYD_PrimaryElecPump_Sw_ON_1",  "Primary Electric Pump Center 2","HYD_annunPrimElecPumpFAULT_2" },
-        { "HYD_PrimEngPump_2",    "HYD_PrimaryEngPump_Sw_ON_1",   "Primary Engine Pump Right",     "HYD_annunPrimEngPumpFAULT_2" },
+        { "HYD_PrimEngPump_1",    "HYD_PrimaryEngPump_Sw_ON_0",   "Left Primary Engine Pump",      "HYD_annunPrimEngPumpFAULT_1" },
+        { "HYD_PrimElecPump_1",   "HYD_PrimaryElecPump_Sw_ON_0",  "Center 1 Primary Electric Pump","HYD_annunPrimElecPumpFAULT_1" },
+        { "HYD_PrimElecPump_2",   "HYD_PrimaryElecPump_Sw_ON_1",  "Center 2 Primary Electric Pump","HYD_annunPrimElecPumpFAULT_2" },
+        { "HYD_PrimEngPump_2",    "HYD_PrimaryEngPump_Sw_ON_1",   "Right Primary Engine Pump",     "HYD_annunPrimEngPumpFAULT_2" },
 
         // DEMAND row, left to right: L ELEC, C1 AIR, C2 AIR, R ELEC.
-        { "HYD_DemandElecPump_1", "HYD_DemandElecPump_Selector_0","Demand Electric Pump Left",     "HYD_annunDemandElecPumpFAULT_1" },
-        { "HYD_DemandAirPump_1",  "HYD_DemandAirPump_Selector_0", "Demand Air Pump Center 1",      "HYD_annunDemandAirPumpFAULT_1" },
-        { "HYD_DemandAirPump_2",  "HYD_DemandAirPump_Selector_1", "Demand Air Pump Center 2",      "HYD_annunDemandAirPumpFAULT_2" },
-        { "HYD_DemandElecPump_2", "HYD_DemandElecPump_Selector_1","Demand Electric Pump Right",    "HYD_annunDemandElecPumpFAULT_2" },
+        { "HYD_DemandElecPump_1", "HYD_DemandElecPump_Selector_0","Left Demand Electric Pump",     "HYD_annunDemandElecPumpFAULT_1" },
+        { "HYD_DemandAirPump_1",  "HYD_DemandAirPump_Selector_0", "Center 1 Demand Air Pump",      "HYD_annunDemandAirPumpFAULT_1" },
+        { "HYD_DemandAirPump_2",  "HYD_DemandAirPump_Selector_1", "Center 2 Demand Air Pump",      "HYD_annunDemandAirPumpFAULT_2" },
+        { "HYD_DemandElecPump_2", "HYD_DemandElecPump_Selector_1","Right Demand Electric Pump",    "HYD_annunDemandElecPumpFAULT_2" },
     };
 
     [Theory]
