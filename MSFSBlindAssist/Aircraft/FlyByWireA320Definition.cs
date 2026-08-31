@@ -6602,14 +6602,34 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     private long _sdWriteSeq;   // makes the SD-page calc write unique each time (anti-dedup, see HandleUIVariableSet)
 
     // ---- Passengers on board (Status panel): the sum of occupied seats across the
-    // per-station *_DESIRED* seat-bitmask L:vars (A32NX_PAX_{A..D}_DESIRED — each holds
-    // an integer whose set-bit count = planned seats in that zone; ≤ 53 bits, so the
-    // value is exact as a double — the same float64 the FBW EFB reads). DESIRED (the
-    // planned load the flyPad headline / GSX / loadsheet agree on), NOT the boarded set
-    // (A32NX_PAX_{st}, no suffix) — the boarded bitmask lags and, under GSX boarding,
-    // settles below target (the A380 lesson, mirrored here). Popcounted per station in
-    // ProcessSimVarUpdate; total rendered by TryGetDisplayOverride on the station-A key.
-    private static readonly string[] PaxStationVars =
+    // per-station *_DESIRED* seat-bitmask L:vars (A32NX_PAX_{station}_DESIRED — each holds
+    // an integer whose set-bit count = planned seats in that zone). The value arrives as a
+    // double (the same float64 the FBW EFB reads), and a mask is exact only while it stays
+    // inside float64's exact-integer range, 2^53 = 9007199254740992.
+    //
+    // ⚠️ THE A330 IS THE TIGHT CASE, NOT THE A320 — the old "≤ 53 bits, so the value is
+    // exact" wording implied an A320-era margin this family no longer has. Measured live on
+    // the A339X in cruise 2026-08-31, station J read 9007197107257344: a FULL 53-bit mask,
+    // just 2^31 (2 147 483 648) below the limit. Still exact, but that is the whole
+    // remaining headroom — the A320's four zones sit far below it (station A read
+    // 135291469824, 37 bits). Any future station mask must stay under 2^53; the popcount
+    // maths below is correct and must not change.
+    //
+    // DESIRED (the planned load the flyPad headline / GSX / loadsheet agree on), NOT the
+    // boarded set (A32NX_PAX_{st}, no suffix) — the boarded bitmask lags and, under GSX
+    // boarding, settles below target (the A380 lesson, mirrored here). Popcounted per
+    // station in ProcessSimVarUpdate; total rendered by TryGetDisplayOverride on the
+    // station-A key.
+    //
+    // OVERRIDABLE because the station SET is airframe-specific: the A320 has four zones,
+    // the Headwind A330 ten (A..J). Registration is the ONLY thing a subclass has to
+    // supply — the popcount/sum consumer in ProcessSimVarUpdate matches any
+    // A32NX_PAX_*_DESIRED, so a newly registered station is counted with no other change.
+    // Station A must stay in the list: it carries the "Passengers on Board" DisplayName
+    // and is the Status panel's display row.
+    protected virtual string[] PaxStationVars => A320PaxStationVars;
+
+    private static readonly string[] A320PaxStationVars =
     {
         "A32NX_PAX_A_DESIRED", "A32NX_PAX_B_DESIRED", "A32NX_PAX_C_DESIRED", "A32NX_PAX_D_DESIRED"
     };

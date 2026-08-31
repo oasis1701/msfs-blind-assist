@@ -252,6 +252,32 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         return inHg >= 0.5 ? 2 : 1;
     }
 
+    // Passenger stations: the A339X cabin has TEN (A..J); the A32NX has four (A..D), and
+    // inheriting that list silently dropped six of them from "Passengers on Board" — a
+    // figure spoken to a blind pilot. Measured live in cruise 2026-08-31:
+    //     A32NX_PAX_A_DESIRED = 135291469824      -> popcount  6   (was counted)
+    //     A32NX_PAX_E_DESIRED = 70366596694016    -> popcount 15   (was ignored)
+    //     A32NX_PAX_J_DESIRED = 9007197107257344  -> popcount 22   (was ignored)
+    // F..I were ignored too, so those two sampled stations alone were 37 passengers short.
+    // Registration is the whole fix: the popcount/sum consumer in
+    // FlyByWireA320Definition.ProcessSimVarUpdate matches any A32NX_PAX_*_DESIRED, and
+    // station A keeps its "Passengers on Board" DisplayName and Status display row.
+    // These are Continuous + IsAnnounced and NOT ExcludeFromBatch, so they are batch-covered:
+    // six more datums in the 1500-slot continuous batches, and ZERO extra individual data
+    // definitions (RegisterAllVariables skips batch-covered vars before registeredCount++),
+    // so approxTotalDefs is unchanged and the ~1000 ceiling is untouched. Measured on this
+    // build, A330 before -> after: individualDefs 403 -> 403, approxTotalDefs ~441 -> ~441
+    // (ceiling ~1000), batchCovered 324 -> 330 (capacity 1500). The A380, the heaviest
+    // airframe here, sits at ~662 / 642.
+    protected override string[] PaxStationVars => HwPaxStationVars;
+
+    private static readonly string[] HwPaxStationVars =
+    {
+        "A32NX_PAX_A_DESIRED", "A32NX_PAX_B_DESIRED", "A32NX_PAX_C_DESIRED", "A32NX_PAX_D_DESIRED",
+        "A32NX_PAX_E_DESIRED", "A32NX_PAX_F_DESIRED", "A32NX_PAX_G_DESIRED", "A32NX_PAX_H_DESIRED",
+        "A32NX_PAX_I_DESIRED", "A32NX_PAX_J_DESIRED"
+    };
+
     // Register the stock-altimeter sources as live monitors. ExcludeFromBatch is
     // REQUIRED (the Fenix FCU / HS787 batch-skip precedent): vars this code must be able
     // to force-read or that a subclass adds late have been observed to slip out of the
