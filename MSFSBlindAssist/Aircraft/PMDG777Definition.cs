@@ -124,11 +124,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return variables;
     }
 
-    // Each hydraulic pump is spoken twice - once as the switch, once as its
-    // FAULT light - and the two reach the pilot through different channels
-    // (the switch is on the Hydraulic panel, the annunciator is background-
-    // announced only). Typing the name twice is how "Isolation Valve Left" and
-    // "Isolation Valve L CLOSED Light" drifted apart below, so the name is
+    // Typing the name twice is how "Isolation Valve Left" and "Isolation Valve L CLOSED
+    // Light" drifted apart (fixed 2026-09, and bound the same way below), so each name is
     // bound once here and the annunciator label is derived from it.
     private const string HydFaultLightSuffix = " FAULT Light";
     private const string HydPumpPrimEngL     = "Left Primary Engine Pump";
@@ -152,6 +149,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string OutflowValveModeSuffix     = " Mode";            // Manual / Auto
     private const string OutflowValveManualSuffix   = " Manual Selector"; // Open / Neutral / Close
     private const string OutflowValveManLightSuffix = " MAN Light";
+
+    // The three bleed-air isolation valves share the phrase "Isolation Valve", so the
+    // discriminator leads (the same reason the hydraulic pumps do). Binding the name once
+    // is what stops the switch and its CLOSED light drifting apart - they did exactly that
+    // ("Isolation Valve Left" against "Isolation Valve L CLOSED Light") until 2026-09.
+    private const string IsolationValveClosedSuffix = " CLOSED Light";
+    private const string IsolationValveL   = "Left Isolation Valve";
+    private const string IsolationValveR   = "Right Isolation Valve";
+    private const string IsolationValveCtr = "Center Isolation Valve";
 
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
     {
@@ -1054,7 +1060,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_IsolationValve_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_IsolationValve_Sw_0",
-                DisplayName = "Isolation Valve Left",
+                DisplayName = IsolationValveL,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1063,7 +1069,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_IsolationValve_R"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_IsolationValve_Sw_1",
-                DisplayName = "Isolation Valve Right",
+                DisplayName = IsolationValveR,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1072,7 +1078,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_CtrIsolationValve"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_CtrIsolationValve_Sw",
-                DisplayName = "Center Isolation Valve",
+                DisplayName = IsolationValveCtr,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1112,7 +1118,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_annunIsolationValveCLOSED_L"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunIsolationValveCLOSED_0",
-                DisplayName = "Isolation Valve L CLOSED Light",
+                DisplayName = IsolationValveL + IsolationValveClosedSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1122,7 +1128,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_annunIsolationValveCLOSED_R"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunIsolationValveCLOSED_1",
-                DisplayName = "Isolation Valve R CLOSED Light",
+                DisplayName = IsolationValveR + IsolationValveClosedSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1132,7 +1138,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_annunCtrIsolationValveCLOSED"] = new SimConnect.SimVarDefinition
             {
                 Name = "AIR_annunCtrIsolationValveCLOSED",
-                DisplayName = "Center Isolation Valve CLOSED Light",
+                DisplayName = IsolationValveCtr + IsolationValveClosedSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
