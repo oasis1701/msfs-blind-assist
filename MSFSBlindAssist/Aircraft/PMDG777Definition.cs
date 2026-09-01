@@ -150,7 +150,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string OutflowValveFwd            = "Forward Outflow Valve";
     private const string OutflowValveAft            = "Aft Outflow Valve";
     private const string OutflowValveModeSuffix     = " Mode";            // Manual / Auto
-    private const string OutflowValveManualSuffix   = " Manual Selector"; // Open / Auto / Close
+    private const string OutflowValveManualSuffix   = " Manual Selector"; // Open / Neutral / Close
     private const string OutflowValveManLightSuffix = " MAN Light";
 
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
@@ -1339,7 +1339,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Auto", [2] = "Close" }
+                // SDK PMDG_777X_SDK.h: AIR_OutflowValveManual_Selector[2]
+                //   // fwd / aft   0: OPEN  1: Neutral  2: CLOSE
+                // The middle detent is spring-loaded NEUTRAL, not "Auto" - that word
+                // belongs to the Mode row, where it means the opposite thing.
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Neutral", [2] = "Close" }
             },
             ["AIR_OutflowValveAft"] = new SimConnect.SimVarDefinition
             {
@@ -1348,7 +1352,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Auto", [2] = "Close" }
+                // SDK PMDG_777X_SDK.h: AIR_OutflowValveManual_Selector[2]
+                //   // fwd / aft   0: OPEN  1: Neutral  2: CLOSE
+                // The middle detent is spring-loaded NEUTRAL, not "Auto" - that word
+                // belongs to the Mode row, where it means the opposite thing.
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Neutral", [2] = "Close" }
             },
             ["AIR_LdgAltSelector"] = new SimConnect.SimVarDefinition
             {
