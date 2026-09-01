@@ -163,6 +163,18 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string IsolationValveR   = "Right Isolation Valve";
     private const string IsolationValveCtr = "Center Isolation Valve";
 
+    // The fuel boost pumps: the array index names a SIDE, not a slot - the SDK header
+    // annotates all three pairs (// left fwd / right fwd, // left aft / right aft,
+    // // ctr left / ctr right). Six rows share the word "Pump", so the discriminator
+    // leads, and each LOW PRESS light is derived from its pump so the two cannot drift.
+    private const string FuelLowPressSuffix = " LOW PRESS Light";
+    private const string FuelPumpFwdL = "Left Forward Pump";
+    private const string FuelPumpFwdR = "Right Forward Pump";
+    private const string FuelPumpAftL = "Left Aft Pump";
+    private const string FuelPumpAftR = "Right Aft Pump";
+    private const string FuelPumpCtrL = "Center Left Pump";
+    private const string FuelPumpCtrR = "Center Right Pump";
+
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
     {
         return new Dictionary<string, SimConnect.SimVarDefinition>
@@ -716,7 +728,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_FwdPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpFwd_Sw_0",
-                DisplayName = "Forward Pump 1",
+                DisplayName = FuelPumpFwdL,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -725,7 +737,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_FwdPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpFwd_Sw_1",
-                DisplayName = "Forward Pump 2",
+                DisplayName = FuelPumpFwdR,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -734,7 +746,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_AftPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpAft_Sw_0",
-                DisplayName = "Aft Pump 1",
+                DisplayName = FuelPumpAftL,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -743,7 +755,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_AftPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpAft_Sw_1",
-                DisplayName = "Aft Pump 2",
+                DisplayName = FuelPumpAftR,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -752,7 +764,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_CtrPump_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpCtr_Sw_0",
-                DisplayName = "Center Pump Left",
+                DisplayName = FuelPumpCtrL,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -761,7 +773,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_CtrPump_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_PumpCtr_Sw_1",
-                DisplayName = "Center Pump Right",
+                DisplayName = FuelPumpCtrR,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -854,7 +866,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Fwd_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Fwd_0",
-                DisplayName = "LOW PRESS Fwd 1 Light",
+                DisplayName = FuelPumpFwdL + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -864,7 +876,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Fwd_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Fwd_1",
-                DisplayName = "LOW PRESS Fwd 2 Light",
+                DisplayName = FuelPumpFwdR + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -874,7 +886,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Aft_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Aft_0",
-                DisplayName = "LOW PRESS Aft 1 Light",
+                DisplayName = FuelPumpAftL + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -884,7 +896,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Aft_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Aft_1",
-                DisplayName = "LOW PRESS Aft 2 Light",
+                DisplayName = FuelPumpAftR + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -894,7 +906,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Ctr_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Ctr_0",
-                DisplayName = "LOW PRESS Center Left Light",
+                DisplayName = FuelPumpCtrL + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -904,7 +916,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunLOWPRESS_Ctr_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunLOWPRESS_Ctr_1",
-                DisplayName = "LOW PRESS Center Right Light",
+                DisplayName = FuelPumpCtrR + FuelLowPressSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
