@@ -1852,7 +1852,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["LTS_NAV"] = new SimConnect.SimVarDefinition
             {
                 Name = "LTS_NAV_Sw_ON",
-                DisplayName = "Nav",
+                DisplayName = "Nav Lights",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,

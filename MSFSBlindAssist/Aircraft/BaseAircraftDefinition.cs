@@ -76,7 +76,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+                IsAnnounced = true,  // Required for batched continuous monitoring (custom logic handles actual announcements)
+                // Never spoken from the generic monitor path: MainForm.OnSimVarUpdated returns
+                // for this key before the mute check, and the 1,000-ft callout runs ahead of the
+                // mute wrap - so its Ctrl+M row could never silence anything. It also collided
+                // with the MCP "Altitude" row on the PMDG 737 and 777, leaving the pilot two
+                // identical checkboxes, one of them inert.
+                ExcludeFromMonitorManager = true
             },
 
             // Ground speed - universal SimConnect variable feeding the GLOBAL ground-speed
