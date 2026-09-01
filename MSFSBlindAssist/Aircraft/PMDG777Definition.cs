@@ -124,9 +124,13 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         return variables;
     }
 
-    // Typing the name twice is how "Isolation Valve Left" and "Isolation Valve L CLOSED
-    // Light" drifted apart (fixed 2026-09, and bound the same way below), so each name is
-    // bound once here and the annunciator label is derived from it.
+    // Each hydraulic pump is spoken twice - once as the switch, once as its FAULT light -
+    // and the two reach the pilot through different channels (the switch is on the
+    // Hydraulic panel, the annunciator is background-announced only), so a drift between
+    // them surfaces as a FAULT for a pump the panel appears not to have. Typing the name
+    // twice is how "Isolation Valve Left" and "Isolation Valve L CLOSED Light" drifted
+    // apart (fixed 2026-09, and bound the same way below), so each name is bound once here
+    // and the annunciator label is derived from it.
     private const string HydFaultLightSuffix = " FAULT Light";
     private const string HydPumpPrimEngL     = "Left Primary Engine Pump";
     private const string HydPumpPrimEngR     = "Right Primary Engine Pump";
