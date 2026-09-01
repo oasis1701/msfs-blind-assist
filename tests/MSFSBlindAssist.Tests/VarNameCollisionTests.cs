@@ -97,4 +97,34 @@ public class VarNameCollisionTests
         Assert.True(offenders.Count == 0,
             "Two controls in one panel answering to one spoken name: " + string.Join(", ", offenders));
     }
+
+    /// <summary>
+    /// The panel label column sizes to its content, so a runaway DisplayName widens
+    /// the whole panel. 50 characters is roughly twice the longest label that existed
+    /// when the column was fixed at 140px, and comfortably clears the longest today
+    /// ("Center 1 Primary Electric Pump FAULT Light", 42). This is a bound on the
+    /// data, not a rendering check - the rendered appearance is not verifiable by
+    /// this project's testers and is deliberately not asserted here.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(ComboLabelCollapseTests.AllAircraft), MemberType = typeof(ComboLabelCollapseTests))]
+    public void Panel_labels_stay_within_a_sane_width(IAircraftDefinition aircraft)
+    {
+        const int MaxLabelChars = 50;
+        var vars = aircraft.GetVariables();
+
+        var tooLong = aircraft.GetPanelControls()
+            .SelectMany(p => p.Value)
+            .Distinct(StringComparer.Ordinal)
+            .Where(vars.ContainsKey)
+            .Select(k => vars[k].DisplayName)
+            .Where(n => !string.IsNullOrEmpty(n) && n.Length > MaxLabelChars)
+            .Distinct(StringComparer.Ordinal)
+            .Select(n => $"{aircraft.AircraftCode}: \"{n}\" ({n.Length} chars)")
+            .ToList();
+
+        Assert.True(tooLong.Count == 0,
+            $"Panel labels over {MaxLabelChars} characters widen the auto-sized label column: "
+            + string.Join(", ", tooLong));
+    }
 }

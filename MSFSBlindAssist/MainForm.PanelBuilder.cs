@@ -182,7 +182,11 @@ public partial class MainForm
         TableLayoutPanel layout = new TableLayoutPanel();
         layout.ColumnCount = 2;
         layout.RowCount = 0;
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        // Column 0 sizes to its longest label. It was a hard 150px against a fixed 140px
+        // label with no ellipsis and no tooltip, so any longer name was silently cut - the
+        // PMDG 777's "Forward Outflow Valve Manual Selector" lost the very word that
+        // distinguishes it from "Forward Outflow Valve Mode".
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         layout.AutoSize = true;
         layout.Location = new Point(10, 10);
@@ -215,8 +219,9 @@ public partial class MainForm
             Label label = new Label();
             label.Text = varDef.DisplayName + ":";
             label.TextAlign = ContentAlignment.MiddleLeft;
-            label.AutoSize = false;
-            label.Size = new Size(140, 25);
+            label.AutoSize = true;
+            label.Anchor = AnchorStyles.Left;
+            label.Margin = new Padding(3, 3, 12, 3);
             layout.Controls.Add(label, 0, rowIndex);
 
             // Create control based on type.
