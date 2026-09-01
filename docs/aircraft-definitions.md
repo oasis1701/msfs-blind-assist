@@ -55,7 +55,24 @@ public Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
 ### Properties in SimVarDefinition
 
 - `Name`: SimConnect variable name (e.g., "L:A32NX_FCU_AP_1_LIGHT_ON")
-- `DisplayName`: Human-readable label for UI
+- `DisplayName` — the label the screen reader speaks and the panel row shows. Two rules:
+
+  **No two controls in one panel may share it.** It is the pilot's only handle on a
+  control, and a panel gives no other context. Pinned fleet-wide by
+  `VarNameCollisionTests.Panel_rows_do_not_share_a_spoken_name`. The Ctrl+M monitor list
+  is flatter still — it shows the label with no panel heading at all — so a duplicate
+  there is pinned separately by `MonitorRowLabelUniquenessTests`.
+
+  **When rows in a panel share a leading phrase, the discriminator comes first.**
+  "Left Primary Engine Pump", not "Primary Engine Pump Left": reading down a panel of
+  eight pumps, the pilot hears which one it is immediately instead of after three shared
+  words. This applies where the shared prefix is long or the family is large — the PMDG
+  777's hydraulic pumps, fuel pumps and isolation valves. It does NOT apply to a short,
+  unambiguous pair like "Pack Left"/"Pack Right", where there is nothing to wade through.
+
+  A switch and its annunciator must be bound from ONE constant plus a suffix
+  (`HydPumpPrimEngL + HydFaultLightSuffix`), never typed twice — that is how
+  "Isolation Valve Left" and "Isolation Valve L CLOSED Light" drifted apart.
 - `Type`: SimVarType (LVar, SimVar, Event, HVar)
 - `UpdateFrequency`: When to request (Never, OnRequest, Continuous)
 - `IsAnnounced`: Whether to announce state changes

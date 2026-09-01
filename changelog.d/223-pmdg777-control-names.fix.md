@@ -1,9 +1,9 @@
-The PMDG 777's hydraulic pumps now name their side first -- "Left Primary
-Engine Pump" rather than "Primary Engine Pump Left" -- so reading down the
-panel you hear which pump it is straight away instead of after three shared
-words.
+On the PMDG 777, the fuel pumps and their LOW PRESS lights now name their
+side — "Left Forward Pump," not "Forward Pump 1" — so a low-pressure warning
+tells you which tank it means. The outflow valve's manual selector now reads
+"Neutral" for its centre detent, not "Auto" — which is what the switch does.
 
-The Pressurization panel also had two rows called "Outflow Valve Aft": the aft
-valve's mode switch and its manual selector, both of which announce "Auto".
-They are now "Aft Outflow Valve Mode" and "Aft Outflow Valve Manual Selector",
-with the MAN lights renamed to match.
+In the Ctrl+M mute list, the extra "Altitude" checkbox that did nothing is
+gone (also fixed on the PMDG 737), and the two rows both called "NAV" are now
+"NAV" and "Nav Lights". Long control names also no longer get cut off when
+you open a panel.

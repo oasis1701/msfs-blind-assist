@@ -56,9 +56,11 @@ public class Pmdg777HydraulicPumpLabelTests
     /// The annunciator must carry its switch's name verbatim. The two labels are
     /// spoken through different channels - the switch from the Hydraulic panel,
     /// the FAULT light only as a background announcement - so a drift between
-    /// them surfaces as a FAULT for a pump the panel appears not to have. This
-    /// file already contains one such drift: "Isolation Valve Left" against
-    /// "Isolation Valve L CLOSED Light".
+    /// them surfaces as a FAULT for a pump the panel appears not to have. The
+    /// 777's isolation valves drifted exactly this way - "Isolation Valve Left"
+    /// against "Isolation Valve L CLOSED Light" - until both were bound from one
+    /// constant and the drift was fixed (2026-09); this file pins the same
+    /// discipline for the hydraulic pumps.
     /// </summary>
     [Theory]
     [MemberData(nameof(Pumps))]
