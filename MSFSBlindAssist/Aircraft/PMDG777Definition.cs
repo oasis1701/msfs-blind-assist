@@ -1386,7 +1386,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 DisplayName = "Landing Altitude Selector",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
+                // NOT announced, and deliberately has no panel control. The knob is a
+                // spring-loaded DECR/Neutral/INCR rotary and the PMDG SDK broadcasts no
+                // variable for the manual landing altitude it sets (FMC_LandingAltitude is
+                // the FMC's computed destination elevation, a different quantity - verified
+                // live 2026-09). So a call-out could only ever report a transient position
+                // that leads nowhere, and a Decr/Incr control could give no readback of the
+                // value chosen. The definition and its event mapping stay so the knob keeps
+                // its place in the event map.
+                IsAnnounced = false,
                 ValueDescriptions = new Dictionary<double, string> { [0] = "Decr", [1] = "Neutral", [2] = "Incr" }
             },
             ["AIR_LdgAltPulled"] = new SimConnect.SimVarDefinition
