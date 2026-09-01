@@ -12,6 +12,14 @@
 // variable, or the panel renders a control that can never read or write anything. This
 // catches a var rename that misses one of its panel references — exactly what FBW's
 // FG-into-PRIM move (#10855) forced across the A380 EFIS and FCU panels.
+//
+// (c) PANEL LABELS ARE DISTINCT. Two controls in one panel must not share a
+// DisplayName. The label is what the screen reader speaks and what the panel row
+// shows, so two identical labels are two controls a blind pilot cannot tell apart
+// - PR #223 fixed exactly that on the 777 Pressurization panel, where the aft
+// valve's mode switch and its manual selector were both "Outflow Valve Aft" and
+// both announce a value of "Auto". Cross-panel duplicates are fine: the panel
+// name supplies the context (Captain vs First Officer pairs rely on this).
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
@@ -63,5 +71,30 @@ public class VarNameCollisionTests
 
         Assert.True(dangling.Count == 0,
             "Panel control keys with no registered variable: " + string.Join(", ", dangling));
+    }
+
+    [Theory]
+    [MemberData(nameof(ComboLabelCollapseTests.AllAircraft), MemberType = typeof(ComboLabelCollapseTests))]
+    public void Panel_rows_do_not_share_a_spoken_name(IAircraftDefinition aircraft)
+    {
+        var vars = aircraft.GetVariables();
+        var offenders = new List<string>();
+
+        foreach (var panel in aircraft.GetPanelControls())
+        {
+            var groups = panel.Value
+                .Distinct(StringComparer.Ordinal)
+                .Where(vars.ContainsKey)
+                .Select(k => vars[k].DisplayName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .GroupBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1);
+
+            foreach (var g in groups)
+                offenders.Add($"{aircraft.AircraftCode} panel '{panel.Key}' label \"{g.Key}\"");
+        }
+
+        Assert.True(offenders.Count == 0,
+            "Two controls in one panel answering to one spoken name: " + string.Join(", ", offenders));
     }
 }
