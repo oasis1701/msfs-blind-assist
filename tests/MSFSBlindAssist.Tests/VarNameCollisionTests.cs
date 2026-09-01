@@ -19,7 +19,14 @@
 // - PR #223 fixed exactly that on the 777 Pressurization panel, where the aft
 // valve's mode switch and its manual selector were both "Outflow Valve Aft" and
 // both announce a value of "Auto". Cross-panel duplicates are fine: the panel
-// name supplies the context (Captain vs First Officer pairs rely on this).
+// name supplies the context (Captain vs First Officer pairs rely on this). This
+// guard's scope is GetPanelControls(); the Ctrl+M guard (MonitorRowLabelUniquenessTests)
+// is scoped to Continuous+IsAnnounced instead, so a variable that is announced but
+// never placed on a panel can share a label with one that sits on a panel but is
+// never announced, and neither test fires - the PMDG 777's DOOR_CockpitDoor
+// (Continuous, IsAnnounced, no panel) and DOOR_COCKPIT (OnRequest, in the "Doors
+// and Tables" panel) both read "Cockpit Door" today, which is harmless only
+// because they name the same physical door.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;

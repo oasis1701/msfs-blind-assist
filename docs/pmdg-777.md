@@ -49,20 +49,20 @@ Note that `RequestVariable(key, forceUpdate: true)` — the combo snap-back used
 **⚠️ Still to confirm in-sim:** the C1/C2 **order within each center pair** is the one part inferred rather than corroborated — the header annotates neither array, and the NG3 SDK inverts exactly this array on the 737 (`HYD_PumpSw_elec`: `[0]`=pump 2, forcing a compensating display swap). What the 737 inversion was *spotted by* is absent here, which is mild reassurance rather than proof: there `ELEC2` carries the lower id, while on the 777 `ELEC1 +40 < ELEC2 +41` runs in order. Confirm that `HYD_PrimElecPump_1` moves the **C1** electric primary (not C2), and likewise `HYD_DemandAirPump_1` and C1 AIR. The Left/Right pairs are the safer half but deserve the same check: `Left Primary Engine Pump` must move the **L** ENG pump.
 
 **Pressurization, straight from `PMDG_777X_SDK.h`.** All three outflow-valve arrays
-are annotated `// fwd / aft`, so slot 0 is the FORWARD valve - this pair needs no
+are annotated `// fwd / aft`, so slot 0 is the FORWARD valve — this pair needs no
 inference. The manual selector is additionally annotated `0: OPEN  1: Neutral  2: CLOSE`;
 its middle detent is a spring-loaded **Neutral** and read "Auto" until 2026-09, which
-collided with the Mode row's genuine "Auto" on the row directly beside it. Note the
-NG3 inverts this array on the 737 (`0=CLOSE 1=NEUTRAL 2=OPEN`) - the two airframes
+collided with the Mode row's genuine "Auto" two rows apart in the same panel. Note the
+NG3 inverts this array on the 737 (`0=CLOSE 1=NEUTRAL 2=OPEN`) — the two airframes
 genuinely differ, so never port one's ordering to the other.
 
 **The manual landing altitude is not published at all.** `EVT_OH_PRESS_LAND_ALT_KNOB_PULL`
 works (a toggle) and `..._ROTATE` is accepted, but no SDK variable carries the value the
-knob sets - `FMC_LandingAltitude` is the FMC's computed destination elevation, a different
+knob sets — `FMC_LandingAltitude` is the FMC's computed destination elevation, a different
 quantity (verified live, 2026-09). So `AIR_LdgAltSelector` is deliberately NOT announced
 and has no panel control: a call-out could only report a transient spring-loaded position,
 and no control could read back what the pilot set. This is a data-source fact, like the
-EFB's missing minimums - not a gap to fix.
+EFB's missing minimums — not a gap to fix.
 
 **CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA; parameter 0 also registers as a press (not a release). Text entry sends one character at a time with 350ms delay; repeated characters need an extra 400ms for the CDU to distinguish separate presses. CDU display uses color and font-size data to detect toggle selections (non-white color or non-small font = selected, marked with `X`). Toggle detection only applies to rows with adjacent `<>` (mapped from 0xA1/0xA2 arrow symbols). Scratchpad announcements are suppressed during text entry and clearing (`_typingInProgress`/`_clearingInProgress` flags); `_previousScratchpad` is only updated when the announcement actually fires. CLR uses `_clearingInProgress` to suppress intermediate states and only announces "Cleared" once the scratchpad is empty.
 

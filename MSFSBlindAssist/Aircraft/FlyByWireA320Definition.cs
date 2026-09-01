@@ -3325,6 +3325,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // announce gate skips INDICATED_ALTITUDE (it's spoken by the callout announcer, not
         // as a raw "Altitude: 5234"). Still works as an OnRequest-style display var for the
         // PFD/ISIS boxes (force-read + live update both function on a continuous var).
+        // This override replaces the base definition entirely, so it needs its own
+        // ExcludeFromMonitorManager too: the row would mute nothing here either, same as
+        // the base (BaseAircraftDefinition.cs).
         ["INDICATED_ALTITUDE"] = new SimConnect.SimVarDefinition
         {
             Name = "INDICATED ALTITUDE",
@@ -3332,7 +3335,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Type = SimConnect.SimVarType.SimVar,
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Units = "feet"
+            Units = "feet",
+            ExcludeFromMonitorManager = true
         },
         // Indicated airspeed — surfaced in the PFD + ISIS accessible status boxes
         // (the speed "tape" a sighted pilot reads off the glass).

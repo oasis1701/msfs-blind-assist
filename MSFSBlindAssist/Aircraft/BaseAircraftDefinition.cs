@@ -77,11 +77,16 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,  // Required for batched continuous monitoring (custom logic handles actual announcements)
-                // Never spoken from the generic monitor path: MainForm.OnSimVarUpdated returns
-                // for this key before the mute check, and the 1,000-ft callout runs ahead of the
-                // mute wrap - so its Ctrl+M row could never silence anything. It also collided
-                // with the MCP "Altitude" row on the PMDG 737 and 777, leaving the pilot two
-                // identical checkboxes, one of them inert.
+                // Never spoken from the generic monitor path: ProcessSimVarUpdate (below) returns
+                // true for this key without ever calling announcer.Announce, so the generic
+                // wasProcessedByAircraft early-return in MainForm.OnSimVarUpdated fires before
+                // Step 6's per-aircraft mute check is ever reached. The mute WRAP around that
+                // call (announcer.Suppressed) still runs when the row is unchecked - it just
+                // wraps a no-op here, since the real 1,000-ft callout is produced separately and
+                // earlier, by HandleSpecialAnnouncements → AltitudeCalloutAnnouncer. So its
+                // Ctrl+M row could never silence anything. It also collided with the MCP
+                // "Altitude" row on the PMDG 737 and 777, leaving the pilot two identical
+                // checkboxes, one of them inert.
                 ExcludeFromMonitorManager = true
             },
 

@@ -31,7 +31,16 @@ public class MonitorRowLabelUniquenessTests
         "HW_A330/ILS", "HW_A330/Navaid 1 Selector", "HW_A330/Navaid 2 Selector",
         "HW_A330/NDB Filter", "HW_A330/PTU", "HW_A330/VORD Filter", "HW_A330/WPT Filter",
 
-        // A380 - RMP 1 vs RMP 2, and two state-vs-mode pairs.
+        // A380 - four distinct groups, not all equally benign. Autobrake is a genuine
+        // state-vs-mode pair (the selected-mode combo vs the active/braking state). Cargo
+        // FWD/BULK Isolation Valve pairs the pushbutton command against the actual valve
+        // position, differing only by case ("Fwd"/"FWD", "Bulk"/"BULK"). The six VHF n
+        // Receive/Transmit entries are RMP 1 vs RMP 2. Runway Overrun Protection is NOT a
+        // harmless pair: it collides the ROW/ROP availability status (A32NX_ROW_ROP_LOST,
+        // "available"/"lost") with the ARINC429 word that actually drives the ROW/ROP
+        // landing-rollout call-outs (A32NX_ROW_ROP_WORD_1) - muting the WORD_1 row is what
+        // silences those call-outs, so the two rows are not interchangeable and this pair
+        // is worth fixing on its own branch.
         "FBW_A380/Autobrake", "FBW_A380/Cargo BULK Isolation Valve",
         "FBW_A380/Cargo FWD Isolation Valve", "FBW_A380/Runway Overrun Protection",
         "FBW_A380/VHF 1 Receive", "FBW_A380/VHF 1 Transmit",
