@@ -5595,8 +5595,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["AIR_MainDeckFlow"]        = "EVT_OH_AIRCOND_MAIN_DECK_FLOW_SWITCH",
 
             // --- Pressurization ---
+            // All four outflow-valve bindings live here together. The keys differ by a
+            // single underscore (AIR_OutflowValveFwd is the MANUAL SELECTOR,
+            // AIR_OutflowValve_Fwd is the AUTO/MAN MODE switch) and this is one
+            // dictionary initializer, where a duplicate key overwrites silently rather
+            // than failing to compile - so they must not be separated again.
             ["AIR_OutflowValveFwd"]     = "EVT_OH_PRESS_VALVE_SWITCH_MANUAL_1",
             ["AIR_OutflowValveAft"]     = "EVT_OH_PRESS_VALVE_SWITCH_MANUAL_2",
+            ["AIR_OutflowValve_Fwd"]    = "EVT_OH_PRESS_VALVE_SWITCH_1",
+            ["AIR_OutflowValve_Aft"]    = "EVT_OH_PRESS_VALVE_SWITCH_2",
             ["AIR_LdgAltSelector"]      = "EVT_OH_PRESS_LAND_ALT_KNOB_ROTATE",
             ["AIR_LdgAltPulled"]        = "EVT_OH_PRESS_LAND_ALT_KNOB_PULL",
 
@@ -5856,10 +5863,6 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["ENG_TOGA_2"]        = "EVT_CONTROL_STAND_TOGA2_SWITCH",
             ["ENG_ATDisengage_1"] = "EVT_CONTROL_STAND_AT1_DISENGAGE_SWITCH",
             ["ENG_ATDisengage_2"] = "EVT_CONTROL_STAND_AT2_DISENGAGE_SWITCH",
-
-            // --- Outflow Valve Auto/Manual ---
-            ["AIR_OutflowValve_Fwd"]  = "EVT_OH_PRESS_VALVE_SWITCH_1",
-            ["AIR_OutflowValve_Aft"]  = "EVT_OH_PRESS_VALVE_SWITCH_2",
 
             // --- Yoke / Standby Instruments ---
             ["YOKE_APDisc"]           = "EVT_YOKE_AP_DISC_SWITCH",
