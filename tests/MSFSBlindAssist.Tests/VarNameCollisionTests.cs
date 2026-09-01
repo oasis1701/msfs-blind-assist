@@ -99,18 +99,23 @@ public class VarNameCollisionTests
     }
 
     /// <summary>
-    /// The panel label column sizes to its content, so a runaway DisplayName widens
-    /// the whole panel. 50 characters is roughly twice the longest label that existed
-    /// when the column was fixed at 140px, and comfortably clears the longest today
-    /// ("Center 1 Primary Electric Pump FAULT Light", 42). This is a bound on the
-    /// data, not a rendering check - the rendered appearance is not verifiable by
-    /// this project's testers and is deliberately not asserted here.
+    /// The panel label column sizes to its content, so a runaway DisplayName widens the
+    /// whole panel. This bounds the label DATA, not the rendering: the rendered appearance
+    /// is not verifiable by this project's testers and is deliberately not asserted here.
+    ///
+    /// 60 gives real headroom over the true fleet maximum of 50 - "Glareshield Flood First
+    /// Officer Brightness (0-100)", one string literal in FlyByWireA320Definition.cs that
+    /// the Headwind A330 inherits. Lengthening a label to disambiguate two controls is
+    /// ordinary maintenance in this codebase (PR #223 did exactly that), so a cap sitting
+    /// on today's exact maximum would trip on routine work instead of on the runaway width
+    /// it exists to catch. If the fleet maximum ever genuinely climbs, raise this
+    /// deliberately - never reflexively to whatever a failing label happens to measure.
     /// </summary>
     [Theory]
     [MemberData(nameof(ComboLabelCollapseTests.AllAircraft), MemberType = typeof(ComboLabelCollapseTests))]
     public void Panel_labels_stay_within_a_sane_width(IAircraftDefinition aircraft)
     {
-        const int MaxLabelChars = 50;
+        const int MaxLabelChars = 60;
         var vars = aircraft.GetVariables();
 
         var tooLong = aircraft.GetPanelControls()
