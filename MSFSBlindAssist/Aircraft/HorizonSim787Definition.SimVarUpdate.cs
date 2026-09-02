@@ -7,6 +7,61 @@ namespace MSFSBlindAssist.Aircraft;
 
 public partial class HorizonSim787Definition
 {
+    /// <summary>
+    /// Variable keys that are Continuous + IsAnnounced purely so the monitoring engine caches
+    /// their value — never spoken as an automatic announcement. This set has exactly TWO
+    /// consumers, and they must never be allowed to drift apart: <see cref="ProcessSimVarUpdate"/>
+    /// below reads it to short-circuit to "cached, no announcement", and BuildVariables() in
+    /// HorizonSim787Definition.cs stamps ExcludeFromMonitorManager on every key in it. Without
+    /// that second consumer a key here would still earn a Ctrl+M Monitor Manager checkbox —
+    /// MonitorRowBuilder.IsListed only sees Continuous + IsAnnounced + not-excluded, it has no
+    /// way to know this method never speaks the value, so the checkbox would mute nothing
+    /// (SimVarDefinition.ExcludeFromMonitorManager's own doc comment describes exactly this).
+    /// </summary>
+    public static readonly IReadOnlySet<string> CacheOnlyVariables = new HashSet<string>(StringComparer.Ordinal)
+    {
+        // EICAS engine indications — cached for the Alt+E window, never auto-announced.
+        "HS787_EicasN1_1",
+        "HS787_EicasN1_2",
+        "HS787_EicasN2_1",
+        "HS787_EicasN2_2",
+        "HS787_EicasEGT_1",
+        "HS787_EicasEGT_2",
+        "HS787_EicasFuelKg",
+        "HS787_EicasGwKg",
+        "HS787_EicasOilP_1",
+        "HS787_EicasOilP_2",
+        "HS787_EicasOilT_1",
+        "HS787_EicasOilT_2",
+        "HS787_EicasTat",
+
+        "HS787_MCP_FPA",
+        "HS787_FPAMode",
+        "HS787_TRKMode",
+        "HS787_GS_Armed",
+        "HS787_LOC",
+        "HS787_AltManual",
+        "HS787_FuelLH",
+        "HS787_FuelRH",
+        "HS787_FuelCtr",
+        "HS787_FuelWtPerGal",
+        "HS787_DistDest",
+        "HS787_GroundSpeed",
+        "HS787_DistTOD",
+        "HS787_EteDest",
+
+        // Ground-power combos: monitored continuously so the combo's displayed
+        // state matches reality from MSFSBA connect; HS787_ExtPwrOn1/2 owns the
+        // user-facing announcement, so suppress here to avoid duplicate speech.
+        "HS787_ExtPwr1",
+        "HS787_ExtPwr2",
+
+        // IRS time-to-align minutes: cached for the read-only display field only.
+        // The Aligning->Aligned transition is announced via HS787_IRS_Align's
+        // ValueDescriptions; a per-minute spoken countdown would be noise.
+        "HS787_IRS_AlignMinutes",
+    };
+
     // =========================================================================
     // ProcessSimVarUpdate — suppress raw value announcements where needed
     // =========================================================================
@@ -1603,47 +1658,8 @@ public partial class HorizonSim787Definition
         // Cache-only variables — suppress all automatic announcements.
         // These are IsAnnounced=true purely so the monitoring engine caches them;
         // hotkey readouts and dialog toggles read the cached values on demand.
-        switch (variableKey)
-        {
-            // EICAS engine indications — cached for the Alt+E window, never auto-announced.
-            case "HS787_EicasN1_1":
-            case "HS787_EicasN1_2":
-            case "HS787_EicasN2_1":
-            case "HS787_EicasN2_2":
-            case "HS787_EicasEGT_1":
-            case "HS787_EicasEGT_2":
-            case "HS787_EicasFuelKg":
-            case "HS787_EicasGwKg":
-            case "HS787_EicasOilP_1":
-            case "HS787_EicasOilP_2":
-            case "HS787_EicasOilT_1":
-            case "HS787_EicasOilT_2":
-            case "HS787_EicasTat":
-            case "HS787_MCP_FPA":
-            case "HS787_FPAMode":
-            case "HS787_TRKMode":
-            case "HS787_GS_Armed":
-            case "HS787_LOC":
-            case "HS787_AltManual":
-            case "HS787_FuelLH":
-            case "HS787_FuelRH":
-            case "HS787_FuelCtr":
-            case "HS787_FuelWtPerGal":
-            case "HS787_DistDest":
-            case "HS787_GroundSpeed":
-            case "HS787_DistTOD":
-            case "HS787_EteDest":
-            // Ground-power combos: monitored continuously so the combo's displayed
-            // state matches reality from MSFSBA connect; HS787_ExtPwrOn1/2 owns the
-            // user-facing announcement, so suppress here to avoid duplicate speech.
-            case "HS787_ExtPwr1":
-            case "HS787_ExtPwr2":
-            // IRS time-to-align minutes: cached for the read-only display field only.
-            // The Aligning->Aligned transition is announced via HS787_IRS_Align's
-            // ValueDescriptions; a per-minute spoken countdown would be noise.
-            case "HS787_IRS_AlignMinutes":
-                return true; // cached — no announcement
-        }
+        if (CacheOnlyVariables.Contains(variableKey))
+            return true; // cached — no announcement
 
         return false;
     }

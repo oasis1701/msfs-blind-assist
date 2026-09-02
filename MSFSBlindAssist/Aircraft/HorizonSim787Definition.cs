@@ -4481,6 +4481,18 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 v.ExcludeFromBatch = true;
         }
 
+        // Every key in CacheOnlyVariables (HorizonSim787Definition.SimVarUpdate.cs) reaches
+        // ProcessSimVarUpdate only to be cached — that check returns true with no announcement
+        // for all of them. MonitorRowBuilder can't see that: it lists any Continuous +
+        // IsAnnounced variable, so without this stamp each one still earned a Ctrl+M checkbox
+        // whose un-tick silenced nothing. Stamped from that SAME set — never a second
+        // hand-typed copy of the key list — so the suppression and the exclusion can't drift.
+        foreach (var key in CacheOnlyVariables)
+        {
+            if (variables.TryGetValue(key, out var def))
+                def.ExcludeFromMonitorManager = true;
+        }
+
         return variables;
     }
 
