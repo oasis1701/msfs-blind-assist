@@ -47,9 +47,6 @@ public class MonitorRowLabelUniquenessTests
         "FBW_A380/VHF 2 Receive", "FBW_A380/VHF 2 Transmit",
         "FBW_A380/VHF 3 Receive", "FBW_A380/VHF 3 Transmit",
 
-        // HS787 - stock ground speed alongside the aircraft's own.
-        "HS_787/Ground Speed",
-
         // iFly 737 - display unit 0 vs unit 1.
         "IFLY_737MAX8/Baro Units", "IFLY_737MAX8/Left VOR ADF Selector",
         "IFLY_737MAX8/Minimums Reference", "IFLY_737MAX8/Navigation Display Mode",

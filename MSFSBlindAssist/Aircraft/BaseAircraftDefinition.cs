@@ -104,7 +104,18 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Its Ctrl+M row could never silence anything either: the GROUND_VELOCITY
+                // case in HandleSpecialAnnouncements (above) is reached at Step 2 of
+                // MainForm.OnSimVarUpdated and returns true, which is a TERMINAL return -
+                // the method exits right there. The announcer.Suppressed wrap and the
+                // per-aircraft disabled-variable check that a Ctrl+M un-tick relies on both
+                // live at Step 2.5 and later, so neither is ever reached for this key. The
+                // pilot's real control for these callouts is the ground-speed announce-
+                // interval setting (UserSettings.TaxiGuidanceGroundSpeedAnnounceInterval /
+                // TakeoffAssistGroundSpeedAnnounceInterval), which the announcer already
+                // self-gates on.
+                ExcludeFromMonitorManager = true
             },
             // Vertical g-force — fed continuously to the LandingRateAnnouncer so it can capture
             // the PEAK g of a touchdown (the ReadLastLandingPeakG output hotkey). Not announced
