@@ -394,7 +394,7 @@ public partial class TaxiGuidanceManager
             // with no pause — illegal in real life and a runway-incursion risk on
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
-            var crossedRunways = ApplyAutoHoldShortPasses(
+            ApplyAutoHoldShortPasses(
                 route, isRunwayDestination, destinationName, phase: "load");
 
             // Runway-reach safety check. Probe the route's DESTINATION node — the
@@ -1459,7 +1459,7 @@ public partial class TaxiGuidanceManager
     /// <param name="phase">"load" or "recalc" — recorded in the log line so the two are
     /// separable. The recalc produced no line at all before, which is why it took a segment-
     /// cursor reset to prove it had even happened.</param>
-    private List<string> ApplyAutoHoldShortPasses(
+    private void ApplyAutoHoldShortPasses(
         TaxiRoute route, bool isRunwayDestination, string destinationName, string phase)
     {
         var crossedRunways = InsertRunwayCrossingHoldShorts(
@@ -1485,24 +1485,22 @@ public partial class TaxiGuidanceManager
                 }
             }
         }
-
-        return crossedRunways;
     }
 
     /// <summary>
-    /// Scans the route for segments that cross a runway centerline, and tags the
-    /// LAST segment before each crossing as a hold-short with the runway name.
-    /// The destination runway (if `destinationName` is non-empty) is excluded —
-    /// `TruncateToHoldShort` already handles the destination's hold-short
-    /// separately, and tagging it twice would produce duplicate announcements.
+    /// Thin adapter: hands the live graph's edge probe (<see cref="WhichRunwayCrossedByEdge"/>)
+    /// and the designator-match delegate to the pure
+    /// <see cref="RouteRunwayCrossings.InsertCrossingHoldShorts"/>, which owns the actual
+    /// rules — read that method's doc, not this one, for what gets tagged and skipped.
     ///
-    /// "Crossing" detection: project the segment endpoint onto each runway
-    /// centerline; if the perpendicular distance is within the runway's
-    /// half-width tolerance AND the projection point lies between the two
-    /// thresholds (along-track within [0, length]), the segment ends ON the
-    /// runway → the previous segment was the approach, tag THAT one as the
-    /// hold-short. Skip duplicate consecutive hold-shorts of the same runway
-    /// (one approach, multiple internal segments on the runway pavement).
+    /// Two assumptions a reader might bring to this method are both WRONG, documented
+    /// regressions: the destination runway is NOT excluded wholesale — only the route's own
+    /// final arrival segment is (`TruncateToHoldShort` already tags that one; a blanket
+    /// same-runway skip dropped genuine mid-route crossings of the active runway). And
+    /// crossing detection is NOT point-on-pavement (endpoint-within-half-width of the
+    /// centerline) — that missed crossings whose flanking nodes sit off the runway and was
+    /// replaced by edge-vs-centerline intersection (<see cref="TaxiGraph.EdgeCrossesRunwayStatic"/>).
+    /// Do not revert to either; see docs/taxi-guidance.md.
     /// </summary>
     private List<string> InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
     {
