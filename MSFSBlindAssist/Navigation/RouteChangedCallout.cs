@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Database.Models;
+﻿using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Navigation;
 
@@ -62,13 +62,18 @@ public static class RouteChangedCallout
         //     caller has just reset every announce latch — so the next position frame's
         //     turn/approach callout can cut this sentence off. Truncation takes the END, and
         //     the runway-safety clause must not be what is lost. The distance can be.
+        // ⚠ Ordering alone does NOT save the clause from an AnnounceImmediate one frame later:
+        // that takes essentially the whole sentence, not its end. The one caller that could do
+        // so is the runway-incursion callout, and it is held off separately — the call site
+        // stamps _lastIncursionWarningTime when it re-arms _lastIncursionWarnedNodeId, so the
+        // cooldown covers this sentence. Ordering is what protects the clause from the
+        // turn/approach callouts, which are latched rather than immediate.
         // With no taxiway list the clause attaches to "Route changed" instead. It must NEVER
         // become the standalone sentence "Crossing runway 26R." — that is byte-identical to
         // the runway-incursion callout in TaxiGuidanceManager ("Crossing {rwy}."), which means
-        // "you are crossing that runway NOW", and the call site re-arms that callout by
-        // resetting _lastIncursionWarnedNodeId a few lines above. The pilot would hear one
-        // sentence twice within seconds meaning two different things. Keeping the clause
-        // lower-case and attached is also why nothing here has to capitalise it.
+        // "you are crossing that runway NOW". The pilot would hear one sentence twice within
+        // seconds meaning two different things. Keeping the clause lower-case and attached is
+        // also why nothing here has to capitalise it.
         string lead = viaNames.Count > 0
             ? $"Route changed. Now via {string.Join(", ", viaNames)}"
             : "Route changed";

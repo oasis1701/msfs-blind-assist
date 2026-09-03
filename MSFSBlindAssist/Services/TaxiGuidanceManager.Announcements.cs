@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -558,16 +558,10 @@ public partial class TaxiGuidanceManager
         }
         else
         {
-            // Unconstrained or fallback: list all taxiway names from segments
-            var taxiways = new List<string>();
-            foreach (var seg in route.Segments)
-            {
-                if (!string.IsNullOrEmpty(seg.TaxiwayName) &&
-                    (taxiways.Count == 0 || !taxiways[^1].Equals(seg.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    taxiways.Add(seg.TaxiwayName);
-                }
-            }
+            // Unconstrained or fallback: list all taxiway names from segments.
+            // Shared with the recalculation's via-list so the two spoken descriptions of a
+            // route cannot disagree about which taxiways it uses.
+            var taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments);
             taxiwayStr = taxiways.Count > 0
                 ? $" via {string.Join(", ", taxiways)}"
                 : "";
