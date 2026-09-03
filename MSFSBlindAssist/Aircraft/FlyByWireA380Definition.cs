@@ -1128,9 +1128,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // CORRECTED 2026-06: the control + state var the A380 instruments (PFD/ND/FCU)
         // actually read is A32NX_PUSH_TRUE_REF, NOT A32NX_FMGC_TRUE_REF (what MSFSBA used
         // before). Live-verified: writing FMGC_TRUE_REF=1 left PUSH_TRUE_REF (the consumed
-        // var) at 0 and changed nothing; writing PUSH_TRUE_REF=1 latched and is what the
-        // displays read. FMGC_TRUE_REF is an FMGC-internal output, not the pilot control.
-        Sel("A32NX_PUSH_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
+        // var) at 0 and changed nothing. FMGC_TRUE_REF is an FMGC-internal output, not the
+        // pilot control.
+        //
+        // ⚠️ A duplicate Sel() for A32NX_PUSH_TRUE_REF used to sit here. `Read()` does
+        // `vars[key] = …`, so the later ReadEnum registration below silently replaced it and
+        // this one had no effect at all — the "never register the same var KEY twice" trap.
+        // Removed with no behaviour change; the surviving registration is the ReadEnum in the
+        // instrument block, and the control IS settable (see A380EfisCpControls).
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1287,7 +1292,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "True airspeed", "knots");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
-        // ND heading reference (magnetic vs true) — auto-announced on change.
+        // ND heading reference (magnetic vs true) — auto-announced on change. This is the
+        // ONLY registration for the key (a duplicate Sel() in the source-switching block was
+        // removed); it is settable despite the ReadEnum name, via the FCU's
+        // A32NX.FCU_TRUE_TOGGLE_PUSH — see A380EfisCpControls.
         ReadEnum("A32NX_PUSH_TRUE_REF", "Heading reference",
             new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
         // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
