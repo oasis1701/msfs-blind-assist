@@ -517,8 +517,25 @@ public partial class FlyByWireA380Definition
                 : $"Altimeter set {hpa:0} hectopascals");
             return true;
         }
-        // EFIS Control Panel controls are ALL direct L:var writes on the A380X
-        // (no events — confirmed from efis-cp.xml: ND mode/range, navaid 1/2, the
+        // ND MODE / ND RANGE are the EXCEPTION to the direct-L:var rule below, and they must
+        // be handled BEFORE it: A32NX_EFIS_{L,R}_ND_{MODE,RANGE} are FCU-SHIM OUTPUTS that
+        // fbw.wasm rewrites every frame, so the catch-all's write is overwritten within one
+        // frame and the knob never moves (live-measured 2026-09-03). Their knobs fire
+        // A32NX.FCU_EFIS_{SIDE}_{MODE,RANGE}_{INC,DEC}, and the FCU also takes the absolute
+        // _SET used here. Read A380NdKnobSelection before touching this — the RANGE parameter
+        // is NOT the value the L:var publishes.
+        if (A380NdKnobSelection.SetEvent(varKey, value) is { } ndKnob)
+        {
+            simConnect.SendEvent(ndKnob.EventName, ndKnob.Parameter);
+            return true;
+        }
+        if (A380NdKnobSelection.IsZoomAttempt(varKey, value))
+        {
+            announcer.AnnounceImmediate(A380NdKnobSelection.ZoomUnsupportedMessage);
+            return true;
+        }
+        // Every OTHER EFIS Control Panel control is a direct L:var write on the A380X
+        // (no events — confirmed from efis-cp.xml: navaid 1/2, the
         // LS/VV/CSTR/ARPT/TRAF option buttons, the WPT/VOR/NDB filter + WX/TERR
         // overlay, OANS range, and the hPa/inHg baro-unit selector). The cockpit
         // buttons run RPN that writes the L:var; the SimConnect data-def write is
