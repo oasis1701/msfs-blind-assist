@@ -553,6 +553,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // the hold-short segment instead — never advanced past it, never announced early.
     private const double HOLD_SHORT_ANNOUNCE_MAX_DIST_M = 40.0;
 
+    // How far behind the aircraft a crossing's candidate hold point must lie before the
+    // auto-crossing pass refuses to place a hold there (see HoldPointIsBehindAircraft).
+    // Generous on purpose: a stop point a metre or two back is still effectively at the
+    // aircraft, and dropping it there would cost a legitimate safety stop.
+    private const double HOLD_POINT_BEHIND_M = 10.0;
+
     // Never-joined escape for the off-route detector. _hasJoinedRoute exists so the taxi
     // from a gate onto the first cleared taxiway doesn't read as off-route before the
     // pilot has joined it — but it had no way out: a route the aircraft NEVER joins left
@@ -2746,8 +2752,19 @@ public partial class TaxiGuidanceManager : IDisposable
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
         }
 
-        if (_lastIncursionWarnedNodeId != -1 &&
-            (DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
+        // The cooldown is a pure TIME check. It used to also require _lastIncursionWarnedNodeId
+        // != -1, which meant any path that re-armed the node id disarmed the cooldown with it —
+        // and this callout is AnnounceImmediate, so it could fire on the very next position
+        // frame and cut off whatever had just been spoken. That is exactly what an accepted
+        // recalculation does: it re-arms the id and then speaks "Route changed. Now via Q, A,
+        // crossing runways 28R and 10L", which the bare "Crossing runway 28R." would truncate
+        // one frame later — the same sentence twice within seconds, meaning two different
+        // things, with the route-changed context and any second crossed runway lost. The
+        // route-changed sentence NAMES the crossings, so the tactical callout has nothing to
+        // add for those few seconds. Every other reset site (LoadRoute, StopGuidance) clears
+        // the timestamp to MinValue as well, so those stay fully re-armed exactly as before —
+        // dropping the conjunct changes behaviour only where a caller deliberately stamps it.
+        if ((DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
             return;
 
         // Build the set of HS node-IDs that lie on the remaining planned route
