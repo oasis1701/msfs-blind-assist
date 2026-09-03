@@ -394,31 +394,8 @@ public partial class TaxiGuidanceManager
             // with no pause — illegal in real life and a runway-incursion risk on
             // VATSIM. This pause-and-resume flow uses the same Continue hotkey
             // pattern as ATC-instructed hold-shorts.
-            var crossedRunways = InsertRunwayCrossingHoldShorts(route, isRunwayDestination ? destinationName : "");
-            // One line per built route naming every runway it crosses. Answering "did that
-            // route really drive across 08L?" for the 2026-08-27 KATL arrival meant
-            // reconstructing segment coordinates against the navdata by hand; the route
-            // pipeline already knows the answer at build time.
-            _guidanceLog.Info(crossedRunways.Count > 0
-                ? $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} " +
-                  $"crosses={string.Join(",", crossedRunways)}"
-                : $"Route crossings: dest=\"{destinationName}\" segments={route.Segments.Count} crosses=(none)");
-
-            // Progressive "after crossing" terminator: the pilot is cleared to
-            // cross the terminator runway, so strip the auto hold-short for it
-            // (other crossings keep their safety hold — spec Decision 2).
-            if (_progressiveTerminator?.ClearedCrossingRunway is string clearedRwy)
-            {
-                foreach (var seg in route.Segments)
-                {
-                    if (seg.IsHoldShortPoint && !string.IsNullOrEmpty(seg.HoldShortRunway) &&
-                        RunwayDesignatorsMatch(seg.HoldShortRunway, clearedRwy))
-                    {
-                        seg.IsHoldShortPoint = false;
-                        seg.HoldShortRunway = "";
-                    }
-                }
-            }
+            var crossedRunways = ApplyAutoHoldShortPasses(
+                route, isRunwayDestination, destinationName, phase: "load");
 
             // Runway-reach safety check. Probe the route's DESTINATION node — the
             // node nearest the runway lineup point that the route reaches — NOT
@@ -1101,6 +1078,11 @@ public partial class TaxiGuidanceManager
         if (_isRunwayLineup)
             TruncateToHoldShort(newRoute, _destinationName, _preferIlsHold);
 
+        // Re-run the auto crossing hold-shorts. Truncation only restores the DESTINATION's own
+        // hold; without this the recalculated route reaches the runway with every intermediate
+        // crossing untagged (PHNL 2026-09-03 — see ApplyAutoHoldShortPasses).
+        ApplyAutoHoldShortPasses(newRoute, _isRunwayLineup, _destinationName, phase: "recalc");
+
         // Distinct consecutive named taxiways of the recalculated route, in order.
         var viaNames = new List<string>();
         foreach (var s in newRoute.Segments)
@@ -1457,6 +1439,54 @@ public partial class TaxiGuidanceManager
         lastSeg.IsHoldShortPoint = true;
         if (string.IsNullOrEmpty(lastSeg.HoldShortRunway))
             lastSeg.HoldShortRunway = destinationName;
+    }
+
+    /// <summary>
+    /// The automatic hold-short passes that must run on EVERY route the manager adopts —
+    /// the auto runway-crossing holds, their log line, and the Progressive Taxi strip of the
+    /// crossing the pilot is already cleared for.
+    ///
+    /// <para>SINGLE OWNER, ON PURPOSE. These previously ran only in <c>LoadRoute</c>, so an
+    /// off-route recalculation silently produced a route with no crossing hold-shorts at all.
+    /// PHNL 2026-09-03: the route to 04R via D crossed 26R, 04L and 04R and was correctly
+    /// tagged at build time — the summary named all three — then a recalc 88 s later, with the
+    /// aircraft still ~30 m from the stand, replaced the route and dropped every one of them.
+    /// The aircraft crossed all three runways at 13-19 kt with no hold-short, no countdown and
+    /// no pause. That is the exact failure FAA AIM 4-3-18 / ICAO Doc 4444 and this codebase's
+    /// "never disable the auto-inserted runway-crossing hold-shorts" invariant exist to
+    /// prevent. Any future path that adopts a route must call THIS, not the pass directly.</para>
+    /// </summary>
+    /// <param name="phase">"load" or "recalc" — recorded in the log line so the two are
+    /// separable. The recalc produced no line at all before, which is why it took a segment-
+    /// cursor reset to prove it had even happened.</param>
+    private List<string> ApplyAutoHoldShortPasses(
+        TaxiRoute route, bool isRunwayDestination, string destinationName, string phase)
+    {
+        var crossedRunways = InsertRunwayCrossingHoldShorts(
+            route, isRunwayDestination ? destinationName : "");
+
+        _guidanceLog.Info(crossedRunways.Count > 0
+            ? $"Route crossings: phase={phase} dest=\"{destinationName}\" " +
+              $"segments={route.Segments.Count} crosses={string.Join(",", crossedRunways)}"
+            : $"Route crossings: phase={phase} dest=\"{destinationName}\" " +
+              $"segments={route.Segments.Count} crosses=(none)");
+
+        // Progressive "after crossing" terminator: the pilot is cleared to cross the terminator
+        // runway, so strip the auto hold-short for it (other crossings keep their safety hold).
+        if (_progressiveTerminator?.ClearedCrossingRunway is string clearedRwy)
+        {
+            foreach (var seg in route.Segments)
+            {
+                if (seg.IsHoldShortPoint && !string.IsNullOrEmpty(seg.HoldShortRunway) &&
+                    RunwayDesignatorsMatch(seg.HoldShortRunway, clearedRwy))
+                {
+                    seg.IsHoldShortPoint = false;
+                    seg.HoldShortRunway = "";
+                }
+            }
+        }
+
+        return crossedRunways;
     }
 
     /// <summary>
