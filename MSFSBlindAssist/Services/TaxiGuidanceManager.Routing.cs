@@ -1477,99 +1477,15 @@ public partial class TaxiGuidanceManager
     private List<string> InsertRunwayCrossingHoldShorts(TaxiRoute route, string destinationName)
     {
         if (route == null || route.Segments.Count < 2) return new List<string>();
+        // The graph is what the crossing probe needs; with no centrelines there is nothing to
+        // cross and the pure pass would return empty anyway — this just skips the walk.
         if (_graph == null || _graph.RunwayCenterlines.Count == 0) return new List<string>();
 
-        // Tracks the runway whose hold-short was most recently inserted, so we
-        // don't tag every consecutive segment that's on the same runway pavement.
-        string lastTaggedRunway = "";
-        var crossed = new List<string>();
-
-        // The destination name arrives prefixed ("Runway 33L"), but the crossed
-        // runway is a bare designator ("33L"). Normalise so the destination
-        // exclusion below actually matches — TruncateToHoldShort owns the
-        // destination's hold-short, and tagging it here too would double-announce.
-        string destBare = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
-            ? destinationName.Substring("Runway ".Length).Trim()
-            : destinationName.Trim();
-
-        // Detect a crossing by EDGE intersection, not point-on-pavement. A
-        // taxiway crosses a runway via an edge that SPANS the pavement, with its
-        // endpoint nodes sitting off the runway on either side — so the old
-        // "is the next node ON the runway?" test silently missed every crossing
-        // where the flanking nodes are more than half-width+5 m from the
-        // centerline (KBOS taxiway C over 04L / 27: nearest C node is 35 m / 86 m
-        // from the centerline, so no node landed on pavement and no hold-short
-        // was inserted, even though C plainly crosses the runways).
-        for (int i = 1; i < route.Segments.Count; i++)
-        {
-            var crossingSeg = route.Segments[i];
-            if (crossingSeg.FromNode == null || crossingSeg.ToNode == null) continue;
-
-            string crossedRwy = WhichRunwayCrossedByEdge(
-                crossingSeg.FromNode.Latitude, crossingSeg.FromNode.Longitude,
-                crossingSeg.ToNode.Latitude, crossingSeg.ToNode.Longitude);
-            if (string.IsNullOrEmpty(crossedRwy)) continue;
-
-            // The DESTINATION's own strip needs care in two ways.
-            //
-            // (a) SKIP only the route's own ARRIVAL at it, not every crossing of it. The old
-            //     rule skipped any crossing whose name equalled the destination's, which is
-            //     wrong twice over: `WhichRunwayCrossedByEdge` names the crossing after
-            //     whichever END is nearer the crossing point, so a route to 04L that crosses
-            //     the 04L/22R strip reports "22R" and slipped past the exclusion entirely,
-            //     while one crossing nearer the 04L end reported "04L" and was DROPPED — no
-            //     hold-short at all before crossing the active runway, the exact
-            //     runway-incursion direction FAA AIM 4-3-18 / ICAO Doc 4444 exist to prevent.
-            //     The thing TruncateToHoldShort actually owns is the route's FINAL segment
-            //     (it truncated the route there and tagged it), so that — and only that — is
-            //     what must not be tagged twice. Matching is reciprocal-aware, because the
-            //     designator reported here is not necessarily the one the pilot selected.
-            //
-            // (b) NAME it as the pilot's clearance does. A crossing of the destination strip
-            //     announced under the opposite designator ("hold short of runway 22R" while
-            //     taxiing to 04L) is the same pavement under a name the pilot never chose.
-            //     The label still carries the hold point ("runway 04L at D5"), so it stays
-            //     distinguishable from the destination's own hold-short callout.
-            bool sameStripAsDestination = !string.IsNullOrEmpty(destBare) &&
-                RunwayDesignatorsMatch(crossedRwy, destBare);
-            if (sameStripAsDestination && i >= route.Segments.Count - 1)
-                continue;
-            // On the destination's own strip the pilot's designator is the one to announce.
-            // It is passed as the PREFERENCE rather than as `crossedRwy` because the hold
-            // node's DB label routinely already names this pavement from the other end
-            // ("runway 22R at D5"), and ComposeCrossingLabel keeps such a label unless it is
-            // told which designator is wanted — which made the rename a no-op on the normal
-            // path and left the pilot hearing the reciprocal.
-            string? preferredRwy = sameStripAsDestination ? destBare : null;
-
-            // Skip if we've just tagged this runway already (a wide runway whose
-            // entry and exit edges both cross the centerline, or consecutive
-            // pavement segments).
-            if (crossedRwy.Equals(lastTaggedRunway, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            // The crossing edge is segment i; hold short at the scenery's own
-            // hold line before it (falling back to the end of segment i-1 when
-            // the navdata carries no hold node within reach — see
-            // RouteRunwayCrossings.ResolveCrossingHoldSegment; the node before
-            // the crossing edge is routinely ON the runway pavement, because
-            // the crossing is detected against the CENTERLINE).
-            var holdSeg = route.Segments[
-                RouteRunwayCrossings.ResolveCrossingHoldSegment(route.Segments, i, crossedRwy)];
-            holdSeg.IsHoldShortPoint = true;
-            // Label policy lives in RouteRunwayCrossings.ComposeCrossingLabel
-            // (pure, probe-tested): empty → tagged; bare DB names upgraded to
-            // "runway X at <holdPoint>"; user labels + correct names kept;
-            // a DB name for a DIFFERENT pavement corrected to geometric truth.
-            string? newLabel = RouteRunwayCrossings.ComposeCrossingLabel(
-                holdSeg.HoldShortRunway, crossedRwy, preferredRwy);
-            if (newLabel != null)
-                holdSeg.HoldShortRunway = newLabel;
-            lastTaggedRunway = crossedRwy;
-            crossed.Add(crossedRwy);
-        }
-
-        return crossed;
+        return RouteRunwayCrossings.InsertCrossingHoldShorts(
+            route.Segments,
+            destinationName,
+            WhichRunwayCrossedByEdge,
+            RunwayDesignatorsMatch).ToList();
     }
 
     /// <summary>
