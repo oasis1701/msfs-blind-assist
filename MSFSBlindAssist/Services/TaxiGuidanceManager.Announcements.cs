@@ -583,10 +583,12 @@ public partial class TaxiGuidanceManager
         // For runway destinations, TruncateToHoldShort tags the last segment
         // purely as an internal countdown rail — it is NOT an ATC-assigned hold
         // point and is excluded (same exclusion the old bare count applied).
-        bool excludeLastHold = isRunwayDestination && route.Segments.Count > 0 &&
-            route.Segments[^1].IsHoldShortPoint;
-        var (crossingClause, otherHolds) =
-            RouteRunwayCrossings.Describe(route.Segments, excludeLastHold);
+        // The rule itself lives in RouteRunwayCrossings.ShouldExcludeFinalHold — shared with the
+        // recalculation's "Route changed" callout, which describes the same kind of route and
+        // must not reach a different verdict about it.
+        var (crossingClause, otherHolds) = RouteRunwayCrossings.Describe(
+            route.Segments,
+            RouteRunwayCrossings.ShouldExcludeFinalHold(route.Segments, isRunwayDestination));
         string holdStr = "";
         if (crossingClause.Length > 0)
             holdStr += $", {crossingClause}";

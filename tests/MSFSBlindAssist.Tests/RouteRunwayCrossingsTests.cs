@@ -470,4 +470,39 @@ public class RouteRunwayCrossingsTests
     public void InsertCrossingHoldShorts_StillToleratesANullRouteWithoutThrowing()
         => Assert.Empty(RouteRunwayCrossings.InsertCrossingHoldShorts(
             null!, "", (a, b, c, d) => "", NeverMatches));
+
+    // --- ShouldExcludeFinalHold ---------------------------------------------------------
+    //
+    // Both describers of a route — LoadRoute's summary and the recalc's "Route changed"
+    // callout — must agree on whether the FINAL segment's hold is a real crossing or just the
+    // destination's own countdown rail. The rule was spelled out twice, once in each; one
+    // owner here is what makes "the two paths cannot drift" true rather than merely intended.
+
+    [Fact]
+    public void ShouldExcludeFinalHold_ExcludesARunwayRoutesOwnTaggedFinalSegment()
+    {
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.True(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: true));
+    }
+
+    // A gate route never runs TruncateToHoldShort, so a hold-short on its last segment is a
+    // genuine crossing and must be described.
+    [Fact]
+    public void ShouldExcludeFinalHold_KeepsAGateRoutesTaggedFinalSegment()
+    {
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: false));
+    }
+
+    [Fact]
+    public void ShouldExcludeFinalHold_IsFalseWhenTheFinalSegmentCarriesNoHold()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(
+            Route(3), isRunwayDestination: true));
+
+    [Fact]
+    public void ShouldExcludeFinalHold_IsFalseForAnEmptyRoute()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(
+            Array.Empty<TaxiRouteSegment>(), isRunwayDestination: true));
 }

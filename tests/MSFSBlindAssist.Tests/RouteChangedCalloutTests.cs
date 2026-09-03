@@ -57,8 +57,17 @@ public class RouteChangedCalloutTests
 
     // --- the gap this closes -----------------------------------------------------------
 
+    // The crossing clause rides with the TAXIWAY list, ahead of the distance — deliberately
+    // NOT appended after the destination. Two reasons, both raised in review:
+    //  - A destination name can itself contain commas: ParkingSpot.Describe() appends the
+    //    terminal and online aliases ("A 24A - Gate Medium, also A24 (online)"). Tacked on
+    //    after that, ", crossing runway 09L" reads as one more item in the gate's name.
+    //  - AnnounceInstruction is AnnounceImmediate, and every announce latch has just been
+    //    reset one line above the call site, so the next position frame's turn/approach
+    //    callout can truncate this sentence. Truncation takes the END, so the runway-safety
+    //    clause must not be the last thing said. Losing the distance instead is survivable.
     [Fact]
-    public void Crossings_AreNamedAfterTheDestination()
+    public void Crossings_AreNamedWithTheTaxiwaysAheadOfTheDistance()
     {
         var segs = Plain(6);
         segs[1].IsHoldShortPoint = true; segs[1].HoldShortRunway = "runway 26R";
@@ -68,12 +77,13 @@ public class RouteChangedCalloutTests
             new[] { "D" }, "2.6 kilometres", "Runway 04R", segs, isRunwayDestination: true);
 
         Assert.Equal(
-            "Route changed. Now via D. 2.6 kilometres to Runway 04R, crossing runways 26R and 04L.",
+            "Route changed. Now via D, crossing runways 26R and 04L. 2.6 kilometres to Runway 04R.",
             callout);
     }
 
+    // With no taxiway list the clause has to start its own sentence, so it is capitalised.
     [Fact]
-    public void Crossings_AreNamedEvenWithNoTaxiwayNames()
+    public void Crossings_StandAloneAndAreCapitalised_WhenThereAreNoTaxiwayNames()
     {
         var segs = Plain(4);
         segs[1].IsHoldShortPoint = true; segs[1].HoldShortRunway = "runway 26R";
@@ -81,7 +91,27 @@ public class RouteChangedCalloutTests
         string callout = RouteChangedCallout.Compose(
             Array.Empty<string>(), "900 metres", "Runway 08L", segs, isRunwayDestination: true);
 
-        Assert.Equal("Route changed. 900 metres to Runway 08L, crossing runway 26R.", callout);
+        Assert.Equal("Route changed. Crossing runway 26R. 900 metres to Runway 08L.", callout);
+    }
+
+    // The case that drove the ordering: a real GSX gate label carries commas of its own.
+    [Fact]
+    public void CommaBearingDestinationName_CannotSwallowTheCrossingClause()
+    {
+        var segs = Plain(4);
+        segs[1].IsHoldShortPoint = true; segs[1].HoldShortRunway = "runway 09L";
+
+        string callout = RouteChangedCallout.Compose(
+            new[] { "B" }, "400 metres", "A 24A - Gate Medium, also A24 (online)", segs,
+            isRunwayDestination: false);
+
+        Assert.Equal(
+            "Route changed. Now via B, crossing runway 09L. 400 metres to " +
+            "A 24A - Gate Medium, also A24 (online).",
+            callout);
+        // The safety clause must finish before the gate name begins.
+        Assert.True(callout.IndexOf("crossing runway 09L", StringComparison.Ordinal)
+                    < callout.IndexOf("A 24A", StringComparison.Ordinal));
     }
 
     // --- the subtle half: the destination's own hold is NOT a crossing -----------------
@@ -113,7 +143,7 @@ public class RouteChangedCalloutTests
             new[] { "D" }, "1.2 kilometres", "Runway 04R", segs, isRunwayDestination: true);
 
         Assert.Equal(
-            "Route changed. Now via D. 1.2 kilometres to Runway 04R, crossing runway 04R.",
+            "Route changed. Now via D, crossing runway 04R. 1.2 kilometres to Runway 04R.",
             callout);
     }
 
@@ -129,7 +159,7 @@ public class RouteChangedCalloutTests
             new[] { "B" }, "400 metres", "Gate B 12", segs, isRunwayDestination: false);
 
         Assert.Equal(
-            "Route changed. Now via B. 400 metres to Gate B 12, crossing runway 09L.", callout);
+            "Route changed. Now via B, crossing runway 09L. 400 metres to Gate B 12.", callout);
     }
 
     // --- flows through Describe's own rules --------------------------------------------

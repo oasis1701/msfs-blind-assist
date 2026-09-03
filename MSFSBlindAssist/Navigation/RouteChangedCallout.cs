@@ -42,18 +42,32 @@ public static class RouteChangedCallout
         IReadOnlyList<TaxiRouteSegment> segments,
         bool isRunwayDestination)
     {
-        bool excludeLastHold = isRunwayDestination && segments.Count > 0 &&
-            segments[^1].IsHoldShortPoint;
-
         // Only the crossing clause is used. The non-runway hold-short count is deliberately
         // dropped: a recalculated route carries none, because the recalc does not re-apply the
         // pilot's per-row hold-short picks at all (those bind to a taxiway-sequence index the
         // recalc legitimately rewrites). Speaking "0 hold short points" — or a count that
         // could only ever be zero — would be noise.
-        var (crossingClause, _) = RouteRunwayCrossings.Describe(segments, excludeLastHold);
+        var (crossingClause, _) = RouteRunwayCrossings.Describe(
+            segments, RouteRunwayCrossings.ShouldExcludeFinalHold(segments, isRunwayDestination));
 
-        string via = viaNames.Count > 0 ? $" Now via {string.Join(", ", viaNames)}." : "";
-        string crossings = crossingClause.Length > 0 ? $", {crossingClause}" : "";
-        return $"Route changed.{via} {distanceText} to {destinationName}{crossings}.";
+        // The crossing clause rides with the TAXIWAY list, ahead of the distance, and is NOT
+        // appended after the destination. Two reasons, both real:
+        //   - A destination name can contain commas of its own. ParkingSpot.Describe() appends
+        //     the terminal and any online alias ("A 24A - Gate Medium, also A24 (online)"), so
+        //     ", crossing runway 09L" tacked on after it reads as one more item in the name.
+        //   - This is spoken through AnnounceInstruction, i.e. AnnounceImmediate, and the
+        //     caller has just reset every announce latch — so the next position frame's
+        //     turn/approach callout can cut this sentence off. Truncation takes the END, and
+        //     the runway-safety clause must not be what is lost. The distance can be.
+        string via = viaNames.Count > 0
+            ? crossingClause.Length > 0
+                ? $" Now via {string.Join(", ", viaNames)}, {crossingClause}."
+                : $" Now via {string.Join(", ", viaNames)}."
+            // No taxiway list to ride with: the clause becomes its own sentence, so it needs a
+            // capital. Describe() always yields lower-case "crossing …".
+            : crossingClause.Length > 0
+                ? $" {char.ToUpperInvariant(crossingClause[0])}{crossingClause[1..]}."
+                : "";
+        return $"Route changed.{via} {distanceText} to {destinationName}.";
     }
 }

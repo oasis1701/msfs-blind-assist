@@ -288,6 +288,23 @@ public static class RouteRunwayCrossings
     /// nonRunwayHoldShorts: count of hold-short points whose label names no runway
     ///   (user checkbox holds, "end of taxiway X", bare holding-point names).
     /// </returns>
+    /// <summary>
+    /// Whether <see cref="Describe"/>'s <c>excludeLastSegment</c> should be set for this route.
+    ///
+    /// <para>For a RUNWAY destination <c>TruncateToHoldShort</c> tags the final segment purely
+    /// as the countdown rail for the destination's own hold-short — it is not an ATC crossing,
+    /// and describing it as one tells the pilot they cross the runway they are taxiing to. A
+    /// GATE route never runs that pass, so a hold-short on its final segment IS a real crossing
+    /// and must be described.</para>
+    ///
+    /// <para>ONE owner, because two callers describe a route — <c>LoadRoute</c>'s spoken summary
+    /// and the recalculation's "Route changed" callout — and a rule spelled out separately in
+    /// each is a rule that can drift.</para>
+    /// </summary>
+    public static bool ShouldExcludeFinalHold(
+        IReadOnlyList<TaxiRouteSegment> segments, bool isRunwayDestination)
+        => isRunwayDestination && segments is { Count: > 0 } && segments[^1].IsHoldShortPoint;
+
     public static (string clause, int nonRunwayHoldShorts) Describe(
         IReadOnlyList<TaxiRouteSegment> segments, bool excludeLastSegment)
     {
@@ -395,13 +412,18 @@ public static class RouteRunwayCrossings
         EdgeRunwayProbe probe,
         Func<string, string, bool> designatorsMatch)
     {
-        // A null delegate FAILS LOUDLY; a null route does not. The asymmetry is deliberate.
-        // This pass is the FAA AIM 4-3-18 / ICAO Doc 4444 hold-short before every crossed
-        // runway, and its empty result is indistinguishable from a route that genuinely
-        // crosses nothing — so degrading a wiring error into "no crossings found" would
-        // present it as a safe route. `designatorsMatch` in particular is only dereferenced
-        // when the destination is non-empty, so without this guard a null could sit unnoticed
-        // through every gate-destination route and surface only on a runway one.
+        // A null delegate FAILS LOUDLY. This pass is the FAA AIM 4-3-18 / ICAO Doc 4444
+        // hold-short before every crossed runway, and its empty result is indistinguishable
+        // from a route that genuinely crosses nothing — so degrading a wiring error into "no
+        // crossings found" would present it as a safe route. `designatorsMatch` in particular
+        // is only dereferenced when the destination is non-empty, so without this guard a null
+        // could sit unnoticed through every gate-destination route and surface only on a
+        // runway one.
+        //
+        // The `segments` check below stays LENIENT, and that asymmetry is contract
+        // preservation rather than a considered safety distinction: a null route is the same
+        // class of wiring error, but returning empty for it is the behaviour this method
+        // shipped with and a test pins it. Do not read it as "a null route is fine".
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(designatorsMatch);
 
