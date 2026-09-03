@@ -15,15 +15,18 @@ namespace MSFSBlindAssist.Navigation;
 /// are MOST likely to have changed and the pilot is LEAST likely to expect it, so the same
 /// clause belongs here.</para>
 ///
-/// <para>Pure (strings and segments in, one sentence out) so the <c>excludeLastSegment</c>
-/// rule below — the subtle half — is pinned by unit tests rather than only in the sim.</para>
+/// <para>Pure (strings and segments in, one sentence out) so the exclusion rule it applies
+/// through <see cref="RouteRunwayCrossings.ShouldExcludeFinalHold"/> — the subtle half — is
+/// pinned by unit tests rather than only in the sim.</para>
 /// </summary>
 public static class RouteChangedCallout
 {
     /// <summary>
-    /// The full sentence, e.g. <c>"Route changed. Now via D. 2.6 kilometres to Runway 04R,
-    /// crossing runways 26R and 04L."</c> The crossing clause is omitted entirely when the
+    /// The full sentence, e.g. <c>"Route changed. Now via D, crossing runways 26R and 04L.
+    /// 2.6 kilometres to Runway 04R."</c> The crossing clause is omitted entirely when the
     /// route crosses no runway, leaving the wording byte-identical to what it has always been.
+    /// It sits AHEAD of the distance and never after the destination — see the comment on the
+    /// composition below for the two reasons, both of which are safety ones.
     /// </summary>
     /// <param name="viaNames">Distinct consecutive taxiway names of the new route, in order.
     /// Empty yields the short form with no "Now via" clause.</param>
@@ -59,15 +62,17 @@ public static class RouteChangedCallout
         //     caller has just reset every announce latch — so the next position frame's
         //     turn/approach callout can cut this sentence off. Truncation takes the END, and
         //     the runway-safety clause must not be what is lost. The distance can be.
-        string via = viaNames.Count > 0
-            ? crossingClause.Length > 0
-                ? $" Now via {string.Join(", ", viaNames)}, {crossingClause}."
-                : $" Now via {string.Join(", ", viaNames)}."
-            // No taxiway list to ride with: the clause becomes its own sentence, so it needs a
-            // capital. Describe() always yields lower-case "crossing …".
-            : crossingClause.Length > 0
-                ? $" {char.ToUpperInvariant(crossingClause[0])}{crossingClause[1..]}."
-                : "";
-        return $"Route changed.{via} {distanceText} to {destinationName}.";
+        // With no taxiway list the clause attaches to "Route changed" instead. It must NEVER
+        // become the standalone sentence "Crossing runway 26R." — that is byte-identical to
+        // the runway-incursion callout in TaxiGuidanceManager ("Crossing {rwy}."), which means
+        // "you are crossing that runway NOW", and the call site re-arms that callout by
+        // resetting _lastIncursionWarnedNodeId a few lines above. The pilot would hear one
+        // sentence twice within seconds meaning two different things. Keeping the clause
+        // lower-case and attached is also why nothing here has to capitalise it.
+        string lead = viaNames.Count > 0
+            ? $"Route changed. Now via {string.Join(", ", viaNames)}"
+            : "Route changed";
+        string crossings = crossingClause.Length > 0 ? $", {crossingClause}" : "";
+        return $"{lead}{crossings}. {distanceText} to {destinationName}.";
     }
 }

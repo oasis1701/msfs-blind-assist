@@ -272,23 +272,6 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
-    /// Scans the hold-short-tagged segments and splits them into runway crossings
-    /// (composed into a spoken clause) and plain hold-short points (returned as a
-    /// count for the existing "N hold short points" wording).
-    /// </summary>
-    /// <param name="segments">The route's segments.</param>
-    /// <param name="excludeLastSegment">
-    /// True for runway destinations, where TruncateToHoldShort tags the final
-    /// segment purely as an internal countdown rail — it is NOT an ATC crossing
-    /// and must not be described as one (same exclusion the old count applied).
-    /// </param>
-    /// <returns>
-    /// clause: "" when the route crosses no runway, else e.g.
-    ///   "crossing runway 10L twice" / "crossing runways 04L, 04R and 27".
-    /// nonRunwayHoldShorts: count of hold-short points whose label names no runway
-    ///   (user checkbox holds, "end of taxiway X", bare holding-point names).
-    /// </returns>
-    /// <summary>
     /// Whether <see cref="Describe"/>'s <c>excludeLastSegment</c> should be set for this route.
     ///
     /// <para>For a RUNWAY destination <c>TruncateToHoldShort</c> tags the final segment purely
@@ -305,6 +288,23 @@ public static class RouteRunwayCrossings
         IReadOnlyList<TaxiRouteSegment> segments, bool isRunwayDestination)
         => isRunwayDestination && segments is { Count: > 0 } && segments[^1].IsHoldShortPoint;
 
+    /// <summary>
+    /// Scans the hold-short-tagged segments and splits them into runway crossings
+    /// (composed into a spoken clause) and plain hold-short points (returned as a
+    /// count for the existing "N hold short points" wording).
+    /// </summary>
+    /// <param name="segments">The route's segments.</param>
+    /// <param name="excludeLastSegment">
+    /// True for runway destinations, where TruncateToHoldShort tags the final
+    /// segment purely as an internal countdown rail — it is NOT an ATC crossing
+    /// and must not be described as one (same exclusion the old count applied).
+    /// </param>
+    /// <returns>
+    /// clause: "" when the route crosses no runway, else e.g.
+    ///   "crossing runway 10L twice" / "crossing runways 04L, 04R and 27".
+    /// nonRunwayHoldShorts: count of hold-short points whose label names no runway
+    ///   (user checkbox holds, "end of taxiway X", bare holding-point names).
+    /// </returns>
     public static (string clause, int nonRunwayHoldShorts) Describe(
         IReadOnlyList<TaxiRouteSegment> segments, bool excludeLastSegment)
     {

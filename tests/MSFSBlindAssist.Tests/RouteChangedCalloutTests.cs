@@ -81,9 +81,14 @@ public class RouteChangedCalloutTests
             callout);
     }
 
-    // With no taxiway list the clause has to start its own sentence, so it is capitalised.
+    // With no taxiway list the clause attaches to "Route changed" instead of standing alone.
+    // It must NEVER become the bare sentence "Crossing runway 26R." — that is byte-identical
+    // to the live runway-incursion callout (TaxiGuidanceManager's `Crossing {rwy}.`), which
+    // means "you are crossing that runway NOW". The call site re-arms that callout by
+    // resetting _lastIncursionWarnedNodeId a few lines above this one, so the pilot could
+    // hear the identical sentence twice within seconds meaning two different things.
     [Fact]
-    public void Crossings_StandAloneAndAreCapitalised_WhenThereAreNoTaxiwayNames()
+    public void Crossings_AttachToRouteChanged_WhenThereAreNoTaxiwayNames()
     {
         var segs = Plain(4);
         segs[1].IsHoldShortPoint = true; segs[1].HoldShortRunway = "runway 26R";
@@ -91,7 +96,22 @@ public class RouteChangedCalloutTests
         string callout = RouteChangedCallout.Compose(
             Array.Empty<string>(), "900 metres", "Runway 08L", segs, isRunwayDestination: true);
 
-        Assert.Equal("Route changed. Crossing runway 26R. 900 metres to Runway 08L.", callout);
+        Assert.Equal("Route changed, crossing runway 26R. 900 metres to Runway 08L.", callout);
+    }
+
+    [Fact]
+    public void Crossings_NeverFormTheBareIncursionSentence()
+    {
+        var segs = Plain(4);
+        segs[1].IsHoldShortPoint = true; segs[1].HoldShortRunway = "runway 26R";
+
+        string callout = RouteChangedCallout.Compose(
+            Array.Empty<string>(), "900 metres", "Runway 08L", segs, isRunwayDestination: true);
+
+        // The tactical incursion callout is exactly "Crossing runway 26R." — a capitalised,
+        // sentence-initial "Crossing" is what makes the two indistinguishable.
+        Assert.DoesNotContain(". Crossing ", callout);
+        Assert.DoesNotContain("Crossing runway", callout);
     }
 
     // The case that drove the ordering: a real GSX gate label carries commas of its own.
