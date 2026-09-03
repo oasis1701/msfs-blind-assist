@@ -338,4 +338,107 @@ public class RouteRunwayCrossingsTests
         Assert.Equal("crossing runway 09/27 twice", clause);
         Assert.Equal(0, nonRunway);
     }
+
+    // --- the extracted crossing/tagging loop -------------------------------------------
+
+    private static TaxiRouteSegment Seg(double lat = 0.0) => new()
+    {
+        FromNode = new TaxiNode { NodeId = 1, Latitude = lat, Longitude = 0.0 },
+        ToNode   = new TaxiNode { NodeId = 2, Latitude = lat + 0.001, Longitude = 0.0 },
+        DistanceMeters = 100.0,
+    };
+
+    private static List<TaxiRouteSegment> Route(int count)
+    {
+        var list = new List<TaxiRouteSegment>();
+        for (int i = 0; i < count; i++) list.Add(Seg(i * 0.001));
+        return list;
+    }
+
+    // Probe that reports a crossing on the given segment indices only.
+    private static RouteRunwayCrossings.EdgeRunwayProbe ProbeOn(
+        IReadOnlyList<TaxiRouteSegment> segs, params (int Index, string Runway)[] hits)
+        => (aLat, aLon, bLat, bLon) =>
+        {
+            for (int i = 0; i < segs.Count; i++)
+                if (Math.Abs(segs[i].FromNode.Latitude - aLat) < 1e-12)
+                    foreach (var h in hits)
+                        if (h.Index == i) return h.Runway;
+            return "";
+        };
+
+    private static bool NeverMatches(string a, string b) => false;
+
+    [Fact]
+    public void InsertCrossingHoldShorts_TagsTheSegmentBeforeEachCrossing()
+    {
+        var segs = Route(10);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "",
+            ProbeOn(segs, (3, "26R"), (6, "04L")), NeverMatches);
+
+        Assert.Equal(new[] { "26R", "04L" }, crossed);
+        Assert.True(segs[2].IsHoldShortPoint, "hold must land BEFORE the crossing edge");
+        Assert.True(segs[5].IsHoldShortPoint);
+        Assert.False(segs[3].IsHoldShortPoint, "the crossing edge itself is not the hold");
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_LabelsTheHoldWithTheRunwayCrossed()
+    {
+        var segs = Route(6);
+        RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "", ProbeOn(segs, (3, "26R")), NeverMatches);
+
+        Assert.Equal("runway 26R", segs[2].HoldShortRunway);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_DoesNotRetagTheSameRunwayOnConsecutiveEdges()
+    {
+        var segs = Route(8);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "",
+            ProbeOn(segs, (3, "26R"), (4, "26R")), NeverMatches);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+    }
+
+    // The destination's own strip: only the route's ARRIVAL at it is skipped (TruncateToHoldShort
+    // already tagged the final segment). Every earlier crossing of that same pavement is tagged —
+    // dropping it is the runway-incursion direction.
+    [Fact]
+    public void InsertCrossingHoldShorts_SkipsOnlyTheFinalSegmentOnTheDestinationStrip()
+    {
+        var segs = Route(6);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "Runway 04R",
+            ProbeOn(segs, (5, "22L")),                       // final segment, reciprocal name
+            designatorsMatch: (a, b) => true);
+
+        Assert.Empty(crossed);
+        Assert.False(segs[4].IsHoldShortPoint);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_TagsAnEarlierCrossingOfTheDestinationStrip()
+    {
+        var segs = Route(8);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "Runway 04R",
+            ProbeOn(segs, (3, "22L")),                       // mid-route, reciprocal name
+            designatorsMatch: (a, b) => true);
+
+        Assert.Equal(new[] { "22L" }, crossed);
+        // Announced under the designator the PILOT chose, not the reciprocal geometry reported.
+        Assert.Equal("runway 04R", segs[2].HoldShortRunway);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_IsANoOpForARouteTooShortToCross()
+    {
+        var segs = Route(1);
+        Assert.Empty(RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (0, "26R")), NeverMatches));
+    }
 }

@@ -362,4 +362,80 @@ public static class RouteRunwayCrossings
         string noun = order.Count == 1 ? "runway" : "runways";
         return ($"crossing {noun} {joined}", nonRunway);
     }
+
+    /// <summary>
+    /// Names the runway a taxi edge (a→b) crosses, or "" when it crosses none. The real
+    /// implementation needs the graph's runway centrelines, so it is injected — that is what
+    /// keeps <see cref="InsertCrossingHoldShorts"/> pure and testable.
+    /// </summary>
+    public delegate string EdgeRunwayProbe(double aLat, double aLon, double bLat, double bLon);
+
+    /// <summary>
+    /// Scans the route for segments whose edge crosses a runway centreline and tags the hold
+    /// segment before each crossing, returning the runways crossed in route order.
+    ///
+    /// <para>FAA AIM 4-3-18 and ICAO Doc 4444: an aircraft must hold short of every runway it
+    /// crosses, with explicit ATC clearance for each — controllers issue crossings one at a
+    /// time. Without this pass a route taxis straight across an active runway with no pause.</para>
+    ///
+    /// <para>The destination runway is handled in two ways, and both halves are load-bearing:
+    /// only the route's own ARRIVAL at it is skipped (the final segment, which
+    /// <c>TruncateToHoldShort</c> already truncated to and tagged), because the crossing is
+    /// named after whichever runway END is nearer the crossing point and a blanket
+    /// name-equality skip dropped genuine mid-route crossings of the active runway; and a
+    /// crossing of that strip is ANNOUNCED under the designator the pilot selected, not the
+    /// reciprocal the geometry reported.</para>
+    ///
+    /// <para>Pure (segments + two delegates in, names out) so the composition is unit-testable;
+    /// it was previously private on the manager and reachable only with a live graph.</para>
+    /// </summary>
+    public static IReadOnlyList<string> InsertCrossingHoldShorts(
+        IReadOnlyList<TaxiRouteSegment> segments,
+        string destinationName,
+        EdgeRunwayProbe probe,
+        Func<string, string, bool> designatorsMatch)
+    {
+        var crossed = new List<string>();
+        if (segments == null || segments.Count < 2) return crossed;
+
+        // Tracks the runway whose hold-short was most recently inserted, so we don't tag every
+        // consecutive segment that is on the same runway pavement.
+        string lastTaggedRunway = "";
+
+        // The destination arrives prefixed ("Runway 33L"); the crossed runway is a bare
+        // designator ("33L"). Normalise so the exclusion below actually matches.
+        string destBare = destinationName.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? destinationName.Substring("Runway ".Length).Trim()
+            : destinationName.Trim();
+
+        for (int i = 1; i < segments.Count; i++)
+        {
+            var crossingSeg = segments[i];
+            if (crossingSeg.FromNode == null || crossingSeg.ToNode == null) continue;
+
+            string crossedRwy = probe(
+                crossingSeg.FromNode.Latitude, crossingSeg.FromNode.Longitude,
+                crossingSeg.ToNode.Latitude, crossingSeg.ToNode.Longitude);
+            if (string.IsNullOrEmpty(crossedRwy)) continue;
+
+            bool sameStripAsDestination = !string.IsNullOrEmpty(destBare) &&
+                designatorsMatch(crossedRwy, destBare);
+            if (sameStripAsDestination && i >= segments.Count - 1)
+                continue;
+            string? preferredRwy = sameStripAsDestination ? destBare : null;
+
+            if (crossedRwy.Equals(lastTaggedRunway, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var holdSeg = segments[ResolveCrossingHoldSegment(segments, i, crossedRwy)];
+            holdSeg.IsHoldShortPoint = true;
+            string? newLabel = ComposeCrossingLabel(holdSeg.HoldShortRunway, crossedRwy, preferredRwy);
+            if (newLabel != null)
+                holdSeg.HoldShortRunway = newLabel;
+            lastTaggedRunway = crossedRwy;
+            crossed.Add(crossedRwy);
+        }
+
+        return crossed;
+    }
 }
