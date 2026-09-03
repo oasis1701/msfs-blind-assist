@@ -1162,14 +1162,13 @@ public partial class TaxiGuidanceManager
         string firstTaxiway = newRoute.Segments[0].TaxiwayName;
         string distStr = FormatDistance(newRoute.TotalDistanceMeters);
 
-        // Announce the NEW taxiway sequence so the pilot hears that their cleared
-        // route changed — a recalc can trim/replace the entered clearance (PHNL
-        // 2026-06-13: "Z A L N Z D" silently became "Z D", and the old generic
-        // "Recalculating. … Taxiway Z." never said the sequence had changed).
-        string callout = viaNames.Count > 0
-            ? $"Route changed. Now via {string.Join(", ", viaNames)}. {distStr} to {_destinationName}."
-            : $"Route changed. {distStr} to {_destinationName}.";
-        AnnounceInstruction(callout);
+        // Announce the NEW taxiway sequence so the pilot hears that their cleared route
+        // changed, AND the runways the new route crosses. Wording and the crossing clause
+        // live in RouteChangedCallout (pure, unit-tested) so this path and LoadRoute's
+        // summary cannot drift on how a crossing is described — see that class for why the
+        // crossings belong here at all.
+        AnnounceInstruction(RouteChangedCallout.Compose(
+            viaNames, distStr, _destinationName, newRoute.Segments, _isRunwayLineup));
 
         _lastAnnouncedTaxiway = firstTaxiway;
     }
@@ -1465,6 +1464,12 @@ public partial class TaxiGuidanceManager
         var crossedRunways = InsertRunwayCrossingHoldShorts(
             route, isRunwayDestination ? destinationName : "");
 
+        // One line per route built, naming every runway it crosses. Answering "did that route
+        // really drive across 08L?" for the 2026-08-27 KATL arrival meant reconstructing
+        // segment coordinates against the navdata by hand; the pipeline already knows the
+        // answer at build time. `phase` distinguishes the two adopters — the recalc wrote
+        // nothing at all before 2026-09, which is why proving a recalculation had even
+        // happened at PHNL took a segment-cursor reset rather than a log line.
         _guidanceLog.Info(crossedRunways.Count > 0
             ? $"Route crossings: phase={phase} dest=\"{destinationName}\" " +
               $"segments={route.Segments.Count} crosses={string.Join(",", crossedRunways)}"

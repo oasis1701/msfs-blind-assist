@@ -395,6 +395,16 @@ public static class RouteRunwayCrossings
         EdgeRunwayProbe probe,
         Func<string, string, bool> designatorsMatch)
     {
+        // A null delegate FAILS LOUDLY; a null route does not. The asymmetry is deliberate.
+        // This pass is the FAA AIM 4-3-18 / ICAO Doc 4444 hold-short before every crossed
+        // runway, and its empty result is indistinguishable from a route that genuinely
+        // crosses nothing — so degrading a wiring error into "no crossings found" would
+        // present it as a safe route. `designatorsMatch` in particular is only dereferenced
+        // when the destination is non-empty, so without this guard a null could sit unnoticed
+        // through every gate-destination route and surface only on a runway one.
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(designatorsMatch);
+
         var crossed = new List<string>();
         if (segments == null || segments.Count < 2) return crossed;
 

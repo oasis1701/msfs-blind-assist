@@ -441,4 +441,33 @@ public class RouteRunwayCrossingsTests
         Assert.Empty(RouteRunwayCrossings.InsertCrossingHoldShorts(
             segs, "", ProbeOn(segs, (0, "26R")), NeverMatches));
     }
+
+    // A null delegate must FAIL LOUDLY, not degrade to "no crossings found". This pass is the
+    // FAA AIM 4-3-18 / ICAO Doc 4444 hold-short before every crossed runway; an empty result
+    // is indistinguishable from a route that genuinely crosses nothing, so a silent return
+    // would present a programming error as a safe route. `segments` is deliberately NOT in
+    // this rule — an empty route legitimately crosses nothing.
+    [Fact]
+    public void InsertCrossingHoldShorts_ThrowsRatherThanReportNoCrossings_WhenTheProbeIsNull()
+    {
+        var segs = Route(4);
+        Assert.Throws<ArgumentNullException>(() =>
+            RouteRunwayCrossings.InsertCrossingHoldShorts(segs, "", null!, NeverMatches));
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_ThrowsRatherThanReportNoCrossings_WhenTheMatchIsNull()
+    {
+        var segs = Route(4);
+        Assert.Throws<ArgumentNullException>(() =>
+            RouteRunwayCrossings.InsertCrossingHoldShorts(
+                segs, "", ProbeOn(segs, (2, "26R")), null!));
+    }
+
+    // The lenient contract for segments is unchanged: a too-short or absent route is not an
+    // error, it simply crosses nothing.
+    [Fact]
+    public void InsertCrossingHoldShorts_StillToleratesANullRouteWithoutThrowing()
+        => Assert.Empty(RouteRunwayCrossings.InsertCrossingHoldShorts(
+            null!, "", (a, b, c, d) => "", NeverMatches));
 }
