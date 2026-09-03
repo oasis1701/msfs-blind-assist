@@ -28,6 +28,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     private const int CabinCallHoldMs = 600;   // Cabin CALL pushbutton: press, brief hold, release.
     private const int ApuMasterToStartMs = 3000;
 
+    /// <summary>The A320 APU START pushbutton's LOWER legend — AVAIL, lit for as long as the
+    /// APU runs. NOT the upper _U (ON) legend, which is transient and goes out at ~95% N.
+    /// ⚠️ The _U/_L convention is NOT consistent across A320 pushbuttons (it is REVERSED on
+    /// EXT PWR), so never infer one pushbutton's wiring from another's.</summary>
+    public const string ApuAvailField = "I_OH_ELEC_APU_START_L";
+
+    /// <summary>How long <see cref="StartApuAsync"/> waits for AVAIL. Matches the Before Start
+    /// flow's own WaitForField budget so the two paths give up at the same point.</summary>
+    public const int ApuAvailTimeoutMs = 180_000;
+
+    /// <summary>AVAIL poll cadence — the FlowManager's WaitForCondition uses the same 1 s.</summary>
+    private const int ApuAvailPollMs = 1000;
+
     /// <summary>Hold time (ms) for the TO CONFIG test button. Longer than the default pulse
     /// hold because the test is level-triggered (active only while held): the button must
     /// stay pressed long enough for the FWC to evaluate the config and drive the master
@@ -214,13 +227,48 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         return true;
     }
 
-    /// <summary>APU start block: Master ON, dwell, START pulse. The caller (flow/checklist)
-    /// separately waits for the AVAIL light.</summary>
+    /// <summary>
+    /// APU start block: Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
+    ///
+    /// ⚠️ The wait is not optional and must not be moved back to the caller. The Before
+    /// Start / After Landing FLOW does wait (its own WaitForField step), but the CHECKLIST
+    /// hand-tick path has no wait of its own: ChecklistManager suppresses RevertToState only
+    /// while the CheckAction is settling plus a 10 s ManualTickGrace, and its own remarks say
+    /// "SLOW actions are covered by ActionSettling, not by inflating this constant". The A320
+    /// APU needs ~45 s to spool to ~95% N before AVAIL lights, and BS_APU/AL_APU detect on
+    /// exactly that lamp — so returning at the START pulse left ~13 s of grace against a ~45 s
+    /// condition: the item un-ticked, ItemActionFailed fired, and the pilot heard "Unable to
+    /// complete: APU: ON and available" while the APU was starting perfectly, after which it
+    /// silently re-ticked. Holding the action open for the spool-up is what makes
+    /// ActionSettling cover it. Fenix is the only profile that detects an APU item on a slow
+    /// lamp rather than an instant switch position, which is why only it showed this.
+    ///
+    /// A genuine failure still surfaces: on timeout this returns and the item reverts with the
+    /// same message, now truthfully. The dispatch gate is released between writes, so the wait
+    /// never blocks WaitForDispatchDrainAsync.
+    /// </summary>
     public async Task<bool> StartApuAsync()
     {
         bool ok = await DispatchAsync("S_OH_ELEC_APU_MASTER", 1);
         await Task.Delay(ApuMasterToStartMs);
         ok &= await PulseAsync("S_OH_ELEC_APU_START");
-        return ok;
+        return ok && await WaitForApuAvailableAsync();
     }
+
+    /// <summary>Poll the AVAIL lamp until it lights or <see cref="ApuAvailTimeoutMs"/> elapses.
+    /// NaN/uncached reads simply keep waiting — the same "indeterminate is not a failure"
+    /// contract the ChecklistManager applies to state evaluation.</summary>
+    private async Task<bool> WaitForApuAvailableAsync()
+    {
+        for (int waited = 0; waited < ApuAvailTimeoutMs; waited += ApuAvailPollMs)
+        {
+            if (IsApuAvailable(Sc?.GetCachedVariableValue(ApuAvailField))) return true;
+            await Task.Delay(ApuAvailPollMs);
+        }
+        return IsApuAvailable(Sc?.GetCachedVariableValue(ApuAvailField));
+    }
+
+    /// <summary>The AVAIL-lamp test, shared with the BS_APU/AL_APU checklist conditions so the
+    /// two can never disagree about what "available" means.</summary>
+    public static bool IsApuAvailable(double? lamp) => lamp is > 0.5;
 }
