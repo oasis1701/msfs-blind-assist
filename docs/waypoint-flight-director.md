@@ -319,8 +319,81 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 3. **Wind:** confirm the ground-track lateral nulls to a straight path in a crosswind.
 4. **Arbitration:** confirm Hand-Fly mutes while the FD runs; confirm AP-master auto-mute; confirm
    Visual Guidance and the FD never run together (engaging one stops the other).
-5. **Airliner with AP:** hand-fly a leg on the FD, engage the AP → tone steps aside; disengage →
+5. **Profile tuning (per aircraft):** see *Tuning an aircraft profile from its own autopilot* below —
+   the autopilot-flown procedure that produced the measured 777 numbers, including what to sample,
+   which profile field each measurement maps to, and the four ways it goes wrong.
+6. **Airliner with AP:** hand-fly a leg on the FD, engage the AP → tone steps aside; disengage →
    tone resumes. Repeat per tuned aircraft (777, 787, A320 CEO/NEO, A380) and adjust the profile.
+
+## Tuning an aircraft profile from its own autopilot (methodology)
+
+This is the procedure that produced the measured PMDG 777 profile, written so it can be repeated on
+any airframe. **Fly it with the AUTOPILOT, not by hand.** The point is to copy what the aeroplane's
+own flight guidance does; hand-flying measures the pilot instead, and a blind pilot has no visual
+reference to fly a repeatable turn against anyway. It is also the lower-effort path — the pilot just
+dials a heading and lets go.
+
+### What the pilot does
+
+1. Level flight, autopilot engaged, **HDG SEL** (not LNAV — LNAV commands its own bank schedule).
+2. Note the speed and altitude; they matter (see step 5).
+3. Say **go**, then dial a heading change and do not touch anything until it settles.
+4. **Say go about 25-30° before the target**, not at the start of the turn. The rollout is the part
+   that carries the information, and one 30 s sampling window then covers it whole.
+5. Repeat: left AND right (asymmetry is real), and at two speeds ~100 kt apart (to test whether the
+   bank cap scales with TAS — on the 777 it does not).
+
+### What Claude samples
+
+`PLANE BANK DEGREES` and `PLANE HEADING DEGREES MAGNETIC`, 4 Hz, through the whole rollout. Sign
+convention: SimConnect bank is LEFT-positive, the opposite of the FD's own convention.
+
+### What to extract, and which profile field each one is
+
+| Look for | Read it as | Field |
+| --- | --- | --- |
+| Steady bank held mid-turn | the aeroplane's real bank ceiling | `MaxBankDeg` |
+| Slope of the roll-in, °/s | how fast it can roll | `MaxBankRateDegPerSec` |
+| **Bank ÷ remaining heading error, through the rollout** | **the roll gain** | **`KRollDegPerDegTrack`** |
+| Error at which bank first starts coming off | cross-check: should equal `MaxBankDeg ÷ gain` | — |
+| Overshoot past the target | whether a lead term is needed at all | `BankRateLeadSec` |
+
+The gain is the one that matters most. On the 777 it was **0.9 guessed against 2.35 measured** — the
+FD was asking for barely a third of the bank the aeroplane uses, so it could not converge, and the
+pilot reported feeling permanently off track. Expect the same class of error on any untuned airframe.
+
+### The trap: a proportional law needs no lead
+
+If bank ÷ error is roughly CONSTANT through the rollout, the autopilot is a pure proportional law and
+`BankRateLeadSec` should be near zero. The rollout then begins on its own at `MaxBankDeg ÷ gain` of
+error — no anticipation term required. Note that is a constant HEADING lead, not a constant TIME one
+(the 777's 10.6° was 4.3 s of flying at 180 kt and 6.4 s at 280 kt), so a time-based lead cannot
+express it. Fit the gain FIRST; only reach for the lead if the aeroplane overshoots.
+
+### Four ways this measurement goes wrong (all four happened)
+
+- **Trusting the stock autopilot SimVars.** On the PMDG 777, `AUTOPILOT MASTER` reads 0 with the AP
+  engaged and flying, and `AUTOPILOT HEADING LOCK DIR` sat at a stale 314 against an MCP heading of
+  290. Confirm AP state from the aircraft's OWN variables — `MCP_annunAP_left` / `MCP_Heading` on the
+  777, `A32NX_AUTOPILOT_1/2_ACTIVE` on the FlyByWire Airbuses. Getting this wrong led to accusing the
+  pilot of hand-flying a turn the autopilot flew.
+- **Losing the rollout in the gap between sampling calls.** A 90° turn does not fit in one 30 s
+  window, and the gap while Claude thinks between calls is enough to swallow the entire rollout.
+  Hence "say go 25-30° out": make the turn fit the window rather than bridging.
+- **Bridging with a cheaper sample.** Dropping to bank-only at 1 Hz to save a call lost the paired
+  heading exactly when the rollout happened, and the run was unusable — reconstructing heading by
+  integrating turn rate gave answers spanning 0.6 to 1.7 for the same data.
+- **Pairing two independently-timed streams.** Bank and heading come from two separate watch calls
+  paired by index. If they start ~1 s apart that is ~2.3° of heading skew, which at 5° of error is a
+  46% error in the gain. Sanity-check every fit against the onset cross-check above; if the fitted
+  gain and the observed rollout onset disagree, suspect skew and discard the run rather than
+  averaging it in. One 180 kt run was discarded for exactly this.
+
+### When to stop
+
+Three rollouts that agree within ~10%, from both directions and both speeds, with the onset
+cross-check landing within a degree. The 777 took six turns to get three usable fits (2.40 / 2.39 /
+2.26). Do NOT carry a measured gain across airframes — it is specific to that aeroplane's guidance.
 
 ## Architecture (maintainers)
 
