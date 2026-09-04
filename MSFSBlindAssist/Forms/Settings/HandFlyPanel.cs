@@ -67,6 +67,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
     private Label fdCurrentVolumeLabel = null!; private TrackBar fdCurrentVolumeTrackBar = null!; private Label fdCurrentVolumeValueLabel = null!;
     private CheckBox fdHardPanCheckBox = null!;
     private CheckBox fdApMuteCheckBox = null!;
+    private CheckBox vgCenteredCheckBox = null!;
+    private Label vgCenteredWaveLabel = null!; private ComboBox vgCenteredWaveCombo = null!;
     private CheckBox fdCenteredCheckBox = null!;
     private Label fdCenteredWaveLabel = null!; private ComboBox fdCenteredWaveCombo = null!;
     private Button fdTestToneButton = null!;
@@ -370,11 +372,40 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, both visual-guidance tones snap to full left or full right once bank exceeds about one degree, instead of a proportional pan. Useful on stereo speakers where partial pan is hard to distinguish from centred. Headphone users normally leave this off. Default off."
         };
 
+        // Visual-guidance "centered tone change" — the SAME option the Flight Director has, and
+        // VisualGuidanceManager already implements it (centeredToneEnabled / centeredToneWaveType,
+        // 1.5° deadband). The settings existed and MainForm passed them to Initialize, but nothing
+        // ever set them: with no control here the feature could not be switched on at all.
+        vgCenteredCheckBox = new CheckBox
+        {
+            Text = "Play a centered tone change when on target",
+            Location = new Point(20, 593),
+            Size = new Size(460, 25),
+            AccessibleName = "Play a centered visual guidance tone change on target",
+            AccessibleDescription = "When enabled, the visual-guidance command tone changes to a different waveform while you are laterally centred, giving a timbre cue for centred versus off-track on top of the pan. Default off."
+        };
+        vgCenteredWaveLabel = new Label
+        {
+            Text = "Centered tone type:",
+            Location = new Point(20, 621),
+            Size = new Size(250, 20),
+            AccessibleName = "Visual guidance centered tone type Label"
+        };
+        vgCenteredWaveCombo = new ComboBox
+        {
+            Location = new Point(280, 619),
+            Size = new Size(190, 25),
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            AccessibleName = "Visual guidance centered tone type",
+            AccessibleDescription = "Waveform the visual-guidance command tone switches to while centred."
+        };
+        vgCenteredWaveCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
+
         // Takeoff Assist - Tone Waveform Label
         takeoffToneLabel = new Label
         {
             Text = "Takeoff Assist Tone:",
-            Location = new Point(20, 595),
+            Location = new Point(20, 651),
             Size = new Size(250, 20),
             AccessibleName = "Takeoff Assist Tone Label"
         };
@@ -382,7 +413,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         // Takeoff Assist - Tone Waveform ComboBox
         takeoffToneCombo = new ComboBox
         {
-            Location = new Point(280, 593),
+            Location = new Point(280, 649),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Takeoff Assist Tone",
@@ -400,7 +431,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         takeoffVolumeLabel = new Label
         {
             Text = "Takeoff Assist Volume:",
-            Location = new Point(20, 630),
+            Location = new Point(20, 686),
             Size = new Size(100, 20),
             AccessibleName = "Takeoff Assist Volume Label"
         };
@@ -408,7 +439,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         // Takeoff Assist Volume TrackBar
         takeoffVolumeTrackBar = new TrackBar
         {
-            Location = new Point(120, 625),
+            Location = new Point(120, 681),
             Size = new Size(300, 45),
             Minimum = 0,
             Maximum = 100,
@@ -422,7 +453,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         takeoffVolumeValueLabel = new Label
         {
             Text = $"{takeoffVolumeTrackBar.Value}%",
-            Location = new Point(430, 630),
+            Location = new Point(430, 686),
             Size = new Size(40, 20),
             AccessibleName = "Takeoff Assist Volume Value",
             TextAlign = ContentAlignment.MiddleLeft
@@ -432,7 +463,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         muteCenterlineCheckBox = new CheckBox
         {
             Text = "Mute centerline deviation announcements",
-            Location = new Point(20, 665),
+            Location = new Point(20, 721),
             Size = new Size(450, 25),
             AccessibleName = "Mute centerline deviation announcements",
             AccessibleDescription = "When enabled, mutes centerline deviation announcements in modern takeoff assist mode. Audio tone and pitch announcements continue."
@@ -444,7 +475,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         steerTowardToneCheckBox = new CheckBox
         {
             Text = "Steer toward the tone to stay on the centerline",
-            Location = new Point(20, 700),
+            Location = new Point(20, 756),
             Size = new Size(550, 25),
             AccessibleName = "Steer toward the tone to stay on the centerline",
             AccessibleDescription = "Checked (default for new installs): the tone plays on the side you should steer toward, so you steer into the tone to return to the centerline. With a tone threshold of 1 degree or higher it goes silent when you are tracking straight; at Always it plays continuously, centred when on track. Uncheck to reverse the panning, so you steer away from the tone instead."
@@ -458,7 +489,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         hardPanCheckBox = new CheckBox
         {
             Text = "Hard-pan centerline tone (full left or full right; speaker-friendly)",
-            Location = new Point(20, 730),
+            Location = new Point(20, 786),
             Size = new Size(450, 25),
             AccessibleName = "Hard-pan centerline tone",
             AccessibleDescription = "When enabled, the takeoff-assist centerline tone plays at full pan to one side or the other instead of a proportional curve. Useful for stereo-speaker users who can't easily distinguish partial pan from centred. Default off."
@@ -468,7 +499,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         headingToneThresholdLabel = new Label
         {
             Text = "Play steering tone:",
-            Location = new Point(20, 765),
+            Location = new Point(20, 821),
             Size = new Size(250, 20),
             AccessibleName = "Steering Tone Threshold Label"
         };
@@ -476,7 +507,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         // Heading Tone Threshold ComboBox
         headingToneThresholdCombo = new ComboBox
         {
-            Location = new Point(280, 763),
+            Location = new Point(280, 819),
             Size = new Size(190, 25),
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Play steering tone",
@@ -496,7 +527,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         legacyTakeoffCheckBox = new CheckBox
         {
             Text = "Legacy takeoff assist mode (heading-based, no tone)",
-            Location = new Point(20, 800),
+            Location = new Point(20, 856),
             Size = new Size(450, 25),
             AccessibleName = "Legacy takeoff assist mode",
             AccessibleDescription = "When enabled, takeoff assist announces heading deviation in degrees without audio tone. When disabled, uses centerline tracking with audio tone."
@@ -506,7 +537,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         enableCalloutsCheckBox = new CheckBox
         {
             Text = "Enable takeoff assistant call outs",
-            Location = new Point(20, 830),
+            Location = new Point(20, 886),
             Size = new Size(450, 25),
             AccessibleName = "Enable takeoff assistant call outs",
             AccessibleDescription = "When enabled, announces speed callouts during takeoff roll: 80 knots, 100 knots, V1, and rotate."
@@ -516,46 +547,46 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         autoActivateOnLineupCheckBox = new CheckBox
         {
             Text = "Auto-activate Takeoff Assist on lineup",
-            Location = new Point(20, 860),
+            Location = new Point(20, 916),
             Size = new Size(450, 25),
             AccessibleName = "Auto-activate Takeoff Assist on lineup",
             AccessibleDescription = "When enabled, Takeoff Assist activates automatically when taxi guidance reaches a stable runway lineup, so you don't have to press control T. One-shot per route: if you disable Takeoff Assist after it auto-activates, it won't re-engage until the next taxi route."
         };
 
         // ── Waypoint Flight Director (en-route hand-fly) tone options ──────────
-        fdSectionLabel = new Label { Text = "Waypoint Flight Director (en-route to tracked fixes):", Location = new Point(20, 900), Size = new Size(500, 20), AccessibleName = "Waypoint Flight Director section" };
-        fdToneLabel = new Label { Text = "FD target tone type:", Location = new Point(20, 928), Size = new Size(250, 20), AccessibleName = "FD target tone type Label" };
-        fdToneCombo = new ComboBox { Location = new Point(280, 926), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD target tone type" };
+        fdSectionLabel = new Label { Text = "Waypoint Flight Director (en-route to tracked fixes):", Location = new Point(20, 956), Size = new Size(500, 20), AccessibleName = "Waypoint Flight Director section" };
+        fdToneLabel = new Label { Text = "FD target tone type:", Location = new Point(20, 984), Size = new Size(250, 20), AccessibleName = "FD target tone type Label" };
+        fdToneCombo = new ComboBox { Location = new Point(280, 982), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD target tone type" };
         fdToneCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
-        fdVolumeLabel = new Label { Text = "FD target volume:", Location = new Point(20, 958), Size = new Size(150, 20), AccessibleName = "FD target volume Label" };
-        fdVolumeTrackBar = new TrackBar { Location = new Point(180, 953), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD target volume", AccessibleDescription = "Volume of the Flight Director target tone, 0 to 100 percent" };
-        fdVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 958), Size = new Size(45, 20), AccessibleName = "FD target volume value" };
+        fdVolumeLabel = new Label { Text = "FD target volume:", Location = new Point(20, 1014), Size = new Size(150, 20), AccessibleName = "FD target volume Label" };
+        fdVolumeTrackBar = new TrackBar { Location = new Point(180, 1009), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD target volume", AccessibleDescription = "Volume of the Flight Director target tone, 0 to 100 percent" };
+        fdVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 1014), Size = new Size(45, 20), AccessibleName = "FD target volume value" };
         fdVolumeTrackBar.ValueChanged += (_, _) => fdVolumeValueLabel.Text = fdVolumeTrackBar.Value + "%";
-        fdCurrentToneLabel = new Label { Text = "FD current-attitude tone type:", Location = new Point(20, 1000), Size = new Size(250, 20), AccessibleName = "FD current tone type Label" };
-        fdCurrentToneCombo = new ComboBox { Location = new Point(280, 998), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD current-attitude tone type" };
+        fdCurrentToneLabel = new Label { Text = "FD current-attitude tone type:", Location = new Point(20, 1056), Size = new Size(250, 20), AccessibleName = "FD current tone type Label" };
+        fdCurrentToneCombo = new ComboBox { Location = new Point(280, 1054), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD current-attitude tone type" };
         fdCurrentToneCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
-        fdCurrentVolumeLabel = new Label { Text = "FD current volume:", Location = new Point(20, 1030), Size = new Size(150, 20), AccessibleName = "FD current volume Label" };
-        fdCurrentVolumeTrackBar = new TrackBar { Location = new Point(180, 1025), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD current volume", AccessibleDescription = "Volume of the Flight Director current-attitude tone, 0 to 100 percent" };
-        fdCurrentVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 1030), Size = new Size(45, 20), AccessibleName = "FD current volume value" };
+        fdCurrentVolumeLabel = new Label { Text = "FD current volume:", Location = new Point(20, 1086), Size = new Size(150, 20), AccessibleName = "FD current volume Label" };
+        fdCurrentVolumeTrackBar = new TrackBar { Location = new Point(180, 1081), Size = new Size(250, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "FD current volume", AccessibleDescription = "Volume of the Flight Director current-attitude tone, 0 to 100 percent" };
+        fdCurrentVolumeValueLabel = new Label { Text = "5%", Location = new Point(435, 1086), Size = new Size(45, 20), AccessibleName = "FD current volume value" };
         fdCurrentVolumeTrackBar.ValueChanged += (_, _) => fdCurrentVolumeValueLabel.Text = fdCurrentVolumeTrackBar.Value + "%";
-        fdHardPanCheckBox = new CheckBox { Text = "Hard-pan the FD tone (snap fully left/right instead of proportional)", Location = new Point(20, 1072), Size = new Size(460, 25), AccessibleName = "Hard-pan the Flight Director tone" };
-        fdApMuteCheckBox = new CheckBox { Text = "Auto-mute FD tones while the autopilot is engaged", Location = new Point(20, 1100), Size = new Size(460, 25), AccessibleName = "Auto-mute Flight Director tones while autopilot engaged" };
-        fdCenteredCheckBox = new CheckBox { Text = "Play a centered tone change when on target", Location = new Point(20, 1128), Size = new Size(460, 25), AccessibleName = "Play a centered tone change on target" };
-        fdCenteredWaveLabel = new Label { Text = "Centered tone type:", Location = new Point(20, 1156), Size = new Size(250, 20), AccessibleName = "FD centered tone type Label" };
-        fdCenteredWaveCombo = new ComboBox { Location = new Point(280, 1154), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD centered tone type" };
+        fdHardPanCheckBox = new CheckBox { Text = "Hard-pan the FD tone (snap fully left/right instead of proportional)", Location = new Point(20, 1128), Size = new Size(460, 25), AccessibleName = "Hard-pan the Flight Director tone" };
+        fdApMuteCheckBox = new CheckBox { Text = "Auto-mute FD tones while the autopilot is engaged", Location = new Point(20, 1156), Size = new Size(460, 25), AccessibleName = "Auto-mute Flight Director tones while autopilot engaged" };
+        fdCenteredCheckBox = new CheckBox { Text = "Play a centered tone change when on target", Location = new Point(20, 1184), Size = new Size(460, 25), AccessibleName = "Play a centered tone change on target" };
+        fdCenteredWaveLabel = new Label { Text = "Centered tone type:", Location = new Point(20, 1212), Size = new Size(250, 20), AccessibleName = "FD centered tone type Label" };
+        fdCenteredWaveCombo = new ComboBox { Location = new Point(280, 1210), Size = new Size(190, 25), DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "FD centered tone type" };
         fdCenteredWaveCombo.Items.AddRange(new object[]{ "Sine (Smoothest)", "Triangle (Smooth)", "Sawtooth (Bright)", "Square (Sharp)" });
         fdTestToneButton = new Button
         {
             Text = "Test Flight Director Tones",
-            Location = new Point(20, 1184),
+            Location = new Point(20, 1240),
             Size = new Size(220, 35),
             AccessibleName = "Test Flight Director Tones",
             AccessibleDescription = "Play both Flight Director tones together with a left to right bank sweep, so you can hear the command tone move against the steady current-attitude tone. Applies your waveform, volume, hard-pan and centered-tone selections. Stops on its own after a few seconds."
         };
         fdTestToneButton.Click += FdTestToneButton_Click;
-        slipVolumeLabel = new Label { Text = "Slip cue volume (Ctrl+K):", Location = new Point(20, 1233), Size = new Size(160, 20), AccessibleName = "Slip cue volume Label" };
-        slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1228), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
-        slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1233), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
+        slipVolumeLabel = new Label { Text = "Slip cue volume (Ctrl+K):", Location = new Point(20, 1289), Size = new Size(160, 20), AccessibleName = "Slip cue volume Label" };
+        slipVolumeTrackBar = new TrackBar { Location = new Point(190, 1284), Size = new Size(240, 45), Minimum = 0, Maximum = 100, TickFrequency = 10, AccessibleName = "Slip cue volume", AccessibleDescription = "Volume of the rudder-coordination slip cue, 0 to 100 percent" };
+        slipVolumeValueLabel = new Label { Text = "20%", Location = new Point(435, 1289), Size = new Size(45, 20), AccessibleName = "Slip cue volume value" };
         slipVolumeTrackBar.ValueChanged += (_, _) => slipVolumeValueLabel.Text = slipVolumeTrackBar.Value + "%";
         // Auto-Activate Hand Fly on Takeoff Checkbox — completes the taxi → Takeoff Assist →
         // Hand Fly hands-free chain. Placed BELOW the Waypoint FD section (y 900–1273) to
@@ -563,7 +594,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         handFlyAutoActivateOnTakeoffCheckBox = new CheckBox
         {
             Text = "Auto-activate Hand Fly on takeoff (deactivates Takeoff Assist)",
-            Location = new Point(20, 1285),
+            Location = new Point(20, 1341),
             Size = new Size(460, 25),
             AccessibleName = "Auto-activate Hand Fly on takeoff",
             AccessibleDescription = "When enabled, shortly after the aircraft lifts off, if Takeoff Assist is active it is turned off and Hand Fly mode turns on automatically, so you don't have to switch manually at rotation. If you already activated Hand Fly yourself, only Takeoff Assist is turned off. Liftoffs without Takeoff Assist are unaffected."
@@ -580,6 +611,7 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             currentToneLabel, currentToneCombo,
             currentToneVolumeLabel, currentToneVolumeTrackBar, currentToneVolumeValueLabel,
             visualGuidanceHardPanCheckBox,
+            vgCenteredCheckBox, vgCenteredWaveLabel, vgCenteredWaveCombo,
             takeoffToneLabel, takeoffToneCombo,
             takeoffVolumeLabel, takeoffVolumeTrackBar, takeoffVolumeValueLabel,
             muteCenterlineCheckBox, steerTowardToneCheckBox, hardPanCheckBox,
@@ -623,19 +655,22 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         currentToneVolumeLabel.TabIndex = 18;
         currentToneVolumeTrackBar.TabIndex = 19;
         visualGuidanceHardPanCheckBox.TabIndex = 20;
-        takeoffToneLabel.TabIndex = 21;
-        takeoffToneCombo.TabIndex = 22;
-        takeoffVolumeLabel.TabIndex = 23;
-        takeoffVolumeTrackBar.TabIndex = 24;
-        muteCenterlineCheckBox.TabIndex = 25;
-        steerTowardToneCheckBox.TabIndex = 26;
-        hardPanCheckBox.TabIndex = 27;
-        headingToneThresholdLabel.TabIndex = 28;
-        headingToneThresholdCombo.TabIndex = 29;
-        legacyTakeoffCheckBox.TabIndex = 30;
-        enableCalloutsCheckBox.TabIndex = 31;
-        autoActivateOnLineupCheckBox.TabIndex = 32;
-        handFlyAutoActivateOnTakeoffCheckBox.TabIndex = 33;
+        vgCenteredCheckBox.TabIndex = 21;
+        vgCenteredWaveLabel.TabIndex = 22;
+        vgCenteredWaveCombo.TabIndex = 23;
+        takeoffToneLabel.TabIndex = 24;
+        takeoffToneCombo.TabIndex = 25;
+        takeoffVolumeLabel.TabIndex = 26;
+        takeoffVolumeTrackBar.TabIndex = 27;
+        muteCenterlineCheckBox.TabIndex = 28;
+        steerTowardToneCheckBox.TabIndex = 29;
+        hardPanCheckBox.TabIndex = 30;
+        headingToneThresholdLabel.TabIndex = 31;
+        headingToneThresholdCombo.TabIndex = 32;
+        legacyTakeoffCheckBox.TabIndex = 33;
+        enableCalloutsCheckBox.TabIndex = 34;
+        autoActivateOnLineupCheckBox.TabIndex = 35;
+        handFlyAutoActivateOnTakeoffCheckBox.TabIndex = 36;
     }
 
     private void UpdateControlStates()
@@ -993,6 +1028,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         currentToneVolumeTrackBar.Value = (int)(settings.VisualGuidanceCurrentToneVolume * 100);
         currentToneVolumeValueLabel.Text = $"{currentToneVolumeTrackBar.Value}%";
         visualGuidanceHardPanCheckBox.Checked = settings.VisualGuidanceHardPanTone;
+        vgCenteredCheckBox.Checked = settings.VisualGuidanceCenteredToneEnabled;
+        vgCenteredWaveCombo.SelectedIndex = (int)settings.VisualGuidanceCenteredToneWaveform;
 
         takeoffToneCombo.SelectedIndex = (int)settings.TakeoffAssistToneWaveform;
         takeoffVolumeTrackBar.Value = (int)(settings.TakeoffAssistToneVolume * 100);
@@ -1045,6 +1082,8 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         settings.VisualGuidanceCurrentToneWaveform = (HandFlyWaveType)currentToneCombo.SelectedIndex;
         settings.VisualGuidanceCurrentToneVolume = currentToneVolumeTrackBar.Value / 100.0;
         settings.VisualGuidanceHardPanTone = visualGuidanceHardPanCheckBox.Checked;
+        settings.VisualGuidanceCenteredToneEnabled = vgCenteredCheckBox.Checked;
+        settings.VisualGuidanceCenteredToneWaveform = (HandFlyWaveType)vgCenteredWaveCombo.SelectedIndex;
 
         settings.TakeoffAssistToneWaveform = (HandFlyWaveType)takeoffToneCombo.SelectedIndex;
         settings.TakeoffAssistToneVolume = takeoffVolumeTrackBar.Value / 100.0;
