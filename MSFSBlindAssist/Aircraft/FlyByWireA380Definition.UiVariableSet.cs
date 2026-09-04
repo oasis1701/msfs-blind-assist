@@ -488,7 +488,7 @@ public partial class FlyByWireA380Definition
         // are as unreliable as the reads), not the default SetLVar.
         if (varKey == "A32NX_TRK_FPA_MODE_ACTIVE")
         {
-            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
+            SetTrkFpaMode(value > 0.5, simConnect);   // owns the write AND the echo window
             return true;
         }
         // ND option filter: ONE selection, so a change is ONE press. There is no "off" button

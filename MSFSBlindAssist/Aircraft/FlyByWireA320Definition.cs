@@ -26,6 +26,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private bool isRequestingAltitude = false;
     private bool isRequestingVSFPA = false;
 
+    // Live TRK/FPA mode (A32NX_TRK_FPA_MODE_ACTIVE), cached in ProcessSimVarUpdate. The one
+    // A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE var carries fpm in HDG/V·S and degrees in TRK/FPA, so the
+    // announce branch needs the mode to know which it is holding. Defaults to false = HDG/V·S,
+    // the FCU's own power-up mode.
+    private bool _trkFpaModeActive = false;
+
+    /// <summary>The Ctrl+S / output-mode FCU speed readout phrase. A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE
+    /// holds the target DIRECTLY — a Mach number below 10, otherwise knots — so it cannot be rendered
+    /// as "{value:000} knots" unconditionally: that spoke a selected Mach 0.78 as "001 knots". Same
+    /// split the change-announce branch and the A380 readout use; the three must never disagree.</summary>
+    internal static string FormatFcuSpeedReadout(double value, string status) =>
+        value < 10
+            ? $"FCU speed mach {value:0.00}, {status}"
+            : $"FCU speed {value:000} knots, {status}";
+
     // Flight phase tracking
     private string currentFlightPhase = "";
     public override string? CurrentFlightPhase => currentFlightPhase;
@@ -3683,19 +3698,32 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Check after SPD/MACH toggle
             ValueDescriptions = new Dictionary<double, string> { [0] = "Mach mode off", [1] = "Mach mode on" }
         },
+        // ⚠️ Continuously monitored, not OnRequest: the V/S-vs-FPA announce branch in
+        // ProcessSimVarUpdate has to know which vertical mode the FCU is actually in, and an
+        // OnRequest var only ever arrives when a readout force-reads it — so the mode would be
+        // frozen at whatever it read the last time the pilot pressed Ctrl+V.
         ["A32NX_TRK_FPA_MODE_ACTIVE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_TRK_FPA_MODE_ACTIVE",
+            DisplayName = "TRK/FPA Mode",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Check after TRK/FPA toggle
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "HDG/VS mode", [1] = "TRK/FPA mode" }
         },
+        // Continuously monitored so hardware V/S-knob turns announce on change (777-MCP
+        // parity — see the not-requesting branch in ProcessSimVarUpdate). ExcludeFromBatch
+        // keeps the individual data def so the readout's forceUpdate is answered immediately;
+        // see the FCU READOUT VALUES block below for why that is safe now.
         ["A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE",
             DisplayName = "FCU VS/FPA Value",
             Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true
         },
         ["A32NX_MASTER_CAUTION"] = new SimConnect.SimVarDefinition
         {
@@ -4492,27 +4520,46 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Transmitting" }
         },
 
-        // FCU READOUT VALUES (for hotkeys)
+        // FCU READOUT VALUES (for hotkeys) — continuously monitored so hardware knob turns
+        // announce on change (777-MCP parity; the not-requesting branches in ProcessSimVarUpdate
+        // do the announce).
+        //
+        // ExcludeFromBatch keeps their individual data defs so the readouts' forceUpdate is
+        // answered immediately rather than on the next 1 Hz batch tick.
+        //
+        // ⚠️ That combination — a standing per-var subscription PLUS a force-read — was for a long
+        // time a trap: both used the var's data-def id as the SimConnect request id, and re-issuing
+        // a request id with a different period REPLACES the request, so the first Ctrl+H/S/A/V press
+        // silently cancelled the subscription and the announcements stopped for the session.
+        // SimConnectManager now reads these on a separate one-shot request id bound to the same
+        // data definition (OneShotRequestIdOffset), so the two coexist. Do NOT reintroduce a
+        // shared-id force-read.
         ["A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU Heading",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true
         },
         ["A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU Speed",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true
         },
         ["A32NX_FCU_AFS_DISPLAY_ALT_VALUE"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_FCU_AFS_DISPLAY_ALT_VALUE",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU Altitude",
-            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
             Units = "feet"
         },
 
@@ -8011,9 +8058,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Heading
         if (varName == "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE")
         {
-            // Only intercept if we're actively requesting heading
             if (!isRequestingHeading)
-                return false; // Not part of a readout request, let normal processing continue
+            {
+                // Hardware knob turn (777-MCP parity). Consume the event so the generic monitor
+                // doesn't also speak "FCU Heading: 250".
+                // ⚠️ The call is made for the -1 managed sentinel too — the phrase returns null so
+                // nothing is spoken, but the baseline IS recorded. Skipping the call left the key
+                // out of the baseline for as long as the knob stayed pushed, so on an FMS-managed
+                // departure the pilot's FIRST heading selection of the flight seeded the baseline
+                // silently instead of being announced.
+                AnnounceFcuValueChanged(varName, Math.Round(value), 0.5,
+                    v => v < 0 ? null : $"Heading {v:000} degrees", announcer);
+                return true;
+            }
 
             pendingHeadingValue = value;
             if (pendingHeadingStatus.HasValue)
@@ -8046,15 +8103,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Speed
         else if (varName == "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE")
         {
-            // Only intercept if we're actively requesting speed
             if (!isRequestingSpeed)
-                return false;
+            {
+                // Hardware knob turn (777-MCP parity). -1 = managed dashes (phrase returns null
+                // so the baseline is still recorded — see the heading branch); a value below 10 is
+                // a Mach target (e.g. 0.78), otherwise knots.
+                AnnounceFcuValueChanged(varName, value, 0.005,
+                    v => v < 0 ? null : v < 10 ? $"Mach {v:F2}" : $"Speed {(int)v} knots", announcer);
+                return true;
+            }
 
             pendingSpeedValue = value;
             if (pendingSpeedStatus.HasValue)
             {
                 string status = pendingSpeedStatus.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000} knots, {status}");
+                announcer.AnnounceImmediate(FormatFcuSpeedReadout(pendingSpeedValue.Value, status));
                 pendingSpeedValue = null;
                 pendingSpeedStatus = null;
                 isRequestingSpeed = false; // Clear flag after announcement
@@ -8071,7 +8134,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (pendingSpeedValue.HasValue)
             {
                 string status = value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU speed {pendingSpeedValue.Value:000} knots, {status}");
+                announcer.AnnounceImmediate(FormatFcuSpeedReadout(pendingSpeedValue.Value, status));
                 pendingSpeedValue = null;
                 pendingSpeedStatus = null;
                 isRequestingSpeed = false; // Clear flag after announcement
@@ -8081,9 +8144,15 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Altitude
         else if (varName == "A32NX_FCU_AFS_DISPLAY_ALT_VALUE")
         {
-            // Only intercept if we're actively requesting altitude
             if (!isRequestingAltitude)
-                return false;
+            {
+                // Hardware knob turn (777-MCP parity): announce the new FCU altitude. The unit is
+                // spoken, matching the Ctrl+A readout — the A32NX has no metric-altitude mode, so
+                // it is always feet.
+                AnnounceFcuValueChanged(varName, value, 50,
+                    v => $"Altitude {(int)v} feet", announcer);
+                return true;
+            }
 
             pendingAltitudeValue = value;
             if (pendingAltitudeStatus.HasValue)
@@ -8116,9 +8185,21 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // VS/FPA
         else if (varName == "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE")
         {
-            // Only intercept if we're actively requesting VS/FPA
             if (!isRequestingVSFPA)
-                return false;
+            {
+                // Hardware knob turn (777-MCP parity). The display var holds FPA degrees in
+                // TRK/FPA mode and fpm in HDG/V-S mode, so which one it is comes from the MODE var
+                // — the same source the Ctrl+V readout below uses.
+                // ⚠️ Do NOT go back to the |value| < 100 magnitude split: that is SetFCUVSValue's
+                // SEND-side wire encoding, chosen when the mode is already known, and it is not a
+                // receive-side oracle. It read a V/S of 0 — a level-off, dialable in HDG/V-S mode —
+                // as "FPA 0.0 degrees", naming a vertical mode the aircraft was not in.
+                AnnounceFcuValueChanged(varName, value, 0.05,
+                    v => _trkFpaModeActive
+                        ? $"FPA {v:F1} degrees"
+                        : $"Vertical speed {(int)Math.Round(v)} feet per minute", announcer);
+                return true;
+            }
 
             pendingVSFPAValue = value;
             if (pendingVSFPAMode.HasValue)
@@ -8136,6 +8217,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         else if (varName == "A32NX_TRK_FPA_MODE_ACTIVE")
         {
+            // Cache the live vertical mode for the V/S-vs-FPA announce branch above (which runs on
+            // a different var and so cannot see this value any other way).
+            _trkFpaModeActive = value > 0;
             // Only intercept if we're actively requesting VS/FPA
             if (!isRequestingVSFPA)
                 return false;
@@ -8835,6 +8919,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
+        SuppressFcuValueChangeEcho("A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE");   // the explicit readback below is the single confirmation
         // Clean readback (NOT the deferred RequestFCUHeadingWithStatus, which re-read the cache):
         // the value we set + the cached managed dot, once, bare number to match the A380.
         string hdgStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
@@ -8847,6 +8932,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
         s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
+        SuppressFcuValueChangeEcho("A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE");
         // Clean readback (NOT the deferred RequestFCUSpeedWithStatus): value set + cached managed
         // dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
         string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_SPD_MACH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
@@ -8875,6 +8961,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             if (token != _fcuAltSetSeq) return; // superseded by a later SetFCUAltitudeValue call
             s.SendEvent("A32NX.FCU_ALT_SET", rounded);
+            SuppressFcuValueChangeEcho("A32NX_FCU_AFS_DISPLAY_ALT_VALUE");
             // Clean Fenix-style readback: value set + cached managed dot, bare number.
             string altStatus = (s.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
             a.AnnounceImmediate($"FCU altitude {rounded}, {altStatus}");
@@ -8908,6 +8995,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // and is silently ignored by the aircraft — unfixable protocol quirk.
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
+        SuppressFcuValueChangeEcho("A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE");
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
@@ -8924,9 +9012,29 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // (A32NX_FCU_AFS_DISPLAY_*_MANAGED, Continuous+IsAnnounced) speaks, and only on a
     // real Managed↔Selected transition. The old unconditional readback spoke the full
     // value on every press — the verbose, "wonky" behaviour the user flagged.
+    /// <summary>The FCU value var(s) an FCU button actually moves, for the echo window. A button
+    /// that touches no value var (AP/ATHR disconnect and friends) returns none. SPD/MACH toggle is
+    /// deliberately excluded: it genuinely re-expresses the speed target in the other unit, and on
+    /// the silent (readback:false) path nothing else would speak the new number.</summary>
+    internal static string[] FcuEchoKeysForEvent(string evt)
+    {
+        if (evt.Contains("SPD_MACH_TOGGLE", StringComparison.Ordinal)) return Array.Empty<string>();
+        if (evt.Contains("HDG", StringComparison.Ordinal)) return new[] { "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE" };
+        if (evt.Contains("SPD", StringComparison.Ordinal)) return new[] { "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE" };
+        if (evt.Contains("ALT", StringComparison.Ordinal)) return new[] { "A32NX_FCU_AFS_DISPLAY_ALT_VALUE" };
+        if (evt.Contains("VS", StringComparison.Ordinal) || evt.Contains("FPA", StringComparison.Ordinal))
+            return new[] { "A32NX_FCU_AFS_DISPLAY_VS_FPA_VALUE" };
+        return Array.Empty<string>();
+    }
+
     public void FireFCUButton(string evt, SimConnect.SimConnectManager s, ScreenReaderAnnouncer a, bool readback = true)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return; }
+        // A UI-origin knob push/pull often flips the value var (managed dashes <-> value);
+        // the readout/mode-monitor owns that confirmation — mute the change announcer briefly, for
+        // THIS knob's value var only. Muting all of them (the old no-argument call) meant a button
+        // that touches no value swallowed a hardware turn of any other knob for the next 2.5 s.
+        SuppressFcuValueChangeEcho(FcuEchoKeysForEvent(evt));
         s.SendEvent(evt);
         if (!readback) return;
         // Defer the read-out so the FBW FCU has processed the push/pull before we read the

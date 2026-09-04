@@ -125,7 +125,16 @@ public partial class SimConnectManager
         try
         {
             int dataDefId = variableDataDefinitions[varKey];
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
+            // A var with a STANDING per-var subscription (ExcludeFromBatch + Continuous + announced)
+            // already owns a recurring request on dataDefId. Re-issuing THAT id with PERIOD.ONCE is
+            // how this codebase CANCELS a recurring request (SafelyClearDataDefinition does it with
+            // PERIOD.NEVER), so the read would have traded the var's live stream for one sample with
+            // nothing to re-arm it. Read on a separate request id bound to the same data definition
+            // instead: the subscription survives and the read is still answered immediately.
+            int requestId = standingSubscriptionVars.ContainsKey(varKey)
+                ? dataDefId + OneShotRequestIdOffset
+                : dataDefId;
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)requestId,
                 (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
         }

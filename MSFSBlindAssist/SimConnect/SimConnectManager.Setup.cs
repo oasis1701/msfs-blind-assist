@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -425,7 +425,13 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
-                    Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+                    // This var now owns a recurring request on dataDefId, so RequestVariable must
+                    // route its one-shot reads to a SEPARATE request id or it would cancel this
+                    // subscription. Map that id back to the same var key so the response still
+                    // routes, and record the var so RequestVariable knows to use it.
+                    standingSubscriptionVars.TryAdd(kvp.Key, 1);
+                    requestIdToVarKey.TryAdd(dataDefId + OneShotRequestIdOffset, kvp.Key);
+                    Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")} (one-shot reads on ID {dataDefId + OneShotRequestIdOffset})");
                 }
 
                 // Log visual guidance variables specifically
@@ -770,6 +776,7 @@ public partial class SimConnectManager
         // Clear existing registrations
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
+        standingSubscriptionVars.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
 

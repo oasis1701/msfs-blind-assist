@@ -50,7 +50,10 @@ public class FBWA380HeadingWindow : FBWA380FCUWindowBase
     {
         bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
         int next = isTrk ? 0 : 1;
-        simConnect.ExecuteCalculatorCode($"{next} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
+        // Through the def, not a raw ExecuteCalculatorCode here: SetTrkFpaMode also arms the FCU
+        // value-change echo window, so the "TRK FPA" confirmation below is not immediately followed
+        // by the re-synced V/S and FPA vars announcing their values on top of it.
+        aircraft.SetTrkFpaMode(next == 1, simConnect);
         announcer.Announce(next == 1 ? "TRK FPA" : "HDG V/S");
         simConnect.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE", forceUpdate: true);
         UpdateTrkLabel();

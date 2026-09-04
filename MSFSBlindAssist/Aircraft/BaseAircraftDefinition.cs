@@ -558,6 +558,87 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         return true;
     }
 
+    // ---- Shared MCP/FCU selected-value change announcer (777-MCP parity) ----
+    // The PMDG 777 speaks every MCP value change ("MCP heading 250", "MCP altitude 10000
+    // feet", ...) as the pilot dials hardware, because its MCP display vars are continuously
+    // monitored and its def announces each change. This helper gives every other aircraft the
+    // same behaviour without duplicating the change-detection: call it from ProcessSimVarUpdate
+    // with the CONVERTED display value.
+    //
+    // Three properties the call sites depend on:
+    //  * BASELINE-FIRST — the first sample of a key is recorded silently (no burst on aircraft
+    //    load). ⚠️ Record EVERY sample, including a managed/dashes sentinel: `phrase` returning
+    //    null means "record this value, say nothing". Skipping the CALL for a sentinel (the old
+    //    `if (value >= 0) Announce...` shape) left the key absent from the baseline for the whole
+    //    time the knob was pushed, so on an FMS-managed departure the pilot's FIRST selection of
+    //    the flight took the silent first-sample arm and was never spoken — the feature silent
+    //    exactly when it is first used. It also swallowed managed(-1) -> pull-back-to-250, where
+    //    the stale 250 baseline matched and nothing was said about the value reappearing.
+    //  * PER-KEY ECHO WINDOW — SuppressFcuValueChangeEcho(keys) mutes only the keys MSFSBA
+    //    itself just wrote, whose set method already spoke an explicit readback. It must never
+    //    be global: one shared deadline meant setting the altitude in a dialog also swallowed a
+    //    hardware HEADING turn made in the same 2.5 s — and because the baseline is committed
+    //    before the echo test (deliberately, so a genuine echo is absorbed rather than announced
+    //    a beat later), that swallowed change could never be re-announced.
+    //  * SHARED-QUEUE COURTESY — the callout yields when ECAM/VATSIM traffic is already backed
+    //    up (see FcuMaxSharedQueueDepth).
+    // The baseline is touched only from ProcessSimVarUpdate, which has a single caller on the UI
+    // thread. The echo deadlines are NOT: the A32NX altitude setter arms them from the deferred
+    // (Task.Run) branch of SetFCUAltitudeValue while a delivery may be reading them, so that one is
+    // concurrent.
+    private readonly Dictionary<string, double> _fcuValueBaseline = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> _fcuValueEchoUntilTick = new();
+
+    /// <summary>Depth of the shared announcement queue at which an FCU value callout yields.
+    /// A knob position is perishable — a stale one spoken behind an ECAM backlog is worse than
+    /// silence, and <see cref="ScreenReaderAnnouncer.Announce"/> speaks straight past the queue,
+    /// so without this check the callouts land in the reader's buffer AHEAD of messages that
+    /// were queued properly. Mirrors VatsimAnnouncementService.MaxSharedQueueDepth.</summary>
+    private const int FcuMaxSharedQueueDepth = 3;
+
+    /// <summary>Mute the FCU value-change announcer for the named keys for a short window after
+    /// MSFSBA itself set them (the set method already speaks its own confirmation). Pass every
+    /// key the write actually moves and NO others — a knob push/pull that touches no value var
+    /// must pass none.</summary>
+    protected void SuppressFcuValueChangeEcho(params string[] keys)
+    {
+        long until = Environment.TickCount64 + 2500;
+        foreach (string key in keys) _fcuValueEchoUntilTick[key] = until;
+    }
+
+    /// <summary>Drop every FCU value baseline. Called when the connection to the sim is lost, so
+    /// the next session re-seeds silently instead of diffing its first sample against the last
+    /// flight's FCU and speaking a burst of callouts the pilot never caused.</summary>
+    public void ResetFcuValueBaselines()
+    {
+        _fcuValueBaseline.Clear();
+        _fcuValueEchoUntilTick.Clear();
+    }
+
+    /// <summary>Announce an MCP/FCU selected value when it CHANGES (hardware knob turns).
+    /// Baseline-seeded, deadbanded, per-key echo-suppressed; <paramref name="muted"/> lets the
+    /// caller honour its monitor-manager mute while still tracking the baseline.
+    /// <paramref name="phrase"/> returning null records the baseline and stays silent — use it
+    /// for a managed/dashes sentinel, never skip the call.</summary>
+    protected void AnnounceFcuValueChanged(string key, double value, double deadband,
+        Func<double, string?> phrase, ScreenReaderAnnouncer announcer, bool muted = false)
+    {
+        if (!_fcuValueBaseline.TryGetValue(key, out double prev))
+        {
+            _fcuValueBaseline[key] = value; // silent first-sample baseline
+            return;
+        }
+        if (Math.Abs(value - prev) < deadband) return;
+        _fcuValueBaseline[key] = value;
+        if (muted) return;
+        if (_fcuValueEchoUntilTick.TryGetValue(key, out long echoUntil)
+            && Environment.TickCount64 < echoUntil) return;
+        string? spoken = phrase(value);
+        if (string.IsNullOrEmpty(spoken)) return;   // sentinel: baseline recorded, nothing to say
+        if (announcer.QueuedAnnouncementCount >= FcuMaxSharedQueueDepth) return;
+        announcer.Announce(spoken);
+    }
+
     // Variable Update Processing
 
     /// <summary>

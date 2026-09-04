@@ -1286,9 +1286,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Name = "A32NX_FM1_TRANS_LVL", DisplayName = "Transition level",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
         };
-        // FCU selected altitude + heading targets (stock autopilot simvars; the A380 has no
-        // A32NX_FCU_*_DISPLAY var for these). On the PFD status box next to the FMA.
-        Stock("FCU_SEL_ALT", "AUTOPILOT ALTITUDE LOCK VAR:3", "FCU selected altitude", "feet");
+        // FCU selected heading target (stock autopilot simvar; the A380 has no
+        // A32NX_FCU_*_DISPLAY var for it). On the PFD status box next to the FMA.
+        // The selected ALTITUDE is not registered here — it is FCU_ALT_VALUE, registered once
+        // further down with the rest of the FCU selected values. A second key on the same
+        // AUTOPILOT ALTITUDE LOCK VAR:3 gave one number two pollers and two spoken names.
         Stock("FCU_SEL_HDG", "AUTOPILOT HEADING LOCK DIR", "FCU selected heading", "degrees");
         // Static + total air temperature (ADIRS ADR-1 ARINC429 words, celsius) — what the SD
         // permanent footer shows. Auto-decoded by the generic ARINC path.
@@ -2026,6 +2028,30 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // either the SimConnect side or ours. See the FCU readout in .SimVarUpdate.cs.
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number");
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA", "number");
+        // The four FCU selected VALUES are continuously monitored so hardware knob turns
+        // (MobiFlight/FSUIPC dials, the cockpit knobs) announce on change — 777-MCP parity;
+        // the change block in ProcessSimVarUpdate formats them for speech. Those values are
+        // already in DISPLAY units per the #10855 note above — the announce block must not
+        // re-scale them (see FcuAnnounceDisplayValue in .SimVarUpdate.cs).
+        //
+        // ExcludeFromBatch keeps their individual data defs so the Shift+H/S/A/V readouts'
+        // RequestVariable(forceUpdate) is answered immediately rather than on the next 1 Hz batch
+        // tick (same reasoning as the managed legs below).
+        //
+        // ⚠️ That combination — a standing per-var subscription PLUS a force-read — was for a long
+        // time a trap: both used the var's data-def id as the SimConnect request id, and re-issuing
+        // a request id with a different period REPLACES the request, so the first readout press
+        // silently cancelled the subscription and the announcements stopped for the session.
+        // SimConnectManager now reads these on a separate one-shot request id bound to the same
+        // data definition (OneShotRequestIdOffset), so the two coexist. Do NOT reintroduce a
+        // shared-id force-read.
+        foreach (var fcuValKey in new[] { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_AUTOPILOT_SPEED_SELECTED",
+                                          "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED" })
+        {
+            vars[fcuValKey].UpdateFrequency = UpdateFrequency.Continuous;
+            vars[fcuValKey].IsAnnounced = true;
+            vars[fcuValKey].ExcludeFromBatch = true;
+        }
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
         // so pushing/pulling speed/heading/altitude/VS gave no audible feedback.
@@ -2069,8 +2095,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
+        // ⚠️ A32NX_TRK_FPA_MODE_ACTIVE must stay CONTINUOUS and keep arriving: the V/S-vs-FPA
+        // announce gate in ProcessSimVarUpdate reads the mode it caches, and a mode frozen at
+        // whatever the last Shift+V happened to read would announce the wrong vertical channel.
+        // That is only safe because the force-read no longer cancels the subscription (see the
+        // one-shot request id note on the selected-VALUE block above).
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
+        // ⚠️ ONE key per underlying simvar: FCU_ALT_VALUE *is* the A380's selected-altitude var.
+        // There is deliberately no second FCU_SEL_ALT registration of AUTOPILOT ALTITUDE LOCK VAR:3
+        // — two keys meant two pollers for one number and, worse, two different spoken names for it
+        // ("Selected Altitude" in Ctrl+M vs "FCU selected altitude" in the PFD panel). This key is
+        // the one that carries the metric-altitude (MTRS) display override in .Displays.cs.
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
+        // Same 777-MCP-parity continuous monitoring for the FCU altitude, with the same individual
+        // def + one-shot-read arrangement as the L:var block above.
+        vars["FCU_ALT_VALUE"].UpdateFrequency = UpdateFrequency.Continuous;
+        vars["FCU_ALT_VALUE"].IsAnnounced = true;
+        vars["FCU_ALT_VALUE"].ExcludeFromBatch = true;
         Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
 
         // ---- PFD / FMA live mode annunciations (ported from the A320; the
@@ -3271,6 +3312,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
+    // Live TRK/FPA mode (A32NX_TRK_FPA_MODE_ACTIVE), cached in ProcessSimVarUpdate. Decides which
+    // of A32NX_AUTOPILOT_{VS,FPA}_SELECTED is the meaningful one — they are both shims off the
+    // same FCU vs_fpa_value, so announcing both speaks one real value and one nonsense one.
+    // Defaults to false = HDG/V·S, the FCU's own power-up mode.
+    private bool _trkFpaModeActive;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
     private double _gwKgCache = -1; // gross weight in kg (stock TOTAL WEIGHT, cached)
 
