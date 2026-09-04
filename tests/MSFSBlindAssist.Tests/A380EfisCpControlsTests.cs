@@ -125,6 +125,65 @@ public class A380EfisCpControlsTests
         Assert.Null(Evt("A380X_EFIS_R_ACTIVE_OVERLAY", 2, 2));
     }
 
+    /// <summary>With the live overlay UNKNOWN, setting one is still a plain press of the button
+    /// you want — but CLEARING names its button from the current state, and a press of the
+    /// non-active button REPLACES rather than clears, so guessing would switch the overlay ON
+    /// when the pilot asked for Off. Send nothing instead.</summary>
+    [Fact]
+    public void Overlay_clear_needs_the_live_state_and_never_guesses()
+    {
+        Assert.Equal("A32NX.FCU_EFIS_L_WX_PUSH", Evt("A380X_EFIS_L_ACTIVE_OVERLAY", 1, null));
+        Assert.Equal("A32NX.FCU_EFIS_L_TERR_PUSH", Evt("A380X_EFIS_L_ACTIVE_OVERLAY", 2, null));
+        Assert.Null(Evt("A380X_EFIS_L_ACTIVE_OVERLAY", 0, null));
+    }
+
+    /// <summary>A cold cache means the state is UNKNOWN, not Off. Reading it as 0 made "Off"
+    /// unsendable on every toggle while "On" toggled an already-on control back off; every
+    /// sibling toggle-if-differs branch in HandleUIVariableSet uses the opposite default
+    /// (`?? (desiredOn ? 0.0 : 1.0)`) so the event fires.</summary>
+    [Theory]
+    [InlineData("A380X_EFIS_L_LS_BUTTON_IS_ON", "A32NX.FCU_EFIS_L_LS_PUSH")]
+    [InlineData("A380X_EFIS_R_TRAF_BUTTON_IS_ON", "A32NX.FCU_EFIS_R_TRAF_PUSH")]
+    [InlineData("A32NX_PUSH_TRUE_REF", "A32NX.FCU_TRUE_TOGGLE_PUSH")]
+    public void A_toggle_fires_when_the_live_state_is_unknown(string key, string evt)
+    {
+        Assert.Equal(evt, Evt(key, 0, null));
+        Assert.Equal(evt, Evt(key, 1, null));
+    }
+
+    /// <summary>OANS 5 is "not zoomed" — a readback, refused OUT LOUD rather than silently
+    /// dropped, because the position has to stay in the combo's value list (it is what the var
+    /// reads for most of a flight).</summary>
+    [Fact]
+    public void Not_zoomed_is_owned_refused_and_explained()
+    {
+        Assert.True(A380EfisCpControls.Handles("A32NX_EFIS_L_OANS_RANGE"));
+        Assert.Null(Evt("A32NX_EFIS_L_OANS_RANGE", A380EfisCpControls.OansNotZoomed, 2));
+        Assert.True(A380EfisCpControls.IsNotZoomedAttempt(
+            "A32NX_EFIS_L_OANS_RANGE", A380EfisCpControls.OansNotZoomed));
+        Assert.False(A380EfisCpControls.IsNotZoomedAttempt("A32NX_EFIS_L_OANS_RANGE", 2));
+        Assert.False(A380EfisCpControls.IsNotZoomedAttempt("A32NX_EFIS_L_ND_RANGE", 5));
+        Assert.NotEmpty(A380EfisCpControls.NotZoomedUnsupportedMessage);
+    }
+
+    /// <summary>Every prefix here ends with '_' and every suffix starts with one, so a key one
+    /// character SHORTER than the two combined satisfies StartsWith and EndsWith by overlapping
+    /// on that underscore. The range slice was then [11..10] and threw
+    /// ArgumentOutOfRangeException out of a WinForms combo handler, before the "L or R" guard
+    /// written to reject these keys could run.</summary>
+    [Theory]
+    [InlineData("A32NX_EFIS_NAVAID_1_MODE")]
+    [InlineData("A32NX_EFIS_NAVAID_2_MODE")]
+    [InlineData("A32NX_EFIS_OANS_RANGE")]
+    [InlineData("A380X_EFIS_LS_BUTTON_IS_ON")]
+    [InlineData("A380X_EFIS_TRAF_BUTTON_IS_ON")]
+    [InlineData("A380X_EFIS_ACTIVE_OVERLAY")]
+    public void A_side_less_key_that_overlaps_prefix_and_suffix_is_rejected(string key)
+    {
+        Assert.False(A380EfisCpControls.Handles(key));
+        Assert.Null(A380EfisCpControls.Command(key, 1, 0));
+    }
+
     // ==================================================================
     // Ownership — the caller gates on Handles, never on Command != null
     // ==================================================================
@@ -175,9 +234,13 @@ public class A380EfisCpControlsTests
     [InlineData("A32NX_PUSH_TRUE_REF")]
     public void Emitted_event_names_are_well_formed(string key)
     {
+        // Every key here is chosen because it MUST emit at these values, so assert that rather
+        // than tolerating null: an `if (cmd is null) return;` guard turns the one test written
+        // to catch a silent no-op into a silent no-op itself the moment Command starts
+        // refusing one of them.
         var cmd = A380EfisCpControls.Command(key, 2, 0);
-        if (cmd is null) return;
-        Assert.StartsWith("A32NX.FCU_", cmd.Value.EventName);
+        Assert.NotNull(cmd);
+        Assert.StartsWith("A32NX.FCU_", cmd!.Value.EventName);
         Assert.DoesNotContain(" ", cmd.Value.EventName);
     }
 }

@@ -10,9 +10,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// what the <c>A32NX_EFIS_</c> prefix catch-all in HandleUIVariableSet does — is overwritten
 /// within one frame and the knob never moves. Live-measured on a380x 2026-09-03: wrote 3 to
 /// <c>A32NX_EFIS_L_ND_MODE</c> through the calculator path, read it back 2 immediately.
-/// That dead write is what made the First Officer's "EFIS mode: ARC" and "EFIS range: 40"
-/// checklist items revert and speak "Unable to complete", and it left both panel combos
-/// inert too.
+/// That dead write left both panel combos inert.
 ///
 /// The knobs are <c>ASOBO_GT_Knob_Infinite</c> firing
 /// <c>A32NX.FCU_EFIS_#SIDE#_#TYPE#_{INC,DEC}</c> (efis-cp.xml), and the FCU additionally
@@ -34,8 +32,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// read value verbatim would select 2 NM OANS zoom.</item>
 /// </list>
 /// The published enum is the one the app speaks and displays (it is what the var actually
-/// holds), so the remap belongs here, on the write, and no panel or First Officer
-/// definition has to know the FCU's internal numbering.
+/// holds), so the remap belongs here, on the write, and no panel definition has to know the
+/// FCU's internal numbering.
 /// </summary>
 public static class A380NdKnobSelection
 {
@@ -53,6 +51,28 @@ public static class A380NdKnobSelection
     /// <summary>Highest <c>a380_efis_mode_selection</c> value (PLAN).</summary>
     private const int MaxMode = 4;
 
+    /// <summary>The side of one of the four ND knob keys, or null for any other key. ONE
+    /// table, shared by <see cref="Handles"/>, <see cref="SetEvent"/> and
+    /// <see cref="IsZoomAttempt"/>, so none of the three can claim a key the others don't.</summary>
+    private static string? Side(string varKey) => varKey switch
+    {
+        "A32NX_EFIS_L_ND_MODE" or "A32NX_EFIS_L_ND_RANGE" => "L",
+        "A32NX_EFIS_R_ND_MODE" or "A32NX_EFIS_R_ND_RANGE" => "R",
+        _ => null
+    };
+
+    /// <summary>
+    /// True when this class owns <paramref name="varKey"/> — the four ND knob keys — whether or
+    /// not a given set has anything to send.
+    ///
+    /// ⚠️ The caller MUST gate on this rather than on <see cref="SetEvent"/> returning null,
+    /// for the same reason <see cref="A380EfisCpControls.Handles"/> exists: SetEvent answers
+    /// null for "not my key" AND for "value I refuse", and <see cref="IsZoomAttempt"/> rescues
+    /// only one of the refusals. Conflating them drops an out-of-range value through to the
+    /// direct-L:var catch-all — the dead write this class exists to bypass.
+    /// </summary>
+    public static bool Handles(string varKey) => Side(varKey) != null;
+
     /// <summary>
     /// The FCU event and parameter that move a knob to <paramref name="value"/>, expressed in
     /// the SAME enum the matching <c>A32NX_EFIS_{side}_ND_{MODE,RANGE}</c> L:var publishes, or
@@ -60,17 +80,14 @@ public static class A380NdKnobSelection
     /// EFIS key to the direct-write catch-all, which is correct for them.
     ///
     /// Returns null for an out-of-range value too, including the published range 0 (zoom):
-    /// there are five distinct zoom levels behind that single readback, so no one SET value
-    /// reproduces it.
+    /// that readback covers five distinct zoom levels, so it names no single range in NM for
+    /// THIS knob to select. The zoom itself is perfectly settable — on the OANS Range control,
+    /// which <see cref="A380EfisCpControls"/> drives — and <see cref="ZoomUnsupportedMessage"/>
+    /// says so rather than leaving the pilot with a bare refusal.
     /// </summary>
     public static (string EventName, uint Parameter)? SetEvent(string varKey, double value)
     {
-        string? side = varKey switch
-        {
-            "A32NX_EFIS_L_ND_MODE" or "A32NX_EFIS_L_ND_RANGE" => "L",
-            "A32NX_EFIS_R_ND_MODE" or "A32NX_EFIS_R_ND_RANGE" => "R",
-            _ => null
-        };
+        string? side = Side(varKey);
         if (side == null) return null;
 
         int v = (int)Math.Round(value);
@@ -86,14 +103,23 @@ public static class A380NdKnobSelection
 
     /// <summary>True when the pilot picked the "Zoom" position on a ND RANGE combo. The
     /// readback legitimately shows Zoom (the OANS is zoomed in), so the position has to stay in
-    /// the value list, but it cannot be commanded back.</summary>
+    /// the value list, but this knob cannot command it.
+    ///
+    /// ⚠️ Scoped to the two ND RANGE keys through <see cref="Side"/>, NOT to a bare
+    /// <c>_ND_RANGE</c> suffix: an unscoped test swallows any other key with that suffix and
+    /// answers it with a sentence about a control it has nothing to do with.</summary>
     public static bool IsZoomAttempt(string varKey, double value) =>
-        varKey.EndsWith("_ND_RANGE", StringComparison.Ordinal)
+        Side(varKey) != null
+        && varKey.EndsWith("_ND_RANGE", StringComparison.Ordinal)
         && (int)Math.Round(value) == RangeZoom;
 
     /// <summary>Spoken when Zoom is picked on a ND RANGE combo. A control that silently does
     /// nothing is worse for a blind pilot than one that explains itself (the
-    /// <see cref="NdFilterSelection.ClearUnsupportedMessage"/> precedent).</summary>
+    /// <see cref="NdFilterSelection.ClearUnsupportedMessage"/> precedent) — and a refusal that
+    /// sends the pilot the OTHER way is worse still, so this NAMES the control that does set
+    /// the zoom (OANS Range, two rows down the same panel) instead of telling them to pick a
+    /// range in NM, which is the opposite of what they just asked for.</summary>
     public static string ZoomUnsupportedMessage =>
-        "Zoom is an OANS range and cannot be selected here. Choose a range in nautical miles.";
+        "Zoom is the airport map range. Set it on the OANS Range control; "
+        + "this knob selects ranges in nautical miles.";
 }

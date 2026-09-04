@@ -84,10 +84,30 @@ public class A380NdKnobSelectionTests
     [InlineData("A380X_EFIS_L_LS_BUTTON_IS_ON")]
     [InlineData("A380X_EFIS_R_ACTIVE_OVERLAY")]
     [InlineData("XMLVAR_Baro_Selector_HPA_1")]
+    // A key that ENDS in _ND_RANGE but is not one of the four. IsZoomAttempt used to match on
+    // that suffix alone, so it swallowed any such key and answered it with a sentence about the
+    // OANS — and not one of the rows above ends that way, which made the Assert.False below
+    // pass on string shape and never test the predicate at all.
+    [InlineData("A380X_EFIS_L_ND_RANGE")]
     public void Other_efis_keys_are_left_to_the_direct_write(string varKey)
     {
+        Assert.False(A380NdKnobSelection.Handles(varKey));
         Assert.Null(A380NdKnobSelection.SetEvent(varKey, 1));
         Assert.False(A380NdKnobSelection.IsZoomAttempt(varKey, 0));
+    }
+
+    /// <summary>The caller gates on Handles, never on SetEvent being null — SetEvent answers
+    /// null for "not my key" AND for "value I refuse", and only the zoom refusal has a rescue.
+    /// An out-of-range value must stay OWNED so it cannot reach the direct-L:var catch-all.</summary>
+    [Theory]
+    [InlineData("A32NX_EFIS_L_ND_MODE", 5)]
+    [InlineData("A32NX_EFIS_R_ND_MODE", -1)]
+    [InlineData("A32NX_EFIS_L_ND_RANGE", 8)]
+    [InlineData("A32NX_EFIS_R_ND_RANGE", 0)]
+    public void A_refused_value_is_still_owned(string varKey, int value)
+    {
+        Assert.True(A380NdKnobSelection.Handles(varKey));
+        Assert.Null(A380NdKnobSelection.SetEvent(varKey, value));
     }
 
     /// <summary>An out-of-range value produces no event rather than an event the FCU would

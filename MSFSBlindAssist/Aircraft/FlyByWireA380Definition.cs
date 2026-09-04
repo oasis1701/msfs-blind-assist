@@ -2832,10 +2832,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        // EFIS OANS range (airport map zoom).
+        // EFIS OANS range (airport map zoom). 5 = "not zoomed" is a READBACK, not a selection
+        // (leaving the zoom means picking an NM range on the ND RANGE knob) — but it MUST be in
+        // the value list, because it is what the var holds for most of a flight: MainForm only
+        // falls back to item 0 when the key has no value AT ALL, so an undescribed live value
+        // leaves the combo with SelectedIndex -1, and one arrow key on an unselected combo then
+        // commits "Max" and really does fire RANGE_SET 0, yanking the ND to 0.2 NM. It also
+        // stops the generic announcer speaking a bare "Capt OANS Range: 5.0". Picking it is
+        // refused out loud — see A380EfisCpControls.NotZoomedUnsupportedMessage.
         foreach (var side in new[] { "L", "R" })
             Sel($"A32NX_EFIS_{side}_OANS_RANGE", $"{(side == "L" ? "Capt" : "F/O")} OANS Range",
-                new Dictionary<double, string> { [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min" });
+                new Dictionary<double, string>
+                {
+                    [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min",
+                    [A380EfisCpControls.OansNotZoomed] = "Not zoomed"
+                });
 
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
