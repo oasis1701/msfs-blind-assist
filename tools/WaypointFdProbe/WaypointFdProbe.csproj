@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\WaypointFlightDirectorGeometry.cs" Link="Linked\WaypointFlightDirectorGeometry.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\WaypointConstraintMapper.cs" Link="Linked\WaypointConstraintMapper.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\WaypointFix.cs" Link="Linked\WaypointFix.cs" />
+  </ItemGroup>
+</Project>

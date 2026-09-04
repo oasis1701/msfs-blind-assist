@@ -462,6 +462,25 @@ public partial class MainForm
             return true;
         }
 
+        // Inclinometer ball → the "step on the ball" rudder-coordination slip cue (Ctrl+K).
+        // Sits beside G_FORCE at the top of the ladder for the SAME reason: TURN_COORDINATOR_BALL
+        // is registered HighFrequency=true, so it fires every SIM_FRAME and would otherwise make
+        // every branch below re-test its own VarName on every frame. Never a generic call-out.
+        // The var is only SUBSCRIBED while the cue is on (StartSlipCueMonitoring), so in the normal
+        // default-off case this branch is not reached at all — the _slipCueOn re-check below just
+        // covers the frames already in flight when the pilot toggles it off.
+        // Scaling/sign live in the SlipCueBallFullScale / SlipCueBallSign consts (MainForm.cs);
+        // the sign is UNVERIFIED in-sim — see the comment there before trusting the cue's side.
+        if (e.VarName == "TURN_COORDINATOR_BALL")
+        {
+            if (_slipCueOn)
+            {
+                double ball = e.Value / SlipCueBallFullScale * SlipCueBallSign;
+                slipCueGenerator.Update(ball, deadband: 0.08, fullScale: 0.5, active: true);
+            }
+            return true;
+        }
+
         // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
         // this is a NON-terminal feed (no early return) — processing continues so the
         // display box still updates. The var is registered IsAnnounced=false (per aircraft),
@@ -726,6 +745,12 @@ public partial class MainForm
             {
                 visualGuidanceManager.Toggle();
             }
+            // Same rationale for the Waypoint Flight Director: at touchdown the rollout/taxi tones
+            // take over, so the en-route FD has no useful job and would compete audibly.
+            if (justTouchedDown && waypointFdManager.IsActive)
+            {
+                waypointFdManager.Toggle();
+            }
 
             // Open the peak-g capture window at the touchdown edge, seeded with the g at contact,
             // so the ReadLastLandingPeakG hotkey reports the impact spike. The landing RATE itself
@@ -920,6 +945,89 @@ public partial class MainForm
             return true;
         }
 
+        // AUTOPILOT MASTER rides the 505 stream too, but ONLY the FD consumes it. With VG active and
+        // the FD off it matched nothing below, so a SIM_FRAME var walked the entire announcement
+        // ladder — plus ProcessSimVarUpdate and steps 3-6 — on every frame of an approach, the app's
+        // hottest path. Consume it here when the FD is not running; the FD's own switch handles it
+        // when it is. (VG's pitch/bank/AoA blocks above already return for the same reason.)
+        if ((e.VarName == "VISUAL_GUIDANCE_AP_MASTER" || e.VarName == "VISUAL_GUIDANCE_IAS")
+            && !waypointFdManager.IsActive)
+            return true;
+
+        // Waypoint Flight Director — rides the SAME VISUAL_GUIDANCE_DATA (req 505) stream as VG.
+        // FD and VG are mutually exclusive, so this only runs when VG is inactive (the VG blocks above
+        // already returned true when VG owns the stream). One guarded dispatch fans the stream fields
+        // out to the FD; pitch/bank/AoA use the identical radian→degree + sign conventions as VG above.
+        if (waypointFdManager.IsActive)
+        {
+            switch (e.VarName)
+            {
+                case "VISUAL_GUIDANCE_POSITION":
+                    if (e.PositionData != null)
+                    {
+                        var pos = e.PositionData.Value;
+                        waypointFdManager.UpdateLatitude(pos.Latitude);
+                        waypointFdManager.UpdateLongitude(pos.Longitude);
+                        waypointFdManager.UpdateAltitudeMSL(pos.Altitude);
+                        waypointFdManager.UpdateHeading(pos.HeadingMagnetic);
+                        waypointFdManager.UpdateGroundSpeed(pos.GroundSpeedKnots);
+                        waypointFdManager.UpdateVerticalSpeed(pos.VerticalSpeedFPM);
+                        waypointFdManager.UpdateMagVar(pos.MagneticVariation);
+                        return true;
+                    }
+                    break;
+
+                case "VISUAL_GUIDANCE_AGL":
+                    // AGL arrives last → all caches fresh → drive the FD for this frame.
+                    waypointFdManager.ProcessUpdate();
+                    return true;
+
+                case "VISUAL_GUIDANCE_GROUND_TRACK":
+                    waypointFdManager.UpdateGroundTrack(e.Value);
+                    return true;
+
+                case "VISUAL_GUIDANCE_PITCH":
+                    waypointFdManager.UpdatePitch(-(e.Value * (180.0 / Math.PI))); // standard: + = nose up
+                    return true;
+
+                case "VISUAL_GUIDANCE_BANK":
+                    waypointFdManager.UpdateBank(e.Value * (180.0 / Math.PI)); // raw SimConnect (left-positive); manager negates
+                    return true;
+
+                case "VISUAL_GUIDANCE_AOA":
+                    waypointFdManager.UpdateAoA(e.Value * (180.0 / Math.PI));
+                    return true;
+
+                case "VISUAL_GUIDANCE_IAS":
+                    waypointFdManager.UpdateIas(e.Value);
+                    return true;
+
+                case "VISUAL_GUIDANCE_AP_MASTER":
+                    // e.Value is the stock AUTOPILOT MASTER simvar, which several addons DO NOT DRIVE —
+                    // so it reads 0 with the autopilot flying and the FD's auto-mute never fires.
+                    //   - FlyByWire A320/A380/A330 fork: use A32NX_AUTOPILOT_1/2_ACTIVE.
+                    //   - PMDG: use their own annunciators. ⚠️ This comment previously asserted "PMDG /
+                    //     Fenix / HS787 set the stock var" — MEASURED FALSE on the PMDG 777 (2026-09):
+                    //     with the AP engaged and flying a HDG SEL turn, AUTOPILOT MASTER read 0 while
+                    //     MCP_annunAP_left read true and AUTOPILOT HEADING LOCK DIR sat at a stale 314
+                    //     against an MCP heading of 290. The stock heading/AP simvars are simply not
+                    //     wired on that airframe. Do not trust them for any PMDG state.
+                    // Keys below are the DEFINITION keys (GetCachedVariableValue keys by var key, not by
+                    // the underlying Name): the 777 registers MCP_AP_L/MCP_AP_R over MCP_annunAP_0/_1, the
+                    // 737 registers MCP_annunCMD_A/_B. A key the loaded aircraft does not define simply
+                    // returns null and ORs in as false.
+                    bool apEngaged = e.Value > 0.5
+                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_1_ACTIVE") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_AP_L") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_AP_R") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_annunCMD_A") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_annunCMD_B") ?? 0.0) > 0.5;
+                    waypointFdManager.UpdateApMaster(apEngaged ? 1.0 : 0.0);
+                    return true;
+            }
+        }
+
         // Handle aircraft variable hotkey announcements
         // A380 metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE): when active, the
         // current-altitude readouts (A = MSL, Q = AGL) speak metres instead of feet. Gated to
@@ -1076,6 +1184,20 @@ public partial class MainForm
                 handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
             }
 
+            // Waypoint Flight Director on the same handoff, when the pilot asked for it AND there
+            // is something to track. The HasAnyWaypoint gate is what keeps this quiet: without it
+            // the FD would activate, find no fixes, speak "No waypoints to track" and stop again —
+            // on every takeoff. Its own "Flight director active" AnnounceImmediate is superseded by
+            // the breadcrumb below, which is why the breadcrumb names it.
+            bool activatedFlightDirector = false;
+            if (SettingsManager.Current.WaypointFdAutoActivateOnTakeoff
+                && !waypointFdManager.IsActive
+                && waypointTracker.HasAnyWaypoint())
+            {
+                waypointFdManager.Toggle();
+                activatedFlightDirector = waypointFdManager.IsActive;
+            }
+
             // The Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
             // ONE clean breadcrumb LAST to supersede them. The pilot pressed no key, so
             // this single cue is the spoken source of truth for the handoff. The Toggles'
@@ -1097,7 +1219,8 @@ public partial class MainForm
             // activation branch clears any stale grace window. _handFlyQuickKeysRegistered
             // is written by OnHandFlyModeActiveChanged, which that same Toggle() raised, so
             // it is already current here.
-            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered);
+            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered,
+                                                   activatedFlightDirector);
             handFlyManager.SuppressAnnouncementsFor(cue.GraceMs);
             announcer.AnnounceImmediate(cue.Text);
         });

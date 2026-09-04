@@ -63,6 +63,44 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         TonePitchRangeDeg         = 10.0
     };
 
+    // Waypoint Flight Director: heavy widebody — gentler roll gain + longer rate-lead to avoid
+    // overshoot, larger capture radius (covers ~0.8 NM in ~16 s at cruise/descent speeds),
+    // higher low-speed floor (it taxis/flies slow above 40 kt where ground track is noisy).
+    // Best-effort class defaults; calibrate in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        // MEASURED off the aeroplane, 2026-09 (four AP-flown HDG SEL turns, PMDG 777 at 4000 ft:
+        // 90° right and 90° left at 180 kt, then right and left at 280 kt). Sampled bank + magnetic
+        // heading at 4 Hz over SimConnect and fitted against remaining heading error.
+        //
+        // The AFDS is a PURE PROPORTIONAL law. Three usable rollouts fitted 2.40, 2.39 and 2.26
+        // degrees of bank per degree of error — mean 2.35, and every individual sample inside
+        // 2.02-2.48 across both speeds and both directions. The previous 0.9 was a class guess that
+        // commanded barely a third of the bank the aeroplane itself uses — at 10° off track it asked
+        // for 9° where the autopilot uses 25 — which is why the FD felt like it never stopped
+        // deviating: it could not converge.
+        KRollDegPerDegTrack = 2.35,
+        // Measured 25.0-25.5° of steady bank at BOTH 180 and 280 kt, so the cap is FIXED, not
+        // scaled by true airspeed as the BANK LIMIT AUTO range (15-25) had suggested it might be.
+        // The 30 taken from the LNAV spec is not what this aeroplane actually flies.
+        MaxBankDeg          = 25.0,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.8,
+        LowSpeedFloorKts    = 60.0,
+        // The measured rollout needs NO time-lead to reproduce: it begins where the proportional
+        // command falls under the cap (25 / 2.35 = 10.6° of error), and that is exactly where the
+        // aeroplane started rolling out — 10.3-10.5° at 280 kt, 10.8° at 180 kt. Note that is a constant
+        // HEADING lead, not a constant time one: the same 10.4° was 4.3 s of flying at 180 kt and
+        // 6.4 s at 280 kt, so a time-based lead cannot express it. Kept small but non-zero purely to
+        // damp yaw-rate noise; 1.3 s would have rolled out early.
+        BankRateLeadSec     = 0.5,
+        // Measured roll-in rate 3.45-3.59°/s across the runs. The 5.0 default never clipped, so the
+        // tone was free to move faster than the aeroplane can roll.
+        MaxBankRateDegPerSec = 3.5,
+        TypicalApproachAoaDeg = 4.5,
+        TonePitchRangeDeg   = 10.0
+    };
+
     // MEASURED 2026-06-11 (KSFO, B77W, 6 turns): the 1.0 s prior over-led —
     // 5 of 6 rollouts stopped 5.5–10.5° SHORT (median correction −0.97 s).
     // Same pattern as the 737: the pilot self-anticipates Boeing rollouts, so

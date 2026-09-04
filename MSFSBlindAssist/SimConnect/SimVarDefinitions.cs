@@ -59,6 +59,24 @@ public class SimVarDefinition
     /// traffic near zero (a static value produces no deliveries).
     /// </summary>
     public bool HighFrequency { get; set; }
+
+    /// <summary>
+    /// Only meaningful with ExcludeFromBatch on a Continuous var: REGISTER the data definition at
+    /// setup as usual, but do NOT subscribe to it yet. The feature that consumes the var turns the
+    /// stream on with <c>SimConnectManager.StartDeferredVariableMonitoring(key)</c> and off again
+    /// with <c>StopDeferredVariableMonitoring(key)</c>.
+    ///
+    /// For vars that are only meaningful while an OFF-BY-DEFAULT feature is running (the Ctrl+K
+    /// rudder-coordination cue's TURN COORDINATOR BALL). Without this, a SIM_FRAME subscription and
+    /// its per-frame event dispatch is paid by every user on every flight for a feature most never
+    /// enable. Contrast G FORCE, which must stay always-on because it captures a touchdown spike
+    /// that cannot be requested retroactively.
+    ///
+    /// A wanted subscription is remembered and re-asserted after each SetupDataDefinitions, so
+    /// toggling the feature on before connecting — or switching aircraft with it on — still works.
+    /// </summary>
+    public bool DeferredSubscription { get; set; }
+
     public uint EventParam { get; set; }  // Parameter for events (like pump index)
     public bool IsMomentary { get; set; }  // True for momentary buttons that need auto-reset
 
