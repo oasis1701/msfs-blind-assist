@@ -483,23 +483,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        // Wing anti-ice (CORRECTED 2026-07 — back the combo on the var the REAL cockpit
-        // button writes). The A380 overhead WING anti-ice PB (FBW_Airbus_AntiIce_Wing
-        // template) toggles A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; the PB light reads
-        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED. The previous combo drove the stock
-        // STRUCTURAL DEICE SWITCH, which the cockpit button does NOT touch — so MSFSBA's
-        // combo diverged from the actual switch. Backing it on the button-position L:var
-        // (live-verified settable + held) keeps the two in sync and drives the real input.
-        // ⚠️ FBW-BUILD LIMITATION: the A380 wing anti-ice PNEUMATIC is not modelled yet —
-        // live-verified that setting the button (or SELECTED, or the stock switch, or the
-        // PB_IS_ON) at cruise with TAT -15 C leaves _SYSTEM_ON at 0 (no valve/flow), and
-        // the a380_systems Rust has no wing-anti-ice pneumatic. So the SWITCH is faithful
-        // and future-proof, but the flow won't engage until FBW implements it — the
-        // read-only "Wing Anti-Ice Flowing" status (_SYSTEM_ON) correctly reports that.
+        // Wing anti-ice — the STOCK switch A380_Cockpit_Behavior.xml's PUSH_OVHD_ANTIICE_WING
+        // node drives, NOT the A32NX's A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION: the two
+        // packages ship DIFFERENT bodies for the same FBW_Airbus_AntiIce_Wing template name,
+        // and a 2026-07 change that assumed otherwise left the control dead in icing.
+        // Backed on the stock SimVar so the combo shows the real switch (the ELEC_ENG_GEN
+        // toggle precedent — not ELEC_APU_GEN, which is an absolute SET and reads no live
+        // state); the write fires the stock toggle from HandleUIVariableSet.
+        // ⚠️ SEPARATE and unfixed: the A380 wing anti-ice PNEUMATIC is not modelled, so
+        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON stays 0 with the real switch ON — the read-only
+        // "Wing Anti-Ice Flowing" status reports that honestly, and it is NOT the bug above.
+        // → docs/a380x.md, "Wing anti-ice is the STOCK switch", for the measurements.
         vars["WING_ANTI_ICE_OVHD"] = new SimVarDefinition
         {
-            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", DisplayName = "Wing Anti-Ice",
-            Type = SimVarType.LVar,
+            Name = "STRUCTURAL DEICE SWITCH", DisplayName = "Wing Anti-Ice",
+            Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = onOff
         };
