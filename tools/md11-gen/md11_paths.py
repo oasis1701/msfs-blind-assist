@@ -220,3 +220,53 @@ def candidate_roots(env: dict | None = None) -> list[tuple[str, str]]:
         roots.append((sim_label, root))
 
     return roots
+
+
+def discover(env: dict | None = None) -> list[Md11Find]:
+    """Every MD-11 package installed on this machine.
+
+    One entry per distinct package directory, FS2024 before FS2020. A package
+    with no wasm is still returned (wasm_path=None) -- the CALLER decides that
+    is fatal, so the error message can name the package it found.
+    """
+    finds: list[Md11Find] = []
+    seen_packages: set[str] = set()
+
+    for sim_label, root in candidate_roots(env):
+        for package_dir in find_packages_under(root):
+            key = os.path.normcase(os.path.abspath(package_dir))
+            if key in seen_packages:
+                continue
+            seen_packages.add(key)
+            finds.append(
+                Md11Find(
+                    sim_label=sim_label,
+                    package_dir=package_dir,
+                    wasm_path=find_wasm(package_dir),
+                    root=root,
+                )
+            )
+
+    return finds
+
+
+def describe_roots(env: dict | None = None) -> list[str]:
+    """"<sim label>: <root>" for every root that exists, for error output."""
+    return ["%s: %s" % (label, root) for label, root in candidate_roots(env)]
+
+
+def parse_choice(answer: str, count: int) -> int | None:
+    """Turn a 1-based prompt answer into a 0-based index, or None if invalid.
+
+    Pure so the prompt's validation is testable; the input() call itself lives
+    in the generator.
+    """
+    if answer is None:
+        return None
+    text = answer.strip()
+    if not text.isdigit():
+        return None
+    value = int(text)
+    if value < 1 or value > count:
+        return None
+    return value - 1

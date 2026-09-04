@@ -374,6 +374,165 @@ class CandidateRootsTests(unittest.TestCase):
                 [(md11_paths.SIM_2024, shared)],
             )
 
+    def test_fs2020_store_usercfg_is_read_on_its_own(self):
+        # The store UserCfg.opt source had no isolating test: FS2020's was
+        # never built, and FS2024's only appeared alongside the
+        # higher-priority roaming UserCfg naming the same folder, which
+        # would mask a broken path here.
+        with tempfile.TemporaryDirectory() as tmp:
+            env, _appdata, local = self._env(tmp)
+            external = os.path.join(tmp, "Fs2020FromStoreCfg")
+            os.makedirs(external)
+            self._usercfg(
+                os.path.join(local, "Packages",
+                             "Microsoft.FlightSimulator_8wekyb3d8bbwe",
+                             "LocalCache"),
+                external,
+            )
+            self.assertIn((md11_paths.SIM_2020, external),
+                          md11_paths.candidate_roots(env))
+
+    def test_fs2024_store_usercfg_is_read_on_its_own(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, _appdata, local = self._env(tmp)
+            external = os.path.join(tmp, "Fs2024FromStoreCfg")
+            os.makedirs(external)
+            self._usercfg(
+                os.path.join(local, "Packages",
+                             "Microsoft.Limitless_8wekyb3d8bbwe",
+                             "LocalCache"),
+                external,
+            )
+            self.assertIn((md11_paths.SIM_2024, external),
+                          md11_paths.candidate_roots(env))
+
+    def test_shared_root_takes_the_fs2024_label_not_fs2020(self):
+        # "De-duplicate, FIRST label wins" was only tested with the same
+        # label twice, so it asserted nothing about WHICH label survives.
+        # Both sims' roaming UserCfg name one folder here; FS2024 is
+        # iterated first, so the surviving entry must be FS2024 and there
+        # must be exactly one.
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            shared = os.path.join(tmp, "OneFolderBothSims")
+            os.makedirs(shared)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator 2024"),
+                shared,
+            )
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator"), shared
+            )
+            matching = [r for r in md11_paths.candidate_roots(env)
+                        if r[1] == shared]
+            self.assertEqual(matching, [(md11_paths.SIM_2024, shared)])
+
+
+class DiscoverTests(unittest.TestCase):
+    def _env(self, tmp):
+        appdata = os.path.join(tmp, "Roaming")
+        os.makedirs(appdata, exist_ok=True)
+        return {"APPDATA": appdata, "LOCALAPPDATA": os.path.join(tmp, "Local")}
+
+    def _usercfg(self, appdata, sim_folder, target):
+        folder = os.path.join(appdata, sim_folder)
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "UserCfg.opt"), "w",
+                  encoding="utf-8") as fh:
+            fh.write('InstalledPackagesPath "%s"\n' % target)
+
+    def test_owner_layout_found_with_wasm(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            root = os.path.join(tmp, "MSFS2024 Community")
+            c2024 = os.path.join(root, "Community2024")
+            os.makedirs(c2024)
+            os.makedirs(os.path.join(root, "Community"))
+            pkg = make_package(c2024)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          root)
+
+            finds = md11_paths.discover(env)
+            self.assertEqual(len(finds), 1)
+            self.assertEqual(finds[0].sim_label, md11_paths.SIM_2024)
+            self.assertEqual(finds[0].package_dir, pkg)
+            self.assertIsNotNone(finds[0].wasm_path)
+            self.assertEqual(finds[0].root, root)
+
+    def test_package_without_wasm_is_reported_with_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            root = os.path.join(tmp, "Pkgs")
+            community = os.path.join(root, "Community")
+            os.makedirs(community)
+            make_package(community, with_wasm=False)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          root)
+
+            finds = md11_paths.discover(env)
+            self.assertEqual(len(finds), 1)
+            self.assertIsNone(finds[0].wasm_path)
+
+    def test_both_sims_give_two_finds_fs2024_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            r24 = os.path.join(tmp, "p24")
+            r20 = os.path.join(tmp, "p20")
+            os.makedirs(r24)
+            os.makedirs(r20)
+            make_package(r24)
+            make_package(r20)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          r24)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator", r20)
+
+            finds = md11_paths.discover(env)
+            self.assertEqual(len(finds), 2)
+            self.assertEqual(finds[0].sim_label, md11_paths.SIM_2024)
+            self.assertEqual(finds[1].sim_label, md11_paths.SIM_2020)
+
+    def test_nothing_installed_returns_no_finds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(md11_paths.discover(self._env(tmp)), [])
+
+    def test_same_package_not_reported_twice(self):
+        # Both sims' UserCfg naming one shared folder must not double-report.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            root = os.path.join(tmp, "Shared")
+            os.makedirs(root)
+            make_package(root)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          root)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator", root)
+
+            self.assertEqual(len(md11_paths.discover(env)), 1)
+
+    def test_describe_roots_lists_searched_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            root = os.path.join(tmp, "Pkgs")
+            os.makedirs(root)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          root)
+            described = md11_paths.describe_roots(env)
+            self.assertTrue(any(root in line for line in described))
+
+
+class ParseChoiceTests(unittest.TestCase):
+    def test_valid_choice_is_zero_based(self):
+        self.assertEqual(md11_paths.parse_choice("1", 2), 0)
+        self.assertEqual(md11_paths.parse_choice("2", 2), 1)
+
+    def test_whitespace_tolerated(self):
+        self.assertEqual(md11_paths.parse_choice("  2  ", 2), 1)
+
+    def test_rejects_out_of_range_and_junk(self):
+        for bad in ("0", "-1", "3", "", "   ", "abc", "1.5", "1x"):
+            self.assertIsNone(
+                md11_paths.parse_choice(bad, 2), "should reject %r" % bad
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
