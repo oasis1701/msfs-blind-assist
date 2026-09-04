@@ -13,6 +13,16 @@ public sealed class AirportTaxiData
 {
     public string Source { get; init; } = "";
     public List<NamedTaxiSegment> Taxiways { get; } = new();
+
+    /// <summary>
+    /// Online stand/gate designators with one representative coordinate each. From OSM that is
+    /// <c>aeroway=parking_position</c> (node OR way — at hubs the stand is usually mapped as the
+    /// painted guidance LINE, and a way contributes its arc-length midpoint) plus
+    /// <c>aeroway=gate</c>, both <c>ref</c>-tagged only; from X-Plane it is the ramp-start name.
+    /// Consumed for ONE purpose — <c>GateAliasResolver</c> searchable aliases on an authoritative
+    /// navdata/GSX gate. The coordinate only feeds that resolver's distance sanity backstop: online
+    /// data never sets a gate's name or position and never adds a selectable gate (anti-grass rule).
+    /// </summary>
     public List<(string Name, double Lat, double Lon)> Parking { get; } = new();
 
     /// <summary>

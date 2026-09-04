@@ -249,7 +249,7 @@ public static class GsxDiagnosticLog
     /// </summary>
     internal static string DescribePhrase(string phrase)
     {
-        string flat = Flatten(phrase);
+        string flat = FlattenTrimmed(phrase);
         string shown = flat.Length > MaxPhraseChars ? flat[..MaxPhraseChars] + "…" : flat;
         return $"phrase={Quote(shown)}";
     }
@@ -275,7 +275,33 @@ public static class GsxDiagnosticLog
             else lastWasSpace = false;
             sb.Append(ch);
         }
-        return sb.ToString().Trim();
+        return sb.ToString();
+    }
+
+    // Flatten's newline/tab mapping and run collapsing exist so a multi-line GSX statusText
+    // cannot break the one-line-per-event scan. The TRIM is a separate decision and no commit
+    // ever gave it a reason -- it is correct for PHRASES (where surrounding whitespace is
+    // noise) and wrong for IDENTIFIERS (where GSX's own uiGateName carries a leading space
+    // that IS the value). Flatten keeps the whitespace; FlattenTrimmed is what Quote uses.
+    private static string FlattenTrimmed(string? value) => Flatten(value).Trim();
+
+    /// <summary>
+    /// Quote for a value whose surrounding whitespace is part of the value — a GSX
+    /// identifier. Same newline/tab mapping and run collapsing as <see cref="Quote"/>,
+    /// but NO trim, and a whitespace-only value renders as a quoted space rather than
+    /// <c>(none)</c>.
+    /// <para>
+    /// Live KATL 2026-08-27: GSX's <c>uiGateName</c> is <c>" Gate 5"</c> on 281 of 294
+    /// stands. <c>gsx-gate-select.log</c> printed <c>identifierSent="Gate 5"</c>, and the
+    /// leading space — the entire reason <c>gate.select</c> was being investigated — was
+    /// invisible in the one log built to explain it.
+    /// </para>
+    /// </summary>
+    internal static string QuoteVerbatim(string? value)
+    {
+        if (value is null) return None;
+        string flat = Flatten(value);
+        return flat.Length == 0 ? None : "\"" + flat.Replace("\"", "'") + "\"";
     }
 
     // BARE tokens. These used to carry a parenthetical gloss ("window(heard only while Access
@@ -305,13 +331,13 @@ public static class GsxDiagnosticLog
     /// <summary>Quoted, flattened, embedded quotes escaped — or a bare <c>(none)</c> when empty.</summary>
     internal static string Quote(string? value)
     {
-        string flat = Flatten(value);
+        string flat = FlattenTrimmed(value);
         return flat.Length == 0 ? None : "\"" + flat.Replace("\"", "'") + "\"";
     }
 
     private static string OrNone(string? value)
     {
-        string flat = Flatten(value);
+        string flat = FlattenTrimmed(value);
         return flat.Length == 0 ? None : flat;
     }
 

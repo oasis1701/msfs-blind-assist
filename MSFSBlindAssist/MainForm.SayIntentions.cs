@@ -285,7 +285,8 @@ public partial class MainForm
                 : null;
 
             var (source, taxiways, disagreed) = ChooseTaxiwaySource(
-                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>());
+                clearanceTaxiways, snap?.Taxiways ?? Array.Empty<string>(),
+                snap?.PreExcursionTaxiwayCount ?? 0);
 
             var holdShorts = MapHoldShortsToTaxiways(planHoldShorts, taxiways);
             bool autoStart = SettingsManager.Current.SayIntentionsAutoStartTaxiGuidance;
@@ -338,6 +339,9 @@ public partial class MainForm
                         $"geoTrimmed={trimmedPoints} " +
                         $"geoUnsnapped={(snap == null ? "-" : snap.UnsnappedCount.ToString())} " +
                         $"geoDroppedRuns={(snap == null ? "-" : snap.DroppedRunCount.ToString())} " +
+                        $"geoExcursions={(snap == null ? "-" : snap.ExcursionRunCount.ToString())} " +
+                        $"geoExcursionsDropped=[{string.Join(",", snap?.ExcursionTaxiways ?? Array.Empty<string>())}] " +
+                        $"geoLegsAsPublished={(snap == null ? "-" : snap.PreExcursionTaxiwayCount.ToString())} " +
                         $"geoTaxiways=[{string.Join(",", snap?.Taxiways ?? Array.Empty<string>())}] " +
                         $"clearanceTaxiways=[{string.Join(",", clearanceTaxiways)}] " +
                         $"applied=[{string.Join(",", outcome.AppliedTaxiways)}] " +
@@ -414,6 +418,18 @@ public partial class MainForm
     /// (see <see cref="TrackIsShortEnoughToDescribe"/>), because the walk alone loses its
     /// grip on a short clearance.
     ///
+    /// The length test measures the track the snapper was GIVEN, reduced only by the stub
+    /// filter — not the list handed back. (It is not the track "as published": TrimToPointsAhead
+    /// has already cut everything behind the aircraft before Snap ever runs, and that cut is
+    /// deliberate — see its own doc. Measured on the KDTW capture, the whole track is 6 legs
+    /// and the trimmed one 4, and 4 is what this guard sees.) The snapper also drops sandwiched
+    /// junction excursions, which makes the list shorter, and this guard is the one thing
+    /// standing between a stale pre-clearance track and a silently-flown route: measuring the
+    /// trimmed list would let a stale plan that lost on length alone squeak inside the bound.
+    /// The caller passes SnapResult.PreExcursionTaxiwayCount, which is REQUIRED on both sides —
+    /// it was optional here and defaulted there, and that made a guard whose whole job is to
+    /// refuse a track silently skippable by omission.
+    ///
     /// The comparison runs against the COLLAPSED clearance, and only the comparison: what
     /// is handed back when the clearance wins is the RAW list. ParseClearanceTaxiPlan
     /// deliberately keeps a taxiway repeated across a hold-short (the KBOS pattern) so
@@ -430,7 +446,8 @@ public partial class MainForm
     /// </summary>
     internal static (TaxiwaySource Source, IReadOnlyList<string> Taxiways, bool Disagreed)
         ChooseTaxiwaySource(
-            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways)
+            IReadOnlyList<string> clearanceTaxiways, IReadOnlyList<string> geometryTaxiways,
+            int geometryLegsAsPublished)
     {
         // No path published, or one that snapped to nothing — no better than no path at
         // all. The words stay in charge, and the log keeps the counts that say why.
@@ -449,7 +466,7 @@ public partial class MainForm
         var cleared = SayIntentionsClearanceParser.CollapseConsecutive(clearanceTaxiways);
 
         return ClearanceRunsThroughGeometry(cleared, geometryTaxiways)
-               && TrackIsShortEnoughToDescribe(cleared.Count, geometryTaxiways.Count)
+               && TrackIsShortEnoughToDescribe(cleared.Count, geometryLegsAsPublished)
             ? (TaxiwaySource.Geometry, geometryTaxiways, false)
             : (TaxiwaySource.Clearance, clearanceTaxiways, true);
     }
@@ -586,6 +603,16 @@ public partial class MainForm
     /// match the airport (see UnsnappedShareWorthSaying). Its dropped runs stay silent:
     /// SayIntentions clips the corners of unnamed connector stubs, so a clean read has
     /// several, and announcing them would be noise on every import.
+    ///
+    /// Its EXCURSIONS stay silent too, and that rationale does NOT carry over: an
+    /// excursion is a taxiway the graph knows by name, not an unnamed stub, and there is
+    /// roughly one per junction-heavy import rather than several per read. It is silent
+    /// because on a geometry route every leg came from the airport's own graph and naming
+    /// one the route is not missing teaches the pilot to distrust the readout — the same
+    /// trade the notAtAirport line records. The consequence is real and is why
+    /// geoExcursionsDropped=[...] exists: sayintentions.log is the ONLY record that a leg
+    /// was removed. If a threshold ever earns this a voice, it belongs here beside the
+    /// UnsnappedShareWorthSaying line, not inside the snapper.
     ///
     /// <paramref name="clearanceNamedTaxiways"/> is false when the clearance yielded no
     /// taxiway at all, which is the ONE case a ground-track route is taken with nothing to

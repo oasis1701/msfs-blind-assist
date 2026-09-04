@@ -92,6 +92,23 @@ public class SayIntentionsTaxiPathSnapperTests
     }
 
     [Fact]
+    public void TheLiveCapturesCarryAHeadingForEveryPoint()
+    {
+        // Without this the two capture tests could pass while silently exercising the
+        // no-heading fallback - if the fixture reader stopped reading the heading, or a
+        // future fixture were captured without one, the bearing preference would go
+        // untested against real data and nothing would say so.
+        foreach (string fixture in new[]
+                 { "lszh-taxipath-arrival.json", "kdtw-taxipath-crossing.json" })
+        {
+            var path = LoadFixturePath(fixture);
+
+            Assert.NotEmpty(path);
+            Assert.All(path, p => Assert.NotNull(p.HeadingDegrees));
+        }
+    }
+
+    [Fact]
     public void ConnectorStubsAreDroppedNotReported()
     {
         var result = SayIntentionsTaxiPathSnapper.Snap(
@@ -206,8 +223,18 @@ public class SayIntentionsTaxiPathSnapperTests
     public void ATaxiwayRevisitedAfterAnotherIsKeptTwice()
     {
         // Non-consecutive reuse is real (a clearance crosses and comes back). Only
-        // CONSECUTIVE duplicates collapse.
-        var path = new[] { OnA(0.1), OnA(0.2), OnB(0.5), OnB(0.7), OnA(0.8), OnA(0.9) };
+        // CONSECUTIVE duplicates collapse — for a run long enough to sit outside the
+        // sandwiched-junction-excursion window (MaxExcursionRunPoints). A SHORT revisit
+        // of a different taxiway between two runs of the same one is now exactly what
+        // the excursion pass removes by design (see the sandwiched-excursion tests
+        // above), so B needs more than MaxExcursionRunPoints (4) points here to keep
+        // this test testing non-consecutive reuse rather than the excursion pass.
+        var path = new[]
+        {
+            OnA(0.1), OnA(0.2),
+            OnB(0.1), OnB(0.3), OnB(0.5), OnB(0.7), OnB(0.9),
+            OnA(0.8), OnA(0.9),
+        };
 
         var result = SayIntentionsTaxiPathSnapper.Snap(path, CornerEdges);
 
@@ -251,6 +278,406 @@ public class SayIntentionsTaxiPathSnapperTests
         Assert.Empty(result.Taxiways);
         Assert.Equal(2, result.PointCount);
         Assert.Equal(2, result.UnsnappedCount);
+    }
+
+    // --- Sandwiched junction excursions -----------------------------------------------
+    //
+    // Near a junction the spur taxiway legitimately wins the nearest-edge scan for a few
+    // consecutive points, so the sequence reads X, Y, X and the pilot is routed out onto
+    // pavement the aircraft only crossed. Measured against real navdata: KORD A/A17 gives
+    // a 2-point run, CYVR D/D5 a 3-point run, KDEN P/P7 a 4-point run (its centreline
+    // stops 21.13 m short of P, inside the snap tolerance). Across 600 junctions at five
+    // airports, 97.8 % of sandwiched excursions are 4 points or fewer.
+
+    private static readonly NamedEdge EdgeMain = new("X", 50.0000, 8.0000, 50.0100, 8.0000);
+    private static readonly NamedEdge EdgeSpur = new("Y", 50.0050, 8.0002, 50.0060, 8.0002);
+    private static readonly NamedEdge EdgeOther = new("Z", 50.0070, 8.0002, 50.0080, 8.0002);
+    private static readonly NamedEdge[] JunctionEdges = { EdgeMain, EdgeSpur, EdgeOther };
+
+    /// <summary>A point on the main taxiway X, at the given latitude offset in units of
+    /// 0.0001 degrees north of 50.0000.</summary>
+    private static GeoPoint OnMain(int step) => new(50.0000 + (0.0001 * step), 8.0000);
+
+    /// <summary>A point sitting exactly on the spur Y.</summary>
+    private static GeoPoint OnSpur(int step) => new(50.0050 + (0.0001 * step), 8.0002);
+
+    /// <summary>A point sitting exactly on the third taxiway Z.</summary>
+    private static GeoPoint OnOther(int step) => new(50.0070 + (0.0001 * step), 8.0002);
+
+    /// <summary>A point beyond every edge in <see cref="JunctionEdges"/>, so it snaps to
+    /// nothing and breaks the run it lands in. 0.02 degrees of longitude is ~1.4 km at
+    /// this latitude, far outside SnapToleranceMetres.</summary>
+    private static GeoPoint OffGraph(int step) => new(50.0050 + (0.0001 * step), 8.0200);
+
+    /// <summary>Three points along X, then <paramref name="spurPoints"/> on the spur Y,
+    /// then three more along X — the X, Y, X shape every real case takes.</summary>
+    private static GeoPoint[] MainSpurMain(int spurPoints)
+    {
+        var path = new List<GeoPoint> { OnMain(10), OnMain(20), OnMain(30) };
+        for (int i = 1; i <= spurPoints; i++) path.Add(OnSpur(i));
+        path.Add(OnMain(80));
+        path.Add(OnMain(90));
+        path.Add(OnMain(95));
+        return path.ToArray();
+    }
+
+    [Theory]
+    [InlineData(2)]  // KORD A, A17, A
+    [InlineData(3)]  // CYVR D, D5, D
+    [InlineData(4)]  // KDEN P, P7, P — the worst real case, exactly on the bound
+    public void AnExcursionUpToTheBoundIsRemoved(int spurPoints)
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(spurPoints), JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(1, result.ExcursionRunCount);
+        Assert.Equal(0, result.DroppedRunCount);
+    }
+
+    [Fact]
+    public void AFivePointExcursionIsKeptBecauseTheBoundIsExact()
+    {
+        // One point past MaxExcursionRunPoints. A track that holds a taxiway for five
+        // samples (~140 m) is describing pavement, not clipping a junction.
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(5), JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortRunBetweenTwoDIFFERENTTaxiwaysIsNotAnExcursion()
+    {
+        // The sandwich is the whole discriminator: X, Y, Z is a route that genuinely
+        // passes along three taxiways, however briefly it holds the middle one.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnOther(1), OnOther(2), OnOther(3),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "Z" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortLeadingRunIsKeptBecauseNothingPrecedesIt()
+    {
+        // A real track starts on the stand lead-in. With no run before it there is no
+        // sandwich, so it is a leg like any other.
+        var path = new[]
+        {
+            OnSpur(1), OnSpur(2),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AShortTrailingRunIsKeptBecauseNothingFollowsIt()
+    {
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void TwoExcursionsOffTheSameTaxiwayBothGoInOnePass()
+    {
+        // X, Y, X, Z, X. The second excursion is only visible once the first has been
+        // removed, which is why the pass compares against the last run KEPT rather than
+        // the immediately preceding one.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnMain(60), OnMain(65), OnMain(68),
+            OnOther(1), OnOther(2),
+            OnMain(90), OnMain(95), OnMain(98),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(2, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void AnExcursionIsMeasuredAgainstTheLastRunKEPTNotTheOneImmediatelyBefore()
+    {
+        // X, Y, X, Y, Z, with the middle X short. This is the ONLY shape that separates
+        // the two rules, and the counter is the witness: under kept[^1] the second Y is
+        // measured against the X still standing and survives (exc 1); under
+        // surviving[i-1] the middle X is measured against the Y that was just dropped,
+        // so the ANCHOR is deleted too (exc 2). Both rules yield X, Y, Z, so the taxiway
+        // list cannot tell them apart.
+        //
+        // This test used to run X, Y, X, Z, X and claim the same property. It does not
+        // hold there: when the loop reaches Z the entry before it in `surviving` is
+        // already X under either rule, so Y's fate never enters the comparison. Verified
+        // by mutation — the old fixture passed with surviving[i-1] substituted, this one
+        // does not. TwoExcursionsOffTheSameTaxiwayBothGoInOnePass still covers X,Y,X,Z,X
+        // for the single-pass property, which is what that shape does pin.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnMain(60), OnMain(65),
+            OnSpur(5), OnSpur(6),
+            OnOther(1), OnOther(2), OnOther(3),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "Z" }, result.Taxiways);
+        Assert.Equal(1, result.ExcursionRunCount);
+        Assert.Equal(new[] { "Y" }, result.ExcursionTaxiways);
+        Assert.Equal(5, result.PreExcursionTaxiwayCount);
+    }
+
+    [Fact]
+    public void AStubDroppedBetweenTwoPassesOfOneTaxiwayIsNotCountedAsAnExcursion()
+    {
+        // The stub filter runs first and can leave two same-named runs adjacent. That is
+        // one leg, not an excursion — DroppedRunCount already accounts for the stub.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(1, result.DroppedRunCount);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void ThePreExcursionCountReportsTheTrackBeforeExcursionsWereRemoved()
+    {
+        // X, Y, X collapses to a single applied leg, but the track as published was three.
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(3), JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, result.Taxiways);
+        Assert.Equal(3, result.PreExcursionTaxiwayCount);
+    }
+
+    [Fact]
+    public void ThePreExcursionCountEqualsTheAppliedCountWhenNothingWasRemoved()
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(5), JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(3, result.PreExcursionTaxiwayCount);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+
+    // --- The sandwich has to be CONTIGUOUS in the published track --------------------
+
+    [Fact]
+    public void AnExcursionReachedAcrossLostPointsIsNotASandwich()
+    {
+        // X, [off-graph], Y, [off-graph], X. The track never read X -> Y -> X: two runs
+        // of points beyond every taxiway sit between them, so nothing says the aircraft
+        // went straight from X onto Y and straight back. Y is a leg it really flew.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OffGraph(0),
+            OnSpur(1), OnSpur(2),
+            OffGraph(9),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+        Assert.Equal(2, result.UnsnappedCount);
+    }
+
+    [Fact]
+    public void AnExcursionSeparatedFromItsAnchorByADroppedStubIsNotASandwich()
+    {
+        // X, Y, Z(1 point), X. This is the TWO-SPUR shape, not the sandwich one: the
+        // track left X, touched two different taxiways and came back. That Z was short
+        // enough for the stub filter to remove must not turn it into a sandwich —
+        // AShortRunBetweenTwoDIFFERENTTaxiwaysIsNotAnExcursion pins the same shape when
+        // Z is long enough to survive, and the two must agree.
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnOther(1),
+            OnMain(80), OnMain(90), OnMain(95),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "X", "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+        Assert.Equal(1, result.DroppedRunCount);
+    }
+
+
+    // --- What the filter removed has to be recoverable from the log -------------------
+
+    [Fact]
+    public void TheNamesDroppedAsExcursionsAreReported()
+    {
+        // A count alone cannot say WHICH leg went, and the count is not even a leg
+        // delta: removing the filling also merges the two anchors, so
+        // Taxiways.Count + ExcursionRunCount does not add back up to the published
+        // length. The names are the only thing that can settle "was the cleared
+        // taxiway the one deleted?" from sayintentions.log.
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(3), JunctionEdges);
+
+        Assert.Equal(new[] { "Y" }, result.ExcursionTaxiways);
+    }
+
+    [Fact]
+    public void EveryDroppedExcursionIsNamedInOrder()
+    {
+        var path = new[]
+        {
+            OnMain(10), OnMain(20), OnMain(30),
+            OnSpur(1), OnSpur(2),
+            OnMain(60), OnMain(65), OnMain(68),
+            OnOther(1), OnOther(2),
+            OnMain(90), OnMain(95), OnMain(98),
+        };
+
+        var result = SayIntentionsTaxiPathSnapper.Snap(path, JunctionEdges);
+
+        Assert.Equal(new[] { "Y", "Z" }, result.ExcursionTaxiways);
+        Assert.Equal(2, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void NothingIsNamedWhenNoExcursionWasRemoved()
+    {
+        var result = SayIntentionsTaxiPathSnapper.Snap(MainSpurMain(5), JunctionEdges);
+
+        Assert.Empty(result.ExcursionTaxiways);
+    }
+
+
+    // --- KNOWN LIMITATION: the trim can take the sandwich's leading anchor -------------
+
+    [Fact]
+    public void AnExcursionWhoseLeadingAnchorTheTrimRemovedIsNotRecognised()
+    {
+        // Pins CURRENT behaviour, not desired behaviour. TrimToPointsAhead runs BEFORE
+        // Snap and cuts at the published point nearest the aircraft. An excursion sits
+        // inside SnapToleranceMetres of the taxiway being travelled by definition, so an
+        // aircraft standing at the junction - which is where a pilot presses Ctrl+Shift+Y
+        // after a hold-short crossing - makes the trim remove the leading X. With nothing
+        // before it the spur cannot be a sandwich, and it becomes the route's FIRST leg:
+        // the one the summary speaks and the one guidance steers at.
+        //
+        // Not introduced by the excursion pass - the same list came out before it existed
+        // - but the pass does not cover it, and nothing else composed the two. Recorded in
+        // docs/sayintentions.md. If a future change fixes it, this test SHOULD fail.
+        var wholeTrack = MainSpurMain(3);
+        var aircraft = OnSpur(1);
+
+        var ahead = SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+            wholeTrack, aircraft.Latitude, aircraft.Longitude);
+        var result = SayIntentionsTaxiPathSnapper.Snap(ahead, JunctionEdges);
+
+        Assert.Equal(new[] { "Y", "X" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+
+        // Standing one sample earlier, the anchor survives the trim and the pass works.
+        var earlier = OnMain(20);
+        var aheadEarlier = SayIntentionsTaxiPathSnapper.TrimToPointsAhead(
+            wholeTrack, earlier.Latitude, earlier.Longitude);
+        var fromEarlier = SayIntentionsTaxiPathSnapper.Snap(aheadEarlier, JunctionEdges);
+
+        Assert.Equal(new[] { "X" }, fromEarlier.Taxiways);
+        Assert.Equal(1, fromEarlier.ExcursionRunCount);
+    }
+
+    // --- The published heading decides a crossing taxiway that is genuinely nearer ------
+    //
+    // This is the artifact at its SOURCE. At a junction the crossing pavement is not merely
+    // a near tie - it is closer than the taxiway being travelled (KDEN: P7's centreline
+    // stops 21.13 m short of P and wins on 148 of 154 sampled offsets), so no ambiguity
+    // margin can catch it. What separates them is direction: the aircraft is travelling
+    // along the main taxiway, and SayIntentions publishes that heading for every point.
+    //
+    // Geometry: "M" runs north at lon 8.0000; "C" crosses it east-west at lat 50.0050. The
+    // clipped points sit 14.3 m east of M and within 11.1 m of C, so C wins on distance
+    // every time. Sample spacing is denser than SayIntentions' real ~28 m because the band
+    // where C is nearer is only ~29 m wide; the test is about stage 1's CHOICE, not spacing.
+
+    private static readonly NamedEdge EdgeCrossMain = new("M", 50.0000, 8.0000, 50.0100, 8.0000);
+    private static readonly NamedEdge EdgeCrossing = new("C", 50.0050, 7.9990, 50.0050, 8.0010);
+    private static readonly NamedEdge[] CrossingEdges = { EdgeCrossMain, EdgeCrossing };
+
+    /// <summary>A point on M, travelling north.</summary>
+    private static GeoPoint NorthOnMain(double lat) => new(lat, 8.0000, 0.0);
+
+    /// <summary>A point 14.3 m east of M and nearer the crossing C, still travelling north.</summary>
+    private static GeoPoint NorthNearCrossing(double lat) => new(lat, 8.0002, 0.0);
+
+    private static GeoPoint[] AcrossTheJunction(Func<double, GeoPoint> clipped) => new[]
+    {
+        NorthOnMain(50.0020), NorthOnMain(50.0030), NorthOnMain(50.0040),
+        clipped(50.00490), clipped(50.00495), clipped(50.00500),
+        clipped(50.00505), clipped(50.00510),
+        NorthOnMain(50.0060), NorthOnMain(50.0070), NorthOnMain(50.0080),
+    };
+
+    [Fact]
+    public void ACrossingTaxiwayThatIsNearerLosesToTheDirectionOfTravel()
+    {
+        // Five clipped points - past MaxExcursionRunPoints, so the sandwich filter cannot
+        // mask this. Without the heading the route names a taxiway the aircraft crossed.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(NorthNearCrossing), CrossingEdges);
+
+        Assert.Equal(new[] { "M" }, result.Taxiways);
+        Assert.Equal(0, result.ExcursionRunCount);
+    }
+
+    [Fact]
+    public void WithNoPublishedHeadingTheNearestEdgeStillWins()
+    {
+        // Degrade to exactly today's behaviour when SayIntentions published no heading.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(lat => new GeoPoint(lat, 8.0002)), CrossingEdges);
+
+        Assert.Equal(new[] { "M", "C", "M" }, result.Taxiways);
+    }
+
+    [Fact]
+    public void AHeadingNoEdgeAgreesWithFallsBackToTheNearestEdge()
+    {
+        // The safety property: the fallback is what stops this rejecting real legs. Measured
+        // on the KDTW capture, 10 of 124 points have a winner ~90 deg off the published
+        // heading and are on legs that belong to the route - they must keep today's answer.
+        var result = SayIntentionsTaxiPathSnapper.Snap(
+            AcrossTheJunction(lat => new GeoPoint(lat, 8.0002, 45.0)), CrossingEdges);
+
+        Assert.Equal(new[] { "M", "C", "M" }, result.Taxiways);
     }
 
     // ---- TrimToPointsAhead: the published track is not always what is LEFT of the route ----
@@ -437,9 +864,19 @@ public class SayIntentionsTaxiPathSnapperTests
         foreach (var entry in doc.RootElement.GetProperty("taxi_path").EnumerateArray())
         {
             var point = entry.GetProperty("point");
+            // The heading is read here for the same reason production reads it: without
+            // it these captures would exercise the snapper's no-heading fallback rather
+            // than the path a real import takes. Both fixtures carry one for every point
+            // (LSZH 40, KDTW 124), and the sequences they pin are unchanged by it - which
+            // is exactly the property the bearing preference has to hold.
+            double? heading = entry.TryGetProperty("heading", out var h)
+                && h.ValueKind == JsonValueKind.Number
+                    ? h.GetDouble()
+                    : null;
             points.Add(new GeoPoint(
                 point.GetProperty("lat").GetDouble(),
-                point.GetProperty("lon").GetDouble()));
+                point.GetProperty("lon").GetDouble(),
+                heading));
         }
         return points;
     }

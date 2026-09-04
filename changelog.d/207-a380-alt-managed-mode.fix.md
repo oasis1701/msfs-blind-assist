@@ -1,0 +1,1 @@
+A380: the FCU altitude mode is reported correctly again. Pushing or pulling the altitude knob announces "Altitude Mode: Managed" or "Selected", and Shift+A now tells you which one you are in — a recent FlyByWire development build had left all of them permanently saying "Selected".

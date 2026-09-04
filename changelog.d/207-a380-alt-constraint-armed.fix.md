@@ -1,0 +1,1 @@
+A380: an armed altitude is now announced as "Altitude constraint armed" or "Cruise altitude armed" when that is what the flight guidance has armed. The A380 PFD marks a constraint only by colouring the ALT indication magenta, so this was previously invisible.

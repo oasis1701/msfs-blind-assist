@@ -8,6 +8,25 @@
     <PlatformTarget>x64</PlatformTarget>
     <UseWindowsForms>true</UseWindowsForms>
 
+    <!-- RID-specific build. Without a RuntimeIdentifier this is a PORTABLE build, and the
+         SDK copies EVERY platform's native assets out of each package into runtimes\ —
+         SQLitePCLRaw alone ships e_sqlite3 precompiled for all 32 RIDs .NET supports, so a
+         Windows-only WinForms app shipped ~67 MB of Android/iOS/Linux/wasm SQLite binaries
+         the host can never load. Pinning the RID moves asset selection from run time to
+         restore time: only win-x64 is resolved, and it lands flattened beside the exe.
+
+         AppendRuntimeIdentifierToOutputPath=false is REQUIRED, not cosmetic. A RID normally
+         redirects output into a win-x64 SUBFOLDER (the trap CLAUDE.md documents) — which is
+         NOT the folder the app runs from, NOT the folder release.yml zips, and NOT the folder
+         the PostBuild xcopy steps target, so the build would "succeed" while shipping a stale
+         or half-populated tree. This pins output back to bin\x64\<cfg>\net10.0-windows\.
+
+         SelfContained=false keeps this framework-dependent: a self-contained build would
+         bundle the whole .NET runtime and undo the saving several times over. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <SelfContained>false</SelfContained>
+
     <!-- Assembly Information -->
     <AssemblyName>MSFSBlindAssist</AssemblyName>
     <RootNamespace>MSFSBlindAssist</RootNamespace>

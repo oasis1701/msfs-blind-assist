@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using MSFSBlindAssist.Patching;
 using MSFSBlindAssist.Utils;
 using MSFSBlindAssist.Utils.Logging;
@@ -39,6 +39,16 @@ static class Program
                 int removedLegacyBridges = LegacyEfbBridgeCleanup.RemoveRetiredBridges();
                 if (removedLegacyBridges > 0)
                     Startup.Info($"Removed retired accessibility bridge package(s) from {removedLegacyBridges} Community folder(s)");
+
+                // One-time, best-effort removal of the FOREIGN-PLATFORM native assets that older,
+                // PORTABLE builds left under runtimes/ beside the exe (~67 MB of Android/iOS/Linux/
+                // wasm SQLite binaries this app can never load). The updater is a pure overlay --
+                // it never deletes what the new zip omits -- so an in-place upgrade would keep the
+                // whole stale tree forever. Sweeping here also covers a hand-extracted upgrade.
+                // Guarded to a RID-pinned build; a no-op on a portable one. Never throws.
+                int removedRuntimeDirs = StaleRuntimesCleanup.RemoveForeignRuntimeAssets();
+                if (removedRuntimeDirs > 0)
+                    Startup.Info($"Removed {removedRuntimeDirs} stale runtime asset folder(s) left by an older build");
 
                 // Phase 1: Perform runtime requirements check
                 Startup.Info("Starting runtime requirements check...");

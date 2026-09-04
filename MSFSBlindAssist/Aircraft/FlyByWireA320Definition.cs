@@ -981,10 +981,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Anti Ice Panel. The old XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED vars are
         // model-only press-animation flags that do NOT actuate the systems (same finding
         // as the A380 #56 work). The real controls (live-verified on the A32NX):
-        //   - WING anti-ice (CORRECTED 2026-07, mirrors the A380 fix): the combo writes
-        //     A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
+        //   - WING anti-ice (CORRECTED 2026-07 on this airframe's OWN evidence): the combo
+        //     writes A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
         //     writes (FBW_Airbus_AntiIce_Wing LEFT_SINGLE_CODE) and the ONLY input the
-        //     Rust pneumatic system reads (WingAntiIcePushButton::read). The old target,
+        //     Rust pneumatic system reads (WingAntiIcePushButton::read).
+        //     ⚠️ This does NOT mirror the A380, and the two must never be harmonised: the
+        //     A380X ships a DIFFERENT body for the identically named template, firing the
+        //     stock (>K:TOGGLE_STRUCTURAL_DEICE) and reading A:STRUCTURAL DEICE SWITCH. The
+        //     A380 change this comment once cited as its twin was itself the bug, reverted
+        //     2026-09-03; the evidence below is this airframe's own and stands. The old
+        //     target,
         //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED, is a Rust per-frame OUTPUT
         //     (WingAntiIceComplex::write) — live-verified: writing 1 reverts to 0 within
         //     2 s at ANY phase (the old "holds in flight" note was a mis-test), so the
@@ -2909,6 +2915,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FMGC_1_DISCRETE_WORD_4", DisplayName = "Autoland capability",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true, Units = "number"
+        },
+        // ---- FMA: is the armed ALT an FMS altitude CONSTRAINT? ----
+        // The A32NX FMGC encodes alt_cstr_applicable as the SSM of the constraint VALUE word
+        // (FmgcComputer.cpp:4898 — Normal Operation when a constraint applies, No Computed Data
+        // when none does), so these are read for their VALIDITY, never their number. Both
+        // FMGCs, because the armed bitmask MSFSBA receives follows fmgcPriorityIndex and a
+        // FMGC-1-only read would go quiet whenever FMGC 2 held priority. Continuous so the
+        // qualifier is current the moment the armed bitmask moves; silent and Ctrl+M-hidden
+        // because neither word is an armed state — ProcessSimVarUpdate caches and returns true.
+        ["FMGC_1_ALT_CONSTRAINT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_1_FM_ALTITUDE_CONSTRAINT", DisplayName = "FMGC 1 altitude constraint",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true, Units = "number"
+        },
+        ["FMGC_2_ALT_CONSTRAINT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_FM_ALTITUDE_CONSTRAINT", DisplayName = "FMGC 2 altitude constraint",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true, Units = "number"
         },
         // ---- ND: GS / TAS / wind (ADIRS ARINC429 BNR words) ----
         ["A32NX_ADIRS_IR_1_GROUND_SPEED"] = new SimConnect.SimVarDefinition
@@ -6319,8 +6345,122 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // to mode names so arming a mode speaks "Altitude armed" / "NAV armed" instead of
     // the old raw bitmask number. Matches the A380.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
+
+    // Is an FMS altitude constraint in force, per FMGC 1 / FMGC 2? Cached from the two
+    // FM_ALTITUDE_CONSTRAINT words' SSMs. Not an armed state on its own — it only decides
+    // WHICH NAME the armed ALT bit is announced under.
+    private bool _altConstraintFmgc1, _altConstraintFmgc2;
+
+    // Held armed-ALT announcement — same rationale as the A380's, except the qualifier here is
+    // the two FMGC constraint words, which sort a few slots AFTER A32NX_FMA_VERTICAL_ARMED in the
+    // same continuous batch. The hold is released by that batch's delivery; no timer.
+    private bool _altArmHoldPending;
+
+    /// <summary>
+    /// <see cref="_vertArmedBits"/> with the ALT entry named for the constraint currently in
+    /// force — "Altitude constraint" or plain "Altitude". The A32NX FMA has no ALT CRZ branch,
+    /// so the cruise flavour is never offered here (it is A380-only).
+    /// </summary>
+    private (int bit, string name)[] VerticalArmedBits() =>
+        ArmedAltitudeMode.NameAltArmedBit(
+            _vertArmedBits, _altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false);
+
+    /// <summary>
+    /// The armed-ALT call-out is named by the SSM of the two FMGC constraint words, which sort a
+    /// few slots after the armed bitmask in the SAME continuous batch — so the hold is released
+    /// at the end of that same batch message, with no delay at all.
+    ///
+    /// FMGC_2 and not FMGC_1: the two are OR'd, so both must be current, and FMGC_2 sorts LAST
+    /// (<c>A32NX_FMGC_1_...</c> before <c>A32NX_FMGC_2_...</c>). Waiting on the later of the two
+    /// is correct whether they share a batch (they do today) or ever straddle the 300-var
+    /// boundary.
+    /// </summary>
+    public override string? DeferredFlushWatchVariable =>
+        _altArmHoldPending ? "FMGC_2_ALT_CONSTRAINT" : null;
+
+    /// <summary>
+    /// Speak the held armed-ALT call-out, named for the constraint as it now stands.
+    ///
+    /// ⚠️ The Ctrl+M mute is checked HERE, unlike the inline armed branch below, which relies on
+    /// MainForm wrapping <c>announcer.Suppressed</c> around ProcessSimVarUpdate. This runs
+    /// OUTSIDE that wrap, so without this check a muted "Altitude armed" would still be spoken.
+    /// </summary>
+    public override void OnDeferredFlushBatchDelivered(ScreenReaderAnnouncer announcer)
+    {
+        bool muted = Settings.SettingsManager.Current
+            .A32NXDisabledMonitorVariablesSet.Contains(ArmedAltitudeMode.ArmedVerticalKey);
+        bool speak = ArmedAltitudeMode.ShouldSpeakHeldAlt(_altArmHoldPending, muted, _prevVertArmed);
+        _altArmHoldPending = false;
+        if (!speak) return;
+
+        announcer.Announce(
+            $"{ArmedAltitudeMode.Name(_altConstraintFmgc1 || _altConstraintFmgc2, altIsCruiseAltitude: false)} armed");
+    }
+
+    /// <inheritdoc />
+    public override void CancelDeferredFlush() => _altArmHoldPending = false;
+
+    public override void ResetAnnouncementBaselines()
+    {
+        _prevVertArmed = -1;
+        _prevLatArmed = -1;
+        _altConstraintFmgc1 = false;
+        _altConstraintFmgc2 = false;
+        CancelDeferredFlush();
+        // Speed-brake handle band (A32NX_SPOILERS_HANDLE_POSITION): gate is < 0.
+        _lastSpoilerBand = -1;
+        // Autoland capability (PFD_AUTOLAND): gate is _lastAutolandCap != null.
+        _lastAutolandCap = null;
+        // COM active/standby (COM_ACTIVE_FREQUENCY:n/COM_STANDBY_FREQUENCY:n) and the
+        // COM transmit-selector rising edge (COM_TRANSMIT:n) — both keyed dictionaries
+        // gate on "key absent" via TryGetValue. _comTxOn isn't on the explicit list but
+        // is the same tracker group (declared on the line right after _lastComKhz, same
+        // "COM radio auto-announce state" comment block, identical TryGetValue shape) —
+        // included for the same reason _lastComKhz is.
+        _lastComKhz.Clear();
+        _comTxOn.Clear();
+        // EFIS baro dedup set (A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_HPA / _BARO /
+        // _DISPLAY_BARO_VALUE_MODE, read by AnnounceBaroIfChanged): _baroMode/_baroModeR
+        // gate their own "mode not seeded yet" check (< 0); _baroHpa/_baroHpaR and
+        // _baroInUnitL/_baroInUnitR jointly gate the "no value yet" check (both <= 0);
+        // _lastBaroPhraseL/_lastBaroPhraseR are the phrase-level "first is silent" dedup
+        // (null check).
+        _baroMode = -1;
+        _baroModeR = -1;
+        _baroHpa = -1;
+        _baroHpaR = -1;
+        _baroInUnitL = -1;
+        _baroInUnitR = -1;
+        _lastBaroPhraseL = null;
+        _lastBaroPhraseR = null;
+        // Flight phase (A32NX_FMGC_FLIGHT_PHASE), the A320 counterpart to the A380's
+        // _lastFlightPhaseA380: "" never equals a real phase name, so a stale non-empty
+        // value carried over from flight 1 can suppress flight 2's own first announce of
+        // that same phase name. Also backs the public CurrentFlightPhase property
+        // MainForm reads for the window title — reset to the declared default only.
+        currentFlightPhase = "";
+        // Deliberately NOT reset: _lastBaroMin/_lastDh (minimums) — same reasoning as the
+        // A380, though the sentinel differs: A320 declares both = -1, the SAME value
+        // ApproachMinimums.ToFeet uses for "no minimum set" (unlike the A380, which keeps
+        // an impossible -2 never-read sentinel distinct from its own -1 "none" reading).
+        // Either way, the gate is a plain "did the decoded value change" compare with no
+        // first-read suppression, so a genuinely-set minimum is meant to (re-)announce on
+        // connect; resetting the cache here would make an UNCHANGED minimum look changed
+        // and re-announce it as noise on reconnect.
+    }
+    // ⚠️ There is NO bit 2 here, and that is not an omission to "fix". FBW's shim builds
+    // A32NX_FMA_VERTICAL_ARMED as `altArmed | (clbArmed << 2) | (desArmed << 3) |
+    // (gsArmed << 4) | (finalArmed << 5) | (tcasArmed << 6)` — bit 1 is skipped because the
+    // FMGC has no "ALT CST armed" signal to put there (base_fmgc_armed_modes carries
+    // alt_acq_armed / alt_acq_arm_possible and no constraint member). The constraint RENAMES
+    // the ALT bit instead, via VerticalArmedBits/ArmedAltitudeMode.
+    //
+    // Bit 64 (TCAS) is KEPT even though it cannot fire today: the A32NX shim hardcodes
+    // `bool tcasArmed = false;` where its siblings read a bit, which reads as not-yet-wired
+    // rather than not-modelled, so the entry costs nothing and starts working if FBW wires it.
+    // That is the opposite call from bit 2, where the signal is structurally absent.
     private static readonly (int bit, string name)[] _vertArmedBits =
-        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+        { (1, "Altitude"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
     // DecodeArmedModes moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
 
@@ -7262,7 +7402,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (varKey == "A32NX_FMA_VERTICAL_ARMED" || varKey == "A32NX_FMA_LATERAL_ARMED")
         {
             int iv = (int)Math.Round(value);
-            string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? _vertArmedBits : _latArmedBits);
+            // Same live table the call-out uses, so the row and the speech agree about whether
+            // the armed ALT is an FMS altitude constraint — EXCEPT inside the hold window. The
+            // call-out is deliberately deferred until the constraint words' batch lands (see
+            // DeferredFlushWatchVariable), while this row renders from whatever is cached at
+            // repaint time. Both settle on the same answer once the batch arrives.
+            string modes = DecodeArmedModes(iv, varKey == "A32NX_FMA_VERTICAL_ARMED" ? VerticalArmedBits() : _latArmedBits);
             displayText = string.IsNullOrEmpty(modes) ? "None" : modes;
             return true;
         }
@@ -7436,9 +7581,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
     /// <summary>
     /// Aircraft-swap cleanup hook (named for symmetry with the A380 def, which also
-    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer and
-    /// disposes any hotkey windows this def created, so a discarded instance can't
-    /// keep UI-thread timers or windows alive against the new aircraft.
+    /// halts seat-motor timers here). Stops + disposes the TCAS RA compose timer, drops any
+    /// held armed-ALT call-out, and disposes any hotkey windows this def created, so a
+    /// discarded instance can't keep UI-thread timers or windows alive against the new
+    /// aircraft. Each teardown gets its OWN try/catch: sharing one would let a throw in
+    /// the first silently skip the rest, which is the exact leak they exist to prevent.
     /// </summary>
     public void StopAllMotion()
     {
@@ -7450,6 +7597,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             _tcasRaAnnouncer = null;
         }
         catch { }
+        // Held armed-ALT announcement: a discarded def instance must not speak a call-out it was
+        // holding at the NEW aircraft. (No timer to dispose — the hold is consumed by the
+        // continuous-batch stream, not by a clock.)
+        try { CancelDeferredFlush(); } catch { }
         try { DisposeTrackedWindows(); } catch { }
     }
 
@@ -7761,20 +7912,42 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // FMGC altitude-constraint words — cached, never spoken. Read for their SSM only: the
+        // FMGC sets Normal Operation exactly when alt_cstr_applicable is true and No Computed
+        // Data otherwise (FmgcComputer.cpp:4898), so validity IS the constraint flag and the
+        // number is irrelevant. A constraint existing is not an arming, so returning true here
+        // is what stops this word announcing anything on its own.
+        if (varName == "FMGC_1_ALT_CONSTRAINT" || varName == "FMGC_2_ALT_CONSTRAINT")
+        {
+            bool applies = ArmedAltitudeMode.ConstraintApplicableFromConstraintWord(value);
+            if (varName == "FMGC_1_ALT_CONSTRAINT") _altConstraintFmgc1 = applies;
+            else _altConstraintFmgc2 = applies;
+            // No flush here. This branch runs only when a word CHANGED, so it cannot tell a held
+            // call-out that an UNCHANGED constraint word has arrived and is current. The hold is
+            // released by the BATCH carrying these words instead; see DeferredFlushWatchVariable.
+            return true;
+        }
+
         // FMA armed modes — decode the bitmask and announce NEWLY-armed modes on change
         // (suppresses the old raw "Armed Vertical Mode 1" generic announce).
-        if (varName == "A32NX_FMA_VERTICAL_ARMED" || varName == "A32NX_FMA_LATERAL_ARMED")
+        if (varName == ArmedAltitudeMode.ArmedVerticalKey || varName == "A32NX_FMA_LATERAL_ARMED")
         {
-            bool vert = varName == "A32NX_FMA_VERTICAL_ARMED";
+            bool vert = varName == ArmedAltitudeMode.ArmedVerticalKey;
             int iv = (int)Math.Round(value);
             int prev = vert ? _prevVertArmed : _prevLatArmed;
             if (vert) _prevVertArmed = iv; else _prevLatArmed = iv;
             if (prev >= 0 && (iv & ~prev) != 0)
             {
-                string nm = DecodeArmedModes(iv & ~prev, vert ? _vertArmedBits : _latArmedBits);
-                if (!string.IsNullOrEmpty(nm))
-                    foreach (var one in nm.Split(new[] { ", " }, StringSplitOptions.None))
-                        announcer.Announce($"{one} armed");
+                int newly = iv & ~prev;
+                // Lateral modes have no qualifier and are never held.
+                int immediate = vert ? ArmedAltitudeMode.ImmediateArmedBits(newly) : newly;
+                foreach (var one in DecodeArmedModeNames(immediate, vert ? VerticalArmedBits() : _latArmedBits))
+                    announcer.Announce($"{one} armed");
+
+                // ALT is held until its constraint qualifier has settled — released by the
+                // batch that carries it (DeferredFlushWatchVariable), not by a clock.
+                if (vert && ArmedAltitudeMode.ShouldHoldAltAnnouncement(newly))
+                    _altArmHoldPending = true;
             }
             return true;
         }

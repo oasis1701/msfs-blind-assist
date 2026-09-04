@@ -53,6 +53,14 @@ public partial class FlyByWireA380Definition
         // ND_FILTER_{side} combo has no backing L:var and never reports anything.
         if (varKey == "A32NX_FCU_EFIS_L_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterL); return true; }
         if (varKey == "A32NX_FCU_EFIS_R_WPT_LIGHT_ON") { displayText = NdFilterSelection.Text(_ndFilterR); return true; }
+        // FCU altitude mode. Derived, never read (see AltitudeManagedState) — the raw value on
+        // this row is the dead L:var and is ignored. "--" while the two inputs have not both
+        // reported, rather than a confident "Selected" that may be wrong.
+        if (varKey == "A32NX_FCU_ALT_MANAGED")
+        {
+            displayText = _altMode.IsKnown ? AltitudeManagedState.Text(_altMode.IsManaged) : "--";
+            return true;
+        }
         if (varKey == "WIPER_L_SW") { displayText = WiperPosition.Text(_wiperStateL); return true; }
         if (varKey == "WIPER_R_SW") { displayText = WiperPosition.Text(_wiperStateR); return true; }
         // Icing conditions: the ice-accretion "stick" is a 0..1 ratio. Render a clean
@@ -287,7 +295,14 @@ public partial class FlyByWireA380Definition
             }
             case "A32NX_FMA_VERTICAL_ARMED":
             {
-                string s = DecodeArmedModes((int)Math.Round(value), _vertArmedBits);
+                // Same live table the call-out uses, so the row and the speech agree about
+                // whether the armed ALT is a constraint or the cruise altitude — EXCEPT inside
+                // the hold window. The call-out is deliberately deferred until the qualifier's
+                // batch lands (see DeferredFlushWatchVariable), while this row renders from
+                // whatever is cached at repaint time, so a repaint during the hold can show the
+                // previous sample's flavour. Both settle on the same answer once the batch
+                // arrives; the row is not the thing that must be right first, the speech is.
+                string s = DecodeArmedModes((int)Math.Round(value), VerticalArmedBits());
                 displayText = string.IsNullOrEmpty(s) ? "None" : s;
                 return true;
             }

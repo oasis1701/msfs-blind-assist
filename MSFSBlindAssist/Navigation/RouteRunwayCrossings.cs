@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Navigation;
@@ -51,6 +51,63 @@ public static class RouteRunwayCrossings
     /// scenery) — every designator compare in this codebase must go through
     /// this so "9" and "09" can never silently fail to match.
     /// </summary>
+    /// <summary>
+    /// Whether a centerline is the pavement named by <paramref name="designator"/> — matched
+    /// on EITHER of its reciprocal designators through <see cref="NormalizeDesignator"/>, so
+    /// 26R and 08L are one runway and "8L" and "08L" are one spelling.
+    ///
+    /// <para>THE by-designator comparison for centerlines. It exists because three sites grew
+    /// their own — a raw <c>Equals</c> with no trim, a <c>Trim</c> with no zero-folding, and
+    /// this normalized form — so a designator-format drift one site tolerated another silently
+    /// rejected, invisibly until a particular airport's naming triggered it. Add a caller
+    /// here rather than a fourth spelling elsewhere.</para>
+    /// </summary>
+    public static bool CenterlineHasDesignator(TaxiGraph.RunwayCenterline centerline, string? designator)
+    {
+        if (string.IsNullOrWhiteSpace(designator)) return false;
+        string want = NormalizeDesignator(designator);
+        return string.Equals(NormalizeDesignator(centerline.Name1 ?? ""), want, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(NormalizeDesignator(centerline.Name2 ?? ""), want, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The centerline for <paramref name="designator"/>, or null when the graph does not
+    /// carry it. Matched by <see cref="CenterlineHasDesignator"/>.
+    /// </summary>
+    public static TaxiGraph.RunwayCenterline? FindCenterlineForDesignator(
+        IReadOnlyList<TaxiGraph.RunwayCenterline>? centerlines, string? designator)
+    {
+        if (centerlines is null || string.IsNullOrWhiteSpace(designator)) return null;
+        foreach (var c in centerlines)
+            if (CenterlineHasDesignator(c, designator))
+                return c;
+        return null;
+    }
+
+    /// <summary>
+    /// Drops the spoken "Runway " prefix a destination label carries ("Runway 33L" → "33L"),
+    /// leaving a bare designator that <see cref="NormalizeDesignator"/> and the crossing
+    /// comparisons can use. A label with no prefix is returned trimmed.
+    ///
+    /// <para>ONE owner: the same three-line idiom is spelled out at nine other sites
+    /// (TaxiGraph.FindCenterlineByName, TaxiGuidanceManager.RouteEndIsRunwayHold, and the
+    /// Substring(7) copies in TaxiGuidanceManager / Rollout / TaxiAssistForm). This is the
+    /// seam they should adopt — a change to the destination-label format then lands once.</para>
+    /// </summary>
+    public static string StripRunwayPrefix(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "";
+        // Trim BEFORE testing the prefix, not only after. Every copy of this idiom tested the
+        // untrimmed string, so a label carrying a leading space came back with "Runway " still
+        // attached — which then fails every designator comparison downstream. No current caller
+        // passes one, so this changes nothing today and closes the trap for the sites that
+        // adopt this helper later.
+        string trimmed = name.Trim();
+        return trimmed.StartsWith("Runway ", StringComparison.OrdinalIgnoreCase)
+            ? trimmed.Substring("Runway ".Length).Trim()
+            : trimmed;
+    }
+
     public static string NormalizeDesignator(string designator)
     {
         if (string.IsNullOrWhiteSpace(designator)) return designator ?? "";
@@ -107,18 +164,45 @@ public static class RouteRunwayCrossings
     ///    summary announces crossings of a runway the route never crosses and
     ///    the tactical callout names the wrong pavement.
     /// </summary>
-    public static string? ComposeCrossingLabel(string? existingLabel, string crossedRwy)
+    /// <param name="preferredDesignator">The designator this crossing should be ANNOUNCED
+    /// under, when that is not the one geometry reported — i.e. the destination runway, on a
+    /// route that crosses its own strip. TaxiGraph.Build names a hold node after whichever
+    /// runway END is nearer it, so on the destination strip the DB label routinely carries
+    /// the reciprocal; without this the "already names this pavement" rule below kept it and
+    /// the pilot heard "hold short of runway 22R" while taxiing to 04L. The rewrite swaps
+    /// only the designator TOKEN, so the hold point and the label's shape survive (both
+    /// "runway 22R at D5" and "D5, Runway 22R" are Build outputs). Null/empty = no
+    /// preference, and then every rule below behaves exactly as it always has.</param>
+    public static string? ComposeCrossingLabel(
+        string? existingLabel, string crossedRwy, string? preferredDesignator = null)
     {
-        if (string.IsNullOrEmpty(existingLabel)) return $"runway {crossedRwy}";
+        string announceAs = string.IsNullOrWhiteSpace(preferredDesignator)
+            ? crossedRwy : preferredDesignator.Trim();
+
+        if (string.IsNullOrEmpty(existingLabel)) return $"runway {announceAs}";
+        // User intent always wins, on the destination's own strip as everywhere else.
         if (existingLabel.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase))
             return null;
         string? named = ExtractRunwayDesignator(existingLabel);
-        if (named == null) return $"runway {crossedRwy} at {existingLabel}";
+        if (named == null) return $"runway {announceAs} at {existingLabel}";
+
+        string want = NormalizeDesignator(announceAs);
+        // Already announced under the designator we want (padding aside) — nothing to do.
+        if (named.Equals(want, StringComparison.OrdinalIgnoreCase)) return null;
+
         string cross = NormalizeDesignator(crossedRwy);
         if (named.Equals(cross, StringComparison.OrdinalIgnoreCase) ||
             named.Equals(Reciprocal(cross), StringComparison.OrdinalIgnoreCase))
-            return null;
-        return $"runway {crossedRwy}";
+        {
+            // Names THIS pavement, but not under the designator the pilot chose. With no
+            // preference that is the scenery's own correct name and it is kept; with one,
+            // swap just the designator token so the hold point rides along.
+            if (string.IsNullOrWhiteSpace(preferredDesignator)) return null;
+            return RunwayToken.Replace(
+                existingLabel,
+                m => m.Value.Replace(m.Groups[1].Value, announceAs), 1);
+        }
+        return $"runway {announceAs}";
     }
 
     /// <summary>
@@ -212,6 +296,23 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// Whether <see cref="Describe"/>'s <c>excludeLastSegment</c> should be set for this route.
+    ///
+    /// <para>For a RUNWAY destination <c>TruncateToHoldShort</c> tags the final segment purely
+    /// as the countdown rail for the destination's own hold-short — it is not an ATC crossing,
+    /// and describing it as one tells the pilot they cross the runway they are taxiing to. A
+    /// GATE route never runs that pass, so a hold-short on its final segment IS a real crossing
+    /// and must be described.</para>
+    ///
+    /// <para>ONE owner, because two callers describe a route — <c>LoadRoute</c>'s spoken summary
+    /// and the recalculation's "Route changed" callout — and a rule spelled out separately in
+    /// each is a rule that can drift.</para>
+    /// </summary>
+    public static bool ShouldExcludeFinalHold(
+        IReadOnlyList<TaxiRouteSegment> segments, bool isRunwayDestination)
+        => isRunwayDestination && segments is { Count: > 0 } && segments[^1].IsHoldShortPoint;
+
+    /// <summary>
     /// Scans the hold-short-tagged segments and splits them into runway crossings
     /// (composed into a spoken clause) and plain hold-short points (returned as a
     /// count for the existing "N hold short points" wording).
@@ -301,5 +402,128 @@ public static class RouteRunwayCrossings
             : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
         string noun = order.Count == 1 ? "runway" : "runways";
         return ($"crossing {noun} {joined}", nonRunway);
+    }
+
+    /// <summary>
+    /// Names the runway a taxi edge (a→b) crosses, or "" when it crosses none. The real
+    /// implementation needs the graph's runway centrelines, so it is injected — that is what
+    /// keeps <see cref="InsertCrossingHoldShorts"/> pure and testable.
+    /// </summary>
+    public delegate string EdgeRunwayProbe(double aLat, double aLon, double bLat, double bLon);
+
+    /// <summary>
+    /// Whether the aircraft has already rolled PAST a candidate hold segment's stop point.
+    /// Injected for the same reason as <see cref="EdgeRunwayProbe"/> — the real test needs the
+    /// live aircraft position, and keeping it out here leaves this pass pure and testable.
+    ///
+    /// <para>Null means "nothing is behind the aircraft", the correct reading for any caller
+    /// that has no position to offer.</para>
+    /// </summary>
+    public delegate bool HoldPointPassed(TaxiRouteSegment holdSegment);
+
+    /// <summary>
+    /// Scans the route for segments whose edge crosses a runway centreline and tags the hold
+    /// segment before each crossing, returning the runways crossed in route order.
+    ///
+    /// <para>FAA AIM 4-3-18 and ICAO Doc 4444: an aircraft must hold short of every runway it
+    /// crosses, with explicit ATC clearance for each — controllers issue crossings one at a
+    /// time. Without this pass a route taxis straight across an active runway with no pause.</para>
+    ///
+    /// <para>The destination runway is handled in two ways, and both halves are load-bearing:
+    /// only the route's own ARRIVAL at it is skipped (the final segment, which
+    /// <c>TruncateToHoldShort</c> already truncated to and tagged), because the crossing is
+    /// named after whichever runway END is nearer the crossing point and a blanket
+    /// name-equality skip dropped genuine mid-route crossings of the active runway; and a
+    /// crossing of that strip is ANNOUNCED under the designator the pilot selected, not the
+    /// reciprocal the geometry reported.</para>
+    ///
+    /// <para>REPORTING a crossing and PLACING its hold are separate decisions, and the split is
+    /// load-bearing. A crossing is ALWAYS reported — it reaches the pilot through the route
+    /// summary and the "Route changed" callout, and it is the crosses= log line. A hold is only
+    /// placed when there is a stop point the aircraft has not already passed. Two cases have
+    /// none: a crossing on the route's FIRST segment (nothing earlier to hold on —
+    /// <see cref="ResolveCrossingHoldSegment"/> would fall back to the crossing segment itself,
+    /// whose end node is the FAR side of the runway), and a hold point already BEHIND the
+    /// aircraft (<paramref name="holdPointPassed"/>). Tagging either one commands a stop ON the
+    /// pavement; dropping the report as well would have been the worse half to lose, because an
+    /// empty result is indistinguishable from a route that genuinely crosses nothing.</para>
+    ///
+    /// <para>Pure (segments + delegates in, names out) so the composition is unit-testable;
+    /// it was previously private on the manager and reachable only with a live graph.</para>
+    /// </summary>
+    /// <param name="holdPointPassed">Optional: true when the aircraft has already rolled past a
+    /// candidate hold segment's stop point. Null (a route adopted from a standstill, and every
+    /// unit test that does not exercise the rule) means nothing is behind.</param>
+    public static IReadOnlyList<string> InsertCrossingHoldShorts(
+        IReadOnlyList<TaxiRouteSegment> segments,
+        string destinationName,
+        EdgeRunwayProbe probe,
+        Func<string, string, bool> designatorsMatch,
+        HoldPointPassed? holdPointPassed = null)
+    {
+        // A null delegate FAILS LOUDLY. This pass is the FAA AIM 4-3-18 / ICAO Doc 4444
+        // hold-short before every crossed runway, and its empty result is indistinguishable
+        // from a route that genuinely crosses nothing — so degrading a wiring error into "no
+        // crossings found" would present it as a safe route. `designatorsMatch` in particular
+        // is only dereferenced when the destination is non-empty, so without this guard a null
+        // could sit unnoticed through every gate-destination route and surface only on a
+        // runway one.
+        //
+        // The `segments` check below stays LENIENT, and that asymmetry is contract
+        // preservation rather than a considered safety distinction: a null route is the same
+        // class of wiring error, but returning empty for it is the behaviour this method
+        // shipped with and a test pins it. Do not read it as "a null route is fine".
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(designatorsMatch);
+
+        var crossed = new List<string>();
+        if (segments == null || segments.Count == 0) return crossed;
+
+        // Tracks the runway most recently REPORTED, so we don't re-report (or re-tag) every
+        // consecutive segment that is on the same runway pavement. It follows the report and
+        // not the tag on purpose: a crossing whose hold could not be placed still consumes its
+        // runway here, so the segment after it cannot plant a hold mid-pavement instead.
+        string lastReportedRunway = "";
+
+        // The destination arrives prefixed ("Runway 33L"); the crossed runway is a bare
+        // designator ("33L"). Normalise so the exclusion below actually matches.
+        string destBare = StripRunwayPrefix(destinationName);
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            var crossingSeg = segments[i];
+            if (crossingSeg.FromNode == null || crossingSeg.ToNode == null) continue;
+
+            string crossedRwy = probe(
+                crossingSeg.FromNode.Latitude, crossingSeg.FromNode.Longitude,
+                crossingSeg.ToNode.Latitude, crossingSeg.ToNode.Longitude);
+            if (string.IsNullOrEmpty(crossedRwy)) continue;
+
+            bool sameStripAsDestination = !string.IsNullOrEmpty(destBare) &&
+                designatorsMatch(crossedRwy, destBare);
+            if (sameStripAsDestination && i >= segments.Count - 1)
+                continue;
+            string? preferredRwy = sameStripAsDestination ? destBare : null;
+
+            if (crossedRwy.Equals(lastReportedRunway, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // A crossing on segment 0 has no earlier segment to hold on; ResolveCrossingHoldSegment
+            // would clamp to the crossing segment itself, whose end node is the far side of the
+            // runway. Report it, place nothing.
+            int holdIdx = i >= 1 ? ResolveCrossingHoldSegment(segments, i, crossedRwy) : -1;
+            if (holdIdx >= 0 && !(holdPointPassed?.Invoke(segments[holdIdx]) ?? false))
+            {
+                var holdSeg = segments[holdIdx];
+                holdSeg.IsHoldShortPoint = true;
+                string? newLabel = ComposeCrossingLabel(holdSeg.HoldShortRunway, crossedRwy, preferredRwy);
+                if (newLabel != null)
+                    holdSeg.HoldShortRunway = newLabel;
+            }
+            lastReportedRunway = crossedRwy;
+            crossed.Add(crossedRwy);
+        }
+
+        return crossed;
     }
 }

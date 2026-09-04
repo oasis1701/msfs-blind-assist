@@ -208,12 +208,25 @@ public static class GsxGateSelectAnnouncer
     private static string GateName(GsxGateSelectResult result, string fallback) =>
         result.ResolvedGate?.UiName is { Length: > 0 } name ? name.Trim() : fallback;
 
-    /// <summary>The identifier that was actually SENT, or <paramref name="fallback"/> when
-    /// nothing was sent (a locally-decided result) or a caller built the result without one.
-    /// Used where GSX echoed no stand of its own — naming the pilot's own pick is still far
-    /// better than a bare "the stand", and it is the same string their dropdown showed.</summary>
-    private static string Requested(GsxGateSelectResult result, string fallback) =>
-        string.IsNullOrWhiteSpace(result.RequestedIdentifier) ? fallback : result.RequestedIdentifier.Trim();
+    /// <summary>
+    /// The stand the pilot picked, named the way THEY know it, or <paramref name="fallback"/>
+    /// when nothing was sent (a locally-decided result) or a caller built the result without
+    /// either field.
+    /// <para>
+    /// <see cref="GsxGateSelectResult.RequestedLabel"/> first — the dropdown's own label —
+    /// because <see cref="GsxGateSelectResult.RequestedIdentifier"/> is the WIRE value, and
+    /// since <c>GsxGateSelectPlan</c> that is usually a bare stand number: <i>"Careful: you
+    /// selected 5, but GSX prepared …"</i> names something the pilot never saw and cannot act
+    /// on. The identifier remains the fallback because a result built anywhere other than
+    /// <see cref="GsxRemoteGateSelector"/> carries no label, and naming the identifier is
+    /// still far better than a bare "the stand".
+    /// </para>
+    /// </summary>
+    private static string Requested(GsxGateSelectResult result, string fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(result.RequestedLabel)) return result.RequestedLabel.Trim();
+        return string.IsNullOrWhiteSpace(result.RequestedIdentifier) ? fallback : result.RequestedIdentifier.Trim();
+    }
 
     /// <summary>Names up to <see cref="MaxAmbiguousNames"/> candidates, then a residual
     /// count, so the phrase stays a sentence instead of a recital of the whole match list —

@@ -483,23 +483,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        // Wing anti-ice (CORRECTED 2026-07 — back the combo on the var the REAL cockpit
-        // button writes). The A380 overhead WING anti-ice PB (FBW_Airbus_AntiIce_Wing
-        // template) toggles A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; the PB light reads
-        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED. The previous combo drove the stock
-        // STRUCTURAL DEICE SWITCH, which the cockpit button does NOT touch — so MSFSBA's
-        // combo diverged from the actual switch. Backing it on the button-position L:var
-        // (live-verified settable + held) keeps the two in sync and drives the real input.
-        // ⚠️ FBW-BUILD LIMITATION: the A380 wing anti-ice PNEUMATIC is not modelled yet —
-        // live-verified that setting the button (or SELECTED, or the stock switch, or the
-        // PB_IS_ON) at cruise with TAT -15 C leaves _SYSTEM_ON at 0 (no valve/flow), and
-        // the a380_systems Rust has no wing-anti-ice pneumatic. So the SWITCH is faithful
-        // and future-proof, but the flow won't engage until FBW implements it — the
-        // read-only "Wing Anti-Ice Flowing" status (_SYSTEM_ON) correctly reports that.
+        // Wing anti-ice — the STOCK switch A380_Cockpit_Behavior.xml's PUSH_OVHD_ANTIICE_WING
+        // node drives, NOT the A32NX's A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION: the two
+        // packages ship DIFFERENT bodies for the same FBW_Airbus_AntiIce_Wing template name,
+        // and a 2026-07 change that assumed otherwise left the control dead in icing.
+        // Backed on the stock SimVar so the combo shows the real switch (the ELEC_ENG_GEN
+        // toggle precedent — not ELEC_APU_GEN, which is an absolute SET and reads no live
+        // state); the write fires the stock toggle from HandleUIVariableSet.
+        // ⚠️ SEPARATE and unfixed: the A380 wing anti-ice PNEUMATIC is not modelled, so
+        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON stays 0 with the real switch ON — the read-only
+        // "Wing Anti-Ice Flowing" status reports that honestly, and it is NOT the bug above.
+        // → docs/a380x.md, "Wing anti-ice is the STOCK switch", for the measurements.
         vars["WING_ANTI_ICE_OVHD"] = new SimVarDefinition
         {
-            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", DisplayName = "Wing Anti-Ice",
-            Type = SimVarType.LVar,
+            Name = "STRUCTURAL DEICE SWITCH", DisplayName = "Wing Anti-Ice",
+            Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = onOff
         };
@@ -899,9 +897,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // The old per-key button panel was impractical (one digit at a time) and has been removed.
 
         // ---- INTERIOR LIGHTING ----
-        Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
-            new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
-        Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
+        // ANN LT — the overhead annunciator-light switch (cockpit node SWITCH_OVHD_INTLT_ANNLT),
+        // Test / Bright / Dim. A32NX_OVHD_INTLT_ANN is the INPUT; A380_Cockpit_Behavior.xml's
+        // VARIABLE_MAPPING block copies it to A380X_OVHD_INTLT_ANN at 18 Hz for the button
+        // emissives, so never write that mirror.
+        //
+        // ⚠️ A second combo, "Annunciator Lights" on A380X_OVHD_ANN_LT_POSITION, used to sit
+        // beside this one and was a PHANTOM: FBW lists that name in a380-simvars.md but nothing
+        // in the aircraft reads or writes it (checked case-insensitively across the installed
+        // package). MSFSBA's own write CREATED it, so it read back whatever was last set and
+        // looked like it worked — two entries for one switch, one of them inert. Removed
+        // 2026-09-03; this one inherits the cockpit's own label. Do not re-add a control for a
+        // name found only in FBW's simvar docs without checking the aircraft actually uses it.
+        Sel("A32NX_OVHD_INTLT_ANN", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
         // Cockpit lighting preset load / save (the only cockpit-side light control on this
         // build — the individual dome/flood knobs are not modelled as L:vars; lighting is
@@ -1128,9 +1136,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // CORRECTED 2026-06: the control + state var the A380 instruments (PFD/ND/FCU)
         // actually read is A32NX_PUSH_TRUE_REF, NOT A32NX_FMGC_TRUE_REF (what MSFSBA used
         // before). Live-verified: writing FMGC_TRUE_REF=1 left PUSH_TRUE_REF (the consumed
-        // var) at 0 and changed nothing; writing PUSH_TRUE_REF=1 latched and is what the
-        // displays read. FMGC_TRUE_REF is an FMGC-internal output, not the pilot control.
-        Sel("A32NX_PUSH_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
+        // var) at 0 and changed nothing. FMGC_TRUE_REF is an FMGC-internal output, not the
+        // pilot control.
+        //
+        // ⚠️ A duplicate Sel() for A32NX_PUSH_TRUE_REF used to sit here. `Read()` does
+        // `vars[key] = …`, so the later ReadEnum registration below silently replaced it and
+        // this one had no effect at all — the "never register the same var KEY twice" trap.
+        // Removed with no behaviour change; the surviving registration is the ReadEnum in the
+        // instrument block, and the control IS settable (see A380EfisCpControls).
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1287,7 +1300,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "True airspeed", "knots");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
-        // ND heading reference (magnetic vs true) — auto-announced on change.
+        // ND heading reference (magnetic vs true) — auto-announced on change. This is the
+        // ONLY registration for the key (a duplicate Sel() in the source-switching block was
+        // removed); it is settable despite the ReadEnum name, via the FCU's
+        // A32NX.FCU_TRUE_TOGGLE_PUSH — see A380EfisCpControls.
         ReadEnum("A32NX_PUSH_TRUE_REF", "Heading reference",
             new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
         // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
@@ -2015,21 +2031,41 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Mon("A32NX_FCU_HDG_MANAGED_DASHES", "Heading Mode", managedSel);
         Mon("A32NX_FCU_SPD_MANAGED_DOT", "Speed Mode", managedSel);
         Mon("A32NX_FCU_VS_MANAGED", "Vertical Speed Mode", managedSel);
-        Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", managedSel);
+        // ⚠️ ALTITUDE is the ONE of the four that is DERIVED, not read: FBW #10855 hardcoded
+        // L:A32NX_FCU_ALT_MANAGED to 0 in the WASM, so reading it can only ever say "Selected".
+        // The key is KEPT — pointing at its own dead L:var — purely to carry the pilot's Ctrl+M
+        // mute row and the FCU panel row; its VALUE is never used. The derivation reads
+        // A32NX_FMA_VERTICAL_MODE under its own key instead (see ProcessSimVarUpdate), because
+        // that key is BATCH-covered and a batched var cannot lose its stream: RequestVariable
+        // early-returns for batch-covered vars before issuing the PERIOD.ONCE that would replace
+        // a standing PERIOD.SECOND subscription. Aliasing this key onto that Name instead put the
+        // only input on an individual def, where one panel-open force-read killed the feature for
+        // the session. ValueDescriptions is empty because the row renders from
+        // TryGetDisplayOverride, not from a 0/1 flag.
+        Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", new Dictionary<double, string>());
         // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
-        // Keep an individual data def for the four managed-status legs the OUTPUT-mode FCU
-        // readouts (Shift+H/S/A/V) force-read via RequestVariable(forceUpdate). That call
-        // NO-OPS for batch-covered vars (the SimConnect-ceiling strengthening skips their
-        // individual def), so without this the managed leg never arrives, the value+managed
-        // pair-gate in ProcessSimVarUpdate never closes, and the readout is SILENT. Mirrors
-        // the A320 fix (FlyByWireA320Definition's *_MANAGED vars). 4 extra defs, well within
-        // the A380's data-def headroom. (A32NX_FCU_VS_MANAGED is not force-read by any readout
-        // — VS keys on TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
+        // readouts (Shift+H/S/V) force-read via RequestVariable(forceUpdate). This is no longer
+        // load-bearing the way it once looked: 929be066 fixed RequestVariable(forceUpdate) to
+        // also re-fire an unchanged batch-covered var (DataRequests.cs/VarCache.cs), so dropping
+        // ExcludeFromBatch here would NOT silence Shift+H/S/V. What it costs is latency, not
+        // silence: with ExcludeFromBatch, the forced re-read gets an immediate PERIOD.ONCE reply;
+        // without it, the value+managed pair-gate in ProcessSimVarUpdate would only close on the
+        // next 1 Hz continuous-batch delivery. Mirrors the A320 fix (FlyByWireA320Definition's
+        // *_MANAGED vars). 3 extra defs, well within the A380's data-def headroom.
+        // (A32NX_FCU_VS_MANAGED is not force-read by any readout — VS keys on
+        // TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
+        //
+        // A32NX_FCU_ALT_MANAGED is deliberately NOT in this list and must never be added back:
+        // FBW #10855 hardcoded its underlying L:var to 0, so no read path — forced or batched —
+        // can ever recover it. Altitude's managed/selected state is derived instead, off the
+        // batch-covered A32NX_FMA_VERTICAL_MODE (see the ⚠️ comment on the A32NX_FCU_ALT_MANAGED
+        // Mon() registration above and docs/a380x.md, "The FCU ALTITUDE managed/selected state is
+        // DERIVED, not read").
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
-        vars["A32NX_FCU_ALT_MANAGED"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
@@ -2115,10 +2151,16 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // Cruise-altitude mode moved into PRIM FG discrete word 3 bit 29 ("altIsCrzAlt",
         // what the PFD's own ALT CRZ / ALT CRZ* FMA message derives from) with FBW #10855;
         // the old A32NX_FMA_CRUISE_ALT_MODE is gone. Decoded in TryGetDisplayOverride.
+        // Continuous, but SILENT and Ctrl+M-hidden: the word also carries bit 28
+        // (alt_cstr_applicable), which names the armed ALT call-out — see ArmedAltitudeMode —
+        // so it has to be live rather than read-on-panel-open. ProcessSimVarUpdate caches both
+        // bits and returns true; nothing about this word is ever spoken on its own, because
+        // neither bit is an armed state (bit 28 was measured TRUE at FL360 with nothing armed).
         vars["FMA_CRUISE_ALT_MODE"] = new SimVarDefinition
         {
             Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_3", DisplayName = "Cruise Altitude Mode",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true, ExcludeFromMonitorManager = true
         };
         Read("A32NX_PFD_LINEAR_DEVIATION_ACTIVE", "Vertical Deviation");
         // FMS vertical-profile target altitude at the current position — the basis for
@@ -2788,10 +2830,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        // EFIS OANS range (airport map zoom).
+        // EFIS OANS range (airport map zoom). 5 = "not zoomed" is a READBACK, not a selection
+        // (leaving the zoom means picking an NM range on the ND RANGE knob) — but it MUST be in
+        // the value list, because it is what the var holds for most of a flight: MainForm only
+        // falls back to item 0 when the key has no value AT ALL, so an undescribed live value
+        // leaves the combo with SelectedIndex -1, and one arrow key on an unselected combo then
+        // commits "Max" and really does fire RANGE_SET 0, yanking the ND to 0.2 NM. It also
+        // stops the generic announcer speaking a bare "Capt OANS Range: 5.0". Picking it is
+        // refused out loud — see A380EfisCpControls.NotZoomedUnsupportedMessage.
         foreach (var side in new[] { "L", "R" })
             Sel($"A32NX_EFIS_{side}_OANS_RANGE", $"{(side == "L" ? "Capt" : "F/O")} OANS Range",
-                new Dictionary<double, string> { [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min" });
+                new Dictionary<double, string>
+                {
+                    [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min",
+                    [A380EfisCpControls.OansNotZoomed] = "Not zoomed"
+                });
 
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
@@ -3021,6 +3074,13 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private System.Windows.Forms.Timer? _tcasRaComposeTimer;
     private ScreenReaderAnnouncer? _tcasRaAnnouncer;
 
+    // Held armed-ALT announcement. The ALT entry's qualifier (PRIM FG discrete word 3 bits 28/29)
+    // is delivered in continuous batch 2 while A32NX_FMA_VERTICAL_ARMED rides batch 1 — a separate
+    // SimConnect message — so naming ALT inline reads the previous sample's qualifier. The
+    // call-out is held until batch 2 has been delivered, at which point the qualifier is current
+    // for this sample whether or not it moved; see DeferredFlushWatchVariable below. There is no
+    // timer and no wall clock: the batch stream is the clock.
+    private bool _altArmHoldPending;
 
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
@@ -3054,6 +3114,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // arming a mode speaks "Altitude armed" / "NAV armed" — matching the A32NX (and
     // decoding it, vs the A32NX's old raw-number announce). Bits per the FBW a32nx-api.
     private int _prevVertArmed = -1, _prevLatArmed = -1;
+
+    // PRIM FG discrete word 3 qualifiers, cached from FMA_CRUISE_ALT_MODE. Neither is an armed
+    // state: they only decide WHICH NAME the armed ALT bit is announced under.
+    private bool _fgAltConstraintApplicable, _fgAltIsCruiseAltitude;
+
+    /// <summary>
+    /// <see cref="_vertArmedBits"/> with the ALT entry named for the qualifiers currently in
+    /// force — "Altitude constraint" / "Cruise altitude" / "Altitude". Built per call rather
+    /// than cached: it is only ever wanted on an armed-mode change or a panel repaint, and a
+    /// stale copy would announce the wrong flavour.
+    /// </summary>
+    private (int bit, string name)[] VerticalArmedBits() =>
+        ArmedAltitudeMode.NameAltArmedBit(_vertArmedBits, _fgAltConstraintApplicable, _fgAltIsCruiseAltitude);
+
+    // Derived FCU ALTITUDE managed/selected state. AltitudeManagedState owns the rule,
+    // AltitudeModeTracker owns the sequencing (baseline, readiness, autoland, reconnect reset).
+    private readonly AltitudeModeTracker _altMode = new();
     private string _lastFlightPhaseA380 = "";
     // ND TO-waypoint ident: packed 6 bits/char, 8 chars/word (low bits first),
     // char = code + 31. Cached from ProcessSimVarUpdate; decoded in TryGetDisplayOverride.
@@ -3131,8 +3208,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private readonly Dictionary<string, bool> _doorOpen = new();
     private int _presetBucket = -1;   // last-announced preset-load progress 10%-bucket (-1 = idle)
     private bool _betaTargetActive;   // A32NX_BETA_TARGET_ACTIVE, cached for the beta-target decode
+    // ⚠️ There is NO bit 2 here. FBW's shim builds A32NX_FMA_VERTICAL_ARMED as
+    // `altArmed | (clbArmed << 2) | (desArmed << 3) | (gsArmed << 4) | (finalArmed << 5) |
+    // (tcasArmed << 6)` — bit 1 is skipped because the A380 PRIM FG has no "ALT CST armed"
+    // signal to put there. The old (2, "Altitude constraint") entry could therefore never fire.
+    // The constraint now RENAMES the ALT bit instead, via VerticalArmedBits/ArmedAltitudeMode.
+    // (Bit 17 of FG word 2, op_clb_armed, is dropped by that same shim and has no slot in this
+    // bitmask at all — an unfixable gap on this side, recorded in docs/a380x.md.)
     private static readonly (int bit, string name)[] _vertArmedBits =
-        { (1, "Altitude"), (2, "Altitude constraint"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
+        { (1, "Altitude"), (4, "Climb"), (8, "Descent"), (16, "Glideslope"), (32, "Final"), (64, "TCAS") };
     private static readonly (int bit, string name)[] _latArmedBits = { (1, "NAV"), (2, "Localizer") };
 
 
@@ -3182,7 +3266,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // vars). Set dialogs send A32NX.FCU_*_SET; reads request value + managed
     // and announce via the pairing in ProcessSimVarUpdate.
     // ===================================================================
-    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pAltVal, _pAltMgd, _pVsVal, _pFpaVal, _pVsMode;
+    private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)

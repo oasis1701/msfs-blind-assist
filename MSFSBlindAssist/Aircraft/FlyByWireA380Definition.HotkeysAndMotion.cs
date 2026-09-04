@@ -243,9 +243,16 @@ public partial class FlyByWireA380Definition
     public void RequestFCUAltitudeWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
-        _reqAlt = true; _pAltVal = _pAltMgd = null;
+        // Only the VALUE is requested. The managed/selected word comes from the derived
+        // AltitudeModeTracker at emit time, not from A32NX_FCU_ALT_MANAGED itself — that key
+        // points at FBW #10855's dead L:var (hardcoded to 0) and its value is never read, so
+        // there is nothing worth requesting there.
+        // Unlike HDG/SPD/VS above/below, there is no _pAlt* pending-value field to reset here:
+        // those three genuinely await a SECOND sim delivery to pair up, but altitude's other half
+        // is read straight off the derived tracker at emit time (see the FCU_ALT_VALUE branch in
+        // .SimVarUpdate.cs) — _reqAlt alone is enough. Don't add one back for symmetry.
+        _reqAlt = true;
         s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
-        s.RequestVariable("A32NX_FCU_ALT_MANAGED", forceUpdate: true);
     }
 
     public void RequestFCUVSWithStatus(SimConnectManager s)
@@ -345,7 +352,10 @@ public partial class FlyByWireA380Definition
         // value we just set (no racy cache re-read) plus the cached managed dot — mirroring the
         // "FCU altitude 36000, managed/selected" Fenix announces. The window's SelectAll
         // separately gives NVDA's "36000 selected" field echo.
-        string altStatus = (s.GetCachedVariableValue("A32NX_FCU_ALT_MANAGED") ?? 0) > 0.5 ? "managed" : "selected";
+        // ⚠️ The managed word comes from the DERIVED state (AltitudeModeTracker), never from a
+        // direct read of A32NX_FCU_ALT_MANAGED: that L:var has been hardcoded to 0 by the
+        // aircraft since FBW #10855, so a ">0.5" test on it would always read "selected".
+        string altStatus = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
         if (_metricAlt)
         {
             int m = (int)Math.Round(rounded * 0.3048);
@@ -486,6 +496,10 @@ public partial class FlyByWireA380Definition
             _tcasRaAnnouncer = null;
         }
         catch { }
+        // Held armed-ALT announcement: a discarded def instance must not speak a call-out it was
+        // holding at the NEW aircraft. (No timer to dispose — the hold is consumed by the
+        // continuous-batch stream, not by a clock.)
+        try { CancelDeferredFlush(); } catch { }
         // Hotkey windows created by this def (FCU/Baro/E/WD): dispose so they don't
         // survive the swap holding this def + the E/WD refresh timer.
         try { DisposeTrackedWindows(); } catch { }

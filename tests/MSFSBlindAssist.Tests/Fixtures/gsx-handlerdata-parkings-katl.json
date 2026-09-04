@@ -1,0 +1,121 @@
+{
+  "airport": {
+    "icao": "KATL",
+    "name": "Hartsfield-Jackson Atlanta Inte",
+    "parkings": [
+      {
+        "uiGateName": " Gate 22",
+        "uiName": "Concourse B (B1-B36) | Gate 22",
+        "uiNameWithParkingSystem": "Concourse B (B1-B36)   Gate 22",
+        "uiTerminalName": "Concourse B (B1-B36) ",
+        "uiType": "Gate Medium",
+        "lat": 33.6414139123041,
+        "lon": -84.4365326401123,
+        "heading": 90.0,
+        "maxWingspan": 46.0,
+        "parkingSystem": "Dummy",
+        "gateDistanceThreshold": 25.0,
+        "hasJetway": 1,
+        "airlineCodes": [
+          ""
+        ]
+      },
+      {
+        "uiGateName": " Gate 22",
+        "uiName": "Concourse C (C1-C55) | Gate 22",
+        "uiNameWithParkingSystem": "Concourse C (C1-C55)   Gate 22",
+        "uiTerminalName": "Concourse C (C1-C55) ",
+        "uiType": "Gate Medium",
+        "lat": 33.6405720170428,
+        "lon": -84.4332328625401,
+        "heading": 90.0,
+        "maxWingspan": 40.0,
+        "parkingSystem": "Dummy",
+        "gateDistanceThreshold": 25.0,
+        "hasJetway": 1,
+        "airlineCodes": [
+          ""
+        ]
+      },
+      {
+        "uiGateName": " Gate 5",
+        "uiName": "Concourse T (T1-T21) | Gate 5",
+        "uiNameWithParkingSystem": "Concourse T (T1-T21)   Gate 5",
+        "uiTerminalName": "Concourse T (T1-T21) ",
+        "uiType": "Gate Medium",
+        "lat": 33.6392361614374,
+        "lon": -84.4418906955654,
+        "heading": -90.0,
+        "maxWingspan": 46.0,
+        "parkingSystem": "Dummy",
+        "gateDistanceThreshold": 25.0,
+        "hasJetway": 1,
+        "airlineCodes": [
+          ""
+        ]
+      },
+      {
+        "uiGateName": " Gate 4",
+        "uiName": "Concourse T (T1-T21) | Gate 4",
+        "uiNameWithParkingSystem": "Concourse T (T1-T21)   Gate 4",
+        "uiTerminalName": "Concourse T (T1-T21) ",
+        "uiType": "Gate Medium",
+        "lat": 33.6388280261468,
+        "lon": -84.4418909586207,
+        "heading": -90.0,
+        "maxWingspan": 46.0,
+        "parkingSystem": "Dummy",
+        "gateDistanceThreshold": 25.0,
+        "hasJetway": 1,
+        "airlineCodes": [
+          ""
+        ]
+      },
+      {
+        "uiGateName": " Gate 5",
+        "uiName": "Delta Tech Ops (E1-21) | Gate 5",
+        "uiNameWithParkingSystem": "Delta Tech Ops (E1-21)   Gate 5",
+        "uiTerminalName": "Delta Tech Ops (E1-21) ",
+        "uiType": "Ramp Cargo",
+        "lat": 33.644404113292694,
+        "lon": -84.41340431571007,
+        "maxWingspan": 999.0,
+        "parkingSystem": "Marshaller",
+        "gateDistanceThreshold": 25.0
+      },
+      {
+        "uiGateName": "Ramp 1",
+        "uiNameWithParkingSystem": "None 1",
+        "uiTerminalName": "Ramp",
+        "uiType": "Ramp GA Large",
+        "lat": 33.65209937095642,
+        "lon": -84.42363739013672,
+        "maxWingspan": 999.0,
+        "parkingSystem": "Marshaller",
+        "gateDistanceThreshold": 25.0
+      },
+      {
+        "uiGateName": "Ramp 2",
+        "uiNameWithParkingSystem": "None 2",
+        "uiTerminalName": "Ramp",
+        "uiType": "Ramp GA Medium",
+        "lat": 33.65137953311205,
+        "lon": -84.42380279302597,
+        "maxWingspan": 999.0,
+        "parkingSystem": "Marshaller",
+        "gateDistanceThreshold": 25.0
+      },
+      {
+        "uiGateName": "Ramp 3",
+        "uiNameWithParkingSystem": "None 3",
+        "uiTerminalName": "Ramp",
+        "uiType": "Ramp GA Medium",
+        "lat": 33.65137953311205,
+        "lon": -84.42411482334137,
+        "maxWingspan": 999.0,
+        "parkingSystem": "Marshaller",
+        "gateDistanceThreshold": 25.0
+      }
+    ]
+  }
+}

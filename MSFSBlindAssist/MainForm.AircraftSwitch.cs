@@ -229,10 +229,21 @@ public partial class MainForm
             _routeAdvisoryProximity.Reset();
             _emptyRouteFeedTicks = 0;
             _turnaroundDetector.Reset();
+            // The aircraft definition's OWN baselines. MainForm's trackers above are reset for
+            // exactly this reason; the definition object also survives a reconnect, so its
+            // baseline-first announcers need the same treatment (A380 altitude mode, both
+            // airframes' armed-mode bitmasks).
+            currentAircraft?.ResetAnnouncementBaselines();
             weatherAnnouncementTimer?.Start();
         }
         else if (status.Contains("Disconnected"))
         {
+            // A disconnect voids any held call-out for the same reason it voids the pending
+            // timers below: the flush is fed by the continuous batch stream, which has just
+            // stopped, so nothing would consume the hold until the sim came back — and a
+            // "Altitude armed" arriving after "Disconnected" describes an aircraft that is gone.
+            currentAircraft?.CancelDeferredFlush();
+
             // Stop event batching timer and clear queue
             eventBatchTimer?.Stop();
 

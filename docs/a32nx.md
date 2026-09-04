@@ -7,7 +7,7 @@
 The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A380 (`FlyByWireA380Definition.cs`) — every A380 overhead/glareshield/pedestal/ground-services panel exists on the A320, with matching labels. Notes for future maintainers (all live-verified against the running A32NX via the SimConnect MCP calculator path):
 
 - **EFIS is split Captain / First Officer.** The ND mode + range CONTROL is the FCU knob `A32NX_FCU_EFIS_{L,R}_EFIS_MODE/RANGE` — it drives the computed `A32NX_EFIS_{L,R}_ND_MODE/RANGE` DISPLAY output. The bare `A32NX_EFIS_*_ND_*`, `_OPTION` (CSTR/WPT/VORD/NDB/ARPT filter) and `_NAVAID_*_MODE` vars are computed outputs that REVERT a calc-path write (verified) → they stay read-only. The LS button: dev FBW REMOVED `A32NX_EFIS_{L,R}_LS_BUTTON_IS_ON` (the old "directly settable" verdict was the dead-var write-stick trap) — control = the registered input event `A32NX.FCU_EFIS_{L,R}_LS_PUSH`, state = `A32NX_FCU_EFIS_{L,R}_LS_LIGHT_ON`.
-- **Anti-Ice:** the `XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED` vars are model press-animation flags that do NOT actuate (same as A380 #56). WING anti-ice = `A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED` (calc path; reverts on the on-ground inhibit, holds in flight — `_SYSTEM_ON` is the read-only flowing status). ENG 1/2 anti-ice = the stock K-event `ANTI_ICE_SET_ENGn` (state from `ENG ANTI ICE:n`), routed in HandleUIVariableSet.
+- **Anti-Ice:** the `XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED` vars are model press-animation flags that do NOT actuate (same as A380 #56). WING anti-ice = `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` (the var the cockpit PB writes and the only input `WingAntiIcePushButton::read` takes). ⚠️ **CORRECTED** — this line used to say `A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED` "holds in flight"; that was a mis-test, the var is a Rust per-frame OUTPUT and any write reverts within 2 s at any phase. `_SYSTEM_ON` is the read-only flowing status. The **A380 uses neither var** — it drives the stock `STRUCTURAL DEICE SWITCH`; never copy wing anti-ice wiring between the two airframes. ENG 1/2 anti-ice = the stock K-event `ANTI_ICE_SET_ENGn` (state from `ENG ANTI ICE:n`), routed in HandleUIVariableSet.
 - **Thrust Levers (settable detents)** ported from the A380 (2 engines): synthetic `THROTTLE_ALL_DETENT` + `THROTTLE_{1,2}_DETENT` combos → `THROTTLEn_AXIS_SET_EX1` with the FBW default-calibration axis values (idle `-0.44` verified to snap to the A320 idle dead-zone). The synthetic `_DETENT` keys are EXCLUDED from the GetVariables auto-announce loop (no real L:var to monitor — the loop guard checks `!key.EndsWith("_DETENT")`); the live angle reads from `A32NX_AUTOTHRUST_TLA:n`.
 - **Doors** = synthetic `A32NX_MSFSBA_DOOR_{0..5}` combos backed by `INTERACTIVE POINT OPEN:n` (the exit index maps 1:1 to the interactive point on the A32NX; 0-3 = passenger, 4-5 = cargo per `EXIT TYPE:n`), set toggles `TOGGLE_AIRCRAFT_EXIT:n`. The var is a 0..1 animation fraction → ProcessSimVarUpdate announces Open/Closed once per transition (>0.05) and TryGetDisplayOverride renders the state. **Ground Equipment** jetway/stairs are momentary Activate combos → stock `TOGGLE_JETWAY` / `TOGGLE_RAMPTRUCK` (the A320 has no clean state var like the A380's `A380X_GND_*`). The flyPad Ground page (Shift+T) stays the richer ground interface.
 - **Audio Control Panel: REMOVED (2026-06 dev-source audit).** The `A32NX_RMP_{L,R}_VHF{n}_VOLUME` L:vars do NOT exist in dev FBW — the physical ACP is unmodeled (tooltip-only dummies in the cockpit XML). The old 5-step volume combos were dead writes and were deleted. If volume control is ever wanted, the only functional mechanism is the stock sim (`COM1/2/3_VOLUME_SET` / `COM VOLUME:n`).
@@ -163,3 +163,87 @@ Verified NOT bugs on the A32NX (do not "fix"): **seat belts is genuinely 2-posit
 **The C/B TRIPPED ECAM messages ARE wired and DO get spoken — verified end to end (2026-08-16).** Gating found in `CircuitBreakerLogic.ts`: a monitored bit set **AND** FWC flight phase 1, 2 or 6 **AND** held for a **60-second** confirm node (`NXLogicConfirmNode(60, true)`) — so a trip is silent for a full minute before the caution appears; do not conclude "it doesn't work" after 15 s. Live test on the running build (`a32nx-v2024.2.0-dev.7dbada1`): setting `L:1:A32NX_CB_49VU_A_TRIPPED_0` bit 0, phase 1, produced the announcement in MSFSBA's own log — `New ECAM message detected for announcement: 'C/B TRIPPED ON OVHD PNL, Amber'`. Note the ECP breaker (49VU E12) is a poor test subject: pulling it unpowers the ECAM Control Panel itself, so pick another monitored bit in the same group.
 
 **Stray "m" in every grouped ECAM announcement — FIXED.** The live test above first came out as *"C/B **m** TRIPPED ON OVHD PNL"*. Cause: each grouped title is stored `"\x1b<4m\x1b4mC/B\x1bm TRIPPED…"`, and the closing `\x1bm` is ESC + a literal `'m'`; `CleanANSICodes`' control-character pass turned the ESC into a space and left the letter stranded as its own word, which the screen reader spoke. This affected **every** grouped message on the A320 table (`BRAKES m HOT`, `T.O m AUTO BRK`), not just the new ones. `CleanANSICodes` is now the same ESC-anchored single regex the A380 lookup has always used (`\x1b[<)\d]*m`, which covers the bare ESC+`m` reset) plus a `ƴm` alternate for this table's compile-time mojibake — C#'s greedy `\x` escape makes `"\x1b4m"` compile to `U+01B4 'ƴ' + 'm'`, which is also why four action lines briefly stored as `"\x1b5m"` (`308118602/3`, `308128002/3`) announced a stray `Ƶm` with no colour word until they were corrected to `"\x1b<5m"`. The old non-anchored digit pass that could eat real text like "75m" is gone with the consolidation. The characterization tests that pinned the old residue were updated deliberately — if one ever fails claiming a missing `m`, the fix has been reverted, not broken.
+
+### The armed ALT call-out names an FMS altitude constraint (2026-08-23)
+
+Ported from the A380 fix (see [a380x.md](a380x.md) for the full derivation). The two airframes
+agree on the SEMANTIC and differ only in how the aircraft carries the qualifier, so
+`ArmedAltitudeMode` is shared and each def supplies its own source.
+
+**⚠️ The A32NX is NOT a verbatim copy of the A380 here — do not port by assumption.** Three
+things differ, and each was checked against the source:
+
+| | A380 | A32NX |
+| --- | --- | --- |
+| armed bits come from | PRIM FG discrete word 2, bits 11/13/14/15/16/18 | FMGC A-bus discrete word 3, bits **12/22/23/24/25** |
+| constraint qualifier | FG word 3 **bit 28** (`alt_cstr_applicable`) | **the SSM** of `A32NX_FMGC_{1,2}_FM_ALTITUDE_CONSTRAINT` |
+| cruise-altitude flavour | FG word 3 bit 29 (`altIsCrzAlt`) | **none** — the A32NX FMA has no ALT CRZ branch |
+
+Only the final `verticalArmed = altArmed | (clbArmed << 2) | …` expression is byte-identical
+between the two WASM shims, which is exactly what makes "it's shared" a tempting and wrong
+conclusion.
+
+**The SSM *is* the flag, not a proxy for it.** `FmgcComputer.cpp:4898`:
+
+```cpp
+if (alt_cstr_applicable) fmgc_a_bus.fm_alt_constraint_ft.SSM = NormalOperation;
+else                     fmgc_a_bus.fm_alt_constraint_ft.SSM = NoComputedData;
+```
+
+so the word is read for its VALIDITY and its number is never used — which is also precisely what
+the A32NX PFD reads (`FMA.tsx`: `altAcqArmed && !clbArmed && altConstraint.isNormalOperation()`).
+`ConstraintApplicableFromConstraintWord` gates on Normal Operation **only** — the accessor its own
+PFD uses for a value word's validity, where the A380 reads a discrete bit and uses `bitValueOr`.
+Each mirrors its own aircraft; neither is stricter than the other, so do not "harmonize" them.
+
+**Both FMGCs are read, and the qualifier applies if either says so.** The armed bitmask MSFSBA
+receives follows `fmgcPriorityIndex`, so an FMGC-1-only read would go quiet whenever FMGC 2 held
+priority. In normal dual operation both compute the same constraint, so the OR changes nothing;
+under a single failure it keeps the call-out alive instead of silently degrading.
+
+**The PFD's extra `!clbArmed` term is deliberately NOT reproduced**, on either airframe. That
+term decides which single label to draw in one text slot, not whether the armed altitude is a
+constraint — the A380's own colour rule has no such term, and MSFSBA announces each newly-armed
+mode separately rather than only the top-priority one.
+
+**Bit 2 removed, bit 64 kept — and the difference is the point.** The old
+`(2, "Altitude constraint")` row could never fire: the shim skips bit 1 because
+`base_fmgc_armed_modes` has no constraint member at all (it carries `alt_acq_armed` /
+`alt_acq_arm_possible`, same as the A380's bus). That is structural, so the row is gone. Bit 64
+(TCAS) also cannot fire today — the A32NX shim hardcodes `bool tcasArmed = false;` where its
+siblings read a bit — but that reads as *not yet wired* rather than *not modelled*, so the entry
+stays and starts working the day FBW wires it.
+
+**⚠️ Source-verified, not sim-verified.** There was no A320 loaded when this was written. Every
+claim above is traced to the FBW tree; the live measurement behind the A380 half (bit 28 TRUE at
+FL360 with nothing armed) has no A32NX counterpart yet. (The dispatch-ordering measurement below
+is a separate matter — it is measured against MSFSBA's own registration, not the FBW source.)
+
+**The armed-ALT call-out is HELD until the qualifier settles, and the flush re-checks the Ctrl+M
+mute ITSELF.** `A32NX_FMA_VERTICAL_ARMED` sits at continuous-batch 1 index 164 while the two FMGC
+constraint words sit at 167/168 — three slots later in the SAME batch — so naming the ALT bit
+inline read the PREVIOUS sample's constraint. Only the ALT entry is held, and it is released by
+the DELIVERY of the batch carrying the constraint words, not by a timer and not by those words'
+own `ProcessSimVarUpdate` branches (which run only when a value CHANGED, and so cannot report an
+unchanged-but-now-current qualifier). Because that batch is the same one the arming bitmask rides,
+the flush lands at the tail of the same message — no delay at all on this airframe. The def names
+the word to wait on through `DeferredFlushWatchVariable`, and returns **FMGC_2**, not FMGC_1: the
+two are OR'd so both must be current, and `A32NX_FMGC_2_...` sorts after `A32NX_FMGC_1_...`, so
+waiting on the later of the two is correct whether they share a batch (they do today) or ever
+straddle the 300-var boundary. See [a380x.md](a380x.md) for the full derivation, the measured
+ordering on both airframes, why a wall-clock backstop was rejected, and the disproven
+`GetCachedVariableValue` approach that must not be re-attempted.
+
+The mute re-check is the one piece that is **A32NX-specific, and it is a trap for the next
+deferred announcement added to this def.** This aircraft is muted CENTRALLY: MainForm wraps
+`announcer.Suppressed` around the whole `ProcessSimVarUpdate` call, because vars like the A320's
+EFIS baro readouts (and the Headwind A330's stock-Kohlsman altimeter, which shares the wrap)
+announce from INSIDE it and return true — exiting before the generic
+`A32NXDisabledMonitorVariables` gate below, so a Ctrl+M un-tick never muted them. The
+`a32nxMuted` comment in `MainForm.Announcers.cs` is the authority.
+Anything delivered through a callback rather than through `ProcessSimVarUpdate` — a timer tick, or
+the `OnDeferredFlushBatchDelivered` batch hook — runs OUTSIDE that wrap and must consult
+`A32NXDisabledMonitorVariablesSet` for itself; this def's `OnDeferredFlushBatchDelivered` does,
+via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap: its armed branch
+checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
+it the same way.
