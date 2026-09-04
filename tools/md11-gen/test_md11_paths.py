@@ -226,6 +226,154 @@ class FindWasmTests(unittest.TestCase):
                              "TFDi_Design_MD-11", "panel", "md11host.wasm"),
             )
 
+    def test_returns_none_when_simobjects_exists_but_holds_no_wasm(self):
+        # The other missing-wasm test uses with_wasm=False, which creates no
+        # SimObjects directory at all, so it only exercises the early
+        # isdir() guard. This covers the second return-None path: the
+        # directory is there and the walk simply finds nothing.
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = make_package(tmp, with_wasm=False)
+            os.makedirs(os.path.join(pkg, "SimObjects", "Airplanes",
+                                     "TFDi_Design_MD-11", "panel"))
+            self.assertIsNone(md11_paths.find_wasm(pkg))
+
+
+class CandidateRootsTests(unittest.TestCase):
+    def _env(self, tmp):
+        appdata = os.path.join(tmp, "Roaming")
+        local = os.path.join(tmp, "Local")
+        os.makedirs(appdata, exist_ok=True)
+        os.makedirs(local, exist_ok=True)
+        return {"APPDATA": appdata, "LOCALAPPDATA": local}, appdata, local
+
+    def _usercfg(self, folder, target):
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "UserCfg.opt"), "w",
+                  encoding="utf-8") as fh:
+            fh.write('InstalledPackagesPath "%s"\n' % target)
+
+    def test_fs2024_roaming_usercfg_external_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            external = os.path.join(tmp, "MSFS2024 Community")
+            os.makedirs(external)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator 2024"),
+                external,
+            )
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2024, external), roots)
+
+    def test_fs2020_roaming_usercfg(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            external = os.path.join(tmp, "FS2020Packages")
+            os.makedirs(external)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator"), external
+            )
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2020, external), roots)
+
+    def test_fs2024_msstore_localcache_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, _appdata, local = self._env(tmp)
+            store = os.path.join(
+                local, "Packages", "Microsoft.Limitless_8wekyb3d8bbwe",
+                "LocalCache", "Packages",
+            )
+            os.makedirs(store)
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2024, store), roots)
+
+    def test_fs2020_msstore_localcache_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, _appdata, local = self._env(tmp)
+            store = os.path.join(
+                local, "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe",
+                "LocalCache", "Packages",
+            )
+            os.makedirs(store)
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2020, store), roots)
+
+    def test_fs2020_steam_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            steam = os.path.join(appdata, "Microsoft Flight Simulator",
+                                 "Packages")
+            os.makedirs(steam)
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2020, steam), roots)
+
+    def test_fs2024_steam_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            steam = os.path.join(appdata, "Microsoft Flight Simulator 2024",
+                                 "Packages")
+            os.makedirs(steam)
+            roots = md11_paths.candidate_roots(env)
+            self.assertIn((md11_paths.SIM_2024, steam), roots)
+
+    def test_nonexistent_installed_packages_path_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator 2024"),
+                "Z:\\gone",
+            )
+            roots = md11_paths.candidate_roots(env)
+            self.assertEqual(
+                [r for r in roots if r[1] == "Z:\\gone"], []
+            )
+
+    def test_nothing_installed_returns_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, _appdata, _local = self._env(tmp)
+            self.assertEqual(md11_paths.candidate_roots(env), [])
+
+    def test_fs2024_ordered_before_fs2020(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, _local = self._env(tmp)
+            r24 = os.path.join(tmp, "p24")
+            r20 = os.path.join(tmp, "p20")
+            os.makedirs(r24)
+            os.makedirs(r20)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator 2024"), r24
+            )
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator"), r20
+            )
+            roots = md11_paths.candidate_roots(env)
+            labels = [label for label, _ in roots]
+            self.assertLess(
+                labels.index(md11_paths.SIM_2024),
+                labels.index(md11_paths.SIM_2020),
+            )
+
+    def test_duplicate_roots_collapsed(self):
+        # Roaming UserCfg and the Store UserCfg can name the same folder.
+        with tempfile.TemporaryDirectory() as tmp:
+            env, appdata, local = self._env(tmp)
+            shared = os.path.join(tmp, "Shared")
+            os.makedirs(shared)
+            self._usercfg(
+                os.path.join(appdata, "Microsoft Flight Simulator 2024"),
+                shared,
+            )
+            self._usercfg(
+                os.path.join(local, "Packages",
+                             "Microsoft.Limitless_8wekyb3d8bbwe",
+                             "LocalCache"),
+                shared,
+            )
+            roots = md11_paths.candidate_roots(env)
+            self.assertEqual(
+                [r for r in roots if r[1] == shared],
+                [(md11_paths.SIM_2024, shared)],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

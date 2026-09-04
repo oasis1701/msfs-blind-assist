@@ -123,3 +123,100 @@ def find_wasm(package_dir: str) -> str | None:
     if not matches:
         return None
     return sorted(matches, key=lambda p: (len(p), p))[0]
+
+
+def _sim_root_sources(env: dict) -> list[tuple[str, str, bool]]:
+    """(sim_label, path, is_usercfg) for every place a sim keeps packages.
+
+    Mirrors the location knowledge in the app's own
+    EFBModPackageManager.FindAllCommunityFolders -- MS Store, Steam and
+    custom/external InstalledPackagesPath, both sims.
+    """
+    appdata = env.get("APPDATA") or ""
+    local = env.get("LOCALAPPDATA") or ""
+
+    def store_cache(pkg_name):
+        return os.path.join(local, "Packages", pkg_name, "LocalCache")
+
+    sources: list[tuple[str, str, bool]] = []
+
+    if appdata:
+        sources.append(
+            (SIM_2024,
+             os.path.join(appdata, "Microsoft Flight Simulator 2024",
+                          "UserCfg.opt"), True)
+        )
+    if local:
+        sources.append(
+            (SIM_2024,
+             os.path.join(store_cache("Microsoft.Limitless_8wekyb3d8bbwe"),
+                          "UserCfg.opt"), True)
+        )
+        sources.append(
+            (SIM_2024,
+             os.path.join(store_cache("Microsoft.Limitless_8wekyb3d8bbwe"),
+                          "Packages"), False)
+        )
+    if appdata:
+        # Steam FS2024 default.
+        sources.append(
+            (SIM_2024,
+             os.path.join(appdata, "Microsoft Flight Simulator 2024",
+                          "Packages"), False)
+        )
+        sources.append(
+            (SIM_2020,
+             os.path.join(appdata, "Microsoft Flight Simulator",
+                          "UserCfg.opt"), True)
+        )
+    if local:
+        sources.append(
+            (SIM_2020,
+             os.path.join(
+                 store_cache("Microsoft.FlightSimulator_8wekyb3d8bbwe"),
+                 "UserCfg.opt"), True)
+        )
+        sources.append(
+            (SIM_2020,
+             os.path.join(
+                 store_cache("Microsoft.FlightSimulator_8wekyb3d8bbwe"),
+                 "Packages"), False)
+        )
+    if appdata:
+        # Steam FS2020 default.
+        sources.append(
+            (SIM_2020,
+             os.path.join(appdata, "Microsoft Flight Simulator", "Packages"),
+             False)
+        )
+
+    return sources
+
+
+def candidate_roots(env: dict | None = None) -> list[tuple[str, str]]:
+    """Every (sim_label, packages_root) that exists on this machine.
+
+    FS2024 entries come first, then FS2020, so a two-sim prompt is stable.
+    De-duplicated on the resolved path, first label winning: two UserCfg.opt
+    files legitimately name the same folder.
+
+    `env` is injected so tests can point APPDATA/LOCALAPPDATA at a temp dir
+    and never read the real machine.
+    """
+    if env is None:
+        env = dict(os.environ)
+
+    roots: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    for sim_label, path, is_usercfg in _sim_root_sources(env):
+        root = parse_installed_packages_path(path) if is_usercfg else path
+        if not root or not os.path.isdir(root):
+            continue
+        key = os.path.normcase(os.path.abspath(root))
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append((sim_label, root))
+
+    return roots
