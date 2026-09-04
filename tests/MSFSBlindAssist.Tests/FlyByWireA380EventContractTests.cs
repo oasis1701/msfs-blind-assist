@@ -96,4 +96,94 @@ public class FlyByWireA380EventContractTests
     {
         Assert.Null(FlyByWireA380Definition.BaroModeEvent("A32NX_FCU_LEFT_EIS_BARO_HPA", true));
     }
+
+    // ---- EFIS-CP shim-output actuators ----------------------------------------------------
+    //
+    // A380EventNames() can only see events registered as SimVarDefinitions via Evt(...), which
+    // is how the sibling EFIS-CP push events are registered (FlyByWireA380Definition.cs, the
+    // ARPT/CSTR/VV/WPT/VORD/NDB loop). The actuators A380EfisCpControls and A380NdKnobSelection
+    // emit are bare string literals inside those helpers, so the FBW-drift sweep this file IS
+    // would walk straight past them — and a deleted custom input event has no failure signal
+    // whatsoever: the sim swallows an unregistered K-event and the control silently reverts to
+    // the dead write these classes were written to bypass.
+    //
+    // So inventory them here, the same way the baro pair is pinned above (through the helper,
+    // not by re-typing the literal). A32NX.FCU_EFIS_{L,R}_NAVAID_{1,2}_SET only landed in FBW
+    // #10914 on 2026-09-01 and A32NX.FCU_TRUE_TOGGLE_PUSH is source-verified only, so these are
+    // the newest and least-proven names in the def.
+    public static readonly string[] EfisCpActuators =
+    {
+        "A32NX.FCU_EFIS_L_MODE_SET", "A32NX.FCU_EFIS_R_MODE_SET",
+        "A32NX.FCU_EFIS_L_RANGE_SET", "A32NX.FCU_EFIS_R_RANGE_SET",
+        "A32NX.FCU_EFIS_L_NAVAID_1_SET", "A32NX.FCU_EFIS_R_NAVAID_1_SET",
+        "A32NX.FCU_EFIS_L_NAVAID_2_SET", "A32NX.FCU_EFIS_R_NAVAID_2_SET",
+        "A32NX.FCU_EFIS_L_LS_PUSH", "A32NX.FCU_EFIS_R_LS_PUSH",
+        "A32NX.FCU_EFIS_L_TRAF_PUSH", "A32NX.FCU_EFIS_R_TRAF_PUSH",
+        "A32NX.FCU_EFIS_L_WX_PUSH", "A32NX.FCU_EFIS_R_WX_PUSH",
+        "A32NX.FCU_EFIS_L_TERR_PUSH", "A32NX.FCU_EFIS_R_TERR_PUSH",
+        "A32NX.FCU_TRUE_TOGGLE_PUSH",
+    };
+
+    [Fact]
+    public void Every_efis_cp_actuator_the_helpers_emit_is_inventoried()
+    {
+        var inventory = EfisCpActuators.ToHashSet(StringComparer.Ordinal);
+        var emitted = new List<string>();
+
+        foreach (var side in new[] { "L", "R" })
+        {
+            emitted.Add(A380NdKnobSelection.SetEvent($"A32NX_EFIS_{side}_ND_MODE", 3)!.Value.EventName);
+            emitted.Add(A380NdKnobSelection.SetEvent($"A32NX_EFIS_{side}_ND_RANGE", 3)!.Value.EventName);
+            for (int nav = 1; nav <= 2; nav++)
+                emitted.Add(A380EfisCpControls.Command($"A32NX_EFIS_{side}_NAVAID_{nav}_MODE", 1, 0)!.Value.EventName);
+            emitted.Add(A380EfisCpControls.Command($"A32NX_EFIS_{side}_OANS_RANGE", 2, 5)!.Value.EventName);
+            emitted.Add(A380EfisCpControls.Command($"A380X_EFIS_{side}_LS_BUTTON_IS_ON", 1, 0)!.Value.EventName);
+            emitted.Add(A380EfisCpControls.Command($"A380X_EFIS_{side}_TRAF_BUTTON_IS_ON", 1, 0)!.Value.EventName);
+            emitted.Add(A380EfisCpControls.Command($"A380X_EFIS_{side}_ACTIVE_OVERLAY", 1, 0)!.Value.EventName);
+            emitted.Add(A380EfisCpControls.Command($"A380X_EFIS_{side}_ACTIVE_OVERLAY", 2, 0)!.Value.EventName);
+        }
+        emitted.Add(A380EfisCpControls.Command("A32NX_PUSH_TRUE_REF", 1, 0)!.Value.EventName);
+
+        var unlisted = emitted.Where(e => !inventory.Contains(e)).Distinct().Order().ToList();
+        Assert.True(unlisted.Count == 0,
+            "EFIS-CP actuators emitted but not inventoried in EfisCpActuators (so the FBW-drift "
+            + "sweep cannot see them): " + string.Join(", ", unlisted));
+    }
+
+    // ---- Stock K-event actuators emitted as bare literals -------------------------------
+    //
+    // Same blind spot as the EFIS-CP block above, one aisle over: these are stock K-events
+    // sent by name from inside HandleUIVariableSet, so they are neither Evt(...) registrations
+    // nor reachable through a pure helper (that method needs a live SimConnectManager). They
+    // are inventoried here purely so the FBW-drift sweep — and anyone grepping for an event
+    // name — can SEE them; a rename with no inventory entry is silent in every channel.
+    public static readonly string[] StockToggleActuators =
+    {
+        "TOGGLE_STRUCTURAL_DEICE",   // WING_ANTI_ICE_OVHD  → A:STRUCTURAL DEICE SWITCH
+        "TOGGLE_MASTER_ALTERNATOR",  // ELEC_ENG_GEN:n      → GENERAL ENG MASTER ALTERNATOR:n
+        "TOGGLE_FLIGHT_DIRECTOR",    // FD_n_CTL            → AUTOPILOT FLIGHT DIRECTOR ACTIVE:n
+    };
+
+    [Fact]
+    public void The_inventoried_stock_actuators_take_the_legacy_transport()
+    {
+        // A stock K-event has no "H:" prefix and no dot, which is exactly what makes SendEvent
+        // route it through MapClientEventToSimEvent + TransmitClientEvent — a transport that
+        // needs no MobiFlight WASM module. Send one of these down the calculator path instead
+        // and it is a silent no-op for every pilot without that module.
+        Assert.All(StockToggleActuators, e =>
+        {
+            Assert.DoesNotContain('.', e);
+            Assert.False(e.StartsWith("H:", StringComparison.Ordinal));
+        });
+    }
+
+    [Fact]
+    public void The_inventoried_efis_cp_actuators_are_all_fcu_events()
+    {
+        // Every one must clear SimConnectManager.IsFbwFcuEvent's "A32NX.FCU_" test, which is
+        // what lets them bypass the calc-path probe on the A380 (CLAUDE.md: a probe false
+        // negative there does not degrade an FCU event, it kills it).
+        Assert.All(EfisCpActuators, e => Assert.StartsWith("A32NX.FCU_", e, StringComparison.Ordinal));
+    }
 }

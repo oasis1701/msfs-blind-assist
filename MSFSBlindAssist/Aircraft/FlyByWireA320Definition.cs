@@ -981,10 +981,16 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         // Anti Ice Panel. The old XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED vars are
         // model-only press-animation flags that do NOT actuate the systems (same finding
         // as the A380 #56 work). The real controls (live-verified on the A32NX):
-        //   - WING anti-ice (CORRECTED 2026-07, mirrors the A380 fix): the combo writes
-        //     A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
+        //   - WING anti-ice (CORRECTED 2026-07 on this airframe's OWN evidence): the combo
+        //     writes A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
         //     writes (FBW_Airbus_AntiIce_Wing LEFT_SINGLE_CODE) and the ONLY input the
-        //     Rust pneumatic system reads (WingAntiIcePushButton::read). The old target,
+        //     Rust pneumatic system reads (WingAntiIcePushButton::read).
+        //     ⚠️ This does NOT mirror the A380, and the two must never be harmonised: the
+        //     A380X ships a DIFFERENT body for the identically named template, firing the
+        //     stock (>K:TOGGLE_STRUCTURAL_DEICE) and reading A:STRUCTURAL DEICE SWITCH. The
+        //     A380 change this comment once cited as its twin was itself the bug, reverted
+        //     2026-09-03; the evidence below is this airframe's own and stands. The old
+        //     target,
         //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED, is a Rust per-frame OUTPUT
         //     (WingAntiIceComplex::write) — live-verified: writing 1 reverts to 0 within
         //     2 s at ANY phase (the old "holds in flight" note was a mis-test), so the

@@ -483,23 +483,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- ANTI-ICE ----
         OnOff("A32NX_MAN_PITOT_HEAT", "Probe / Window Heat");
-        // Wing anti-ice (CORRECTED 2026-07 — back the combo on the var the REAL cockpit
-        // button writes). The A380 overhead WING anti-ice PB (FBW_Airbus_AntiIce_Wing
-        // template) toggles A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; the PB light reads
-        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED. The previous combo drove the stock
-        // STRUCTURAL DEICE SWITCH, which the cockpit button does NOT touch — so MSFSBA's
-        // combo diverged from the actual switch. Backing it on the button-position L:var
-        // (live-verified settable + held) keeps the two in sync and drives the real input.
-        // ⚠️ FBW-BUILD LIMITATION: the A380 wing anti-ice PNEUMATIC is not modelled yet —
-        // live-verified that setting the button (or SELECTED, or the stock switch, or the
-        // PB_IS_ON) at cruise with TAT -15 C leaves _SYSTEM_ON at 0 (no valve/flow), and
-        // the a380_systems Rust has no wing-anti-ice pneumatic. So the SWITCH is faithful
-        // and future-proof, but the flow won't engage until FBW implements it — the
-        // read-only "Wing Anti-Ice Flowing" status (_SYSTEM_ON) correctly reports that.
+        // Wing anti-ice — the STOCK switch A380_Cockpit_Behavior.xml's PUSH_OVHD_ANTIICE_WING
+        // node drives, NOT the A32NX's A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION: the two
+        // packages ship DIFFERENT bodies for the same FBW_Airbus_AntiIce_Wing template name,
+        // and a 2026-07 change that assumed otherwise left the control dead in icing.
+        // Backed on the stock SimVar so the combo shows the real switch (the ELEC_ENG_GEN
+        // toggle precedent — not ELEC_APU_GEN, which is an absolute SET and reads no live
+        // state); the write fires the stock toggle from HandleUIVariableSet.
+        // ⚠️ SEPARATE and unfixed: the A380 wing anti-ice PNEUMATIC is not modelled, so
+        // A32NX_PNEU_WING_ANTI_ICE_SYSTEM_ON stays 0 with the real switch ON — the read-only
+        // "Wing Anti-Ice Flowing" status reports that honestly, and it is NOT the bug above.
+        // → docs/a380x.md, "Wing anti-ice is the STOCK switch", for the measurements.
         vars["WING_ANTI_ICE_OVHD"] = new SimVarDefinition
         {
-            Name = "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION", DisplayName = "Wing Anti-Ice",
-            Type = SimVarType.LVar,
+            Name = "STRUCTURAL DEICE SWITCH", DisplayName = "Wing Anti-Ice",
+            Type = SimVarType.SimVar, Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
             ValueDescriptions = onOff
         };
@@ -899,9 +897,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // The old per-key button panel was impractical (one digit at a time) and has been removed.
 
         // ---- INTERIOR LIGHTING ----
-        Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
-            new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
-        Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
+        // ANN LT — the overhead annunciator-light switch (cockpit node SWITCH_OVHD_INTLT_ANNLT),
+        // Test / Bright / Dim. A32NX_OVHD_INTLT_ANN is the INPUT; A380_Cockpit_Behavior.xml's
+        // VARIABLE_MAPPING block copies it to A380X_OVHD_INTLT_ANN at 18 Hz for the button
+        // emissives, so never write that mirror.
+        //
+        // ⚠️ A second combo, "Annunciator Lights" on A380X_OVHD_ANN_LT_POSITION, used to sit
+        // beside this one and was a PHANTOM: FBW lists that name in a380-simvars.md but nothing
+        // in the aircraft reads or writes it (checked case-insensitively across the installed
+        // package). MSFSBA's own write CREATED it, so it read back whatever was last set and
+        // looked like it worked — two entries for one switch, one of them inert. Removed
+        // 2026-09-03; this one inherits the cockpit's own label. Do not re-add a control for a
+        // name found only in FBW's simvar docs without checking the aircraft actually uses it.
+        Sel("A32NX_OVHD_INTLT_ANN", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
         // Cockpit lighting preset load / save (the only cockpit-side light control on this
         // build — the individual dome/flood knobs are not modelled as L:vars; lighting is
@@ -1128,9 +1136,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // CORRECTED 2026-06: the control + state var the A380 instruments (PFD/ND/FCU)
         // actually read is A32NX_PUSH_TRUE_REF, NOT A32NX_FMGC_TRUE_REF (what MSFSBA used
         // before). Live-verified: writing FMGC_TRUE_REF=1 left PUSH_TRUE_REF (the consumed
-        // var) at 0 and changed nothing; writing PUSH_TRUE_REF=1 latched and is what the
-        // displays read. FMGC_TRUE_REF is an FMGC-internal output, not the pilot control.
-        Sel("A32NX_PUSH_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
+        // var) at 0 and changed nothing. FMGC_TRUE_REF is an FMGC-internal output, not the
+        // pilot control.
+        //
+        // ⚠️ A duplicate Sel() for A32NX_PUSH_TRUE_REF used to sit here. `Read()` does
+        // `vars[key] = …`, so the later ReadEnum registration below silently replaced it and
+        // this one had no effect at all — the "never register the same var KEY twice" trap.
+        // Removed with no behaviour change; the surviving registration is the ReadEnum in the
+        // instrument block, and the control IS settable (see A380EfisCpControls).
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1287,7 +1300,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "True airspeed", "knots");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
-        // ND heading reference (magnetic vs true) — auto-announced on change.
+        // ND heading reference (magnetic vs true) — auto-announced on change. This is the
+        // ONLY registration for the key (a duplicate Sel() in the source-switching block was
+        // removed); it is settable despite the ReadEnum name, via the FCU's
+        // A32NX.FCU_TRUE_TOGGLE_PUSH — see A380EfisCpControls.
         ReadEnum("A32NX_PUSH_TRUE_REF", "Heading reference",
             new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
         // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
@@ -2818,10 +2834,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        // EFIS OANS range (airport map zoom).
+        // EFIS OANS range (airport map zoom). 5 = "not zoomed" is a READBACK, not a selection
+        // (leaving the zoom means picking an NM range on the ND RANGE knob) — but it MUST be in
+        // the value list, because it is what the var holds for most of a flight: MainForm only
+        // falls back to item 0 when the key has no value AT ALL, so an undescribed live value
+        // leaves the combo with SelectedIndex -1, and one arrow key on an unselected combo then
+        // commits "Max" and really does fire RANGE_SET 0, yanking the ND to 0.2 NM. It also
+        // stops the generic announcer speaking a bare "Capt OANS Range: 5.0". Picking it is
+        // refused out loud — see A380EfisCpControls.NotZoomedUnsupportedMessage.
         foreach (var side in new[] { "L", "R" })
             Sel($"A32NX_EFIS_{side}_OANS_RANGE", $"{(side == "L" ? "Capt" : "F/O")} OANS Range",
-                new Dictionary<double, string> { [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min" });
+                new Dictionary<double, string>
+                {
+                    [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min",
+                    [A380EfisCpControls.OansNotZoomed] = "Not zoomed"
+                });
 
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
