@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.Forms.FBWA380;
 using MSFSBlindAssist.Services;
 using Xunit;
 
@@ -11,9 +12,11 @@ namespace MSFSBlindAssist.Tests;
 /// speaks them identically.
 ///
 /// The allowlist below is measured, pre-existing debt on other airframes - most
-/// of it Captain/First Officer pairs that want a side tag. It should only ever
-/// shrink. The PMDG 777 is deliberately absent: it was cleaned up in 2026-09 and
-/// must stay clean.
+/// of it Captain/First Officer pairs that want a side tag. It can only ever
+/// shrink: the test also fails on an entry whose pair no longer collides, so a
+/// fixed pair must be removed here and cannot mask that label's next collision.
+/// The PMDG 777 is deliberately absent: it was cleaned up in 2026-09 and must
+/// stay clean.
 /// </summary>
 public class MonitorRowLabelUniquenessTests
 {
@@ -61,14 +64,29 @@ public class MonitorRowLabelUniquenessTests
     [MemberData(nameof(ComboLabelCollapseTests.AllAircraft), MemberType = typeof(ComboLabelCollapseTests))]
     public void Monitor_manager_rows_have_distinct_labels(IAircraftDefinition aircraft)
     {
-        var offenders = MonitorRowBuilder.Build(aircraft.GetVariables())
+        // The rows the pilot actually sees: the A380 dialog folds its E/WD lines into one
+        // synthetic row, so it is measured through the same builder call its form makes.
+        var rows = aircraft.AircraftCode == "FBW_A380"
+            ? FBWA380MonitorManagerForm.BuildRows(aircraft.GetVariables())
+            : MonitorRowBuilder.Build(aircraft.GetVariables());
+
+        var collisions = rows
             .GroupBy(r => r.Label, StringComparer.OrdinalIgnoreCase)
             .Where(g => g.Count() > 1)
             .Select(g => $"{aircraft.AircraftCode}/{g.Key}")
-            .Where(id => !KnownMonitorLabelCollisions.Contains(id))
-            .ToList();
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        var offenders = collisions.Where(id => !KnownMonitorLabelCollisions.Contains(id)).ToList();
         Assert.True(offenders.Count == 0,
             "Two Ctrl+M rows answering to one label: " + string.Join(", ", offenders));
+
+        // The other direction is what makes the allowlist shrink-only: an entry whose pair no
+        // longer collides must be deleted, or it would mask that label's next collision here.
+        var stale = KnownMonitorLabelCollisions
+            .Where(id => id.StartsWith(aircraft.AircraftCode + "/", StringComparison.OrdinalIgnoreCase))
+            .Where(id => !collisions.Contains(id))
+            .ToList();
+        Assert.True(stale.Count == 0,
+            "Allowlisted Ctrl+M collisions that no longer exist - remove them: " + string.Join(", ", stale));
     }
 }

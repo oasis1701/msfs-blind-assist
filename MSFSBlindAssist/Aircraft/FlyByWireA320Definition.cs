@@ -3320,24 +3320,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "percent"
         },
-        // Continuously monitored so the 1,000-ft crossing announcer (MainForm) is fed.
-        // IsAnnounced=true is required for continuous batched monitoring, but the generic
-        // announce gate skips INDICATED_ALTITUDE (it's spoken by the callout announcer, not
-        // as a raw "Altitude: 5234"). Still works as an OnRequest-style display var for the
-        // PFD/ISIS boxes (force-read + live update both function on a continuous var).
-        // This override replaces the base definition entirely, so it needs its own
-        // ExcludeFromMonitorManager too: the row would mute nothing here either, same as
-        // the base (BaseAircraftDefinition.cs).
-        ["INDICATED_ALTITUDE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "INDICATED ALTITUDE",
-            DisplayName = "Indicated Altitude",
-            Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            Units = "feet",
-            ExcludeFromMonitorManager = true
-        },
         // Indicated airspeed — surfaced in the PFD + ISIS accessible status boxes
         // (the speed "tape" a sighted pilot reads off the glass).
         ["AIRSPEED_INDICATED"] = new SimConnect.SimVarDefinition
@@ -5203,6 +5185,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             variables[kvp.Key] = kvp.Value;
         }
+
+        // The base INDICATED_ALTITUDE entry is inherited as-is: Continuous + IsAnnounced feeds
+        // the 1,000-ft callout announcer and the PFD/ISIS display boxes, ExcludeFromMonitorManager
+        // hides its inert Ctrl+M row. Only the spoken label differs here, so it is set in place
+        // rather than by a shadowing re-definition that would have to mirror every base flag.
+        variables["INDICATED_ALTITUDE"].DisplayName = "Indicated Altitude";
 
         // Make EVERY discrete control combo AUTO-ANNOUNCE on change (Continuous +
         // IsAnnounced) — exactly like the A380 (Sel helper) and PMDG, where every

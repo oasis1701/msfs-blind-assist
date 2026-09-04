@@ -33,6 +33,7 @@ public class Pmdg777OutflowValveLabelTests
 
         Assert.True(vars.ContainsKey(varKey), $"missing outflow var {varKey}");
         Assert.Equal(structField, vars[varKey].Name);
+        PmdgStructFields.AssertResolves777(structField, varKey);
         Assert.Equal(label, vars[varKey].DisplayName);
     }
 

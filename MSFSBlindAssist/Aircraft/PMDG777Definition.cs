@@ -154,6 +154,15 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string OutflowValveManualSuffix   = " Manual Selector"; // Open / Neutral / Close
     private const string OutflowValveManLightSuffix = " MAN Light";
 
+    // SDK PMDG_777X_SDK.h: AIR_OutflowValveManual_Selector[2]
+    //   // fwd / aft   0: OPEN  1: Neutral  2: CLOSE
+    // The middle detent is spring-loaded NEUTRAL, not "Auto" - that word belongs to the Mode
+    // row, where it means the opposite thing. ONE table for both valves, so the detent words
+    // cannot drift between them. Sharing an instance is safe: nothing mutates a definition's
+    // ValueDescriptions after construction (the same note is on FenixA320Definition.OffOn).
+    private static readonly Dictionary<double, string> OutflowManualDetents =
+        new() { [0] = "Open", [1] = "Neutral", [2] = "Close" };
+
     // The three bleed-air isolation valves share the phrase "Isolation Valve", so the
     // discriminator leads (the same reason the hydraulic pumps do). Binding the name once
     // is what stops the switch and its CLOSED light drifting apart - they did exactly that
@@ -174,6 +183,19 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private const string FuelPumpAftR = "Right Aft Pump";
     private const string FuelPumpCtrL = "Center Left Pump";
     private const string FuelPumpCtrR = "Center Right Pump";
+
+    // Jettison nozzles and cargo-fire compartments: the same header-annotated pairs
+    // (FUEL_JettisonNozle_Sw[2] // left / right; FIRE_annunCargoFire[2] // FWD/AFT) whose
+    // lights carried a bare 1/2 while their switches named the side - so a "Cargo Fire 2
+    // Light" left the pilot guessing which of "Forward"/"Aft" to arm. Bound once, like the
+    // pumps; the main-deck (777F) pair already read "Main Deck Cargo Fire Arm/Light".
+    private const string JettisonNozzleValveLightSuffix = " VALVE Light";
+    private const string JettisonNozzleL = "Left Jettison Nozzle";
+    private const string JettisonNozzleR = "Right Jettison Nozzle";
+    private const string CargoFireArmSuffix   = " Arm";
+    private const string CargoFireLightSuffix = " Light";
+    private const string CargoFireFwd = "Forward Cargo Fire";
+    private const string CargoFireAft = "Aft Cargo Fire";
 
     private Dictionary<string, SimConnect.SimVarDefinition> GetPMDGVariables()
     {
@@ -800,7 +822,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_JettisonNozzleL"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_JettisonNozle_Sw_0",
-                DisplayName = "Jettison Nozzle Left",
+                DisplayName = JettisonNozzleL,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -809,7 +831,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_JettisonNozzleR"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_JettisonNozle_Sw_1",
-                DisplayName = "Jettison Nozzle Right",
+                DisplayName = JettisonNozzleR,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -926,7 +948,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunJettisonNozzleVALVE_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunJettisonNozleVALVE_0",
-                DisplayName = "Jettison Nozzle 1 VALVE Light",
+                DisplayName = JettisonNozzleL + JettisonNozzleValveLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -936,7 +958,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FUEL_annunJettisonNozzleVALVE_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FUEL_annunJettisonNozleVALVE_1",
-                DisplayName = "Jettison Nozzle 2 VALVE Light",
+                DisplayName = JettisonNozzleR + JettisonNozzleValveLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1361,11 +1383,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                // SDK PMDG_777X_SDK.h: AIR_OutflowValveManual_Selector[2]
-                //   // fwd / aft   0: OPEN  1: Neutral  2: CLOSE
-                // The middle detent is spring-loaded NEUTRAL, not "Auto" - that word
-                // belongs to the Mode row, where it means the opposite thing.
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Neutral", [2] = "Close" }
+                ValueDescriptions = OutflowManualDetents
             },
             ["AIR_OutflowValveAft"] = new SimConnect.SimVarDefinition
             {
@@ -1374,11 +1392,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-                // SDK PMDG_777X_SDK.h: AIR_OutflowValveManual_Selector[2]
-                //   // fwd / aft   0: OPEN  1: Neutral  2: CLOSE
-                // The middle detent is spring-loaded NEUTRAL, not "Auto" - that word
-                // belongs to the Mode row, where it means the opposite thing.
-                ValueDescriptions = new Dictionary<double, string> { [0] = "Open", [1] = "Neutral", [2] = "Close" }
+                ValueDescriptions = OutflowManualDetents
             },
             ["AIR_LdgAltSelector"] = new SimConnect.SimVarDefinition
             {
@@ -1560,7 +1574,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_CargoFireArmFwd"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_CargoFire_Sw_Arm_0",
-                DisplayName = "Cargo Fire Arm Forward",
+                DisplayName = CargoFireFwd + CargoFireArmSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1569,7 +1583,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_CargoFireArmAft"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_CargoFire_Sw_Arm_1",
-                DisplayName = "Cargo Fire Arm Aft",
+                DisplayName = CargoFireAft + CargoFireArmSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1716,7 +1730,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_annunCargoFire_1"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_annunCargoFire_0",
-                DisplayName = "Cargo Fire 1 Light",
+                DisplayName = CargoFireFwd + CargoFireLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
@@ -1726,7 +1740,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["FIRE_annunCargoFire_2"] = new SimConnect.SimVarDefinition
             {
                 Name = "FIRE_annunCargoFire_1",
-                DisplayName = "Cargo Fire 2 Light",
+                DisplayName = CargoFireAft + CargoFireLightSuffix,
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,

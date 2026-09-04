@@ -86,7 +86,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // earlier, by HandleSpecialAnnouncements → AltitudeCalloutAnnouncer. So its
                 // Ctrl+M row could never silence anything. It also collided with the MCP
                 // "Altitude" row on the PMDG 737 and 777, leaving the pilot two identical
-                // checkboxes, one of them inert.
+                // checkboxes, one of them inert. The pilot's real control is the "Announce
+                // 1,000-foot altitude crossings" checkbox on the Announcements settings tab
+                // (UserSettings.AltitudeCalloutsEnabled), which AltitudeCalloutAnnouncer gates on.
                 ExcludeFromMonitorManager = true
             },
 
@@ -132,10 +134,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // 1 Hz continuous batch missed the touchdown impact spike entirely, so
                 // the peak-g readout under-reported every landing. MainForm routes
                 // G_FORCE to the landing tracker and suppresses the generic call-out
-                // (HandleSpecialAnnouncements).
+                // (HandleSpecialAnnouncements). That handler returns before every Ctrl+M mute
+                // gate, so a row here could never silence anything - hidden, like INDICATED_ALTITUDE.
                 IsAnnounced = true,
                 ExcludeFromBatch = true,
-                HighFrequency = true
+                HighFrequency = true,
+                ExcludeFromMonitorManager = true
             },
             // Touchdown vertical speed — the sim latches this at touchdown and it persists until
             // the next landing, so the ReadLastLandingRate output hotkey reads it straight from
@@ -150,8 +154,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // MUST be IsAnnounced=true to be monitored at all (continuous batch =
                 // Continuous + IsAnnounced; SimConnectManager ~L805). With it false the cache
                 // stayed empty and ReadLastLandingRate always said "no landing recorded".
-                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
-                IsAnnounced = true
+                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out - and returns
+                // before every Ctrl+M mute gate, so a row here could never silence anything: hidden.
+                IsAnnounced = true,
+                ExcludeFromMonitorManager = true
             },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions

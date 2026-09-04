@@ -15,35 +15,45 @@ public class Pmdg777AirLabelTests
 {
     private const string ClosedSuffix = " CLOSED Light";
 
-    public static TheoryData<string, string, string, string> Valves() => new()
+    /// <summary>varKey, PMDG struct field, spoken label, CLOSED light varKey, CLOSED light struct field.</summary>
+    public static TheoryData<string, string, string, string, string> Valves() => new()
     {
-        { "AIR_IsolationValve_L",   "AIR_IsolationValve_Sw_0",  "Left Isolation Valve",   "AIR_annunIsolationValveCLOSED_L" },
-        { "AIR_IsolationValve_R",   "AIR_IsolationValve_Sw_1",  "Right Isolation Valve",  "AIR_annunIsolationValveCLOSED_R" },
-        { "AIR_CtrIsolationValve",  "AIR_CtrIsolationValve_Sw", "Center Isolation Valve", "AIR_annunCtrIsolationValveCLOSED" },
+        { "AIR_IsolationValve_L",   "AIR_IsolationValve_Sw_0",  "Left Isolation Valve",   "AIR_annunIsolationValveCLOSED_L",  "AIR_annunIsolationValveCLOSED_0" },
+        { "AIR_IsolationValve_R",   "AIR_IsolationValve_Sw_1",  "Right Isolation Valve",  "AIR_annunIsolationValveCLOSED_R",  "AIR_annunIsolationValveCLOSED_1" },
+        { "AIR_CtrIsolationValve",  "AIR_CtrIsolationValve_Sw", "Center Isolation Valve", "AIR_annunCtrIsolationValveCLOSED", "AIR_annunCtrIsolationValveCLOSED" },
     };
 
     [Theory]
     [MemberData(nameof(Valves))]
     public void Isolation_valve_pins_its_struct_field_and_spoken_label(
-        string varKey, string structField, string label, string lightKey)
+        string varKey, string structField, string label, string lightKey, string lightField)
     {
         _ = lightKey;
+        _ = lightField;
         var vars = new PMDG777Definition().GetVariables();
 
         Assert.True(vars.ContainsKey(varKey), $"missing isolation valve var {varKey}");
         Assert.Equal(structField, vars[varKey].Name);
+        PmdgStructFields.AssertResolves777(structField, varKey);
         Assert.Equal(label, vars[varKey].DisplayName);
     }
 
+    /// <summary>
+    /// The light's own array slot as well as its label: without the slot pin, binding a
+    /// CLOSED light to the wrong index leaves every label assertion green while "Left
+    /// Isolation Valve CLOSED Light" reports the RIGHT valve.
+    /// </summary>
     [Theory]
     [MemberData(nameof(Valves))]
     public void Closed_light_label_is_derived_from_its_valve_label(
-        string varKey, string structField, string label, string lightKey)
+        string varKey, string structField, string label, string lightKey, string lightField)
     {
         _ = structField;
         var vars = new PMDG777Definition().GetVariables();
 
         Assert.True(vars.ContainsKey(lightKey), $"missing CLOSED light var {lightKey}");
+        Assert.Equal(lightField, vars[lightKey].Name);
+        PmdgStructFields.AssertResolves777(lightField, lightKey);
         Assert.Equal(label + ClosedSuffix, vars[lightKey].DisplayName);
         Assert.Equal(vars[varKey].DisplayName + ClosedSuffix, vars[lightKey].DisplayName);
     }

@@ -49,6 +49,7 @@ public class Pmdg777HydraulicPumpLabelTests
 
         Assert.True(vars.ContainsKey(varKey), $"missing hydraulic pump var {varKey}");
         Assert.Equal(structField, vars[varKey].Name);
+        PmdgStructFields.AssertResolves777(structField, varKey);
         Assert.Equal(label, vars[varKey].DisplayName);
     }
 
@@ -76,6 +77,7 @@ public class Pmdg777HydraulicPumpLabelTests
         // light to the wrong slot leaves every label assertion green while "Left Primary
         // Engine Pump FAULT Light" reports the RIGHT pump's fault.
         Assert.Equal(faultField, vars[faultKey].Name);
+        PmdgStructFields.AssertResolves777(faultField, faultKey);
 
         Assert.Equal(label + FaultSuffix, vars[faultKey].DisplayName);
         Assert.Equal(vars[varKey].DisplayName + FaultSuffix, vars[faultKey].DisplayName);

@@ -106,8 +106,9 @@ public class VarNameCollisionTests
     }
 
     /// <summary>
-    /// The panel label column sizes to its content, so a runaway DisplayName widens the
-    /// whole panel. This bounds the label DATA, not the rendering: the rendered appearance
+    /// The panel label column sizes to its content up to a fixed cap, past which a label
+    /// wraps and its row grows, so a runaway DisplayName makes a panel tall and hard to
+    /// read. This bounds the label DATA, not the rendering: the rendered appearance
     /// is not verifiable by this project's testers and is deliberately not asserted here.
     ///
     /// 60 gives real headroom over the true fleet maximum of 50 - "Glareshield Flood First
