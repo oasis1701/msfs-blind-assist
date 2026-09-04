@@ -632,6 +632,20 @@ def resolve_paths(pkg_arg, wasm_arg):
     Every failure exits non-zero WITHOUT writing a map: a partial map is worse
     than none, because it silently drops the wasm-derived read-outs.
     """
+    # An explicit --wasm is taken on faith below (`wasm_arg or ...`), and a
+    # missing/unreadable file there degrades silently: wasm_vars() just returns
+    # empty sets, so the map still gets written but with ZERO wasm-derived
+    # L:vars -- the same silent-partial-map failure this function exists to
+    # rule out, just arriving through the override instead of a bad guess.
+    # The discovered path (find_wasm) is never checked here: it only ever
+    # returns paths it found by walking, so it already exists.
+    if wasm_arg and not os.path.isfile(wasm_arg):
+        sys.exit(
+            "--wasm does not exist: %s\n"
+            "Expected an %s file at that path."
+            % (wasm_arg, md11_paths.WASM_NAME)
+        )
+
     if pkg_arg:
         pkg = pkg_arg
         if not os.path.isdir(os.path.join(pkg, md11_paths.PACKAGE_MARKER)):
