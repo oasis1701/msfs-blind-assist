@@ -94,6 +94,10 @@ public partial class TrackFixForm : Form
         constraintComboBox.SelectedIndex = ConstraintToComboIndex(constraint);
         upperAltTextBox.Text = upperAlt.HasValue ? upperAlt.Value.ToString("F0") : "";
         courseTextBox.Text = course.HasValue ? course.Value.ToString("F0") : "";
+        // Speed restriction: pre-filled straight off the leg (VCBI ANUT1D codes 240 kt at BI551),
+        // and editable — a pilot may be given a different speed by ATC, or want one where the
+        // procedure has none.
+        speedTextBox.Text = fix.SpeedLimit.HasValue ? fix.SpeedLimit.Value.ToString() : "";
         UpdateUpperAltVisibility();
 
         // Which fix and slot this is goes in the CAPTION, not a spoken announcement. The screen
@@ -322,6 +326,13 @@ public partial class TrackFixForm : Form
         // Reference variation the magnetic course is defined against (navaid station declination / fix
         // local variation, from navdata). Lets the FD convert the course to true against the RIGHT magvar
         // instead of the aircraft's live one; null → the FD falls back to the aircraft magvar.
+        // Speed restriction (knots INDICATED — ARINC 424 §5.72 codes it in IAS, and the FD compares
+        // it against IAS). Blank clears it; an edit overrides whatever the procedure carried.
+        if (int.TryParse(speedTextBox.Text.Trim(), out int spd) && spd > 0 && spd <= 1000)
+            waypoint.SpeedLimit = spd;
+        else
+            waypoint.SpeedLimit = null;
+
         _waypointTracker.TrackWaypoint(slotNumber, waypoint, crossingAlt, upperAlt, constraint, course,
             waypoint.ReferenceMagVar);
 
@@ -334,6 +345,8 @@ public partial class TrackFixForm : Form
             if (constraint == AltitudeConstraintType.Between && upperAlt.HasValue)
                 detail += $" and {upperAlt.Value:F0} feet";
         }
+        if (waypoint.SpeedLimit.HasValue)
+            detail += $", speed {waypoint.SpeedLimit.Value} knots";
         _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}{detail}");
 
         // Close the form

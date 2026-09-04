@@ -30,6 +30,8 @@ namespace MSFSBlindAssist.Forms
             upperAltTextBox = new TextBox();
             courseLabel = new Label();
             courseTextBox = new TextBox();
+            speedLabel = new Label();
+            speedTextBox = new TextBox();
             trackButton = new Button();
 
             // Duplicate resolution controls
@@ -162,12 +164,31 @@ namespace MSFSBlindAssist.Forms
             courseTextBox.AccessibleName = "Course to track through the fix in magnetic degrees, optional. Leave blank to fly direct to the fix; set it to capture and hold this course or radial through the fix.";
 
             //
+            // speedLabel
+            //
+            speedLabel.AutoSize = true;
+            speedLabel.Location = new Point(20, 380);
+            speedLabel.Name = "speedLabel";
+            speedLabel.Size = new Size(280, 15);
+            speedLabel.TabIndex = 12;
+            speedLabel.Text = "Speed restriction (knots indicated, optional):";
+
+            //
+            // speedTextBox
+            //
+            speedTextBox.Location = new Point(20, 400);
+            speedTextBox.Name = "speedTextBox";
+            speedTextBox.Size = new Size(340, 23);
+            speedTextBox.TabIndex = 13;
+            speedTextBox.AccessibleName = "Speed restriction for this leg in knots indicated airspeed, optional. Pre-filled from the procedure when it has one. The flight director calls out increase or reduce speed against your indicated airspeed.";
+
+            //
             // trackButton
             //
-            trackButton.Location = new Point(20, 385);
+            trackButton.Location = new Point(20, 440);
             trackButton.Name = "trackButton";
             trackButton.Size = new Size(340, 30);
-            trackButton.TabIndex = 12;
+            trackButton.TabIndex = 14;
             trackButton.Text = "Track";
             trackButton.UseVisualStyleBackColor = true;
             trackButton.Click += TrackButton_Click;
@@ -217,12 +238,14 @@ namespace MSFSBlindAssist.Forms
             //
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(384, 435);
+            ClientSize = new Size(384, 490);
             Controls.Add(selectButton);
             Controls.Add(duplicateListView);
             Controls.Add(duplicateLabel);
             Controls.Add(trackButton);
             Controls.Add(courseTextBox);
+            Controls.Add(speedLabel);
+            Controls.Add(speedTextBox);
             Controls.Add(courseLabel);
             Controls.Add(upperAltTextBox);
             Controls.Add(upperAltLabel);
@@ -259,6 +282,8 @@ namespace MSFSBlindAssist.Forms
         private TextBox upperAltTextBox;
         private Label courseLabel;
         private TextBox courseTextBox;
+        private Label speedLabel;
+        private TextBox speedTextBox;
         private Button trackButton;
         private Label duplicateLabel;
         private ListView duplicateListView;

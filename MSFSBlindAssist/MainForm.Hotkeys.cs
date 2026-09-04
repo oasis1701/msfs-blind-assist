@@ -846,6 +846,22 @@ public partial class MainForm
             // Acquire the shared VISUAL_GUIDANCE_DATA (req 505) stream (ref-counted).
             simConnectManager!.AcquireVisualGuidanceMonitoring();
             _fdHoldsStream = true;
+
+            // Claim the shared quick-access hotkey set (H, V, Q, S, D, B, P, A, F), exactly as
+            // Visual Guidance does above. Flying the FD IS hand-flying — the per-key readouts are
+            // as useful here as in HandFly or VG, and the pilot should not have to switch HandFly
+            // on first just to get them. The registration is reference-counted inside
+            // HotkeyManager, so holding it alongside HandFly and/or VG is conflict-free and
+            // whichever mode deactivates last releases the keys. (The method is named for VG for
+            // historical reasons; the SET is shared, not VG-specific.)
+            _fdHoldsQuickKeys = hotkeyManager.RegisterVisualGuidanceHotkeys();
+            if (!_fdHoldsQuickKeys)
+            {
+                // Partial registration still holds whatever DID register, so the release below
+                // must run either way — track the claim, not the success.
+                _fdHoldsQuickKeys = true;
+                announcer.Announce("Some quick-access keys unavailable; use output mode.");
+            }
         }
         else
         {
@@ -855,6 +871,14 @@ public partial class MainForm
             {
                 simConnectManager.ReleaseVisualGuidanceMonitoring();
                 _fdHoldsStream = false;
+            }
+
+            // Drop the FD's claim on the quick-access set. HandFly's or VG's claim keeps the keys
+            // registered if either is still running; this only unregisters when the count hits zero.
+            if (_fdHoldsQuickKeys)
+            {
+                hotkeyManager.UnregisterVisualGuidanceHotkeys();
+                _fdHoldsQuickKeys = false;
             }
 
             // Resume HandFly's tone if HandFly is still active — but only if the FD actually

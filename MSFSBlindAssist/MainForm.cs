@@ -162,6 +162,8 @@ public partial class MainForm : Form
     // stopping the OTHER feature's stream. Set true right after Acquire, false right after Release.
     private bool _vgHoldsStream;
     private bool _fdHoldsStream;
+    /// <summary>Whether the Flight Director holds a claim on the shared quick-access hotkey set.</summary>
+    private bool _fdHoldsQuickKeys;
     // Per-feature claims on HandFly's audio suppression (HandFlyManager.SuppressAudio is a single flag,
     // not owner-aware). Each feature releases (ResumeAudio) only if it actually suppressed — otherwise an
     // aborted VG activation (no runway) would run VG's teardown ResumeAudio and un-mute HandFly's tone

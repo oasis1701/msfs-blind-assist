@@ -195,6 +195,11 @@ public class UserSettings
         /// </summary>
         public bool HandFlyAutoActivateOnTakeoff { get; set; } = true;
 
+        // Activate the Waypoint Flight Director on the same liftoff handoff. OFF by default,
+        // unlike HandFly's: the FD is only meaningful with fixes tracked into the Shift+F slots,
+        // so switching it on for everyone would announce "no waypoints to track" on every takeoff.
+        public bool WaypointFdAutoActivateOnTakeoff { get; set; } = false;
+
         // Simulator Settings
         public string SimulatorVersion { get; set; } = "FS2020";
 
@@ -610,6 +615,7 @@ public class UserSettings
             TakeoffAssistEnableCallouts = TakeoffAssistEnableCallouts,
             TakeoffAssistAutoActivateOnLineup = TakeoffAssistAutoActivateOnLineup,
             HandFlyAutoActivateOnTakeoff = HandFlyAutoActivateOnTakeoff,
+            WaypointFdAutoActivateOnTakeoff = WaypointFdAutoActivateOnTakeoff,
             SimulatorVersion = SimulatorVersion,
             LastAircraft = LastAircraft,
             GeoNamesApiUsername = GeoNamesApiUsername,

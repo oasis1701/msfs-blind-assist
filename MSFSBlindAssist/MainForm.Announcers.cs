@@ -1172,6 +1172,20 @@ public partial class MainForm
                 handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
             }
 
+            // Waypoint Flight Director on the same handoff, when the pilot asked for it AND there
+            // is something to track. The HasAnyWaypoint gate is what keeps this quiet: without it
+            // the FD would activate, find no fixes, speak "No waypoints to track" and stop again —
+            // on every takeoff. Its own "Flight director active" AnnounceImmediate is superseded by
+            // the breadcrumb below, which is why the breadcrumb names it.
+            bool activatedFlightDirector = false;
+            if (SettingsManager.Current.WaypointFdAutoActivateOnTakeoff
+                && !waypointFdManager.IsActive
+                && waypointTracker.HasAnyWaypoint())
+            {
+                waypointFdManager.Toggle();
+                activatedFlightDirector = waypointFdManager.IsActive;
+            }
+
             // The Toggles AnnounceImmediate, and AnnounceImmediate interrupts — so speak
             // ONE clean breadcrumb LAST to supersede them. The pilot pressed no key, so
             // this single cue is the spoken source of truth for the handoff. The Toggles'
@@ -1193,7 +1207,8 @@ public partial class MainForm
             // activation branch clears any stale grace window. _handFlyQuickKeysRegistered
             // is written by OnHandFlyModeActiveChanged, which that same Toggle() raised, so
             // it is already current here.
-            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered);
+            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered,
+                                                   activatedFlightDirector);
             handFlyManager.SuppressAnnouncementsFor(cue.GraceMs);
             announcer.AnnounceImmediate(cue.Text);
         });
