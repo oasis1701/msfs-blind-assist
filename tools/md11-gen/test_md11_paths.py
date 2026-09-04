@@ -165,6 +165,67 @@ class FindPackagesUnderTests(unittest.TestCase):
                 md11_paths.find_packages_under(tmp), sorted([pkg_a, pkg_b])
             )
 
+    def test_finds_package_under_an_unrelated_folder_name(self):
+        # The invariant is that a package is identified by its CONTENTS, never
+        # its name. Every other "found" test uses the real folder name, which
+        # would also pass a name-matching implementation. This one cannot: the
+        # folder name resembles neither "tfdi" nor "md11", so only a
+        # content-based search finds it. Guards a future "just look for
+        # tfdidesign-aircraft-md11" simplification.
+        with tempfile.TemporaryDirectory() as tmp:
+            community = os.path.join(tmp, "Community")
+            os.makedirs(community)
+            pkg = make_package(community, name="zzz-some-renamed-folder")
+            self.assertEqual(md11_paths.find_packages_under(tmp), [pkg])
+
+
+class FindWasmTests(unittest.TestCase):
+    def test_finds_wasm_under_common_panel_fs2024_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = make_package(tmp)  # default: common/panel
+            self.assertEqual(
+                md11_paths.find_wasm(pkg),
+                os.path.join(pkg, "SimObjects", "Airplanes",
+                             "TFDi_Design_MD-11", "common", "panel",
+                             "md11host.wasm"),
+            )
+
+    def test_finds_wasm_under_panel_fs2020_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = make_package(
+                tmp,
+                wasm_rel=("SimObjects", "Airplanes", "TFDi_Design_MD-11",
+                          "panel"),
+            )
+            self.assertEqual(
+                md11_paths.find_wasm(pkg),
+                os.path.join(pkg, "SimObjects", "Airplanes",
+                             "TFDi_Design_MD-11", "panel", "md11host.wasm"),
+            )
+
+    def test_missing_wasm_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = make_package(tmp, with_wasm=False)
+            self.assertIsNone(md11_paths.find_wasm(pkg))
+
+    def test_shortest_path_wins_when_several_copies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg = make_package(
+                tmp,
+                wasm_rel=("SimObjects", "Airplanes", "TFDi_Design_MD-11",
+                          "panel"),
+            )
+            deeper = os.path.join(pkg, "SimObjects", "Airplanes",
+                                  "TFDi_Design_MD-11", "variant", "x", "panel")
+            os.makedirs(deeper)
+            with open(os.path.join(deeper, "md11host.wasm"), "wb") as fh:
+                fh.write(b"\0asm")
+            self.assertEqual(
+                md11_paths.find_wasm(pkg),
+                os.path.join(pkg, "SimObjects", "Airplanes",
+                             "TFDi_Design_MD-11", "panel", "md11host.wasm"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

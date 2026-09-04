@@ -97,3 +97,29 @@ def find_packages_under(root: str, max_depth: int = MAX_DEPTH) -> list[str]:
                 continue
 
     return sorted(found)
+
+
+def find_wasm(package_dir: str) -> str | None:
+    """Locate md11host.wasm inside a package, or None.
+
+    Walked, never joined from a fixed relative path: the file was MEASURED at
+    SimObjects/Airplanes/TFDi_Design_MD-11/common/panel/ on FS2024, while the
+    generator's old hardcoded guess omitted the "common" level (presumed the
+    FS2020 shape). Both must work without knowing which sim this is.
+
+    Shortest path wins so the base aircraft beats a variant; sorted first so
+    two runs on one machine can never disagree.
+    """
+    sim_objects = os.path.join(package_dir, "SimObjects")
+    if not os.path.isdir(sim_objects):
+        return None
+
+    matches: list[str] = []
+    for dirpath, _dirnames, filenames in os.walk(sim_objects):
+        for name in filenames:
+            if name.lower() == WASM_NAME:
+                matches.append(os.path.join(dirpath, name))
+
+    if not matches:
+        return None
+    return sorted(matches, key=lambda p: (len(p), p))[0]
