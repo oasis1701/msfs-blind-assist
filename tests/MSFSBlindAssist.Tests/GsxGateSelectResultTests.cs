@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using MSFSBlindAssist.Services.Gsx.Remote;
 
 namespace MSFSBlindAssist.Tests;
@@ -348,5 +348,218 @@ public class GsxGateSelectResultTests
 
         var assignedToOther = Frame("""{"type":"result","id":"g-7","ok":false,"error":{"code":"assigned_to_other","gate":42}}""");
         Assert.Null(GsxGateSelectResult.FromFrame(assignedToOther).ResolvedGate);
+    }
+
+    // ── ExpectedUiName: the comparison that can actually catch a wrong stand ──
+
+    [Fact]
+    public void ExpectedUiName_decides_when_both_sides_carry_one()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Delta Tech Ops (E1-21) | Gate 5","gate":" Gate 5","number":5,"bglName":"Gate E 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void ExpectedUiName_agreeing_is_never_a_mismatch()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Concourse T (T1-T21) | Gate 5","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_blank_expected_uiName_falls_back_to_the_identifier_comparison()
+    {
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = " Gate 5";
+        r.ExpectedUiName = null;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void An_uninterpretable_echo_is_not_a_mismatch_even_with_an_expected_uiName()
+    {
+        // GSX echoed a stand whose uiName is blank. The fully-qualified comparison has
+        // nothing to work with, so it must defer to the identifier fallback rather than
+        // declare a mismatch -- a false alarm teaches the pilot to ignore the real one.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = " Gate 5";
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    // -- RequestedNumber: the number is one of the identities we SEND --------
+
+    [Fact]
+    public void A_matching_echoed_number_clears_a_request_that_went_as_a_number()
+    {
+        // The reachable false-alarm case: KATL publishes no uiName for 13 of its 294
+        // stands (the fixture's "Ramp 1"/"Ramp 2"/"Ramp 3"), so ExpectedUiName is null and
+        // the comparison falls through to the echoed STRINGS -- which a rendered number
+        // ("1") can essentially never equal. Without the number comparison a perfectly
+        // correct resolution announced "Careful: you selected 1, but GSX prepared Ramp 1."
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":"Ramp 1","number":1,"bglName":"Ramp 1"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "1";
+        r.RequestedNumber = 1;
+        r.ExpectedUiName = null;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_number_request_resolved_to_a_differently_numbered_stand_is_still_a_mismatch()
+    {
+        // The number clears the check only when it MATCHES. A different number is the
+        // wrong-stand case the property exists for, and must survive the new comparison.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Gate A12","gate":"A12","number":12,"bglName":"Parking 12"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.RequestedNumber = 5;
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_number_we_never_sent_cannot_clear_a_contradiction()
+    {
+        // This is why the sent number is STAMPED rather than re-parsed out of
+        // RequestedIdentifier: a numberless stand whose GsxIdentifier happens to BE "5"
+        // went as the string "5", which gate.select treats as a different request. An
+        // echoed number of 5 is then a coincidence of digits, not evidence GSX resolved
+        // what we asked for -- and this echo names a completely different stand.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Gate B99","gate":"B99","number":5,"bglName":"Parking B99"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.RequestedNumber = null;      // the string path: no number was sent
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void ExpectedUiName_still_decides_even_when_the_echoed_number_matches()
+    {
+        // Load-bearing ordering. The KATL ambiguity this whole path was built for is TWO
+        // stands sharing number 5 (Concourse T and Delta Tech Ops); the number is what we
+        // sent and it matches BOTH, so if it cleared the check first the collision case
+        // would silently disarm. The fully-qualified name decides whenever both sides
+        // carry one -- the number comparison sits strictly below it.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Delta Tech Ops (E1-21) | Gate 5","gate":" Gate 5","number":5,"bglName":"Gate E 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.RequestedNumber = 5;
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_matching_number_still_clears_when_the_expected_uiName_cannot_be_compared()
+    {
+        // ExpectedUiName is present but GSX echoed a blank uiName, so the fully-qualified
+        // comparison cannot run. It defers, and the number -- an identity we actually sent
+        // -- is what is left to clear it.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.RequestedNumber = 5;
+        r.ExpectedUiName = "Concourse T (T1-T21) | Gate 5";
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_locally_refused_request_is_never_a_mismatch_even_with_a_number_stamped()
+    {
+        // Nothing was sent, so nothing can contradict it. The "nothing was sent" early
+        // return stays ABOVE every comparison, the number one included.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"Gate A12","gate":"A12","number":12,"bglName":"Parking 12"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = null;
+        r.RequestedNumber = 5;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void The_echoed_bglName_clears_a_bglName_resend()
+    {
+        // The ambiguity rung: the selector re-sends a matched candidate's bglName, which
+        // stamps RequestedIdentifier as that string and leaves RequestedNumber NULL. With a
+        // blank echoed uiName the fully-qualified comparison cannot run and the number
+        // comparison has nothing to run on, so before the bglName was consulted this
+        // announced "Careful: you selected ..., but GSX prepared ..." over a CORRECT
+        // selection -- GSX had echoed back the very value it had just been given.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate T 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "Gate T 5";
+        r.RequestedNumber = null;
+        r.ExpectedUiName = null;
+        Assert.False(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void A_bglName_resend_GSX_resolved_elsewhere_is_still_flagged()
+    {
+        // The clearing identity must not become a blanket amnesty: a DIFFERENT bglName is
+        // exactly the differently-named-stand resolution the check exists to catch.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":" Gate 5","number":5,"bglName":"Gate E 5"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "Gate T 5";
+        r.RequestedNumber = null;
+        Assert.True(r.ResolvedGateContradictsRequest);
+    }
+
+    [Fact]
+    public void An_echo_with_no_interpretable_identity_at_all_is_still_not_a_mismatch()
+    {
+        // Both strings blank AND the number disagrees: an echo this poor says nothing
+        // either way, and the conservative rule ("say nothing rather than cry wolf")
+        // outranks the number disagreeing.
+        var r = GsxGateSelectResult.FromFrame(Frame("""
+            {"type":"result","id":"g-1","ok":true,"payload":{"code":"ok","status":"prepared",
+             "gate":{"uiName":"","gate":"","number":12,"bglName":"Parking 12"},
+             "warnings":[]}}
+            """));
+        r.RequestedIdentifier = "5";
+        r.RequestedNumber = 5;
+        Assert.False(r.ResolvedGateContradictsRequest);
     }
 }

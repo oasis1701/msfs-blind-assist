@@ -56,7 +56,11 @@ public sealed class VisualGuidanceProfile
     /// <summary>Pitch (degrees) at which the tone frequency saturates to the min/max. Default
     /// is ±6°, which covers the transport-jet approach envelope (-3° glideslope, +6° flare
     /// AoA at the saturation edge) and gives a **50 Hz/° matching slope** — 67% more sensitive
-    /// than the AudioToneGenerator's native ±10° default (30 Hz/°). At this slope a 0.1° pitch
+    /// than the AudioToneGenerator's native nose-DOWN default (−10°, 30 Hz/°). That native
+    /// default is ASYMMETRIC: its nose-up half is +20° at 15 Hz/°, widened for hand fly's
+    /// liftoff auto-activation, so against that half the gain is larger still. This value is
+    /// applied SYMMETRICALLY (Configure takes one pitch range), which is what keeps the
+    /// visual-guidance mapping a single straight line. At this slope a 0.1° pitch
     /// error produces a 5 Hz beat (slow audible wobble); 0.5° produces a 25 Hz beat (clear
     /// fluttering). Wider envelopes (aerobatic, fighter) should raise this; tighter envelopes
     /// can lower it further for even finer resolution near zero (at the cost of earlier
@@ -412,6 +416,42 @@ public interface IAircraftDefinition
     /// complete as the last person who remembered to extend it when they added a tracker.
     /// </summary>
     void ResetAnnouncementBaselines();
+
+    /// <summary>
+    /// The monitored variable whose continuous-batch delivery completes an announcement this
+    /// definition is currently HOLDING, or null when nothing is held.
+    ///
+    /// A definition's ProcessSimVarUpdate branch for variable A sometimes needs the value of a
+    /// variable B that is dispatched later in the same 1 Hz sample; naming A inline then reads
+    /// B's PREVIOUS value. Waiting on B's own branch does not work either, because that branch
+    /// runs only when B CHANGED. Waiting on B's BATCH does work: the batch message arrives on
+    /// schedule regardless, so once it has been dispatched, B is current for this sample
+    /// whether or not it moved. Declare B here and the flush arrives through
+    /// <see cref="OnDeferredFlushBatchDelivered"/>.
+    ///
+    /// Where B sorts into a LATER batch than A, this costs at most one batch period; where it
+    /// shares A's batch, the flush lands at the end of that same message (no delay at all).
+    /// Return the LAST-sorting variable when several must be current together — waiting on it
+    /// waits on the others too, whether or not they share a batch.
+    /// </summary>
+    string? DeferredFlushWatchVariable { get; }
+
+    /// <summary>
+    /// The batch carrying <see cref="DeferredFlushWatchVariable"/> has finished dispatching.
+    /// Speak the held announcement, if it is still worth speaking.
+    ///
+    /// ⚠ This runs OUTSIDE MainForm's <c>announcer.Suppressed</c> wrap around
+    /// ProcessSimVarUpdate, so a definition muted centrally (the A32NX family) must consult its
+    /// own Ctrl+M disabled set here.
+    /// </summary>
+    void OnDeferredFlushBatchDelivered(Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// Drop any held announcement without speaking it. Called when the context it belongs to is
+    /// gone (SimConnect disconnect, aircraft swap, shutdown) — a held call-out must never be
+    /// spoken at a different aircraft, or after the sim it describes has gone away.
+    /// </summary>
+    void CancelDeferredFlush();
 
     // Visual Landing Guidance Profile
 

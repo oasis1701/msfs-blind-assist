@@ -283,4 +283,60 @@ public class NavigationCalculatorTests
 
         Assert.False(behind);
     }
+
+    // --- AngularDeviationFromCenterlineDeg -------------------------------
+
+    // The 2026-08-27 KATL arrival, live: the readout said "170 degrees right of centerline"
+    // while the aircraft was 3.1 nm off at 17.4 nm -- 10.26 degrees, asin(3.1/17.4).
+    // (Not 10.1: that is atan, and an earlier version of this comment gave it. The
+    // announcement rounds to "10" either way.) CalculateCrossTrackError
+    // measures bearing(threshold -> aircraft) against the localizer heading, and on final the
+    // aircraft is BEHIND the threshold, so its magnitude is 180 minus the true angle.
+    [Fact]
+    public void AngularDeviation_matches_the_live_KATL_approach_at_17nm()
+    {
+        double deg = NavigationCalculator.AngularDeviationFromCenterlineDeg(3.1, 17.4);
+        Assert.InRange(deg, 10.0, 10.3);
+    }
+
+    [Fact]
+    public void AngularDeviation_matches_the_live_KATL_approach_at_16nm()
+    {
+        double deg = NavigationCalculator.AngularDeviationFromCenterlineDeg(0.7, 16.0);
+        Assert.InRange(deg, 2.4, 2.6);
+    }
+
+    [Fact]
+    public void AngularDeviation_is_zero_on_the_centerline()
+    {
+        Assert.Equal(0.0, NavigationCalculator.AngularDeviationFromCenterlineDeg(0.0, 12.0), 6);
+    }
+
+    [Fact]
+    public void AngularDeviation_clamps_to_ninety_when_the_offset_exceeds_the_distance()
+    {
+        // Abeam or behind: asin's argument would exceed 1 and produce NaN.
+        Assert.Equal(90.0, NavigationCalculator.AngularDeviationFromCenterlineDeg(5.0, 4.0), 6);
+    }
+
+    [Fact]
+    public void AngularDeviation_is_zero_at_zero_distance()
+    {
+        Assert.Equal(0.0, NavigationCalculator.AngularDeviationFromCenterlineDeg(1.0, 0.0), 6);
+    }
+
+    // The defect survived because no test covered the behind-threshold geometry at all.
+    // The SIGN is correct there and three other callers depend on only the sign
+    // (RunwayCenterlineTracker.Compute, VisualGuidanceManager x2) -- pin it.
+    [Fact]
+    public void CrossTrackError_sign_is_still_correct_behind_the_threshold()
+    {
+        // Runway heading 000, threshold at (0,0), aircraft on final 1 deg south and
+        // slightly EAST -- i.e. right of the approach path looking down the runway.
+        double right = NavigationCalculator.CalculateCrossTrackError(-1.0, 0.01, 0.0, 0.0, 0.0);
+        Assert.True(right > 0.0, "east of the extended centerline must read positive (right)");
+
+        double left = NavigationCalculator.CalculateCrossTrackError(-1.0, -0.01, 0.0, 0.0, 0.0);
+        Assert.True(left < 0.0, "west of the extended centerline must read negative (left)");
+    }
 }

@@ -107,14 +107,28 @@ public class NavigationCalculator
     }
 
     /// <summary>
-    /// Calculates cross-track error (degrees left or right of ILS centerline)
+    /// SIGN of the aircraft's side of the ILS centerline: negative = left, positive = right.
+    ///
+    /// <para><b>Use the SIGN only. The MAGNITUDE is not the angular deviation.</b> This
+    /// returns <c>bearing(threshold -> aircraft) - localizerHeading</c>, so for an aircraft
+    /// on final — BEHIND the threshold, which is every approach — the magnitude is
+    /// <c>180 - the true angle</c>, and it reads WORSE the closer the aircraft comes to
+    /// being lined up. Live KATL 2026-08-27: 3.1 nm off at 17.4 nm (10.26 degrees) was
+    /// spoken to a blind pilot as "170 degrees right of centerline". For a number a pilot
+    /// hears, call <see cref="AngularDeviationFromCenterlineDeg"/> and take the left/right
+    /// word from this function's sign — which is correct in both geometries, and is all
+    /// this method's other callers (takeoff assist, flare assist, visual guidance) use.
+    /// The behaviour is left as-is deliberately: those callers are correct against it, and
+    /// the same defect was fixed once before in docking (commit 3d186b62) the same way, by
+    /// changing the caller rather than the function.</para>
     /// </summary>
     /// <param name="aircraftLat">Aircraft latitude in degrees</param>
     /// <param name="aircraftLon">Aircraft longitude in degrees</param>
     /// <param name="runwayThresholdLat">Runway threshold latitude in degrees</param>
     /// <param name="runwayThresholdLon">Runway threshold longitude in degrees</param>
     /// <param name="localizerHeading">Localizer true heading in degrees</param>
-    /// <returns>Degrees off centerline (negative = left, positive = right)</returns>
+    /// <returns>Negative = left of centerline, positive = right. Magnitude is NOT the
+    /// angular deviation behind the threshold — see the remarks above.</returns>
     public static double CalculateCrossTrackError(double aircraftLat, double aircraftLon,
                                                    double runwayThresholdLat, double runwayThresholdLon,
                                                    double localizerHeading)
@@ -131,6 +145,44 @@ public class NavigationCalculator
         while (deviation < -180) deviation += 360;
 
         return deviation;
+    }
+
+    /// <summary>
+    /// TRUE angular deviation from the extended runway centerline, in degrees, as seen
+    /// from the threshold: <c>asin(perpendicular / distance to threshold)</c>. Always 0-90 and
+    /// UNSIGNED — pair it with <see cref="CalculateCrossTrackError"/>'s sign for a
+    /// left/right word.
+    ///
+    /// <para>Separate from <see cref="CalculateCrossTrackError"/> on purpose.
+    /// That function returns <c>bearing(threshold -> aircraft) - localizerHeading</c>,
+    /// which for an aircraft on final — BEHIND the threshold — has magnitude
+    /// <c>180 - the true angle</c>. Live KATL 2026-08-27: 3.1 nm off at 17.4 nm
+    /// (10.26 degrees — <c>asin(3.1/17.4)</c>, which is what this method computes; an
+    /// earlier version of this comment said 10.1, the <c>atan</c> value, and the readout
+    /// rounds to "10" either way) was spoken as "170 degrees right of centerline", and the number got
+    /// WORSE the closer the aircraft came to being lined up. Its SIGN is correct in both
+    /// geometries and its three other callers use only the sign, so it is left untouched;
+    /// the same defect was fixed once before in docking (commit 3d186b62) the same way, by
+    /// changing the caller rather than the function.</para>
+    /// </summary>
+    /// <param name="perpendicularDistanceNm">
+    /// Perpendicular distance to the localizer centerline, nautical miles, unsigned —
+    /// <see cref="CalculateDistanceToLocalizer"/>.
+    /// </param>
+    /// <param name="distanceToThresholdNm">
+    /// Horizontal (great-circle) distance from aircraft to threshold, nautical miles — what
+    /// the sole caller passes (<see cref="CalculateDistance"/>), and what pairs correctly with
+    /// a perpendicular measured in the same horizontal plane. An earlier version of this doc
+    /// called it a SLANT distance; nothing on this path has ever supplied one, and a genuine
+    /// slant range would make the computed angle read low on a high approach.
+    /// </param>
+    public static double AngularDeviationFromCenterlineDeg(
+        double perpendicularDistanceNm, double distanceToThresholdNm)
+    {
+        if (distanceToThresholdNm <= 0.0) return 0.0;
+        double ratio = Math.Abs(perpendicularDistanceNm) / distanceToThresholdNm;
+        if (ratio >= 1.0) return 90.0;
+        return Math.Asin(ratio) * 180.0 / Math.PI;
     }
 
     /// <summary>

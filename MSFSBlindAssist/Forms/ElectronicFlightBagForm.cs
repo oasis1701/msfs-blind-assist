@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Controls;
@@ -2129,7 +2129,7 @@ public partial class ElectronicFlightBagForm : Form
                         //     first — live cases OMAM 31R, UIIR 32, DNMN 05, WSAT 36). Foreign-airport
                         //     rows are therefore excluded outright, not merely ranked last.
                         //  2. LittleNavMapProvider.GetILSForRunway — the airport+runway join plus the
-                        //     spatial+heading fallback that recovers fs2024's 213 "orphan" ILS rows
+                        //     geometric fallback that recovers fs2024's ~200 "orphan" ILS rows
                         //     (join columns left NULL, e.g. KPHX 07R) and VALIDATES them against this
                         //     runway's threshold position and heading. Covers empty, orphaned, and
                         //     stale runway_end.ils_ident alike.
@@ -2200,7 +2200,8 @@ public partial class ElectronicFlightBagForm : Form
                         if (!ilsRendered)
                         {
                             // No airport-scoped ils row: runway_end.ils_ident is empty, stale, or its
-                            // row is one of fs2024's 213 orphans (join columns NULL, e.g. KPHX 07R).
+                            // row is one of fs2024's ~200 orphans (join columns NULL, e.g. KPHX 07R;
+                            // OrphanIlsMatcher states the measured count and its date).
                             // GetILSForRunway spatially validates any recovered row against this
                             // runway's threshold + heading, so a shared/stale ident can never surface
                             // another airport's ILS here. Reuses the method's open connection (this

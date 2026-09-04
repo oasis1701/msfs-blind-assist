@@ -47,6 +47,37 @@ public partial class SimConnectManager
     public event EventHandler<string>? ConnectionStatusChanged;
     public event EventHandler<string>? SimulatorVersionDetected;
     public event EventHandler<SimVarUpdateEventArgs>? SimVarUpdated;
+
+    /// <summary>
+    /// Raised once per delivered continuous-batch message, with the batch number, AFTER every
+    /// <see cref="SimVarUpdated"/> that message carried has been dispatched.
+    ///
+    /// This is the deterministic answer to "has variable X's value for this sample arrived yet?".
+    /// A definition only learns a value when its own ProcessSimVarUpdate branch runs, and that
+    /// branch runs only when the value CHANGED — so a definition holding an announcement that
+    /// depends on a second variable cannot tell "the qualifier has not arrived yet" from "the
+    /// qualifier arrived unchanged". Batch delivery can: the batch message arrives on schedule
+    /// whether or not anything in it moved. The five batches are separate requests made ~330 ms
+    /// apart (SafelyClearDataDefinition's 300 ms wait per batch), so a wall-clock timer cannot
+    /// stand in for this without assuming a SimConnect PERIOD.SECOND phase relationship that is
+    /// nowhere guaranteed. See docs/a380x.md.
+    /// </summary>
+    public event EventHandler<int>? ContinuousBatchDelivered;
+
+    /// <summary>
+    /// The continuous batch a monitored variable is carried in, or false when the key is not
+    /// batch-covered (individual data def, PMDG CDA, or not registered at all).
+    /// </summary>
+    public bool TryGetContinuousBatch(string varKey, out int batchNum)
+    {
+        if (continuousVariableIndexMap.TryGetValue(varKey, out var entry))
+        {
+            batchNum = entry.batchNum;
+            return true;
+        }
+        batchNum = 0;
+        return false;
+    }
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     // Fired when a RequestAiTrafficData sweep delivers its final entry

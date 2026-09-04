@@ -1,0 +1,1 @@
+A SayIntentions taxi clearance to a gate now finds that gate even when the scenery claims your aircraft is too big for it. Sceneries get stand sizes wrong often enough that a gate the controller actually cleared you to could be reported as not existing at this airport.

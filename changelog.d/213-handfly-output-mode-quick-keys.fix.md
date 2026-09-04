@@ -1,0 +1,1 @@
+Arming Hand Fly while the output hotkey mode was still open left the single-key instrument readouts dead for the rest of the flight, with no way to get them back. They now come up correctly whichever way Hand Fly starts, including the automatic handover at liftoff.

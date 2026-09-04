@@ -12,6 +12,15 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
+  # On demand, because otherwise this check can only be provoked by opening a PR or
+  # pushing to main — so when a run fails for a reason that has nothing to do with the
+  # repo, there is no way to re-verify it. A GitHub Actions outage on 2026-08-26
+  # startup-failed this workflow twice (once on a PR head, once on main) while the file
+  # was unchanged and had passed on identical content 50 minutes earlier. A
+  # `startup_failure` creates no jobs, so `gh run rerun` refuses it outright, and the only
+  # way back to a green check was to wait for somebody to push something. `changelog.yml`
+  # already carries this trigger for the same reason.
+  workflow_dispatch:
 
 concurrency:
   group: navdatareader-config-${{ github.head_ref || github.ref }}

@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Database.Models;
+﻿using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Navigation;
 
@@ -47,15 +47,28 @@ public readonly struct RunwayFrame
     /// </summary>
     public static RunwayFrame For(Runway runway, double refLat)
     {
-        double hdgRad = runway.Heading * Math.PI / 180.0;
         double lengthM = runway.Length > 0
             ? runway.Length * 0.3048   // stored in feet
             : TaxiGraph.CalculateDistanceMeters(
                 runway.StartLat, runway.StartLon, runway.EndLat, runway.EndLon);
+        return For(runway.StartLat, runway.StartLon, runway.Heading, refLat, lengthM);
+    }
+
+    /// <summary>
+    /// Primitive factory for callers that hold a threshold and a heading but no
+    /// <see cref="Runway"/> — e.g. <c>OrphanIlsMatcher</c>, which works from a
+    /// <c>runway_end</c> row. Exists so that projection stays in ONE place: the
+    /// duplication this class was extracted to end is just as easy to re-create from
+    /// outside Navigation as it was from inside it.
+    /// </summary>
+    public static RunwayFrame For(double startLat, double startLon, double headingDeg,
+        double refLat, double lengthM = 0.0)
+    {
+        double hdgRad = headingDeg * Math.PI / 180.0;
         return new RunwayFrame(
             Math.Sin(hdgRad), Math.Cos(hdgRad),
             DEG_TO_M_LAT * Math.Cos(refLat * Math.PI / 180.0),
-            runway.StartLat, runway.StartLon, lengthM);
+            startLat, startLon, lengthM);
     }
 
     /// <summary>Signed cross-track distance (metres) of a point from the runway

@@ -98,6 +98,11 @@ public class AltitudeManagedStateTests
     // A32NX_FMA_VERTICAL_MODE can NEVER report LAND/FLARE/ROLL OUT and falls to 0 there.
     // Without the rescue the readout flips to "Selected" during the flare and ANNOUNCES it.
 
+    // ⚠️ This pins a path production does not currently reach: AltitudeModeTracker returns
+    // early when the vertical mode is None, ABOVE its only call to IsManaged, so the rescue
+    // never runs on an autoland. The rule is still the right one to hold this class to — the
+    // tracker's preservation happens to agree with it — and the test is what would catch the
+    // rescue rotting if that suppression is ever narrowed. See AltitudeManagedState.
     [Theory]
     [InlineData(32)]  // LAND
     [InlineData(33)]  // FLARE

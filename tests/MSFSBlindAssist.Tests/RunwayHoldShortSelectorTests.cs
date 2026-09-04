@@ -208,4 +208,118 @@ public class RunwayHoldShortSelectorTests
             "No CAT three ILS hold found before the runway.",
             RunwayHoldShortSelector.DescribeLvpOutcome(preferIlsHold: true, RunwayHoldChoice.None));
     }
+
+    // ---- SelectSyntheticBackoff: the OTHER half of TruncateToHoldShort -------------------
+    //
+    // When a route carries no HS/IHS node at all (common at small airports and older
+    // navdatareader snapshots), TruncateToHoldShort falls back to backing off a fixed
+    // distance from the point where the route MEETS THE RUNWAY. Which point that is
+    // matters: it must be the route's runway-ENTRY node, never the lineup target.
+    //
+    // The two diverge by hundreds of metres on three route shapes — a full-length
+    // backtrack, a named-holding-point departure, and (since the runway-entrance picker
+    // landed) any runway whose lineup point the taxi network does not reach. A DB sweep
+    // found 81 of 81 retargeted runway ends sit >= 60 m from their lineup point, so
+    // measuring from the lineup target selects the LAST segment on every one of them:
+    // nothing is truncated and the on-pavement entry node itself gets tagged
+    // "Hold short of Runway X" — a blind pilot told to stop ON the runway.
+    //
+    // Geometry below is on the equator (111132 m per degree of longitude) like the other
+    // runway fixtures, nodes laid out along one connector for readable distances.
+
+    private const double MPerDeg = 111132.0;
+    private static (int Index, double Lat, double Lon) At(int index, double metresFromEntry) =>
+        (index, 0.0, metresFromEntry / MPerDeg);
+
+    // A route ending AT the runway entry node, with connector nodes 200/100/40 m behind it.
+    private static readonly IReadOnlyList<(int Index, double Lat, double Lon)> RouteToEntry = new[]
+    {
+        At(0, -200.0), At(1, -100.0), At(2, -40.0), At(3, 0.0),
+    };
+
+    [Fact]
+    public void SyntheticBackoffMeasuresFromTheRunwayEntryNode()
+    {
+        // Backing off 60 m from the ENTRY node skips the node 40 m out and stops at the
+        // one 100 m back — a hold-short short of the pavement, which is the whole point.
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            RouteToEntry,
+            hasRunwayEntry: true, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 550.0 / MPerDeg,
+            backoffMeters: 60.0);
+
+        Assert.Equal(1, at);
+    }
+
+    [Fact]
+    public void SyntheticBackoffFromADownfieldLineupPointWouldTagTheOnRunwayEnd()
+    {
+        // Characterizes the failure the entry-node reference exists to prevent: with the
+        // lineup point 550 m downfield every node clears 60 m, so the backward scan stops
+        // on the FIRST candidate — the last segment, whose end node is on the pavement.
+        // TruncateToHoldShort then removes nothing and tags that node as the hold-short.
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            RouteToEntry,
+            hasRunwayEntry: false, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 550.0 / MPerDeg,
+            backoffMeters: 60.0);
+
+        Assert.Equal(RouteToEntry.Count - 1, at);
+    }
+
+    [Fact]
+    public void SyntheticBackoffFallsBackToTheLineupPointWhenThereIsNoEntryNode()
+    {
+        // No resolvable destination node (node id 0, or absent from the graph) — the
+        // lineup target is the only reference left, which is the pre-existing behaviour.
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            RouteToEntry,
+            hasRunwayEntry: false, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 0.0,
+            backoffMeters: 60.0);
+
+        Assert.Equal(1, at);
+    }
+
+    [Fact]
+    public void SyntheticBackoffReturnsMinusOneWhenTheWholeRouteIsInsideTheBackoff()
+    {
+        // A stand right beside the runway: nothing is far enough back to hold at, so
+        // TruncateToHoldShort tags NOTHING and HandleArrival's runway-arrival fallback
+        // owns the stop. Returning the last index here is what puts a pilot on the runway.
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            new[] { At(0, -30.0), At(1, -10.0), At(2, 0.0) },
+            hasRunwayEntry: true, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 550.0 / MPerDeg,
+            backoffMeters: 60.0);
+
+        Assert.Equal(-1, at);
+    }
+
+    [Fact]
+    public void SyntheticBackoffOnAnEmptyRouteIsMinusOne()
+    {
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            Array.Empty<(int, double, double)>(),
+            hasRunwayEntry: true, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 0.0,
+            backoffMeters: 60.0);
+
+        Assert.Equal(-1, at);
+    }
+
+    [Fact]
+    public void SyntheticBackoffReturnsTheSegmentIndexNotTheListPosition()
+    {
+        // A segment whose ToNode is missing is omitted by the caller, so list position
+        // and segment index diverge; the answer must be the SEGMENT index or the route is
+        // truncated at the wrong place.
+        int at = RunwayHoldShortSelector.SelectSyntheticBackoff(
+            new[] { At(0, -200.0), At(4, -100.0), At(7, 0.0) },
+            hasRunwayEntry: true, entryLat: 0.0, entryLon: 0.0,
+            lineupLat: 0.0, lineupLon: 0.0,
+            backoffMeters: 60.0);
+
+        Assert.Equal(4, at);
+    }
 }

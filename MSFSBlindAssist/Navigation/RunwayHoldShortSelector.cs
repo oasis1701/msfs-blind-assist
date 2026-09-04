@@ -90,6 +90,45 @@ public static class RunwayHoldShortSelector
     }
 
     /// <summary>
+    /// Pure core for TruncateToHoldShort's SYNTHETIC back-off pass — the fallback used
+    /// when <see cref="Select"/> found no hold node at all (common at small airports,
+    /// new-numbered runways, and older navdatareader snapshots that carry no hold-short
+    /// data). Returns the route-segment index to truncate at, or -1 when no node sits far
+    /// enough back, in which case TruncateToHoldShort must tag NOTHING and leave the stop
+    /// to HandleArrival's runway-arrival fallback.
+    /// </summary>
+    /// <param name="candidates">The route's segment END nodes as (segment index, lat, lon),
+    /// in ascending segment order. The caller omits any segment whose ToNode is missing, so
+    /// the index travels with the point rather than being the list position.</param>
+    public static int SelectSyntheticBackoff(
+        IReadOnlyList<(int Index, double Lat, double Lon)> candidates,
+        bool hasRunwayEntry, double entryLat, double entryLon,
+        double lineupLat, double lineupLon,
+        double backoffMeters)
+    {
+        // The reference is the point where the route MEETS THE RUNWAY, not the lineup
+        // target. For an ordinary full-length departure the two coincide, so this is a
+        // no-op there; they diverge by hundreds of metres on a backtrack departure, a
+        // named-holding-point departure, and any runway the entrance picker retargets —
+        // and measuring from the lineup target on those selects the last segment, so
+        // nothing is truncated and the on-pavement entry node is tagged "hold short".
+        double refLat = hasRunwayEntry ? entryLat : lineupLat;
+        double refLon = hasRunwayEntry ? entryLon : lineupLon;
+
+        // Backwards from the runway end: the LATEST node that is still a full back-off
+        // clear of the runway. -1 (nothing far enough back) is a meaningful answer, not a
+        // failure — the caller must then tag NOTHING rather than fall back to the last
+        // segment, which is a node on the pavement.
+        for (int i = candidates.Count - 1; i >= 0; i--)
+        {
+            var c = candidates[i];
+            if (TaxiGraph.FastDistanceMeters(c.Lat, c.Lon, refLat, refLon) >= backoffMeters)
+                return c.Index;
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// The route-summary feedback sentence for an LVP request — a blind pilot
     /// has no other way to know whether the CAT III hold was actually honoured
     /// (navdata hold coverage is patchy, and the same-approach gate can

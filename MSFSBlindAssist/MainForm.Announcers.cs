@@ -19,6 +19,49 @@ namespace MSFSBlindAssist;
 
 public partial class MainForm
 {
+    /// <summary>
+    /// A continuous batch has finished dispatching. If the current definition is holding an
+    /// announcement that was waiting on a variable in THIS batch, that variable is now current
+    /// for this sample, so let the definition speak it.
+    ///
+    /// This is what replaced a wall-clock timer on the FBW armed-ALT call-out: the qualifier
+    /// that names it rides a different batch on the A380, delivered by a separate SimConnect
+    /// request made ~330 ms after the one carrying the armed bitmask, so no fixed interval can
+    /// be known to span the gap. Batch delivery is the event that actually answers the question.
+    /// </summary>
+    private void OnContinuousBatchDelivered(object? sender, int batchNum)
+    {
+        // Ordering IS the guarantee being sold here: the flush must see every SimVarUpdated this
+        // batch carried. Dispatch is synchronous on the UI thread, so that holds on the normal
+        // path. If we are ever off it, or the producer queue still has undrained updates, do
+        // nothing rather than risk flushing against a half-applied sample — the hold stays
+        // pending and the next delivery of the same batch flushes it one period later.
+        if (InvokeRequired || Volatile.Read(ref queuedEventCount) > 0) return;
+
+        var aircraft = currentAircraft;
+        if (aircraft?.DeferredFlushWatchVariable is not string watchVar) return;
+        if (simConnectManager == null) return;
+
+        if (simConnectManager.TryGetContinuousBatch(watchVar, out int watchBatch))
+        {
+            if (watchBatch != batchNum) return;
+        }
+        else
+        {
+            // The watched variable is not batch-covered — it was made ExcludeFromBatch, renamed,
+            // or dropped. Its batch will therefore NEVER be delivered, so honouring the contract
+            // literally would hold the call-out forever and lose it silently. Flush on the first
+            // delivery instead: the qualifier may be one sample stale, which is exactly the
+            // pre-hold behaviour, and a slightly mis-named call-out beats none at all.
+            Log.Warn("Announcements",
+                $"Deferred-flush watch variable '{watchVar}' is not batch-covered; flushing on "
+                + $"batch {batchNum} instead. To release the hold on schedule the variable must "
+                + "be Continuous + IsAnnounced and not ExcludeFromBatch.");
+        }
+
+        aircraft.OnDeferredFlushBatchDelivered(announcer);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
@@ -1099,6 +1142,20 @@ public partial class MainForm
             bool activatedHandFly = !handFlyManager.IsActive;
             if (activatedHandFly)
             {
+                // Leave output hotkey mode FIRST, or the quick-access keys never come up.
+                // RegisterHandFlyHotkeys early-returns false while outputHotkeyModeActive is
+                // set, skipping registration wholesale — and nothing re-acquires the keys when
+                // output mode later exits, so they stay dead for the rest of the session while
+                // the pilot has been told only "quick keys failed". Output mode has no
+                // auto-timeout (it "stays active until used or escape pressed"), so a pilot who
+                // armed it and was then distracted really can still be in it at rotation.
+                // HotkeyManager's own two entry points (HOTKEY_HAND_FLY_MODE and
+                // HOTKEY_VISUAL_GUIDANCE) already guard exactly this by deactivating before they
+                // toggle; this path calls Toggle() directly and so has to do it itself.
+                // Silent by construction: OnOutputHotkeyModeChanged speaks only for Activated
+                // and Cancelled, and this raises Deactivated. Idempotent when not in the mode.
+                hotkeyManager.ExitOutputHotkeyMode();
+
                 handFlyManager.Toggle();                // "Hand fly mode active" (clipped below)
             }
 
@@ -1114,28 +1171,18 @@ public partial class MainForm
             // announce) and would interrupt the breadcrumb after a syllable. Mute
             // the callout stream (never the tone) until the breadcrumb has finished;
             // this covers the pre-armed case too, where the stream is already running.
+            // The wording and its matching mute are ONE decision in LiftoffHandoffBreadcrumb —
+            // including why the phrase is a single sentence (SAPI's inter-sentence pause is
+            // longer than the mute can afford) and why the quick-access-keys warning has to
+            // ride INSIDE this one utterance rather than be spoken separately.
+            //
             // Ordering: the grace MUST be set AFTER handFlyManager.Toggle() — the
-            // activation branch clears any stale grace window.
-            handFlyManager.SuppressAnnouncementsFor(LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS);
-
-            // Fold the quick-access-keys warning into the single breadcrumb when
-            // this handoff's own activation failed to register them (a bare-letter
-            // key held by another app, or output mode active at fire time). The
-            // handler's standalone warning (OnHandFlyModeActiveChanged) is spoken
-            // WITHOUT interrupt, so the breadcrumb's AnnounceImmediate — which
-            // cancels pending speech on all three backends — would silently
-            // swallow it and the pilot would never learn the quick-access keys
-            // are dead. Pre-armed case excluded: OnHandFlyModeActiveChanged did
-            // not fire during this handoff, and the warning already played in
-            // full when the pilot armed Hand Fly manually on the ground.
-            string breadcrumb = activatedHandFly
-                ? "Airborne. Takeoff assist off, hand fly active."
-                : "Airborne. Takeoff assist off.";
-            if (activatedHandFly && !_handFlyQuickKeysRegistered)
-            {
-                breadcrumb += " Quick access keys unavailable. Use output mode for H, V, Q.";
-            }
-            announcer.AnnounceImmediate(breadcrumb);
+            // activation branch clears any stale grace window. _handFlyQuickKeysRegistered
+            // is written by OnHandFlyModeActiveChanged, which that same Toggle() raised, so
+            // it is already current here.
+            var cue = LiftoffHandoffBreadcrumb.For(activatedHandFly, _handFlyQuickKeysRegistered);
+            handFlyManager.SuppressAnnouncementsFor(cue.GraceMs);
+            announcer.AnnounceImmediate(cue.Text);
         });
     }
 

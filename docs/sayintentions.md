@@ -351,7 +351,10 @@ Diagnostics are written to `%APPDATA%\MSFSBlindAssist\logs\sayintentions.log`. I
 records which fields were found in `flight.json`, and for every route import one line
 holding the destination, which **source** the sequence came from and whether the two
 **disagreed**, both candidate sequences (`geoTaxiways` and `clearanceTaxiways`), the
-ground track's point / **trimmed** / unsnapped / dropped-run counts and its stamp, the
+ground track's point / **trimmed** / unsnapped / dropped-run / **excursion** counts, the
+**names** any excursion removed (`geoExcursionsDropped`), the leg count the stale-track
+guard actually measured (`geoLegsAsPublished` — not derivable from the others, because
+removing an excursion also merges its two anchors) and its stamp, the
 stamp of the transmission the clearance came from (`clearanceStamp` — which says whether
 the scan found the right one), the taxiways **applied**, the taxiways **skipped** (the
 airport has them, the dialog could not seat them), the taxiways **not at this airport**,
@@ -1028,6 +1031,118 @@ The four unsnapped points are the turn into stand E52, which is apron rather tha
 pavement. `Link 5`, `Link 6` and `Inner` are OSM names for connector stubs no controller
 ever says; they appear as single points because SI's path clips their corners.
 
+**Junction excursions.** The same corner-clipping produces a worse artifact when the clipped
+pavement is a real, named taxiway. Approaching a junction, the crossing taxiway is often at or
+inside the 25 m snap tolerance of the one being travelled, so it legitimately wins the
+nearest-edge scan for two to four consecutive points and the sequence reads `X, Y, X` — a leg
+the aircraft never taxied. Three live imports applied one: KDEN `P8, P, P7, P, EC`, KORD
+`A, A17, A, A14`, CYVR `D, D5, D, D9`. Measured against the real navdata behind them, KDEN's
+`P7` is the worst case: its centreline stops 21.13 m short of `P`, so it wins on 148 of 154
+sampled positions. A run of at most `MaxExcursionRunPoints` (4) sitting between two runs of the
+**same** taxiway is therefore dropped. Removing a sandwiched run can never disconnect a
+route — `X → Y → X` becomes `X`, and the aircraft still taxis along `X`.
+
+Two caveats on the 97.8 % figure, both worth knowing before reading a log. The buckets run
+1 pt 45.1 %, 2 pt 21.4 %, 3 pt 23.2 %, 4 pt 8.2 %, 5 pt 1.4 %, 6+ 0.7 % — but the
+**1-point bucket never reaches this filter at all**: `MinRunPoints` removed it a stage
+earlier and counted it in `geoDroppedRuns`. This filter covers the 2–4 point buckets,
+52.8 %; the two together make 97.8 %. So `geoExcursions=0` does not mean "no junction
+clips" — read `geoDroppedRuns` beside it. And the bound is in **samples**, not metres:
+4 points span 3 gaps, so ~84 m at the median 28 m spacing and ~52 m at the minimum
+17.3 m. If SayIntentions ever changes its resampling step the bound silently stops
+firing and the calibration stops applying with it; expressing it in metres is a recorded
+follow-up, and needs the 600-junction sweep re-run in the new unit.
+
+**The sandwich has to be contiguous.** The anchor, the filling and the returning anchor
+must be neighbours in the run sequence, with nothing removed between them. Stage 3 drops
+unsnapped runs and stubs *before* this pass, and without the contiguity requirement those
+removals weld two runs together the published track never showed as adjacent: `X`,
+[apron], `Y`, [apron], `X` read as a sandwich and `Y` — a taxiway the aircraft genuinely
+taxied — was deleted. Worse, it was deleted **silently**: at 2 lost points in 10 the
+unsnapped share is 20 %, under the 25 % that earns a spoken warning, so the only trace was
+the excursion count in the log. It is the same rule the run-length stage states one level
+down (a lost point has to *break* a run rather than be skipped over), which had never been
+re-established at the run level. It also keeps the pass consistent with itself: `X, Y, Z,
+X` is deliberately not an excursion, so it must not become one merely because `Z` was
+short enough for the stub filter to remove.
+
+**Shapes the filter still does not catch.** All of them leave the artifact in the route
+rather than deleting a real leg — the safe direction — and all are left alone on purpose,
+because every fix for them makes the pass delete *more*, which is the direction that cost
+CYVR its cleared `JB` below:
+
+- **A split filling** — `X, Y, [stub], Y, X`. The one-run lookahead sees `Y`, not the
+  returning `X`. Plausible at exactly the place it matters, since SayIntentions clips
+  connector corners into single points.
+- **A nested pair** — `Z, X, Y, X, Z`. One left-to-right pass with no re-examination:
+  removing `Y` merges the two `X` runs, but `X` has already been passed.
+- **Two spurs at one junction** — `X, Y, Z, X`. Neither run's successor is the anchor.
+- **A trimmed anchor** — `TrimToPointsAhead` runs first and cuts at the point nearest the
+  aircraft, so a pilot pressing Ctrl+Shift+Y *at* the junction loses the leading `X` and
+  the spur becomes the route's **first** leg. Not caused by this filter (the same list
+  came out before it existed), but not covered by it either. Pinned by
+  `AnExcursionWhoseLeadingAnchorTheTrimRemovedIsNotRecognised`, which also shows the pass
+  working correctly one sample earlier.
+
+**The direction of travel is checked first, upstream of all of this.** SayIntentions
+publishes a `heading` for every point of `taxi_path`, and the snapper now uses it: among
+edges inside the 25 m tolerance it prefers the nearest one whose bearing agrees with that
+heading to within 25°, and falls back to the plain nearest when none agrees. At a junction
+the crossing pavement is perpendicular to the direction of travel, so the taxiway being
+travelled wins even though the crossing one is closer — which is the artifact removed at
+source, before any of the shapes above can form.
+
+The fallback is the safety property, not a convenience. Two stricter rules were measured
+against the committed captures and rejected. A hard bearing gate — reject any edge that
+disagrees — throws away 10 of KDTW's 124 points (8.8 %), and those points sit on `K`, `Q`,
+`U9` and `A5`, legs that belong to the route; a rejected point becomes a null, a null
+breaks its run, and a broken run can drop a real leg below `MinRunPoints`. Using the
+heading only to settle a near tie is safe but useless here: at a real junction the
+crossing pavement is not nearly as close, it is *closer* (KDEN's `P7` wins on 148 of 154
+sampled offsets), so no ambiguity margin contains it. Bearing-preferred nearest changes 0
+of LSZH's 40 per-point picks and 0–1 of KDTW's 124, and moves neither sequence — those two
+captures are the regression guard, and they read the published heading exactly as a live
+import does.
+
+The sandwich filter stays in place behind it. Retiring it is a separate decision and needs
+sim evidence: neither committed capture contains a junction artifact (`geoExcursions=0` on
+both), so CI can show the heading rule is harmless on real data and correct on synthetic
+junction geometry, but not that it removes the CYVR / KDEN / KORD artifact.
+
+**Why only the sandwich shape.** It is tempting to reject any track that leaves a taxiway and
+comes back to it, since that is what a junction clip looks like. Measured against 56 real
+imports, that is too blunt: of 17 revisit occurrences, 14 are sandwiches — exactly one run
+between the two visits — and all three of the non-sandwiched ones are real. KBOS revisits `E`
+because the controller's own clearance does (`P, E, M, K, E`); KBOS `K` and KATL `H` are each
+the stand lead-in arriving as the final leg. A blanket rule throws away 7 of the 31
+geometry-sourced imports to catch 3 artifacts, and among the 4 it wrongly discards, KMDW loses
+`Q` and `Y6` — the pavement to the runway after a clearance that stopped at a hold short.
+
+**Known limitation: the filter can drop a cleared leg.** It is geometric and cannot tell a
+junction clip from a cleared taxiway that happens to be brief. At CYVR the track read
+`6, JB, 6, J, H, D, D5, D, D9` against a clearance of `JB, J, H, D, D9`. `JB` is cleared, is
+sandwiched between two `6` runs, and appears nowhere else, so it is dropped — the agreement
+walk then fails, the clearance wins, and you are told the ground track differs from a track
+that actually agreed. One import in fifty-six measured.
+
+There is a second cost with the same cause, and it is worth stating separately because it
+is not about the route: dropping the filling also merges the two anchor runs into **one
+row**, and rows are what hold-shorts hang on. A clearance with two hold-shorts on the same
+taxiway — the KBOS `N, hold short 15R, N` shape — has the second one consumed against the
+second `N` row by `MapHoldShortsToTaxiways`' forward-only scan. Remove that row and the
+hold-short maps to -1 and is announced as *"Could not set hold short of runway ..."*.
+Announced, never silent, and the clearance still owns the destination — but it is a runway
+hold-short, so weigh it before widening anything in this filter.
+
+That is left alone deliberately. The failure is in the safe direction: you get the controller's
+own route, correctly, plus one caution too many. Protecting a cleared name was implemented and
+reverted, because it removes the caution by handing you the geometry route instead — and at
+CYVR that route is `6, JB, 6, J, H, D, D9`, which walks you off `6` onto `JB` and back at a
+single junction. A spurious turn instruction is worse than a spurious warning. The deeper
+reading is that the sandwich `6, JB, 6` may have its artifact on the *anchor* — the second `6`
+— rather than on the filling, which no rule here currently models; settling that needs a live
+capture at a stand where it reproduces, not another guess.
+
 **EGLL, 2026-07-30.** *"Taxi to Gate 325 via N5E, A, F, G"*, captured 10 s later, snaps to
 exactly `N5E, A, F, G` — this time against **navdata**-named edges (EGLL has 5214 of 5706
 segments named), so unlike LSZH the result does not rest on the OSM augmentation:
@@ -1393,6 +1508,38 @@ Both fallbacks read `_destinationSpotMap`, which holds gate entries only while g
 is the selected destination type — a runway candidate probed in between repopulates it
 with runway entries — so `SelectDestinationType(false)` is made once for the pair, ahead
 of either.
+
+**All three steps see only what the gate list LISTED, so every browsing filter on that
+list has to come off before the probe.** `PopulateDestinations` drops a filtered-out spot
+before its label reaches the combo, `_destinationSpotMap` and `_destinationThresholdMap`
+alike, so a hidden stand does not merely fail the name step — the alias and the coordinate
+have nothing to match against either, and the three "weaker evidence" steps all go blind
+together. There are three such filters and `TryResolveExternalDestination` neutralises all
+three: the **gate search box** (blanked — a search left over from a manual lookup reads
+exactly like "this airport has no such gate"), the **occupied-stands filter**
+(`_suppressOccupiedFilter` — an assigned stand with AI parked on it is still the assigned
+stand; the occupancy warning still reaches the pilot at Calculate via `CheckGateOccupancy`),
+and the **wingspan "show fitting only" filter** (`_suppressFitFilter`).
+
+The wingspan one is the strongest case of the three, because its data is the least
+trustworthy thing in the comparison. `ParkingSpot.FitsAircraft` reads a navdata parking
+**radius** or a GSX **max wing span**, both authored by the scenery, and both are
+frequently wrong — a stand that really does take the airframe is routinely marked too
+small. The box is ticked by **default** whenever wingspan data exists, so this was the
+normal configuration, not an edge case: a SayIntentions clearance to a gate simply could
+not seat it, and on a known arrival that is the loud `ComposeUnresolvedArrivalGateMessage`
+abort — *"this scenery has no stand under that label"* — for a stand the scenery has and
+the aircraft fits. A controller naming the stand outranks a scenery number saying it will
+not fit: the pilot was **told** to go there. `TaxiAssistForm.ShouldApplyFitFilter` carries
+the rule so it is pinned by test rather than by a condition inline in a 200-line method.
+
+Both suppressions are **latched on a successful seat**, not restored — `PopulateDestinations`
+runs again on the Calculate-path and show-path gate-source refreshes, and a rebuild that
+dropped the seated stand would clear the selection and abort the very import that seated
+it ("Gate list updated from GSX. Please choose the destination again."). They are cleared
+when the pilot toggles that checkbox themselves (their own assertion outranks the latch)
+and on every airport load. On a **failed** probe both are restored and the list rebuilt
+under them, like everything else in `TryResolveExternalDestination`: probing leaves no mark.
 
 **The coordinate test is the stand's own radius, doubled.** Not a number of metres, and no
 longer plain containment. A radius multiple is what keeps it self-scaling with nothing to

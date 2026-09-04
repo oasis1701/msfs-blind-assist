@@ -1,0 +1,1 @@
+A380 and A320: an armed altitude that carries an FMS constraint is now announced as "Altitude constraint armed" reliably, instead of sometimes being called a plain "Altitude armed" and never corrected. On the A380 the flight display shows that difference only as a colour change, so the call-out was the only way to hear it.

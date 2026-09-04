@@ -16,6 +16,7 @@
 // so on the A380 the constraint case is signalled by COLOUR ALONE — the text stays "ALT" —
 // which is precisely the difference a blind pilot has no other way to get.
 
+using System.Reflection;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
@@ -115,6 +116,116 @@ public class ArmedAltitudeModeTests
         var named = ArmedAltitudeMode.NameAltArmedBit(source, altConstraintApplicable: false, altIsCruiseAltitude: true);
         Assert.Equal("Climb", named[0].name);
         Assert.Equal("Cruise altitude", named[1].name);
+    }
+
+    // ---- Splitting a newly-armed bitmask into "say now" and "hold" ----
+    //
+    // The ALT entry is the only one with a qualifier (constraint / cruise altitude), and its
+    // qualifier is always DISPATCHED AFTER the armed bitmask, so naming it inline reads the
+    // previous tick's value. It is held; everything else is announced at once.
+
+    [Fact]
+    public void Immediate_bits_strip_only_the_alt_bit()
+    {
+        // ALT(1) + CLB(4) + DES(8) armed together: CLB and DES speak now, ALT is held.
+        Assert.Equal(4 | 8, ArmedAltitudeMode.ImmediateArmedBits(1 | 4 | 8));
+    }
+
+    [Fact]
+    public void Immediate_bits_pass_a_mask_without_alt_through_unchanged()
+    {
+        Assert.Equal(4 | 16, ArmedAltitudeMode.ImmediateArmedBits(4 | 16));
+    }
+
+    [Fact]
+    public void Immediate_bits_are_empty_when_alt_armed_alone()
+    {
+        Assert.Equal(0, ArmedAltitudeMode.ImmediateArmedBits(1));
+    }
+
+    [Theory]
+    [InlineData(1, true)]        // ALT alone
+    [InlineData(1 | 4, true)]    // ALT with CLB
+    [InlineData(4, false)]       // CLB alone
+    [InlineData(0, false)]       // nothing newly armed
+    public void Hold_is_needed_exactly_when_the_alt_bit_is_newly_armed(int newlyArmed, bool expected)
+    {
+        Assert.Equal(expected, ArmedAltitudeMode.ShouldHoldAltAnnouncement(newlyArmed));
+    }
+
+    [Theory]
+    [InlineData(1, true)]        // still armed at flush time
+    [InlineData(1 | 8, true)]    // still armed, alongside DES
+    [InlineData(8, false)]       // ALT disarmed inside the hold window
+    [InlineData(0, false)]       // everything disarmed
+    [InlineData(-1, false)]      // the "no baseline yet" sentinel — NOT an armed mask
+    public void A_held_announcement_survives_only_while_alt_is_still_armed(int currentArmed, bool expected)
+    {
+        // An ALT that arms and disarms inside the hold window must be DROPPED, not spoken late.
+        //
+        // -1 is the sentinel BOTH defs write to _prevVertArmed in ResetAnnouncementBaselines and
+        // in the field initialiser, and it is what this guard is handed. It means "no baseline
+        // taken", not "everything armed" — but -1 & 1 == 1, so the naive bit test says ALT is
+        // armed and a hold surviving a re-baseline would speak a phantom call-out with nothing
+        // armed at all. That is the exact invention the "neither qualifier may ever announce
+        // alone" rule exists to prevent.
+        Assert.Equal(expected, ArmedAltitudeMode.HeldAltStillArmed(currentArmed));
+    }
+
+    [Theory]
+    // pending, muted, currentArmed  -> speak?
+    [InlineData(true,  false, 1,  true)]     // the ordinary case: held, audible, still armed
+    [InlineData(false, false, 1,  false)]    // nothing held — a batch delivery with no arm behind it
+    [InlineData(true,  true,  1,  false)]    // Ctrl+M muted DURING the hold window
+    [InlineData(true,  false, 8,  false)]    // ALT disarmed before the qualifier landed
+    [InlineData(true,  false, -1, false)]    // re-baselined mid-hold
+    public void A_held_alt_call_out_is_spoken_only_when_all_three_gates_agree(
+        bool pending, bool muted, int currentArmed, bool expected)
+    {
+        // The three gates are checked in ONE shared place because both airframes must agree on
+        // them: the A32NX flush runs outside MainForm's announcer.Suppressed wrap and so has to
+        // consult the mute itself, and both must drop a hold whose ALT is no longer armed.
+        Assert.Equal(expected, ArmedAltitudeMode.ShouldSpeakHeldAlt(pending, muted, currentArmed));
+    }
+
+    [Theory]
+    [InlineData(typeof(FlyByWireA320Definition))]
+    [InlineData(typeof(FlyByWireA380Definition))]
+    public void Each_fbw_vert_armed_table_puts_exactly_one_entry_on_the_alt_bit(Type definitionType)
+    {
+        // The whole hold/flush machinery (ImmediateArmedBits / ShouldHoldAltAnnouncement /
+        // HeldAltStillArmed) is keyed on AltArmedBit, so a DEFINITION whose own table moved
+        // Altitude off that bit would desync speech from what the FMA decoder announces.
+        // Asserting the entry's NAME would pin nothing — NameAltArmedBit overwrites it on every
+        // use — so the load-bearing assertion is that the bit is present exactly once.
+        var bits = VertArmedBits(definitionType);
+        Assert.Single(bits, b => b.bit == ArmedAltitudeMode.AltArmedBit);
+    }
+
+    [Theory]
+    [InlineData(typeof(FlyByWireA320Definition))]
+    [InlineData(typeof(FlyByWireA380Definition))]
+    public void Bit_one_of_each_fbw_lateral_table_is_nav_not_altitude(Type definitionType)
+    {
+        // Why ImmediateArmedBits is applied ONLY to a vertical mask: the same bit VALUE that
+        // means Altitude vertically means NAV laterally. Stripping it from a lateral mask would
+        // silently and permanently drop "NAV armed", which has no other channel. This pins the
+        // collision that makes that guard necessary, so the reason survives a refactor.
+        var bits = ArmedBitsField(definitionType, "_latArmedBits");
+        Assert.Equal("NAV", bits.Single(b => b.bit == ArmedAltitudeMode.AltArmedBit).name);
+    }
+
+    private static (int bit, string name)[] VertArmedBits(Type definitionType) =>
+        ArmedBitsField(definitionType, "_vertArmedBits");
+
+    private static (int bit, string name)[] ArmedBitsField(Type definitionType, string fieldName)
+    {
+        var field = definitionType.GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.True(field != null,
+            $"{definitionType.Name} has no private static {fieldName}. If it was renamed or hoisted "
+            + "into a base class, update this test — it is what stops the two airframes' bit tables "
+            + "drifting from the AltArmedBit the hold machinery is keyed on.");
+        return ((int bit, string name)[])field!.GetValue(null)!;
     }
 }
 

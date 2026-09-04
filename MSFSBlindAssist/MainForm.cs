@@ -324,13 +324,6 @@ public partial class MainForm : Form
     // a fresh one-shot position read (SimOnGround + ground speed) before
     // performing the handoff; see PerformLiftoffHandoffIfValid.
     private const int    LIFTOFF_HANDOFF_CONFIRM_MS  = 1500;
-    // How long the handoff mutes Hand Fly's own spoken pitch/bank/heading/VS
-    // callouts so the breadcrumb ("Airborne. Takeoff assist off, hand fly
-    // active.") can finish — the first post-activation callouts pass their
-    // announce gates within one sim frame and AnnounceImmediate interrupts,
-    // which would clip the breadcrumb after a syllable. The tone is unaffected;
-    // spoken pitch resumes right after the window.
-    private const int    LIFTOFF_HANDOFF_ANNOUNCE_GRACE_MS = 3500;
     // Outcome of the most recent RegisterHandFlyHotkeys() call, recorded by
     // OnHandFlyModeActiveChanged. The liftoff auto-handoff folds the
     // quick-access-keys warning into its breadcrumb: the breadcrumb's
@@ -611,6 +604,7 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
 
@@ -1096,6 +1090,15 @@ public partial class MainForm : Form
             iflyExitDef.Sdk.VariableChanged -= OnIFlyVariableChanged;
             iflyExitDef.Shutdown();
         }
+
+        // Definition-owned UI-thread timers (both FBW defs' TCAS RA compose timer) and any held
+        // call-out. StopAllMotion is otherwise only reached from the aircraft-SWAP path, so a
+        // quit left them live across simConnectManager.Disconnect()'s 500 ms DoEvents pump —
+        // which dispatches WM_TIMER, so a timer could still speak on the way out. Same leak
+        // class as the iFly def and the PMDG EFB clients handled above.
+        (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
+        (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
+        currentAircraft?.CancelDeferredFlush();
 
         // Clean up managers and resources
         slipCueGenerator?.Dispose();   // owns a WaveOut; free it on close

@@ -931,9 +931,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // The old per-key button panel was impractical (one digit at a time) and has been removed.
 
         // ---- INTERIOR LIGHTING ----
-        Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
-            new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
-        Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
+        // ANN LT — the overhead annunciator-light switch (cockpit node SWITCH_OVHD_INTLT_ANNLT),
+        // Test / Bright / Dim. A32NX_OVHD_INTLT_ANN is the INPUT; A380_Cockpit_Behavior.xml's
+        // VARIABLE_MAPPING block copies it to A380X_OVHD_INTLT_ANN at 18 Hz for the button
+        // emissives, so never write that mirror.
+        //
+        // ⚠️ A second combo, "Annunciator Lights" on A380X_OVHD_ANN_LT_POSITION, used to sit
+        // beside this one and was a PHANTOM: FBW lists that name in a380-simvars.md but nothing
+        // in the aircraft reads or writes it (checked case-insensitively across the installed
+        // package). MSFSBA's own write CREATED it, so it read back whatever was last set and
+        // looked like it worked — two entries for one switch, one of them inert. Removed
+        // 2026-09-03; this one inherits the cockpit's own label. Do not re-add a control for a
+        // name found only in FBW's simvar docs without checking the aircraft actually uses it.
+        Sel("A32NX_OVHD_INTLT_ANN", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
         // Cockpit lighting preset load / save (the only cockpit-side light control on this
         // build — the individual dome/flood knobs are not modelled as L:vars; lighting is
@@ -1160,9 +1170,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // CORRECTED 2026-06: the control + state var the A380 instruments (PFD/ND/FCU)
         // actually read is A32NX_PUSH_TRUE_REF, NOT A32NX_FMGC_TRUE_REF (what MSFSBA used
         // before). Live-verified: writing FMGC_TRUE_REF=1 left PUSH_TRUE_REF (the consumed
-        // var) at 0 and changed nothing; writing PUSH_TRUE_REF=1 latched and is what the
-        // displays read. FMGC_TRUE_REF is an FMGC-internal output, not the pilot control.
-        Sel("A32NX_PUSH_TRUE_REF", "Heading Reference", new Dictionary<double, string> { [0] = "Magnetic", [1] = "True" });
+        // var) at 0 and changed nothing. FMGC_TRUE_REF is an FMGC-internal output, not the
+        // pilot control.
+        //
+        // ⚠️ A duplicate Sel() for A32NX_PUSH_TRUE_REF used to sit here. `Read()` does
+        // `vars[key] = …`, so the later ReadEnum registration below silently replaced it and
+        // this one had no effect at all — the "never register the same var KEY twice" trap.
+        // Removed with no behaviour change; the surviving registration is the ReadEnum in the
+        // instrument block, and the control IS settable (see A380EfisCpControls).
         Sel("A32NX_CHRONO_ET_SWITCH_POS", "Elapsed Time",
             new Dictionary<double, string> { [0] = "Run", [1] = "Stop", [2] = "Reset" });
 
@@ -1319,7 +1334,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         ArincUnit("A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "A32NX_ADIRS_ADR_1_TRUE_AIRSPEED", "True airspeed", "knots");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "A32NX_ADIRS_IR_1_WIND_DIRECTION_BNR", "Wind direction", "degrees");
         ArincUnit("A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "A32NX_ADIRS_IR_1_WIND_SPEED_BNR", "Wind speed", "knots");
-        // ND heading reference (magnetic vs true) — auto-announced on change.
+        // ND heading reference (magnetic vs true) — auto-announced on change. This is the
+        // ONLY registration for the key (a duplicate Sel() in the source-switching block was
+        // removed); it is settable despite the ReadEnum name, via the FCU's
+        // A32NX.FCU_TRUE_TOGGLE_PUSH — see A380EfisCpControls.
         ReadEnum("A32NX_PUSH_TRUE_REF", "Heading reference",
             new Dictionary<double, string> { [0] = "magnetic", [1] = "true" });
         // ISIS speed-bugs active flag (the bug VALUES are JS-only on the FBW ISIS, no L-var;
@@ -2846,10 +2864,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             };
         }
 
-        // EFIS OANS range (airport map zoom).
+        // EFIS OANS range (airport map zoom). 5 = "not zoomed" is a READBACK, not a selection
+        // (leaving the zoom means picking an NM range on the ND RANGE knob) — but it MUST be in
+        // the value list, because it is what the var holds for most of a flight: MainForm only
+        // falls back to item 0 when the key has no value AT ALL, so an undescribed live value
+        // leaves the combo with SelectedIndex -1, and one arrow key on an unselected combo then
+        // commits "Max" and really does fire RANGE_SET 0, yanking the ND to 0.2 NM. It also
+        // stops the generic announcer speaking a bare "Capt OANS Range: 5.0". Picking it is
+        // refused out loud — see A380EfisCpControls.NotZoomedUnsupportedMessage.
         foreach (var side in new[] { "L", "R" })
             Sel($"A32NX_EFIS_{side}_OANS_RANGE", $"{(side == "L" ? "Capt" : "F/O")} OANS Range",
-                new Dictionary<double, string> { [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min" });
+                new Dictionary<double, string>
+                {
+                    [0] = "Max", [1] = "1", [2] = "2", [3] = "3", [4] = "Min",
+                    [A380EfisCpControls.OansNotZoomed] = "Not zoomed"
+                });
 
         // ---- ECAM upper (E/WD) memo + warning lines — live monitoring ----
         // The A380X publishes 10 lines per side as numeric message CODES
@@ -3079,6 +3108,13 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private System.Windows.Forms.Timer? _tcasRaComposeTimer;
     private ScreenReaderAnnouncer? _tcasRaAnnouncer;
 
+    // Held armed-ALT announcement. The ALT entry's qualifier (PRIM FG discrete word 3 bits 28/29)
+    // is delivered in continuous batch 2 while A32NX_FMA_VERTICAL_ARMED rides batch 1 — a separate
+    // SimConnect message — so naming ALT inline reads the previous sample's qualifier. The
+    // call-out is held until batch 2 has been delivered, at which point the qualifier is current
+    // for this sample whether or not it moved; see DeferredFlushWatchVariable below. There is no
+    // timer and no wall clock: the batch stream is the clock.
+    private bool _altArmHoldPending;
 
     // Icing conditions: the cockpit ice-accretion "stick" indicator is a CONTINUOUS
     // 0..1 ratio, not a 0/1 flag — so it's announced as a discrete state with
