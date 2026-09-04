@@ -775,12 +775,18 @@ public class HandFlyPanel : UserControl, ISettingsPanel
         }
         else
         {
-            PlayFdTestTones();
-            SetFdButtonState(playing: true);
+            if (PlayFdTestTones())
+                SetFdButtonState(playing: true);
         }
     }
 
-    private void PlayFdTestTones()
+    /// <summary>Starts the two-tone FD audition. Returns whether it is actually SOUNDING —
+    /// <see cref="AudioToneGenerator.Start"/> swallows its own failures by contract (audio is
+    /// optional feedback and degrades rather than throwing), so a dead endpoint returns silently
+    /// with nothing playing. Without this the button latched to "Stop FD Test" — and announced it
+    /// to the screen reader — over silence, and never reset, because both the demo loop and the
+    /// auto-stop are gated on IsPlaying. Same check TestTonePlayer.TryStart makes.</summary>
+    private bool PlayFdTestTones()
     {
         try
         {
@@ -806,6 +812,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
             fdTestCurrentTone.Configure(toneProfile.ToneMinFrequencyHz, toneProfile.ToneMaxFrequencyHz,
                                         toneProfile.TonePitchRangeDeg, toneProfile.ToneBankRangeDeg);
             fdTestCurrentTone.Start(currentWave, currentVol);
+
+            if (fdTestDesiredTone?.IsPlaying != true || fdTestCurrentTone?.IsPlaying != true)
+            {
+                StopFdTestTones();
+                ShowAudioError("Could not play the Flight Director test tones on the selected device.");
+                return false;
+            }
 
             // The current tone is the steady reference: level, wings level, for the whole preview.
             fdTestCurrentTone.UpdatePitch(0.0);
@@ -869,11 +882,13 @@ public class HandFlyPanel : UserControl, ISettingsPanel
                     }
                 }
             });
+            return true;
         }
         catch
         {
             // Audio is optional feedback — never let a preview take the settings dialog down.
             StopFdTestTones();
+            return false;
         }
     }
 

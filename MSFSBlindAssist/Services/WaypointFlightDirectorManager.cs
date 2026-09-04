@@ -255,15 +255,24 @@ public class WaypointFlightDirectorManager : IDisposable
         // Arrival → sequence to the next leg.
         //   captureArrival  : inside the radius, having approached from OUTSIDE it (a real fly-in). Counts
         //                     at any speed. NOT triggered by the initial dwell of a leg started overhead.
-        //   clearedFromStart: the leg STARTED on the fix (engaged overhead / outbound radial); it sequences
-        //                     once the aircraft has flown clear of the radius while MOVING — never on the
-        //                     first frames (kills the parked/overhead cascade the un-armed capture caused).
-        //   stationPassage  : the abeam test (only when MOVING). A COURSE leg uses it only when it started
-        //                     well OUTSIDE the fix (an inbound CF leg passed wide) — an outbound radial
-        //                     starts behind the fix, where abeam would misfire; a direct-to leg always uses it.
+        //   clearedFromStart: a DIRECT-TO leg that STARTED on the fix (engaged parked or overhead); it
+        //                     sequences once the aircraft has flown clear of the radius while MOVING —
+        //                     never on the first frames (kills the parked/overhead cascade the un-armed
+        //                     capture caused). ⚠️ Deliberately NOT applied to a course leg: an OUTBOUND
+        //                     RADIAL starts on the fix and leaves the radius within seconds by
+        //                     definition, so this rule would sequence away the very radial the pilot
+        //                     asked to fly, on every use. A radial holds until the pilot advances or
+        //                     turns the FD off (docs "Course / radial tracking").
+        //   stationPassage  : the abeam test ALONE (only when MOVING). ⚠️ Must NOT be G.HasArrived: that
+        //                     ORs in an unconditional `dist <= captureRadius`, which bypasses the
+        //                     legArmedCapture gate entirely — engaging airborne inside the radius of a
+        //                     direct-to fix then sequenced past it on frame 1, making the whole armed-
+        //                     capture state machine dead code for direct-to legs. A COURSE leg uses abeam
+        //                     only when it started well OUTSIDE the fix (an inbound CF leg passed wide) —
+        //                     an outbound radial starts behind the fix, where abeam would misfire.
         bool captureArrival = legArmedCapture && withinCapture;
-        bool clearedFromStart = legInsideAtStart && moving && !withinCapture;
-        bool stationPassage = moving && G.HasArrived(distNm, brgMag, groundTrack, profile.CaptureRadiusNm);
+        bool clearedFromStart = legInsideAtStart && moving && !withinCapture && !isCourseLeg;
+        bool stationPassage = moving && G.IsPastAbeam(brgMag, groundTrack);
         bool startedFar = legStartDistNm > profile.CaptureRadiusNm * 4.0;   // inbound, not an outbound radial
         bool arrived = captureArrival || clearedFromStart
             || (isCourseLeg ? (startedFar && stationPassage) : stationPassage);

@@ -175,6 +175,21 @@ public static class WaypointFlightDirectorGeometry
                                   double captureRadiusNm)
     {
         if (distToFixNm <= captureRadiusNm) return true;
-        return System.Math.Abs(NormalizeSigned(bearingToFixDeg - groundTrackDeg)) > 90.0;
+        return IsPastAbeam(bearingToFixDeg, groundTrackDeg);
     }
+
+    /// <summary>
+    /// Station passage ALONE: the fix has fallen more than 90° off the ground track, i.e. it is now
+    /// behind us. Deliberately separate from <see cref="HasArrived"/>, which ORs this together with
+    /// the raw capture-radius test.
+    /// <para>
+    /// The sequencing logic needs the two apart. Capture-radius arrival is ARMED (it may only count
+    /// once the fix has been approached from outside the radius), so a caller that wants "armed
+    /// capture OR abeam" must not reach for <c>HasArrived</c> — its unconditional radius test
+    /// re-admits exactly the un-armed arrival the arming exists to prevent, and a leg engaged inside
+    /// the radius sequences on frame 1.
+    /// </para>
+    /// </summary>
+    public static bool IsPastAbeam(double bearingToFixDeg, double groundTrackDeg)
+        => System.Math.Abs(NormalizeSigned(bearingToFixDeg - groundTrackDeg)) > 90.0;
 }

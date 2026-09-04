@@ -353,6 +353,27 @@ public class WaypointFlightDirectorGeometryTests
         Assert.True(WaypointFlightDirectorGeometry.HasArrived(2.0, 200, 100, 0.5));
     }
 
+    // --- IsPastAbeam (the abeam test WITHOUT the radius) -------------------
+    // Sequencing needs abeam on its own: capture-radius arrival is ARMED, and HasArrived ORs the
+    // raw radius test back in, which re-admits the un-armed arrival the arming exists to prevent.
+
+    [Fact]
+    public void IsPastAbeam_is_true_only_once_the_fix_falls_behind()
+    {
+        Assert.False(WaypointFlightDirectorGeometry.IsPastAbeam(105, 100));  // still ahead
+        Assert.False(WaypointFlightDirectorGeometry.IsPastAbeam(189, 100));  // 89° off — not yet
+        Assert.True(WaypointFlightDirectorGeometry.IsPastAbeam(200, 100));   // 100° off — behind
+    }
+
+    [Fact]
+    public void IsPastAbeam_ignores_the_capture_radius_unlike_HasArrived()
+    {
+        // Sitting ON the fix, tracking straight at it: HasArrived says yes purely because of the
+        // radius. IsPastAbeam must say no — otherwise a leg engaged inside the radius sequences on
+        // frame 1 and legArmedCapture becomes dead code for every direct-to leg.
+        Assert.True(WaypointFlightDirectorGeometry.HasArrived(0.3, 100, 100, 0.5));
+        Assert.False(WaypointFlightDirectorGeometry.IsPastAbeam(100, 100));
+    }
     [Fact]
     public void HasArrived_is_false_while_still_ahead_and_outside_the_radius()
     {

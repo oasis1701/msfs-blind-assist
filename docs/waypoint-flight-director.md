@@ -196,11 +196,15 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 - **A course leg passed wide still sequences.** An inbound course/airway leg (one that started well
   outside the fix) advances on station-passage (abeam) as well as capture-radius, so being blown wide
   of the fix doesn't strand you on that leg.
-- **Engaged parked/overhead a fix (or an outbound radial that starts on it) can't cascade.** Capture-
-  radius arrival is *armed* — it only counts once the fix has been approached from **outside** the
-  radius, so the initial dwell of a leg that starts inside it is ignored. Such a leg instead sequences
-  once you've **flown clear of the radius while moving** (station passage away from the fix). Result:
-  no chain-reaction through every slot on the first frames, whether parked or airborne over the fix.
+- **Engaged parked/overhead a fix can't cascade.** Capture-radius arrival is *armed* — it only counts
+  once the fix has been approached from **outside** the radius, so the initial dwell of a leg that
+  starts inside it is ignored. A **direct-to** leg that started on the fix instead sequences once
+  you've **flown clear of the radius while moving**. Result: no chain-reaction through every slot on
+  the first frames, whether parked or airborne over the fix.
+  An **outbound radial** is the deliberate exception: it starts on the fix and leaves the radius
+  within seconds by definition, so "flown clear" would sequence away the very radial you asked to
+  fly, every time. A course leg that starts on its fix therefore holds until you advance or turn the
+  FD off — matching *Course / radial tracking* above.
 - **Overhead a fix:** bearing spins, but arrival sequences first (capture radius / abeam) and the
   required-FPA is guarded inside ~0.05 NM, so the command doesn't blow up.
 - **Low speed / on the ground / no GPS track:** below the per-aircraft speed floor the lateral

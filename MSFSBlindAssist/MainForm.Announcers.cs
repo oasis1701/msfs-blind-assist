@@ -945,6 +945,14 @@ public partial class MainForm
             return true;
         }
 
+        // AUTOPILOT MASTER rides the 505 stream too, but ONLY the FD consumes it. With VG active and
+        // the FD off it matched nothing below, so a SIM_FRAME var walked the entire announcement
+        // ladder — plus ProcessSimVarUpdate and steps 3-6 — on every frame of an approach, the app's
+        // hottest path. Consume it here when the FD is not running; the FD's own switch handles it
+        // when it is. (VG's pitch/bank/AoA blocks above already return for the same reason.)
+        if (e.VarName == "VISUAL_GUIDANCE_AP_MASTER" && !waypointFdManager.IsActive)
+            return true;
+
         // Waypoint Flight Director — rides the SAME VISUAL_GUIDANCE_DATA (req 505) stream as VG.
         // FD and VG are mutually exclusive, so this only runs when VG is inactive (the VG blocks above
         // already returned true when VG owns the stream). One guarded dispatch fans the stream fields
