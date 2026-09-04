@@ -225,6 +225,34 @@ on a 3° path for the A319/A320, ~2.5° for the 737, giving ~5-5.5° AoA), 4.0-4
 This also resolved a contradiction on the 737s, which carried 6.0° here and 5.0° in their Visual
 Guidance profile — two values for one physical quantity on one airframe.
 
+**The PMDG 777 is now MEASURED, not estimated (2026-09).** Three autopilot-flown HDG SEL turns at
+4000 ft — 90° right and 90° left at 180 kt, then 40° right at 280 kt — sampling bank and magnetic
+heading at 4 Hz. What came out:
+
+| Quantity | Measured | Was |
+| --- | --- | --- |
+| Bank per degree of error | **2.39-2.40** (spread 2.31-2.48) | 0.9 |
+| Steady bank | **25.0-25.5°**, identical at 180 and 280 kt | 27 (then 30) |
+| Roll rate | **3.45-3.59°/s** | 5.0 assumed |
+| Rollout onset | **10.3-10.8°** of remaining error | n/a |
+| Capture accuracy | within **0.5°** of target, no overshoot | n/a |
+
+The AFDS is a **pure proportional law**. The rollout needs no time-lead term to reproduce: it starts
+where the proportional command drops under the cap (25 / 2.4 = 10.4° of error), which is exactly
+where the aeroplane rolled out, at both speeds. Note that is a constant HEADING lead and not a
+constant TIME one — the same 10.4° was 4.3 s of flying at 180 kt and 6.4 s at 280 kt — so
+`BankRateLeadSec` structurally cannot express it and is now small (0.5) purely to damp yaw-rate
+noise.
+
+Two assumptions died here. The gain of 0.9 commanded barely a third of the bank the aeroplane uses
+(9° where the AFDS uses 25 at 10° off track) — the FD could not converge, which is what "it feels
+like I am always deviating" actually was. And the bank cap is **not** scaled by true airspeed: 25°
+at 180 kt and 25° at 280 kt, so the BANK LIMIT AUTO 15-25 range does not show up here.
+
+⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the
+kind of cross-type extrapolation the rest of this table exists to flag. Every other aircraft still
+carries a class estimate until it is flown the same way.
+
 ⚠️ These are **Class-1** figures: published type data, which is why they can be cited. The roll gain,
 rate-lead and slew caps are NOT — they are still class estimates, and the only way to pin them is to
 measure the aircraft's roll response in the sim.

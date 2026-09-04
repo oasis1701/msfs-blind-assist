@@ -1003,14 +1003,26 @@ public partial class MainForm
                     return true;
 
                 case "VISUAL_GUIDANCE_AP_MASTER":
-                    // e.Value is the stock AUTOPILOT MASTER simvar (Boeing / WT 787 / most addons). The
-                    // FlyByWire Airbuses (A320, A380, A330 fork) DON'T drive the stock simvar — they use
-                    // A32NX_AUTOPILOT_1/2_ACTIVE — so the stock value stays 0 with AP1/AP2 engaged and the
-                    // FD's auto-mute never fired on those aircraft. OR in the FBW AP-active vars from the
-                    // cache (the FBW defs monitor them continuously). PMDG / Fenix / HS787 set the stock var.
+                    // e.Value is the stock AUTOPILOT MASTER simvar, which several addons DO NOT DRIVE —
+                    // so it reads 0 with the autopilot flying and the FD's auto-mute never fires.
+                    //   - FlyByWire A320/A380/A330 fork: use A32NX_AUTOPILOT_1/2_ACTIVE.
+                    //   - PMDG: use their own annunciators. ⚠️ This comment previously asserted "PMDG /
+                    //     Fenix / HS787 set the stock var" — MEASURED FALSE on the PMDG 777 (2026-09):
+                    //     with the AP engaged and flying a HDG SEL turn, AUTOPILOT MASTER read 0 while
+                    //     MCP_annunAP_left read true and AUTOPILOT HEADING LOCK DIR sat at a stale 314
+                    //     against an MCP heading of 290. The stock heading/AP simvars are simply not
+                    //     wired on that airframe. Do not trust them for any PMDG state.
+                    // Keys below are the DEFINITION keys (GetCachedVariableValue keys by var key, not by
+                    // the underlying Name): the 777 registers MCP_AP_L/MCP_AP_R over MCP_annunAP_0/_1, the
+                    // 737 registers MCP_annunCMD_A/_B. A key the loaded aircraft does not define simply
+                    // returns null and ORs in as false.
                     bool apEngaged = e.Value > 0.5
                         || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_1_ACTIVE") ?? 0.0) > 0.5
-                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5;
+                        || (simConnectManager.GetCachedVariableValue("A32NX_AUTOPILOT_2_ACTIVE") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_AP_L") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_AP_R") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_annunCMD_A") ?? 0.0) > 0.5
+                        || (simConnectManager.GetCachedVariableValue("MCP_annunCMD_B") ?? 0.0) > 0.5;
                     waypointFdManager.UpdateApMaster(apEngaged ? 1.0 : 0.0);
                     return true;
             }
