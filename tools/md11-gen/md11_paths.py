@@ -264,7 +264,12 @@ def parse_choice(answer: str, count: int) -> int | None:
     if answer is None:
         return None
     text = answer.strip()
-    if not text.isdigit():
+    # isdecimal(), not isdigit(): isdigit() is True for Unicode digits that
+    # are not decimal (superscript "\xb2", subscript "₁"), and int()
+    # raises ValueError on those -- which would make this function raise
+    # instead of returning None, breaking its total-over-all-input contract.
+    # isdecimal() is exactly the predicate that guarantees int() succeeds.
+    if not text.isdecimal():
         return None
     value = int(text)
     if value < 1 or value > count:

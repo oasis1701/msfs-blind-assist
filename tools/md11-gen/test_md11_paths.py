@@ -508,6 +508,37 @@ class DiscoverTests(unittest.TestCase):
 
             self.assertEqual(len(md11_paths.discover(env)), 1)
 
+    def test_same_package_not_reported_twice_from_distinct_roots(self):
+        # The other same-package test points both sims' UserCfg at ONE
+        # shared folder -- but candidate_roots() already collapses two
+        # identical root paths into a single (sim_label, root) entry before
+        # discover() ever runs, so that test never gives discover()'s own
+        # seen_packages block a second candidate to reject (confirmed:
+        # deleting the block's three lines does not fail that test).
+        # This gives discover() two DISTINCT roots -- an outer folder and
+        # its own subfolder -- whose independent bounded walks both land on
+        # the SAME package directory, which is what actually exercises the
+        # de-dup block.
+        with tempfile.TemporaryDirectory() as tmp:
+            env = self._env(tmp)
+            outer = os.path.join(tmp, "Outer")
+            inner = os.path.join(outer, "Inner")
+            os.makedirs(inner)
+            pkg = make_package(inner)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
+                          outer)
+            self._usercfg(env["APPDATA"], "Microsoft Flight Simulator",
+                          inner)
+
+            finds = md11_paths.discover(env)
+            self.assertEqual(len(finds), 1)
+            self.assertEqual(finds[0].package_dir, pkg)
+            # The surviving entry keeps whichever root reached it FIRST --
+            # FS2024 is iterated before FS2020 (see test_fs2024_ordered_
+            # before_fs2020), so this pins that the first sim's label wins
+            # rather than merely asserting a single find exists.
+            self.assertEqual(finds[0].sim_label, md11_paths.SIM_2024)
+
     def test_describe_roots_lists_searched_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = self._env(tmp)
@@ -516,7 +547,12 @@ class DiscoverTests(unittest.TestCase):
             self._usercfg(env["APPDATA"], "Microsoft Flight Simulator 2024",
                           root)
             described = md11_paths.describe_roots(env)
-            self.assertTrue(any(root in line for line in described))
+            # Exact documented shape ("<sim label>: <root>"), not merely a
+            # substring match -- a plain `root in line` check would still
+            # pass if the order were reversed to "<root>: <label>".
+            self.assertIn(
+                "%s: %s" % (md11_paths.SIM_2024, root), described
+            )
 
 
 class ParseChoiceTests(unittest.TestCase):
@@ -532,6 +568,15 @@ class ParseChoiceTests(unittest.TestCase):
             self.assertIsNone(
                 md11_paths.parse_choice(bad, 2), "should reject %r" % bad
             )
+
+    def test_rejects_non_decimal_unicode_digits_without_raising(self):
+        # str.isdigit() is True for these but int() raises on them, so an
+        # isdigit() gate makes this function raise instead of returning None
+        # -- and the generator wraps it straight around input(), where a
+        # pasted character would become a traceback rather than a re-prompt.
+        # isdecimal() is the predicate that actually guarantees int() works.
+        for ch in ("\xb2", "₁"):
+            self.assertIsNone(md11_paths.parse_choice(ch, 2))
 
 
 if __name__ == "__main__":
