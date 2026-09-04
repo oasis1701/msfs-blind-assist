@@ -712,6 +712,15 @@ public partial class SimConnectManager
                     Description = ""
                 });
 
+                // Indicated airspeed — consumed only by the FD's speed-restriction cue. Emitted
+                // before AGL so it is applied for this frame.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_IAS",
+                    Value = vgData.IndicatedAirspeedKnots,
+                    Description = ""
+                });
+
                 // AGL last — its handler triggers ProcessUpdate() with all the above already
                 // applied to this frame's caches.
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

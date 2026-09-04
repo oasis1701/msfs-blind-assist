@@ -51,6 +51,7 @@ public class WaypointTracker
             Course = course,
             // (0,0) is the sentinel navdata leaves for a leg with no fix of its own.
             HasPosition = !(waypoint.Latitude == 0.0 && waypoint.Longitude == 0.0),
+            SpeedLimitKts = waypoint.SpeedLimit,
             ReferenceMagVar = course.HasValue ? referenceMagVar : null
         };
     }
@@ -67,7 +68,7 @@ public class WaypointTracker
         if (t == null) return null;
         return new WaypointSlotData(t.Ident, t.Latitude, t.Longitude,
             t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course, t.ReferenceMagVar,
-            t.HasPosition);
+            t.HasPosition, t.SpeedLimitKts);
     }
 
     /// <summary>
@@ -200,6 +201,10 @@ public class WaypointTracker
         /// altitude but NO fix, so Latitude/Longitude are 0 and every distance/bearing derived from
         /// them is meaningless. The FD flies these as a course hold terminated by altitude.</summary>
         public bool HasPosition { get; set; } = true;
+
+        /// <summary>The leg's ARINC speed restriction in knots INDICATED (§5.72 codes it in IAS),
+        /// or null. Straight off the fix — nothing else in the app consumed it.</summary>
+        public int? SpeedLimitKts { get; set; }
         public double? ReferenceMagVar { get; set; }
     }
 }
@@ -218,4 +223,6 @@ public readonly record struct WaypointSlotData(
     double? ReferenceMagVar,
     /// <summary>False for an ARINC "to altitude" leg (CA/FA/VA): no fix, so Latitude/Longitude
     /// are 0 and any distance or bearing from them is meaningless.</summary>
-    bool HasPosition = true);
+    bool HasPosition = true,
+    /// <summary>The leg's ARINC speed restriction in knots INDICATED, or null.</summary>
+    int? SpeedLimitKts = null);

@@ -71,6 +71,23 @@ the fix is just a point on the line, so the same field covers inbound courses an
 course leg sequences when you reach the fix (capture radius); an outbound radial simply holds until
 you turn the FD off or advance.
 
+### Speed restrictions
+
+A leg that carries an ARINC speed restriction (VCBI ANUT1D has 240 kt at BI551) is spoken as an
+**action**, not a number to interpret: *"Increase speed to 240"* or *"Reduce speed to 240"*, and
+*"Speed 240"* once you are complying. It is edge-triggered on the verdict, so it says each thing
+once instead of every frame, and a leg already being flown at its restriction says nothing at all.
+
+**It compares INDICATED airspeed, never ground speed.** ARINC 424 §5.72 codes the limit in knots
+IAS and ATC phrases speed adjustments in IAS, so ground speed would read compliant into a headwind
+and busted with a tailwind at the identical throttle setting. IAS rides the shared 505 stream
+alongside the other FD inputs.
+
+Out of compliance is more than **5 kt** (ATC issues adjustments in 5-knot increments); returning to
+compliance needs **3 kt**. The gap is hysteresis — without it, sitting exactly on the boundary flips
+the verdict back and forth and talks continuously. The cue is suppressed below the profile's speed
+floor, so taxiing never triggers it.
+
 ### "To altitude" legs (CA / FA / VA)
 
 A SID's initial climb is usually an ARINC **course-to-altitude** leg — VCBI's ANUT1D opens with

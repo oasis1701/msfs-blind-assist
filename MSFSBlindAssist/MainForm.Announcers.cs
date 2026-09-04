@@ -950,7 +950,8 @@ public partial class MainForm
         // ladder — plus ProcessSimVarUpdate and steps 3-6 — on every frame of an approach, the app's
         // hottest path. Consume it here when the FD is not running; the FD's own switch handles it
         // when it is. (VG's pitch/bank/AoA blocks above already return for the same reason.)
-        if (e.VarName == "VISUAL_GUIDANCE_AP_MASTER" && !waypointFdManager.IsActive)
+        if ((e.VarName == "VISUAL_GUIDANCE_AP_MASTER" || e.VarName == "VISUAL_GUIDANCE_IAS")
+            && !waypointFdManager.IsActive)
             return true;
 
         // Waypoint Flight Director — rides the SAME VISUAL_GUIDANCE_DATA (req 505) stream as VG.
@@ -995,6 +996,10 @@ public partial class MainForm
 
                 case "VISUAL_GUIDANCE_AOA":
                     waypointFdManager.UpdateAoA(e.Value * (180.0 / Math.PI));
+                    return true;
+
+                case "VISUAL_GUIDANCE_IAS":
+                    waypointFdManager.UpdateIas(e.Value);
                     return true;
 
                 case "VISUAL_GUIDANCE_AP_MASTER":

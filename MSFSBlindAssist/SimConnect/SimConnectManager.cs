@@ -611,8 +611,15 @@ public partial class SimConnectManager
         public double AlphaRadians;
         // Autopilot master engaged (0/1). Consumed only by the Waypoint Flight Director for its
         // optional AP auto-mute (silence the FD tones while the AP is flying). VG ignores it.
-        // MUST stay the LAST field so existing field offsets are unchanged.
         public double AutopilotMaster;
+        // Indicated airspeed (knots). Consumed only by the Waypoint Flight Director, to compare
+        // against a leg's ARINC speed restriction. IAS is the right measure and ground speed is
+        // not: ARINC 424 §5.72 encodes the limit in knots IAS, and ATC issues speed adjustments in
+        // IAS — a 240 kt restriction met at 240 kt ground speed is a bust in any wind.
+        //
+        // ⚠️ APPEND new fields at the END, never insert: the struct is read positionally against
+        // the AddToDataDefinition order, so inserting shifts every later field's value.
+        public double IndicatedAirspeedKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

@@ -205,9 +205,12 @@ public partial class SimConnectManager
         // nominal converges on the actual stabilized-approach pitch automatically.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
-        // AUTOPILOT MASTER — last def line (matches the last struct field) for the FD's AP auto-mute.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AUTOPILOT MASTER", "Bool",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)12);
+        // AIRSPEED INDICATED — last def line, matching the last struct field. The FD compares it
+        // against a leg's ARINC speed restriction (which is coded in knots IAS).
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AIRSPEED INDICATED", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)13);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)

@@ -70,6 +70,17 @@ public class WaypointFlightDirectorManager : IDisposable
     private double lastTrackForRate;
     private DateTime lastRateTime = DateTime.MinValue;
     private double yawRateDegPerSec;
+    private double iasKts;
+
+    // Speed-restriction cue state. -1 too slow, 0 complying, +1 too fast; null until the first
+    // verdict on this leg. Edge-triggered — it speaks on a CHANGE of verdict, never per frame.
+    private int? speedVerdict;
+
+    // ATC issues speed adjustments in 5-knot increments, so 5 kt is the natural "out of
+    // compliance" band. Returning to compliance needs 3 kt — the gap is hysteresis, without which
+    // sitting exactly on the boundary flips the verdict back and forth and talks continuously.
+    private const double SpeedDeviationKts = 5.0;
+    private const double SpeedComplyKts = 3.0;
 
     private bool apMutedAnnounced;   // one-shot AP-auto-mute callout edge
 
@@ -158,6 +169,8 @@ public class WaypointFlightDirectorManager : IDisposable
         yawRateDegPerSec = 0;
         cmdInit = false;   // command slew baseline re-seeds on the first frame
         legStartCaptured = false;
+        speedVerdict = null;   // re-state the first leg's restriction on every engage
+        iasKts = 0.0;          // stale IAS must not produce a cue before the stream arrives
 
         desiredTone = new AudioToneGenerator();
         currentTone = new AudioToneGenerator();
@@ -211,6 +224,11 @@ public class WaypointFlightDirectorManager : IDisposable
             : profile.TypicalApproachAoaDeg;
     public void UpdateApMaster(double v) => apMaster = v > 0.5;
 
+    /// <summary>Indicated airspeed (knots). IAS, not ground speed: ARINC 424 §5.72 codes a leg's
+    /// speed limit in knots IAS and ATC issues adjustments in IAS, so a 240 kt restriction met at
+    /// 240 kt GROUND speed is a bust in any wind.</summary>
+    public void UpdateIas(double v) => iasKts = v;
+
     /// <summary>SimConnect PLANE BANK DEGREES is left-positive; the AudioToneGenerator + commanded
     /// bank are right-positive. Negate. (Same helper as VisualGuidanceManager.)</summary>
     private static double StandardBank(double simConnectBank) => -simConnectBank;
@@ -240,6 +258,8 @@ public class WaypointFlightDirectorManager : IDisposable
             ProcessToAltitudeLeg(slot.Value);
             return;
         }
+
+        AnnounceSpeedRestriction(slot.Value);
 
         double slotLat = slot.Value.Latitude, slotLon = slot.Value.Longitude;
         bool isCourseLeg = slot.Value.Course.HasValue;
@@ -395,6 +415,7 @@ public class WaypointFlightDirectorManager : IDisposable
     /// </summary>
     private void ProcessToAltitudeLeg(WaypointSlotData s)
     {
+        AnnounceSpeedRestriction(s);
         if (ToAltitudeSatisfied(s)) { AdvanceLeg(); return; }
 
         double effectiveTrack = groundSpeedKts >= profile.LowSpeedFloorKts ? groundTrack : hdgMag;
@@ -442,9 +463,48 @@ public class WaypointFlightDirectorManager : IDisposable
             : altMsl >= target - ToAltitudeToleranceFt;
     }
 
+    /// <summary>
+    /// Speaks a leg's ARINC speed restriction as an ACTION — "increase speed to 240" / "reduce
+    /// speed to 240" — and confirms once compliance is reached. Edge-triggered on the verdict, so
+    /// it says each thing once rather than every frame.
+    /// <para>
+    /// Compared against INDICATED airspeed. ARINC 424 §5.72 codes the limit in knots IAS and ATC
+    /// phrases adjustments in IAS; ground speed would read compliant into a headwind and busted
+    /// with a tailwind at the identical throttle setting.
+    /// </para>
+    /// </summary>
+    private void AnnounceSpeedRestriction(WaypointSlotData s)
+    {
+        if (!s.SpeedLimitKts.HasValue) { speedVerdict = null; return; }
+        if (iasKts <= 0.0) return;                      // no airspeed yet this session
+        if (groundSpeedKts < profile.LowSpeedFloorKts) return;   // parked / taxiing: not a cue
+
+        double limit = s.SpeedLimitKts.Value;
+        double delta = iasKts - limit;
+        int verdict = speedVerdict ?? 0;
+        if (Math.Abs(delta) > SpeedDeviationKts) verdict = Math.Sign(delta);
+        else if (Math.Abs(delta) < SpeedComplyKts) verdict = 0;
+
+        if (speedVerdict == verdict) return;
+        bool first = speedVerdict == null;
+        speedVerdict = verdict;
+
+        // Nothing to say if the leg was already being flown at its restriction when it became
+        // active — the pilot is complying and has not been told to do anything.
+        if (first && verdict == 0) return;
+
+        announcer.Announce(verdict switch
+        {
+            < 0 => $"Increase speed to {limit:F0}",
+            > 0 => $"Reduce speed to {limit:F0}",
+            _   => $"Speed {limit:F0}"
+        });
+    }
+
     private void AdvanceLeg()
     {
         legStartCaptured = false;   // re-measure the start distance for the new leg
+        speedVerdict = null;        // each leg states its own restriction afresh
 
         // Advance to the next FILLED slot, skipping empty INTERIOR slots so a gap (e.g. the user
         // tracked slots 1, 2, 4 from the EFB, or slot 3 was a position-less leg that couldn't be
