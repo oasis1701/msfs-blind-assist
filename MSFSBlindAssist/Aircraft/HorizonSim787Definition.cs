@@ -245,7 +245,8 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
         KRollDegPerDegTrack = 0.9,
-        MaxBankDeg          = 27.0,
+        // The 787 commands up to 30° in LNAV, and unusually in HDG SEL too at lower airspeeds.
+        MaxBankDeg          = 30.0,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,

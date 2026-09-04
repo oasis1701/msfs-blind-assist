@@ -38,7 +38,17 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     // Waypoint Flight Director: A320 CEO uses the baseline profile (narrowbody, agile roll).
     // Explicit override for discoverability; values equal BaseAircraftDefinition's defaults.
-    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new();
+    // Bank cap from the type's own flight-guidance limit, not a guess: Airbus FG "Roll Limit 2"
+    // runs 15-25° with true airspeed (Roll Limit 1 reaches 30°, engine-out clamps to 15°), so 25 is
+    // the ceiling a normally-configured Airbus actually commands. Approach-AoA fallback from the
+    // published A319/A320 approach attitude — ~2° pitch on a 3° path ≈ 5° AoA, not the 6° baseline.
+    // Both are CLASS-1 figures (type data, not measurement); the roll gain and rate-lead below are
+    // still class estimates awaiting an in-sim roll-response measurement.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        MaxBankDeg            = 25.0,   // Airbus FG Roll Limit 2 upper bound
+        TypicalApproachAoaDeg = 5.0     // ~2° approach pitch on a 3° path
+    };
 
     // Same airframe class as the FBW A320 — its measured 1.3 s used as proxy.
     public override double TaxiTurnLeadSeconds => 1.3;

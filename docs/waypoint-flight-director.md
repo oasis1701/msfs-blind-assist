@@ -210,6 +210,25 @@ sensitivity rather than reach.
 > anticipation (the PMDG 777 runs a 0.3 s taxi lead against a 1.3 s FD lead).
 
 > **⚠️ These are best-effort class defaults and need live in-sim tuning.** Because the FD is for
+**Bank caps and approach-AoA fallbacks are now type data, not class guesses (2026-09).** Each is the
+limit the aeroplane's own flight guidance commands in the mode this FD resembles — it follows a
+track, so LNAV is the comparable Boeing mode:
+
+| Type | Bank cap | Source |
+| --- | --- | --- |
+| FBW A320, Fenix A320, A380X, A330 | **25°** | Airbus FG "Roll Limit 2" runs 15-25° with TAS (Roll Limit 1 reaches 30°, engine-out 15°) |
+| PMDG 737, iFly 737 MAX8 | **30°** | AFDS commands up to 30° in LNAV above 200 ft AGL (8° below); the FMC plans ~25° to keep 5° spare |
+| PMDG 777, HS787 | **30°** | 777/787 command 30° in LNAV; 777 HDG SEL is held to 25 (BANK LIMIT selector 5-25, AUTO 15-25 by TAS) |
+
+Approach-AoA fallbacks likewise: **5.0°** on the narrowbodies (published approach attitude ~2° pitch
+on a 3° path for the A319/A320, ~2.5° for the 737, giving ~5-5.5° AoA), 4.0-4.5° on the widebodies.
+This also resolved a contradiction on the 737s, which carried 6.0° here and 5.0° in their Visual
+Guidance profile — two values for one physical quantity on one airframe.
+
+⚠️ These are **Class-1** figures: published type data, which is why they can be cited. The roll gain,
+rate-lead and slew caps are NOT — they are still class estimates, and the only way to pin them is to
+measure the aircraft's roll response in the sim.
+
 > *hand-flying*, there is no autopilot to verify against — the gains, caps, capture radius and
 > rate-lead should be flown and adjusted per aircraft (the same way the taxi-turn-lead and the
 > Visual Guidance profiles were calibrated). If turns overshoot, lower the roll gain or raise the

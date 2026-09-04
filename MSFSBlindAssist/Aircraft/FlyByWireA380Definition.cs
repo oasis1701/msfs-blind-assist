@@ -54,7 +54,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
         KRollDegPerDegTrack = 0.85,
-        MaxBankDeg          = 28.0,
+        // Airbus FG Roll Limit 2 tops out at 25° (it scales 15-25 with TAS); the previous 28 was a
+        // size-scaled guess above anything the aeroplane's own guidance will command.
+        MaxBankDeg          = 25.0,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.9,
         LowSpeedFloorKts    = 60.0,

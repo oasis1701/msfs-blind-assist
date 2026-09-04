@@ -89,7 +89,8 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
         KRollDegPerDegTrack = 0.9,
-        MaxBankDeg          = 27.0,
+        // Airbus FG Roll Limit 2 tops out at 25° (15-25 with TAS) — same family, same ceiling.
+        MaxBankDeg          = 25.0,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,

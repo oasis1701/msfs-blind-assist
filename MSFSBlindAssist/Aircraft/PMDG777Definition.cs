@@ -70,7 +70,10 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
         KRollDegPerDegTrack = 0.9,
-        MaxBankDeg          = 27.0,
+        // The 777 AFDS commands up to 30° in LNAV (HDG SEL is held to 25, and its BANK LIMIT
+        // selector offers 5-25 / AUTO 15-25 by TAS). This FD follows a track, so LNAV is the
+        // comparable mode. 27 was a split-the-difference guess matching no mode of the aeroplane.
+        MaxBankDeg          = 30.0,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,
