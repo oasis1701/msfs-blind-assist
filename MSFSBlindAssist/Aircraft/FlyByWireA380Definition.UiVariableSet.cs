@@ -650,13 +650,26 @@ public partial class FlyByWireA380Definition
         // (verified live #56).
         // ⚠️ UNSWEPT (2026-09-03): #56's A380 evidence is a write-stick test, the same check
         // that certified the wing anti-ice dead mirror above — it cannot tell a working
-        // control from a var no A380 system reads, and this one is A32NX-namespaced,
-        // co-registered on the A320, and the two airframes even disagree on the value map
-        // (A380 0=Off, A320 0=Auto). Not a known fault; it needs a live DOWNSTREAM read
-        // before the "verified" note is trusted again.
-        // It auto-forces ON whenever AC2 is powered or an engine is
-        // running, so a "set Off" reverts — real A380 behaviour (probe heat is automatic);
-        // the Mon auto-announce re-reads the true state. Routed via the calculator path.
+        // control from a var no A380 system reads, and this one is A32NX-namespaced and
+        // co-registered on the A320.
+        //
+        // ⚠️ MEASURED LIVE 2026-09-04 (a380x, on ground, all four engines running), and BOTH
+        // behavioural claims this comment used to make are FALSE on that build:
+        //   - "auto-forces ON whenever AC2 is powered or an engine is running" — it does NOT.
+        //     Baseline read 0 with all four engines running.
+        //   - "a 'set Off' reverts" — it does NOT. Writes of 1 AND 0 both stuck and HELD
+        //     across seconds; there is no per-frame writer.
+        // Neither value moved anything downstream: `A:PITOT HEAT` stayed 1 and
+        // `A:PITOT HEAT SWITCH:1` stayed 2 (Auto) throughout. Settable + holds + no observable
+        // effect is the dead-mirror SIGNATURE — the same one the wing anti-ice L:var showed.
+        //
+        // NOT yet a verdict: probe heat was already forced on by AUTO, which would mask a
+        // working manual override, and the attempt to unmask it failed (K:PITOT_HEAT_OFF drove
+        // the stock switch to 1/On rather than 0/Off, and PITOT_HEAT_SET 2 would not restore
+        // Auto). Deciding this needs a cold-and-dark aircraft where AUTO is not already
+        // holding the heat on. Until then treat the "verified live #56" note as unproven,
+        // and do NOT record this control as working on write-stick evidence.
+        // The Mon auto-announce re-reads the true state. Routed via the calculator path.
         if (varKey == "A32NX_MAN_PITOT_HEAT")
         {
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
