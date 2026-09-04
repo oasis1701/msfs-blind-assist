@@ -981,10 +981,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Anti Ice Panel. The old XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED vars are
         // model-only press-animation flags that do NOT actuate the systems (same finding
         // as the A380 #56 work). The real controls (live-verified on the A32NX):
-        //   - WING anti-ice (CORRECTED 2026-07, mirrors the A380 fix): the combo writes
-        //     A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
+        //   - WING anti-ice (CORRECTED 2026-07 on this airframe's OWN evidence): the combo
+        //     writes A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION — the var the real cockpit PB
         //     writes (FBW_Airbus_AntiIce_Wing LEFT_SINGLE_CODE) and the ONLY input the
-        //     Rust pneumatic system reads (WingAntiIcePushButton::read). The old target,
+        //     Rust pneumatic system reads (WingAntiIcePushButton::read).
+        //     ⚠️ This does NOT mirror the A380, and the two must never be harmonised: the
+        //     A380X ships a DIFFERENT body for the identically named template, firing the
+        //     stock (>K:TOGGLE_STRUCTURAL_DEICE) and reading A:STRUCTURAL DEICE SWITCH. The
+        //     A380 change this comment once cited as its twin was itself the bug, reverted
+        //     2026-09-03; the evidence below is this airframe's own and stands. The old
+        //     target,
         //     A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED, is a Rust per-frame OUTPUT
         //     (WingAntiIceComplex::write) — live-verified: writing 1 reverts to 0 within
         //     2 s at ANY phase (the old "holds in flight" note was a mis-test), so the
@@ -3320,20 +3326,6 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "percent"
         },
-        // Continuously monitored so the 1,000-ft crossing announcer (MainForm) is fed.
-        // IsAnnounced=true is required for continuous batched monitoring, but the generic
-        // announce gate skips INDICATED_ALTITUDE (it's spoken by the callout announcer, not
-        // as a raw "Altitude: 5234"). Still works as an OnRequest-style display var for the
-        // PFD/ISIS boxes (force-read + live update both function on a continuous var).
-        ["INDICATED_ALTITUDE"] = new SimConnect.SimVarDefinition
-        {
-            Name = "INDICATED ALTITUDE",
-            DisplayName = "Indicated Altitude",
-            Type = SimConnect.SimVarType.SimVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            Units = "feet"
-        },
         // Indicated airspeed — surfaced in the PFD + ISIS accessible status boxes
         // (the speed "tape" a sighted pilot reads off the glass).
         ["AIRSPEED_INDICATED"] = new SimConnect.SimVarDefinition
@@ -5199,6 +5191,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             variables[kvp.Key] = kvp.Value;
         }
+
+        // The base INDICATED_ALTITUDE entry is inherited as-is: Continuous + IsAnnounced feeds
+        // the 1,000-ft callout announcer and the PFD/ISIS display boxes, ExcludeFromMonitorManager
+        // hides its inert Ctrl+M row. Only the spoken label differs here, so it is set in place
+        // rather than by a shadowing re-definition that would have to mirror every base flag.
+        variables["INDICATED_ALTITUDE"].DisplayName = "Indicated Altitude";
 
         // Make EVERY discrete control combo AUTO-ANNOUNCE on change (Continuous +
         // IsAnnounced) — exactly like the A380 (Sel helper) and PMDG, where every

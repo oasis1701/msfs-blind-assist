@@ -55,7 +55,33 @@ public Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
 ### Properties in SimVarDefinition
 
 - `Name`: SimConnect variable name (e.g., "L:A32NX_FCU_AP_1_LIGHT_ON")
-- `DisplayName`: Human-readable label for UI
+- `DisplayName` — the label the screen reader speaks and the panel row shows. Two rules:
+
+  **No two controls in one panel may share it.** It is the pilot's only handle on a
+  control, and a panel gives no other context. Pinned fleet-wide by
+  `VarNameCollisionTests.Panel_rows_do_not_share_a_spoken_name`. The Ctrl+M monitor list
+  is flatter still — it shows the label with no panel heading at all — so a duplicate
+  there is pinned separately by `MonitorRowLabelUniquenessTests`.
+
+  **When rows in a panel share a leading phrase, the discriminator comes first.**
+  "Left Primary Engine Pump", not "Primary Engine Pump Left": reading down a panel of
+  eight pumps, the pilot hears which one it is immediately instead of after three shared
+  words. This applies where the shared prefix is long or the family is large — the PMDG
+  777's hydraulic pumps, fuel pumps and isolation valves. It does NOT apply to a short,
+  unambiguous pair like "Pack Left"/"Pack Right", where there is nothing to wade through.
+
+  A switch and its annunciator must be bound from ONE constant plus a suffix
+  (`HydPumpPrimEngL + HydFaultLightSuffix`), never typed twice — that is how
+  "Isolation Valve Left" and "Isolation Valve L CLOSED Light" drifted apart. So far this
+  is done for the PMDG 777's hydraulic pumps, outflow valves, isolation valves, fuel pumps,
+  jettison nozzles and cargo-fire compartments. The file's remaining ~60 hand-typed
+  `... Light` labels are a known residual, and several have already drifted from their
+  switch: "Engine Bleed 1" vs "Engine 1 Bleed OFF Light", "Crossfeed Forward" vs
+  "Fwd XFEED VALVE Light", "Alt Ventilation" vs "Alt Vent FAULT Light", "Jettison Arm" vs
+  "Arm FAULT Light", "Wing Hydraulic Valve Left" vs "Wing Hyd Valve Left CLOSED Light",
+  "External Power Primary" vs "Ext Power 1 AVAIL Light", "IDG Disconnect Left" vs
+  "IDG Left Disc Drive Light". Bind a pair when you touch it; never assume a light follows
+  a constant that does not exist.
 - `Type`: SimVarType (LVar, SimVar, Event, HVar)
 - `UpdateFrequency`: When to request (Never, OnRequest, Continuous)
 - `IsAnnounced`: Whether to announce state changes

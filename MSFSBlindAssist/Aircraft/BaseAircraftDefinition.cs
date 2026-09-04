@@ -76,7 +76,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "feet",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true  // Required for batched continuous monitoring (custom logic handles actual announcements)
+                IsAnnounced = true,  // Required for batched continuous monitoring (custom logic handles actual announcements)
+                // Never spoken from the generic monitor path: ProcessSimVarUpdate (below) returns
+                // true for this key without ever calling announcer.Announce, so the generic
+                // wasProcessedByAircraft early-return in MainForm.OnSimVarUpdated fires before
+                // Step 6's per-aircraft mute check is ever reached. The mute WRAP around that
+                // call (announcer.Suppressed) still runs when the row is unchecked - it just
+                // wraps a no-op here, since the real 1,000-ft callout is produced separately and
+                // earlier, by HandleSpecialAnnouncements → AltitudeCalloutAnnouncer. So its
+                // Ctrl+M row could never silence anything. It also collided with the MCP
+                // "Altitude" row on the PMDG 737 and 777, leaving the pilot two identical
+                // checkboxes, one of them inert. The pilot's real control is the "Announce
+                // 1,000-foot altitude crossings" checkbox on the Announcements settings tab
+                // (UserSettings.AltitudeCalloutsEnabled), which AltitudeCalloutAnnouncer gates on.
+                ExcludeFromMonitorManager = true
             },
 
             // Ground speed - universal SimConnect variable feeding the GLOBAL ground-speed
@@ -93,7 +106,18 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Its Ctrl+M row could never silence anything either: the GROUND_VELOCITY
+                // case in HandleSpecialAnnouncements (above) is reached at Step 2 of
+                // MainForm.OnSimVarUpdated and returns true, which is a TERMINAL return -
+                // the method exits right there. The announcer.Suppressed wrap and the
+                // per-aircraft disabled-variable check that a Ctrl+M un-tick relies on both
+                // live at Step 2.5 and later, so neither is ever reached for this key. The
+                // pilot's real control for these callouts is the ground-speed announce-
+                // interval setting (UserSettings.TaxiGuidanceGroundSpeedAnnounceInterval /
+                // TakeoffAssistGroundSpeedAnnounceInterval), which the announcer already
+                // self-gates on.
+                ExcludeFromMonitorManager = true
             },
             // Vertical g-force — fed continuously to the LandingRateAnnouncer so it can capture
             // the PEAK g of a touchdown (the ReadLastLandingPeakG output hotkey). Not announced
@@ -110,12 +134,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // 1 Hz continuous batch missed the touchdown impact spike entirely, so
                 // the peak-g readout under-reported every landing. MainForm routes
                 // G_FORCE to the landing tracker and suppresses the generic call-out
-                // (HandleSpecialAnnouncements).
+                // (HandleSpecialAnnouncements). That handler returns before every Ctrl+M mute
+                // gate, so a row here could never silence anything - hidden, like INDICATED_ALTITUDE.
                 IsAnnounced = true,
                 ExcludeFromBatch = true,
                 HighFrequency = true,
-                // HandleSpecialAnnouncements returns for G_FORCE at Step 2, before either Ctrl+M mute
-                // mechanism, and nothing ever speaks it - a mute row for it would silence nothing.
                 ExcludeFromMonitorManager = true
             },
             // Touchdown vertical speed — the sim latches this at touchdown and it persists until
@@ -131,10 +154,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // MUST be IsAnnounced=true to be monitored at all (continuous batch =
                 // Continuous + IsAnnounced; SimConnectManager ~L805). With it false the cache
                 // stayed empty and ReadLastLandingRate always said "no landing recorded".
-                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
+                // MainForm.HandleSpecialAnnouncements suppresses its generic call-out - and returns
+                // before every Ctrl+M mute gate, so a row here could never silence anything: hidden.
                 IsAnnounced = true,
-                // ...and returns at Step 2 before either Ctrl+M mute mechanism; nothing ever speaks
-                // it (the landing-rate readouts are hotkey-only), so a mute row would silence nothing.
                 ExcludeFromMonitorManager = true
             },
 
