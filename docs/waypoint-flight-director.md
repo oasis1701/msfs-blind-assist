@@ -353,7 +353,13 @@ applying your hard-pan and centered-tone selections so you can hear both before 
 
 ## Tuning an aircraft profile from its own autopilot (methodology)
 
-This is the procedure that produced the measured PMDG 777 profile, written so it can be repeated on
+**The general principle: let the autopilot demonstrate the behaviour, sample it, and copy the
+numbers.** Any cue MSFSBA gives a hand-flying pilot is imitating something the aircraft's own
+automation can do — so rather than guessing the tunables, have the automation fly it and measure what
+it did. That applies to the FD roll law below, and equally to the landing flare and rollout (see the
+last subsection).
+
+This is the procedure that produced the measured PMDG 777 and A380X profiles, written so it can be repeated on
 any airframe. **Fly it with the AUTOPILOT, not by hand.** The point is to copy what the aeroplane's
 own flight guidance does; hand-flying measures the pilot instead, and a blind pilot has no visual
 reference to fly a repeatable turn against anyway. It is also the lower-effort path — the pilot just
@@ -414,6 +420,31 @@ express it. Fit the gain FIRST; only reach for the lead if the aeroplane oversho
   46% error in the gain. Sanity-check every fit against the onset cross-check above; if the fitted
   gain and the observed rollout onset disagree, suspect skew and discard the run rather than
   averaging it in. One 180 kt run was discarded for exactly this.
+
+### Applying the same method to the landing flare and rollout
+
+`LandingFlareAssistManager` (manual-landing flare + rollout assist) has the same problem the FD had:
+its tunables are class estimates. The autopilot can demonstrate the real thing — fly a **coupled ILS
+autoland** on an aircraft that supports it (777, A380X) and sample what the automation does, then tune
+the cues to match.
+
+| Look for | Read it as | Field |
+| --- | --- | --- |
+| Radio altitude when the nose first starts rising | where the aeroplane begins its flare | `FlareTriggerWheelHeightFt` |
+| Peak pitch reached during the flare | the flare attitude to cue toward | `FlareTargetPitchDeg` |
+| Sink rate vs radio altitude through the flare | the sink profile the flare cue is pitched against — this manager keys on SINK RATE, not pitch, so this is the load-bearing curve | flare cue mapping |
+| Heading/track against runway heading after touchdown | the rollout crab law | rollout centreline steering |
+| Lateral deviation from centreline through the rollout | how hard the steering corrects | rollout centreline steering |
+
+Sample `RADIO HEIGHT`, `PLANE PITCH DEGREES`, `VERTICAL SPEED`, `PLANE HEADING DEGREES MAGNETIC` and
+the aircraft's lateral deviation. Two cautions specific to this case:
+
+- **Watch the phase boundaries, not just the numbers.** The manager has three phases (Armed / Flare /
+  Rollout) and the interesting behaviour is at the transitions — the autoland's own flare entry and
+  its derotation are what the trigger height and target pitch are trying to match.
+- **The same "is the automation actually flying?" trap applies.** Confirm the autoland is engaged and
+  in LAND/FLARE from the AIRCRAFT'S own variables before trusting a run, exactly as with the AP-state
+  check above. A run where the automation dropped out measures the pilot instead.
 
 ### When to stop
 
