@@ -1,4 +1,4 @@
-// Characterization tests for MSFSBlindAssist.Navigation.RouteRunwayCrossings.
+﻿// Characterization tests for MSFSBlindAssist.Navigation.RouteRunwayCrossings.
 //
 // Ports the RouteRunwayCrossings-relevant golden cases from
 // tools/ProgressiveTaxiProbe/Program.cs (sections #7, #9(f), #10, #11): the KSFO
@@ -338,4 +338,264 @@ public class RouteRunwayCrossingsTests
         Assert.Equal("crossing runway 09/27 twice", clause);
         Assert.Equal(0, nonRunway);
     }
+
+    // --- the extracted crossing/tagging loop -------------------------------------------
+
+    private static TaxiRouteSegment Seg(double lat = 0.0) => new()
+    {
+        FromNode = new TaxiNode { NodeId = 1, Latitude = lat, Longitude = 0.0 },
+        ToNode   = new TaxiNode { NodeId = 2, Latitude = lat + 0.001, Longitude = 0.0 },
+        DistanceMeters = 100.0,
+    };
+
+    private static List<TaxiRouteSegment> Route(int count)
+    {
+        var list = new List<TaxiRouteSegment>();
+        for (int i = 0; i < count; i++) list.Add(Seg(i * 0.001));
+        return list;
+    }
+
+    // Probe that reports a crossing on the given segment indices only.
+    private static RouteRunwayCrossings.EdgeRunwayProbe ProbeOn(
+        IReadOnlyList<TaxiRouteSegment> segs, params (int Index, string Runway)[] hits)
+        => (aLat, aLon, bLat, bLon) =>
+        {
+            for (int i = 0; i < segs.Count; i++)
+                if (Math.Abs(segs[i].FromNode.Latitude - aLat) < 1e-12)
+                    foreach (var h in hits)
+                        if (h.Index == i) return h.Runway;
+            return "";
+        };
+
+    private static bool NeverMatches(string a, string b) => false;
+
+    [Fact]
+    public void InsertCrossingHoldShorts_TagsTheSegmentBeforeEachCrossing()
+    {
+        var segs = Route(10);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "",
+            ProbeOn(segs, (3, "26R"), (6, "04L")), NeverMatches);
+
+        Assert.Equal(new[] { "26R", "04L" }, crossed);
+        Assert.True(segs[2].IsHoldShortPoint, "hold must land BEFORE the crossing edge");
+        Assert.True(segs[5].IsHoldShortPoint);
+        Assert.False(segs[3].IsHoldShortPoint, "the crossing edge itself is not the hold");
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_LabelsTheHoldWithTheRunwayCrossed()
+    {
+        var segs = Route(6);
+        RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "", ProbeOn(segs, (3, "26R")), NeverMatches);
+
+        Assert.Equal("runway 26R", segs[2].HoldShortRunway);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_DoesNotRetagTheSameRunwayOnConsecutiveEdges()
+    {
+        var segs = Route(8);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "",
+            ProbeOn(segs, (3, "26R"), (4, "26R")), NeverMatches);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+    }
+
+    // The destination's own strip: only the route's ARRIVAL at it is skipped (TruncateToHoldShort
+    // already tagged the final segment). Every earlier crossing of that same pavement is tagged —
+    // dropping it is the runway-incursion direction.
+    [Fact]
+    public void InsertCrossingHoldShorts_SkipsOnlyTheFinalSegmentOnTheDestinationStrip()
+    {
+        var segs = Route(6);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "Runway 04R",
+            ProbeOn(segs, (5, "22L")),                       // final segment, reciprocal name
+            designatorsMatch: (a, b) => true);
+
+        Assert.Empty(crossed);
+        Assert.False(segs[4].IsHoldShortPoint);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_TagsAnEarlierCrossingOfTheDestinationStrip()
+    {
+        var segs = Route(8);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, destinationName: "Runway 04R",
+            ProbeOn(segs, (3, "22L")),                       // mid-route, reciprocal name
+            designatorsMatch: (a, b) => true);
+
+        Assert.Equal(new[] { "22L" }, crossed);
+        // Announced under the designator the PILOT chose, not the reciprocal geometry reported.
+        Assert.Equal("runway 04R", segs[2].HoldShortRunway);
+    }
+
+    // A crossing on the route's FIRST segment is REPORTED but never tagged. There is no
+    // earlier segment to hold on — ResolveCrossingHoldSegment would clamp back to the crossing
+    // segment itself, whose end node is the FAR side of the runway, i.e. a "hold short" AFTER
+    // the crossing. Dropping the report as well (the behaviour before 2026-09) was the worse
+    // half to lose: the recalculation path builds its route from the live aircraft position, so
+    // its first segment really can be the crossing edge, and the pilot then heard "Route
+    // changed. Now via D." with no crossing named while the log recorded crosses=(none).
+    [Fact]
+    public void InsertCrossingHoldShorts_ReportsAFirstSegmentCrossingButPlacesNoHold()
+    {
+        var segs = Route(1);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (0, "26R")), NeverMatches);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+        Assert.False(segs[0].IsHoldShortPoint);
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_ReportsAFirstSegmentCrossingOnALongerRouteToo()
+    {
+        var segs = Route(5);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (0, "26R")), NeverMatches);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+        Assert.All(segs, seg => Assert.False(seg.IsHoldShortPoint));
+    }
+
+    // The runway a first-segment crossing reports still counts for the consecutive-duplicate
+    // rule, so the very next segment cannot plant that same runway's hold mid-pavement — by
+    // then the aircraft is ON the runway and the only hold available is behind it.
+    [Fact]
+    public void InsertCrossingHoldShorts_DoesNotTagTheSameRunwayOnTheSegmentAfterAFirstSegmentCrossing()
+    {
+        var segs = Route(5);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (0, "26R"), (1, "26R")), NeverMatches);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+        Assert.All(segs, seg => Assert.False(seg.IsHoldShortPoint));
+    }
+
+    // A hold point the aircraft has already rolled past is REPORTED and not tagged, for the
+    // same reason: tagging it commands a stop on the pavement. This is the PHNL-adjacent case
+    // — a pilot cleared across a runway, already over the hold line, whose off-route
+    // recalculation would otherwise hand them that same hold line back as a fresh stop.
+    [Fact]
+    public void InsertCrossingHoldShorts_ReportsButDoesNotTagAHoldTheAircraftHasPassed()
+    {
+        var segs = Route(5);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (2, "26R")), NeverMatches,
+            holdPointPassed: seg => ReferenceEquals(seg, segs[1]));
+
+        Assert.Equal(new[] { "26R" }, crossed);
+        Assert.All(segs, seg => Assert.False(seg.IsHoldShortPoint));
+    }
+
+    // ... and a hold the aircraft has NOT passed is still tagged, so the predicate cannot
+    // quietly disable the whole pass.
+    [Fact]
+    public void InsertCrossingHoldShorts_StillTagsAHoldAheadOfTheAircraft()
+    {
+        var segs = Route(5);
+        var crossed = RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (2, "26R")), NeverMatches,
+            holdPointPassed: _ => false);
+
+        Assert.Equal(new[] { "26R" }, crossed);
+        Assert.True(segs[1].IsHoldShortPoint);
+    }
+
+    // Omitting the predicate must behave exactly as "nothing is behind" — every caller that
+    // adopts a route from a standstill relies on it.
+    [Fact]
+    public void InsertCrossingHoldShorts_TagsNormallyWhenNoPassedPredicateIsSupplied()
+    {
+        var segs = Route(5);
+        RouteRunwayCrossings.InsertCrossingHoldShorts(
+            segs, "", ProbeOn(segs, (2, "26R")), NeverMatches);
+
+        Assert.True(segs[1].IsHoldShortPoint);
+    }
+
+    // A null delegate must FAIL LOUDLY, not degrade to "no crossings found". This pass is the
+    // FAA AIM 4-3-18 / ICAO Doc 4444 hold-short before every crossed runway; an empty result
+    // is indistinguishable from a route that genuinely crosses nothing, so a silent return
+    // would present a programming error as a safe route. `segments` is deliberately NOT in
+    // this rule — an empty route legitimately crosses nothing.
+    [Fact]
+    public void InsertCrossingHoldShorts_ThrowsRatherThanReportNoCrossings_WhenTheProbeIsNull()
+    {
+        var segs = Route(4);
+        Assert.Throws<ArgumentNullException>(() =>
+            RouteRunwayCrossings.InsertCrossingHoldShorts(segs, "", null!, NeverMatches));
+    }
+
+    [Fact]
+    public void InsertCrossingHoldShorts_ThrowsRatherThanReportNoCrossings_WhenTheMatchIsNull()
+    {
+        var segs = Route(4);
+        Assert.Throws<ArgumentNullException>(() =>
+            RouteRunwayCrossings.InsertCrossingHoldShorts(
+                segs, "", ProbeOn(segs, (2, "26R")), null!));
+    }
+
+    // The lenient contract for segments is unchanged: a too-short or absent route is not an
+    // error, it simply crosses nothing.
+    [Fact]
+    public void InsertCrossingHoldShorts_StillToleratesANullRouteWithoutThrowing()
+        => Assert.Empty(RouteRunwayCrossings.InsertCrossingHoldShorts(
+            null!, "", (a, b, c, d) => "", NeverMatches));
+
+    // --- ShouldExcludeFinalHold ---------------------------------------------------------
+    //
+    // Both describers of a route — LoadRoute's summary and the recalc's "Route changed"
+    // callout — must agree on whether the FINAL segment's hold is a real crossing or just the
+    // destination's own countdown rail. The rule was spelled out twice, once in each; one
+    // owner here is what makes "the two paths cannot drift" true rather than merely intended.
+
+    [Fact]
+    public void ShouldExcludeFinalHold_ExcludesARunwayRoutesOwnTaggedFinalSegment()
+    {
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.True(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: true));
+    }
+
+    // A gate route never runs TruncateToHoldShort, so a hold-short on its last segment is a
+    // genuine crossing and must be described.
+    [Fact]
+    public void ShouldExcludeFinalHold_KeepsAGateRoutesTaggedFinalSegment()
+    {
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: false));
+    }
+
+    [Fact]
+    public void ShouldExcludeFinalHold_IsFalseWhenTheFinalSegmentCarriesNoHold()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(
+            Route(3), isRunwayDestination: true));
+
+    [Fact]
+    public void ShouldExcludeFinalHold_IsFalseForAnEmptyRoute()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(
+            Array.Empty<TaxiRouteSegment>(), isRunwayDestination: true));
+
+    // --- StripRunwayPrefix -------------------------------------------------------
+
+    [Theory]
+    [InlineData("Runway 33L", "33L")]
+    [InlineData("runway 09", "09")]
+    [InlineData("RUNWAY 4R", "4R")]
+    [InlineData("A9 - Gate Medium", "A9 - Gate Medium")]
+    [InlineData("  Runway 22L  ", "22L")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void StripRunwayPrefix_drops_only_the_spoken_prefix(string? input, string expected)
+    {
+        Assert.Equal(expected, RouteRunwayCrossings.StripRunwayPrefix(input));
+    }
+
 }
