@@ -225,21 +225,21 @@ on a 3° path for the A319/A320, ~2.5° for the 737, giving ~5-5.5° AoA), 4.0-4
 This also resolved a contradiction on the 737s, which carried 6.0° here and 5.0° in their Visual
 Guidance profile — two values for one physical quantity on one airframe.
 
-**The PMDG 777 is now MEASURED, not estimated (2026-09).** Three autopilot-flown HDG SEL turns at
-4000 ft — 90° right and 90° left at 180 kt, then 40° right at 280 kt — sampling bank and magnetic
+**The PMDG 777 is now MEASURED, not estimated (2026-09).** Four autopilot-flown HDG SEL turns at
+4000 ft — 90° right and 90° left at 180 kt, then right and left at 280 kt — sampling bank and magnetic
 heading at 4 Hz. What came out:
 
 | Quantity | Measured | Was |
 | --- | --- | --- |
-| Bank per degree of error | **2.39-2.40** (spread 2.31-2.48) | 0.9 |
+| Bank per degree of error | **2.35** mean of three rollouts (2.40 / 2.39 / 2.26) | 0.9 |
 | Steady bank | **25.0-25.5°**, identical at 180 and 280 kt | 27 (then 30) |
 | Roll rate | **3.45-3.59°/s** | 5.0 assumed |
-| Rollout onset | **10.3-10.8°** of remaining error | n/a |
+| Rollout onset | **10.3-10.8°** of remaining error (law predicts 10.6) | n/a |
 | Capture accuracy | within **0.5°** of target, no overshoot | n/a |
 
 The AFDS is a **pure proportional law**. The rollout needs no time-lead term to reproduce: it starts
 where the proportional command drops under the cap (25 / 2.4 = 10.4° of error), which is exactly
-where the aeroplane rolled out, at both speeds. Note that is a constant HEADING lead and not a
+where the aeroplane rolled out, at both speeds and in both directions. Note that is a constant HEADING lead and not a
 constant TIME one — the same 10.4° was 4.3 s of flying at 180 kt and 6.4 s at 280 kt — so
 `BankRateLeadSec` structurally cannot express it and is now small (0.5) purely to damp yaw-rate
 noise.

@@ -69,17 +69,17 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // Best-effort class defaults; calibrate in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        // MEASURED off the aeroplane, 2026-09 (three AP-flown HDG SEL turns, PMDG 777 at 4000 ft:
-        // 90° right and 90° left at 180 kt, 40° right at 280 kt). Sampled bank + magnetic heading
-        // at 4 Hz over SimConnect and fitted.
+        // MEASURED off the aeroplane, 2026-09 (four AP-flown HDG SEL turns, PMDG 777 at 4000 ft:
+        // 90° right and 90° left at 180 kt, then right and left at 280 kt). Sampled bank + magnetic
+        // heading at 4 Hz over SimConnect and fitted against remaining heading error.
         //
-        // The AFDS turns out to be a PURE PROPORTIONAL law: through every rollout, bank tracked
-        // remaining heading error at 2.39-2.40° of bank per degree, with a spread of only
-        // 2.31-2.48 across both speeds and both directions. The previous 0.9 was a class guess
-        // that commanded barely a third of the bank the aeroplane itself uses — at 10° off track it
-        // asked for 9° of bank where the autopilot uses 25 — which is why the FD felt like it never
-        // stopped deviating: it could not converge.
-        KRollDegPerDegTrack = 2.4,
+        // The AFDS is a PURE PROPORTIONAL law. Three usable rollouts fitted 2.40, 2.39 and 2.26
+        // degrees of bank per degree of error — mean 2.35, and every individual sample inside
+        // 2.02-2.48 across both speeds and both directions. The previous 0.9 was a class guess that
+        // commanded barely a third of the bank the aeroplane itself uses — at 10° off track it asked
+        // for 9° where the autopilot uses 25 — which is why the FD felt like it never stopped
+        // deviating: it could not converge.
+        KRollDegPerDegTrack = 2.35,
         // Measured 25.0-25.5° of steady bank at BOTH 180 and 280 kt, so the cap is FIXED, not
         // scaled by true airspeed as the BANK LIMIT AUTO range (15-25) had suggested it might be.
         // The 30 taken from the LNAV spec is not what this aeroplane actually flies.
@@ -88,8 +88,8 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         CaptureRadiusNm     = 0.8,
         LowSpeedFloorKts    = 60.0,
         // The measured rollout needs NO time-lead to reproduce: it begins where the proportional
-        // command falls under the cap (25 / 2.4 = 10.4° of error), and that is exactly where the
-        // aeroplane started rolling out — 10.3° at 280 kt, 10.8° at 180 kt. Note that is a constant
+        // command falls under the cap (25 / 2.35 = 10.6° of error), and that is exactly where the
+        // aeroplane started rolling out — 10.3-10.5° at 280 kt, 10.8° at 180 kt. Note that is a constant
         // HEADING lead, not a constant time one: the same 10.4° was 4.3 s of flying at 180 kt and
         // 6.4 s at 280 kt, so a time-based lead cannot express it. Kept small but non-zero purely to
         // damp yaw-rate noise; 1.3 s would have rolled out early.
