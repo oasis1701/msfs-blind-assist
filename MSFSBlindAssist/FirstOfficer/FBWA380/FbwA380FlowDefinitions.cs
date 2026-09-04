@@ -86,7 +86,7 @@ public static class FbwA380FlowDefinitions
             // "as required"; Bright is the deterministic ground-prep setting on this build
             // (dome/flood/pedestal knobs are not L:var-settable). ANN LT: 0=Test/1=Bright/2=Dim.
             Multi("CP_COCKPITLT", "Cockpit lights: set",
-                ("A380X_OVHD_ANN_LT_POSITION", 1), ("A32NX_OVHD_INTLT_ANN", 1)),
+                ("A32NX_OVHD_INTLT_ANN", 1)),
             Multi("CP_GPU", "Ground power: ON",
                 ("A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", 1), ("A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", 1),
                 ("A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON", 1), ("A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON", 1)),
@@ -276,7 +276,7 @@ public static class FbwA380FlowDefinitions
             // Cockpit lights DIM (position 2) for taxi/flight — the reduced setting
             // (ANN LT has no true OFF; 2=Dim is the in-flight position).
             Multi("AS_COCKPITLT", "Cockpit lights: off",
-                ("A380X_OVHD_ANN_LT_POSITION", 2), ("A32NX_OVHD_INTLT_ANN", 2)),
+                ("A32NX_OVHD_INTLT_ANN", 2)),
             Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)),
             SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1),
@@ -465,7 +465,7 @@ public static class FbwA380FlowDefinitions
             WaitForField("PK_WAIT_ENG", "Waiting for engines off", "FO_ENGINES_OFF", v => v > 0.5, 120),
             Wait("PK_STBY1", "Standby", 5),
             Multi("PK_COCKPITLT", "Cockpit lights: set",
-                ("A380X_OVHD_ANN_LT_POSITION", 1), ("A32NX_OVHD_INTLT_ANN", 1)),
+                ("A32NX_OVHD_INTLT_ANN", 1)),
             Skip(SW("PK_BEACON_OFF", "Beacon lights: OFF", "LIGHT_BEACON", 0), s => s.IsPosition("LIGHT_BEACON", 0)),
             Skip(SW("PK_WINGLT_OFF", "Wing lights: OFF", "LIGHT_WING", 0), s => s.IsPosition("LIGHT_WING", 0)),
             Skip(SW("PK_NOSE_OFF", "Nose light: OFF", "NOSE_LIGHT", 2), s => s.IsPosition("NOSE_LIGHT", 2)),

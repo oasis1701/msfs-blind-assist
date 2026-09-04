@@ -90,10 +90,17 @@ public static class FbwA380ChecklistDefinitions
                                   await e.Set("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", 1); }),
             // Annunciator + integral lights BRIGHT (1) — SOP "as required", Bright chosen
             // for a deterministic ground-prep setting (0=Test/1=Bright/2=Dim).
-            Multi("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set", "A380X_OVHD_ANN_LT_POSITION",
-                v => Math.Abs(v - 1) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
-                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 1);
-                                  await e.Set("A32NX_OVHD_INTLT_ANN", 1); }),
+            // ⚠️ Detects + writes A32NX_OVHD_INTLT_ANN ONLY. A380X_OVHD_ANN_LT_POSITION
+            // used to be the primary state field here and is a PHANTOM: FBW documents it in
+            // a380-simvars.md but nothing in the aircraft reads or writes it (verified against
+            // the installed package, case-insensitively). Because MSFSBA's own write CREATED
+            // it, the check only ever read back what MSFSBA had just written — it could never
+            // see the real knob and would tick even if the light never moved. The real input is
+            // A32NX_OVHD_INTLT_ANN, which A380_Cockpit_Behavior.xml mirrors at 18 Hz into
+            // A380X_OVHD_INTLT_ANN for the button emissives (so never write THAT one either).
+            Auto("CP_COCKPITLT", "COCKPIT_PREP", "Cockpit lights: set", "A32NX_OVHD_INTLT_ANN",
+                v => Math.Abs(v - 1) < 0.5,
+                (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Multi("CP_GPU", "COCKPIT_PREP", "Ground power: ON",
                 "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON", v => v > 0.5,
                 new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
@@ -332,10 +339,9 @@ public static class FbwA380ChecklistDefinitions
             Auto("AS_NOSE_TAXI", "AFTER_START", "Nose light: TAXI", "NOSE_LIGHT",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
             // DIM (2) for taxi/flight — ANN LT has no true OFF.
-            Multi("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off", "A380X_OVHD_ANN_LT_POSITION",
-                v => Math.Abs(v - 2) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
-                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 2);
-                                  await e.Set("A32NX_OVHD_INTLT_ANN", 2); }),
+            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off", "A32NX_OVHD_INTLT_ANN",
+                v => Math.Abs(v - 2) < 0.5,
+                (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 2)),
             Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A380X_MSFSBA_SPOILERS_ARM", 1)),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET",
@@ -533,10 +539,9 @@ public static class FbwA380ChecklistDefinitions
                     await e.Set("ENG_VALVE_SWITCH:3", 0);
                     await e.Set("ENG_VALVE_SWITCH:4", 0);
                 }),
-            Multi("PK_COCKPITLT", "PARKING", "Cockpit lights: set", "A380X_OVHD_ANN_LT_POSITION",
-                v => Math.Abs(v - 1) < 0.5, new[] { "A32NX_OVHD_INTLT_ANN" },
-                async (e, _) => { await e.Set("A380X_OVHD_ANN_LT_POSITION", 1);
-                                  await e.Set("A32NX_OVHD_INTLT_ANN", 1); }),
+            Auto("PK_COCKPITLT", "PARKING", "Cockpit lights: set", "A32NX_OVHD_INTLT_ANN",
+                v => Math.Abs(v - 1) < 0.5,
+                (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Auto("PK_BEACON_OFF", "PARKING", "Beacon lights: OFF", "LIGHT_BEACON",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHT_BEACON", 0)),
             Auto("PK_WINGLT_OFF", "PARKING", "Wing lights: OFF", "LIGHT_WING",
