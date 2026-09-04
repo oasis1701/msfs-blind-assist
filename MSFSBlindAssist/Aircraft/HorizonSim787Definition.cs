@@ -2035,7 +2035,12 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Cache-only: ProcessSimVarUpdate returns true for this key without speaking, so
+                // a Ctrl+M row could never silence anything - the ground-speed call-outs come
+                // from the base GROUND_VELOCITY via MainForm.HandleSpecialAnnouncements, which
+                // returns before any mute gate. Hidden for the same reason as the base row.
+                ExcludeFromMonitorManager = true
             },
 
             ["HS787_EteDest"] = new SimConnect.SimVarDefinition
