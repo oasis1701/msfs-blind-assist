@@ -40,25 +40,28 @@ public partial class HorizonSim787Definition
         "HS787_TRKMode",
         "HS787_GS_Armed",
         "HS787_LOC",
-        "HS787_AltManual",
         "HS787_FuelLH",
         "HS787_FuelRH",
         "HS787_FuelCtr",
         "HS787_FuelWtPerGal",
         "HS787_DistDest",
-        "HS787_GroundSpeed",
         "HS787_DistTOD",
         "HS787_EteDest",
 
-        // Ground-power combos: monitored continuously so the combo's displayed
-        // state matches reality from MSFSBA connect; HS787_ExtPwrOn1/2 owns the
-        // user-facing announcement, so suppress here to avoid duplicate speech.
+        // Flight-timer mode/running: cached for the FMC Status display field. The WT 787 writes
+        // them on every FMS phase transition, and announcing each would be noise.
+        "HS787_FltTimerMode",
+        "HS787_FltTimerRunning",
+
+        // Ground-power combos: kept continuous so the combo's displayed state tracks the sim;
+        // HS787_ExtPwrOn1/2 (the delivered-power state vars) own the "External Power N On/Off"
+        // callout, so these must never speak - the same SimVar would be announced twice.
         "HS787_ExtPwr1",
         "HS787_ExtPwr2",
 
-        // IRS time-to-align minutes: cached for the read-only display field only.
-        // The Aligning->Aligned transition is announced via HS787_IRS_Align's
-        // ValueDescriptions; a per-minute spoken countdown would be noise.
+        // IRS time-to-align minutes: cached for the read-only IRS display field only. The
+        // completion is announced by the HS787_IRS_Align branch ("IRS aligned"); a per-minute
+        // spoken countdown would be noise.
         "HS787_IRS_AlignMinutes",
     };
 
@@ -71,6 +74,14 @@ public partial class HorizonSim787Definition
     {
         if (base.ProcessSimVarUpdate(variableKey, value, announcer))
             return true;
+
+        // Cache-only variables - checked FIRST so membership of CacheOnlyVariables is the single
+        // authority on silence. These are Continuous + IsAnnounced purely so the monitoring engine
+        // keeps their value cached for hotkey readouts and dialog fields; BuildVariables() hides
+        // every member from the Ctrl+M list on the strength of this set, so a speaking branch for
+        // a member further down could never be muted - placed here, it can never be reached.
+        if (CacheOnlyVariables.Contains(variableKey))
+            return true; // cached - no announcement
 
         // =====================================================================
         // BridgeVersion 18+ — new annunciators / status. All use the same pattern:
@@ -447,13 +458,10 @@ public partial class HorizonSim787Definition
             return true;
         }
 
-        // Flight Timer mode/running and Checklist phase: silently cached so the FMC Status
-        // display panel can read them, but no auto-announce. The WT 787 writes these L-vars
-        // during FMS phase transitions (engine start, takeoff, climb, etc.) — auto-announcing
-        // every transition produces noise the pilot doesn't need. The user reads them on
-        // demand from the FMC Status panel display field.
-        if (variableKey == "HS787_FltTimerMode")    return true;
-        if (variableKey == "HS787_FltTimerRunning") return true;
+        // Checklist phase: silently cached so the FMC Status display panel can read it, but no
+        // auto-announce - the WT 787 writes it during FMS phase transitions (engine start, takeoff,
+        // climb, ...) and announcing every transition is noise the pilot reads on demand instead.
+        // The flight-timer mode/running keys are silenced the same way via CacheOnlyVariables.
         if (variableKey == "HS787_ChecklistPhase")  return true;
 
         if (variableKey == "HS787_HudSymbology1")
@@ -615,11 +623,13 @@ public partial class HorizonSim787Definition
             return true;
         }
 
-        // External power — announce changes only; suppress startup announcement.
+        // External power - announce changes only; suppress the startup announcement and the
+        // pilot's own Ground Power combo pick (IsExtPwrUiEcho: the screen reader already spoke
+        // the selection, and this state var is not the key the combo set).
         if (variableKey == "HS787_ExtPwrOn1")
         {
             int now = (int)value;
-            if (_previousExtPwr1On >= 0 && now != _previousExtPwr1On)
+            if (_previousExtPwr1On >= 0 && now != _previousExtPwr1On && !IsExtPwrUiEcho(1))
                 announcer.Announce(now == 1 ? "External Power 1 On" : "External Power 1 Off");
             _previousExtPwr1On = now;
             return true;
@@ -628,7 +638,7 @@ public partial class HorizonSim787Definition
         if (variableKey == "HS787_ExtPwrOn2")
         {
             int now = (int)value;
-            if (_previousExtPwr2On >= 0 && now != _previousExtPwr2On)
+            if (_previousExtPwr2On >= 0 && now != _previousExtPwr2On && !IsExtPwrUiEcho(2))
                 announcer.Announce(now == 1 ? "External Power 2 On" : "External Power 2 Off");
             _previousExtPwr2On = now;
             return true;
@@ -1033,10 +1043,10 @@ public partial class HorizonSim787Definition
             _previousApuGen2 = now;
             return true;
         }
-        // HS787_ExtPwr1/2 announcements are suppressed via the cache-only switch at the
-        // bottom of ProcessSimVarUpdate. HS787_ExtPwrOn1/2 (delivered-power SimVar) owns
-        // the user-facing "External Power N On/Off" callout, so handling these here would
-        // double-talk.
+        // HS787_ExtPwr1/2 (the combo keys) are silenced and hidden from Ctrl+M via
+        // CacheOnlyVariables at the top of this file. HS787_ExtPwrOn1/2 (delivered-power SimVar)
+        // owns the user-facing "External Power N On/Off" callout, so handling the combo keys here
+        // would double-talk.
         if (variableKey == "HS787_UtilityCabin")
         {
             int now = value > 0.5 ? 1 : 0;
@@ -1654,12 +1664,6 @@ public partial class HorizonSim787Definition
             _prevMcpMach = value;
             return true;
         }
-
-        // Cache-only variables — suppress all automatic announcements.
-        // These are IsAnnounced=true purely so the monitoring engine caches them;
-        // hotkey readouts and dialog toggles read the cached values on demand.
-        if (CacheOnlyVariables.Contains(variableKey))
-            return true; // cached — no announcement
 
         return false;
     }

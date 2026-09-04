@@ -24,6 +24,15 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
     private int  _previousSpeedbrakeState = -1; // 0=down, 1=armed, 2=deployed
     private int  _previousExtPwr1On    = -1;
     private int  _previousExtPwr2On    = -1;
+    // The pilot's own Ground Power combo pick is already spoken by the screen reader, and the
+    // resulting EXTERNAL POWER ON:n change arrives under HS787_ExtPwrOn1/2 - a different key from
+    // the one the combo set, so MainForm's _uiSetEcho (keyed on the combo var) cannot mute it.
+    // Same def-local window the A380 uses for its ND-filter call-out; matches UiSetEchoSuppressMs.
+    private readonly long[] _extPwrUiSetTicks = new long[3];
+    private const int ExtPwrUiEchoSuppressMs = 3000;
+    private bool IsExtPwrUiEcho(int side)
+        => _extPwrUiSetTicks[side] != 0
+           && Environment.TickCount64 - _extPwrUiSetTicks[side] < ExtPwrUiEchoSuppressMs;
     private int  _previousExecActive   = -1;
     private int  _previousTOGA         = -1;
     private int  _previousFuelBalanceFault = -1;
@@ -571,13 +580,12 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             // these are On/Off combo boxes that READ the actual delivered-power SimVar
             // (EXTERNAL POWER ON:N) directly. Writes route through the InputEvent map
             // (HS787_INPUT_EVENT_MAP) — no momentary press hack needed.
-            // IsAnnounced = false here because the dedicated state vars HS787_ExtPwrOn1/2
-            // (below) already publish "External Power N On/Off" through ProcessSimVarUpdate.
-            // IsAnnounced=true is required for the monitoring engine to keep these in
-            // the continuous batch, so the combo's displayed value tracks the sim from
-            // the moment MSFSBA connects. Announcements are suppressed in the cache-only
-            // switch at the bottom of ProcessSimVarUpdate — HS787_ExtPwrOn1/2 already
-            // publishes "External Power N On/Off" so duplicating that here would double-talk.
+            // Announcements are owned by the dedicated state vars HS787_ExtPwrOn1/2 (below), which
+            // publish "External Power N On/Off" through ProcessSimVarUpdate. These combo keys are
+            // Continuous + IsAnnounced only so the monitoring engine keeps their value current (the
+            // combo's displayed state tracks the sim from the moment MSFSBA connects); they are
+            // silenced and hidden from Ctrl+M via CacheOnlyVariables (HorizonSim787Definition
+            // .SimVarUpdate.cs) - announcing them here as well would double-talk.
             ["HS787_ExtPwr1"] = new SimConnect.SimVarDefinition
             {
                 Name = "EXTERNAL POWER ON:1",
@@ -1453,7 +1461,7 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             },
 
             // -----------------------------------------------------------------
-            // GLARESHIELD — MCP (announced continuous for state monitoring)
+            // GLARESHIELD — MCP (continuous; FPA/TRK mode are silent caches - see CacheOnlyVariables)
             // -----------------------------------------------------------------
 
             ["HS787_FPAMode"] = new SimConnect.SimVarDefinition
@@ -1562,7 +1570,11 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 DisplayName = "Speed Mode Mach",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Never spoken: ProcessSimVarUpdate only records the state that gates the Speed/Mach
+                // callouts (keyed on HS787_MCP_IAS/HS787_MCP_Mach), so a Ctrl+M row here would mute
+                // nothing. State-carrying, so it keeps its branch instead of joining CacheOnlyVariables.
+                ExcludeFromMonitorManager = true
             },
 
             ["HS787_MCP_SpdManual"] = new SimConnect.SimVarDefinition
@@ -1571,7 +1583,9 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 DisplayName = "Speed Manually Set",
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                // Same as HS787_MCP_IsMach above: state only, never spoken, no Ctrl+M row.
+                ExcludeFromMonitorManager = true
             },
 
             ["HS787_MCP_Heading"] = new SimConnect.SimVarDefinition
@@ -1893,22 +1907,6 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
             },
 
             // -----------------------------------------------------------------
-            // MCP — Alt INTV: no state LVar exists (unlike speed, the WT Boeing altitude
-            // intervention system delegates entirely to VNavManager with no LVar write).
-            // HS787_AltManual is kept as a dummy continuous poll so the cache entry exists
-            // and the dialog toggle can be displayed; it will always read 0.
-            // -----------------------------------------------------------------
-
-            ["HS787_AltManual"] = new SimConnect.SimVarDefinition
-            {
-                Name = "XMLVAR_AltitudeIsManuallySet",
-                DisplayName = "Alt Manually Set",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-
-            // -----------------------------------------------------------------
             // Cached standard SimVars for hotkey readouts (not shown in panels)
             // All IsAnnounced=true so they're continuously polled into cache;
             // ProcessSimVarUpdate suppresses the unwanted announcements.
@@ -2024,16 +2022,6 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
                 DisplayName = "Distance to Destination",
                 Type = SimConnect.SimVarType.SimVar,
                 Units = "meters",
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
-            },
-
-            ["HS787_GroundSpeed"] = new SimConnect.SimVarDefinition
-            {
-                Name = "GROUND VELOCITY",
-                DisplayName = "Ground Speed",
-                Type = SimConnect.SimVarType.SimVar,
-                Units = "knots",
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true
             },
@@ -4487,11 +4475,10 @@ public partial class HorizonSim787Definition : BaseAircraftDefinition
         // IsAnnounced variable, so without this stamp each one still earned a Ctrl+M checkbox
         // whose un-tick silenced nothing. Stamped from that SAME set — never a second
         // hand-typed copy of the key list — so the suppression and the exclusion can't drift.
+        // Indexed, not TryGetValue'd: a mistyped key throws here at the first GetVariables(), which
+        // the fleet-wide AllAircraft tests fail in CI - the same form as the A380's stamp loop.
         foreach (var key in CacheOnlyVariables)
-        {
-            if (variables.TryGetValue(key, out var def))
-                def.ExcludeFromMonitorManager = true;
-        }
+            variables[key].ExcludeFromMonitorManager = true;
 
         return variables;
     }

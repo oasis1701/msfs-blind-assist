@@ -122,6 +122,22 @@ public partial class SimConnectManager
             return;
         }
 
+        // A var on its own periodic subscription (Continuous + IsAnnounced + ExcludeFromBatch -
+        // the predicate SetupDataDefinitions uses) is already streaming on THIS SAME request id.
+        // Re-issuing the id as PERIOD.ONCE would REPLACE that subscription (SimConnect re-uses the
+        // RequestID; the cancel idiom relies on exactly that) and freeze the var for the rest of
+        // the session - measured live on the A380 FCU panel (docs/a380x.md), and reachable from
+        // every panel open, display refresh and force-read. Leave the subscription alone: the
+        // force flag recorded above is honoured by the next periodic delivery, so a force-read
+        // still fires SimVarUpdated within one period (1 s at PERIOD.SECOND).
+        var defs = CurrentAircraft?.GetVariables();
+        if (defs != null && defs.TryGetValue(varKey, out var periodicDef) &&
+            periodicDef.UpdateFrequency == UpdateFrequency.Continuous &&
+            periodicDef.IsAnnounced && periodicDef.ExcludeFromBatch)
+        {
+            return;
+        }
+
         try
         {
             int dataDefId = variableDataDefinitions[varKey];

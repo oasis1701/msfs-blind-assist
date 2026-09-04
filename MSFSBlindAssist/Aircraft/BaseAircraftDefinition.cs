@@ -113,7 +113,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // (HandleSpecialAnnouncements).
                 IsAnnounced = true,
                 ExcludeFromBatch = true,
-                HighFrequency = true
+                HighFrequency = true,
+                // HandleSpecialAnnouncements returns for G_FORCE at Step 2, before either Ctrl+M mute
+                // mechanism, and nothing ever speaks it - a mute row for it would silence nothing.
+                ExcludeFromMonitorManager = true
             },
             // Touchdown vertical speed — the sim latches this at touchdown and it persists until
             // the next landing, so the ReadLastLandingRate output hotkey reads it straight from
@@ -129,7 +132,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 // Continuous + IsAnnounced; SimConnectManager ~L805). With it false the cache
                 // stayed empty and ReadLastLandingRate always said "no landing recorded".
                 // MainForm.HandleSpecialAnnouncements suppresses its generic call-out.
-                IsAnnounced = true
+                IsAnnounced = true,
+                // ...and returns at Step 2 before either Ctrl+M mute mechanism; nothing ever speaks
+                // it (the landing-rate readouts are hotkey-only), so a mute row would silence nothing.
+                ExcludeFromMonitorManager = true
             },
 
             // Glideslope signal - monitors NAV1 glideslope alive/lost transitions
