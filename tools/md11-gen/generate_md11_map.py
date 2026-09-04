@@ -703,6 +703,39 @@ def resolve_paths(pkg_arg, wasm_arg):
     return find.package_dir, wasm
 
 
+def _exit_if_incomplete(out_path, pkg, wasm, controls, all_vars):
+    """Refuse to write a map missing controls or the wasm-derived L:vars.
+
+    The owner's ruling: refuse to write anything rather than emit a partial
+    map. A map with no controls is missing every clickable cockpit control; a
+    map with no wasm control vars is missing the PFD speed tape and V-speed
+    read-outs, which have no other source. Either looks like an ordinary
+    successful run (exit 0, a file written) unless something checks for it
+    here -- collect() and wasm_vars() both degrade silently (an empty XML
+    folder, or a wasm with no 'Aircraft::vars->' symbols, just produce empty
+    results, not an exception).
+    """
+    problems = []
+    if not controls:
+        problems.append("no controls (found 0 in the package's ModelBehaviorDefs)")
+    if not all_vars:
+        problems.append(
+            "no wasm control vars (found 0 'Aircraft::vars->MD11_...' symbols in the wasm)"
+        )
+    if not problems:
+        return
+    sys.exit(
+        "Refusing to write %s: %s.\n"
+        "Package : %s\n"
+        "Wasm    : %s\n"
+        "A partial map is worse than none, so nothing was written. This "
+        "usually means --wasm points at the wrong file, the wasm is "
+        "truncated or partial, or a TFDi update changed the symbol "
+        "convention this script parses -- not that the aircraft genuinely "
+        "has no controls." % (out_path, "; ".join(problems), pkg, wasm)
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkg", default=None,
@@ -715,6 +748,8 @@ def main():
 
     controls, stats = collect(pkg)
     all_vars, export_vars = wasm_vars(wasm)
+
+    _exit_if_incomplete(args.out, pkg, wasm, controls, all_vars)
 
     referenced = {c["node_id"] for c in controls} | {
         c["state_var"] for c in controls if c["state_var"]
