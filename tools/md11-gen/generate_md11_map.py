@@ -448,7 +448,7 @@ def humanize(node_id):
 
 
 def collect(pkg_dir):
-    base = os.path.join(pkg_dir, "ModelBehaviorDefs", "TFDi_Design", "MD11")
+    base = os.path.join(pkg_dir, md11_paths.PACKAGE_MARKER)
     if not os.path.isdir(base):
         sys.exit(f"ModelBehaviorDefs not found under {base}")
 
@@ -677,7 +677,7 @@ def resolve_paths(pkg_arg, wasm_arg):
         print("The MD-11 is installed in more than one place:")
         for i, f in enumerate(finds, 1):
             print("  %d) %s  %s" % (i, f.sim_label, f.package_dir))
-        if not sys.stdin.isatty():
+        if not (sys.stdin and sys.stdin.isatty()):
             sys.exit(
                 "Re-run with --pkg <folder> to choose one "
                 "(no terminal attached, so cannot prompt)."
@@ -740,7 +740,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkg", default=None,
                     help="MD-11 package folder. Omit to search this PC.")
-    ap.add_argument("--wasm", default=None)
+    ap.add_argument("--wasm", default=None,
+                    help="md11host.wasm path. Omit to use the one found next to --pkg "
+                         "(or discovered automatically).")
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "md11_control_map.json"))
     args = ap.parse_args()
 

@@ -9,6 +9,8 @@ ModelBehaviorDefs/TFDi_Design/MD11 -- never by the folder name -- because a
 real install was measured with the aircraft in a folder called "Community2024"
 (not "Community"), and because TFDi could rename the package.
 """
+from __future__ import annotations
+
 import os
 import re
 from dataclasses import dataclass
