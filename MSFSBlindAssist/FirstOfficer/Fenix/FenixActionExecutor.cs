@@ -28,11 +28,22 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     private const int CabinCallHoldMs = 600;   // Cabin CALL pushbutton: press, brief hold, release.
     private const int ApuMasterToStartMs = 3000;
 
-    /// <summary>The A320 APU START pushbutton's LOWER legend — AVAIL, lit for as long as the
-    /// APU runs. NOT the upper _U (ON) legend, which is transient and goes out at ~95% N.
-    /// ⚠️ The _U/_L convention is NOT consistent across A320 pushbuttons (it is REVERSED on
-    /// EXT PWR), so never infer one pushbutton's wiring from another's.</summary>
-    public const string ApuAvailField = "I_OH_ELEC_APU_START_L";
+    /// <summary>The Fenix APU START pushbutton's AVAIL legend — lit for as long as the APU
+    /// runs. MEASURED live 2026-09-04 (Fenix A319, cold APU started in flight, both legends
+    /// polled throughout): at the START press _L goes 1 and _U stays 0; when the APU becomes
+    /// available, ~50 s later, they EXCHANGE and stay that way — _U 1, _L 0. So _L is the
+    /// TRANSIENT ON legend and _U is the PERSISTENT AVAIL legend.
+    /// <para>⚠️ This is REVERSED against the real A320, where the START pushbutton's upper
+    /// legend is ON and its lower is AVAIL — and reversed against the Fenix's own APU MASTER
+    /// pushbutton, measured in the same session as _U = FAULT (dark) / _L = ON (lit), which
+    /// matches the real jet exactly. The suffixes are therefore trustworthy right up until
+    /// this button. Both readings have now shipped once each on reasoning alone, each time
+    /// reproducing the other's bug; the rule that survives is that on the Fenix a legend's
+    /// meaning is NEVER inferred — not from its suffix, not from the real aircraft, not from
+    /// a sibling pushbutton — it is read in the sim. This constant is the ONE spelling: every
+    /// flow step and checklist item references it rather than repeating the literal, which is
+    /// what let the executor and the definitions disagree before.</para></summary>
+    public const string ApuAvailField = "I_OH_ELEC_APU_START_U";
 
     /// <summary>How long <see cref="StartApuAsync"/> waits for AVAIL. Matches the Before Start
     /// flow's own WaitForField budget so the two paths give up at the same point.</summary>

@@ -304,21 +304,39 @@ public class FoPr160ProcedureFixTests
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------
 
-    // On an A320 APU START pushbutton the upper legend is ON — it lights while the
-    // start sequence runs and extinguishes once the APU reaches ~95% N (a TRANSIENT
-    // signal). The lower legend is AVAIL and stays lit for as long as the APU is
-    // running (a PERSISTENT signal). The FO was reading I_OH_ELEC_APU_START_U (the
-    // upper/ON lamp) everywhere it meant "the APU is available," so with the APU
-    // already running _U reads 0: a Before Start skip-check failed to skip (pressing
-    // START again on a running APU) and the subsequent WaitForField then waited on a
-    // lamp that would never light again, timing out at 180s and aborting the whole
-    // flow with "Unable to complete: Waiting for APU available" on a healthy APU.
-    // Fix: read I_OH_ELEC_APU_START_L (the AVAIL lamp) everywhere instead — matching
-    // this repo's own Fenix panel control for S_OH_ELEC_APU_START (already _L) and
-    // the sibling FBW A32NX profile, which waits on the unambiguous
-    // A32NX_OVHD_APU_START_PB_IS_AVAILABLE. NOTE: the _U/_L convention is NOT
-    // universal across A320 pushbuttons — on EXT PWR it is reversed (_U is AVAIL
-    // there) — so never port a lamp choice from one pushbutton to another by analogy.
+    // MEASURED LIVE, 2026-09-04, Fenix A319 in flight, APU started from cold over the
+    // MobiFlight calculator path and both legends polled throughout:
+    //
+    //   since START press   APU state    _U   _L
+    //   (cold)              off           0    0
+    //   0 s   (press)       starting      0    1
+    //   ~15 s               starting      0    1
+    //   ~50 s               AVAILABLE     1    0
+    //   ~90 s               available     1    0
+    //
+    // So on the Fenix I_OH_ELEC_APU_START_L is the TRANSIENT ON legend — it lights at the
+    // press and goes OUT the moment the APU becomes available — and I_OH_ELEC_APU_START_U
+    // is the PERSISTENT AVAIL legend. Every "is the APU available" read is therefore _U.
+    //
+    // ⚠️ This REVERSES an earlier fix in the opposite direction, and the reversal is the
+    // whole lesson. The FO first read _U, a 2026-07-06 four-aircraft audit independently
+    // called _U correct, then 2026-08-26 swapped all 9 sites to _L on the real-Airbus rule
+    // "upper = ON, lower = AVAIL". Nobody ever read either lamp in the sim; the swap's
+    // supporting argument ("matches this repo's own panel control") was circular, since that
+    // control's _L came from an April blanket flip of 17 unrelated controls under
+    // "Airbus upper = fault, lower = status" — a rule that does not even apply to a START
+    // pushbutton, which has no FAULT legend. The swap then reproduced, with the lamps
+    // exchanged, the exact bug it was written to fix: with the APU running _L reads 0, so
+    // the checklist item never auto-ticked and a hand-tick sat on a lamp that would never
+    // light again before announcing "Unable to complete: APU: ON and available".
+    //
+    // The control probe in the same session shows why this could not be deduced: on the
+    // MASTER pushbutton _U/_L ARE upper/lower (master ON gave _U=0 FAULT dark, _L=1 ON lit,
+    // exactly the real jet), so the suffixes look trustworthy right up until this button,
+    // where they are reversed against the real aircraft's legend positions. The repo's old
+    // warning that the convention "is REVERSED on EXT PWR" named the wrong button and had no
+    // source behind it. The rule that survives: on the Fenix, NEVER infer a legend's meaning
+    // from its suffix, from the real aircraft, or from a sibling pushbutton — read it.
 
     [Fact]
     public void Fenix_BeforeStartChecklist_ApuItem_ReadsTheAvailLamp()
@@ -327,7 +345,7 @@ public class FoPr160ProcedureFixTests
             .Single(g => g.Id == "BEFORE_START").Items
             .Single(i => i.Id == "BS_APU");
 
-        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+        Assert.Equal("I_OH_ELEC_APU_START_U", item.StateFieldName);
     }
 
     [Fact]
@@ -337,7 +355,7 @@ public class FoPr160ProcedureFixTests
             .Single(g => g.Id == "AFTER_LANDING").Items
             .Single(i => i.Id == "AL_APU");
 
-        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+        Assert.Equal("I_OH_ELEC_APU_START_U", item.StateFieldName);
     }
 
     [Fact]
@@ -347,7 +365,7 @@ public class FoPr160ProcedureFixTests
             .Single(g => g.Id == "AFTER_LANDING_CL").Items
             .Single(i => i.Id == "ALC_APU");
 
-        Assert.Equal("I_OH_ELEC_APU_START_L", item.StateFieldName);
+        Assert.Equal("I_OH_ELEC_APU_START_U", item.StateFieldName);
     }
 
     [Fact]
@@ -360,7 +378,7 @@ public class FoPr160ProcedureFixTests
             .Single(f => f.Id == "BEFORE_START").Steps
             .Single(s => s.Id == "BS_APU_AVAIL");
 
-        Assert.Equal("I_OH_ELEC_APU_START_L", step.ConditionFieldName);
+        Assert.Equal("I_OH_ELEC_APU_START_U", step.ConditionFieldName);
     }
 
     [Fact]
@@ -370,7 +388,7 @@ public class FoPr160ProcedureFixTests
             .Single(f => f.Id == "AFTER_LANDING").Steps
             .Single(s => s.Id == "AL_APU_AVAIL");
 
-        Assert.Equal("I_OH_ELEC_APU_START_L", step.ConditionFieldName);
+        Assert.Equal("I_OH_ELEC_APU_START_U", step.ConditionFieldName);
     }
 
     // Every other field the Fenix FO reads/writes/waits on is exposed as a plain
@@ -387,7 +405,7 @@ public class FoPr160ProcedureFixTests
     public void FenixFirstOfficerSource_NeverReferencesTheTransientOnLamp(string fileName)
     {
         string source = File.ReadAllText(FenixFirstOfficerSourcePath(fileName));
-        Assert.DoesNotContain("I_OH_ELEC_APU_START_U", source);
+        Assert.DoesNotContain("I_OH_ELEC_APU_START_L", source);
     }
 
     private static string FenixFirstOfficerSourcePath(string fileName,

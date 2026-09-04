@@ -139,19 +139,26 @@ public static class FenixChecklistDefinitions
         Items = new()
         {
             // Master ON → dwell → START pulse; the AVAIL light is the running state.
-            // The A320 APU START pushbutton has TWO legends: upper = ON, which lights
-            // only while the start sequence runs and goes OUT once the APU reaches
-            // ~95% N (transient); lower = AVAIL, which stays lit for as long as the
-            // APU is running (persistent). "Available" means the AVAIL lamp, i.e.
-            // I_OH_ELEC_APU_START_L — reading _U here made a running/available APU
-            // read as "not available" the moment start finished, so this item never
-            // auto-completed and the sibling flow step below re-pressed START on an
-            // APU that was already running. NOTE: the _U/_L convention is NOT
-            // consistent across A320 pushbuttons — it is REVERSED on EXT PWR, where
-            // _U is the AVAIL lamp — so never infer one pushbutton's wiring from
-            // another's.
+            // "Available" is FenixActionExecutor.ApuAvailField — the ONE spelling every
+            // site here references, never a repeated literal, because the executor and
+            // these definitions disagreeing about which lamp meant AVAIL is exactly how
+            // this went wrong before. MEASURED live 2026-09-04 (Fenix A319, cold APU
+            // started in flight, both legends polled throughout): at the START press the
+            // _L legend goes 1 and _U stays 0; when the APU becomes available ~50 s later
+            // they EXCHANGE and stay that way — _U 1, _L 0. So _L is the TRANSIENT ON
+            // legend and _U is the PERSISTENT AVAIL legend.
+            // ⚠️ That is REVERSED against the real A320 (upper = ON, lower = AVAIL) AND
+            // against the Fenix's own APU MASTER pushbutton, measured in the same session
+            // as _U = FAULT dark / _L = ON lit, matching the real jet exactly — so the
+            // suffixes look trustworthy right up until this button. Reading the wrong one
+            // makes a running APU report "not available" forever: the skip check below
+            // fails to skip (re-pressing START on a live APU) and the wait then sits on a
+            // lamp that will never light again. Both readings have now shipped once each on
+            // reasoning alone, each reproducing the other's bug, so: on the Fenix a legend's
+            // meaning is NEVER inferred — not from its suffix, not from the real aircraft,
+            // not from a sibling pushbutton — it is read in the sim.
             AutoAsync("BS_APU", "BEFORE_START", "APU: ON and available",
-                "I_OH_ELEC_APU_START_L", v => v > 0.5, (e, _) => e.StartApuAsync()),
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON",
                 "S_OH_PNEUMATIC_APU_BLEED", v => v > 0.5, (e, _) => e.Set("S_OH_PNEUMATIC_APU_BLEED", 1)),
             Auto("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ALL ON",
@@ -363,7 +370,7 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.SetNoseLight(1)),
             // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
             AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON and available",
-                "I_OH_ELEC_APU_START_L", v => v > 0.5, (e, _) => e.StartApuAsync()),
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("AL_ANTIICE_OFF", "AFTER_LANDING", "Engine and wing anti-ice: OFF",
                 "S_OH_PNEUMATIC_ENG1_ANTI_ICE", v => v < 0.5,
                 new[] { "S_OH_PNEUMATIC_ENG2_ANTI_ICE", "S_OH_PNEUMATIC_WING_ANTI_ICE" },
@@ -580,7 +587,7 @@ public static class FenixChecklistDefinitions
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v - 1) < 0.5, action: null),
             // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
             Auto("ALC_APU", "AFTER_LANDING_CL", "APU: STARTED",
-                "I_OH_ELEC_APU_START_L", v => v > 0.5, action: null),
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, action: null),
             Auto("ALC_WXR", "AFTER_LANDING_CL", "Radar: OFF",                          // [RADAR]
                 "S_WR_SYS", v => Math.Abs(v - 1) < 0.5, action: null),                 // [RADAR]
             Auto("ALC_PWS", "AFTER_LANDING_CL", "Predictive windshear: OFF",           // [RADAR]

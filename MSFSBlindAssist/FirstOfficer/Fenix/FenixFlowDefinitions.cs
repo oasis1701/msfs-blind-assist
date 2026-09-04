@@ -170,29 +170,33 @@ public static class FenixFlowDefinitions
         Steps = new()
         {
             // APU block: master on, dwell, start pulse, wait for AVAIL (green light).
-            // The A320 APU START pushbutton has TWO legends: upper = ON, lit only
-            // while the start sequence runs and OUT once the APU reaches ~95% N
-            // (transient); lower = AVAIL, lit for as long as the APU is running
-            // (persistent). Every "is the APU available" check below reads the AVAIL
-            // lamp, I_OH_ELEC_APU_START_L — the _U (ON) lamp used to be read here
-            // instead, so with the APU already running _U read 0: the skip check
-            // below failed to skip (re-pressing START on a running APU), and
-            // WaitForField then waited forever on a lamp that would never light
-            // again, timing out at 180s and — because this step's failure policy is
-            // Stop — aborting the WHOLE flow with "Unable to complete: Waiting for
-            // APU available" while the APU ran perfectly. NOTE: the _U/_L convention
-            // is NOT consistent across A320 pushbuttons — it is REVERSED on EXT PWR,
-            // where _U is the AVAIL lamp — so never infer one pushbutton's wiring
-            // from another's.
+            // "Available" is FenixActionExecutor.ApuAvailField — the ONE spelling every
+            // site here references, never a repeated literal, because the executor and
+            // these definitions disagreeing about which lamp meant AVAIL is exactly how
+            // this went wrong before. MEASURED live 2026-09-04 (Fenix A319, cold APU
+            // started in flight, both legends polled throughout): at the START press the
+            // _L legend goes 1 and _U stays 0; when the APU becomes available ~50 s later
+            // they EXCHANGE and stay that way — _U 1, _L 0. So _L is the TRANSIENT ON
+            // legend and _U is the PERSISTENT AVAIL legend.
+            // ⚠️ That is REVERSED against the real A320 (upper = ON, lower = AVAIL) AND
+            // against the Fenix's own APU MASTER pushbutton, measured in the same session
+            // as _U = FAULT dark / _L = ON lit, matching the real jet exactly — so the
+            // suffixes look trustworthy right up until this button. Reading the wrong one
+            // makes a running APU report "not available" forever: the skip check below
+            // fails to skip (re-pressing START on a live APU) and the wait then sits on a
+            // lamp that will never light again. Both readings have now shipped once each on
+            // reasoning alone, each reproducing the other's bug, so: on the Fenix a legend's
+            // meaning is NEVER inferred — not from its suffix, not from the real aircraft,
+            // not from a sibling pushbutton — it is read in the sim.
             Done(Skip(SW("BS_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
                 s => s.IsOn("S_OH_ELEC_APU_MASTER")), "BS_APU"),
             Wait("BS_APU_DWELL", "Waiting before APU start", 3),
             Skip(SW("BS_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
-                s => s.IsOn("I_OH_ELEC_APU_START_L")),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             // Stop policy: an APU start failure aborts the flow HERE, before external
             // power is pulsed off the bus below — never a silent transfer to batteries.
             WaitForField("BS_APU_AVAIL", "Waiting for APU available",
-                "I_OH_ELEC_APU_START_L", v => v > 0.5, 180,
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180,
                 onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "BS_APUBLEED"),
@@ -402,13 +406,13 @@ public static class FenixFlowDefinitions
             // APU for the gate (skip the whole block when already available).
             // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU_MASTER above.
             Done(Skip(SW("AL_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
-                s => s.IsOn("I_OH_ELEC_APU_START_L")), "AL_APU"),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)), "AL_APU"),
             Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
-                s => s.IsOn("I_OH_ELEC_APU_START_L")),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             Skip(SW("AL_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
-                s => s.IsOn("I_OH_ELEC_APU_START_L")),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             WaitForField("AL_APU_AVAIL", "Waiting for APU available",
-                "I_OH_ELEC_APU_START_L", v => v > 0.5, 180),
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180),
             Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",
                     ("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0), ("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0),
                     ("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)),
