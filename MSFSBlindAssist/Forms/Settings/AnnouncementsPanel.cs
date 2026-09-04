@@ -17,6 +17,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
     private ComboBox _nearestCityIntervalCombo = null!;
     private CheckBox _timeWithSecondsCheck = null!;
     private CheckBox _gsxBackgroundMonitoring = null!;
+    private CheckBox _altitudeCalloutsCheck = null!;
 
     public string TabTitle => "Announcements";
 
@@ -41,7 +42,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         {
             Text = "General",
             Location = new System.Drawing.Point(12, 12),
-            Size = new System.Drawing.Size(460, 270),
+            Size = new System.Drawing.Size(460, 300),
             AccessibleName = "General",
             AccessibleDescription = "Announcement mode and location announcement settings",
         };
@@ -129,12 +130,25 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
             AccessibleDescription = "When checked, GSX tooltip updates (boarding, fuel, pushback) are read aloud by the screen reader even when the Access GSX window is hidden."
         };
 
+        // 1,000-foot altitude crossing call-outs ("5000", "6000", ...). This is their only
+        // switch: the Ctrl+M monitor deliberately lists no row for INDICATED_ALTITUDE, because
+        // that row could never reach the announcer (BaseAircraftDefinition explains why).
+        _altitudeCalloutsCheck = new CheckBox
+        {
+            Text = "Announce 1,000-foot altitude crossings",
+            Location = new System.Drawing.Point(12, 267),
+            Size = new System.Drawing.Size(440, 25),
+            AccessibleName = "Announce 1,000-foot altitude crossings",
+            AccessibleDescription = "When checked, each thousand feet crossed in a climb or descent is spoken. Default is on."
+        };
+
         group.Controls.AddRange(new Control[]
         {
             modeLabel, _screenReaderRadio, _sapiRadio, _statusLabel,
             intervalLabel, _nearestCityIntervalCombo,
             _timeWithSecondsCheck,
-            _gsxBackgroundMonitoring
+            _gsxBackgroundMonitoring,
+            _altitudeCalloutsCheck
         });
 
         return group;
@@ -207,6 +221,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         _nearestCityIntervalCombo.SelectedIndex = IntervalToIndex(settings.NearestCityAnnouncementInterval);
         _timeWithSecondsCheck.Checked = settings.AnnounceTimeWithSeconds;
         _gsxBackgroundMonitoring.Checked = settings.GsxBackgroundMonitoring;
+        _altitudeCalloutsCheck.Checked = settings.AltitudeCalloutsEnabled;
     }
 
     public bool Validate(out string error, out Control? focus)
@@ -224,6 +239,7 @@ public class AnnouncementsPanel : UserControl, ISettingsPanel
         settings.NearestCityAnnouncementInterval = IndexToInterval(_nearestCityIntervalCombo.SelectedIndex);
         settings.AnnounceTimeWithSeconds = _timeWithSecondsCheck.Checked;
         settings.GsxBackgroundMonitoring = _gsxBackgroundMonitoring.Checked;
+        settings.AltitudeCalloutsEnabled = _altitudeCalloutsCheck.Checked;
     }
 
     public void OnLeaving()
