@@ -1,0 +1,1 @@
+The A380 interior lighting panel no longer offers two annunciator light controls, one of which did nothing. Both claimed the same overhead switch, but only one was connected to the aircraft — and because the dead one remembered whatever you last set, it looked like it was working. There is now a single "Annunciator Lights" control, and it is the one that works.
