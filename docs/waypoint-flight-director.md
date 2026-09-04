@@ -249,6 +249,32 @@ Two assumptions died here. The gain of 0.9 commanded barely a third of the bank 
 like I am always deviating" actually was. And the bank cap is **not** scaled by true airspeed: 25°
 at 180 kt and 25° at 280 kt, so the BANK LIMIT AUTO 15-25 range does not show up here.
 
+**The FlyByWire A380X is measured too (2026-09), and it proves the point about not copying gains.**
+Two AP-flown HDG SEL turns at 4000 ft / 180 kt, right and left. Bank and roll rate came out almost
+identical to the 777 — but the roll LAW is a different shape entirely:
+
+| | A380X | PMDG 777 |
+| --- | --- | --- |
+| Steady bank | 24.2-25.7° | 25.0-25.5° |
+| Roll rate | 3.7°/s | 3.5°/s |
+| Rollout onset | **~5° of error** | **~10.4°** |
+| Rollout shape | **saturated, then rate-limited** | **proportional** |
+| Fitted gain | **5.0** | 2.35 |
+
+The 777 bleeds bank off in proportion to error, so its bank ÷ error ratio is flat at 2.35 all the way
+down. The A380 holds FULL bank until ~5° from the target and then rolls out at 3.7°/s, arriving with
+about a third of a degree of overshoot; fitting a proportional law to that produces a ratio climbing
+from 2.5 to 15 as the error shrinks. Same manufacturer class, same size, same bank limit — opposite
+rollout strategy.
+
+So on the A380 the load-bearing measurement is the **rollout onset**, which replicated at ~5° in both
+directions. It is modelled as saturate-then-slew: a gain of 5.0 holds the command on the 25° cap
+until exactly 25 / 5.0 = 5° of error, and `MaxBankRateDegPerSec` (3.7) then shapes the rollout the way
+the aeroplane does. `BankRateLeadSec` is **zero** — the onset already matches cap ÷ gain with no lead,
+so adding one would roll out early and force the gain up to compensate.
+
+Its previous gain of 0.85 commanded about a SIXTH of the bank the aircraft uses.
+
 ⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the
 kind of cross-type extrapolation the rest of this table exists to flag. Every other aircraft still
 carries a class estimate until it is flown the same way.

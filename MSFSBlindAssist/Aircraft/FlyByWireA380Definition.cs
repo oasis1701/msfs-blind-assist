@@ -53,14 +53,35 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        KRollDegPerDegTrack = 0.85,
-        // Airbus FG Roll Limit 2 tops out at 25° (it scales 15-25 with TAS); the previous 28 was a
-        // size-scaled guess above anything the aeroplane's own guidance will command.
+        // MEASURED off the aeroplane, 2026-09 (two AP-flown HDG SEL turns at 4000 ft / 180 kt, right
+        // 200->290 and left 290->200), sampling bank + magnetic heading at 4 Hz.
+        //
+        // ⚠️ The A380 does NOT roll like the 777, and this is why a gain must never be copied between
+        // airframes. The 777 bleeds bank off in PROPORTION to remaining error (a flat 2.35 ratio all
+        // the way down). The A380 holds FULL bank until it is ~5° from the target and then rolls out
+        // hard at ~3.7°/s, arriving with about a third of a degree of overshoot. Fitting a
+        // proportional law to that gives a ratio climbing 2.5 -> 15 as the error shrinks; the shape is
+        // saturated-then-rate-limited, not proportional.
+        //
+        // The load-bearing number is therefore the ROLLOUT ONSET, which replicated at ~5° of error in
+        // both directions. Modelled as saturate-then-slew: gain 5.0 puts the command on the 25° cap
+        // until exactly 5° of error (25 / 5.0), and MaxBankRateDegPerSec then shapes the rollout the
+        // way the aeroplane actually does it. The old 0.85 commanded about a SIXTH of the bank this
+        // aircraft uses.
+        KRollDegPerDegTrack = 5.0,
+        // Measured 25.7° steady in the right turn and 24.2° in the left; 25 is both the mean and the
+        // Airbus FG Roll Limit 2 ceiling, so it stands.
         MaxBankDeg          = 25.0,
+        // Measured roll rate 3.7°/s in and out. On this airframe the slew cap is not a safety net —
+        // it IS the rollout law, because the aeroplane rolls out at a rate rather than proportionally.
+        MaxBankRateDegPerSec = 3.7,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.9,
         LowSpeedFloorKts    = 60.0,
-        BankRateLeadSec     = 1.5,
+        // ZERO, and deliberately so. The measured onset (5°) is exactly MaxBankDeg / gain with no
+        // lead term at all, so any lead would start the rollout early and force the gain up to
+        // compensate — amplifying track noise for no gain in fidelity. The slew cap does the damping.
+        BankRateLeadSec     = 0.0,
         TypicalApproachAoaDeg = 4.0,
         TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
     };
