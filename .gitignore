@@ -174,3 +174,8 @@ ifly-aircraft-737max8/
 # reports and review packages. Working state for an in-flight plan, never part of
 # the repository — git history is the record once the branch merges.
 .superpowers/
+
+# Python bytecode cache. The MD-11 generator and its unittest suite are run from
+# the repo (locally and in CI), so these appear on every run.
+__pycache__/
+*.py[cod]

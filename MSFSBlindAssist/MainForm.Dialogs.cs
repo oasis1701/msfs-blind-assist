@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -515,7 +515,7 @@ public partial class MainForm
 
         if (firstOfficer)
         {
-            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = new CoherentPmdgEfbClient(side); coherentPmdgEfbFirstOfficer.Start(); }
+            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = CoherentPmdgEfbClient.ForPmdg(side); coherentPmdgEfbFirstOfficer.Start(); }
             if (pmdgCoherentEfbFirstOfficerForm == null || pmdgCoherentEfbFirstOfficerForm.IsDisposed)
             {
                 pmdgCoherentEfbFirstOfficerForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbFirstOfficer, announcer, title, "EFB", "Universal Flight Tablet");
@@ -530,7 +530,7 @@ public partial class MainForm
         }
         else
         {
-            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = new CoherentPmdgEfbClient(side); coherentPmdgEfbCaptain.Start(); }
+            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = CoherentPmdgEfbClient.ForPmdg(side); coherentPmdgEfbCaptain.Start(); }
             if (pmdgCoherentEfbCaptainForm == null || pmdgCoherentEfbCaptainForm.IsDisposed)
             {
                 pmdgCoherentEfbCaptainForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbCaptain, announcer, title, "EFB", "Universal Flight Tablet");

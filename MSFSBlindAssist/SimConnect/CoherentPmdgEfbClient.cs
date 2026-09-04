@@ -1,4 +1,4 @@
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -7,17 +7,27 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.SimConnect
 {
     /// <summary>
-    /// Reads (and drives) the PMDG tablet EFB through the MSFS Coherent GT
+    /// Reads (and drives) a Coherent-hosted HTML EFB through the MSFS Coherent GT
     /// debugger — the same no-injection WebKit-Inspector endpoint
-    /// (127.0.0.1:19999) the flyPad client uses, but resolved to the PMDG
-    /// tablet's own Coherent view (title contains "PMDGTablet"). We run
-    /// coherent-pmdg-efb-agent.js (window.__MSFSBA_PMDG_EFB) via Runtime.evaluate
-    /// inside the tablet's JS context, where its DOM is directly reachable.
+    /// (127.0.0.1:19999) the flyPad client uses, resolved to the EFB's own
+    /// Coherent view by TITLE. We run an in-page agent script via Runtime.evaluate
+    /// inside the view's JS context, where its DOM is directly reachable.
     ///
-    /// Page ids shift between sim restarts, so the tablet view is resolved BY
-    /// TITLE every (re)connect — never hardcoded. There are TWO PMDGTablet views
-    /// (Captain + First Officer), so resolution is SIDE-AWARE: the candidate
-    /// whose in-page getTabletSide() equals the requested side is chosen.
+    /// GENERIC BY PARAMETER, not by aircraft. The transport here — socket
+    /// lifecycle, agent (re)install, dirty-gated polling, the force-push contract —
+    /// is identical for every such EFB; only three strings and the side probe ever
+    /// differ. So aircraft select their EFB through the constructor rather than by
+    /// copying this file. What is NOT shared is the AGENT: each EFB's DOM is its
+    /// own, so each ships its own <c>coherent-*-efb-agent.js</c> implementing the
+    /// same scrape/clickElement/setValue contract.
+    ///   • PMDG 737/777 — <see cref="ForPmdg"/>: two "PMDGTablet" views (Captain +
+    ///     First Officer), so resolution is SIDE-AWARE — the candidate whose
+    ///     in-page getTabletSide() equals the requested side wins.
+    ///   • TFDi MD-11 — <see cref="ForMd11"/>: ONE "TFDi_MD11_efb" view, so there
+    ///     is no side to probe and the first match is taken.
+    ///
+    /// Page ids shift between sim restarts, so the view is resolved BY TITLE every
+    /// (re)connect — never hardcoded.
     ///
     /// Implements IMcduBridge so FbwEfbForm can consume it exactly like the
     /// flyPad CoherentEFBClient: it raises the same fbw_efb_connected /
@@ -29,7 +39,6 @@ namespace MSFSBlindAssist.SimConnect
     public sealed class CoherentPmdgEfbClient : IMcduBridge, IDisposable
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
-        private const string TabletTitleNeedle = "PMDGTablet";
         // Background scrape cadence. Kept moderate: a user click forces an immediate
         // re-scrape (the form posts get_display_elements), so this only governs how
         // fast AMBIENT changes (clock, live values) are picked up. 600ms eases the
@@ -46,7 +55,29 @@ namespace MSFSBlindAssist.SimConnect
         public event EventHandler<EFBStateUpdateEventArgs>? StateUpdated;
         public event Action<string>? Error;
 
-        private readonly string _side;
+        /// <summary>Title substring identifying this EFB's Coherent view.</summary>
+        private readonly string _titleNeedle;
+
+        /// <summary>Agent script filename under Resources\.</summary>
+        private readonly string _agentFile;
+
+        /// <summary>
+        /// The agent's window global (e.g. "__MSFSBA_PMDG_EFB"). Its install marker is
+        /// "&lt;global-without-underscores&gt;_INSTALLED", which the agent echoes on injection.
+        /// </summary>
+        private readonly string _agentGlobal;
+
+        /// <summary>The agent's install marker — what a successful injection returns.</summary>
+        private readonly string _installMarker;
+
+        /// <summary>
+        /// Which tablet to resolve when a view title matches more than one physical device.
+        /// NULL means "this EFB has exactly one view" — take the first match and skip the side
+        /// probe entirely (probing would open a second inspector socket for nothing, and Coherent
+        /// allows only one per page).
+        /// </summary>
+        private readonly string? _side;
+
         private readonly SynchronizationContext? _syncContext;
         private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
         private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -76,11 +107,32 @@ namespace MSFSBlindAssist.SimConnect
         public bool IsBridgeConnected =>
             _connected && (DateTime.UtcNow - _lastGoodScrapeUtc).TotalSeconds < 5;
 
-        public CoherentPmdgEfbClient(string side)
+        private CoherentPmdgEfbClient(string titleNeedle, string agentFile, string agentGlobal, string? side)
         {
+            _titleNeedle = titleNeedle;
+            _agentFile = agentFile;
+            _agentGlobal = agentGlobal;
+            _installMarker = agentGlobal.TrimStart('_') + "_INSTALLED";
             _side = side;
             _syncContext = SynchronizationContext.Current;
         }
+
+        /// <summary>
+        /// The PMDG 737/777 tablet. <paramref name="side"/> picks Captain or First Officer — both
+        /// are views titled "PMDGTablet", so the side probe is what tells them apart.
+        /// </summary>
+        public static CoherentPmdgEfbClient ForPmdg(string side)
+            => new("PMDGTablet", "coherent-pmdg-efb-agent.js", "__MSFSBA_PMDG_EFB", side);
+
+        /// <summary>
+        /// The TFDi MD-11 EFB. One view ("VCockpit04 - TFDi_MD11_efb"), so no side probe.
+        ///
+        /// It ships as its own package (tfdidesign-aircraft-efb) rather than inside the aircraft,
+        /// but it is still just a Coherent view — a React app mounted at #MSFS_REACT_MOUNT, with a
+        /// real DOM. Verified live 2026-07-17: 112 elements, 8 buttons, zero canvases.
+        /// </summary>
+        public static CoherentPmdgEfbClient ForMd11()
+            => new("TFDi_MD11_efb", "coherent-md11-efb-agent.js", "__MSFSBA_MD11_EFB", side: null);
 
         public void Start()
         {
@@ -102,19 +154,19 @@ namespace MSFSBlindAssist.SimConnect
             _cts = new CancellationTokenSource();
             try
             {
-                string path = Path.Combine(AppContext.BaseDirectory, "Resources", "coherent-pmdg-efb-agent.js");
+                string path = Path.Combine(AppContext.BaseDirectory, "Resources", _agentFile);
                 _agentJs = File.ReadAllText(path);
             }
             catch (Exception ex)
             {
-                RaiseError($"Could not load PMDG EFB agent script: {ex.Message}");
+                RaiseError($"Could not load EFB agent script {_agentFile}: {ex.Message}");
             }
             // With no agent script every EnsureConnected installs nothing -> never "installed" ->
             // RunLoop would spin forever, opening + aborting an inspector socket on the live tablet
             // every ReconnectDelayMs with only the single error above. Don't start the loop.
             if (string.IsNullOrEmpty(_agentJs))
             {
-                RaiseError("PMDG EFB agent script is missing or empty; EFB unavailable.");
+                RaiseError($"EFB agent script {_agentFile} is missing or empty; EFB unavailable.");
                 return;
             }
             _ = Task.Run(() => RunLoop(_cts.Token));
@@ -168,9 +220,9 @@ namespace MSFSBlindAssist.SimConnect
                     _forceNextPush = true;
                     return null;
                 case "click_display_element":
-                    return $"window.__MSFSBA_PMDG_EFB && __MSFSBA_PMDG_EFB.clickElement({JsInt(Idx())})";
+                    return $"window.{_agentGlobal} && {_agentGlobal}.clickElement({JsInt(Idx())})";
                 case "set_element_value":
-                    return $"window.__MSFSBA_PMDG_EFB && __MSFSBA_PMDG_EFB.setValue({JsInt(Idx())},{JsStr(Val())})";
+                    return $"window.{_agentGlobal} && {_agentGlobal}.setValue({JsInt(Idx())},{JsStr(Val())})";
                 default:
                     return null;
             }
@@ -222,7 +274,7 @@ namespace MSFSBlindAssist.SimConnect
             if (_ws != null && _ws.State == WebSocketState.Open)
             {
                 string reinstall = await EvalAsync(_agentJs, ct);
-                _agentInstalled = reinstall.IndexOf("MSFSBA_PMDG_EFB_INSTALLED", StringComparison.Ordinal) >= 0;
+                _agentInstalled = reinstall.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
                 if (_agentInstalled) { _connected = true; return true; }
             }
 
@@ -265,7 +317,7 @@ namespace MSFSBlindAssist.SimConnect
             _ = Task.Run(() => ReceiveLoop(ws, ct));
 
             string install = await EvalAsync(_agentJs, ct);
-            _agentInstalled = install.IndexOf("MSFSBA_PMDG_EFB_INSTALLED", StringComparison.Ordinal) >= 0;
+            _agentInstalled = install.IndexOf(_installMarker, StringComparison.Ordinal) >= 0;
             _connected = _agentInstalled;
             return _agentInstalled;
         }
@@ -280,11 +332,16 @@ namespace MSFSBlindAssist.SimConnect
                 foreach (var view in doc.RootElement.EnumerateArray())
                 {
                     if (!view.TryGetProperty("title", out var t)) continue;
-                    if ((t.GetString() ?? "").IndexOf(TabletTitleNeedle, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    if ((t.GetString() ?? "").IndexOf(_titleNeedle, StringComparison.OrdinalIgnoreCase) < 0) continue;
                     if (!view.TryGetProperty("id", out var idEl)) continue;
                     if (idEl.ValueKind == JsonValueKind.Number) candidates.Add(idEl.GetInt32());
                     else if (int.TryParse(idEl.GetString(), out var n)) candidates.Add(n);
                 }
+                // One-view EFB (MD-11): nothing to disambiguate, so skip the probe. It would open a
+                // second inspector socket on the very page we are about to connect to — Coherent
+                // allows only one per page — for an answer we already have.
+                if (_side == null) return candidates.Count > 0 ? candidates[0] : null;
+
                 foreach (var id in candidates)
                 {
                     string side = await EvalSideAsync(id, ct);
@@ -352,7 +409,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task PollOnce(CancellationToken ct)
         {
-            string raw = await EvalAsync("window.__MSFSBA_PMDG_EFB ? __MSFSBA_PMDG_EFB.scrape() : ''", ct);
+            string raw = await EvalAsync($"window.{_agentGlobal} ? {_agentGlobal}.scrape() : ''", ct);
             if (string.IsNullOrEmpty(raw))
             {
                 _agentInstalled = false; // agent gone (page reloaded) — reinstall next round

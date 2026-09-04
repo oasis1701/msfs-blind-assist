@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -229,6 +229,11 @@ public partial class MainForm
                     // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
                     ShowIFlyCDUDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+                {
+                    // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
+                    ShowMd11McduDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
                     // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
@@ -253,6 +258,12 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+                {
+                    // MD-11 EFB — a Coherent view from the separate tfdidesign-aircraft-efb
+                    // package, read through the same debugger transport as the PMDG tablet.
+                    ShowMd11EfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
                 {
