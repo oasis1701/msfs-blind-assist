@@ -1004,6 +1004,52 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         return false;
     }
 
+    // =========================================================================
+    // First Officer / universal-automation write path
+    // =========================================================================
+
+    /// <summary>Verified write path for the FO executor (approach B): resolves the
+    /// registered SimVarDefinition, suppresses the poll-echo announce of our own
+    /// write (NoteWindowWrite), and dispatches through HandleUIVariableSet — the
+    /// single place every iFly encoding trap lives. False = key not registered.
+    ///
+    /// ⚠ A TRUE return means only "the key is registered and the write was DISPATCHED" —
+    /// NOT "the plugin received/applied it". HandleUIVariableSet's Sw/SwD/NumSet/Btn branch
+    /// calls <c>Sdk.SendCommand</c> and, if that fails (plugin dead or absent), announces
+    /// "iFly plugin not responding" but still returns true. A caller that reads true as
+    /// "delivered" — as the FO executor's IsAvailable once did, before it started also
+    /// gating on <see cref="IFlySdkClient.IsReady"/> — will report a flow step complete for a
+    /// switch that never moved, and FlowManager/ChecklistManager will latch the containing
+    /// checklist group permanently complete on that false success.</summary>
+    public bool ApplyUIVariable(string varKey, double value,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        EnsureRegistered();
+        if (!_vars.TryGetValue(varKey, out var def)) return false;
+        NoteWindowWrite(varKey);
+        return HandleUIVariableSet(varKey, value, def, simConnect, announcer);
+    }
+
+    /// <summary>True when <paramref name="varKey"/> has a REAL write command registered —
+    /// either <see cref="_writes"/> (Sw/SwD/NumSet/Btn) or <see cref="_perValueWrites"/>
+    /// (SwPerValue) — as opposed to merely being a registered key at all. Closes the hole
+    /// Task 6's review found in the flow totality test: <see cref="ApplyUIVariable"/> (via
+    /// <see cref="HandleUIVariableSet"/>) returns TRUE for a registered but read-only key
+    /// (Annun/AnnunD/Disp — display-only, e.g. Spoiler_Lever_Status) after merely speaking
+    /// "X is a read-only indicator" and re-firing state, so a flow step pointed at one
+    /// resolves as "writable" under a membership-only check and then silently does nothing
+    /// in the sim. <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/> is NOT a
+    /// substitute — that flag is only ever set true by the SwD path (a null `set` command);
+    /// Disp/Annun/AnnunD leave it false with no write command at all, which is exactly the
+    /// gap a mutation probe proved (pointing a step at Spoiler_Lever_Status passed the old
+    /// RenderAsReadOnlyStatus-based test). Internal and decoupled from a live SDK — only
+    /// needs registration, same as <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>.</summary>
+    internal bool HasWriteCommand(string varKey)
+    {
+        EnsureRegistered();
+        return _writes.ContainsKey(varKey) || _perValueWrites.ContainsKey(varKey);
+    }
+
     /// <summary>Per-key latest-wins generation for the guarded double-send above
     /// (IFlyWrite.DoubleSend — the flag lives on each registration; probe provenance
     /// 2026-08-18: flap inhibit, both stab-trim cutouts, nose wheel steering and
@@ -1766,6 +1812,49 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // 2500 lost the race about half the time (PR #163 review).
     internal bool WindowEchoActive(string field) =>
         _windowWriteEcho.TryGetValue(field, out long t) && Environment.TickCount64 - t < 4000;
+
+    // =========================================================================
+    // Closed-loop auto-AP engage (universal First Officer / auto-engage service)
+    // =========================================================================
+
+    /// <summary>NG AFDS inhibits CMD engagement below 400 ft RA after takeoff — the
+    /// same airframe rule as the PMDG 737 (docs/first-officer.md). Do not lower.</summary>
+    public override int MinimumAutopilotEngageAltitudeAgl => 400;
+
+    /// <summary>Null (indeterminate) until the first SDK snapshot — a guessed false
+    /// would let the universal service's retry click disengage an engaged AP.
+    /// Engaged = CMD A or CMD B lit (0-5 switch+light encoding, mod 3 &gt; 0).</summary>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+    {
+        if (!Sdk.IsReady || Sdk.Snapshot is not { } snap) return null;
+        return snap.ByteAt(IFlySdkOffsets.CMD_A_Switch_Status) % 3 > 0
+            || snap.ByteAt(IFlySdkOffsets.CMD_B_Switch_Status) % 3 > 0;
+    }
+
+    /// <summary>Universal auto-AP-engage entry point. No-ops if CMD is already
+    /// engaged so a toggle-style press can't disconnect it.</summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (IsAutopilotEngaged(simConnect) == true) return; // never blind-click an engaged AP
+        _ = EngageCmdAAsync(simConnect);
+    }
+
+    /// <summary>The autopilot window's verified CMD A engage mechanism (SDK click →
+    /// ~700 ms verify → cockpit-clickspot trigger replay fallback, press 7 / release 8
+    /// on L:VC_Automatic_Flight_trigger_VAL — from iFly737Max_INTERIOR.xml). The
+    /// window keeps its own richer two-way EngageClick (disengage + UI refresh);
+    /// this is the engage-only half for the FO/universal service.</summary>
+    internal async Task EngageCmdAAsync(SimConnect.SimConnectManager? simConnect)
+    {
+        bool Lit() => Sdk.Snapshot is { } s
+            && s.ByteAt(IFlySdkOffsets.CMD_A_Switch_Status) % 3 > 0;
+        if (!Sdk.SendCommand(IFlyKeyCommand.AUTOMATICFLIGHT_CMD_A)) return;
+        await Task.Delay(700);
+        if (Lit() || simConnect == null) return;
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 7);
+        await Task.Delay(150);
+        simConnect.SetLVar("VC_Automatic_Flight_trigger_VAL", 8);
+    }
 
     // Flattened SDK field-name -> (byte offset, Kind) map, built once from
     // IFlySdkFields.All using the SAME flattening IFlySdkClient.RaiseFieldEvents uses

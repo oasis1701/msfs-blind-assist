@@ -1,0 +1,1 @@
+The Fenix First Officer no longer reports that the APU failed to start when it started normally. It was watching the APU START pushbutton's ON light, which goes out as soon as the APU becomes available, instead of the AVAIL light, which stays on for as long as the APU is running.

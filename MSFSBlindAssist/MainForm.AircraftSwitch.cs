@@ -169,6 +169,10 @@ public partial class MainForm
                 EnsurePMDGProgPageMonitor();
             }
 
+            // Notify First Officer forms so they can re-wire their data manager references
+            foreach (var foForm in OpenFirstOfficerForms())
+                foForm.OnSimConnectChanged();
+
             // Automatically switch database if simulator version doesn't match
             CheckAndSwitchDatabase();
 
@@ -622,6 +626,11 @@ public partial class MainForm
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
 
+        // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
+        // spring switch open-ended via a transmit press — release it on swap so it can't
+        // keep sounding or bleed into the next aircraft (mirrors StopAllMotion above).
+        (oldAircraft as PMDG737Definition)?.ReleaseEngagedWarningTests(simConnectManager);
+
         // An armed liftoff → Hand Fly handoff must not survive the switch — its
         // confirm could otherwise fire against the new aircraft in the middle of
         // the re-registration churn below (same hygiene as the disconnect path
@@ -660,6 +669,9 @@ public partial class MainForm
         // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
         simVarMonitor.Reset();
         simConnectManager.SuppressECAMAnnouncements = true;
+
+        universalAutomation?.Reset();
+        _universalLatestAgl = 0;
 
         // Hazard announcers re-baseline on switch — stale category/ice baselines
         // from the previous airframe must not announce as "changes".
@@ -807,6 +819,19 @@ public partial class MainForm
         pmdgCoherentEfbFirstOfficerForm?.Dispose(); pmdgCoherentEfbFirstOfficerForm = null;
         coherentPmdgEfbCaptain?.Dispose(); coherentPmdgEfbCaptain = null;
         coherentPmdgEfbFirstOfficer?.Dispose(); coherentPmdgEfbFirstOfficer = null;
+
+        // Dispose First Officer forms when switching aircraft. Per-field (not the
+        // OpenFirstOfficerForms() walk) because each typed field must also be nulled;
+        // Dispose() is idempotent, and unconditional nulling releases an already-disposed
+        // form the old `!IsDisposed` guard used to leave referenced.
+        pmdg777FirstOfficerForm?.Dispose(); pmdg777FirstOfficerForm = null;
+        pmdg737FirstOfficerForm?.Dispose(); pmdg737FirstOfficerForm = null;
+        fenixFirstOfficerForm?.Dispose(); fenixFirstOfficerForm = null;
+        fbwA380FirstOfficerForm?.Dispose(); fbwA380FirstOfficerForm = null;
+        fbwA320FirstOfficerForm?.Dispose(); fbwA320FirstOfficerForm = null;
+        ifly737FirstOfficerForm?.Dispose(); ifly737FirstOfficerForm = null;
+        hwA330FirstOfficerForm?.Dispose(); hwA330FirstOfficerForm = null;
+
         if (coherentNDClient != null)
         {
             coherentNDClient.Dispose();
@@ -963,6 +988,22 @@ public partial class MainForm
         bool isHs787 = currentAircraft != null &&
                        currentAircraft.AircraftCode.StartsWith("HS_", StringComparison.Ordinal);
         fmcSettingsMenuItem.Visible = isPmdg || isFenix || isHs787;
+
+        // First Officer items are aircraft-specific: each shows only for its own aircraft.
+        bool isPmdg777 = currentAircraft?.AircraftCode == "PMDG_777";
+        bool isPmdg737 = currentAircraft?.AircraftCode == "PMDG_737";
+        pmdg777FirstOfficerMenuItem.Visible = isPmdg777;
+        pmdg737FirstOfficerMenuItem.Visible = isPmdg737;
+        fenixFirstOfficerMenuItem.Visible = isFenix;
+        bool isFbwA380 = currentAircraft?.AircraftCode == "FBW_A380";
+        fbwA380FirstOfficerMenuItem.Visible = isFbwA380;
+        // The A320 item stays gated on an exact code match, so it never shows for the
+        // A330 even though HeadwindA330Definition derives from FlyByWireA320Definition.
+        fbwA320FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "A320";
+        hwA330FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "HW_A330";
+        ifly737FirstOfficerMenuItem.Visible = currentAircraft?.AircraftCode == "IFLY_737MAX8";
+        // First Officer automation settings now live in the unified Settings dialog
+        // (Forms/Settings/FirstOfficerPanel.cs), always reachable regardless of aircraft.
     }
 
     /// <summary>

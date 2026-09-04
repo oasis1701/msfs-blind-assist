@@ -1,0 +1,1 @@
+Finishing the PMDG 777 Before Start flow no longer marks "Transponder: XPNDR" and "Cancel/Recall" complete without having done them — the flow never touched either, but completing a flow ticks its whole checklist, so the transponder read as set with the selector untouched. The flow now performs both.

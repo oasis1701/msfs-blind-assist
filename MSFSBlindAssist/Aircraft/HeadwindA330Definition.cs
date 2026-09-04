@@ -252,6 +252,32 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         return inHg >= 0.5 ? 2 : 1;
     }
 
+    // Passenger stations: the A339X cabin has TEN (A..J); the A32NX has four (A..D), and
+    // inheriting that list silently dropped six of them from "Passengers on Board" — a
+    // figure spoken to a blind pilot. Measured live in cruise 2026-08-31:
+    //     A32NX_PAX_A_DESIRED = 135291469824      -> popcount  6   (was counted)
+    //     A32NX_PAX_E_DESIRED = 70366596694016    -> popcount 15   (was ignored)
+    //     A32NX_PAX_J_DESIRED = 9007197107257344  -> popcount 22   (was ignored)
+    // F..I were ignored too, so those two sampled stations alone were 37 passengers short.
+    // Registration is the whole fix: the popcount/sum consumer in
+    // FlyByWireA320Definition.ProcessSimVarUpdate matches any A32NX_PAX_*_DESIRED, and
+    // station A keeps its "Passengers on Board" DisplayName and Status display row.
+    // These are Continuous + IsAnnounced and NOT ExcludeFromBatch, so they are batch-covered:
+    // six more datums in the 1500-slot continuous batches, and ZERO extra individual data
+    // definitions (RegisterAllVariables skips batch-covered vars before registeredCount++),
+    // so approxTotalDefs is unchanged and the ~1000 ceiling is untouched. Measured on this
+    // build, A330 before -> after: individualDefs 403 -> 403, approxTotalDefs ~441 -> ~441
+    // (ceiling ~1000), batchCovered 324 -> 330 (capacity 1500). The A380, the heaviest
+    // airframe here, sits at ~662 / 642.
+    protected override string[] PaxStationVars => HwPaxStationVars;
+
+    private static readonly string[] HwPaxStationVars =
+    {
+        "A32NX_PAX_A_DESIRED", "A32NX_PAX_B_DESIRED", "A32NX_PAX_C_DESIRED", "A32NX_PAX_D_DESIRED",
+        "A32NX_PAX_E_DESIRED", "A32NX_PAX_F_DESIRED", "A32NX_PAX_G_DESIRED", "A32NX_PAX_H_DESIRED",
+        "A32NX_PAX_I_DESIRED", "A32NX_PAX_J_DESIRED"
+    };
+
     // Register the stock-altimeter sources as live monitors. ExcludeFromBatch is
     // REQUIRED (the Fenix FCU / HS787 batch-skip precedent): vars this code must be able
     // to force-read or that a subclass adds late have been observed to slip out of the
@@ -306,6 +332,64 @@ public class HeadwindA330Definition : FlyByWireA320Definition
             ValueDescriptions = new Dictionary<double, string> { [0] = "QNH", [1] = "Standard" }
         };
 
+        // ==============================================================================
+        // A339X airframe divergences from the A32NX. Each measured against the installed
+        // package; see docs/headwind-a330-first-officer-test-plan.md for the live checks.
+        // ==============================================================================
+
+        // Nav & logo: the A339X has NO A32NX_LIGHTS_NAV_LOGO L:var at all (0 occurrences
+        // in the package; the A32NX has 14). A330_NEO_INTERIOR.xml:2054-2069 binds
+        // SWITCH_OVHD_EXTLT_NAVLOGO to stock LIGHT LOGO / LIGHT NAV via
+        // LOGO_LIGHTS_SET / NAV_LIGHTS_SET at index 0 — a plain two-position switch.
+        // Keep the KEY so the panel combo and the First Officer stay one control
+        // app-wide; repoint its Name at the stock simvar the cockpit actually writes.
+        vars["A32NX_LIGHTS_NAV_LOGO"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT NAV",
+            DisplayName = "Nav and Logo Lights",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+
+        // Seat-belt switch POSITION. Three-position on this airframe — 0=On, 1=Auto,
+        // 2=Off (A330_NEO_INTERIOR.xml:1817-1823) — the OPPOSITE encoding to the A32NX's
+        // two-position 1=On/0=Off. Registered so the First Officer can select a position
+        // directly instead of blind-toggling the stock simvar, which the AUTO position's
+        // own 500 ms logic fights back. Detection stays on the sign lamp
+        // (CABIN SEATBELTS ALERT SWITCH), never on this position — the A380 invariant.
+        vars["SEATBELT_SIGN_POSITION"] = new SimConnect.SimVarDefinition
+        {
+            Name = "XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position",
+            DisplayName = "Seat Belts Switch Position",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "On", [1] = "Auto", [2] = "Off" }
+        };
+
+        // Landing-light state. The A339X has ONE two-position ganged switch on stock
+        // LIGHT LANDING indices 2 and 3 (A330_NEO_INTERIOR.xml:2022-2034); the A32NX has
+        // TWO Retractable switches whose state lives in L:LIGHTING_LANDING_2/_3, which
+        // this airframe never writes. There is no RETRACT position here.
+        //
+        // READ-ONLY on the panel (see BuildPanelControls below, which swaps this key in
+        // for the two dead A32NX rows). Nothing writes "LIGHT LANDING:2" — the actuator
+        // is the LANDING_LIGHTS_ON/OFF_THIRD_PARTY momentary pair already on that panel,
+        // which the First Officer fires too — so rendering it as a settable combo would
+        // just replace two dead controls with a third.
+        vars["LIGHT LANDING:2"] = new SimConnect.SimVarDefinition
+        {
+            Name = "LIGHT LANDING:2",
+            DisplayName = "Landing Lights",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Bool",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            RenderAsReadOnlyStatus = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        };
+
         return vars;
     }
 
@@ -316,16 +400,80 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
         var d = base.GetPanelDisplayVariables();
-        ReplaceDisplayVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
-        ReplaceDisplayVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
+        ReplacePanelVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
+        ReplacePanelVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
         return d;
     }
 
-    private static void ReplaceDisplayVar(Dictionary<string, List<string>> d, string panel, string oldVar, string newVar)
+    /// <summary>
+    /// The inherited Exterior Lighting panel lists the A32NX's TWO Retractable
+    /// landing-light switch positions (<c>L:LIGHTING_LANDING_2</c>/<c>_3</c>, each
+    /// On/Off/RETRACT). Neither switch exists on this airframe and neither L:var is
+    /// ever written by it — LIVE-MEASURED 2026-08-31, <c>LIGHTING_LANDING_2</c> read 0
+    /// with the landing lights ON and 0 with them OFF: frozen. So both combos showed a
+    /// stale position, and their RETRACT option commanded a detent the A339X does not
+    /// have. This is the same defect already corrected for the First Officer (which made
+    /// its checklist report "Landing lights: ON" permanently, including when they were
+    /// off); the panel kept offering it until now.
+    ///
+    /// Swap the pair for the single stock read-back registered in
+    /// <see cref="GetVariables"/>, in place so the row keeps its position between the
+    /// nose light and the strobes. Actuation is unchanged and already on this panel: the
+    /// LANDING_LIGHTS_ON/OFF_THIRD_PARTY momentary buttons, the same actuator the First
+    /// Officer fires.
+    ///
+    /// The A32NX is deliberately untouched — its two Retractable switches are real.
+    ///
+    /// <para>
+    /// The inherited Interior Lighting panel has the same shape of defect in its
+    /// brightness knobs. It offers <c>BRIGHT_GLARESHIELD_CAPT_SET</c>
+    /// (<c>LIGHT POTENTIOMETER:10</c>) and <c>BRIGHT_GLARESHIELD_FO_SET</c>
+    /// (<c>LIGHT POTENTIOMETER:11</c>) as 0-100 percent flood knobs. On the A339X those
+    /// two pots are entirely different controls: pot 10 is the Captain's CEILING light and
+    /// pot 11 the Captain's MAP light (A330_NEO_INTERIOR.xml:271-283), both BINARY
+    /// click-toggles that write only 0 or 100 and are paired with
+    /// <c>L:A339X_CEILING_LIGHT_CAPTAIN</c> / <c>L:A339X_MAP_LIGHT_CAPTAIN</c>. The A330
+    /// has no glareshield flood knobs at all.
+    /// </para>
+    /// <para>
+    /// DEMONSTRATED LIVE on the aircraft 2026-08-31: writing <c>LIGHT POTENTIOMETER:10</c>
+    /// = 50 lit the Captain's ceiling light while <c>L:A339X_CEILING_LIGHT_CAPTAIN</c>
+    /// still read 0 — the lamp on, its own state var saying off, at a brightness a binary
+    /// switch cannot produce, and nothing in the cockpit able to resolve the disagreement.
+    /// <see cref="FirstOfficer.HWA330.HwA330ActionExecutor.CockpitLightingPlan"/> already
+    /// excludes both pots for exactly this reason; the panel offered them anyway, so a
+    /// pilot driving it by hand could still do the harm the First Officer avoids.
+    /// </para>
+    /// <para>
+    /// DROP the two rows rather than re-point them at the A339X ceiling/map lights: those
+    /// are binary L:var toggles, not levels, so they need a different control shape; they
+    /// are crew-comfort lights in no normal procedure; and inventing that mapping is a
+    /// separate decision the owner has not made. Dropping is the conservative fix, and it
+    /// is what the First Officer already does. The four legitimately shared pots — 76
+    /// pedestal, 83 glareshield integral, 85 main panel, 86 overhead integral, the same
+    /// four the FO scene writes — stay, as do the panel's three non-pot rows.
+    /// </para>
+    /// </summary>
+    protected override Dictionary<string, List<string>> BuildPanelControls()
+    {
+        var c = base.BuildPanelControls();
+        ReplacePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_2", "LIGHT LANDING:2");
+        RemovePanelVar(c, "Exterior Lighting", "LIGHTING_LANDING_3");
+        RemovePanelVar(c, "Interior Lighting", "BRIGHT_GLARESHIELD_CAPT_SET");
+        RemovePanelVar(c, "Interior Lighting", "BRIGHT_GLARESHIELD_FO_SET");
+        return c;
+    }
+
+    private static void ReplacePanelVar(Dictionary<string, List<string>> d, string panel, string oldVar, string newVar)
     {
         if (!d.TryGetValue(panel, out var list)) return;
         int i = list.IndexOf(oldVar);
         if (i >= 0) list[i] = newVar;
+    }
+
+    private static void RemovePanelVar(Dictionary<string, List<string>> d, string panel, string varKey)
+    {
+        if (d.TryGetValue(panel, out var list)) list.Remove(varKey);
     }
 
     // The EFIS Baro Push/Pull panel buttons' post-press readback keys on
@@ -344,4 +492,39 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         m["A32NX.FCU_EFIS_R_BARO_PULL"] = "KOHLSMAN SETTING STD:2";
         return m;
     }
+
+    /// <summary>
+    /// Nav &amp; logo write. The base replays the A32NX's FBW switch RPN, which ends with
+    /// <c>2 (&gt;L:A32NX_LIGHTS_NAV_LOGO)</c> — an L:var this airframe does not have — and
+    /// drives the per-light indexed NAV_LIGHTS_SET the A32NX's six-lamp switch needs.
+    /// The A339X switch is a plain two-simvar toggle at index 0, so write the stock simvars
+    /// the cockpit switch itself performs plus the indexed events at index 0 — see
+    /// <see cref="NavLogoRpn"/> for why the index operand is explicit.
+    /// </summary>
+    public override bool HandleUIVariableSet(string varKey, double value, SimConnect.SimVarDefinition varDef,
+        SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (varKey == "A32NX_LIGHTS_NAV_LOGO")
+        {
+            simConnect.ExecuteCalculatorCode(NavLogoRpn(value >= 0.5));
+            return true;
+        }
+
+        return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
+
+    /// <summary>
+    /// The RPN the nav &amp; logo write emits. Pure so the operand count is pinned by test.
+    ///
+    /// ⚠ A <c>K:2:</c> event pops TWO operands, INDEX then VALUE — never one. The A339X
+    /// switch binds SIMVAR_INDEX_1/2 = 0, so the index is 0, but it still has to be
+    /// pushed: hand the event the value alone and it takes whatever is left on the stack
+    /// as its index. This originally emitted the one-operand form copied from FlyByWire's
+    /// own a339x preset procedure file; the base definition's proven two-operand shape
+    /// (FlyByWireA320Definition, <c>"0 1 (&gt;K:2:LOGO_LIGHTS_SET)"</c>) is unambiguous and
+    /// is what every other <c>K:2:</c> site in this repo supplies.
+    /// </summary>
+    public static string NavLogoRpn(bool on) => on
+        ? "1 (>A:LIGHT NAV) 1 (>A:LIGHT LOGO) 0 1 (>K:2:LOGO_LIGHTS_SET) 0 1 (>K:2:NAV_LIGHTS_SET)"
+        : "0 (>A:LIGHT NAV) 0 (>A:LIGHT LOGO) 0 0 (>K:2:LOGO_LIGHTS_SET) 0 0 (>K:2:NAV_LIGHTS_SET)";
 }

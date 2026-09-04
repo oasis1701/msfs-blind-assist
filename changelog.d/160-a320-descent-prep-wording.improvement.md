@@ -1,0 +1,1 @@
+The A320 descent checklist and flow now carry one descent-preparation item instead of two, and it no longer sends you to the EFB for a landing calculation the EFB does not do — the numbers come off the MCDU PERF APPR page. It also no longer says "before top of descent" while you are already descending. Applies to both the Fenix and the FlyByWire A320.

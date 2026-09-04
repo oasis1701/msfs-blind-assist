@@ -1,0 +1,1 @@
+On the iFly 737 MAX8, the First Officer now reads the center tank quantity from the simulator's own fuel system. Previously the aircraft's fuel gauge read blank to the app all flight, so the Before Start flow silently skipped switching the center fuel pumps on and the automatic center-pump management never armed, even with fuel in the center tank.

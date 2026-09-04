@@ -504,6 +504,141 @@ public partial class MainForm
         fbwEfbForm.ShowForm();
     }
 
+    private void PMDG777FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowPMDG777FirstOfficerDialog();
+    }
+
+    private void ShowPMDG777FirstOfficerDialog()
+    {
+        if (pmdg777FirstOfficerForm == null || pmdg777FirstOfficerForm.IsDisposed)
+        {
+            pmdg777FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.AircraftActionExecutor, FirstOfficer.AircraftStateEvaluator>(
+                new FirstOfficer.Pmdg777FoProfile(),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        pmdg777FirstOfficerForm.ShowForm();
+    }
+
+    private void PMDG737FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowPMDG737FirstOfficerDialog();
+    }
+
+    private void ShowPMDG737FirstOfficerDialog()
+    {
+        if (pmdg737FirstOfficerForm == null || pmdg737FirstOfficerForm.IsDisposed)
+        {
+            pmdg737FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.PMDG737.AircraftActionExecutor, FirstOfficer.PMDG737.AircraftStateEvaluator>(
+                new FirstOfficer.PMDG737.Pmdg737FoProfile(),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        pmdg737FirstOfficerForm.ShowForm();
+    }
+
+    private void FenixFirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowFenixFirstOfficerDialog();
+    }
+
+    private void ShowFenixFirstOfficerDialog()
+    {
+        if (fenixFirstOfficerForm == null || fenixFirstOfficerForm.IsDisposed)
+        {
+            fenixFirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.Fenix.FenixActionExecutor, FirstOfficer.Fenix.FenixStateEvaluator>(
+                new FirstOfficer.Fenix.FenixFoProfile(announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fenixFirstOfficerForm.ShowForm();
+    }
+
+    private void FbwA380FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+    {
+        ShowFbwA380FirstOfficerDialog();
+    }
+
+    private void ShowFbwA380FirstOfficerDialog()
+    {
+        if (currentAircraft is not FlyByWireA380Definition a380Def) return;
+        if (fbwA380FirstOfficerForm == null || fbwA380FirstOfficerForm.IsDisposed)
+        {
+            fbwA380FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA380.FbwA380ActionExecutor, FirstOfficer.FBWA380.FbwA380StateEvaluator>(
+                new FirstOfficer.FBWA380.FbwA380FoProfile(a380Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fbwA380FirstOfficerForm.ShowForm();
+    }
+
+    private void FbwA320FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowFbwA320FirstOfficerDialog();
+
+    private void ShowFbwA320FirstOfficerDialog()
+    {
+        // HeadwindA330Definition DERIVES from FlyByWireA320Definition, so a bare
+        // `is FlyByWireA320Definition` also matches an A330 — the same trap
+        // UpdateAircraftMenuItems documents. The A330 has its own profile.
+        if (currentAircraft is HeadwindA330Definition) return;
+        if (currentAircraft is not FlyByWireA320Definition a320Def) return;
+        if (fbwA320FirstOfficerForm == null || fbwA320FirstOfficerForm.IsDisposed)
+        {
+            fbwA320FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.FBWA320.FbwA320ActionExecutor, FirstOfficer.FBWA320.FbwA320StateEvaluator>(
+                new FirstOfficer.FBWA320.FbwA320FoProfile(a320Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        fbwA320FirstOfficerForm.ShowForm();
+    }
+
+    private void IFly737FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowIFly737FirstOfficerDialog();
+
+    private void ShowIFly737FirstOfficerDialog()
+    {
+        if (currentAircraft is not IFly737MAXDefinition iflyFoDef) return;
+        if (ifly737FirstOfficerForm == null || ifly737FirstOfficerForm.IsDisposed)
+        {
+            ifly737FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.IFly737.IFly737ActionExecutor, FirstOfficer.IFly737.IFly737StateEvaluator>(
+                new FirstOfficer.IFly737.IFly737FoProfile(iflyFoDef, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        ifly737FirstOfficerForm.ShowForm();
+    }
+
+    private void HwA330FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowHwA330FirstOfficerDialog();
+
+    private void ShowHwA330FirstOfficerDialog()
+    {
+        if (currentAircraft is not HeadwindA330Definition a330Def) return;
+        if (hwA330FirstOfficerForm == null || hwA330FirstOfficerForm.IsDisposed)
+        {
+            hwA330FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.HWA330.HwA330ActionExecutor, FirstOfficer.HWA330.HwA330StateEvaluator>(
+                new FirstOfficer.HWA330.HwA330FoProfile(a330Def, announcer),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        hwA330FirstOfficerForm.ShowForm();
+    }
+
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
     // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
     // client/form creation + non-modal ShowForm pattern.

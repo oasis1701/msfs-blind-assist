@@ -5,7 +5,7 @@ using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
-public class FlyByWireA320Definition : BaseAircraftDefinition,
+public partial class FlyByWireA320Definition : BaseAircraftDefinition,
     ISupportsECAM,
     ISupportsNavigationDisplay,
     ISupportsPFDDisplay
@@ -1841,11 +1841,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         },
+        // ENG MODE knob. The WRITE is HandleUIVariableSet's ENGINE_MODE_SELECTOR branch
+        // (see EngineModeSelectorRpn); the READBACK is the stock ignition-switch simvar
+        // (TURB ENG IGNITION SWITCH EX1:1, Enum 0=Crank/1=Norm/2=Ignition) — the same one
+        // the A380 definition reads, and the one MainForm's engine-mode combo comment
+        // already named. NOT XMLVAR_ENG_MODE_SEL, the knob-position var: it is written for
+        // the cockpit/EWD display, not as the state of the ignition system.
+        //
+        // ⚠️ This was Type = Event with Name = "ENGINE_MODE_SELECTOR" — not a readable
+        // variable at all — so nothing ever reached the value cache: the panel combo could
+        // not track the knob, and the First Officer's IsPosition("ENGINE_MODE_SELECTOR", n)
+        // guards could never match, so every engine-mode flow step ran unconditionally.
+        // Continuous so the combo tracks the real state and a knob change announces.
         ["ENGINE_MODE_SELECTOR"] = new SimConnect.SimVarDefinition
         {
-            Name = "ENGINE_MODE_SELECTOR",
+            Name = "TURB ENG IGNITION SWITCH EX1:1",
             DisplayName = "Engine Mode",
-            Type = SimConnect.SimVarType.Event,  // We'll handle this specially
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "Enum",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "CRANK", [1] = "NORM", [2] = "IGN" }
         },
 
@@ -4533,6 +4548,37 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
+        ["A32NX_SPEEDS_VFEN"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_VFEN",
+            Type = SimConnect.SimVarType.LVar,
+            DisplayName = "VFE next",
+            Units = "knots",
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
+        },
+        // Read by FbwA320FOAutoManager/HwA330FOAutoManager to cap flap extension at
+        // CONF 3 when the MFD PERF APPR page selects a CONF 3 landing. Unregistered
+        // until 2026-08-30, so it read NaN and the cap never engaged on either the
+        // A32NX or the A330. The A339X publishes it too (mcdu.js), so the A330
+        // inherits this registration unchanged.
+        //
+        // OnRequest, exactly like the A32NX_SPEEDS_* siblings above and the A380's copy
+        // of this same L:var: its delivery path is FirstOfficerForm's 1 s RequestVariable
+        // poll over the evaluators' OnRequestPollFields, which lists it. It must NOT be
+        // Continuous — every continuous delivery path (the batch gate and
+        // StartContinuousMonitoring in SimConnectManager.Setup.cs, and the per-var
+        // PERIOD.SECOND subscription an ExcludeFromBatch var gets) also requires
+        // IsAnnounced, which this silent input must never have. Continuous without
+        // IsAnnounced would declare a delivery nothing performs.
+        ["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_LANDING_CONF3",
+            DisplayName = "Landing CONF 3 Selected",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "CONF FULL", [1] = "CONF 3" }
+        },
         ["A32NX_SPEEDS_VLS"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_VLS",
@@ -5010,6 +5056,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_CREW_HEAD_SET", DisplayName = "Crew Headset",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+        },
+        // Recorder ground control — plain bool, latches on a direct write of 1 while on
+        // the ground. Registered so the FO's PF_GNDCTL auto-detects it AND as a panel
+        // control (Overhead > Recorder and Misc).
+        ["A32NX_RCDR_GROUND_CONTROL_ON"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RCDR_GROUND_CONTROL_ON", DisplayName = "Recorder Ground Control",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off/Auto", [1] = "On" }
+        },
+        // CVR test — held test button (HOLD_SIMVAR in the cockpit; the FO's CvrTest holds
+        // it 1->3s->0). Exposed as an Off/Active combo (parity with the fire-test controls),
+        // written via the A32NX_ calc-path catch-all. The test tone only sounds while
+        // Recorder Ground Control is ON. Select Active to test, then Off.
+        ["A32NX_RCDR_TEST"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_RCDR_TEST", DisplayName = "CVR Test",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "Active" }
         },
         // APU auto-exit RESET — momentary held button (HOLD_SIMVAR, pairs with the existing TEST).
         ["A32NX_APU_AUTOEXITING_RESET"] = new SimConnect.SimVarDefinition
@@ -5674,6 +5739,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             "A32NX_DFDR_EVENT_ON",
             "A32NX_CREW_HEAD_SET",
+            "A32NX_RCDR_GROUND_CONTROL_ON",
+            "A32NX_RCDR_TEST",
             "A32NX_AVIONICS_COMPLT_ON",
             // Completeness pass (2026-07): modelled-but-inop overhead switches.
             "A32NX_ELT_ON",
@@ -6533,14 +6600,34 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     private long _sdWriteSeq;   // makes the SD-page calc write unique each time (anti-dedup, see HandleUIVariableSet)
 
     // ---- Passengers on board (Status panel): the sum of occupied seats across the
-    // per-station *_DESIRED* seat-bitmask L:vars (A32NX_PAX_{A..D}_DESIRED — each holds
-    // an integer whose set-bit count = planned seats in that zone; ≤ 53 bits, so the
-    // value is exact as a double — the same float64 the FBW EFB reads). DESIRED (the
-    // planned load the flyPad headline / GSX / loadsheet agree on), NOT the boarded set
-    // (A32NX_PAX_{st}, no suffix) — the boarded bitmask lags and, under GSX boarding,
-    // settles below target (the A380 lesson, mirrored here). Popcounted per station in
-    // ProcessSimVarUpdate; total rendered by TryGetDisplayOverride on the station-A key.
-    private static readonly string[] PaxStationVars =
+    // per-station *_DESIRED* seat-bitmask L:vars (A32NX_PAX_{station}_DESIRED — each holds
+    // an integer whose set-bit count = planned seats in that zone). The value arrives as a
+    // double (the same float64 the FBW EFB reads), and a mask is exact only while it stays
+    // inside float64's exact-integer range, 2^53 = 9007199254740992.
+    //
+    // ⚠️ THE A330 IS THE TIGHT CASE, NOT THE A320 — the old "≤ 53 bits, so the value is
+    // exact" wording implied an A320-era margin this family no longer has. Measured live on
+    // the A339X in cruise 2026-08-31, station J read 9007197107257344: a FULL 53-bit mask,
+    // just 2^31 (2 147 483 648) below the limit. Still exact, but that is the whole
+    // remaining headroom — the A320's four zones sit far below it (station A read
+    // 135291469824, 37 bits). Any future station mask must stay under 2^53; the popcount
+    // maths below is correct and must not change.
+    //
+    // DESIRED (the planned load the flyPad headline / GSX / loadsheet agree on), NOT the
+    // boarded set (A32NX_PAX_{st}, no suffix) — the boarded bitmask lags and, under GSX
+    // boarding, settles below target (the A380 lesson, mirrored here). Popcounted per
+    // station in ProcessSimVarUpdate; total rendered by TryGetDisplayOverride on the
+    // station-A key.
+    //
+    // OVERRIDABLE because the station SET is airframe-specific: the A320 has four zones,
+    // the Headwind A330 ten (A..J). Registration is the ONLY thing a subclass has to
+    // supply — the popcount/sum consumer in ProcessSimVarUpdate matches any
+    // A32NX_PAX_*_DESIRED, so a newly registered station is counted with no other change.
+    // Station A must stay in the list: it carries the "Passengers on Board" DisplayName
+    // and is the Status panel's display row.
+    protected virtual string[] PaxStationVars => A320PaxStationVars;
+
+    private static readonly string[] A320PaxStationVars =
     {
         "A32NX_PAX_A_DESIRED", "A32NX_PAX_B_DESIRED", "A32NX_PAX_C_DESIRED", "A32NX_PAX_D_DESIRED"
     };
@@ -8401,6 +8488,93 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
+        // ENG MODE selector (0 CRANK / 1 NORM / 2 IGN START).
+        //
+        // ⚠️ This key is EVENT-typed and had NO branch here, so it fell through to the
+        // bottom catch-all — which requires Type == LVar — and out of the method as FALSE.
+        // The First Officer executor's ApplySilent fallback then wrote a DEAD L:var
+        // literally named "ENGINE_MODE_SELECTOR" and reported SUCCESS, so the flow step
+        // announced done and the checklist item ticked while the knob never moved.
+        // Live-measured on the A339X 2026-08-31: writing L:ENGINE_MODE_SELECTOR = 2 left
+        // L:XMLVAR_ENG_MODE_SEL at 1 and A:TURB ENG IGNITION SWITCH EX1:1 at 1. The A380
+        // definition has carried this branch since its own fix, which is why the A380
+        // First Officer works and both A320-family ones did not.
+        //
+        // The mechanism is MainForm.PanelBuilder's engine-mode combo — the panel path that
+        // always worked — re-verified live on the A339X, where it moved TURB ENG IGNITION
+        // SWITCH EX1:1 from 1 to 2 and back. TWO engines here, not the A380's four. The
+        // knob-position L:var is written as well because the ignition events do not touch
+        // it and the cockpit/EWD read it. An ABSOLUTE set, so no state guard is needed.
+        //
+        // The combo keeps its own branch in MainForm and does not come through here, so
+        // this adds a write path rather than replacing one — which is also why routing the
+        // ignition events through the calculator (this file's convention for K: writes, and
+        // the A380's shape) costs a pilot without the MobiFlight module nothing: their
+        // combo still sends them, and their First Officer wrote a dead L:var before.
+        //
+        // No speech here: a combo set is echo-suppressed by MainForm's _uiSetEcho wrap, and
+        // any other change announces off the ENGINE_MODE_SELECTOR readback.
+        if (varKey == "ENGINE_MODE_SELECTOR")
+        {
+            simConnect.ExecuteCalculatorCode(EngineModeSelectorRpn(value));
+            return true;
+        }
+
+        // Ground-spoiler ARM (0 disarm / 1 arm).
+        //
+        // ⚠️ The same dead-write shape as ENGINE_MODE_SELECTOR above: an EVENT-typed key with
+        // no branch here fell through to the bottom catch-all — which requires Type == LVar —
+        // and out of the method as FALSE. The First Officer executors' ApplySilent fallback
+        // then wrote a DEAD L:var literally named "SPOILERS_ARM_TOGGLE" and reported SUCCESS,
+        // so the flow step announced done and the checklist item ticked while the lever never
+        // moved. (The panel button keeps its own MainForm path, which is why arming from the
+        // panel always worked; this adds a write path rather than replacing one.)
+        //
+        // The write is ABSOLUTE — the A380's proven form, FlyByWireA380Definition's
+        // A380X_MSFSBA_SPOILERS_ARM branch: the stock ARM_ON / ARM_OFF pair names the position
+        // wanted, so no state guard is needed and a repeat cannot flip the lever. The flow and
+        // checklist comments calling this key "a genuine toggle event" describe the EVENT NAME
+        // upstream, not what this branch emits; their re-run guards are now redundant rather
+        // than load-bearing, and are harmless either way.
+        //
+        // ExecuteCalculatorCodeUnique, NOT ExecuteCalculatorCode: the RPN carries no operand,
+        // so two consecutive writes of the SAME position are byte-identical and the MobiFlight
+        // command channel drops the second. That is not academic — the flows send DISARM in
+        // BOTH After Takeoff and After Landing, so a pilot who armed the lever by hand between
+        // them would have the second disarm silently swallowed (the wiper-toggle failure).
+        if (varKey == "SPOILERS_ARM_TOGGLE")
+        {
+            simConnect.ExecuteCalculatorCodeUnique(SpoilersArmRpn(value > 0.5));
+            return true;
+        }
+
+        // EFIS flight-director pushes — a GUARDED toggle, not a set.
+        //
+        // Same dead-write shape as the two branches above, but the rescue must not be a bare
+        // fire: A32NX.FCU_EFIS_{L,R}_FD_PUSH TOGGLE. Live-measured on the A339X 2026-08-31 —
+        // one fire took L:A32NX_FCU_EFIS_L_FD_LIGHT_ON from 1 to 0, and a second returned it
+        // to 1. Every First Officer step that writes these means ON ("Flight director 1/2:
+        // ON"), so an UNGUARDED branch would switch the flight director OFF on every
+        // already-lit button — an ACTIVE WRONG ACTION, which is worse than the silent no-op it
+        // replaces. FlightDirectorPushEvent owns the decision (and says why an UNKNOWN light
+        // is refused here, unlike the ELEC-gen guard further down).
+        //
+        // The light is read through the FdLeftLightVar / FdRightLightVar virtuals — the seam a
+        // future FBW fork repoints — which name the same vars GetButtonStateMapping already
+        // pairs with these pushes. SendEvent, not ExecuteCalculatorCode: that is the transport
+        // FireFCUButton uses, it keeps the A320 family's TransmitClientEvent fallback for a
+        // pilot with no MobiFlight module (IsFbwFcuEvent is A380-only for exactly that
+        // reason), and it applies the per-call uniqueness prefix centrally when it does take
+        // the calculator path.
+        if (varKey == "A32NX.FCU_EFIS_L_FD_PUSH" || varKey == "A32NX.FCU_EFIS_R_FD_PUSH")
+        {
+            bool left = varKey == "A32NX.FCU_EFIS_L_FD_PUSH";
+            string? fdPush = FlightDirectorPushEvent(varKey, value,
+                simConnect.GetCachedVariableValue(left ? FdLeftLightVar : FdRightLightVar));
+            if (fdPush != null) simConnect.SendEvent(fdPush);
+            return true;
+        }
+
         // Fuel pump combos (state = FUELSYSTEM PUMP/VALVE SWITCH:n, not directly settable):
         // main pumps fire FUELSYSTEM_PUMP_ON/_OFF; centre jet pumps fire FUELSYSTEM_VALVE_
         // OPEN/_CLOSE (same proven path as the engine masters). Pump idx L1=2/L2=5/R1=3/R2=6;
@@ -8616,25 +8790,106 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // "All Landing Lights" buttons (RenderAsButton, Exterior Lighting panel). Drive the
-        // FBW switch L:vars directly — the SAME calls as the per-light Left/Right Landing Light
-        // combos (MainForm lighting block) — so the LDG LT memo stays in sync. The old wiring
-        // fired the stock LANDING_LIGHTS_ON/OFF events, which bypass the FBW switch and desync
-        // the memo (FBW issues #1507/#1528). On = 0 (extend + illuminate); Off = 2 (RETRACT —
-        // stows the lights and clears LDG LT). Nose light (LIGHTING_LANDING_1) stays independent.
+        // ── FBW A32NX exterior lights — SINGLE SOURCE OF TRUTH for every light WRITE ──────
+        // Shared by the panel combos (MainForm.PanelBuilder.cs calls HandleUIVariableSet FIRST,
+        // so these branches now serve the panel too) AND the First Officer executor
+        // (FbwA320ActionExecutor.ApplyUIVariable → here). Each mechanism is the FBW-template-
+        // verbatim actuator, LIVE-VERIFIED 2026-07-12 on the A32NX. The state vars themselves
+        // are NOT writable: a plain SetLVar / native write to LIGHT BEACON / LIGHT WING /
+        // LIGHT TAXI:2 / LIGHTING_LANDING_x / LIGHTING_STROBE_0 is a no-op or reverts within a
+        // frame. The FO used to fall straight through to exactly that write, so EVERY FO
+        // exterior light (beacon/wing/nose/turn-off/strobe/all-landing) silently did nothing.
+        // These branches must stay above the generic catch-all. (RPN "r" swaps the top two
+        // stack entries → "<value> <index> r" is stack-equivalent to "<index> <value>".)
+
+        // Beacon + Wing: the cockpit switch (A320_NEO_INTERIOR.xml:1867-1878 / wing) fires the
+        // stock BEACON_LIGHTS_SET / WING_LIGHTS_SET event and reads state from A:LIGHT BEACON /
+        // A:LIGHT WING. Handle BOTH the panel state key ("LIGHT BEACON"/"LIGHT WING") and the
+        // FO event key ("BEACON_LIGHTS_SET"/"WING_LIGHTS_SET"). Verified: "{v} (>K:BEACON_LIGHTS_SET)"
+        // flips A:LIGHT BEACON 0<->1; a SetLVar/native write does nothing.
+        if (varKey == "LIGHT BEACON" || varKey == "BEACON_LIGHTS_SET")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:BEACON_LIGHTS_SET)");
+            return true;
+        }
+        if (varKey == "LIGHT WING" || varKey == "WING_LIGHTS_SET")
+        {
+            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>K:WING_LIGHTS_SET)");
+            return true;
+        }
+        // Nose light (LIGHTING_LANDING_1): 0=T.O., 1=Taxi, 2=Off. The position L:var HOLDS the
+        // written value (mirror it so the combo/FO read-back tracks) but drives NO lamp — the
+        // lamp is the indexed stock event: nose T.O. = LIGHT LANDING:1, nose taxi = LIGHT TAXI:1
+        // (TAXI stays on in T.O., per SWITCH_OVHD_EXTLT_NOSE). Verified: L:var write alone left
+        // LIGHT TAXI:1 = 0; the indexed events lit it.
+        if (varKey == "LIGHTING_LANDING_1")
+        {
+            int pos = (int)Math.Round(value);
+            int takeoff = pos == 0 ? 1 : 0;
+            int taxi = (pos == 0 || pos == 1) ? 1 : 0;
+            simConnect.SetLVar("LIGHTING_LANDING_1", pos);
+            simConnect.ExecuteCalculatorCode(
+                $"{takeoff} 1 r (>K:2:LANDING_LIGHTS_SET) {taxi} 1 r (>K:2:TAXI_LIGHTS_SET)");
+            return true;
+        }
+        // L/R landing lights (LIGHTING_LANDING_2 = left, _3 = right): 0=On, 1=Off, 2=Retract.
+        // The position var is template-DERIVED (a direct write reverts) — drive the lamp via the
+        // indexed stock event + the retract animation L:var; the template converges the position
+        // var itself.
+        if (varKey == "LIGHTING_LANDING_2" || varKey == "LIGHTING_LANDING_3")
+        {
+            int idx = varKey.EndsWith("_3", StringComparison.Ordinal) ? 3 : 2;
+            int on = value < 0.5 ? 1 : 0;          // value 0 = On
+            int retr = value >= 1.5 ? 1 : 0;       // value 2 = Retract
+            simConnect.SetLVar($"LANDING_{idx}_RETRACTED", retr);
+            simConnect.ExecuteCalculatorCode($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
+            return true;
+        }
+        // "All Landing Lights" momentary buttons (Exterior Lighting panel + FO BT_LANDING_LT /
+        // AL_LANDING_OFF). Drive BOTH L/R via the indexed event + retract L:var — the SAME
+        // actuator as the per-side combo above. On = extend + illuminate; Off = retract.
+        // (Previously SetLVar("LIGHTING_LANDING_2/3") directly — VERIFIED a no-op: the lamp
+        // never lit because the position var reverts. The indexed event is the fix.)
         if (varKey == "LANDING_LIGHTS_ON_THIRD_PARTY" || varKey == "LANDING_LIGHTS_OFF_THIRD_PARTY")
         {
             if (value > 0.5)
             {
                 bool on = varKey == "LANDING_LIGHTS_ON_THIRD_PARTY";
-                int pos = on ? 0 : 2;     // LIGHTING_LANDING_x: 0 = On, 2 = Retract
-                int retr = on ? 0 : 1;    // LANDING_x_RETRACTED: 1 = retracted
-                simConnect.SetLVar("LIGHTING_LANDING_2", pos);
+                int ev = on ? 1 : 0;
+                int retr = on ? 0 : 1;
                 simConnect.SetLVar("LANDING_2_RETRACTED", retr);
-                simConnect.SetLVar("LIGHTING_LANDING_3", pos);
                 simConnect.SetLVar("LANDING_3_RETRACTED", retr);
+                simConnect.ExecuteCalculatorCode(
+                    $"{ev} 2 r (>K:2:LANDING_LIGHTS_SET) {ev} 3 r (>K:2:LANDING_LIGHTS_SET)");
                 announcer.Announce(on ? "All landing lights on" : "All landing lights retracted");
             }
+            return true;
+        }
+        // Runway turn-off lights: ONE RWY TURN OFF switch → both sides. State key "LIGHT TAXI:2"
+        // (representative; :3 is the right side). The FBW template drives LIGHT TAXI:2/3 via the
+        // indexed TAXI_LIGHTS_SET — a direct simvar write reverts (VERIFIED).
+        if (varKey == "LIGHT TAXI:2")
+        {
+            int on = value > 0.5 ? 1 : 0;
+            simConnect.ExecuteCalculatorCode($"{on} 2 r (>K:2:TAXI_LIGHTS_SET) {on} 3 r (>K:2:TAXI_LIGHTS_SET)");
+            simConnect.RequestVariable("LIGHT TAXI:2", forceUpdate: true);
+            simConnect.RequestVariable("LIGHT TAXI:3", forceUpdate: true);
+            return true;
+        }
+        // Strobe (LIGHTING_STROBE_0): 0=On, 1=Auto, 2=Off. Two writes are BOTH required —
+        // set the position L:var AND STROBE_0_AUTO, then fire STROBES_ON/OFF for the On/Off
+        // detents. VERIFIED 2026-07-12: STROBES_OFF alone leaves the lamp lit (the FBW template
+        // re-derives it from LIGHTING_STROBE_0), and a bare LIGHTING_STROBE_0 write reverts
+        // while STROBE_0_AUTO=1 — but writing the position TOGETHER with STROBE_0_AUTO holds
+        // and the lamp follows. (MainForm's panel path did the position write via its generic
+        // SetLVar before this branch; centralizing here, it must be explicit.)
+        if (varKey == "LIGHTING_STROBE_0")
+        {
+            int pos = (int)Math.Round(value);
+            simConnect.SetLVar("LIGHTING_STROBE_0", pos);
+            if (pos == 2)      { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_OFF)"); }
+            else if (pos == 0) { simConnect.SetLVar("STROBE_0_AUTO", 0); simConnect.ExecuteCalculatorCode("0 (>K:STROBES_ON)"); }
+            else               { simConnect.SetLVar("STROBE_0_AUTO", 1); }
             return true;
         }
 
@@ -8717,6 +8972,71 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
 
         return false; // Not handled - use generic logic
+    }
+
+    /// <summary>
+    /// The RPN the ENG MODE selector write emits — 0 = CRANK, 1 = NORM, 2 = IGN START.
+    /// Pure so the operand order and the event names are assertable (the
+    /// <see cref="HeadwindA330Definition.NavLogoRpn"/> convention).
+    ///
+    /// Each write pops exactly ONE operand, so each is handed exactly one value token;
+    /// the ignition events drive the real state on both engines and XMLVAR_ENG_MODE_SEL
+    /// keeps the knob position the cockpit/EWD read in step. The value is rounded to the
+    /// nearest detent and clamped to the three the knob has (a NaN falls to CRANK rather
+    /// than throwing), and formatted with InvariantCulture — every calculator write in this
+    /// codebase must be, because the MSFS RPN parser rejects comma-decimal output and a
+    /// locale-specific minus sign.
+    /// </summary>
+    public static string EngineModeSelectorRpn(double mode)
+    {
+        string m = Math.Clamp((int)Math.Round(mode), 0, 2)
+            .ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{m} (>K:TURBINE_IGNITION_SWITCH_SET1) "
+             + $"{m} (>K:TURBINE_IGNITION_SWITCH_SET2) "
+             + $"{m} (>L:XMLVAR_ENG_MODE_SEL)";
+    }
+
+    /// <summary>
+    /// The RPN the ground-spoiler ARM write emits. ABSOLUTE, never a toggle: the stock
+    /// SPOILERS_ARM_ON / SPOILERS_ARM_OFF pair names the position wanted, so a repeat is a
+    /// no-op rather than a flip. Same form the A380 definition uses for its own arm combo.
+    /// Pure so the event names are assertable (the <see cref="EngineModeSelectorRpn"/>
+    /// convention).
+    ///
+    /// ⚠️ VALUELESS — a bare K-event with no operand — so every caller must send it through
+    /// <c>ExecuteCalculatorCodeUnique</c>; two consecutive writes of the same position are
+    /// byte-identical and the MobiFlight channel drops the second.
+    /// </summary>
+    public static string SpoilersArmRpn(bool armed) =>
+        armed ? "(>K:SPOILERS_ARM_ON)" : "(>K:SPOILERS_ARM_OFF)";
+
+    /// <summary>
+    /// The EFIS flight-director push to fire for <paramref name="varKey"/>, or null when
+    /// nothing should be fired. Pure so the GUARD — not merely the event name — is assertable.
+    ///
+    /// ⚠️ These events TOGGLE (live-measured on the A339X 2026-08-31: one fire took
+    /// A32NX_FCU_EFIS_L_FD_LIGHT_ON from 1 to 0, a second returned it to 1) while every First
+    /// Officer step writing them means ON. So a push is emitted only when the live light
+    /// DISAGREES with <paramref name="target"/>.
+    ///
+    /// An UNKNOWN light (<paramref name="lightOn"/> null or NaN) refuses the push. That is
+    /// deliberately the OPPOSITE of the two neighbouring guarded toggles in
+    /// HandleUIVariableSet — the ELEC gens and the blue electric pump override, which both
+    /// fire on an unread cache — and the difference is the resting position. Those switches
+    /// rest OFF, so a blind press moves them TOWARDS the state asked for. The FD button is
+    /// commonly already lit (the measurement above found it at 1), so a blind press here is a
+    /// coin flip that can switch the flight director off. A step that silently does nothing is
+    /// recoverable; one that turns off a flight director the pilot was told is on is not.
+    /// The lights are polled onto the cache by FirstOfficerForm via the evaluators'
+    /// OnRequestPollFields, so "unknown" is the first second after the window opens, not the
+    /// standing condition.
+    /// </summary>
+    public static string? FlightDirectorPushEvent(string varKey, double target, double? lightOn)
+    {
+        if (varKey != "A32NX.FCU_EFIS_L_FD_PUSH" && varKey != "A32NX.FCU_EFIS_R_FD_PUSH")
+            return null;
+        if (!lightOn.HasValue || double.IsNaN(lightOn.Value)) return null;
+        return (target > 0.5) == (lightOn.Value > 0.5) ? null : varKey;
     }
 
     private void RequestFCUHeadingWithStatus(SimConnect.SimConnectManager simConnectMgr)
