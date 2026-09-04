@@ -37,3 +37,11 @@ jobs:
       # the native DLLs are tracked in-repo. x64 matches <Platforms>x64</Platforms>.
       - name: Run tests
         run: dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64
+
+      # The MD-11 control-map generator finds the aircraft across FS2020/FS2024,
+      # MS Store/Steam/external package folders. That discovery is pure logic and
+      # is unit-tested with stdlib unittest (no pip install needed). Without this
+      # step the tests would sit unrun -- which is how the old hardcoded
+      # single-developer path survived unnoticed.
+      - name: MD-11 generator path tests (Python)
+        run: python -m unittest discover -s tools/md11-gen -p "test_*.py" -v
