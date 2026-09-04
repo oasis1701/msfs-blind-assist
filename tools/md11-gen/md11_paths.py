@@ -268,10 +268,17 @@ def parse_choice(answer: str, count: int) -> int | None:
     # are not decimal (superscript "\xb2", subscript "₁"), and int()
     # raises ValueError on those -- which would make this function raise
     # instead of returning None, breaking its total-over-all-input contract.
-    # isdecimal() is exactly the predicate that guarantees int() succeeds.
     if not text.isdecimal():
         return None
-    value = int(text)
+    try:
+        value = int(text)
+    except ValueError:
+        # isdecimal() does not guarantee int() succeeds: CPython caps
+        # int-from-string at sys.set_int_max_str_digits (4300 by default), so a
+        # long run of digits raises even though every character is decimal.
+        # This function is wrapped straight around input() by the generator, so
+        # it must answer with None rather than a traceback for ANY string.
+        return None
     if value < 1 or value > count:
         return None
     return value - 1

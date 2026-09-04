@@ -578,6 +578,13 @@ class ParseChoiceTests(unittest.TestCase):
         for ch in ("\xb2", "₁"):
             self.assertIsNone(md11_paths.parse_choice(ch, 2))
 
+    def test_rejects_absurdly_long_digit_runs_without_raising(self):
+        # Every character here is decimal, so isdecimal() passes -- but
+        # CPython caps int-from-string at 4300 digits by default, so int()
+        # raises. The generator wraps this around input(), where that would
+        # be a traceback instead of a re-prompt.
+        self.assertIsNone(md11_paths.parse_choice("9" * 4301, 2))
+
 
 if __name__ == "__main__":
     unittest.main()
