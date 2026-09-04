@@ -150,6 +150,34 @@ public class FlyByWireA380EventContractTests
             + "sweep cannot see them): " + string.Join(", ", unlisted));
     }
 
+    // ---- Stock K-event actuators emitted as bare literals -------------------------------
+    //
+    // Same blind spot as the EFIS-CP block above, one aisle over: these are stock K-events
+    // sent by name from inside HandleUIVariableSet, so they are neither Evt(...) registrations
+    // nor reachable through a pure helper (that method needs a live SimConnectManager). They
+    // are inventoried here purely so the FBW-drift sweep — and anyone grepping for an event
+    // name — can SEE them; a rename with no inventory entry is silent in every channel.
+    public static readonly string[] StockToggleActuators =
+    {
+        "TOGGLE_STRUCTURAL_DEICE",   // WING_ANTI_ICE_OVHD  → A:STRUCTURAL DEICE SWITCH
+        "TOGGLE_MASTER_ALTERNATOR",  // ELEC_ENG_GEN:n      → GENERAL ENG MASTER ALTERNATOR:n
+        "TOGGLE_FLIGHT_DIRECTOR",    // FD_n_CTL            → AUTOPILOT FLIGHT DIRECTOR ACTIVE:n
+    };
+
+    [Fact]
+    public void The_inventoried_stock_actuators_take_the_legacy_transport()
+    {
+        // A stock K-event has no "H:" prefix and no dot, which is exactly what makes SendEvent
+        // route it through MapClientEventToSimEvent + TransmitClientEvent — a transport that
+        // needs no MobiFlight WASM module. Send one of these down the calculator path instead
+        // and it is a silent no-op for every pilot without that module.
+        Assert.All(StockToggleActuators, e =>
+        {
+            Assert.DoesNotContain('.', e);
+            Assert.False(e.StartsWith("H:", StringComparison.Ordinal));
+        });
+    }
+
     [Fact]
     public void The_inventoried_efis_cp_actuators_are_all_fcu_events()
     {
