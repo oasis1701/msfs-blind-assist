@@ -202,6 +202,9 @@ public partial class HorizonSim787Definition
                 return v > 0 ? "Engaged" : "Off";
             }, () => simConnect.SendEvent("AP_ALT_HOLD")),
 
+            // No state L:var exists for altitude intervention (unlike speed, the WT Boeing altitude-
+            // intervention system delegates entirely to VNavManager with no L:var write), so this
+            // row is a momentary press with no read-back.
             new("Alt &INTV", () => "Momentary", () =>
                 // Fire the WT Boeing altitude-intervention H event via MobiFlight WASM. (The
                 // CDU/EFB no longer run an HTTP bridge, so there is no Coherent command path here.)
