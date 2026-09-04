@@ -182,7 +182,16 @@ public partial class MainForm
         TableLayoutPanel layout = new TableLayoutPanel();
         layout.ColumnCount = 2;
         layout.RowCount = 0;
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        // Column 0 sizes to its longest label, capped at labelColumnMaxWidth. It was a hard
+        // 150px against a fixed 140px label with no ellipsis and no tooltip, so any longer
+        // name was silently cut - the PMDG 777's "Forward Outflow Valve Manual Selector"
+        // lost the very word that distinguishes it from "Forward Outflow Valve Mode". The
+        // cap matters too: controlsContainer is a fixed 440px AutoScroll panel that is never
+        // resized, so an unbounded label column pushes the 250px control column past its
+        // right edge at 100% display scaling (10 + 140 + margins 15 + 250 fits; a 38-char
+        // label did not). A label longer than the cap WRAPS and its row grows instead.
+        const int labelColumnMaxWidth = 140;
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         layout.AutoSize = true;
         layout.Location = new Point(10, 10);
@@ -207,16 +216,22 @@ public partial class MainForm
 
             var varDef = currentAircraft.GetVariables()[varKey];
             
-            // Add a new row (sliders need a little more height for the TrackBar).
-            int rowIndex = layout.RowCount++;
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, varDef.RenderAsSlider ? 48 : 35));
-
-            // Create label
+            // Create label. MaximumSize.Width makes an AutoSize label wrap instead of widening
+            // the column (see the ColumnStyle comment above).
             Label label = new Label();
             label.Text = varDef.DisplayName + ":";
             label.TextAlign = ContentAlignment.MiddleLeft;
-            label.AutoSize = false;
-            label.Size = new Size(140, 25);
+            label.AutoSize = true;
+            label.MaximumSize = new Size(labelColumnMaxWidth, 0);
+            label.Anchor = AnchorStyles.Left;
+            label.Margin = new Padding(3, 3, 12, 3);
+
+            // Add a new row (sliders need a little more height for the TrackBar). A label that
+            // wrapped needs a taller row than the fixed 35/48, or its lower lines are clipped.
+            int rowIndex = layout.RowCount++;
+            int rowHeight = Math.Max(varDef.RenderAsSlider ? 48 : 35,
+                label.GetPreferredSize(new Size(labelColumnMaxWidth, 0)).Height + label.Margin.Vertical);
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
             layout.Controls.Add(label, 0, rowIndex);
 
             // Create control based on type.

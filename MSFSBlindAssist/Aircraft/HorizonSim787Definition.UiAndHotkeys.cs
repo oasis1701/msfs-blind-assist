@@ -113,6 +113,10 @@ public partial class HorizonSim787Definition
             if (currentState == targetState)
                 return true; // no-op — state already matches request
 
+            // Remember the pilot's own pick so the resulting HS787_ExtPwrOn state change is not
+            // spoken back over the screen reader's own combo announcement (IsExtPwrUiEcho).
+            _extPwrUiSetTicks[varKey == "HS787_ExtPwr1" ? 1 : 2] = Environment.TickCount64;
+
             string eventName = varKey == "HS787_ExtPwr1" ? "AIRLINER_EXT_PWR_1" : "AIRLINER_EXT_PWR_2";
             bool usedInputEvent = simConnect.HasInputEvent(eventName) &&
                                   simConnect.TrySetInputEvent(eventName, 1);
@@ -846,7 +850,7 @@ public partial class HorizonSim787Definition
             case HotkeyAction.ReadDistanceToDest:
             {
                 double? meters = simConnect.GetCachedVariableValue("HS787_DistDest");
-                double gs = simConnect.GetCachedVariableValue("HS787_GroundSpeed") ?? 0;
+                double gs = simConnect.GetCachedVariableValue("GROUND_VELOCITY") ?? 0;
                 var parts = new System.Collections.Generic.List<string>();
 
                 if (meters != null && meters.Value > 0)
@@ -881,7 +885,7 @@ public partial class HorizonSim787Definition
                     return true;
                 }
                 double todNm = todMeters.Value / 1852.0;
-                double gs = simConnect.GetCachedVariableValue("HS787_GroundSpeed") ?? 0;
+                double gs = simConnect.GetCachedVariableValue("GROUND_VELOCITY") ?? 0;
                 string ete = FormatEte(todNm, gs);
                 announcer.AnnounceImmediate(ete.Length > 0
                     ? $"{(int)todNm} miles to top of descent, {ete}"

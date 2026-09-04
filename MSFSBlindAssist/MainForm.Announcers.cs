@@ -473,8 +473,9 @@ public partial class MainForm
 
         // 1,000-foot crossing callouts. INDICATED_ALTITUDE is also a panel-display var, so
         // this is a NON-terminal feed (no early return) — processing continues so the
-        // display box still updates. The var is registered IsAnnounced=false (per aircraft),
-        // so the generic announce gate stays silent and only these callouts speak.
+        // display box still updates. The var is registered IsAnnounced=true (that flag is what
+        // puts it on the continuous batch - see BaseAircraftDefinition); the Step 6 generic gate
+        // below returns for INDICATED_ALTITUDE before speaking, so only these callouts speak.
         if (e.VarName == "INDICATED_ALTITUDE")
         {
             altitudeCalloutAnnouncer.ProcessAltitude(e.Value, _lastOnGround);
