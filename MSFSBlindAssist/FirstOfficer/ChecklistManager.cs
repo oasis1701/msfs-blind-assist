@@ -62,7 +62,22 @@ public class ChecklistManager<TExec, TState>
             // snapshot cadence mean the state can lag the tick by several seconds).
             item.LastManualCheckUtc = DateTime.UtcNow;
             group.HasParticipation = true;
-            if (item.CheckAction != null && _executor.IsAvailable)
+            // Nothing to do if the aircraft is already in the state this item is judged by
+            // — the pilot did the work themselves, outside the First Officer window. Skip
+            // the action AND the confirmation mark: there is no request outstanding, so no
+            // "Unable to complete" may follow. This is the hand-tick's counterpart to the
+            // flow's own SkipCondition ("Already set"), whose absence here was the Fenix
+            // APU bug (2026-09-04): ticking "APU: ON and available" on a running APU
+            // re-wrote MASTER and re-pulsed the START pushbutton on a live APU.
+            //
+            // Judged by the item's OWN condition, so it can never disagree with what the
+            // item claims to be about, and only on a DEFINITE true — an indeterminate
+            // (NaN) read is not evidence the work is done, matching the same
+            // "indeterminate is not a failure" contract EvaluateAutoDetection applies.
+            // Such an item is one EvaluateAutoDetection would tick unaided on its next
+            // pass anyway, which is what makes running its action pure side-effect.
+            if (item.CheckAction != null && _executor.IsAvailable
+                && !(item.IsAutoDetectable && EvaluateItemState(item) == true))
             {
                 item.AwaitingActionConfirmation = true;
                 _ = RunCheckActionWithGraceAsync(item);
