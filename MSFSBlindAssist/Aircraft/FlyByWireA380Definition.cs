@@ -53,8 +53,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        // MEASURED off the aeroplane, 2026-09 (three AP-flown HDG SEL turns at 4000 ft: right and
-        // left at 180 kt, then right at 280 kt), sampling bank + magnetic heading at 4 Hz.
+        // MEASURED off the aeroplane, 2026-09 (four AP-flown HDG SEL turns at 4000 ft: right and
+        // left at 180 kt, then right and left at 280 kt), sampling bank + magnetic heading at 4 Hz.
         //
         // ⚠️ The A380 does NOT roll like the 777, and this is why a gain must never be copied between
         // airframes. The 777 bleeds bank off in PROPORTION to remaining error (a flat 2.35 ratio all
@@ -69,10 +69,14 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // way the aeroplane actually does it. The old 0.85 commanded about a SIXTH of the bank this
         // aircraft uses.
         KRollDegPerDegTrack = 5.0,
-        // Measured 25.7 / 24.2° at 180 kt and 26.4° at 280 kt. The cap does NOT scale down with true
-        // airspeed — if anything it went slightly UP — so the Airbus "Roll Limit 2 = 15-25 with TAS"
-        // range does not show here, exactly as the equivalent Boeing AUTO range did not on the 777.
-        // 25 stays: it is the low end of what was measured and the documented FG ceiling.
+        // Measured across four turns: 25.7 / 24.2° at 180 kt, 26.4 / 23.1° at 280 kt. Mean 24.85, so
+        // 25 is the right number. The cap does NOT scale down with true airspeed — the Airbus
+        // "Roll Limit 2 = 15-25 with TAS" range does not show here, exactly as the equivalent Boeing
+        // AUTO range did not on the 777.
+        // ⚠️ Note the LEFT/RIGHT asymmetry, which grows with speed (1.5° apart at 180 kt, 3.3° at
+        // 280). Both directions were flown by the same autopilot in the same conditions, so it is a
+        // property of the aircraft, not the measurement. A single cap cannot express it and 25 splits
+        // it; do not "correct" the number from a one-direction run.
         MaxBankDeg          = 25.0,
         // Measured roll rate 3.7°/s in and out. On this airframe the slew cap is not a safety net —
         // it IS the rollout law, because the aeroplane rolls out at a rate rather than proportionally.
@@ -85,8 +89,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         //
         // At 180 kt the rollout onset (5°) is exactly MaxBankDeg / gain with no lead, so zero is
         // right there. But the 280 kt run showed the onset moves with speed: 5.0° of error at 180 kt
-        // versus 3.0° at 280. That is the opposite direction from what this law can produce — its
-        // onset is `MaxBankDeg / gain + turnRate * lead`, and turn rate FALLS at higher speed for the
+        // versus ~3.1° at 280 (5.0/5.0 left and right, 3.0/3.2 left and right — the speed dependence
+        // replicated in BOTH directions at BOTH speeds). That is the opposite direction from what this
+        // law can produce — its onset is `MaxBankDeg / gain + turnRate * lead`, and turn rate FALLS at higher speed for the
         // same bank, so any positive lead makes the onset shrink LESS than measured, never more.
         // Solving both runs simultaneously needs MaxBankDeg / gain = -2.46, i.e. no valid pair of
         // (gain, lead) reproduces both speeds. The A380 rolls out on something closer to constant

@@ -273,14 +273,14 @@ until exactly 25 / 5.0 = 5° of error, and `MaxBankRateDegPerSec` (3.7) then sha
 the aeroplane does. `BankRateLeadSec` is **zero** — the onset already matches cap ÷ gain with no lead,
 so adding one would roll out early and force the gain up to compensate.
 
-**A third turn at 280 kt settled the speed question, and raised a limitation.** The bank cap does NOT
-scale with true airspeed — 25.7 / 24.2° at 180 kt against 26.4° at 280 — so the Airbus "Roll Limit 2
+**Two further turns at 280 kt settled the speed question, and raised a limitation.** The bank cap does NOT
+scale with true airspeed — 25.7 / 24.2° at 180 kt against 26.4 / 23.1° at 280 (mean 24.85) — so the Airbus "Roll Limit 2
 = 15-25 with TAS" range does not show up, exactly as the equivalent Boeing AUTO range did not on the
 777. But the rollout ONSET does move with speed, and in a direction this law cannot follow:
 
 | | 180 kt | 280 kt |
 | --- | --- | --- |
-| A380X onset (heading error) | 5.0° | **3.0°** |
+| A380X onset (heading error) | 5.0° (both directions) | **3.0-3.2°** (both directions) |
 | …as time to target | 2.13 s | 1.74 s |
 | PMDG 777 onset (heading error) | 10.8° | **10.3°** |
 | …as time to target | 4.32 s | 6.40 s |
