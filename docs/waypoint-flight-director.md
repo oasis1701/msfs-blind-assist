@@ -273,6 +273,30 @@ until exactly 25 / 5.0 = 5° of error, and `MaxBankRateDegPerSec` (3.7) then sha
 the aeroplane does. `BankRateLeadSec` is **zero** — the onset already matches cap ÷ gain with no lead,
 so adding one would roll out early and force the gain up to compensate.
 
+**A third turn at 280 kt settled the speed question, and raised a limitation.** The bank cap does NOT
+scale with true airspeed — 25.7 / 24.2° at 180 kt against 26.4° at 280 — so the Airbus "Roll Limit 2
+= 15-25 with TAS" range does not show up, exactly as the equivalent Boeing AUTO range did not on the
+777. But the rollout ONSET does move with speed, and in a direction this law cannot follow:
+
+| | 180 kt | 280 kt |
+| --- | --- | --- |
+| A380X onset (heading error) | 5.0° | **3.0°** |
+| …as time to target | 2.13 s | 1.74 s |
+| PMDG 777 onset (heading error) | 10.8° | **10.3°** |
+| …as time to target | 4.32 s | 6.40 s |
+
+So the **777 anticipates by a constant HEADING margin** and the **A380 by something close to a constant
+TIME to target** — two aircraft, two different strategies. Our command is
+`gain × (error − turnRate × lead)`, whose onset is `cap / gain + turnRate × lead`. Turn rate FALLS at
+higher speed for the same bank, so a positive lead makes the onset shrink *less* than measured, never
+more; solving both A380 runs together needs `cap / gain = −2.46`, i.e. **no valid (gain, lead) pair
+reproduces both speeds**.
+
+The A380 is therefore tuned for the slower regime, where a hand-flying pilot actually needs the cue
+(departure, approach, circuits), and will command its rollout slightly early at high cruise speed.
+Fixing it properly means adding a time-to-target term to the shared geometry — a real change, not an
+airframe tweak.
+
 Its previous gain of 0.85 commanded about a SIXTH of the bank the aircraft uses.
 
 ⚠️ These figures are the 777's. Do NOT copy the 2.4 gain onto other airframes — it is exactly the

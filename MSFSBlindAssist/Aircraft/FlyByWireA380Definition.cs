@@ -53,8 +53,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
     public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
     {
-        // MEASURED off the aeroplane, 2026-09 (two AP-flown HDG SEL turns at 4000 ft / 180 kt, right
-        // 200->290 and left 290->200), sampling bank + magnetic heading at 4 Hz.
+        // MEASURED off the aeroplane, 2026-09 (three AP-flown HDG SEL turns at 4000 ft: right and
+        // left at 180 kt, then right at 280 kt), sampling bank + magnetic heading at 4 Hz.
         //
         // ⚠️ The A380 does NOT roll like the 777, and this is why a gain must never be copied between
         // airframes. The 777 bleeds bank off in PROPORTION to remaining error (a flat 2.35 ratio all
@@ -69,8 +69,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // way the aeroplane actually does it. The old 0.85 commanded about a SIXTH of the bank this
         // aircraft uses.
         KRollDegPerDegTrack = 5.0,
-        // Measured 25.7° steady in the right turn and 24.2° in the left; 25 is both the mean and the
-        // Airbus FG Roll Limit 2 ceiling, so it stands.
+        // Measured 25.7 / 24.2° at 180 kt and 26.4° at 280 kt. The cap does NOT scale down with true
+        // airspeed — if anything it went slightly UP — so the Airbus "Roll Limit 2 = 15-25 with TAS"
+        // range does not show here, exactly as the equivalent Boeing AUTO range did not on the 777.
+        // 25 stays: it is the low end of what was measured and the documented FG ceiling.
         MaxBankDeg          = 25.0,
         // Measured roll rate 3.7°/s in and out. On this airframe the slew cap is not a safety net —
         // it IS the rollout law, because the aeroplane rolls out at a rate rather than proportionally.
@@ -78,9 +80,24 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         MaxPitchDeg         = 10.0,
         CaptureRadiusNm     = 0.9,
         LowSpeedFloorKts    = 60.0,
-        // ZERO, and deliberately so. The measured onset (5°) is exactly MaxBankDeg / gain with no
-        // lead term at all, so any lead would start the rollout early and force the gain up to
-        // compensate — amplifying track noise for no gain in fidelity. The slew cap does the damping.
+        // ZERO, and this is a DELIBERATE COMPROMISE rather than a clean fit — read on before
+        // "improving" it.
+        //
+        // At 180 kt the rollout onset (5°) is exactly MaxBankDeg / gain with no lead, so zero is
+        // right there. But the 280 kt run showed the onset moves with speed: 5.0° of error at 180 kt
+        // versus 3.0° at 280. That is the opposite direction from what this law can produce — its
+        // onset is `MaxBankDeg / gain + turnRate * lead`, and turn rate FALLS at higher speed for the
+        // same bank, so any positive lead makes the onset shrink LESS than measured, never more.
+        // Solving both runs simultaneously needs MaxBankDeg / gain = -2.46, i.e. no valid pair of
+        // (gain, lead) reproduces both speeds. The A380 rolls out on something closer to constant
+        // TIME-to-target (2.13 s at 180 kt, 1.74 s at 280) where the 777 uses a constant HEADING lead
+        // (10.8° / 10.3°, i.e. 4.3 s vs 6.4 s) — two aircraft, two different anticipation strategies,
+        // and this law's form can only express the 777's.
+        //
+        // Tuned for the slower regime, which is where a hand-flying pilot actually needs the cue
+        // (departure, approach, circuits). Expect the rollout to be commanded slightly EARLY at high
+        // cruise speeds. Fixing it properly means giving the law a time-to-target term, which is a
+        // change to the shared geometry and not something to bolt on for one airframe.
         BankRateLeadSec     = 0.0,
         TypicalApproachAoaDeg = 4.0,
         TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
