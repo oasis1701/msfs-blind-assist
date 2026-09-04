@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using MSFSBlindAssist.Aircraft;
 using Xunit;
 
@@ -15,44 +14,45 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class A380EfisCpControlsTests
 {
-    private static string[] Events(string key, double desired, double? current) =>
-        A380EfisCpControls.Commands(key, desired, current)!.Select(c => c.EventName).ToArray();
+    private static string? Evt(string key, double desired, double? current) =>
+        A380EfisCpControls.Command(key, desired, current)?.EventName;
 
     // ==================================================================
-    // Navaid selector — one push cycles Off -> VOR -> ADF
+    // Absolute setters — no current state needed, one event, no ordering
     // ==================================================================
 
-    /// <summary>Live-measured on the F/O side: three presses walked 0 -> 2 -> 1 -> 0. The
-    /// press COUNT is what this class exists to get right — a control reached by cycling
-    /// cannot be set by writing the value.</summary>
+    /// <summary>FBW #10914 (2026-09-01) added the absolute NAVAID SET, which replaced a
+    /// 0-2 press walk of NAVAID_n_PUSH. The published getNavaidMode values and the
+    /// a380_efis_navaid_selection enum the event takes are the SAME (NONE 0, ADF 1, VOR 2),
+    /// so the value goes on the wire unchanged.</summary>
     [Theory]
-    [InlineData(0, 0, 0)]   // already Off
-    [InlineData(0, 2, 1)]   // Off -> VOR
-    [InlineData(0, 1, 2)]   // Off -> ADF (the two-press case)
-    [InlineData(2, 1, 1)]   // VOR -> ADF
-    [InlineData(2, 0, 2)]   // VOR -> Off
-    [InlineData(1, 0, 1)]   // ADF -> Off
-    [InlineData(1, 2, 2)]   // ADF -> VOR
-    public void Navaid_walks_the_measured_cycle(int current, int desired, int presses)
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Navaid_is_an_absolute_set_on_the_published_enum(int mode)
     {
-        Assert.Equal(Enumerable.Repeat("A32NX.FCU_EFIS_L_NAVAID_1_PUSH", presses).ToArray(),
-            Events("A32NX_EFIS_L_NAVAID_1_MODE", desired, current));
-        Assert.Equal(Enumerable.Repeat("A32NX.FCU_EFIS_R_NAVAID_2_PUSH", presses).ToArray(),
-            Events("A32NX_EFIS_R_NAVAID_2_MODE", desired, current));
+        var l = A380EfisCpControls.Command("A32NX_EFIS_L_NAVAID_1_MODE", mode, null)!.Value;
+        Assert.Equal("A32NX.FCU_EFIS_L_NAVAID_1_SET", l.EventName);
+        Assert.Equal((uint)mode, l.Parameter);
+
+        var r = A380EfisCpControls.Command("A32NX_EFIS_R_NAVAID_2_MODE", mode, null)!.Value;
+        Assert.Equal("A32NX.FCU_EFIS_R_NAVAID_2_SET", r.EventName);
+        Assert.Equal((uint)mode, r.Parameter);
     }
 
-    /// <summary>A position outside the cycle sends nothing rather than spraying presses at a
-    /// selector whose state cannot be placed.</summary>
-    [Fact]
-    public void Navaid_with_an_unplaceable_state_sends_nothing()
+    /// <summary>The absolute setters ignore the live value entirely, so they work from a COLD
+    /// CACHE — which the cycling navaid path could not (it had to place the current position
+    /// to count presses, and sent nothing when it could not).</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(0.0)]
+    [InlineData(2.0)]
+    [InlineData(99.0)]
+    public void Navaid_set_does_not_depend_on_the_current_value(double? current)
     {
-        Assert.Empty(Events("A32NX_EFIS_L_NAVAID_1_MODE", 1, 7));
-        Assert.Empty(Events("A32NX_EFIS_L_NAVAID_1_MODE", 9, 0));
+        Assert.Equal("A32NX.FCU_EFIS_L_NAVAID_1_SET",
+            Evt("A32NX_EFIS_L_NAVAID_1_MODE", 1, current));
     }
-
-    // ==================================================================
-    // OANS zoom — absolute, on the ND RANGE knob's own enum
-    // ==================================================================
 
     /// <summary>getOansRange publishes 0..4 for the five zoom levels, which ARE
     /// a380_efis_range_selection's RANGE_ZOOM_POINT_2..RANGE_ZOOM_5, so the parameter is the
@@ -65,22 +65,26 @@ public class A380EfisCpControlsTests
     [InlineData(4)]
     public void Oans_zoom_is_an_absolute_range_set(int zoom)
     {
-        var cmd = A380EfisCpControls.Commands("A32NX_EFIS_L_OANS_RANGE", zoom, 5)!.Single();
+        var cmd = A380EfisCpControls.Command("A32NX_EFIS_L_OANS_RANGE", zoom, 5)!.Value;
         Assert.Equal("A32NX.FCU_EFIS_L_RANGE_SET", cmd.EventName);
         Assert.Equal((uint)zoom, cmd.Parameter);
     }
 
     /// <summary>5 is "not zoomed" — a readback state, not a selection. Leaving the zoom means
     /// picking a range in NM on the ND RANGE knob, so this sends nothing rather than
-    /// inventing a parameter.</summary>
-    [Fact]
-    public void Oans_not_zoomed_is_not_settable()
+    /// inventing a parameter. Same for a navaid position off the enum.</summary>
+    [Theory]
+    [InlineData("A32NX_EFIS_L_OANS_RANGE", 5)]
+    [InlineData("A32NX_EFIS_L_OANS_RANGE", -1)]
+    [InlineData("A32NX_EFIS_L_NAVAID_1_MODE", 3)]
+    [InlineData("A32NX_EFIS_L_NAVAID_1_MODE", -1)]
+    public void Out_of_range_selections_send_nothing(string key, int value)
     {
-        Assert.Empty(A380EfisCpControls.Commands("A32NX_EFIS_L_OANS_RANGE", 5, 2)!);
+        Assert.Null(A380EfisCpControls.Command(key, value, 0));
     }
 
     // ==================================================================
-    // Plain toggles
+    // Relative controls — plain toggles and the overlay
     // ==================================================================
 
     /// <summary>LS and TRAF are single toggle buttons; press only when the pick differs.
@@ -93,15 +97,11 @@ public class A380EfisCpControlsTests
     [InlineData("A32NX_PUSH_TRUE_REF", "A32NX.FCU_TRUE_TOGGLE_PUSH")]
     public void Toggles_press_only_on_a_real_change(string key, string evt)
     {
-        Assert.Equal(new[] { evt }, Events(key, 1, 0));
-        Assert.Equal(new[] { evt }, Events(key, 0, 1));
-        Assert.Empty(Events(key, 1, 1));
-        Assert.Empty(Events(key, 0, 0));
+        Assert.Equal(evt, Evt(key, 1, 0));
+        Assert.Equal(evt, Evt(key, 0, 1));
+        Assert.Null(Evt(key, 1, 1));
+        Assert.Null(Evt(key, 0, 0));
     }
-
-    // ==================================================================
-    // ND overlay — two buttons over one three-state selection
-    // ==================================================================
 
     /// <summary>Press the button you WANT; to clear, press whichever is shown. Live-verified
     /// on the F/O side across all four legs (Off-&gt;TERR-&gt;Off and Off-&gt;WX-&gt;TERR-&gt;Off), so —
@@ -115,19 +115,36 @@ public class A380EfisCpControlsTests
     [InlineData(2, 0, "A32NX.FCU_EFIS_L_TERR_PUSH")]   // clear: press the one that is shown
     public void Overlay_presses_one_button(int current, int desired, string evt)
     {
-        Assert.Equal(new[] { evt }, Events("A380X_EFIS_L_ACTIVE_OVERLAY", desired, current));
+        Assert.Equal(evt, Evt("A380X_EFIS_L_ACTIVE_OVERLAY", desired, current));
     }
 
     [Fact]
     public void Overlay_already_there_sends_nothing()
     {
-        Assert.Empty(Events("A380X_EFIS_L_ACTIVE_OVERLAY", 0, 0));
-        Assert.Empty(Events("A380X_EFIS_R_ACTIVE_OVERLAY", 2, 2));
+        Assert.Null(Evt("A380X_EFIS_L_ACTIVE_OVERLAY", 0, 0));
+        Assert.Null(Evt("A380X_EFIS_R_ACTIVE_OVERLAY", 2, 2));
     }
 
     // ==================================================================
-    // Scoping
+    // Ownership — the caller gates on Handles, never on Command != null
     // ==================================================================
+
+    /// <summary>Command answers null for TWO different questions — "not my key" and "already
+    /// there". Handles separates them, and the caller must use it: gating on Command alone
+    /// would drop a no-op set (a toggle picked at its current position) through to the
+    /// direct-L:var catch-all, which is the dead write this class exists to bypass.</summary>
+    [Theory]
+    [InlineData("A380X_EFIS_L_LS_BUTTON_IS_ON")]
+    [InlineData("A380X_EFIS_R_ACTIVE_OVERLAY")]
+    [InlineData("A32NX_PUSH_TRUE_REF")]
+    [InlineData("A32NX_EFIS_L_OANS_RANGE")]
+    [InlineData("A32NX_EFIS_R_NAVAID_2_MODE")]
+    public void A_no_op_set_is_still_owned(string key)
+    {
+        Assert.True(A380EfisCpControls.Handles(key));
+        // Same value in and out, or an unsettable selection: nothing to send, still ours.
+        Assert.Null(A380EfisCpControls.Command(key, 5, 5));
+    }
 
     /// <summary>Only these shim-output keys are claimed. Anything else must keep its existing
     /// routing — in particular the ND MODE/RANGE knobs, whose own fix lives elsewhere, and
@@ -142,36 +159,25 @@ public class A380EfisCpControlsTests
     [InlineData("A32NX_EFIS_LR_OANS_RANGE")]
     public void Other_keys_are_not_claimed(string key)
     {
-        Assert.Null(A380EfisCpControls.Commands(key, 1, 0));
-    }
-
-    /// <summary>A cold cache reads as 0 rather than throwing or sending nothing — the
-    /// _fcuToggleEvents precedent. Worst case is a press too few on a control the pilot can
-    /// immediately re-pick.</summary>
-    [Fact]
-    public void A_cold_cache_is_treated_as_zero()
-    {
-        Assert.Equal(new[] { "A32NX.FCU_EFIS_L_LS_PUSH" },
-            Events("A380X_EFIS_L_LS_BUTTON_IS_ON", 1, null));
-        Assert.Empty(Events("A380X_EFIS_L_LS_BUTTON_IS_ON", 0, null));
+        Assert.False(A380EfisCpControls.Handles(key));
+        Assert.Null(A380EfisCpControls.Command(key, 1, 0));
     }
 
     /// <summary>Every event name this class can emit was read out of the shipped fbw.wasm. A
     /// typo is a silent no-op in the sim, which is the exact failure being fixed.</summary>
-    [Fact]
-    public void Emitted_event_names_are_well_formed()
+    [Theory]
+    [InlineData("A32NX_EFIS_L_NAVAID_1_MODE")]
+    [InlineData("A32NX_EFIS_R_NAVAID_2_MODE")]
+    [InlineData("A32NX_EFIS_L_OANS_RANGE")]
+    [InlineData("A380X_EFIS_L_LS_BUTTON_IS_ON")]
+    [InlineData("A380X_EFIS_R_TRAF_BUTTON_IS_ON")]
+    [InlineData("A380X_EFIS_L_ACTIVE_OVERLAY")]
+    [InlineData("A32NX_PUSH_TRUE_REF")]
+    public void Emitted_event_names_are_well_formed(string key)
     {
-        string[] keys =
-        {
-            "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE", "A32NX_EFIS_L_OANS_RANGE",
-            "A380X_EFIS_L_LS_BUTTON_IS_ON", "A380X_EFIS_R_TRAF_BUTTON_IS_ON",
-            "A380X_EFIS_L_ACTIVE_OVERLAY", "A32NX_PUSH_TRUE_REF"
-        };
-        foreach (var key in keys)
-            foreach (var cmd in A380EfisCpControls.Commands(key, 2, 0)!)
-            {
-                Assert.StartsWith("A32NX.FCU_", cmd.EventName);
-                Assert.DoesNotContain(" ", cmd.EventName);
-            }
+        var cmd = A380EfisCpControls.Command(key, 2, 0);
+        if (cmd is null) return;
+        Assert.StartsWith("A32NX.FCU_", cmd.Value.EventName);
+        Assert.DoesNotContain(" ", cmd.Value.EventName);
     }
 }

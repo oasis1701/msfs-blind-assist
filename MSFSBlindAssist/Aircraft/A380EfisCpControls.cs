@@ -26,20 +26,27 @@ public readonly record struct A380EfisCommand(string EventName, uint Parameter =
 /// A var's WRITER can change under a name that survives — re-measure, don't trust the note.</item>
 /// </list>
 ///
-/// Every actuator below was read out of the shipped `fbw.wasm`, and all but two legs were
-/// then live-verified end to end (see each member). None of these keys is touched by the
-/// First Officer — this is a panel-only fault.
+/// Every actuator below was read out of the shipped `fbw.wasm`. None of these keys is
+/// touched by the First Officer — this is a panel-only fault.
+///
+/// ⚠️ EVERY control here is ONE absolute event. That is what lets the caller be a single
+/// `SendEvent` with no spacing, no serialization and no async: keep it that way. The first
+/// version drove the navaid selectors by CYCLING `…_NAVAID_{n}_PUSH` 0-2 times, which needed
+/// all three (the FCU samples panel inputs once per frame and a push is a bool, not a
+/// counter, so two presses in one frame register as ONE — measured). FBW #10914 added the
+/// absolute `…_NAVAID_{n}_SET` on 2026-09-01 and the cycle went away with it. If a future
+/// control here can only be reached by stepping, do NOT re-introduce spacing inline —
+/// restore the serialized async-local walk from this file's history (never `Task.Run`).
 /// </summary>
 public static class A380EfisCpControls
 {
-    /// <summary>Navaid selector positions, in the order one PUSH cycles them. Live-measured
-    /// on the F/O side: Off → VOR → ADF → Off, three presses returning to the start. The
-    /// VALUES are `getNavaidMode`'s (adf→1, vor→2, else 0), which is also what the panel's
-    /// own ValueDescriptions use; only the CYCLE ORDER is measured rather than derived.</summary>
-    private static readonly int[] NavaidCycle = { 0, 2, 1 };
-
     /// <summary>ND overlay: 0 Off / 1 Weather / 2 Terrain (`getNdOverlay`).</summary>
     public const int OverlayOff = 0, OverlayWeather = 1, OverlayTerrain = 2;
+
+    /// <summary>Navaid selector: 0 Off / 1 ADF / 2 VOR. The published `getNavaidMode` values
+    /// and the `a380_efis_navaid_selection` enum the SET event takes are the SAME
+    /// (NONE = 0, ADF, VOR), so the value goes on the wire unchanged.</summary>
+    public const int MaxNavaid = 2;
 
     /// <summary>Highest OANS zoom index. `getOansRange` publishes 0..4 for the five zoom
     /// levels and 5 for "not zoomed"; 0..4 are exactly `a380_efis_range_selection`'s
@@ -49,30 +56,51 @@ public static class A380EfisCpControls
     public const int MaxOansZoom = 4;
 
     /// <summary>
-    /// The FCU input events that move <paramref name="varKey"/> to <paramref name="desired"/>,
-    /// given the live <paramref name="current"/> value, or null when the key is not one of
-    /// these shim-output controls (every other key must keep its existing routing).
+    /// True when this class owns <paramref name="varKey"/>, whether or not a given set has
+    /// anything to send.
     ///
-    /// An empty list means "already there, send nothing". A null <paramref name="current"/>
-    /// (cold cache) is read as 0, matching the `_fcuToggleEvents` precedent — the worst case
-    /// is a press too few or too many on a control the pilot can immediately re-pick.
+    /// ⚠️ The caller MUST gate on this rather than on <see cref="Command"/> returning null.
+    /// Command answers null for two different questions — "not my key" and "already there,
+    /// send nothing" — and conflating them drops a no-op set (a toggle picked at its current
+    /// position, an overlay re-picked) through to the direct-L:var catch-all, which is the
+    /// dead write this whole class exists to bypass. Harmless today because the write lands
+    /// on a var the FCU immediately overwrites, but it is the exact trap that would bite the
+    /// moment one of these keys stops being shim-owned.
     /// </summary>
-    public static IReadOnlyList<A380EfisCommand>? Commands(string varKey, double desired, double? current)
+    public static bool Handles(string varKey) =>
+        varKey == "A32NX_PUSH_TRUE_REF"
+        || TrySplit(varKey, "A32NX_EFIS_", "_NAVAID_1_MODE", out _)
+        || TrySplit(varKey, "A32NX_EFIS_", "_NAVAID_2_MODE", out _)
+        || TrySplit(varKey, "A32NX_EFIS_", "_OANS_RANGE", out _)
+        || TrySplit(varKey, "A380X_EFIS_", "_LS_BUTTON_IS_ON", out _)
+        || TrySplit(varKey, "A380X_EFIS_", "_TRAF_BUTTON_IS_ON", out _)
+        || TrySplit(varKey, "A380X_EFIS_", "_ACTIVE_OVERLAY", out _);
+
+    /// <summary>
+    /// The FCU input event that moves <paramref name="varKey"/> to <paramref name="desired"/>,
+    /// given the live <paramref name="current"/> value, or null when the key is not one of
+    /// these shim-output controls (every other key must keep its existing routing) or when
+    /// there is nothing to send.
+    ///
+    /// A null <paramref name="current"/> (cold cache) is read as 0, matching the
+    /// `_fcuToggleEvents` precedent. It only affects the RELATIVE controls — the two absolute
+    /// SET controls ignore it entirely and therefore work from a cold cache, which the old
+    /// cycling navaid path could not.
+    /// </summary>
+    public static A380EfisCommand? Command(string varKey, double desired, double? current)
     {
         int want = (int)Math.Round(desired);
         int have = (int)Math.Round(current ?? 0);
 
-        // ---- Navaid 1 / 2 selector: one push cycles Off -> VOR -> ADF ----
+        // ---- Absolute setters: no current state needed, one event, no ordering ----
         if (TrySplit(varKey, "A32NX_EFIS_", "_NAVAID_1_MODE", out string? side))
-            return NavaidPushes(side!, 1, want, have);
+            return NavaidSet(side!, 1, want);
         if (TrySplit(varKey, "A32NX_EFIS_", "_NAVAID_2_MODE", out side))
-            return NavaidPushes(side!, 2, want, have);
-
-        // ---- OANS zoom: absolute, on the ND RANGE knob's own enum ----
+            return NavaidSet(side!, 2, want);
         if (TrySplit(varKey, "A32NX_EFIS_", "_OANS_RANGE", out side))
             return want is >= 0 and <= MaxOansZoom
-                ? new[] { new A380EfisCommand($"A32NX.FCU_EFIS_{side}_RANGE_SET", (uint)want) }
-                : Array.Empty<A380EfisCommand>();
+                ? new A380EfisCommand($"A32NX.FCU_EFIS_{side}_RANGE_SET", (uint)want)
+                : null;
 
         // ---- LS and TRAF: plain toggles, live-verified 0 -> 1 -> 0 ----
         if (TrySplit(varKey, "A380X_EFIS_", "_LS_BUTTON_IS_ON", out side))
@@ -87,17 +115,14 @@ public static class A380EfisCpControls
         // "cannot clear" announcement.
         if (TrySplit(varKey, "A380X_EFIS_", "_ACTIVE_OVERLAY", out side))
         {
-            if (want == have) return Array.Empty<A380EfisCommand>();
-            int button = want == OverlayOff ? have : want;
-            string? name = button switch
+            if (want == have) return null;
+            string? name = (want == OverlayOff ? have : want) switch
             {
                 OverlayWeather => "WX",
                 OverlayTerrain => "TERR",
                 _ => null
             };
-            return name == null
-                ? Array.Empty<A380EfisCommand>()
-                : new[] { new A380EfisCommand($"A32NX.FCU_EFIS_{side}_{name}_PUSH") };
+            return name == null ? null : new A380EfisCommand($"A32NX.FCU_EFIS_{side}_{name}_PUSH");
         }
 
         // ---- TRUE/MAG heading reference: one toggle pushbutton on the FCU ----
@@ -111,20 +136,13 @@ public static class A380EfisCpControls
         return null;
     }
 
-    /// <summary>Presses needed to walk <paramref name="have"/> round to <paramref name="want"/>
-    /// on the three-position navaid cycle. An unknown position sends nothing rather than
-    /// spraying presses at a selector whose state we cannot place.</summary>
-    private static IReadOnlyList<A380EfisCommand> NavaidPushes(string side, int knob, int want, int have)
-    {
-        int from = Array.IndexOf(NavaidCycle, have), to = Array.IndexOf(NavaidCycle, want);
-        if (from < 0 || to < 0) return Array.Empty<A380EfisCommand>();
-        int presses = (to - from + NavaidCycle.Length) % NavaidCycle.Length;
-        var evt = new A380EfisCommand($"A32NX.FCU_EFIS_{side}_NAVAID_{knob}_PUSH");
-        return Enumerable.Repeat(evt, presses).ToArray();
-    }
+    private static A380EfisCommand? NavaidSet(string side, int knob, int want) =>
+        want is >= 0 and <= MaxNavaid
+            ? new A380EfisCommand($"A32NX.FCU_EFIS_{side}_NAVAID_{knob}_SET", (uint)want)
+            : null;
 
-    private static IReadOnlyList<A380EfisCommand> Toggle(string evt, bool want, bool have) =>
-        want == have ? Array.Empty<A380EfisCommand>() : new[] { new A380EfisCommand(evt) };
+    private static A380EfisCommand? Toggle(string evt, bool want, bool have) =>
+        want == have ? null : new A380EfisCommand(evt);
 
     /// <summary>Match `{prefix}{L|R}{suffix}` and hand back the side.</summary>
     private static bool TrySplit(string varKey, string prefix, string suffix, out string? side)

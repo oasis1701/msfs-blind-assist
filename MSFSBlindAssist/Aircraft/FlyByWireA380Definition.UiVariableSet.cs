@@ -481,10 +481,11 @@ public partial class FlyByWireA380Definition
         // frame, so the direct L:var catch-alls further down are DEAD writes for them (the
         // combo snaps back and the pilot gets a silent no-op). Read A380EfisCpControls for
         // the evidence and the per-control actuator. MUST stay ahead of BOTH catch-alls.
-        if (A380EfisCpControls.Commands(varKey, value,
-                simConnect.GetCachedVariableValue(varKey)) is { } efisCmds)
+        if (A380EfisCpControls.Handles(varKey))
         {
-            FireEfisCpCommands(efisCmds, simConnect);
+            if (A380EfisCpControls.Command(varKey, value,
+                    simConnect.GetCachedVariableValue(varKey)) is { } efisCmd)
+                simConnect.SendEvent(efisCmd.EventName, efisCmd.Parameter);
             return true;
         }
         // EFIS baro STD/QNH. Event name + the push=STD polarity live in BaroModeEvent above —
@@ -660,62 +661,6 @@ public partial class FlyByWireA380Definition
             return true;
         }
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
-    }
-
-    // ----------------------------------------------------------------------
-    // EFIS-CP shim-output controls: fire the FCU events A380EfisCpControls resolved.
-    //
-    // A single command (every control except the navaid selector) goes out inline. A
-    // MULTI-press walk must be SPACED: the FCU samples its panel inputs once per frame and
-    // a push is a bool, not a counter, so two presses landing in the same frame register as
-    // ONE. Measured while probing the navaid selector — a second push sent immediately
-    // after the first did nothing, while the same push seconds later stepped the knob.
-    //
-    // Deliberately NOT Task.Run: HandleUIVariableSet is only ever called on the UI thread,
-    // and with no ConfigureAwait(false) the awaits resume there, so every SendEvent stays on
-    // the UI thread. Task.Run would move it onto a pool thread, racing SimConnectManager's
-    // UNLOCKED eventIds dictionary (the PMDG emergency-lights lesson). Serialized on a gate
-    // with latest-selection-wins, so a burst of combo commits can't interleave two walks
-    // into one selector.
-    // ----------------------------------------------------------------------
-    private const int EfisCpPressGapMs = 150;
-    private static readonly SemaphoreSlim _efisCpGate = new(1, 1);
-    private static int _efisCpRequest;
-
-    private static void FireEfisCpCommands(IReadOnlyList<A380EfisCommand> cmds, SimConnectManager simConnect)
-    {
-        if (cmds.Count == 0) return;
-        if (cmds.Count == 1)
-        {
-            simConnect.SendEvent(cmds[0].EventName, cmds[0].Parameter);
-            return;
-        }
-
-        async Task DriveAsync(int seq)
-        {
-            await _efisCpGate.WaitAsync();
-            try
-            {
-                for (int i = 0; i < cmds.Count; i++)
-                {
-                    // A later pick supersedes this walk — abandon it WHOLE rather than
-                    // leaving the selector parked halfway round the cycle.
-                    if (Volatile.Read(ref _efisCpRequest) != seq) return;
-                    if (i > 0) await Task.Delay(EfisCpPressGapMs);
-                    simConnect.SendEvent(cmds[i].EventName, cmds[i].Parameter);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Fire-and-forget: an escaped exception would vanish as an unobserved task
-                // fault, leaving the selector unmoved with nothing in the log to explain it.
-                Log.Debug("FBW_A380", $"EFIS-CP walk {cmds[0].EventName} failed: " +
-                                      $"{ex.GetType().Name}: {ex.Message}");
-            }
-            finally { _efisCpGate.Release(); }
-        }
-
-        _ = DriveAsync(Interlocked.Increment(ref _efisCpRequest));
     }
 
     // Apply a settable UI variable through the A380's existing HandleUIVariableSet
