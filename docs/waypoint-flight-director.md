@@ -71,6 +71,24 @@ the fix is just a point on the line, so the same field covers inbound courses an
 course leg sequences when you reach the fix (capture radius); an outbound radial simply holds until
 you turn the FD off or advance.
 
+### "To altitude" legs (CA / FA / VA)
+
+A SID's initial climb is usually an ARINC **course-to-altitude** leg — VCBI's ANUT1D opens with
+*"climb course 220° to 500 ft"*. These carry a course and a target altitude but **no fix at all**, so
+they reach the FD with no position. They are still completely specified, and the FD flies them:
+
+- **Laterally** as a pure course hold — there is no fix to measure a cross-track against, so the
+  intercept term drops out and the command just holds the course, still wind-corrected through
+  ground track.
+- **Vertically** at the profile's pitch limit until the altitude is made, then level. There is no
+  distance, so the required-FPA geometry has nothing to work with; a SID initial climb is flown at
+  the aircraft's climb capability anyway.
+- **Sequencing** on ALTITUDE rather than distance or abeam — "+" (at or above) ends on reaching it,
+  "−" (at or below) on being under it.
+
+Legs that are position-less *and* underspecified — a bare CI/VI intercept, or a fix whose
+coordinates could not be resolved — are still refused, because there is nothing to fly toward.
+
 **Magnetic → true is referenced correctly.** A magnetic course isn't relative to today's variation at
 your position — a VOR radial is defined by the *station's declination* (VORs are re-aligned rarely, so
 that can differ from the current value by several degrees), and an airway/CF leg by the local variation

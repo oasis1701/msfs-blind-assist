@@ -232,6 +232,15 @@ public class WaypointFlightDirectorManager : IDisposable
             return;
         }
 
+        // ARINC "to altitude" leg (CA/FA/VA — e.g. ANUT1D's "climb course 220° to 500 ft"):
+        // a course and a target altitude, but NO fix. Everything below measures distance and
+        // bearing to Latitude/Longitude, which for these is (0°N, 0°E), so they get their own law.
+        if (!slot.Value.HasPosition)
+        {
+            ProcessToAltitudeLeg(slot.Value);
+            return;
+        }
+
         double slotLat = slot.Value.Latitude, slotLon = slot.Value.Longitude;
         bool isCourseLeg = slot.Value.Course.HasValue;
         double distNm = NavigationCalculator.CalculateDistance(lat, lon, slotLat, slotLon);
@@ -367,6 +376,72 @@ public class WaypointFlightDirectorManager : IDisposable
         ApplyApAutoMute();
     }
 
+    /// <summary>Altitude band inside which a to-altitude leg counts as satisfied, and inside
+    /// which its pitch command levels off. 50 ft matches the crossing-constraint tolerance.</summary>
+    private const double ToAltitudeToleranceFt = 50.0;
+
+    /// <summary>
+    /// Lateral + vertical for an ARINC "to altitude" leg (CA/FA/VA). It carries a course and a
+    /// target altitude but no fix, so:
+    /// <list type="bullet">
+    /// <item>LATERAL degrades to a pure course HOLD — the cross-track term needs a fix to measure
+    /// against, and there isn't one. Still wind-corrected, because the error is taken against
+    /// ground track exactly as the course-leg branch does.</item>
+    /// <item>VERTICAL is flown at the profile's pitch limit until the altitude is met, then levels.
+    /// There is no distance, so the required-FPA geometry has nothing to work with — and a SID's
+    /// initial climb is flown at the aircraft's climb capability anyway.</item>
+    /// <item>ARRIVAL is by ALTITUDE, not by distance or abeam.</item>
+    /// </list>
+    /// </summary>
+    private void ProcessToAltitudeLeg(WaypointSlotData s)
+    {
+        if (ToAltitudeSatisfied(s)) { AdvanceLeg(); return; }
+
+        double effectiveTrack = groundSpeedKts >= profile.LowSpeedFloorKts ? groundTrack : hdgMag;
+        UpdateYawRate(effectiveTrack);
+
+        // Course hold. Both angles lifted into the TRUE frame with the variation each is
+        // referenced to, the same convention as the course-leg branch (east +: true = mag + var).
+        double refVar = s.ReferenceMagVar ?? magvar;
+        double courseTrue = (s.Course ?? effectiveTrack) + refVar;
+        double trackErr = G.NormalizeSigned(courseTrue - (effectiveTrack + magvar));
+        double cmdBank = G.CommandedBankDeg(trackErr, yawRateDegPerSec,
+                                            profile.KRollDegPerDegTrack, profile.BankRateLeadSec,
+                                            profile.MaxBankDeg);
+
+        // Level unless the altitude is still to be made; ±90 saturates the clamp, so the command
+        // is simply "climb (or descend) at the profile limit".
+        double cmdPitch = G.CommandedPitchDeg(0.0, EffectiveAoaDeg, profile.MaxPitchDeg);
+        if (s.CrossingAltitude.HasValue)
+        {
+            double err = s.CrossingAltitude.Value - altMsl;
+            if (Math.Abs(err) > ToAltitudeToleranceFt)
+                cmdPitch = G.CommandedPitchDeg(Math.Sign(err) * 90.0, EffectiveAoaDeg, profile.MaxPitchDeg);
+        }
+
+        SlewCommands(ref cmdBank, ref cmdPitch);
+        StartTonesIfNeeded();
+        if (desiredTone == null || currentTone == null) return;
+        ApplyBank(desiredTone, cmdBank);
+        desiredTone.UpdatePitch(cmdPitch);
+        ApplyBank(currentTone, StandardBank(actualBankDegSc));
+        currentTone.UpdatePitch(actualPitchDeg);
+        ApplyCenteredWaveform(cmdBank);
+        ApplyApAutoMute();
+    }
+
+    /// <summary>Whether a to-altitude leg's terminating condition is met. The ARINC descriptor
+    /// decides which side counts: a "+" (at or above) leg ends on reaching the altitude, a "-"
+    /// (at or below) leg on being under it.</summary>
+    private bool ToAltitudeSatisfied(WaypointSlotData s)
+    {
+        if (!s.CrossingAltitude.HasValue) return false;   // nothing to terminate on
+        double target = s.CrossingAltitude.Value;
+        return s.Constraint == AltitudeConstraintType.AtOrBelow
+            ? altMsl <= target + ToAltitudeToleranceFt
+            : altMsl >= target - ToAltitudeToleranceFt;
+    }
+
     private void AdvanceLeg()
     {
         legStartCaptured = false;   // re-measure the start distance for the new leg
@@ -401,14 +476,23 @@ public class WaypointFlightDirectorManager : IDisposable
         var s = tracker!.GetSlot(activeSlot);
         if (s == null) { Stop(announce: false); return; }
 
-        double distNm = NavigationCalculator.CalculateDistance(lat, lon, s.Value.Latitude, s.Value.Longitude);
-        double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, s.Value.Latitude, s.Value.Longitude, magvar);
         string skipNote = skipped switch
         {
             0 => "",
             1 => " Skipped 1 waypoint already behind you.",
             _ => $" Skipped {skipped} waypoints already behind you."
         };
+        // A to-altitude leg has no fix to measure to — name the course and altitude instead.
+        if (!s.Value.HasPosition)
+        {
+            string alt = s.Value.CrossingAltitude.HasValue ? $", {s.Value.CrossingAltitude.Value:F0} feet" : "";
+            string crs = s.Value.Course.HasValue ? $", course {s.Value.Course.Value:F0}" : "";
+            announcer.AnnounceImmediate($"Next, {s.Value.Ident}{crs}{alt}.{skipNote}");
+            return;
+        }
+
+        double distNm = NavigationCalculator.CalculateDistance(lat, lon, s.Value.Latitude, s.Value.Longitude);
+        double brgMag = NavigationCalculator.CalculateMagneticBearing(lat, lon, s.Value.Latitude, s.Value.Longitude, magvar);
         announcer.AnnounceImmediate($"Next, {s.Value.Ident}, {distNm:F0} miles, bearing {brgMag:F0}.{skipNote}");
     }
 

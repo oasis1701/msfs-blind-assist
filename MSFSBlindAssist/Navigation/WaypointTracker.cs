@@ -49,6 +49,8 @@ public class WaypointTracker
             CrossingAltitudeUpper = crossingAltitudeUpper,
             Constraint = constraint,
             Course = course,
+            // (0,0) is the sentinel navdata leaves for a leg with no fix of its own.
+            HasPosition = !(waypoint.Latitude == 0.0 && waypoint.Longitude == 0.0),
             ReferenceMagVar = course.HasValue ? referenceMagVar : null
         };
     }
@@ -64,7 +66,8 @@ public class WaypointTracker
         var t = _slots[slotNumber - 1];
         if (t == null) return null;
         return new WaypointSlotData(t.Ident, t.Latitude, t.Longitude,
-            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course, t.ReferenceMagVar);
+            t.CrossingAltitude, t.CrossingAltitudeUpper, t.Constraint, t.Course, t.ReferenceMagVar,
+            t.HasPosition);
     }
 
     /// <summary>
@@ -85,6 +88,17 @@ public class WaypointTracker
 
         if (tracked == null)
             return null;
+
+        // A course-to-altitude leg has no fix, so distance/bearing would be measured to (0°N, 0°E).
+        // Report what the leg actually is instead.
+        if (!tracked.HasPosition)
+        {
+            string alt = tracked.CrossingAltitude.HasValue
+                ? $", {tracked.CrossingAltitude.Value:F0} feet" : string.Empty;
+            return tracked.Course.HasValue
+                ? $"{tracked.Ident}, course {tracked.Course.Value:F0} degrees{alt}"
+                : $"{tracked.Ident}{alt}";
+        }
 
         // Calculate current distance and bearing from stored coordinates
         double distance = NavigationCalculator.CalculateDistance(
@@ -181,6 +195,11 @@ public class WaypointTracker
         public double? CrossingAltitudeUpper { get; set; }
         public AltitudeConstraintType Constraint { get; set; } = AltitudeConstraintType.None;
         public double? Course { get; set; }
+
+        /// <summary>False for an ARINC "to altitude" leg (CA/FA/VA) — it has a course and a target
+        /// altitude but NO fix, so Latitude/Longitude are 0 and every distance/bearing derived from
+        /// them is meaningless. The FD flies these as a course hold terminated by altitude.</summary>
+        public bool HasPosition { get; set; } = true;
         public double? ReferenceMagVar { get; set; }
     }
 }
@@ -196,4 +215,7 @@ public readonly record struct WaypointSlotData(
     double? CrossingAltitudeUpper,
     AltitudeConstraintType Constraint,
     double? Course,
-    double? ReferenceMagVar);
+    double? ReferenceMagVar,
+    /// <summary>False for an ARINC "to altitude" leg (CA/FA/VA): no fix, so Latitude/Longitude
+    /// are 0 and any distance or bearing from them is meaningless.</summary>
+    bool HasPosition = true);

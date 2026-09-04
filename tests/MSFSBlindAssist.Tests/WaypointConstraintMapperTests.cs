@@ -33,6 +33,28 @@ public class WaypointConstraintMapperTests
             IsTrueCourse = isTrueCourse
         };
 
+    // --- ARINC "to altitude" legs (CA/FA/VA), which carry no fix --------------
+
+    [Fact]
+    public void The_ANUT1D_climb_leg_maps_to_a_course_and_a_terminating_altitude()
+    {
+        // Taken verbatim from the fs2024 navdata for VCBI ANUT1D (approach_id 48466, leg 2):
+        // type CA, alt_descriptor "+", altitude1 500, course 220, and NO fix — fix_ident, fix_laty
+        // and fix_lonx are all null, which is why the leg reaches the FD at (0,0).
+        //
+        // This is what makes such a leg trackable despite having no position: the mapper yields
+        // everything needed to fly it — a course to hold and an altitude to stop the climb at. The
+        // EFB's track gate tests exactly these three, so a regression here silently makes the
+        // initial climb of most SIDs untrackable again.
+        var (alt, upper, constraint, course) =
+            WaypointConstraintMapper.FromFix(Fix("", 500, null, 220.0, descriptor: "+"));
+
+        Assert.Equal(500.0, alt!.Value, Eps);
+        Assert.Null(upper);
+        Assert.Equal(AltitudeConstraintType.AtOrAbove, constraint);
+        Assert.Equal(220.0, course!.Value, Eps);
+    }
+
     // --- Formatted-string fallback path (no raw descriptor) ----------------
 
     [Fact]

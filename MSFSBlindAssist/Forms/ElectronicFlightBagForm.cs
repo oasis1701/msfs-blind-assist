@@ -830,15 +830,30 @@ public partial class ElectronicFlightBagForm : Form
             return;
         }
 
-        // Reject position-less legs. ARINC maneuver legs (CA/VA/VM/FM "to altitude", CI/VI intercept,
-        // CD/VD/CR/VR — ~14% of legs, the initial climb of most SIDs and missed-approach heading legs)
-        // have no fix and parse to (0,0); so does any fix whose coordinates couldn't be resolved.
-        // Tracking one would steer the FD toward (0°N, 0°E). Refuse it (the altitude/course would be
-        // useless without a position anyway).
+        // Position-less legs. ARINC maneuver legs (CA/VA/FA "to altitude", CI/VI intercept,
+        // CD/VD/CR/VR — ~14% of legs, the initial climb of most SIDs and missed-approach heading
+        // legs) have no fix and parse to (0,0); so does any fix whose coordinates could not be
+        // resolved. Tracking one as a normal leg would steer the FD toward (0°N, 0°E).
+        //
+        // A "to altitude" leg is the exception, and it is a large one: ANUT1D out of VCBI opens with
+        // "climb course 220° to 500 ft", which is completely specified — a course to hold and an
+        // altitude to stop at, needing no position whatsoever. The FD flies those as a course hold
+        // terminated by altitude (WaypointFlightDirectorManager.ProcessToAltitudeLeg), so accept a
+        // position-less leg when it carries BOTH a course and an altitude, and keep refusing the
+        // rest — an unresolved fix, or a bare intercept leg with nothing to fly toward.
         if (waypoint.Latitude == 0.0 && waypoint.Longitude == 0.0)
         {
-            _announcer.Announce($"{waypoint.Ident} has no position and cannot be tracked");
-            return;
+            // Ask the same mapper the Track Fix dialog uses, so "does this leg carry a course and a
+            // terminating altitude" is decided in exactly one place.
+            var (toAlt, _, toConstraint, toCourse) =
+                Navigation.WaypointConstraintMapper.FromFix(waypoint);
+            bool flyableWithoutPosition = toCourse.HasValue && toAlt.HasValue
+                                          && toConstraint != Navigation.AltitudeConstraintType.None;
+            if (!flyableWithoutPosition)
+            {
+                _announcer.Announce($"{waypoint.Ident} has no position and cannot be tracked");
+                return;
+            }
         }
 
         // Hand off to the Track Fix dialog PRE-POPULATED with this fix + slot + its mapped altitude
