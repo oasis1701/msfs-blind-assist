@@ -899,9 +899,19 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // The old per-key button panel was impractical (one digit at a time) and has been removed.
 
         // ---- INTERIOR LIGHTING ----
-        Sel("A380X_OVHD_ANN_LT_POSITION", "Annunciator Lights",
-            new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
-        Sel("A32NX_OVHD_INTLT_ANN", "Integral Lights",
+        // ANN LT — the overhead annunciator-light switch (cockpit node SWITCH_OVHD_INTLT_ANNLT),
+        // Test / Bright / Dim. A32NX_OVHD_INTLT_ANN is the INPUT; A380_Cockpit_Behavior.xml's
+        // VARIABLE_MAPPING block copies it to A380X_OVHD_INTLT_ANN at 18 Hz for the button
+        // emissives, so never write that mirror.
+        //
+        // ⚠️ A second combo, "Annunciator Lights" on A380X_OVHD_ANN_LT_POSITION, used to sit
+        // beside this one and was a PHANTOM: FBW lists that name in a380-simvars.md but nothing
+        // in the aircraft reads or writes it (checked case-insensitively across the installed
+        // package). MSFSBA's own write CREATED it, so it read back whatever was last set and
+        // looked like it worked — two entries for one switch, one of them inert. Removed
+        // 2026-09-03; this one inherits the cockpit's own label. Do not re-add a control for a
+        // name found only in FBW's simvar docs without checking the aircraft actually uses it.
+        Sel("A32NX_OVHD_INTLT_ANN", "Annunciator Lights",
             new Dictionary<double, string> { [0] = "Test", [1] = "Bright", [2] = "Dim" });
         // Cockpit lighting preset load / save (the only cockpit-side light control on this
         // build — the individual dome/flood knobs are not modelled as L:vars; lighting is
