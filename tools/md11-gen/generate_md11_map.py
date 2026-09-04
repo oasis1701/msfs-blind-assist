@@ -36,10 +36,14 @@ import re
 import sys
 from collections import Counter, defaultdict
 
-DEFAULT_PKG = (
-    r"C:\Users\decla\AppData\Local\Packages\Microsoft.FlightSimulator_8wekyb3d8bbwe"
-    r"\LocalCache\Packages\Community\tfdidesign-aircraft-md11"
-)
+import md11_paths
+
+# No hardcoded package path. The MD-11 is FOUND (md11_paths) across FS2020 and
+# FS2024, MS Store, Steam and external/custom package folders. The previous
+# default was one developer's absolute FS2020 Store path and worked nowhere
+# else; the previous wasm path guess omitted the "common" level that a real
+# FS2024 install has, and a miss silently produced a map with NO wasm-derived
+# L:vars (the PFD speed tape and V-speeds, which have no other source).
 
 # ---------------------------------------------------------------------------
 # Template classification.
@@ -612,21 +616,90 @@ def wasm_vars(wasm_path):
     return control, export
 
 
+def _exit_no_wasm(package_dir):
+    """One owner for the missing-wasm error: both the --pkg path and the
+    discovery path reach it, and they must say the same thing."""
+    sys.exit(
+        "Found the MD-11 package but not %s inside it:\n  %s\n"
+        "Searched every folder under SimObjects/. Pass --wasm to point at it "
+        "directly." % (md11_paths.WASM_NAME, package_dir)
+    )
+
+
+def resolve_paths(pkg_arg, wasm_arg):
+    """Settle the package + wasm paths, or exit with a message explaining why not.
+
+    Every failure exits non-zero WITHOUT writing a map: a partial map is worse
+    than none, because it silently drops the wasm-derived read-outs.
+    """
+    if pkg_arg:
+        pkg = pkg_arg
+        if not os.path.isdir(os.path.join(pkg, md11_paths.PACKAGE_MARKER)):
+            sys.exit(
+                "Not an MD-11 package: %s\n"
+                "Expected it to contain %s"
+                % (pkg, md11_paths.PACKAGE_MARKER)
+            )
+        wasm = wasm_arg or md11_paths.find_wasm(pkg)
+        if not wasm:
+            _exit_no_wasm(pkg)
+        return pkg, wasm
+
+    finds = md11_paths.discover()
+
+    if not finds:
+        roots = md11_paths.describe_roots()
+        searched = ("\n".join("  " + r for r in roots)
+                    if roots else "  (no MSFS package folders found at all)")
+        sys.exit(
+            "Could not find the TFDi MD-11 on this PC.\n"
+            "Searched these package folders (and up to %d levels below each) "
+            "for a folder containing %s:\n%s\n"
+            "If it lives somewhere else, pass --pkg <folder>."
+            % (md11_paths.MAX_DEPTH, md11_paths.PACKAGE_MARKER, searched)
+        )
+
+    if len(finds) > 1:
+        print("The MD-11 is installed in more than one place:")
+        for i, f in enumerate(finds, 1):
+            print("  %d) %s  %s" % (i, f.sim_label, f.package_dir))
+        if not sys.stdin.isatty():
+            sys.exit(
+                "Re-run with --pkg <folder> to choose one "
+                "(no terminal attached, so cannot prompt)."
+            )
+        chosen = None
+        while chosen is None:
+            try:
+                answer = input("Which one? [1-%d] " % len(finds))
+            except (EOFError, KeyboardInterrupt):
+                sys.exit("\nCancelled.")
+            chosen = md11_paths.parse_choice(answer, len(finds))
+            if chosen is None:
+                print("Enter a number from 1 to %d." % len(finds))
+        find = finds[chosen]
+    else:
+        find = finds[0]
+
+    print("Using %s: %s" % (find.sim_label, find.package_dir))
+
+    wasm = wasm_arg or find.wasm_path
+    if not wasm:
+        _exit_no_wasm(find.package_dir)
+    return find.package_dir, wasm
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pkg", default=DEFAULT_PKG)
+    ap.add_argument("--pkg", default=None,
+                    help="MD-11 package folder. Omit to search this PC.")
     ap.add_argument("--wasm", default=None)
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "md11_control_map.json"))
     args = ap.parse_args()
 
-    wasm = args.wasm
-    if wasm is None:
-        guess = os.path.join(
-            args.pkg, "SimObjects", "Airplanes", "TFDi_Design_MD-11", "panel", "md11host.wasm"
-        )
-        wasm = guess if os.path.isfile(guess) else None
+    pkg, wasm = resolve_paths(args.pkg, args.wasm)
 
-    controls, stats = collect(args.pkg)
+    controls, stats = collect(pkg)
     all_vars, export_vars = wasm_vars(wasm)
 
     referenced = {c["node_id"] for c in controls} | {
