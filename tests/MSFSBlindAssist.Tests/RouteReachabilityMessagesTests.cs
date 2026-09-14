@@ -1,0 +1,79 @@
+// Exact-string tests for RouteReachabilityMessages — the only new speech the route reachability
+// change adds. A blind pilot hears these once, so the wording is pinned letter for letter.
+// Distances are formatted by the caller's formatter (the manager passes its own ground-distance
+// formatter); these tests pass explicit metres and feet formatters so no global unit setting is
+// touched.
+
+using MSFSBlindAssist.Navigation;
+
+namespace MSFSBlindAssist.Tests;
+
+public class RouteReachabilityMessagesTests
+{
+    private static readonly Func<double, string> Metres = m => $"{Math.Round(m)} metres";
+    private static readonly Func<double, string> Feet = m => $"{Math.Round(m * 3.28084)} feet";
+
+    [Fact]
+    public void The_destination_refusal_names_the_destination()
+    {
+        Assert.Equal(
+            "No taxi route to Parking 40. It isn't connected to the taxiway network you're on.",
+            RouteReachabilityMessages.DestinationNotConnected("Parking 40"));
+    }
+
+    [Fact]
+    public void The_runway_refusal_names_the_runway()
+    {
+        Assert.Equal(
+            "No taxi route from here. You aren't on the connected taxiway network, and the way onto it crosses runway 13.",
+            RouteReachabilityMessages.FirstLegCrossesRunway("13"));
+    }
+
+    [Fact]
+    public void The_unmapped_leg_warning_names_the_first_taxiway_in_metres()
+    {
+        Assert.Equal(
+            "Your position isn't connected to the taxiway network. The first 230 metres to taxiway B aren't mapped.",
+            RouteReachabilityMessages.UnmappedFirstLeg(230, Metres, "B"));
+    }
+
+    [Fact]
+    public void The_unmapped_leg_warning_uses_the_callers_unit()
+    {
+        Assert.Equal(
+            "Your position isn't connected to the taxiway network. The first 755 feet to taxiway B aren't mapped.",
+            RouteReachabilityMessages.UnmappedFirstLeg(230, Feet, "B"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void Without_a_named_taxiway_the_warning_speaks_of_the_route(string? name)
+    {
+        Assert.Equal(
+            "Your position isn't connected to the taxiway network. The first 230 metres of the route aren't mapped.",
+            RouteReachabilityMessages.UnmappedFirstLeg(230, Metres, name));
+    }
+
+    [Fact]
+    public void The_recalculation_refusals_lead_with_off_route()
+    {
+        Assert.Equal(
+            "Off route. Unable to recalculate. Parking 40 isn't connected to the taxiway network you're on.",
+            RouteReachabilityMessages.RecalculationRefusedDestination("Parking 40"));
+        Assert.Equal(
+            "Off route. Unable to recalculate. The way onto the connected taxiway network crosses runway 13.",
+            RouteReachabilityMessages.RecalculationRefusedRunway("13"));
+    }
+
+    [Fact]
+    public void Start_speech_puts_the_warning_before_the_turn_cue_in_one_utterance()
+    {
+        Assert.Equal("W. C.", RouteReachabilityMessages.JoinStartSpeech("W.", "C."));
+        Assert.Equal("W.", RouteReachabilityMessages.JoinStartSpeech("W.", null));
+        Assert.Equal("C.", RouteReachabilityMessages.JoinStartSpeech(null, "C."));
+        Assert.Equal("C.", RouteReachabilityMessages.JoinStartSpeech("", "C."));
+        Assert.Null(RouteReachabilityMessages.JoinStartSpeech(null, ""));
+    }
+}
