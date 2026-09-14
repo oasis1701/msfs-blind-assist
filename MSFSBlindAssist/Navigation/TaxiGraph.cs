@@ -799,9 +799,21 @@ public class TaxiGraph
     /// kind: the sim offers it as a destination, so it has to be reachable, and its stub
     /// necessarily joins the network at exactly one place.</para>
     ///
+    /// <para>"Contains a stand" means the island carries a navdata parking LEAD-IN — an edge
+    /// whose <see cref="TaxiEdge.PathType"/> is "P" — and NEVER merely a node typed
+    /// <see cref="TaxiNodeType.Parking"/>. Build's parking pass stamps that type on whichever
+    /// node is nearest a parking spot within 100 m, in ANY component, so a taxiway-only island
+    /// running past a stand picks it up by proximity alone; keyed on the node type, that
+    /// island would be bridged and the S5 defence silently undone. Type "P" rows are exactly
+    /// the stand lead-ins in both navdata builds (fs2024: 318,973 rows, every one ending on a
+    /// "P" endpoint; no non-"P" row carries a "P" endpoint; fs2020 the same).</para>
+    ///
     /// <para>One bridge per island, at the closest pair, so the island stays a DEAD-END
     /// SPUR: no main-component route can be re-routed through a stand. The main-side
-    /// endpoint is never itself a stand — a gate is not a through-route to another gate —
+    /// endpoint is never itself a stand, nor a node that lies only on another stand's lead-in
+    /// (<see cref="LiesOnlyOnParkingLeadIns"/>) — a gate is not a through-route to another
+    /// gate, and a bridge landing mid-way down a neighbour's lead-in line would steer the
+    /// pilot along that stand's centreline and across the apron between the two —
     /// and the island-side endpoint is whichever of its nodes is nearest, which for a stub
     /// is the open connector rather than the stand 39 m further out.</para>
     /// </summary>
@@ -839,6 +851,7 @@ public class TaxiGraph
         {
             if (node.ComponentId != mainComponentId) continue;
             if (node.Type == TaxiNodeType.Parking) continue;
+            if (LiesOnlyOnParkingLeadIns(node.NodeId)) continue;
             var key = ((long)Math.Floor(node.Latitude / latCell),
                        (long)Math.Floor(node.Longitude / lonCell));
             if (!grid.TryGetValue(key, out var bucket))
@@ -861,7 +874,7 @@ public class TaxiGraph
         {
             bool hasStand = false;
             foreach (var n in island)
-                if (n.Type == TaxiNodeType.Parking) { hasStand = true; break; }
+                if (HasParkingLeadIn(n.NodeId)) { hasStand = true; break; }
             if (!hasStand) continue;
 
             TaxiNode? bestIsland = null, bestMain = null;
@@ -897,6 +910,31 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
             node.ComponentId = -1;
         AssignConnectedComponents();
+    }
+
+    private static bool IsParkingLeadIn(TaxiEdge edge) =>
+        string.Equals(edge.PathType, "P", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True when any edge at the node is a navdata parking lead-in (type "P").</summary>
+    private bool HasParkingLeadIn(int nodeId)
+    {
+        if (!Adjacency.TryGetValue(nodeId, out var edges)) return false;
+        foreach (var e in edges)
+            if (IsParkingLeadIn(e)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// True when the node has edges and EVERY one is a parking lead-in — an interior point of
+    /// a stand's own lead-in line rather than part of the taxiway/apron network. A lead-in's
+    /// taxiway end is shared with network edges and so does not qualify.
+    /// </summary>
+    private bool LiesOnlyOnParkingLeadIns(int nodeId)
+    {
+        if (!Adjacency.TryGetValue(nodeId, out var edges) || edges.Count == 0) return false;
+        foreach (var e in edges)
+            if (!IsParkingLeadIn(e)) return false;
+        return true;
     }
 
     /// <summary>

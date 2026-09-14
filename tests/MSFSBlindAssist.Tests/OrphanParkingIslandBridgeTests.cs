@@ -172,6 +172,85 @@ public class OrphanParkingIslandBridgeTests
         Assert.NotEqual(TaxiwayNode(g, 120.0).ComponentId, s5.ComponentId);
     }
 
+    [Fact]
+    public void A_taxiway_island_labelled_parking_by_proximity_is_left_disconnected()
+    {
+        // The same S5 island, but with a stand 5 m past its far end. Build's parking pass
+        // stamps TaxiNodeType.Parking on whichever node is NEAREST a parking spot, in any
+        // component, so the island's end node becomes "Parking" by proximity alone. The
+        // island carries no parking LEAD-IN ("P" path), so it is still a taxiway island and
+        // the bridge must not undo the S5 defence on the strength of that label.
+        var paths = MainTaxiway();
+        paths.Add(new TaxiPath
+        {
+            Name = "S5", Type = "PT", Width = 75.0,
+            StartLat = 12.0 * DEG_PER_M, StartLon = 120.0 * DEG_PER_M,
+            EndLat = 60.0 * DEG_PER_M,   EndLon = 120.0 * DEG_PER_M,
+        });
+        var parking = new List<ParkingSpot>
+        {
+            new ParkingSpot { Name = "B", Number = 20,
+                              Latitude = 65.0 * DEG_PER_M, Longitude = 120.0 * DEG_PER_M }
+        };
+
+        var g = TaxiGraph.Build(paths, parking, new List<StartPosition>());
+
+        var s5 = g.Nodes.Values.Where(n => n.TaxiwayNames.Contains("S5")).ToList();
+        Assert.Contains(s5, n => n.Type == TaxiNodeType.Parking); // the label did land
+        Assert.All(s5, n => Assert.NotEqual(TaxiwayNode(g, 120.0).ComponentId, n.ComponentId));
+    }
+
+    [Fact]
+    public void The_bridge_never_lands_mid_way_down_a_neighbouring_stands_lead_in()
+    {
+        // Neighbour stand on the network: a two-segment lead-in north off the taxiway node at
+        // 60 m east, with an interior node at 20 m north that lies ONLY on that lead-in.
+        var paths = MainTaxiway();
+        double lon60 = 60.0 * DEG_PER_M;
+        paths.Add(new TaxiPath
+        {
+            Name = "", Type = "P", Width = 60.0,
+            StartLat = 0.0,              StartLon = lon60,
+            EndLat = 20.0 * DEG_PER_M,   EndLon = lon60,
+        });
+        paths.Add(new TaxiPath
+        {
+            Name = "", Type = "P", Width = 60.0,
+            StartLat = 20.0 * DEG_PER_M, StartLon = lon60,
+            EndLat = 59.0 * DEG_PER_M,   EndLon = lon60,
+        });
+
+        // Orphan stand stub whose open end (85 E, 30 N) is 26.9 m from the neighbour's
+        // interior lead-in node but 39.1 m from the taxiway node at 60 E.
+        double lon85 = 85.0 * DEG_PER_M;
+        paths.Add(new TaxiPath
+        {
+            Name = "", Type = "P", Width = 60.0,
+            StartLat = 30.0 * DEG_PER_M, StartLon = lon85,
+            EndLat = 69.0 * DEG_PER_M,   EndLon = lon85,
+        });
+        var parking = new List<ParkingSpot>
+        {
+            new ParkingSpot { Name = "B", Number = 16,
+                              Latitude = 59.0 * DEG_PER_M, Longitude = lon60 },
+            new ParkingSpot { Name = "B", Number = 18, Suffix = "R",
+                              Latitude = 69.0 * DEG_PER_M, Longitude = lon85 },
+        };
+
+        var g = TaxiGraph.Build(paths, parking, new List<StartPosition>());
+
+        var openEnd = g.Nodes.Values.Single(n =>
+            Math.Abs(n.Latitude - 30.0 * DEG_PER_M) < 1e-9 && Math.Abs(n.Longitude - lon85) < 1e-9);
+        var taxiway = TaxiwayNode(g, 120.0);
+        Assert.Equal(taxiway.ComponentId, openEnd.ComponentId);
+
+        // The open end's only way onto the network is the bridge, and it lands on taxiway U.
+        var bridge = Assert.Single(g.Adjacency[openEnd.NodeId],
+                                   e => g.Nodes[e.ToNodeId].Latitude < 29.0 * DEG_PER_M);
+        Assert.Contains("U", g.Nodes[bridge.ToNodeId].TaxiwayNames);
+        Assert.InRange(bridge.DistanceMeters, 38.0, 40.0);
+    }
+
     // ENSB (Svalbard) latitude. One degree of longitude is ~23,000 m there, not 111,132,
     // so a search grid keyed on a uniform degree cell covers only 50 x cos(78 deg) = 10 m
     // east-west and never sees a candidate 30 m away. The stub below is offset EAST, which
