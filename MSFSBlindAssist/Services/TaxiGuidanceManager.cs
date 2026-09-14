@@ -475,12 +475,16 @@ public partial class TaxiGuidanceManager : IDisposable
     // INITIAL_TURN_CUE_DEG / INITIAL_TURN_UTURN_DEG consts were deleted rather than
     // left in place, so nobody tunes a number here and wonders why nothing changes.
     private bool _initialTurnCueAnnounced = false;
-    // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
-    // and taxiway-change callouts so they don't stomp that (longer, safety-
-    // critical) warning at guidance start — 2026-06-13: "Crossing taxiway G" cut
-    // the warning off mid-sentence. Hold-shorts, runway-crossing callouts, and the
-    // lineup bailout are NOT gated by this.
-    private const double REACH_WARNING_CHATTER_GRACE_SEC = 8.0;
+    // After a route-reach warning OR an unmapped-start warning (either "start warning"),
+    // briefly hold the INFORMATIONAL taxiway-crossing, taxiway-change, curve and
+    // final-destination-ahead callouts so they don't stomp that (longer, safety-critical)
+    // warning at guidance start — 2026-06-13: "Crossing taxiway G" cut the reach warning
+    // off mid-sentence, and the same collision reproduces for the unmapped-start warning
+    // on the very first frame (Progressive Taxi cuts the warning itself; a normal
+    // Calculate cuts the whole standstill utterance ~33 ms later). Hold-shorts,
+    // runway-crossing callouts, lineup, speed warnings, and "Straighten." are NOT gated
+    // by this.
+    private const double START_WARNING_CHATTER_GRACE_SEC = 8.0;
     private DateTime _startChatterSuppressUntil = DateTime.MinValue;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
@@ -1610,11 +1614,14 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_route == null || _route.Segments.Count == 0) return;
 
-        // If this route can't reach its runway, the form speaks the reach warning
-        // right after this call. Open a short grace window so the informational
-        // taxiway-crossing / taxiway-change callouts don't stomp it at start.
-        _startChatterSuppressUntil = LastRouteReachWarning != null
-            ? DateTime.UtcNow.AddSeconds(REACH_WARNING_CHATTER_GRACE_SEC)
+        // If this route can't reach its runway, or leaves a disconnected position for the
+        // main network, the form's standstill utterance (or the first-taxiing-frame
+        // one-shot, for paths the form doesn't run) speaks that warning right after this
+        // call -- both warnings are still unconsumed here. Open a short grace window so
+        // the informational taxiway-crossing / taxiway-change / curve / destination-ahead
+        // callouts don't stomp it at start.
+        _startChatterSuppressUntil = (LastRouteReachWarning != null || LastRouteUnmappedStartWarning != null)
+            ? DateTime.UtcNow.AddSeconds(START_WARNING_CHATTER_GRACE_SEC)
             : DateTime.MinValue;
 
         _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;

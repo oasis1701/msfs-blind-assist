@@ -15,7 +15,16 @@ public partial class TaxiGuidanceManager
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {
-            if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced)
+            // Hold during the start-warning grace window (_startChatterSuppressUntil,
+            // armed by StartGuidance whenever a route-reach or unmapped-start warning
+            // exists): this callout would otherwise cut off a warning spoken by the
+            // form's standstill utterance or the first-frame one-shot at a standstill.
+            // Wait rather than skip -- don't set _approachAnnounced, so it still fires
+            // normally on the first frame after the window closes if it still applies.
+            // TryAnnounceCurve and the advance-notice block below wait the same way;
+            // "turn now" already waits on _approachAnnounced so it needs no extra gate.
+            if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
+                DateTime.UtcNow >= _startChatterSuppressUntil)
             {
                 AnnounceInstruction($"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
@@ -78,7 +87,10 @@ public partial class TaxiGuidanceManager
 
         // Advance notice (speed-scaled). Terse: direction + taxiway + angle for sharp.
         // Speed-slow warning is owned by CheckSpeedWarnings — don't duplicate it here.
-        if (distToTargetM < approachDist && !_approachAnnounced)
+        // Held during the start-warning grace window (see the comment above in this
+        // method) so it can't cut off a start warning at a standstill.
+        if (distToTargetM < approachDist && !_approachAnnounced &&
+            DateTime.UtcNow >= _startChatterSuppressUntil)
         {
             string distStr = distToTargetM > 15 ? $"In {FormatDistance(distToTargetM)}, " : "";
             // Direction is computed from the aircraft's CURRENT heading toward the
@@ -127,6 +139,11 @@ public partial class TaxiGuidanceManager
     {
         if (_route == null || _route.Segments.Count == 0 ||
             _currentSegmentIndex >= _route.Segments.Count) return;
+
+        // Hold during the start-warning grace window (see the comment in
+        // CheckUpcomingAnnouncements) — return before touching _curveAnnouncedSign so
+        // the cue still fires normally once the window closes.
+        if (DateTime.UtcNow < _startChatterSuppressUntil) return;
 
         var (lats, lons) = RoutePoints();
         double cum = GuidanceGeometry.CumulativeTurnDeg(
