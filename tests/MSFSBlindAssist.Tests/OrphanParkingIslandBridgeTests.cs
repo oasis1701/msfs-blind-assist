@@ -12,6 +12,8 @@
 //   - The island end of a bridge is never a stand or a hold-short node.
 //   - One bridge per island, at the closest valid pair within 50 m, typed
 //     TaxiGraph.StandBridgePathType in both directions.
+//   - The network end is never a stand, a hold-short node, a node on runway pavement or a node on
+//     another stand's lead-in chain, and a pair whose straight line touches a runway is skipped.
 //
 // Fixtures are shaped like navdata: lead-ins are Type "P", StartType "N", EndType "P".
 // Geometry sits on the equator, where TaxiGraph's 111,132 m/deg makes metres = degrees x
@@ -193,5 +195,121 @@ public class OrphanParkingIslandBridgeTests
         // After a bridge the renumbered component that holds both is the main one.
         var near = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
         Assert.Equal(NodeAt(near, 51, 120).ComponentId, near.MainComponentId);
+    }
+
+    // ---------------------------------------------------------------- network end and runways
+
+    /// <summary>Runway 09/27 on the equator from (0,0) to (0,1000 m E).</summary>
+    private static List<StartPosition> Starts09And27() => new()
+    {
+        new() { RunwayName = "09", Type = "R", Heading = 90, Latitude = 0, Longitude = 0 },
+        new() { RunwayName = "27", Type = "R", Heading = 270, Latitude = 0, Longitude = 1000 * M },
+    };
+
+    private static List<Runway> Runway09(double widthFt) => new()
+    {
+        new() { RunwayID = "09", StartLat = 0, StartLon = 0, EndLat = 0, EndLon = 1000 * M, Width = widthFt },
+    };
+
+    [Fact]
+    public void A_hold_short_node_is_never_the_network_end()
+    {
+        // A1 runs north from U120 to a hold line (HSND) at 30 N. The stub's connector at
+        // (40 N, 125 E) is 11.2 m from that hold node but 40.3 m from U120: the bridge must
+        // take U120.
+        var paths = MainTaxiwayU();
+        paths.Add(Taxiway("A1", 0, 120, 30, 120, endType: "HSND"));
+        paths.Add(LeadIn(40, 125, 79, 125));
+        var g = BuildGraph(paths);
+
+        var bridges = BridgeEdges(g);
+        var connector = NodeAt(g, 40, 125);
+        Assert.Equal(2, bridges.Count);
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == NodeAt(g, 0, 120).NodeId);
+        Assert.DoesNotContain(bridges, e => e.ToNodeId == NodeAt(g, 30, 120).NodeId);
+    }
+
+    [Fact]
+    public void A_network_node_on_runway_pavement_is_never_the_network_end()
+    {
+        // E1 ends on the runway centreline at 500 E. The stub's connector 35 m south of the
+        // centreline is within 50 m of only that on-pavement node, so nothing is bridged.
+        var paths = new List<TaxiPath>
+        {
+            Taxiway("E1", 60, 500, 30, 500),
+            Taxiway("E1", 30, 500, 0, 500),
+            LeadIn(-35, 500, -74, 500),
+        };
+        var g = BuildGraph(paths, starts: Starts09And27(), runways: Runway09(150));
+
+        Assert.Single(g.RunwayCenterlines);
+        Assert.Empty(BridgeEdges(g));
+    }
+
+    [Fact]
+    public void A_bridge_line_that_would_cross_a_runway_uses_the_next_valid_pair()
+    {
+        // Runway pavement half-width 9.14 m (60 ft). The main network runs south of the runway
+        // (S, lat -12), crosses it on X at 600 E, and returns north on N to 340 E. The stub's
+        // connector at (12 N, 300 E) is 24 m from S300, but that line crosses the runway; the
+        // next pair, N340 at 40 m along lat 12 N, stays clear of the pavement.
+        var paths = new List<TaxiPath>
+        {
+            Taxiway("S", -12, 100, -12, 300),
+            Taxiway("S", -12, 300, -12, 600),
+            Taxiway("X", -12, 600, 12, 600),
+            Taxiway("N", 12, 600, 12, 340),
+            LeadIn(12, 300, 51, 300),
+        };
+        var g = BuildGraph(paths, starts: Starts09And27(), runways: Runway09(60));
+
+        var bridges = BridgeEdges(g);
+        var connector = NodeAt(g, 12, 300);
+        Assert.Equal(2, bridges.Count);
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == NodeAt(g, 12, 340).NodeId);
+        Assert.All(bridges, e => Assert.InRange(e.DistanceMeters, 39.9, 40.1));
+    }
+
+    [Fact]
+    public void The_bridge_never_lands_on_a_neighbouring_stands_lead_in_bend()
+    {
+        // Navdata draws a neighbour's multi-segment lead-in as an unnamed PT row from U60 to a
+        // bend at 20 N, then a P row to its stand at 59 N. The orphan connector at (30 N, 85 E) is
+        // 26.9 m from that bend but 39.05 m from U60: the bend is on the neighbour's lead-in chain
+        // and must never be the network end.
+        var paths = MainTaxiwayU();
+        paths.Add(Taxiway("", 0, 60, 20, 60, type: "PT"));
+        paths.Add(LeadIn(20, 60, 59, 60));
+        paths.Add(LeadIn(30, 85, 69, 85));
+        var g = BuildGraph(paths);
+
+        var bridges = BridgeEdges(g);
+        var connector = NodeAt(g, 30, 85);
+        Assert.Equal(2, bridges.Count);
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == NodeAt(g, 0, 60).NodeId);
+        Assert.All(bridges, e => Assert.InRange(e.DistanceMeters, 38.9, 39.2));
+    }
+
+    [Fact]
+    public void The_lead_in_chain_stops_at_the_cap_on_a_long_unbranched_path()
+    {
+        // A tiny airport whose only taxiway L is one unbranched path from a stand at (0,0) out to a
+        // dead end at 205 E. The chain rule marks nodes within 100 m of the stand (40 E and 95 E)
+        // and must stop there, so the dead end at 205 E still takes the orphan stub 20 m north.
+        // This test already passes before the change; it guards the cap against a future rule
+        // that would exclude the whole path.
+        var paths = new List<TaxiPath>
+        {
+            LeadIn(0, 40, 0, 0),
+            Taxiway("L", 0, 40, 0, 95),
+            Taxiway("L", 0, 95, 0, 150),
+            Taxiway("L", 0, 150, 0, 205),
+            LeadIn(20, 205, 59, 205),
+        };
+        var g = BuildGraph(paths);
+
+        var bridges = BridgeEdges(g);
+        Assert.Equal(2, bridges.Count);
+        Assert.Contains(bridges, e => e.FromNodeId == NodeAt(g, 20, 205).NodeId && e.ToNodeId == NodeAt(g, 0, 205).NodeId);
     }
 }

@@ -796,6 +796,14 @@ public class TaxiGraph
     private const double MAX_ORPHAN_PARKING_BRIDGE_M = 50.0;
 
     /// <summary>
+    /// How far from a stand <see cref="MarkStandLeadInChains"/> follows its lead-in chain. Long
+    /// enough to cover a real multi-segment lead-in bend (the review's KJFK bend sat 45 m from its
+    /// stand); short enough that a tiny airport whose only taxiway is one unbranched path is not
+    /// excluded end to end.
+    /// </summary>
+    private const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
+
+    /// <summary>
     /// Joins each stranded STAND STUB to the main (largest) taxi network with one fabricated edge
     /// of type <see cref="StandBridgePathType"/>, then renumbers components so every caller sees
     /// the repaired reachability.
@@ -817,6 +825,13 @@ public class TaxiGraph
     /// <para>The island end of a bridge is never a stand or a hold-short node (for a two-node stub
     /// that is the connector), and when only the stand is within range nothing is bridged. One
     /// bridge per island keeps it a dead-end spur.</para>
+    ///
+    /// <para>The network end is never a stand, a hold-short node, a node on runway pavement, or a
+    /// node on another stand's lead-in chain (<see cref="MarkStandLeadInChains"/>), and a pair
+    /// whose straight line would touch runway pavement is skipped for the next closest
+    /// (<see cref="RunwayPavement"/>). Without these, bridges ran along runways with no hold-short
+    /// instruction, produced false "Crossing runway" callouts, and steered pilots up a
+    /// neighbouring stand's lead-in.</para>
     /// </summary>
     private void BridgeOrphanParkingIslands(HashSet<int> standNodes, HashSet<int> holdShortNodes)
     {
@@ -847,12 +862,13 @@ public class TaxiGraph
         double cosLat = Math.Max(Math.Cos(Nodes.Values.First().Latitude * (Math.PI / 180.0)), 0.01);
         double lonCell = latCell / cosLat;
 
+        var leadInChainNodes = MarkStandLeadInChains(standNodes);
+
         var grid = new Dictionary<(long, long), List<TaxiNode>>();
         foreach (var node in Nodes.Values)
         {
             if (node.ComponentId != mainComponentId) continue;
-            if (standNodes.Contains(node.NodeId)) continue;
-            if (LiesOnlyOnParkingLeadIns(node.NodeId)) continue;
+            if (!IsEligibleMainEndpoint(node, standNodes, holdShortNodes, leadInChainNodes)) continue;
             var key = ((long)Math.Floor(node.Latitude / latCell),
                        (long)Math.Floor(node.Longitude / lonCell));
             if (!grid.TryGetValue(key, out var bucket))
@@ -898,8 +914,9 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// The bridge to build from an island's candidate pairs: the closest, ties broken by node ids so
-    /// the choice never depends on grid enumeration order. Null when there are no pairs.
+    /// The bridge to build from an island's candidate pairs: the closest whose straight line does
+    /// not touch runway pavement, ties broken by node ids so the choice never depends on grid
+    /// enumeration order. Null when no pair is valid.
     /// </summary>
     private (double Distance, TaxiNode IslandNode, TaxiNode MainNode)? ChooseBridgePair(
         List<(double Distance, TaxiNode IslandNode, TaxiNode MainNode)> pairs)
@@ -907,7 +924,14 @@ public class TaxiGraph
         foreach (var pair in pairs.OrderBy(p => p.Distance)
                                   .ThenBy(p => p.IslandNode.NodeId)
                                   .ThenBy(p => p.MainNode.NodeId))
+        {
+            if (RunwayPavement.SegmentTouchesPavement(
+                    pair.IslandNode.Latitude, pair.IslandNode.Longitude,
+                    pair.MainNode.Latitude, pair.MainNode.Longitude,
+                    RunwayCenterlines, out _))
+                continue;
             return pair;
+        }
         return null;
     }
 
@@ -965,14 +989,77 @@ public class TaxiGraph
     private static bool IsParkingLeadIn(TaxiEdge edge) =>
         string.Equals(edge.PathType, "P", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True when the node has edges and EVERY one is a parking lead-in: the interior of a
-    /// stand's own lead-in, never a place to attach another stand's bridge.</summary>
-    private bool LiesOnlyOnParkingLeadIns(int nodeId)
+    /// <summary>
+    /// True when a main-network node may be the network end of a stand-stub bridge: not a stand,
+    /// not a hold-short node, not on another stand's lead-in chain, and not on runway pavement.
+    /// </summary>
+    private bool IsEligibleMainEndpoint(
+        TaxiNode node, HashSet<int> standNodes, HashSet<int> holdShortNodes, HashSet<int> leadInChainNodes)
     {
-        if (!Adjacency.TryGetValue(nodeId, out var edges) || edges.Count == 0) return false;
-        foreach (var e in edges)
-            if (!IsParkingLeadIn(e)) return false;
+        if (standNodes.Contains(node.NodeId)) return false;
+        if (holdShortNodes.Contains(node.NodeId)) return false;
+        if (leadInChainNodes.Contains(node.NodeId)) return false;
+        if (RunwayPavement.IsOnPavement(node.Latitude, node.Longitude, RunwayCenterlines)) return false;
         return true;
+    }
+
+    /// <summary>
+    /// Nodes lying on a stand's own lead-in chain. From each stand the walk follows every edge
+    /// outward and, at each node reached:
+    /// <list type="bullet">
+    ///   <item>exactly 2 distinct neighbours: mark it and continue to its other neighbour;</item>
+    ///   <item>1 neighbour (a dead end): mark it and stop;</item>
+    ///   <item>3 or more (a junction): stop without marking;</item>
+    ///   <item>also stop at another stand, on revisiting a node, or once the walk has covered
+    ///   <see cref="STAND_LEAD_IN_CHAIN_MAX_M"/>.</item>
+    /// </list>
+    ///
+    /// <para>Navdata draws a multi-segment lead-in as taxiway-type rows plus a final "P" row, so
+    /// its bend nodes carry a non-P edge and a "lies only on P edges" test can never see them. A
+    /// bridge onto such a bend ran a KJFK route 31.6 m up stand GD 7's lead-in and then 109° across
+    /// open apron. At airports whose
+    /// main component is itself a stand stub, the dead-end rule marks its connector, so no
+    /// stub-to-stub bridge is built.</para>
+    /// </summary>
+    private HashSet<int> MarkStandLeadInChains(HashSet<int> standNodes)
+    {
+        var marked = new HashSet<int>();
+        foreach (int standId in standNodes)
+        {
+            if (!Adjacency.TryGetValue(standId, out var standEdges)) continue;
+            foreach (int firstId in standEdges.Select(e => e.ToNodeId).Distinct())
+            {
+                int previousId = standId;
+                int currentId = firstId;
+                var visited = new HashSet<int> { standId };
+                double walked = 0.0;
+                while (Nodes.TryGetValue(currentId, out var current))
+                {
+                    var previous = Nodes[previousId];
+                    walked += FastDistanceMeters(
+                        previous.Latitude, previous.Longitude, current.Latitude, current.Longitude);
+                    if (walked > STAND_LEAD_IN_CHAIN_MAX_M) break;
+                    if (standNodes.Contains(currentId)) break;
+                    if (!visited.Add(currentId)) break;
+
+                    var neighbours = Adjacency.TryGetValue(currentId, out var edges)
+                        ? edges.Select(e => e.ToNodeId).Distinct().ToList()
+                        : new List<int>();
+                    if (neighbours.Count == 1)
+                    {
+                        marked.Add(currentId);
+                        break;
+                    }
+                    if (neighbours.Count != 2) break;
+
+                    marked.Add(currentId);
+                    int nextId = neighbours[0] == previousId ? neighbours[1] : neighbours[0];
+                    previousId = currentId;
+                    currentId = nextId;
+                }
+            }
+        }
+        return marked;
     }
 
     /// <summary>
