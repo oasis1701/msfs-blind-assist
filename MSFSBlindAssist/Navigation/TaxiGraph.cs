@@ -58,8 +58,11 @@ public class TaxiGraph
         // 50 m inboard, 344 by over 400 m), and HalfWidthMeters is a fixed 75 ft default
         // while 5,127 of 48,040 runways are wider than 150 ft. Any caller asking "is this
         // node ON the runway?" needs these, not those. ADDITIVE on purpose: the start-row
-        // fields keep their tuned behaviour for every existing consumer (hold-short naming,
-        // DescribeLocation, crossing detection). Falls back to the start-row values when
+        // fields keep their tuned behaviour for their remaining consumers (hold-short naming,
+        // DescribeLocation). CROSSING DETECTION MOVED OFF THEM in 2026-09 — see
+        // RouteRunwayCrossings.EdgeCrossesRunway: at a displaced threshold the start-row line
+        // omits real runway (OMDB 12R: 761 m, taking taxiways K5/K6/K7/M8/K16 with it), so a
+        // route crossing there was given no hold-short at all. Falls back to the start-row values when
         // Build was given no runway table (tests, probes), so those callers are unchanged.
         public double PavementLat1, PavementLon1;
         public double PavementLat2, PavementLon2;

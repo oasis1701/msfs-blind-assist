@@ -1579,15 +1579,17 @@ public partial class TaxiGuidanceManager
 
         foreach (var rwy in _graph.RunwayCenterlines)
         {
-            if (!TaxiGraph.EdgeCrossesRunwayStatic(
-                    aLat, aLon, bLat, bLon,
-                    rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2))
+            if (!RouteRunwayCrossings.EdgeCrossesRunway(aLat, aLon, bLat, bLon, rwy))
                 continue;
 
+            // Name it from the PAVEMENT thresholds too, for the same reason the test uses
+            // them: a crossing inside the displaced-threshold band is nearer the pavement
+            // end than the start row, and naming it off the start row can pick the far
+            // designator for a crossing that is plainly at this end.
             double mLat = (aLat + bLat) * 0.5;
             double mLon = (aLon + bLon) * 0.5;
-            double d1 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.Lat1, rwy.Lon1);
-            double d2 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.Lat2, rwy.Lon2);
+            double d1 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.PavementLat1, rwy.PavementLon1);
+            double d2 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.PavementLat2, rwy.PavementLon2);
             string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
             if (string.IsNullOrEmpty(name)) name = rwy.Name1;
             return name;
@@ -1711,10 +1713,10 @@ public partial class TaxiGuidanceManager
             {
                 var seg = route.Segments[i];
                 if (seg.FromNode == null || seg.ToNode == null) continue;
-                if (TaxiGraph.EdgeCrossesRunwayStatic(
+                if (RouteRunwayCrossings.EdgeCrossesRunway(
                         seg.FromNode.Latitude, seg.FromNode.Longitude,
                         seg.ToNode.Latitude, seg.ToNode.Longitude,
-                        targetRwy.Lat1, targetRwy.Lon1, targetRwy.Lat2, targetRwy.Lon2))
+                        targetRwy))
                 {
                     crossingSeg = i;
                     break;

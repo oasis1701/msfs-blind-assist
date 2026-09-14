@@ -60,10 +60,10 @@ public static class RolloutRunwayReCrossing
         {
             var s = segments[i];
             if (s?.FromNode is null || s.ToNode is null) continue;
-            if (TaxiGraph.EdgeCrossesRunwayStatic(
+            if (RouteRunwayCrossings.EdgeCrossesRunway(
                     s.FromNode.Latitude, s.FromNode.Longitude,
                     s.ToNode.Latitude, s.ToNode.Longitude,
-                    runway.Lat1, runway.Lon1, runway.Lat2, runway.Lon2))
+                    runway))
                 return true;
         }
         return false;

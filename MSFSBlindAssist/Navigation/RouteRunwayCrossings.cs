@@ -21,6 +21,64 @@ namespace MSFSBlindAssist.Navigation;
 /// </summary>
 public static class RouteRunwayCrossings
 {
+    /// <summary>
+    /// Does the taxi edge a-&gt;b cross <paramref name="runway"/>? THE one owner of that
+    /// question — the auto runway-crossing hold-short pass, the user's explicit
+    /// "hold short of runway X at taxiway Y" validation and the landing-exit re-crossing
+    /// guard all call here, so they can never again disagree about where a runway is.
+    ///
+    /// <para>Measured against the PAVEMENT frame (<c>Pavement1..2</c>, the runway table),
+    /// NEVER the start-row frame (<c>Lat1..Lon2</c>). The start rows come from the navdata
+    /// <c>start</c> table and <c>SnapStartToRunwayCenterline</c> repairs them only
+    /// LATERALLY, so at a displaced threshold the row sits far inside the pavement and the
+    /// band between the two is REAL RUNWAY that a start-row-framed test cannot see. OMDB
+    /// 12R/30L: start-row line 2,779 m against 3,724 m of pavement, leaving 761 m invisible
+    /// at the 12R end and 184 m at the 30L end, with taxiways K5, K6, K7, M8 and K16
+    /// crossing inside it. 12L/30R loses 496 m and 103 m to N1, N1A, N1C, M1B and N9.</para>
+    ///
+    /// <para>What that cost: the auto hold-short pass logged <c>crosses=(none)</c> and placed
+    /// NO hold short for a route crossing there — the pass CLAUDE.md says must never be
+    /// disabled, disabled by geometry rather than by code — and an explicit
+    /// "hold short of runway 12R at K6" was refused with "route does not cross it after
+    /// taxiway K6", even though <c>TaxiAssistForm.GetTaxiwaysCrossingRunway</c> had OFFERED
+    /// K6 in the picker: that list is built from <c>RunwayFrame.For(runway, …)</c>, i.e. the
+    /// runway table. The picker and the validator were measuring two different runways.</para>
+    ///
+    /// <para>Strictly WIDER, never narrower: the pavement line CONTAINS the start-row line
+    /// (the rows are repaired onto the centreline and sit between the thresholds), so every
+    /// crossing detected before is still detected. Where <c>Build</c> was given no runway
+    /// table the <c>Pavement*</c> fields fall back to the start-row values, so those callers
+    /// are byte-for-byte unchanged.</para>
+    ///
+    /// <para>This is deliberately NOT extended to hold-short NAMING
+    /// (<c>MatchHoldShortRunwayName</c>) or <c>DescribeLocation</c>. Those answer different
+    /// questions with their own tuned tolerances; only the three CROSSING tests move.</para>
+    /// </summary>
+    public static bool EdgeCrossesRunway(
+        double aLat, double aLon, double bLat, double bLon, TaxiGraph.RunwayCenterline runway)
+    {
+        if (runway == null) return false;
+
+        // Fall back to the start-row endpoints when the pavement pair is not a usable line.
+        // `Build` always fills Pavement* (from the runway table, else a copy of the start
+        // rows), but a RunwayCenterline constructed DIRECTLY — tests, tools/ probes, any
+        // future caller — leaves them at their default (0, 0), and a degenerate line at null
+        // island crosses nothing. That failure is silent and points the UNSAFE way for a
+        // runway-crossing test: no crossing found means no hold-short placed. Judge the line
+        // by its own length rather than by a zero check, so a half-filled pair degrades the
+        // same way a wholly empty one does.
+        bool pavementUsable = TaxiGraph.FastDistanceMeters(
+            runway.PavementLat1, runway.PavementLon1,
+            runway.PavementLat2, runway.PavementLon2) >= 1.0;
+
+        double lat1 = pavementUsable ? runway.PavementLat1 : runway.Lat1;
+        double lon1 = pavementUsable ? runway.PavementLon1 : runway.Lon1;
+        double lat2 = pavementUsable ? runway.PavementLat2 : runway.Lat2;
+        double lon2 = pavementUsable ? runway.PavementLon2 : runway.Lon2;
+
+        return TaxiGraph.EdgeCrossesRunwayStatic(aLat, aLon, bLat, bLon, lat1, lon1, lat2, lon2);
+    }
+
     // Matches the runway designator inside every hold-short label shape the route
     // pipeline produces: "runway 10L", "runway 15R at N" (centerline naming),
     // "D5, Runway 22R" (threshold-fallback naming), "Runway 33L" (destination
