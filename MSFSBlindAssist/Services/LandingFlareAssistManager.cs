@@ -250,6 +250,11 @@ public class LandingFlareAssistManager : IDisposable
             ? r.ThresholdElevation
             : armedAirport?.Altitude ?? 0.0;
         runwayLabel = r.RunwayID;
+        // A new centerline makes the previous cross-track sample meaningless to the rate
+        // differentiator — without this, a touchdown switch followed by a bounce back into
+        // Flare (Phase.Rollout's inline path, which does not call EnterFlare) computes a rate
+        // across the jump and spikes the lateral tone to full pan for one frame.
+        crossTrackRateInitialized = false;
     }
 
     /// <summary>Disarms completely (destination re-selected without the checkbox, or reset).</summary>

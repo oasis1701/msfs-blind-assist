@@ -969,8 +969,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
     // so the blind pilot knows how much pavement is left for braking instead
     // of falling silent. State stays in LandingRollout so UpdatePosition
-    // continues to feed the per-frame loop; transitions to Taxiing only
-    // when the pilot is effectively stopped or has begun a backtaxi turn.
+    // continues to feed the per-frame loop. Ends by POSITION, never on any
+    // stop or turn alone (Navigation.RunwayEndCountdownGate): "Runway
+    // vacated" once laterally clear; backtracking when stopped or turning
+    // within the last runway-end milestone, or after turning around
+    // anywhere; one stopped notice for a stop mid-runway.
     private bool _rolloutNoExitMode;
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
@@ -985,9 +988,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // rather than per frame, because DistanceMilestones.RunwayEnd() allocates.
     private double _rolloutNearEndFeet;
 
-    // Backtrack state. Entered from runway-end countdown once the pilot has stopped
-    // or begun a 180° turn. Guides on the reciprocal runway heading until the
-    // aircraft reaches the first taxi-graph connection node.
+    // Backtrack state. Entered from runway-end countdown when the pilot is stopped or
+    // turning within the last runway-end milestone, or has turned around (150°+)
+    // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
+    // reciprocal runway heading until the aircraft reaches the first taxi-graph
+    // connection node.
     private double _backtrackHeadingTrue;
     private double _backtrackConnectionLat;
     private double _backtrackConnectionLon;
