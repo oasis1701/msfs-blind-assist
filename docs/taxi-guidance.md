@@ -1561,13 +1561,17 @@ off the centerline and the lineup tone panned forever.
   (confirmed in-sim: pilot saw it in the box, heard the taxiway, never the
   warning). `TaxiAssistForm` speaks `LastRouteReachWarning` via `AnnounceImmediate`
   *after* `StartGuidance`. The spoken summary is **skipped** when a reach warning
-  is present (still in the box), and an 8 s `START_WARNING_CHATTER_GRACE_SEC`
+  is present (still in the box), and a 12.5 s `START_WARNING_CHATTER_GRACE_SEC`
   window — open at guidance start whenever a route-reach OR unmapped-start
   warning is pending — holds the taxiway-crossing callout (handled and skipped
   while it's open, as before) plus the advance turn/taxiway-change notice, the
   "… ahead." callout, and the curve cue; all four wait and speak normally once
   the window closes. Hold-shorts / runway crossings / the lineup bailout are
-  never gated.
+  never gated. The window is sized from the measured System.Speech Rate-0
+  length of the longest start utterance it protects — a destination-not-connected
+  warning followed by the route-start turn cue, 10.41 s — plus about a fifth;
+  it does not cover a longer SayIntentions import summary spoken ahead of the
+  warning.
 - **Lineup bailout (during lineup).** If the runway-lineup phase sits beyond
   `LINEUP_UNREACHABLE_CROSS_FEET` for `LINEUP_UNREACHABLE_SEC` without converging,
   a one-shot bailout speaks ("This route does not reach Runway X. Reprogram …").
@@ -1803,7 +1807,7 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `LINEUP_UNREACHABLE_SEC` | 12.0 | Sustain time for the lineup unreachable-runway bailout |
 | `TAXI_TONE_MAX_SLEW_DEG_PER_SEC` | 60.0 | Slew-rate cap on the Taxiing tone's heading error. A genuine turn changes the error gradually (≈ yaw rate, well under the cap) and passes through; a one-frame target discontinuity (segment-index skip on a sharp corner, or a route recalc) is stretched into a smooth ~1–1.5 s sweep instead of a hard L↔R pan slam. Applied after the rate-lead projection, Taxiing only |
 | `RouteStartTurnCue.SharpTurnDeg` / `.TurnaroundDeg` | 100.0 / 135.0 | At guidance start, if the heading error to the route's first target exceeds these, compose a one-shot turn-direction cue (matches the tone) so the pilot knows which way to come around — the normal post-pushback case. Skipped when a reach warning is present. **Not in this file:** the local `INITIAL_TURN_CUE_DEG`/`INITIAL_TURN_UTURN_DEG` consts were DELETED, not left in place, so nobody tunes a number here and wonders why nothing changes — the cue has one owner, `Navigation/RouteStartTurnCue` |
-| `START_WARNING_CHATTER_GRACE_SEC` | 8.0 | After a route-reach OR unmapped-start warning, hold the taxiway-crossing (handled and skipped while open, as before), taxiway-change, "… ahead.", and curve callouts this long so they don't stomp the (longer, safety-critical) warning at guidance start — held callouts speak normally once the window closes. Hold-shorts, runway-crossing callouts, and the lineup bailout are NOT gated |
+| `START_WARNING_CHATTER_GRACE_SEC` | 12.5 | After a route-reach OR unmapped-start warning, hold the taxiway-crossing (handled and skipped while open, as before), taxiway-change, "… ahead.", and curve callouts this long so they don't stomp the (longer, safety-critical) warning at guidance start — held callouts speak normally once the window closes. Sized from the measured System.Speech Rate-0 length of the longest start utterance protected (a destination-not-connected warning + the route-start turn cue, 10.41 s) plus about a fifth; does not cover a longer SayIntentions import summary spoken ahead of the warning. Hold-shorts, runway-crossing callouts, and the lineup bailout are NOT gated |
 
 ### TaxiSteeringTone
 

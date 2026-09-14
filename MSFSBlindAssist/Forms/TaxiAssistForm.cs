@@ -4513,7 +4513,9 @@ public class TaxiAssistForm : Form
                 $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
-        // The unmapped-start warning ("Your position isn't connected ...") rides in this same
+        // The unmapped-start warning -- "Your position isn't connected ..." when the aircraft
+        // leaves a disconnected position, or "{name} isn't connected ..." when the destination
+        // itself is on a piece of network the aircraft is not on -- rides in this same
         // utterance, ahead of the turn-cue / reach-warning slot below, so that slot stays last.
         // Consumed unconditionally, so the per-frame one-shot can never repeat it.
         string? unmappedStart = _guidanceManager.ConsumeUnmappedStartWarning();

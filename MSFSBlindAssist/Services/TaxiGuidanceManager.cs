@@ -484,7 +484,17 @@ public partial class TaxiGuidanceManager : IDisposable
     // Calculate cuts the whole standstill utterance ~33 ms later). Hold-shorts,
     // runway-crossing callouts, lineup, speed warnings, and "Straighten." are NOT gated
     // by this.
-    private const double START_WARNING_CHATTER_GRACE_SEC = 8.0;
+    //
+    // Sized from the measured System.Speech Rate-0 length (trailing silence trimmed) of the
+    // LONGEST start utterance this window protects: a destination-not-connected warning
+    // followed by the route-start turn cue it can be folded ahead of ("B 18R isn't connected
+    // to the taxiway network you're on. The first 35 metres of the route aren't mapped. Make
+    // a U-turn to the left onto taxiway B." — 10.41 s), plus about a fifth for margin ≈ 12.5 s.
+    // Was 8.0 s, sized before the destination-off-network warning existed and too short for
+    // this one — a route-reach or unmapped-start warning is safety-critical and must never be
+    // the thing that gets cut. Does NOT cover a longer SayIntentions import summary spoken
+    // ahead of the warning in the same utterance; that combination is not measured here.
+    private const double START_WARNING_CHATTER_GRACE_SEC = 12.5;
     private DateTime _startChatterSuppressUntil = DateTime.MinValue;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
@@ -1259,9 +1269,11 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// The unmapped-first-leg warning for the route just built ("Your position isn't connected to the
-    /// taxiway network…"), or null. Composed ONCE by LoadRoute when RouteReachability says the aircraft
-    /// is leaving a disconnected piece of network, and delivered exactly like
+    /// The unmapped-first-leg warning for the route just built, or null. Composed ONCE by LoadRoute
+    /// when RouteReachability finds the route starting with a straight unmapped leg: either the
+    /// aircraft is leaving a disconnected piece of network ("Your position isn't connected to the
+    /// taxiway network…") or the destination is on a piece of network the aircraft is not on ("{name}
+    /// isn't connected to the taxiway network you're on…"). Delivered exactly like
     /// <see cref="LastRouteInitialTurnCue"/>: folded into the form's standstill utterance, or spoken by
     /// the first-taxiing-frame one-shot together with the turn cue. Never both.
     /// </summary>
@@ -1614,12 +1626,14 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_route == null || _route.Segments.Count == 0) return;
 
-        // If this route can't reach its runway, or leaves a disconnected position for the
-        // main network, the form's standstill utterance (or the first-taxiing-frame
-        // one-shot, for paths the form doesn't run) speaks that warning right after this
-        // call -- both warnings are still unconsumed here. Open a short grace window so
-        // the informational taxiway-crossing / taxiway-change / curve / destination-ahead
-        // callouts don't stomp it at start.
+        // If this route can't reach its runway, or starts with an unmapped first leg --
+        // either because the aircraft leaves a disconnected position for the main network, or
+        // because the destination itself is on a piece of network the aircraft is not on --
+        // the form's standstill utterance (or the first-taxiing-frame one-shot, for paths the
+        // form doesn't run) speaks that warning right after this call -- both warnings are
+        // still unconsumed here. Open a short grace window so the informational
+        // taxiway-crossing / taxiway-change / curve / destination-ahead callouts don't stomp
+        // it at start.
         _startChatterSuppressUntil = (LastRouteReachWarning != null || LastRouteUnmappedStartWarning != null)
             ? DateTime.UtcNow.AddSeconds(START_WARNING_CHATTER_GRACE_SEC)
             : DateTime.MinValue;

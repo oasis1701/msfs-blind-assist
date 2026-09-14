@@ -103,4 +103,30 @@ public class RouteReachabilityMessagesTests
             "Off route. Unable to recalculate. The way to Parking 40 crosses runway 13.",
             RouteReachabilityMessages.RecalculationRefusedDestinationRunway("Parking 40", "13"));
     }
+
+    [Theory]
+    [InlineData("B 18R - Gate Heavy, Jetway", "B 18R")]
+    [InlineData("A 24A - Gate Medium, also A24 (online)", "A 24A")]
+    [InlineData("A-9", "A-9")]
+    [InlineData("Runway 27L", "Runway 27L")]
+    public void A_stand_is_named_by_its_identifier_not_its_whole_label(string label, string spoken)
+    {
+        Assert.Equal(spoken, RouteReachabilityMessages.SpokenDestinationName(label));
+    }
+
+    [Fact]
+    public void Every_destination_sentence_speaks_the_identifier_only()
+    {
+        const string label = "B 18R - Gate Heavy, Jetway";
+        Assert.Equal("No taxi route to B 18R. It isn't connected to the taxiway network you're on.",
+            RouteReachabilityMessages.DestinationNotConnected(label));
+        Assert.Equal("No taxi route to B 18R. It isn't connected to the taxiway network you're on, and the way to it crosses runway 13.",
+            RouteReachabilityMessages.DestinationLegCrossesRunway(label, "13"));
+        Assert.Equal("B 18R isn't connected to the taxiway network you're on. The first 35 metres of the route aren't mapped.",
+            RouteReachabilityMessages.UnmappedLegToDestination(label, 35, Metres));
+        Assert.Equal("Off route. Unable to recalculate. B 18R isn't connected to the taxiway network you're on.",
+            RouteReachabilityMessages.RecalculationRefusedDestination(label));
+        Assert.Equal("Off route. Unable to recalculate. The way to B 18R crosses runway 13.",
+            RouteReachabilityMessages.RecalculationRefusedDestinationRunway(label, "13"));
+    }
 }

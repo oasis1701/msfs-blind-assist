@@ -94,14 +94,15 @@ public partial class TaxiGuidanceManager
         try
         {
             // Snapshot every field this method is about to overwrite, so a reachability
-            // refusal below (no start node in range for a destination off the network, or a
-            // first leg across a runway) can put the manager back exactly as it found it: a
-            // refused Calculate mid-taxi must leave the route currently being flown
-            // untouched — recalculations must keep targeting the OLD destination, not the
-            // refused one, and an old runway route must keep its lineup target. The older
-            // failure returns further down (no taxi path data, destination node not found,
-            // no nearby taxiway node for a destination that IS on the network, could not
-            // calculate a route) are deliberately left as they are; widening the rollback to
+            // refusal below — no start node in range, no buildable route, or a first leg
+            // across a runway, each only for a destination off the network the aircraft is on
+            // — can put the manager back exactly as it found it: a refused Calculate mid-taxi
+            // must leave the route currently being flown untouched — recalculations must
+            // keep targeting the OLD destination, not the refused one, and an old runway
+            // route must keep its lineup target. The older failure returns further down (no
+            // taxi path data, destination node not found, no nearby taxiway node, could not
+            // calculate a route) apply to every OTHER reachability class, including
+            // Unchanged, and are deliberately left as they are; widening the rollback to
             // cover them is a separate, unasked-for change.
             var rollback = CaptureLoadRouteRollback();
 
@@ -338,7 +339,18 @@ public partial class TaxiGuidanceManager
             }
 
             if (route == null || route.Segments.Count == 0)
+            {
+                // A destination off the network the aircraft is on with no buildable route: the same named
+                // refusal, and the same rollback, as the no-start-node case above.
+                if (reachability == ReachabilityClass.DestinationNotConnected)
+                {
+                    _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
+                                      $"no route ac={aircraftLat:F6},{aircraftLon:F6}");
+                    RestoreLoadRouteRollback(rollback);
+                    return RouteReachabilityMessages.DestinationNotConnected(destinationName);
+                }
                 return "Could not calculate a route to the destination.";
+            }
 
             // Named-holding-point departure: make the pilot's chosen stub the one they
             // actually taxi. Runs BEFORE TruncateToHoldShort, which is the whole point —
@@ -720,16 +732,17 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Every field LoadRoute writes before it can reach a reachability refusal (no start
-    /// node in range for a destination off the network, or a first leg across a runway),
-    /// captured so a refused Calculate mid-taxi can be rolled back to leave the route
-    /// currently being flown untouched. Deliberately excludes
-    /// <see cref="LastRouteUnmappedStartWarning"/>: that field must stay cleared on a
-    /// refusal, never restored, so a refused load can never leave a warning behind for the
-    /// form or the one-shot to speak later. The older failure returns in LoadRoute (no taxi
-    /// path data, destination node not found, no nearby taxiway node for a destination that
-    /// IS on the network, could not calculate a route) are unaffected by this — they are
-    /// deliberately left as they were before this rollback existed.
+    /// Every field LoadRoute writes before it can reach a reachability refusal — no start
+    /// node in range, no buildable route, or a first leg across a runway, each only for a
+    /// destination off the network the aircraft is on — captured so a refused Calculate
+    /// mid-taxi can be rolled back to leave the route currently being flown untouched.
+    /// Deliberately excludes <see cref="LastRouteUnmappedStartWarning"/>: that field must
+    /// stay cleared on a refusal, never restored, so a refused load can never leave a warning
+    /// behind for the form or the one-shot to speak later. The older failure returns in
+    /// LoadRoute (no taxi path data, destination node not found, no nearby taxiway node,
+    /// could not calculate a route) apply to every OTHER reachability class, including
+    /// Unchanged, and are unaffected by this — they are deliberately left as they were before
+    /// this rollback existed.
     /// </summary>
     private readonly record struct LoadRouteRollback(
         IAirportDataProvider? DataProvider,
