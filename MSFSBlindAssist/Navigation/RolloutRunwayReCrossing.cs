@@ -167,9 +167,6 @@ public static class RolloutRunwayReCrossing
         return s;
     }
 
-    /// <summary>Feet per second in one knot. Matches <c>GroundTrafficMonitor</c>'s own.</summary>
-    private const double FeetPerSecondPerKnot = 1.6878;
-
     /// <summary>
     /// True when a rollout callout armed at <paramref name="calloutTriggerFeet"/> is superseded
     /// by a crossing-decline utterance spoken at <paramref name="distanceAheadFeet"/> — i.e.
@@ -199,10 +196,6 @@ public static class RolloutRunwayReCrossing
     public static bool DeclineSupersedesCallout(
         double distanceAheadFeet, double calloutTriggerFeet,
         double groundSpeedKts, double leadSeconds)
-    {
-        if (distanceAheadFeet <= calloutTriggerFeet) return true;
-        if (groundSpeedKts <= 0.0 || leadSeconds <= 0.0) return false;
-        return distanceAheadFeet - calloutTriggerFeet
-            <= groundSpeedKts * FeetPerSecondPerKnot * leadSeconds;
-    }
+        => RolloutCalloutSupersession.Supersedes(
+               distanceAheadFeet, calloutTriggerFeet, groundSpeedKts, leadSeconds);
 }
