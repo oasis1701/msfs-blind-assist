@@ -2215,7 +2215,7 @@ public partial class TaxiGuidanceManager
     /// missed-exit verdict is only reviewable after the fact if the log says what was on the
     /// table when it was reached.
     /// </summary>
-    private static string DescribeExits(IReadOnlyList<Navigation.LandingExit>? exits)
+    internal static string DescribeExits(IReadOnlyList<Navigation.LandingExit>? exits)
     {
         if (exits == null || exits.Count == 0) return "[]";
         var sb = new System.Text.StringBuilder("[");

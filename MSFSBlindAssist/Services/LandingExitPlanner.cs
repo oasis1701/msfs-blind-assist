@@ -265,11 +265,12 @@ public class LandingExitPlanner
             plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots);
 
         bool rescued = false;
+        List<LandingExit>? rescue = null;
         if (choice.Exit == null)
         {
             // GetLandingExits is lossy by design; ask the graph directly before giving up, as the
             // rollout's missed-exit handler does.
-            var rescue = graph.FindDownfieldExits(actual,
+            rescue = graph.FindDownfieldExits(actual,
                 aircraftFromThresholdFt + RolloutExitGate.ExitLeadFeet(groundSpeedKnots));
             if (rescue.Count > 0)
             {
@@ -287,7 +288,9 @@ public class LandingExitPlanner
                 (choice.Exit == null
                     ? "exit=none"
                     : $"exit='{choice.Exit.TaxiwayName}' node={choice.Exit.NodeId} " +
-                      $"dist={choice.Exit.DistanceFromThresholdFeet:F0}ft angle={choice.Exit.ExitAngleDegrees:F0}"));
+                      $"dist={choice.Exit.DistanceFromThresholdFeet:F0}ft angle={choice.Exit.ExitAngleDegrees:F0}") +
+                $" allExits={TaxiGuidanceManager.DescribeExits(exits)}" +
+                (rescued ? $" rescue={TaxiGuidanceManager.DescribeExits(rescue)}" : ""));
 
         if (choice.Exit == null)
         {
