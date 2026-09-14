@@ -1065,8 +1065,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // the high-speed-exit ceiling (Category E RETs top out there), beyond which
     // any retarget is unsafe at any range. If you change either constant, check
     // the cutoff GS still lines up.
-    private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
-    private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
+    private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = Navigation.RolloutExitGate.ExitLeadMinFeet;
+    private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = Navigation.RolloutExitGate.ExitLeadFeetPerKnot;
 
     // Minimum gap before the handoff block is re-entered after a handoff was DECLINED
     // for re-crossing the landing runway (see the RolloutRunwayReCrossing guard in

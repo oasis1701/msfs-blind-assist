@@ -525,6 +525,22 @@ public static class RolloutExitGate
     public const double MaxUsableExitTurnDeg = 90.0;
 
     /// <summary>
+    /// Floor of how far ahead of the aircraft an exit must be to count as takeable at the current
+    /// speed. Shared by the rollout's undershoot retarget scan and the touchdown re-plan
+    /// (<see cref="LandingExitReplan"/>), so the two can never disagree about reachability. The
+    /// values were tuned on the undershoot scan (YSSY 16R: an exit 79 ft ahead at 52 kt was picked
+    /// and could not be made).
+    /// </summary>
+    public const double ExitLeadMinFeet = 200.0;
+
+    /// <summary>Speed-proportional part of <see cref="ExitLeadFeet"/>, feet per knot.</summary>
+    public const double ExitLeadFeetPerKnot = 11.0;
+
+    /// <summary>The lead an exit needs ahead of the aircraft at <paramref name="groundSpeedKts"/>.</summary>
+    public static double ExitLeadFeet(double groundSpeedKts)
+        => Math.Max(ExitLeadMinFeet, groundSpeedKts * ExitLeadFeetPerKnot);
+
+    /// <summary>
     /// Where "downfield" starts when looking for the exit to retarget to after an overshoot.
     ///
     /// <para>Measured from whichever is further along the runway - the missed exit, or the
