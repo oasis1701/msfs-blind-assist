@@ -1902,8 +1902,7 @@ public partial class TaxiGuidanceManager
     /// Per-frame logic while in runway-end countdown mode (set by
     /// <see cref="EnterRunwayEndCountdown"/>). Drives three voice
     /// callouts as the aircraft approaches the physical end of the
-    /// runway, then transitions to Taxiing once the pilot has stopped
-    /// or begun turning.
+    /// runway, and decides how the countdown ends (see below).
     ///
     /// Distance to end is computed by projecting the aircraft position
     /// onto the runway centerline relative to <c>_rolloutRunway.StartLat/Lon</c>,
@@ -1911,11 +1910,11 @@ public partial class TaxiGuidanceManager
     /// distance from start is positive in the runway heading direction;
     /// distToEnd = length - alongFromStart.
     ///
-    /// Transitions out to Taxiing when EITHER ground speed drops below
-    /// ROLLOUT_NO_EXIT_STOPPED_GS_KTS (3 kt — effectively stopped) OR
-    /// heading deviation reaches ROLLOUT_TURN_BEGAN_HDG_DEG (15° — pilot
-    /// is maneuvering, typically a backtaxi turn). On exit, _route stays
-    /// null so the Taxiing branch's off-route recalc has nothing to chase.
+    /// Ends via Navigation.RunwayEndCountdownGate: "Runway vacated" once laterally
+    /// clear of the runway; backtracking when stopped or turning within the last
+    /// runway-end milestone, or after turning around anywhere (mid-runway it does
+    /// not claim the runway ended); one notice for a mid-runway stop. On exit,
+    /// _route stays null so the Taxiing branch's off-route recalc has nothing to chase.
     /// </summary>
     private void UpdateRunwayEndCountdown(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
@@ -1941,22 +1940,51 @@ public partial class TaxiGuidanceManager
         double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
         double hdgDeltaAbs = Math.Abs(hdgDelta);
 
-        // Transition out: effectively stopped, OR pilot is turning (likely
-        // beginning a backtaxi). Hand off to BacktrackingOnRunway so the
-        // steering tone guides the pilot back along the runway to the apron.
-        bool effectivelyStopped = groundSpeedKts < ROLLOUT_NO_EXIT_STOPPED_GS_KTS;
-        bool turnBegun = hdgDeltaAbs >= ROLLOUT_TURN_BEGAN_HDG_DEG
-                         && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS;
-        if (effectivelyStopped || turnBegun)
+        // How the countdown ends is decided from WHERE the aircraft is, not merely from a stop or
+        // a turn (Navigation.RunwayEndCountdownGate). Any stop or 15-degree turn used to mean
+        // "End of runway. Turn around." — false for a pilot turning off at a taxiway or holding for
+        // ATC mid-runway (PR #236 review). "At the end" is the 500 ft / 150 m runway-end milestone.
+        double nearEndFeet = DistanceMilestones.RunwayEnd()[1].TriggerMetres / DistanceFormatter.MetresPerFoot;
+        var action = Navigation.RunwayEndCountdownGate.Decide(
+            distToEndFt, groundSpeedKts, hdgDeltaAbs,
+            laterallyClear: !IsWithinRolloutRunwayLaterally(lat, lon),
+            stoppedNoticeGiven: _rolloutStoppedNoticeGiven,
+            nearEndFeet: nearEndFeet);
+
+        switch (action)
         {
-            EnterBacktracking(lat, lon);
-            return;
+            case Navigation.RunwayEndCountdownAction.Vacated:
+                RolloutDiag($"Runway-end countdown: laterally clear of {_rolloutRunway.RunwayID} " +
+                    $"distToEnd={distToEndFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg gs={groundSpeedKts:F1}kt — vacated");
+                // Stop the tone BEFORE the state change: Taxiing with a null route returns from
+                // UpdatePosition before anything touches the tone, so a sounding tone would hold its
+                // last pan indefinitely.
+                _steeringTone.Stop();
+                _rolloutNoExitMode = false;
+                AnnounceInstruction("Runway vacated. No route set \u2014 use the taxi planner for a route to your stand.");
+                SetState(TaxiGuidanceState.Taxiing);
+                return;
+
+            case Navigation.RunwayEndCountdownAction.BacktrackAtEnd:
+                EnterBacktracking(lat, lon, atRunwayEnd: true);
+                return;
+
+            case Navigation.RunwayEndCountdownAction.BacktrackMidRunway:
+                EnterBacktracking(lat, lon, atRunwayEnd: false);
+                return;
+
+            case Navigation.RunwayEndCountdownAction.StoppedMidRunwayNotice:
+                _rolloutStoppedNoticeGiven = true;
+                AnnounceInstruction(
+                    $"Stopped on runway {_rolloutRunway.RunwayID}. " +
+                    $"Runway end in {DistanceFormatter.FromFeet(Math.Max(0.0, distToEndFt))}.");
+                return;
         }
 
         // Past the runway end already (overrun / off the pavement). The
         // three countdown callouts have either fired or been skipped past;
-        // stay quiet here and rely on the stopped/turn transitions above
-        // to retire the countdown when the pilot stops or maneuvers.
+        // stay quiet here and rely on the gate above to end the countdown
+        // when the pilot stops, turns around or clears the runway.
         if (distToEndFt <= 0) return;
 
         // All three fired — skip the per-frame table build (it allocates). Nothing
@@ -2231,27 +2259,6 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Switches the active rollout into runway-end countdown mode after an
-    /// overshoot with no downfield exit available (or after a retarget
-    /// failure mid-rollout). Clears `_route` and `_destinationNodeId` so
-    /// the off-route detector in the Taxiing branch has nothing to chase
-    /// — without that, a route still pointing at the now-passed exit
-    /// would trigger TryRecalculateRoute and shortest-path back across
-    /// the runway (the original bug).
-    ///
-    /// Keeps `_rolloutRunway` and `_rolloutRunwayHeadingTrue` because
-    /// UpdateRunwayEndCountdown needs them for the distance-to-end
-    /// projection. State stays in LandingRollout so UpdatePosition keeps
-    /// feeding the per-frame loop (MainForm's position-update gate
-    /// includes LandingRollout); UpdateLandingRollout dispatches to
-    /// UpdateRunwayEndCountdown when `_rolloutNoExitMode` is set.
-    ///
-    /// Tone is paused — no steering target. Voice callouts at 1500/500/100
-    /// ft to the runway end give the pilot real braking information; full
-    /// silence would leave a blind pilot rolling toward the end of an
-    /// active runway with no audio cues.
-    /// </summary>
-    /// <summary>
     /// Scans all taxi-graph nodes for the nearest one in the backtrack heading
     /// direction, within 2000m. Used only by <see cref="EnterBacktracking"/>.
     /// Wider range than <see cref="TaxiGraph.FindNearestNodeInDirection"/> (800m)
@@ -2278,12 +2285,14 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Enters <see cref="TaxiGuidanceState.BacktrackingOnRunway"/> after the
-    /// runway-end countdown completes (pilot stopped or began a 180° turn).
-    /// Announces the backtrack heading and begins steering-tone guidance on the
-    /// reciprocal runway heading once the pilot's heading comes within 90° of it.
+    /// Enters <see cref="TaxiGuidanceState.BacktrackingOnRunway"/> from the runway-end countdown:
+    /// at the runway end (<paramref name="atRunwayEnd"/>: stopped or turning inside the last
+    /// milestone) or after turning around mid-runway, as decided by
+    /// <see cref="Navigation.RunwayEndCountdownGate"/>. Announces the MAGNETIC backtrack heading —
+    /// saying "End of runway" only when that is true — and begins steering-tone guidance on the
+    /// true reciprocal runway heading.
     /// </summary>
-    private void EnterBacktracking(double lat, double lon)
+    private void EnterBacktracking(double lat, double lon, bool atRunwayEnd)
     {
         if (_rolloutRunway == null)
         {
@@ -2321,9 +2330,13 @@ public partial class TaxiGuidanceManager
 
         SetState(TaxiGuidanceState.BacktrackingOnRunway);
 
-        int hdgInt  = (int)Math.Round(reciprocalHdg);
+        // The spoken heading is MAGNETIC, the instrument the pilot turns to; the tone keeps
+        // steering on the true reciprocal above (PR #236 review: KSEA 34L spoke 180 for 165).
+        int hdgInt = Navigation.RunwayHeadings.SpokenReciprocalMagnetic(_rolloutRunway.HeadingMag);
         string rwyId = _rolloutRunway.RunwayID ?? "runway";
-        AnnounceInstruction($"End of runway {rwyId}. Turn around, heading {hdgInt}. Backtracking.");
+        AnnounceInstruction(atRunwayEnd
+            ? $"End of runway {rwyId}. Turn around, heading {hdgInt}. Backtracking."
+            : $"Backtracking on runway {rwyId}, heading {hdgInt}.");
     }
 
     /// <summary>
@@ -2520,6 +2533,29 @@ public partial class TaxiGuidanceManager
         }
     }
 
+    /// <summary>
+    /// Switches the active rollout into runway-end countdown mode: after an
+    /// overshoot with no downfield exit available, after a retarget failure
+    /// mid-rollout, or at touchdown from BeginRunwayEndCountdownRollout when no
+    /// usable exit exists on the runway actually landed on. Clears `_route` and
+    /// `_destinationNodeId` so
+    /// the off-route detector in the Taxiing branch has nothing to chase
+    /// — without that, a route still pointing at the now-passed exit
+    /// would trigger TryRecalculateRoute and shortest-path back across
+    /// the runway (the original bug).
+    ///
+    /// Keeps `_rolloutRunway` and `_rolloutRunwayHeadingTrue` because
+    /// UpdateRunwayEndCountdown needs them for the distance-to-end
+    /// projection. State stays in LandingRollout so UpdatePosition keeps
+    /// feeding the per-frame loop (MainForm's position-update gate
+    /// includes LandingRollout); UpdateLandingRollout dispatches to
+    /// UpdateRunwayEndCountdown when `_rolloutNoExitMode` is set.
+    ///
+    /// Tone is paused — no steering target. Voice callouts at 1500/500/100
+    /// ft to the runway end give the pilot real braking information; full
+    /// silence would leave a blind pilot rolling toward the end of an
+    /// active runway with no audio cues.
+    /// </summary>
     private void EnterRunwayEndCountdown()
     {
         _route = null;
@@ -2535,6 +2571,7 @@ public partial class TaxiGuidanceManager
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _rolloutStoppedNoticeGiven = false;
         // Defence in depth, matching the _rolloutEnd*Announced resets above: setting
         // _rolloutNoExitMode below makes UpdateLandingRollout divert into
         // UpdateRunwayEndCountdown before the handoff block can be reached at all, so

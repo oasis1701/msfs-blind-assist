@@ -975,6 +975,9 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
     private bool _rolloutEnd100Announced;
+    // One-shot "Stopped on runway X. Runway end in N." for a mid-runway stop during the countdown
+    // (Navigation.RunwayEndCountdownGate). Reset by EnterRunwayEndCountdown and StopGuidance.
+    private bool _rolloutStoppedNoticeGiven;
 
     // Backtrack state. Entered from runway-end countdown once the pilot has stopped
     // or begun a 180° turn. Guides on the reciprocal runway heading until the
@@ -3305,6 +3308,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _rolloutStoppedNoticeGiven = false;
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _rolloutCrossingDeclineAnnounced = false;
         _backtrackConnectionNodeId = 0;
