@@ -1,28 +1,21 @@
-// Characterization tests for TaxiGraph.Build's orphan-parking-island bridge.
+// Characterization tests for TaxiGraph.Build's orphan stand-stub bridge.
 //
-// Regression pinned: OMDB gate B 18R, 2026-09-04 (issue #228).
-//   The fs2024 navdata models B 18R's stand as a two-node stub — the stand node and
-//   its apron connector — whose open end stops 12 m short of the nearest taxiway-U
-//   node instead of meeting it. Build's node merge is 1.5 m, so the stub stayed its
-//   own connected component (2 nodes) while the rest of OMDB was one 3,632-node
-//   component.
+// Regression pinned: OMDB gate B 18R, issue #228. The fs2024 navdata models the stand and its
+// connector as one "P" lead-in row whose open end stops 12 m short of taxiway U. Build merges
+// endpoints only within 1.5 m, so the stub was its own connected component, and LoadRoute's
+// destination-component start-node filter found no start node.
 //
-//   Every start-node selector in LoadRoute is filtered to the DESTINATION's component
-//   (the GCLP S5 island defence). With B 18R as the destination that component held
-//   exactly two nodes, both at the far side of the airport from an aircraft that had
-//   just vacated 30L, so FindNearestNodeOnTaxiway / FindNearestNode /
-//   FindNearestNodeInDirection all returned null and LoadRoute answered "Could not
-//   find a nearby taxiway node." — with no route logged at all. The pilot could not
-//   taxi to their assigned gate and had to teleport to it.
+// The rule these tests pin:
+//   - Only a component whose EVERY edge is a stand lead-in ("P") and that contains a stand
+//     (a navdata "P" endpoint) is bridged. Islands that carry a taxiway are left alone — the
+//     GCLP S5 shape the start-node filter exists to reject.
+//   - The island end of a bridge is never a stand or a hold-short node.
+//   - One bridge per island, at the closest valid pair within 50 m, typed
+//     TaxiGraph.StandBridgePathType in both directions.
 //
-// The fix joins an island that contains a PARKING node to the main component with a
-// single bridge edge when the two are within MAX_ORPHAN_PARKING_BRIDGE_M (50 m — the
-// same "this is a data seam, not a real gap" distance TaxiRouter.AStarSearchStrict
-// already relaxes bridge edges over). Islands without parking are left alone: that is
-// the GCLP S5 shape the component filter exists to reject.
-//
-// Fixture geometry is on the equator (lat 0) so one degree of longitude and one of
-// latitude are both 111,132 m — TaxiGraph's own equirectangular constant.
+// Fixtures are shaped like navdata: lead-ins are Type "P", StartType "N", EndType "P".
+// Geometry sits on the equator, where TaxiGraph's 111,132 m/deg makes metres = degrees x
+// 111132 in both axes, so every distance quoted below is exact.
 
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -31,278 +24,174 @@ namespace MSFSBlindAssist.Tests;
 
 public class OrphanParkingIslandBridgeTests
 {
-    private const double M_PER_DEG = 111132.0;
-    private const double DEG_PER_M = 1.0 / M_PER_DEG;
+    private const double M = 1.0 / 111132.0;   // degrees per metre on the equator
 
-    // A short main taxiway "U" running east along the equator: five nodes, 60 m apart.
-    private static List<TaxiPath> MainTaxiway() =>
-        Enumerable.Range(0, 4).Select(i => new TaxiPath
-        {
-            Name = "U",
-            Type = "PT",
-            Width = 75.0,
-            StartLat = 0.0, StartLon = (i * 60.0) * DEG_PER_M,
-            EndLat = 0.0,   EndLon = ((i + 1) * 60.0) * DEG_PER_M,
-        }).ToList();
-
-    /// <summary>
-    /// A parking stand stub: connector node <paramref name="gapMeters"/> NORTH of the
-    /// taxiway node at 120 m east, and the stand itself 39 m further north. Mirrors the
-    /// OMDB B 18R shape (stand → connector → nothing).
-    /// </summary>
-    private static (List<TaxiPath> paths, List<ParkingSpot> parking) ParkingStub(double gapMeters)
+    private static TaxiPath Taxiway(string name, double latN, double lonE, double lat2N, double lon2E,
+                                    string type = "T", string startType = "N", string endType = "N",
+                                    double widthFt = 75.0) => new()
     {
-        double connectorLat = gapMeters * DEG_PER_M;
-        double standLat = (gapMeters + 39.0) * DEG_PER_M;
-        double lon = 120.0 * DEG_PER_M;
+        Name = name, Type = type, Width = widthFt, StartType = startType, EndType = endType,
+        StartLat = latN * M, StartLon = lonE * M, EndLat = lat2N * M, EndLon = lon2E * M,
+    };
 
-        var paths = new List<TaxiPath>
-        {
-            new TaxiPath
-            {
-                Name = "", Type = "P", Width = 60.0,
-                StartLat = connectorLat, StartLon = lon,
-                EndLat = standLat,       EndLon = lon,
-            }
-        };
-        var parking = new List<ParkingSpot>
-        {
-            new ParkingSpot
-            {
-                Name = "B", Number = 18, Suffix = "R",
-                Latitude = standLat, Longitude = lon,
-            }
-        };
-        return (paths, parking);
-    }
-
-    private static TaxiGraph BuildWithStub(double gapMeters)
+    /// <summary>A navdata stand lead-in: connector ("N") to stand ("P").</summary>
+    private static TaxiPath LeadIn(double connLatN, double connLonE, double standLatN, double standLonE) => new()
     {
-        var (stub, parking) = ParkingStub(gapMeters);
-        var paths = MainTaxiway();
-        paths.AddRange(stub);
-        return TaxiGraph.Build(paths, parking, new List<StartPosition>());
-    }
+        Name = "", Type = "P", Width = 60.0, StartType = "N", EndType = "P",
+        StartLat = connLatN * M, StartLon = connLonE * M, EndLat = standLatN * M, EndLon = standLonE * M,
+    };
 
-    private static TaxiNode StandNode(TaxiGraph g) =>
-        g.Nodes.Values.Single(n => n.Type == TaxiNodeType.Parking);
+    /// <summary>Taxiway "U" along the equator: nodes at 0, 60, 120, 180 and 240 m east.</summary>
+    private static List<TaxiPath> MainTaxiwayU() =>
+        Enumerable.Range(0, 4).Select(i => Taxiway("U", 0, i * 60, 0, (i + 1) * 60)).ToList();
 
-    private static TaxiNode TaxiwayNode(TaxiGraph g, double metresEast) =>
-        g.Nodes.Values
-            .Where(n => n.TaxiwayNames.Contains("U"))
-            .OrderBy(n => Math.Abs(n.Longitude - metresEast * DEG_PER_M))
-            .First();
+    private static TaxiGraph BuildGraph(IEnumerable<TaxiPath> paths, List<ParkingSpot>? parking = null,
+                                        List<StartPosition>? starts = null, List<Runway>? runways = null) =>
+        TaxiGraph.Build(paths.ToList(), parking ?? new List<ParkingSpot>(),
+                        starts ?? new List<StartPosition>(), runways);
+
+    private static TaxiNode NodeAt(TaxiGraph g, double latN, double lonE) =>
+        g.Nodes.Values.Single(n => Math.Abs(n.Latitude - latN * M) < 1e-9 && Math.Abs(n.Longitude - lonE * M) < 1e-9);
+
+    private static List<TaxiEdge> BridgeEdges(TaxiGraph g) =>
+        g.Adjacency.Values.SelectMany(es => es)
+         .Where(e => e.PathType == TaxiGraph.StandBridgePathType).ToList();
 
     [Fact]
-    public void Stand_stranded_12m_from_the_taxiway_is_reattached()
+    public void A_stub_12_m_from_the_taxiway_is_bridged_from_its_connector()
     {
-        // The measured OMDB B 18R gap.
-        var g = BuildWithStub(12.0);
+        // The OMDB B 18R shape: connector 12 m north of U120, stand 39 m further out (51 m).
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
 
-        var stand = StandNode(g);
-        var taxiway = TaxiwayNode(g, 120.0);
+        var connector = NodeAt(g, 12, 120);
+        var u120 = NodeAt(g, 0, 120);
+        var stand = NodeAt(g, 51, 120);
+        Assert.Equal(u120.ComponentId, stand.ComponentId);
 
-        Assert.Equal(taxiway.ComponentId, stand.ComponentId);
+        var bridges = BridgeEdges(g);
+        Assert.Equal(2, bridges.Count);   // one fabricated edge, both directions
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == u120.NodeId);
+        Assert.Contains(bridges, e => e.FromNodeId == u120.NodeId && e.ToNodeId == connector.NodeId);
+        Assert.All(bridges, e => Assert.InRange(e.DistanceMeters, 11.9, 12.1));
+        Assert.All(bridges, e => Assert.Equal("", e.TaxiwayName));
     }
 
     [Fact]
-    public void The_bridge_lands_on_the_stubs_open_end_not_on_the_stand()
+    public void The_island_end_is_the_connector_even_when_the_stand_is_nearer()
     {
-        var g = BuildWithStub(12.0);
+        // Stand 20 m from U120 (nearer), connector 45 m out. The stand must never be the end.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(45, 120, 20, 120)));
 
-        var taxiway = TaxiwayNode(g, 120.0);
-        var bridges = g.Adjacency[taxiway.NodeId]
-                       .Where(e => g.Nodes[e.ToNodeId].ComponentId == taxiway.ComponentId
-                                   && !g.Nodes[e.ToNodeId].TaxiwayNames.Contains("U"))
-                       .ToList();
+        var connector = NodeAt(g, 45, 120);
+        var stand = NodeAt(g, 20, 120);
+        var bridges = BridgeEdges(g);
 
-        var bridge = Assert.Single(bridges);
-        var other = g.Nodes[bridge.ToNodeId];
-
-        // The connector, not the stand — the stand is 39 m further out.
-        Assert.NotEqual(TaxiNodeType.Parking, other.Type);
-        Assert.InRange(bridge.DistanceMeters, 11.0, 13.0);
-
-        // Bidirectional, like every other edge Build adds.
-        Assert.Contains(g.Adjacency[other.NodeId], e => e.ToNodeId == taxiway.NodeId);
+        Assert.Equal(2, bridges.Count);
+        Assert.DoesNotContain(bridges, e => e.FromNodeId == stand.NodeId || e.ToNodeId == stand.NodeId);
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == NodeAt(g, 0, 120).NodeId);
+        Assert.All(bridges, e => Assert.InRange(e.DistanceMeters, 44.9, 45.1));
     }
 
     [Fact]
-    public void The_bridged_island_is_a_dead_end_spur_not_a_shortcut()
+    public void No_bridge_when_only_the_stand_is_within_range()
     {
-        var g = BuildWithStub(12.0);
+        // Stand 20 m from U120, connector 60 m out: nothing valid within 50 m.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(60, 120, 20, 120)));
 
-        // Exactly one edge crosses from the former island into the taxiway network, so
-        // no main-component route can ever be re-routed THROUGH the stand.
-        var islandNodes = g.Nodes.Values.Where(n => !n.TaxiwayNames.Contains("U")).ToList();
-        int crossings = islandNodes
-            .SelectMany(n => g.Adjacency[n.NodeId])
-            .Count(e => g.Nodes[e.ToNodeId].TaxiwayNames.Contains("U"));
-
-        Assert.Equal(1, crossings);
+        Assert.Empty(BridgeEdges(g));
+        Assert.NotEqual(NodeAt(g, 0, 120).ComponentId, NodeAt(g, 20, 120).ComponentId);
     }
 
     [Fact]
-    public void A_stand_genuinely_far_from_the_network_is_left_disconnected()
+    public void One_bridge_per_island_even_with_two_network_nodes_in_range()
     {
-        // 200 m of unmodelled ground is not a data seam — bridging it would steer the
-        // pilot across whatever is actually there.
-        var g = BuildWithStub(200.0);
+        // Connector at 10 N, 145 E: 26.9 m to U120 and 36.4 m to U180 — both in range.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(10, 145, 49, 145)));
 
-        Assert.NotEqual(TaxiwayNode(g, 120.0).ComponentId, StandNode(g).ComponentId);
+        var bridges = BridgeEdges(g);
+        Assert.Equal(2, bridges.Count);
+        var connector = NodeAt(g, 10, 145);
+        Assert.Contains(bridges, e => e.FromNodeId == connector.NodeId && e.ToNodeId == NodeAt(g, 0, 120).NodeId);
     }
 
     [Fact]
-    public void A_taxiway_island_with_no_parking_is_left_disconnected()
+    public void An_island_that_carries_a_taxiway_is_never_bridged()
     {
-        // The GCLP S5 shape: a named taxiway modelled with no connection at either
-        // terminus. The component filter exists to REJECT it, so the bridge must not
-        // quietly undo that.
-        var paths = MainTaxiway();
-        paths.Add(new TaxiPath
-        {
-            Name = "S5", Type = "PT", Width = 75.0,
-            StartLat = 12.0 * DEG_PER_M, StartLon = 120.0 * DEG_PER_M,
-            EndLat = 60.0 * DEG_PER_M,   EndLon = 120.0 * DEG_PER_M,
-        });
+        // Taxiway S5 starts 12 m from U120 and ends at a stand lead-in. Not a stand stub.
+        var paths = MainTaxiwayU();
+        paths.Add(Taxiway("S5", 12, 120, 40, 120));
+        paths.Add(LeadIn(40, 120, 79, 120));
+        var g = BuildGraph(paths);
 
-        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
-
-        var s5 = g.Nodes.Values.First(n => n.TaxiwayNames.Contains("S5"));
-        Assert.NotEqual(TaxiwayNode(g, 120.0).ComponentId, s5.ComponentId);
+        Assert.Empty(BridgeEdges(g));
+        Assert.NotEqual(NodeAt(g, 0, 120).ComponentId, NodeAt(g, 79, 120).ComponentId);
     }
 
     [Fact]
     public void A_taxiway_island_labelled_parking_by_proximity_is_left_disconnected()
     {
-        // The same S5 island, but with a stand 5 m past its far end. Build's parking pass
-        // stamps TaxiNodeType.Parking on whichever node is NEAREST a parking spot, in any
-        // component, so the island's end node becomes "Parking" by proximity alone. The
-        // island carries no parking LEAD-IN ("P" path), so it is still a taxiway island and
-        // the bridge must not undo the S5 defence on the strength of that label.
-        var paths = MainTaxiway();
-        paths.Add(new TaxiPath
-        {
-            Name = "S5", Type = "PT", Width = 75.0,
-            StartLat = 12.0 * DEG_PER_M, StartLon = 120.0 * DEG_PER_M,
-            EndLat = 60.0 * DEG_PER_M,   EndLon = 120.0 * DEG_PER_M,
-        });
+        // The parking pass stamps TaxiNodeType.Parking on the node nearest a spot, in any
+        // component. That label must not make a taxiway island look like a stand stub.
+        var paths = MainTaxiwayU();
+        paths.Add(Taxiway("S5", 12, 120, 60, 120, type: "PT"));
         var parking = new List<ParkingSpot>
         {
-            new ParkingSpot { Name = "B", Number = 20,
-                              Latitude = 65.0 * DEG_PER_M, Longitude = 120.0 * DEG_PER_M }
+            new() { Name = "B", Number = 20, Latitude = 65 * M, Longitude = 120 * M },
         };
-
-        var g = TaxiGraph.Build(paths, parking, new List<StartPosition>());
+        var g = BuildGraph(paths, parking);
 
         var s5 = g.Nodes.Values.Where(n => n.TaxiwayNames.Contains("S5")).ToList();
-        Assert.Contains(s5, n => n.Type == TaxiNodeType.Parking); // the label did land
-        Assert.All(s5, n => Assert.NotEqual(TaxiwayNode(g, 120.0).ComponentId, n.ComponentId));
+        Assert.Contains(s5, n => n.Type == TaxiNodeType.Parking);   // the label did land
+        Assert.Empty(BridgeEdges(g));
+        Assert.All(s5, n => Assert.NotEqual(NodeAt(g, 0, 120).ComponentId, n.ComponentId));
     }
 
     [Fact]
-    public void The_bridge_never_lands_mid_way_down_a_neighbouring_stands_lead_in()
+    public void A_stub_already_on_the_network_gains_no_bridge()
     {
-        // Neighbour stand on the network: a two-segment lead-in north off the taxiway node at
-        // 60 m east, with an interior node at 20 m north that lies ONLY on that lead-in.
-        var paths = MainTaxiway();
-        double lon60 = 60.0 * DEG_PER_M;
-        paths.Add(new TaxiPath
-        {
-            Name = "", Type = "P", Width = 60.0,
-            StartLat = 0.0,              StartLon = lon60,
-            EndLat = 20.0 * DEG_PER_M,   EndLon = lon60,
-        });
-        paths.Add(new TaxiPath
-        {
-            Name = "", Type = "P", Width = 60.0,
-            StartLat = 20.0 * DEG_PER_M, StartLon = lon60,
-            EndLat = 59.0 * DEG_PER_M,   EndLon = lon60,
-        });
+        // The lead-in starts exactly on U120, so Build's 1.5 m merge joins them already.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(0, 120, 39, 120)));
 
-        // Orphan stand stub whose open end (85 E, 30 N) is 26.9 m from the neighbour's
-        // interior lead-in node but 39.1 m from the taxiway node at 60 E.
-        double lon85 = 85.0 * DEG_PER_M;
-        paths.Add(new TaxiPath
-        {
-            Name = "", Type = "P", Width = 60.0,
-            StartLat = 30.0 * DEG_PER_M, StartLon = lon85,
-            EndLat = 69.0 * DEG_PER_M,   EndLon = lon85,
-        });
-        var parking = new List<ParkingSpot>
-        {
-            new ParkingSpot { Name = "B", Number = 16,
-                              Latitude = 59.0 * DEG_PER_M, Longitude = lon60 },
-            new ParkingSpot { Name = "B", Number = 18, Suffix = "R",
-                              Latitude = 69.0 * DEG_PER_M, Longitude = lon85 },
-        };
-
-        var g = TaxiGraph.Build(paths, parking, new List<StartPosition>());
-
-        var openEnd = g.Nodes.Values.Single(n =>
-            Math.Abs(n.Latitude - 30.0 * DEG_PER_M) < 1e-9 && Math.Abs(n.Longitude - lon85) < 1e-9);
-        var taxiway = TaxiwayNode(g, 120.0);
-        Assert.Equal(taxiway.ComponentId, openEnd.ComponentId);
-
-        // The open end's only way onto the network is the bridge, and it lands on taxiway U.
-        var bridge = Assert.Single(g.Adjacency[openEnd.NodeId],
-                                   e => g.Nodes[e.ToNodeId].Latitude < 29.0 * DEG_PER_M);
-        Assert.Contains("U", g.Nodes[bridge.ToNodeId].TaxiwayNames);
-        Assert.InRange(bridge.DistanceMeters, 38.0, 40.0);
+        Assert.Empty(BridgeEdges(g));
+        Assert.Equal(NodeAt(g, 0, 120).ComponentId, NodeAt(g, 39, 120).ComponentId);
     }
-
-    // ENSB (Svalbard) latitude. One degree of longitude is ~23,000 m there, not 111,132,
-    // so a search grid keyed on a uniform degree cell covers only 50 x cos(78 deg) = 10 m
-    // east-west and never sees a candidate 30 m away. The stub below is offset EAST, which
-    // is the direction that exposes it; the equator fixtures above are offset north and
-    // pass either way.
-    private const double ArcticLat = 78.246;
 
     [Fact]
     public void An_east_west_gap_is_measured_in_metres_at_arctic_latitudes()
     {
-        double lonPerM = 1.0 / (M_PER_DEG * Math.Cos(ArcticLat * Math.PI / 180.0));
-
+        // ENSB latitude: a uniform-degree search cell would span only ~10 m east-west here,
+        // missing a candidate 30 m east. The stub runs further east from 30 m past the last node.
+        const double lat = 78.246;
+        double lonPerM = 1.0 / (111132.0 * Math.Cos(lat * Math.PI / 180.0));
         var paths = Enumerable.Range(0, 4).Select(i => new TaxiPath
         {
-            Name = "U", Type = "PT", Width = 75.0,
-            StartLat = ArcticLat, StartLon = (i * 60.0) * lonPerM,
-            EndLat = ArcticLat,   EndLon = ((i + 1) * 60.0) * lonPerM,
+            Name = "U", Type = "T", Width = 75.0, StartType = "N", EndType = "N",
+            StartLat = lat, StartLon = (i * 60.0) * lonPerM, EndLat = lat, EndLon = ((i + 1) * 60.0) * lonPerM,
         }).ToList();
-
-        // Stand stub 30 m EAST of the taxiway's last node, running further east.
-        double connectorLon = (240.0 + 30.0) * lonPerM;
-        double standLon = (240.0 + 69.0) * lonPerM;
         paths.Add(new TaxiPath
         {
-            Name = "", Type = "P", Width = 60.0,
-            StartLat = ArcticLat, StartLon = connectorLon,
-            EndLat = ArcticLat,   EndLon = standLon,
+            Name = "", Type = "P", Width = 60.0, StartType = "N", EndType = "P",
+            StartLat = lat, StartLon = 270.0 * lonPerM, EndLat = lat, EndLon = 309.0 * lonPerM,
         });
-        var parking = new List<ParkingSpot>
-        {
-            new ParkingSpot { Name = "B", Number = 18, Suffix = "R",
-                              Latitude = ArcticLat, Longitude = standLon }
-        };
 
-        var g = TaxiGraph.Build(paths, parking, new List<StartPosition>());
+        var g = BuildGraph(paths);
 
-        var stand = StandNode(g);
+        var stand = g.Nodes.Values.Single(n => Math.Abs(n.Longitude - 309.0 * lonPerM) < 1e-9);
         var taxiway = g.Nodes.Values.First(n => n.TaxiwayNames.Contains("U"));
         Assert.Equal(taxiway.ComponentId, stand.ComponentId);
+        Assert.Equal(2, BridgeEdges(g).Count);
     }
 
     [Fact]
-    public void A_stand_already_on_the_network_gains_no_extra_edge()
+    public void The_main_component_id_is_the_largest_component()
     {
-        // Zero-gap control: the stub meets the taxiway, so Build's 1.5 m node merge
-        // already joins them and the bridge pass must be a no-op.
-        var g = BuildWithStub(0.0);
+        // Stub 200 m out stays unbridged: MainComponentId is U's component, not the stub's.
+        var far = BuildGraph(MainTaxiwayU().Append(LeadIn(200, 120, 239, 120)));
+        Assert.Equal(NodeAt(far, 0, 120).ComponentId, far.MainComponentId);
+        Assert.NotEqual(NodeAt(far, 239, 120).ComponentId, far.MainComponentId);
 
-        var taxiway = TaxiwayNode(g, 120.0);
-        Assert.Equal(taxiway.ComponentId, StandNode(g).ComponentId);
-
-        // taxiway node has 2 "U" neighbours plus the merged connector = 3, never 4.
-        Assert.Equal(3, g.Adjacency[taxiway.NodeId].Count);
+        // After a bridge the renumbered component that holds both is the main one.
+        var near = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+        Assert.Equal(NodeAt(near, 51, 120).ComponentId, near.MainComponentId);
     }
 }
