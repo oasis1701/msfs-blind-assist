@@ -36,10 +36,14 @@ public readonly record struct LandingRunwayResult(LandingRunwayVerdict Verdict, 
 ///
 /// <para>The rule: candidates are the runway ends whose pavement contains the aircraft AND whose
 /// heading is within <see cref="AlignedMaxDeg"/> of the aircraft's; the best-aligned candidate
-/// wins, cross-track breaking ties. Alignment is what separates runways at an intersection, where
-/// the aircraft is on both pavements (KDCA 01/04). A crossing runway can never be reported as the
-/// reciprocal end: that verdict requires <see cref="IsTwin"/>, i.e. the planned runway's own
-/// swapped endpoints (PR #236 review, KPHL 17/27R).</para>
+/// wins, except that among candidates within <see cref="AlignmentTieDeg"/> of that best alignment
+/// the smallest cross-track wins — near-parallel runway ends differ by hundredths of a degree
+/// (LFCH 25/25L), so an exact tie in heading delta never happens and deciding on alignment alone
+/// picks whichever side of that tiny gap the touchdown heading falls on, not which centreline the
+/// aircraft is on. Alignment is what separates runways at an intersection, where the aircraft is
+/// on both pavements (KDCA 01/04). A crossing runway can never be reported as the reciprocal end:
+/// that verdict requires <see cref="IsTwin"/>, i.e. the planned runway's own swapped endpoints
+/// (PR #236 review, KPHL 17/27R).</para>
 ///
 /// <para>Pure geometry, no sim state — see <c>LandingRunwayMatchTests</c>.</para>
 /// </summary>
@@ -49,6 +53,12 @@ public static class LandingRunwayMatch
     /// with it. Touchdown crab and an unfinished de-crab stay well inside; a runway crossing at a
     /// real angle does not.</summary>
     public const double AlignedMaxDeg = 45.0;
+
+    /// <summary>Candidates within this many degrees of the best heading alignment are decided by
+    /// cross-track instead: near-parallel runway ends differ by hundredths of a degree (e.g. LFCH
+    /// 25/25L), so an exact-tie comparison picks whichever side of that gap the touchdown heading
+    /// falls on rather than which centreline the aircraft is actually on.</summary>
+    public const double AlignmentTieDeg = 3.0;
 
     /// <summary>Along-track slop past the far end of the runway.</summary>
     public const double AfterEndMarginM = 50.0;
@@ -75,9 +85,7 @@ public static class LandingRunwayMatch
         Runway planned, IReadOnlyList<Runway> allRunways,
         double beforeThresholdMarginM = TouchdownBeforeThresholdMarginM)
     {
-        Runway? best = null;
-        double bestDelta = double.MaxValue;
-        double bestCross = double.MaxValue;
+        var candidates = new List<(Runway Rwy, double Delta, double Cross)>();
         bool plannedListed = false;
 
         foreach (var rwy in allRunways)
@@ -86,6 +94,26 @@ public static class LandingRunwayMatch
             Consider(rwy);
         }
         if (!plannedListed) Consider(planned);
+
+        if (candidates.Count == 0) return new LandingRunwayResult(LandingRunwayVerdict.Unknown, null);
+
+        // Pass 1: the smallest heading delta among every candidate on the aircraft's pavement.
+        double bestDelta = double.MaxValue;
+        foreach (var c in candidates)
+            if (c.Delta < bestDelta) bestDelta = c.Delta;
+
+        // Pass 2: among candidates within AlignmentTieDeg of that best alignment, the smallest
+        // cross-track wins. Doing this as a single pass with a tolerance baked into the delta
+        // comparison would make the result depend on list order instead.
+        Runway? best = null;
+        double bestCross = double.MaxValue;
+        foreach (var c in candidates)
+        {
+            if (c.Delta > bestDelta + AlignmentTieDeg) continue;
+            if (c.Cross >= bestCross) continue;
+            best = c.Rwy;
+            bestCross = c.Cross;
+        }
 
         if (best == null) return new LandingRunwayResult(LandingRunwayVerdict.Unknown, null);
         if (IsSameEnd(best, planned)) return new LandingRunwayResult(LandingRunwayVerdict.Matches, null);
@@ -98,10 +126,7 @@ public static class LandingRunwayMatch
             double delta = Math.Abs(NormalizeAngle(headingTrue - rwy.Heading));
             if (delta > AlignedMaxDeg) return;
             if (!IsOnRunway(lat, lon, rwy, beforeThresholdMarginM, out double cross)) return;
-            if (delta > bestDelta || (delta == bestDelta && cross >= bestCross)) return;
-            best = rwy;
-            bestDelta = delta;
-            bestCross = cross;
+            candidates.Add((rwy, delta, cross));
         }
     }
 

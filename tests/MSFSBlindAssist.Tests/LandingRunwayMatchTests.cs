@@ -395,4 +395,66 @@ public class LandingRunwayMatchTests
         Assert.Equal(LandingRunwayVerdict.Matches, approach.Verdict);
         Assert.Equal(LandingRunwayVerdict.Unknown, touchdown.Verdict);
     }
+
+    // ---------------------------------------------------------------------------------
+    // Near-parallel runway ends whose heading differs by hundredths of a degree
+    // (PR #236 final review, finding A). A single-pass "smallest heading delta, with
+    // cross-track only breaking an EXACT tie" comparison decides these by which side of
+    // that tiny gap the aircraft's touchdown heading happens to fall on, not by which
+    // centreline the aircraft is actually on.
+    //
+    // Rows transcribed read-only from fs2024.sqlite exactly as LittleNavMapProvider.
+    // GetRunways builds them (one Runway per END). LFCH 25/25L: heading differs by
+    // 0.0848 degrees; 25's threshold projects 50.1 m from 25L's centreline (49.1 m at
+    // the touchdown point below — near-parallel runways, so the offset barely changes
+    // along their length), well inside 25L's 53.1 m corridor (half-width 38.1 m + the
+    // 15 m off-pavement margin shared with RunwayVacateResolver.IsOffPavement) — so a
+    // landing on 25 is geometrically also "on" 25L's pavement per IsOnRunway. Touchdown
+    // point: 760 m down 25's own centreline (cross-track 0 against 25, ~49 m against
+    // 25L; both runways' along-track windows contain it).
+    // ---------------------------------------------------------------------------------
+
+    private static List<Runway> LfchRunways() => new()
+    {
+        Rw("25", 252.42982482910156, 4586.0, 60.0, 1290.0, 44.598228454589844, -1.1036442518234253, 44.59442901611328, -1.1204839944839478),
+        Rw("07", 72.42982482910156, 4586.0, 60.0, 353.0, 44.59442901611328, -1.1204839944839478, 44.598228454589844, -1.1036442518234253),
+        Rw("25L", 252.51466369628906, 3866.0, 250.0, 1239.0, 44.59756088256836, -1.1045126914978027, 44.5943717956543, -1.1187163591384888),
+        Rw("07R", 72.51466369628906, 3866.0, 250.0, 0.0, 44.5943717956543, -1.1187163591384888, 44.59756088256836, -1.1045126914978027),
+    };
+
+    private static Runway Lfch(string id) => LfchRunways().First(r => r.RunwayID == id);
+
+    // 760 m down 25's centreline from its threshold, cross-track 0 against 25.
+    private const double LfchTouchdownLat = 44.59616751322576;
+    private const double LfchTouchdownLon = -1.1127850201686644;
+    private const double Lfch25HeadingDeg = 252.42982482910156;
+
+    [Fact]
+    public void Lfch_25_plan_matches_one_degree_either_side_of_25s_own_heading()
+    {
+        // 25L's heading is only 0.0848 degrees off 25's, so a +1 degree touchdown
+        // heading lands fractionally closer to 25L than to 25 (0.915 vs 1.0 degrees) —
+        // the old single-pass rule picked 25L outright on that side of the gap.
+        var plus1 = LandingRunwayMatch.Evaluate(
+            LfchTouchdownLat, LfchTouchdownLon, headingTrue: Lfch25HeadingDeg + 1.0,
+            Lfch("25"), LfchRunways());
+        var minus1 = LandingRunwayMatch.Evaluate(
+            LfchTouchdownLat, LfchTouchdownLon, headingTrue: Lfch25HeadingDeg - 1.0,
+            Lfch("25"), LfchRunways());
+
+        Assert.Equal(LandingRunwayVerdict.Matches, plus1.Verdict);
+        Assert.Equal(LandingRunwayVerdict.Matches, minus1.Verdict);
+    }
+
+    [Fact]
+    public void Lfch_25L_plan_on_25s_centreline_is_a_different_runway()
+    {
+        // Same position, planned for the neighbour instead: physically on 25, not 25L.
+        var r = LandingRunwayMatch.Evaluate(
+            LfchTouchdownLat, LfchTouchdownLon, headingTrue: Lfch25HeadingDeg,
+            Lfch("25L"), LfchRunways());
+
+        Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
+        Assert.Equal("25", r.Actual?.RunwayID);
+    }
 }
