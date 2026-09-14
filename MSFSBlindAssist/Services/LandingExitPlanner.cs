@@ -18,10 +18,14 @@ namespace MSFSBlindAssist.Services;
 /// planner immediately routes from the current aircraft position to the chosen exit
 /// node through TaxiGuidanceManager.
 ///
-/// Intentionally does NOT depend on which runway the sim reports — we trust the
-/// exit selection the pilot made, because many airports don't expose runway id via
-/// SimConnect on the ground. The exit has lat/lon and a taxi graph node id; those
-/// are enough to route to it from any touchdown point.
+/// Does NOT depend on which runway the SIM reports — many airports don't expose a
+/// runway id via SimConnect on the ground. It does, however, check the touchdown
+/// position and heading against the planned runway's own geometry before handing that
+/// runway to the rollout as a measurement frame: the exit's lat/lon and node id are
+/// enough to ROUTE to it from any touchdown point, but the ROLLOUT measures distance
+/// along, and lateral offset from, the planned runway, and a frame that does not
+/// describe the aircraft produces nonsense rather than a degraded answer. See
+/// <see cref="Navigation.LandingRunwayMatch"/>.
 /// </summary>
 public class LandingExitPlanner
 {
@@ -195,6 +199,88 @@ public class LandingExitPlanner
                 $"exit='{_exit.TaxiwayName}' node={_exit.NodeId} " +
                 $"from lat={lat:F6} lon={lon:F6} hdgTrue={headingTrue:F1}");
 
+        // Is the plan's runway the runway this aircraft is actually on? Asked BEFORE any
+        // routing, because the answer can change which runway the rollout is measured in.
+        //
+        // The planner's runway combo defaults to the first runway at the airport, so a pilot
+        // who plans an exit without changing it plans against a runway they may not land on.
+        // At OMDB that default is 12L, and two landings on 30L (2026-09-06 and 2026-09-12,
+        // issue #234) handed the 12L frame to the rollout: hdgDelta came out at 179 degrees,
+        // signedAlongPast at +4,570 ft and lateral at 1,263 ft, so the first update concluded
+        // pastExit AND exitedLaterally and handed straight off to Taxiing — the pilot heard
+        // taxiway names instead of the touchdown and exit callouts they had planned for.
+        string? touchdownPrefix = null;
+        var runways = _dataProvider.GetRunways(_icao);
+        var match = LandingRunwayMatch.Evaluate(lat, lon, headingTrue, _runway, runways);
+        DiagLog($"Runway check: planned={_runway.RunwayID} hdgRwy={_runway.Heading:F1} " +
+                $"acftHdg={headingTrue:F1} verdict={match.Verdict} " +
+                $"actual={match.Actual?.RunwayID ?? "-"}");
+
+        if (match.Verdict == LandingRunwayVerdict.DifferentRunway && match.Actual != null)
+        {
+            // The chosen exit belongs to pavement the aircraft is not on, so there is no exit
+            // to steer to and nothing to re-measure. Say so and give the pilot the one thing
+            // that is still true and still needed at 160 kt — how much runway is left.
+            // AnnounceImmediate, not Announce: this line REPLACES the touchdown callout on this
+            // path (nothing else speaks here), and it is the only thing telling the pilot why
+            // the plan they made is not running. Queued, a ground-speed callout could bury it.
+            _announcer.AnnounceImmediate(
+                $"Touchdown. Landing exit plan was for runway {_runway.RunwayID}, but you are " +
+                $"on runway {match.Actual.RunwayID}. Exit plan cancelled. Runway end countdown only.");
+            DiagLog($"ActivateGuidance: plan runway {_runway.RunwayID} does not match " +
+                    $"{match.Actual.RunwayID} — runway-end countdown on the actual runway");
+            _guidanceManager.BeginRunwayEndCountdownRollout(match.Actual, match.Actual.Heading);
+            _activatedThisLanding = true;
+            return true;
+        }
+
+        if (match.Verdict == LandingRunwayVerdict.ReciprocalEnd && match.Actual != null)
+        {
+            // Same pavement, other direction. The pilot's exit taxiway is still the right
+            // taxiway — only its distance from the threshold changes — so swap the frame to
+            // the end actually being rolled down and carry on with full exit guidance.
+            DiagLog($"ActivateGuidance: plan runway {_runway.RunwayID} is the reciprocal of " +
+                    $"{match.Actual.RunwayID} — re-framing the rollout on the landed end");
+            // NOT spoken here. The touchdown callout goes out immediately after this through
+            // AnnounceImmediate, which discards the queue, so a line spoken now would be
+            // thrown away before the pilot heard it. It rides WITH the touchdown callout
+            // instead — one utterance, the house remedy for this repeat failure.
+            touchdownPrefix =
+                $"Landing exit plan was for runway {_runway.RunwayID}; you are on runway " +
+                $"{match.Actual.RunwayID}.";
+            _runway = match.Actual;
+
+            // Re-measure the pilot's exit from the end actually being rolled down. A
+            // LandingExit's DistanceFromThresholdFeet and ExitAngleDegrees are both
+            // DIRECTION-dependent, and the angle is not cosmetic: ExitType is derived from
+            // it, the exit-turn gate opens at ExitAngleDegrees * 0.7, and
+            // TryEarlyExitHandoff fires only below 50 degrees — so a 30-degree rapid-exit
+            // turnoff read from the far end is really 150, and keeping the stale figure
+            // would arm the early handoff on a 90-degree turn. Same pavement, same node id,
+            // new numbers.
+            var reFramed = _graph.GetLandingExits(_runway)
+                                 .FirstOrDefault(e => e.NodeId == _exit.NodeId);
+            if (reFramed != null)
+            {
+                DiagLog($"Re-framed exit '{_exit.TaxiwayName}' node={_exit.NodeId}: " +
+                        $"distFromThr {_exit.DistanceFromThresholdFeet:F0} -> " +
+                        $"{reFramed.DistanceFromThresholdFeet:F0} ft, angle " +
+                        $"{_exit.ExitAngleDegrees:F0} -> {reFramed.ExitAngleDegrees:F0} deg, " +
+                        $"type '{_exit.ExitType}' -> '{reFramed.ExitType}'");
+                _exit = reFramed;
+            }
+            else
+            {
+                // GetLandingExits is lossy BY DESIGN (one entry per taxiway name, and the
+                // geometric fallback switches off for a whole runway once any corridor node
+                // carries a hold-short marker), so an absent entry does not mean the taxiway
+                // is unusable from this end. Keep the pilot's exit: the rollout's callouts,
+                // tone and overshoot logic all read its geometry directly.
+                DiagLog($"Re-frame: '{_exit.TaxiwayName}' node={_exit.NodeId} is not listed " +
+                        $"for {_runway.RunwayID} — keeping the planned exit as-is");
+            }
+        }
+
         // Route from current position to the exit node, unconstrained (no pilot-entered
         // taxiway sequence — just shortest path). The route will follow the runway centerline
         // through the exit node's graph path naturally.
@@ -238,7 +324,7 @@ public class LandingExitPlanner
             // component, so that re-route succeeds and normal taxi guidance follows.
             _guidanceManager.BeginLandingRolloutNoGraph(
                 _exit, _runway.Heading, _runway, allExits, lat, lon,
-                SettingsManager.Current);
+                SettingsManager.Current, touchdownPrefix);
 
             _activatedThisLanding = true;
             return true;
@@ -261,7 +347,8 @@ public class LandingExitPlanner
         // Runway.Heading is true heading per the DB schema; pass it
         // through so the rollout can detect when the pilot starts the
         // turn off centerline.
-        _guidanceManager.BeginLandingRollout(_exit, _runway.Heading, _runway, allExits, lat, lon);
+        _guidanceManager.BeginLandingRollout(
+            _exit, _runway.Heading, _runway, allExits, lat, lon, touchdownPrefix);
         return true;
     }
 }
