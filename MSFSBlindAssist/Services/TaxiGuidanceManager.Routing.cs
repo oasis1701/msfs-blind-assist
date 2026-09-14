@@ -105,6 +105,9 @@ public partial class TaxiGuidanceManager
             // Assigned unconditionally (0 when absent) so a plain route can never inherit
             // the previous route's holding-point pin through the recalc path.
             _holdingPointHoldNodeId = holdingPointHoldNodeId ?? 0;
+            // Cleared for every load, so a failed load can never leave the previous route's
+            // unmapped-start warning for the form or the one-shot to speak.
+            LastRouteUnmappedStartWarning = null;
 
             // Store lineup target data (runway threshold or gate position) for lineup phase
             _isRunwayLineup = isRunwayDestination;
@@ -178,6 +181,18 @@ public partial class TaxiGuidanceManager
             // fs2024) — without this filter, FindNearestNodeInDirection
             // would snap to the island and A* would fail with no path.
             int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
+
+            // Route reachability (Navigation.RouteReachability): refuse a destination on a piece of
+            // network the aircraft is not on, instead of starting the route on that piece and
+            // steering a straight line across unmapped ground to it. On runway pavement or on no taxi
+            // edge the class is Unchanged and everything below runs exactly as before.
+            var reachability = RouteReachability.Classify(_graph, aircraftLat, aircraftLon, destinationNodeId);
+            if (reachability == ReachabilityClass.DestinationNotConnected)
+            {
+                _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
+                                  $"ac={aircraftLat:F6},{aircraftLon:F6}");
+                return RouteReachabilityMessages.DestinationNotConnected(destinationName);
+            }
 
             // Start-node selection. With a constrained taxiway sequence we prefer
             // a node ON the first cleared taxiway (heading-irrelevant) so the route
@@ -319,6 +334,28 @@ public partial class TaxiGuidanceManager
                 // re-measure it against the pinned one (same first cleared taxiway).
                 if (attemptLeadIn && !leadInFallback && firstCleared != null)
                     leadIn = TaxiLeadIn.Extract(route, firstCleared);
+            }
+
+            // Leaving a disconnected position for the main network: the route starts with a straight
+            // unmapped leg from the aircraft to its first node. Refuse when that leg touches runway
+            // pavement; otherwise compose the warning the pilot hears when guidance starts.
+            string? unmappedStartWarning = null;
+            if (reachability == ReachabilityClass.LeavingUnconnectedPosition)
+            {
+                var firstLeg = RouteReachability.CheckFirstLeg(
+                    _graph, aircraftLat, aircraftLon, route.Segments[0].FromNode);
+                if (firstLeg.CrossesRunway)
+                {
+                    _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" first leg crosses runway " +
+                                      $"{firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0}");
+                    return RouteReachabilityMessages.FirstLegCrossesRunway(firstLeg.RunwayDesignator);
+                }
+                string? firstNamedTaxiway = route.Segments
+                    .FirstOrDefault(s => !string.IsNullOrEmpty(s.TaxiwayName))?.TaxiwayName;
+                unmappedStartWarning = RouteReachabilityMessages.UnmappedFirstLeg(
+                    firstLeg.GapMeters, FormatDistance, firstNamedTaxiway);
+                _guidanceLog.Info($"Reachability: leaving unconnected position dest=\"{destinationName}\" " +
+                                  $"gapM={firstLeg.GapMeters:F0} firstTaxiway=\"{firstNamedTaxiway}\"");
             }
 
             string? constrainedLengthWarning = null;
@@ -614,7 +651,12 @@ public partial class TaxiGuidanceManager
                 string boxText = string.IsNullOrEmpty(runwayReachWarning)
                     ? summary
                     : runwayReachWarning + " " + summary;
+                // The unmapped-start warning leads the box so it can be re-read. It is SPOKEN once, by
+                // the form's standstill utterance or the first-frame one-shot (ConsumeUnmappedStartWarning).
+                if (unmappedStartWarning != null)
+                    boxText = unmappedStartWarning + " " + boxText;
                 LastRouteSummary = boxText;
+                LastRouteUnmappedStartWarning = unmappedStartWarning;
                 // SPOKEN warning is a short one-liner (~5 s) so it's heard before
                 // the first tactical callout can interrupt it; the full detail
                 // (distance off, "missing connector") stays in the box above for
@@ -937,6 +979,18 @@ public partial class TaxiGuidanceManager
             ? _graph.Nodes[_destinationNodeId].ComponentId
             : (int?)null;
 
+        // Same reachability decision as LoadRoute: a destination the aircraft cannot reach from where it
+        // now is gets one spoken refusal instead of a straight-line recalculation.
+        var recalcReachability = destComponentId.HasValue
+            ? RouteReachability.Classify(_graph, lat, lon, _destinationNodeId)
+            : ReachabilityClass.Unchanged;
+        if (recalcReachability == ReachabilityClass.DestinationNotConnected)
+        {
+            _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability}");
+            _announcer.AnnounceImmediate(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
+            return;
+        }
+
         (List<string>? remainingSequence, TaxiNode? nearestNode) =
             FindRemainingSequenceByPosition(lat, lon, destComponentId);
 
@@ -990,6 +1044,19 @@ public partial class TaxiGuidanceManager
                                  remainingSequence) is { } pinnedRecalc)
         {
             newRoute = pinnedRecalc;
+        }
+
+        if (recalcReachability == ReachabilityClass.LeavingUnconnectedPosition)
+        {
+            var firstLeg = RouteReachability.CheckFirstLeg(_graph!, lat, lon, newRoute.Segments[0].FromNode);
+            if (firstLeg.CrossesRunway)
+            {
+                _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" first leg crosses runway " +
+                                  $"{firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0}");
+                _announcer.AnnounceImmediate(
+                    RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
+                return;
+            }
         }
 
         // Post-recalc sanity gate. Two failure modes are rejected here:
@@ -1507,7 +1574,27 @@ public partial class TaxiGuidanceManager
     {
         ApplyAutoHoldShortPasses(
             route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase);
+        LogStandBridgeSegments(route, phase);
         _route = route;
+    }
+
+    /// <summary>
+    /// One diagnostic line per fabricated stand bridge (TaxiGraph.StandBridgePathType) an adopted route
+    /// uses, so "why did guidance steer me across here" can be answered from taxi_guidance.log.
+    /// </summary>
+    private void LogStandBridgeSegments(TaxiRoute route, string phase)
+    {
+        if (_graph == null) return;
+        foreach (var seg in route.Segments)
+        {
+            if (seg.FromNode == null || seg.ToNode == null) continue;
+            var edge = _graph.GetEdge(seg.FromNode.NodeId, seg.ToNode.NodeId);
+            if (edge?.PathType != TaxiGraph.StandBridgePathType) continue;
+            _guidanceLog.Info(
+                $"Route uses stand bridge: phase={phase} nodes={seg.FromNode.NodeId}->{seg.ToNode.NodeId} " +
+                $"from={seg.FromNode.Latitude:F6},{seg.FromNode.Longitude:F6} " +
+                $"to={seg.ToNode.Latitude:F6},{seg.ToNode.Longitude:F6} lenM={seg.DistanceMeters:F1}");
+        }
     }
 
     /// <summary>

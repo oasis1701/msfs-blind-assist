@@ -1254,6 +1254,23 @@ public partial class TaxiGuidanceManager : IDisposable
         return cue;
     }
 
+    /// <summary>
+    /// The unmapped-first-leg warning for the route just built ("Your position isn't connected to the
+    /// taxiway network…"), or null. Composed ONCE by LoadRoute when RouteReachability says the aircraft
+    /// is leaving a disconnected piece of network, and delivered exactly like
+    /// <see cref="LastRouteInitialTurnCue"/>: folded into the form's standstill utterance, or spoken by
+    /// the first-taxiing-frame one-shot together with the turn cue. Never both.
+    /// </summary>
+    public string? LastRouteUnmappedStartWarning { get; private set; }
+
+    /// <summary>Takes the warning and clears it, so neither delivery path can repeat it.</summary>
+    public string? ConsumeUnmappedStartWarning()
+    {
+        string? warning = LastRouteUnmappedStartWarning;
+        LastRouteUnmappedStartWarning = null;
+        return warning;
+    }
+
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
@@ -2118,8 +2135,11 @@ public partial class TaxiGuidanceManager : IDisposable
             // warning is the priority, the form speaks it after StartGuidance, and a turn
             // cue would be moot (the pilot will reprogram) AND would stomp it.
             string? cue = ConsumeInitialTurnCue();
-            if (cue != null && LastRouteReachWarning == null)
-                AnnounceInstruction(cue);
+            string? unmappedStart = ConsumeUnmappedStartWarning();
+            // One utterance: the unmapped-start warning (if any), then the turn cue. Never two calls.
+            string? startSpeech = RouteReachabilityMessages.JoinStartSpeech(unmappedStart, cue);
+            if (startSpeech != null && LastRouteReachWarning == null)
+                AnnounceInstruction(startSpeech);
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the

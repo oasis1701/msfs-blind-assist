@@ -4513,6 +4513,12 @@ public class TaxiAssistForm : Form
                 $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
+        // The unmapped-start warning ("Your position isn't connected ...") rides in this same
+        // utterance, ahead of the turn-cue / reach-warning slot below, so that slot stays last.
+        // Consumed unconditionally, so the per-frame one-shot can never repeat it.
+        string? unmappedStart = _guidanceManager.ConsumeUnmappedStartWarning();
+        if (!string.IsNullOrEmpty(unmappedStart))
+            standstillParts.Add(unmappedStart);
         // The route-start turn cue rides INSIDE this one utterance rather than interrupting
         // it. Live KATL 2026-08-27: it fired as its own AnnounceImmediate 50 ms after this
         // block spoke, and cut the SayIntentions import summary off mid-word -- the fifth
