@@ -503,15 +503,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // outside of the turn.
     private const double SHARP_TURN_ANGLE_DEG = 60.0;
 
-    // Off-route (perpendicular cross-track) thresholds.
-    // Tolerance = max(halfWidth + margin, floor). The margin absorbs navdata
-    // centerline sampling error and pilot-discretion margin on wide aprons;
-    // the floor protects against tiny/zero width values on unnamed connectors.
-    // 75 ft default taxiway width covers FAA AC 150/5300 Code B/C taxiways
-    // (50–82 ft) — good enough as a fallback when the DB row has no width.
-    private const double OFF_ROUTE_PERP_FLOOR_M = 25.0;
-    private const double OFF_ROUTE_PERP_MARGIN_M = 15.0;
-    private const double DEFAULT_TAXIWAY_WIDTH_FT = 75.0;
+    // Off-route (perpendicular cross-track) tolerance lives in Navigation.PavementTolerance.
     // Minimum negative along-track (behind the segment's start node) before the
     // "going backwards" off-route condition fires. GPS at taxi scale has <1 m
     // noise; 10 m gives a comfortable margin while catching deliberate rearward
@@ -520,11 +512,6 @@ public partial class TaxiGuidanceManager : IDisposable
     // cross-track near zero (PerpendicularDistance returns ~0), so the lateral
     // check never fires even as the pilot drives steadily away from the route.
     private const double OFF_ROUTE_BEHIND_START_M = 10.0;
-    // Some navdata rows report absurd widths (up to thousands of feet on aprons
-    // / combined surfaces). Cap so a malformed row can't blow the perpendicular
-    // off-route tolerance out to hundreds of meters — that would mean the
-    // aircraft is effectively never "off route" on those segments.
-    private const double OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0;
     // Grace window after a segment advance during which off-route is suppressed.
     // First-turn false-trigger: in the middle of the turn arc the aircraft's
     // perpendicular distance to the just-completed *or* just-entered segment can
@@ -2339,17 +2326,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // persistence window and the recalc then fell back to shortest path,
         // bypassing the ATC-cleared sequence.
         //
-        // Tolerance = max(edge half-width + 15 m, OFF_ROUTE_PERP_FLOOR_M), capped
-        // at an upper bound so bogus DB widths (we see values up to 4000+ ft in
-        // some rows — aprons mis-tagged as taxi paths) don't produce a 600 m
-        // tolerance that would mask real deviations.
-        // PathWidth is in feet and may be 0 for unnamed connectors; 75 ft is a
-        // reasonable default taxiway width — FAA AC 150/5300 Code B/C = 50-82 ft.
-        double widthFt = currentSeg.PathWidth > 0 ? currentSeg.PathWidth : DEFAULT_TAXIWAY_WIDTH_FT;
-        if (widthFt > OFF_ROUTE_PERP_WIDTH_CAP_FT) widthFt = OFF_ROUTE_PERP_WIDTH_CAP_FT;
-        double widthM = widthFt * 0.3048;
-        double halfWidth = widthM * 0.5;
-        double perpTolerance = Math.Max(halfWidth + OFF_ROUTE_PERP_MARGIN_M, OFF_ROUTE_PERP_FLOOR_M);
+        // Tolerance = max(edge half-width + 15 m, 25 m), width defaulted (75 ft) and capped
+        // (300 ft) against bogus DB rows. One definition, shared with RouteReachability:
+        // see Navigation.PavementTolerance.
+        double perpTolerance = PavementTolerance.ForWidthFeet(currentSeg.PathWidth);
 
         double perpCurrent = PerpendicularDistanceToSegmentMeters(
             lat, lon,
