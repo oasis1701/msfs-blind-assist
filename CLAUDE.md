@@ -291,6 +291,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 ### Taxi guidance (→ [taxi-guidance.md](docs/taxi-guidance.md))
 
 - No airport-specific hardcoding — every taxiway/parking/runway name must flow through from the user's DB unchanged. → [taxi-guidance.md](docs/taxi-guidance.md)
+- A stand stranded in its own connected component is bridged into the main taxi network at Build time (`BridgeOrphanParkingIslands`, 50 m, parking islands only, one dead-end bridge each) — without it the destination-component start-node filter leaves an assigned gate unroutable (OMDB B 18R, 12 m seam). Never extend it to taxiway-only islands: that is the GCLP S5 shape the filter exists to reject. → [taxi-guidance.md](docs/taxi-guidance.md)
 - Takeoff Assist's `Toggle(off)` must unconditionally clear the runway reference — within-session preservation let a turnaround flight silently reuse flight 1's runway on flight 2's CTRL+T; the teleport dialog path still sets the reference unconditionally so teleport always wins. → [taxi-guidance.md](docs/taxi-guidance.md)
 - Where-Am-I's runway-detection fallback must use a strict half-width tolerance (no +5m fudge) and stay gated on `_lastOnGround`. → [taxi-guidance.md](docs/taxi-guidance.md)
 - Auto-activate-Takeoff-Assist-on-lineup is a one-shot latch (`_autoActivateFired`) and must NOT reset on lineup drift-out — re-engaging after a deliberate manual deactivation would surprise the pilot. → [taxi-guidance.md](docs/taxi-guidance.md)

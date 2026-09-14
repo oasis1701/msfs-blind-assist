@@ -753,7 +753,182 @@ public class TaxiGraph
         // upgrades are in place.
         graph.AssignConnectedComponents();
 
+        // Reattach stands the navdata stranded, then renumber. Must run AFTER the
+        // parking pass above (it needs to know which nodes are stands) and after the
+        // first component assignment (it needs to know what is an island).
+        graph.BridgeOrphanParkingIslands();
+
         return graph;
+    }
+
+    /// <summary>
+    /// Distance within which an isolated stand is treated as a navdata SEAM rather than
+    /// genuinely disconnected ground, and joined to the main taxi network with one bridge
+    /// edge. Matches <c>TaxiRouter.AStarSearchStrict</c>'s own MAX_BRIDGE_DISTANCE_M, which
+    /// relaxes bridge edges over exactly this distance for exactly this reason — the two
+    /// numbers describe the same phenomenon and should move together.
+    ///
+    /// <para>Measured over the whole fs2024 navdata (22,697 airports carrying taxi paths):
+    /// 3,655 parking-bearing islands at 2,472 airports, of which 1,205 (33.0 %) sit within
+    /// 50 m of the main component; the median is 110.6 m and the longest 3,061 m. That long
+    /// tail is real — remote aprons and farm strips whose connection to the network genuinely
+    /// is not modelled — and bridging those would draw a straight steering line across
+    /// whatever is actually between them. 50 m keeps the repair to the seam cases.</para>
+    /// </summary>
+    private const double MAX_ORPHAN_PARKING_BRIDGE_M = 50.0;
+
+    /// <summary>
+    /// Joins any connected component that contains a PARKING node, but is not the largest
+    /// component, to that largest component with a single bridge edge — provided the two
+    /// come within <see cref="MAX_ORPHAN_PARKING_BRIDGE_M"/> of each other. Then renumbers
+    /// the components so every caller sees the repaired reachability.
+    ///
+    /// <para>Motivating defect (2026-09-04, OMDB gate B 18R): the stand and its apron
+    /// connector are modelled as a two-node stub whose open end stops 12 m short of the
+    /// nearest taxiway-U node instead of meeting it. Build's node merge is 1.5 m, so the
+    /// stub stayed its own 2-node component beside a 3,632-node airport. Every start-node
+    /// selector in LoadRoute is filtered to the DESTINATION's component — the GCLP S5
+    /// island defence — so with B 18R as the destination there was no candidate start node
+    /// anywhere near the aircraft and LoadRoute answered "Could not find a nearby taxiway
+    /// node." The gate the sim (and GSX, and ATC) had assigned could not be taxied to at
+    /// all; the pilot had to teleport onto it.</para>
+    ///
+    /// <para>Only PARKING islands are bridged. A taxiway-only island is the GCLP S5 shape
+    /// the component filter exists to REJECT — a named taxiway with no connection at either
+    /// terminus, where snapping the route start onto it strands A*. A stand is different in
+    /// kind: the sim offers it as a destination, so it has to be reachable, and its stub
+    /// necessarily joins the network at exactly one place.</para>
+    ///
+    /// <para>One bridge per island, at the closest pair, so the island stays a DEAD-END
+    /// SPUR: no main-component route can be re-routed through a stand. The main-side
+    /// endpoint is never itself a stand — a gate is not a through-route to another gate —
+    /// and the island-side endpoint is whichever of its nodes is nearest, which for a stub
+    /// is the open connector rather than the stand 39 m further out.</para>
+    /// </summary>
+    private void BridgeOrphanParkingIslands()
+    {
+        // Largest component = the taxi network. A tie cannot be resolved meaningfully and
+        // does not occur at any airport with a network worth routing on, so first wins.
+        var sizes = new Dictionary<int, int>();
+        foreach (var node in Nodes.Values)
+            sizes[node.ComponentId] = sizes.GetValueOrDefault(node.ComponentId) + 1;
+        if (sizes.Count < 2) return;
+
+        int mainComponentId = -1, mainSize = -1;
+        foreach (var pair in sizes)
+            if (pair.Value > mainSize) { mainSize = pair.Value; mainComponentId = pair.Key; }
+
+        // Coarse grid over the main component's non-stand nodes so each island node only
+        // measures against its own neighbourhood. Each cell is one bridge distance across
+        // ON THE GROUND, so the 3x3 block around a node always contains every candidate
+        // within that distance. The longitude cell is widened by 1/cos(latitude) to match
+        // FastDistanceMeters, which scales longitude the same way: a uniform degree cell
+        // spans only 50 x cos(lat) metres east-west, which is 25 m at ENGM (60 N) and 10 m
+        // at ENSB (78 N) — silently shrinking the search at exactly the arctic airports
+        // MERGE_THRESHOLD_METERS was already made distance-based for. An airport spans a
+        // negligible latitude range, so one cosine taken from any of its nodes serves all
+        // of them; the floor keeps the cell finite if a node ever lands near a pole.
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latCell = MAX_ORPHAN_PARKING_BRIDGE_M / METERS_PER_DEG_LAT;
+        double cosLat = Math.Max(
+            Math.Cos(Nodes.Values.First().Latitude * (Math.PI / 180.0)), 0.01);
+        double lonCell = latCell / cosLat;
+
+        var grid = new Dictionary<(long, long), List<TaxiNode>>();
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId != mainComponentId) continue;
+            if (node.Type == TaxiNodeType.Parking) continue;
+            var key = ((long)Math.Floor(node.Latitude / latCell),
+                       (long)Math.Floor(node.Longitude / lonCell));
+            if (!grid.TryGetValue(key, out var bucket))
+                grid[key] = bucket = new List<TaxiNode>();
+            bucket.Add(node);
+        }
+        if (grid.Count == 0) return;
+
+        var islands = new Dictionary<int, List<TaxiNode>>();
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId == mainComponentId) continue;
+            if (!islands.TryGetValue(node.ComponentId, out var members))
+                islands[node.ComponentId] = members = new List<TaxiNode>();
+            members.Add(node);
+        }
+
+        bool bridged = false;
+        foreach (var island in islands.Values)
+        {
+            bool hasStand = false;
+            foreach (var n in island)
+                if (n.Type == TaxiNodeType.Parking) { hasStand = true; break; }
+            if (!hasStand) continue;
+
+            TaxiNode? bestIsland = null, bestMain = null;
+            double bestDist = MAX_ORPHAN_PARKING_BRIDGE_M;
+            foreach (var member in island)
+            {
+                long gLat = (long)Math.Floor(member.Latitude / latCell);
+                long gLon = (long)Math.Floor(member.Longitude / lonCell);
+                for (long dLat = -1; dLat <= 1; dLat++)
+                    for (long dLon = -1; dLon <= 1; dLon++)
+                    {
+                        if (!grid.TryGetValue((gLat + dLat, gLon + dLon), out var bucket)) continue;
+                        foreach (var main in bucket)
+                        {
+                            double d = FastDistanceMeters(
+                                member.Latitude, member.Longitude, main.Latitude, main.Longitude);
+                            if (d >= bestDist) continue;
+                            bestDist = d;
+                            bestIsland = member;
+                            bestMain = main;
+                        }
+                    }
+            }
+
+            if (bestIsland == null || bestMain == null) continue;
+
+            AddOrphanParkingBridge(bestIsland, bestMain, bestDist);
+            bridged = true;
+        }
+
+        if (!bridged) return;
+
+        foreach (var node in Nodes.Values)
+            node.ComponentId = -1;
+        AssignConnectedComponents();
+    }
+
+    /// <summary>
+    /// Adds the two directions of one orphan-stand bridge. Unnamed (there is no taxiway
+    /// here to announce) and typed "P" like every other parking connector, so the one
+    /// PathType anything downstream keys on — "R" for runway — still reads correctly. The
+    /// width is inherited from the widest pavement either end already carries, because the
+    /// steering tone scales its corridor by it and a zero falls back to a generic baseline.
+    /// </summary>
+    private void AddOrphanParkingBridge(TaxiNode a, TaxiNode b, double distanceMeters)
+    {
+        double width = 0.0;
+        foreach (int id in new[] { a.NodeId, b.NodeId })
+            if (Adjacency.TryGetValue(id, out var existing))
+                foreach (var e in existing)
+                    if (e.WidthFeet > width) width = e.WidthFeet;
+
+        double bearing = NavigationCalculator.CalculateBearing(
+            a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+
+        AddEdge(new TaxiEdge
+        {
+            FromNodeId = a.NodeId, ToNodeId = b.NodeId,
+            DistanceMeters = distanceMeters, TaxiwayName = "",
+            BearingDegrees = bearing, WidthFeet = width, PathType = "P",
+        });
+        AddEdge(new TaxiEdge
+        {
+            FromNodeId = b.NodeId, ToNodeId = a.NodeId,
+            DistanceMeters = distanceMeters, TaxiwayName = "",
+            BearingDegrees = (bearing + 180.0) % 360.0, WidthFeet = width, PathType = "P",
+        });
     }
 
     /// <summary>
