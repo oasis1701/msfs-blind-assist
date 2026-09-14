@@ -1158,7 +1158,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // than ROLLOUT_TAXI_GS_KTS (30) because the pilot in this mode is
     // braking hard with no further callouts coming; once they're at a
     // crawl the countdown has nothing more useful to say.
-    private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3.0;
+    private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = Navigation.RolloutExitGate.NoExitStoppedGroundSpeedKts;
 
     // Backtrack guidance thresholds.
     // Within ANNOUNCE distance: fires the "taxiway ahead" callout.

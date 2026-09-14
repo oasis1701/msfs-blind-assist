@@ -68,6 +68,10 @@ public static class RolloutExitGate
     /// <summary>Above this ground speed a heading deviation is touchdown yaw, not a turn.</summary>
     public const double TurnMaxGroundSpeedKts = 90.0;
 
+    /// <summary>Below this ground speed the runway-end countdown treats the aircraft as stopped.
+    /// Shared by <c>TaxiGuidanceManager</c> and <see cref="RunwayEndCountdownGate"/>.</summary>
+    public const double NoExitStoppedGroundSpeedKts = 3.0;
+
     /// <summary>
     /// How close to the exit a turn must begin to count as taking it.
     ///
