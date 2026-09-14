@@ -11,9 +11,10 @@ namespace MSFSBlindAssist.Forms;
 /// Landing Exit Planner form. Lets the pilot pick a runway exit taxiway before
 /// touchdown; the LandingExitPlanner then auto-activates taxi guidance on touchdown.
 ///
-/// The form reuses the existing ILS destination selection (from SimConnectManager)
-/// when available — no duplicate UI for picking the destination airport/runway.
-/// If no ILS destination is set, the pilot can type an ICAO and pick a runway here.
+/// The form pre-fills the airport and runway from the existing ILS destination selection
+/// (from SimConnectManager) when one is set, otherwise from the loaded flight plan's arrival
+/// (LandingExitPlannerPreset) — no duplicate UI for picking the destination airport/runway.
+/// With neither, the pilot types an ICAO and picks a runway here.
 ///
 /// Screen reader optimized: tab order follows ATC-like flow (airport → runway → exit).
 /// </summary>
@@ -37,7 +38,9 @@ public class LandingExitForm : Form
     private readonly Services.GateDataSource? _gateSource;
 
     private readonly string? _presetIcao;
-    private readonly Runway? _presetRunway;
+    // A runway DESIGNATOR, not a Runway row: a flight plan names its arrival runway as text, and
+    // PresetRunwayIndex matches it against the loaded rows by normalised designator.
+    private readonly string? _presetRunwayId;
 
     /// <summary>
     /// Wraps a Runway so each combo item's ToString returns just the runway
@@ -81,12 +84,16 @@ public class LandingExitForm : Form
     // graph build, so two pushes could otherwise interleave two builds onto _graph.
     private bool _refreshingAfterAugment;
 
+    // The airport load in flight and the ICAO it is loading (see LoadAirportAsync).
+    private System.Threading.Tasks.Task? _loadTask;
+    private string _loadTaskIcao = "";
+
     public LandingExitForm(
         IAirportDataProvider dataProvider,
         ScreenReaderAnnouncer announcer,
         LandingExitPlanner planner,
         string? presetIcao,
-        Runway? presetRunway,
+        string? presetRunwayId,
         SimConnectManager? simConnectManager = null,
         Services.GateDataSource? gateSource = null)
     {
@@ -96,7 +103,7 @@ public class LandingExitForm : Form
         _simConnectManager = simConnectManager;
         _gateSource = gateSource;
         _presetIcao = presetIcao;
-        _presetRunway = presetRunway;
+        _presetRunwayId = presetRunwayId;
         _augProvider = dataProvider as Services.TaxiAugment.AugmentingAirportDataProvider;
         InitializeFormControls();
 
@@ -149,7 +156,7 @@ public class LandingExitForm : Form
             Width = controlWidth,
             CharacterCasing = CharacterCasing.Upper,
             AccessibleName = "Airport ICAO",
-            AccessibleDescription = "ICAO of the destination airport. Pre-filled from your ILS destination if set."
+            AccessibleDescription = "ICAO of the destination airport. Pre-filled from your ILS destination or flight plan if set."
         };
         txtAirport.Leave += (s, e) => LoadAirport(txtAirport.Text.Trim());
         y += 30;
@@ -168,7 +175,7 @@ public class LandingExitForm : Form
             Width = controlWidth,
             DropDownStyle = ComboBoxStyle.DropDownList,
             AccessibleName = "Runway",
-            AccessibleDescription = "Landing runway. Pre-filled from your ILS destination if set."
+            AccessibleDescription = "Landing runway. Pre-filled from your ILS destination or flight plan if set."
         };
         cmbRunway.SelectedIndexChanged += (s, e) => RepopulateExits();
         y += 30;
@@ -254,25 +261,9 @@ public class LandingExitForm : Form
                 if (!string.IsNullOrEmpty(_presetIcao))
                 {
                     txtAirport.Text = _presetIcao.ToUpperInvariant();
+                    // The load selects the preset runway itself (PresetRunwayIndex), so a second
+                    // load of this airport can never put row 0 back over it.
                     await LoadAirportAsync(_presetIcao);
-
-                    // Re-check disposed — form may have been closed during the await.
-                    if (IsDisposed || Disposing) return;
-
-                    // Preselect the preset runway if one was provided. Items
-                    // are now RunwayChoice wrappers, not raw Runway objects —
-                    // unwrap to compare RunwayID.
-                    if (_presetRunway != null)
-                    {
-                        for (int i = 0; i < cmbRunway.Items.Count; i++)
-                        {
-                            if (cmbRunway.Items[i] is RunwayChoice rc && rc.Runway.RunwayID == _presetRunway.RunwayID)
-                            {
-                                cmbRunway.SelectedIndex = i;
-                                break;
-                            }
-                        }
-                    }
                 }
                 if (!IsDisposed && !Disposing)
                     txtAirport.Focus();
@@ -307,7 +298,27 @@ public class LandingExitForm : Form
         }
     }
 
-    private async System.Threading.Tasks.Task LoadAirportAsync(string icao)
+    /// <summary>
+    /// Loads <paramref name="icao"/>, or joins the load of that same airport already in flight. Two
+    /// loads of one airport both pass LoadAirportCoreAsync's still-current checks — the preset load
+    /// from Load and a txtAirport.Leave during its awaits of up to 8 s — so both appended their
+    /// runways to the combo and the later one's row-0 selection could land over the preset
+    /// (PR #236 review). A different airport still supersedes the load in flight.
+    /// </summary>
+    private System.Threading.Tasks.Task LoadAirportAsync(string icao)
+    {
+        string key = icao.Trim();
+        if (_loadTask is { IsCompleted: false }
+            && key.Equals(_loadTaskIcao, StringComparison.OrdinalIgnoreCase))
+            return _loadTask;
+
+        var task = LoadAirportCoreAsync(icao);
+        _loadTask = task;
+        _loadTaskIcao = key;
+        return task;
+    }
+
+    private async System.Threading.Tasks.Task LoadAirportCoreAsync(string icao)
     {
         if (string.IsNullOrWhiteSpace(icao)) return;
         if (IsDisposed || Disposing) return;
@@ -415,7 +426,27 @@ public class LandingExitForm : Form
         lblStatus.Text = $"{icao}: {_runways.Count} runway directions loaded.";
 
         if (cmbRunway.Items.Count > 0)
-            cmbRunway.SelectedIndex = 0;
+            cmbRunway.SelectedIndex = PresetRunwayIndex(icao);
+    }
+
+    /// <summary>
+    /// The runway row a load selects: the preset runway when <paramref name="icao"/> is the preset
+    /// airport and a row's designator matches it, otherwise the first row as before. Here rather than
+    /// in the Load handler so it also applies when the pilot retypes the preset airport.
+    /// </summary>
+    private int PresetRunwayIndex(string icao)
+    {
+        if (string.IsNullOrEmpty(_presetRunwayId)
+            || !string.Equals(icao.Trim(), _presetIcao, StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        for (int i = 0; i < cmbRunway.Items.Count; i++)
+        {
+            if (cmbRunway.Items[i] is RunwayChoice rc
+                && LandingExitPlannerPreset.DesignatorsMatch(rc.Runway.RunwayID, _presetRunwayId))
+                return i;
+        }
+        return 0;
     }
 
     /// <param name="announce">
