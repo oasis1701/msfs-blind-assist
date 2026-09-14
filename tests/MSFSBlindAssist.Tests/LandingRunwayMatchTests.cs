@@ -263,4 +263,136 @@ public class LandingRunwayMatchTests
 
         Assert.Equal(LandingRunwayVerdict.Unknown, reversed.Verdict);
     }
+
+    // ---------------------------------------------------------------------------------
+    // Intersecting runways (PR #236 review, finding F2). Rows transcribed read-only from
+    // fs2024.sqlite exactly as LittleNavMapProvider.GetRunways builds them (one Runway per
+    // END, Start = this end, End = the opposite end). Positions are the centreline
+    // intersection computed with RunwayFrame's own projection (case C: 5 m off 19's
+    // centreline toward 15), replayed in Python against the same algorithm before use.
+    // ---------------------------------------------------------------------------------
+
+    private static Runway Rw(string id, double hdg, double lenFt, double widthFt, double offsetFt,
+                             double sLat, double sLon, double eLat, double eLon)
+        => new Runway
+        {
+            RunwayID = id, Heading = hdg, Length = lenFt, Width = widthFt, ThresholdOffset = offsetFt,
+            StartLat = sLat, StartLon = sLon, EndLat = eLat, EndLon = eLon,
+        };
+
+    private static List<Runway> KdcaRunways() => new()
+    {
+        Rw("04", 25.469158172607422, 5001.0, 146.0, 203.0, 38.84112548828125, -77.04145812988281, 38.85350799560547, -77.03388977050781),
+        Rw("22", 205.4691619873047, 5001.0, 146.0, 0.0, 38.85350799560547, -77.03388977050781, 38.84112548828125, -77.04145812988281),
+        Rw("15", 142.76260375976562, 5202.0, 147.0, 0.0, 38.86116409301758, -77.04330444335938, 38.84980392456055, -77.03221130371094),
+        Rw("33", 322.7626037597656, 5202.0, 147.0, 0.0, 38.84980392456055, -77.03221130371094, 38.86116409301758, -77.04330444335938),
+        Rw("19", 175.5161590576172, 7170.0, 146.0, 0.0, 38.861183166503906, -77.03872680664062, 38.841575622558594, -77.03675842285156),
+        Rw("01", 355.51617431640625, 7170.0, 146.0, 0.0, 38.841575622558594, -77.03675842285156, 38.861183166503906, -77.03872680664062),
+    };
+
+    private static Runway Kdca(string id) => KdcaRunways().First(r => r.RunwayID == id);
+
+    private static List<Runway> KphlRunways() => new()
+    {
+        Rw("17", 159.1230010986328, 6491.0, 151.0, 0.0, 39.88765335083008, -75.236083984375, 39.87102127075195, -75.22781372070312),
+        Rw("35", 339.12298583984375, 6491.0, 151.0, 0.0, 39.87102127075195, -75.22781372070312, 39.88765335083008, -75.236083984375),
+        Rw("26", 255.42579650878906, 4994.0, 151.0, 0.0, 39.88178634643555, -75.21275329589844, 39.87833786010742, -75.23002624511719),
+        Rw("08", 75.42579650878906, 4994.0, 151.0, 0.0, 39.87833786010742, -75.23002624511719, 39.88178634643555, -75.21275329589844),
+        Rw("27L", 255.46890258789062, 12008.0, 200.0, 1936.0, 39.86908721923828, -75.23371124267578, 39.86082077026367, -75.2752456665039),
+        Rw("09R", 75.46890258789062, 12008.0, 200.0, 0.0, 39.86082077026367, -75.2752456665039, 39.86908721923828, -75.23371124267578),
+        Rw("27R", 255.47740173339844, 9492.0, 151.0, 0.0, 39.87522506713867, -75.22286224365234, 39.86869812011719, -75.25569915771484),
+        Rw("09L", 75.47740173339844, 9492.0, 151.0, 0.0, 39.86869812011719, -75.25569915771484, 39.87522506713867, -75.22286224365234),
+    };
+
+    private static Runway Kphl(string id) => KphlRunways().First(r => r.RunwayID == id);
+
+    [Fact]
+    public void Kdca_plan_04_touchdown_on_01_inside_the_intersection_is_a_different_runway()
+    {
+        // The aircraft is on BOTH pavements here. Heading alignment decides: 01 is aligned,
+        // 04 is 30 degrees off. The old 90-degree rule read this as Matches (#234 again).
+        var r = LandingRunwayMatch.Evaluate(
+            38.84778733508005, -77.03738381584637, 355.51617431640625, Kdca("04"), KdcaRunways());
+
+        Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
+        Assert.Equal("01", r.Actual?.RunwayID);
+    }
+
+    [Fact]
+    public void Kphl_plan_17_touchdown_on_27R_at_the_crossing_is_a_different_runway_not_the_reciprocal()
+    {
+        // On 17's pavement, rolling 96 degrees off it: the old rule labelled the crossing
+        // runway "ReciprocalEnd" and swapped the frame to it while keeping 17's exit.
+        var r = LandingRunwayMatch.Evaluate(
+            39.87395042087517, -75.22927403937646, 255.47740173339844, Kphl("17"), KphlRunways());
+
+        Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
+        Assert.Equal("27R", r.Actual?.RunwayID);
+    }
+
+    [Fact]
+    public void Kdca_plan_04_touchdown_on_19_beside_runway_15_names_19_not_15()
+    {
+        // 5.0 m off 19's centreline and 4.7 m off 15's: nearest-centreline picked 15 and ran
+        // the countdown along the wrong runway. Alignment picks 19.
+        var r = LandingRunwayMatch.Evaluate(
+            38.855944789035725, -77.03814140186083, 175.5161590576172, Kdca("04"), KdcaRunways());
+
+        Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
+        Assert.Equal("19", r.Actual?.RunwayID);
+    }
+
+    /// <summary>A runway crossing 09 at right angles, 1,000 m east of 09's threshold.</summary>
+    private static Runway Rwy36Crossing() => new Runway
+    {
+        RunwayID = "36", Heading = 0.0, Length = LengthM / 0.3048, Width = WidthFt,
+        StartLat = -1500.0 * DEG_PER_M, StartLon = 1000.0 * DEG_PER_M,
+        EndLat = 1500.0 * DEG_PER_M,    EndLon = 1000.0 * DEG_PER_M,
+    };
+
+    [Fact]
+    public void A_crossing_runway_is_never_the_reciprocal_end()
+    {
+        var r = LandingRunwayMatch.Evaluate(
+            0.0, 1000.0 * DEG_PER_M, headingTrue: 0.0,
+            Rwy09(), new List<Runway> { Rwy09(), Rwy27(), Rwy36Crossing() });
+
+        Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
+        Assert.Equal("36", r.Actual?.RunwayID);
+    }
+
+    [Fact]
+    public void The_reciprocal_end_is_recognised_by_its_swapped_endpoints()
+    {
+        Assert.True(LandingRunwayMatch.IsTwin(Rwy27(), Rwy09()));
+        Assert.False(LandingRunwayMatch.IsTwin(Rwy36Crossing(), Rwy09()));
+        Assert.False(LandingRunwayMatch.IsTwin(Rwy27Parallel(), Rwy09()));
+    }
+
+    [Fact]
+    public void Alignment_tolerance_is_45_degrees()
+    {
+        var at44 = LandingRunwayMatch.Evaluate(
+            CrossM * DEG_PER_M, AlongM * DEG_PER_M, headingTrue: 134.0, Rwy09(), AllFour());
+        var at46 = LandingRunwayMatch.Evaluate(
+            CrossM * DEG_PER_M, AlongM * DEG_PER_M, headingTrue: 136.0, Rwy09(), AllFour());
+
+        Assert.Equal(LandingRunwayVerdict.Matches, at44.Verdict);
+        Assert.Equal(LandingRunwayVerdict.Unknown, at46.Verdict);
+    }
+
+    [Fact]
+    public void Approach_mode_accepts_an_airborne_point_before_the_threshold()
+    {
+        // 250 m short of 09's threshold on the extended centreline: still "approaching 09"
+        // with the flare assist's 300 m margin, not "on 09" with the touchdown margin.
+        var approach = LandingRunwayMatch.Evaluate(
+            0.0, -250.0 * DEG_PER_M, 90.0, Rwy09(), AllFour(),
+            LandingRunwayMatch.ApproachBeforeThresholdMarginM);
+        var touchdown = LandingRunwayMatch.Evaluate(
+            0.0, -250.0 * DEG_PER_M, 90.0, Rwy09(), AllFour());
+
+        Assert.Equal(LandingRunwayVerdict.Matches, approach.Verdict);
+        Assert.Equal(LandingRunwayVerdict.Unknown, touchdown.Verdict);
+    }
 }
