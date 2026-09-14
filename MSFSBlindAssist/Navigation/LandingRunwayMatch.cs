@@ -95,8 +95,6 @@ public static class LandingRunwayMatch
         }
         if (!plannedListed) Consider(planned);
 
-        if (candidates.Count == 0) return new LandingRunwayResult(LandingRunwayVerdict.Unknown, null);
-
         // Pass 1: the smallest heading delta among every candidate on the aircraft's pavement.
         double bestDelta = double.MaxValue;
         foreach (var c in candidates)

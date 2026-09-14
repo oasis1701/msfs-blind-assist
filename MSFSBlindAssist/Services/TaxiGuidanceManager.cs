@@ -966,14 +966,17 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutCrossingDeclineAnnounced = false;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
-    // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
-    // so the blind pilot knows how much pavement is left for braking instead
-    // of falling silent. State stays in LandingRollout so UpdatePosition
-    // continues to feed the per-frame loop. Ends by POSITION, never on any
-    // stop or turn alone (Navigation.RunwayEndCountdownGate): "Runway
-    // vacated" once laterally clear; backtracking when stopped or turning
-    // within the last runway-end milestone, or after turning around
-    // anywhere; one stopped notice for a stop mid-runway.
+    // fails), or at touchdown from BeginRunwayEndCountdownRollout when a
+    // landing-exit plan made for another runway finds no usable exit on the
+    // runway actually landed on. Drives a distance-to-runway-end countdown
+    // (1500 / 500 / 100 ft) so the blind pilot knows how much pavement is
+    // left for braking instead of falling silent. State stays in
+    // LandingRollout so UpdatePosition continues to feed the per-frame
+    // loop. Ends by POSITION, never on any stop or turn alone
+    // (Navigation.RunwayEndCountdownGate): "Runway vacated" once laterally
+    // clear; backtracking when stopped or turning within the 500 ft / 150 m
+    // runway-end milestone, or after turning around anywhere; one stopped
+    // notice for a stop mid-runway.
     private bool _rolloutNoExitMode;
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
@@ -989,7 +992,7 @@ public partial class TaxiGuidanceManager : IDisposable
     private double _rolloutNearEndFeet;
 
     // Backtrack state. Entered from runway-end countdown when the pilot is stopped or
-    // turning within the last runway-end milestone, or has turned around (150°+)
+    // turning within the 500 ft / 150 m runway-end milestone, or has turned around (150°+)
     // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
     // reciprocal runway heading until the aircraft reaches the first taxi-graph
     // connection node.

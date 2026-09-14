@@ -1913,9 +1913,9 @@ public partial class TaxiGuidanceManager
     /// distToEnd = length - alongFromStart.
     ///
     /// Ends via Navigation.RunwayEndCountdownGate: "Runway vacated" once laterally
-    /// clear of the runway; backtracking when stopped or turning within the last
-    /// runway-end milestone, or after turning around anywhere (mid-runway it does
-    /// not claim the runway ended); one notice for a mid-runway stop. On exit,
+    /// clear of the runway; backtracking when stopped or turning within the 500 ft /
+    /// 150 m runway-end milestone, or after turning around anywhere (mid-runway it
+    /// does not claim the runway ended); one notice for a mid-runway stop. On exit,
     /// _route stays null so the Taxiing branch's off-route recalc has nothing to chase.
     /// </summary>
     private void UpdateRunwayEndCountdown(double lat, double lon, double headingTrue, double groundSpeedKts)

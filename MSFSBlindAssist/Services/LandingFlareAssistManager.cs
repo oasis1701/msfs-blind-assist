@@ -253,7 +253,9 @@ public class LandingFlareAssistManager : IDisposable
         // A new centerline makes the previous cross-track sample meaningless to the rate
         // differentiator — without this, a touchdown switch followed by a bounce back into
         // Flare (Phase.Rollout's inline path, which does not call EnterFlare) computes a rate
-        // across the jump and spikes the lateral tone to full pan for one frame.
+        // across the jump and spikes the lateral tone to full pan for many frames, not one —
+        // the rate is EMA-smoothed (alpha 0.2), so a ~49 m switch holds the spike roughly
+        // 8-25 frames at 30 Hz.
         crossTrackRateInitialized = false;
     }
 
