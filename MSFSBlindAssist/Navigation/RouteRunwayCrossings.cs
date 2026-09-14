@@ -732,4 +732,196 @@ public static class RouteRunwayCrossings
                $"unheld={ListOrNone(events.Where(e => !e.Held).Select(e => e.Designator))} " +
                $"startHold={startHold}";
     }
+
+    /// <summary>A resolved stop point: a node index from segment 0 (0 = the start node, i.e. a start hold).</summary>
+    public readonly record struct HoldStop(int NodeIndex, bool SharesExistingStop);
+
+    /// <summary>
+    /// Where the hold for one runway entry or crossing goes. The walk starts at the first node on the
+    /// runway (for an edge that jumps across it, at the last clear node) and goes back toward the
+    /// start of the route:
+    ///  1. the first scenery hold node (HS/HSND/IHS/IHSND) within <see cref="CrossingHoldLookbackMetres"/>
+    ///     whose name names this runway, its reciprocal or no runway, and which is off the pavement —
+    ///     a hold node on the pavement is skipped, one naming a different runway ends this search;
+    ///  2. otherwise the nearest node at or before the entry that is clear of the runway
+    ///     (<see cref="RunwayShape.IsClearOf"/>);
+    ///  3. otherwise the start node.
+    /// Neither walk passes a segment that is already a hold-short: reaching one before a clear node
+    /// is found shares that stop.
+    ///
+    /// <para>Every candidate is at or before the runway and off its pavement, so a stop can only move
+    /// EARLIER than the old "segment before the crossing edge", never later. Cases and history:
+    /// docs/taxi-guidance.md, "Runway crossings and entries".</para>
+    /// </summary>
+    /// <param name="passage">Classified from segment 0 (its indices are node indices of the whole route).</param>
+    public static HoldStop ResolveHoldStop(IReadOnlyList<TaxiRouteSegment> segments, RunwayPassage passage)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(passage);
+
+        var shape = passage.Shape;
+        int walkStart = passage.FirstOnIndex >= 0 ? passage.FirstOnIndex : passage.EntryIndex;
+
+        double walked = 0.0;
+        for (int k = walkStart; k >= 0; k--)
+        {
+            if (k < walkStart) walked += segments[k].DistanceMeters;
+            if (walked > CrossingHoldLookbackMetres) break;
+
+            var node = NodeAt(segments, k);
+            if (node != null && (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort))
+            {
+                var guards = ExtractRunwayDesignators(node.HoldShortName);
+                if (guards.Count > 0 && !guards.Any(d => CenterlineHasDesignator(passage.Runway, d)))
+                    break;
+                if (Math.Abs(shape.Project(node.Latitude, node.Longitude).Lateral) > shape.HalfWidthMeters)
+                    return new HoldStop(k, IsExistingStop(segments, k));
+            }
+            if (IsExistingStop(segments, k)) break;
+        }
+
+        for (int k = passage.EntryIndex; k >= 0; k--)
+        {
+            var node = NodeAt(segments, k);
+            bool existing = IsExistingStop(segments, k);
+            if (node != null && shape.IsClearOf(shape.Project(node.Latitude, node.Longitude).Lateral))
+                return new HoldStop(k, existing);
+            if (existing) return new HoldStop(k, true);
+        }
+
+        return new HoldStop(0, false);
+    }
+
+    private static TaxiNode? NodeAt(IReadOnlyList<TaxiRouteSegment> segments, int nodeIndex)
+        => nodeIndex == 0 ? segments[0]?.FromNode : segments[nodeIndex - 1]?.ToNode;
+
+    private static bool IsExistingStop(IReadOnlyList<TaxiRouteSegment> segments, int nodeIndex)
+        => nodeIndex >= 1 && segments[nodeIndex - 1].IsHoldShortPoint;
+
+    /// <summary>
+    /// The automatic runway hold-short pass (FAA AIM 4-3-18 / ICAO Doc 4444): classifies the route
+    /// against every runway, places one hold per entry or crossing and records every one on
+    /// <see cref="TaxiRoute.RunwayEvents"/>, held or not.
+    ///
+    /// <para>On the destination strip only the route's own ARRIVAL (an entry that ends on it) is
+    /// skipped; every other entry or crossing of that strip is held and announced under the
+    /// designator the pilot selected. A stop the aircraft has already passed, or a start hold on a
+    /// recalculated route, is recorded as not held and not placed — both would command a stop on the
+    /// pavement.</para>
+    /// </summary>
+    /// <param name="destinationName">The runway destination as spoken ("Runway 33L"), or "" for other routes.</param>
+    /// <param name="allowStartHold">True only when the route is adopted by <c>LoadRoute</c> (phase "load").</param>
+    /// <param name="holdPointPassed">True when the aircraft has rolled past a candidate hold segment's end. Null = nothing passed.</param>
+    /// <param name="startPointPassed">True when the aircraft is already more than 10 m past the start node. Null = not passed.</param>
+    public static IReadOnlyList<TaxiRouteRunwayEvent> InsertRunwayHoldShorts(
+        TaxiRoute route,
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
+        string destinationName,
+        bool allowStartHold,
+        HoldPointPassed? holdPointPassed = null,
+        Func<bool>? startPointPassed = null)
+    {
+        // A null runway list is a wiring error; returning "no runways met" would present it as a
+        // safe route, so it fails loudly. A null or empty route legitimately meets nothing.
+        ArgumentNullException.ThrowIfNull(runways);
+        if (route is null) return Array.Empty<TaxiRouteRunwayEvent>();
+        route.RunwayEvents = new List<TaxiRouteRunwayEvent>();
+        if (route.Segments.Count == 0 || runways.Count == 0) return route.RunwayEvents;
+
+        string destBare = StripRunwayPrefix(destinationName);
+        var nodes = RunwayRouteClassifier.NodesFrom(route.Segments, 0);
+        foreach (var passage in RunwayRouteClassifier.ClassifyAll(nodes, runways))
+        {
+            bool destinationStrip = destBare.Length > 0 && CenterlineHasDesignator(passage.Runway, destBare);
+            if (destinationStrip && passage.Kind == RunwayEventKind.Entry && passage.ExitIndex < 0)
+                continue;
+
+            string? preferred = destinationStrip ? destBare : null;
+            bool held = PlaceHold(route, passage, preferred, userLabel: null,
+                allowStartHold, holdPointPassed, startPointPassed);
+            route.RunwayEvents.Add(new TaxiRouteRunwayEvent
+            {
+                Kind = passage.Kind,
+                Designator = preferred ?? passage.Designator,
+                Held = held,
+            });
+        }
+        return route.RunwayEvents;
+    }
+
+    /// <summary>
+    /// The pilot's explicit "hold short of runway X" pick for one taxiway row: honoured when the route
+    /// enters or crosses X at or after <paramref name="runStartSegmentIndex"/> (the start of that
+    /// taxiway's run, which is also the index of its first node), placed by the same resolver as the
+    /// automatic pass, labelled "runway X" as the pilot typed it.
+    /// </summary>
+    public static bool ApplyUserRunwayHold(
+        TaxiRoute route,
+        TaxiGraph.RunwayCenterline runway,
+        string runwayId,
+        int runStartSegmentIndex,
+        bool allowStartHold,
+        HoldPointPassed? holdPointPassed = null,
+        Func<bool>? startPointPassed = null)
+    {
+        ArgumentNullException.ThrowIfNull(route);
+        ArgumentNullException.ThrowIfNull(runway);
+
+        var nodes = RunwayRouteClassifier.NodesFrom(route.Segments, 0);
+        var passage = RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway))
+            .FirstOrDefault(p => p.ReachIndex >= runStartSegmentIndex);
+        if (passage is null) return false;
+
+        string pick = runwayId.Trim();
+        PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
+            allowStartHold, holdPointPassed, startPointPassed);
+        return true;
+    }
+
+    private static bool PlaceHold(
+        TaxiRoute route, RunwayPassage passage, string? preferred, string? userLabel,
+        bool allowStartHold, HoldPointPassed? holdPointPassed, Func<bool>? startPointPassed)
+    {
+        string announceAs = preferred ?? passage.Designator;
+        var stop = ResolveHoldStop(route.Segments, passage);
+
+        if (stop.NodeIndex == 0)
+        {
+            if (!allowStartHold || (startPointPassed?.Invoke() ?? false)) return false;
+            route.StartHoldRunway = route.StartHoldRunway is null
+                ? userLabel ?? $"runway {announceAs}"
+                : ComposeSharedLabel(route.StartHoldRunway, announceAs) ?? route.StartHoldRunway;
+            return true;
+        }
+
+        var holdSeg = route.Segments[stop.NodeIndex - 1];
+        if (holdPointPassed?.Invoke(holdSeg) ?? false) return false;
+
+        string? label = holdSeg.IsHoldShortPoint
+            ? ComposeSharedLabel(holdSeg.HoldShortRunway, announceAs)
+            : userLabel ?? ComposeCrossingLabel(holdSeg.HoldShortRunway, passage.Designator, preferred);
+        holdSeg.IsHoldShortPoint = true;
+        if (label != null) holdSeg.HoldShortRunway = label;
+        return true;
+    }
+
+    /// <summary>
+    /// Progressive Taxi "after crossing runway X": the pilot is cleared across X, so remove every stop
+    /// — including a start hold — that holds short of X ALONE. A stop shared with another runway
+    /// stays, because the other runway is not cleared.
+    /// </summary>
+    public static void StripClearedCrossing(TaxiRoute route, string clearedRunway)
+    {
+        if (route is null || string.IsNullOrWhiteSpace(clearedRunway)) return;
+        foreach (var seg in route.Segments)
+        {
+            if (seg.IsHoldShortPoint && LabelNamesOnlyRunway(seg.HoldShortRunway, clearedRunway))
+            {
+                seg.IsHoldShortPoint = false;
+                seg.HoldShortRunway = "";
+            }
+        }
+        if (LabelNamesOnlyRunway(route.StartHoldRunway, clearedRunway))
+            route.StartHoldRunway = null;
+    }
 }
