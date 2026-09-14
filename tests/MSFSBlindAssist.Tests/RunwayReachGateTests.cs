@@ -166,7 +166,7 @@ public class RunwayReachGateTests
         Assert.Equal(1, calls);
     }
 
-    // ---- DescribeFailure: what the pilot actually hears -------------------------------
+    // ---- Describe: what the pilot actually hears -------------------------------
     //
     // A blind pilot has no display to cross-check these against, so a number spoken here
     // has to be a number that was measured. "Unreachable" must not be rendered as the
@@ -177,14 +177,14 @@ public class RunwayReachGateTests
     [Fact]
     public void AReachingRouteHasNothingToSay()
     {
-        Assert.Null(RunwayReachGate.DescribeFailure(
+        Assert.Null(RunwayReachGate.Describe(
             new RunwayReachResult(RunwayReachVerdict.Reaches, 6.8, 0.0), "Runway 04L", Metres));
     }
 
     [Fact]
     public void AsideOfTheRunwayNamesTheSidewaysDistance()
     {
-        string? s = RunwayReachGate.DescribeFailure(
+        string? s = RunwayReachGate.Describe(
             new RunwayReachResult(RunwayReachVerdict.EndsAsideOfRunway, 456.0, 0.0),
             "Runway 04L", Metres);
 
@@ -196,7 +196,7 @@ public class RunwayReachGateTests
     [Fact]
     public void AMeasuredShortfallNamesTheTaxiingDistance()
     {
-        string? s = RunwayReachGate.DescribeFailure(
+        string? s = RunwayReachGate.Describe(
             new RunwayReachResult(RunwayReachVerdict.StopsShortOfRunway, 3.2, 655.0),
             "Runway 04L", Metres);
 
@@ -210,7 +210,7 @@ public class RunwayReachGateTests
         // The walk probe returns infinity when no path exists within its search bound.
         // Reporting the bound instead would tell the pilot "about 1500 metres of taxiing
         // away" — a specific, confident, fabricated number for a route with NO path.
-        string? s = RunwayReachGate.DescribeFailure(
+        string? s = RunwayReachGate.Describe(
             new RunwayReachResult(RunwayReachVerdict.StopsShortOfRunway, 3.2, double.PositiveInfinity),
             "Runway 04L", Metres);
 

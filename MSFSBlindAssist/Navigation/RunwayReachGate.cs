@@ -5,6 +5,16 @@ public enum RunwayReachVerdict
 {
     /// <summary>The route gets the aircraft to the runway.</summary>
     Reaches,
+
+    /// <summary>
+    /// The route ends ON the runway's own centreline but BEHIND the threshold the navdata
+    /// records — its full-length departure point, on pavement the navdata models as taxiway
+    /// rather than runway. It reaches: line-up steering is intercept-angle work against the
+    /// centreline (see TaxiGuidanceManager.UpdateLineup), which is the same line from there.
+    /// Separate from <see cref="Reaches"/> only so the pilot can be TOLD, because the route
+    /// ends further from the threshold than they will expect.
+    /// </summary>
+    ReachesBehindThreshold,
     /// <summary>The destination node itself sits well off to the side of the centerline.</summary>
     EndsAsideOfRunway,
     /// <summary>The route ends on pavement that does not connect onward to the runway.</summary>
@@ -13,7 +23,8 @@ public enum RunwayReachVerdict
 
 /// <summary>The verdict plus the measurement that produced it, for the spoken warning.</summary>
 public readonly record struct RunwayReachResult(
-    RunwayReachVerdict Verdict, double CrossMeters, double WalkMeters);
+    RunwayReachVerdict Verdict, double CrossMeters, double WalkMeters,
+    double BehindThresholdMeters = 0.0);
 
 public static class RunwayReachGate
 {
@@ -33,6 +44,11 @@ public static class RunwayReachGate
     /// <param name="walkProbeMeters">How much further the aircraft would have to TAXI to
     /// be on the pavement. A bounded Dijkstra, so it is deferred: the guard order above it
     /// is load-bearing and this must not run when a cheaper guard already decided.</param>
+    /// <param name="routeEndBehindThresholdMeters">How far the route's end sits BEHIND the
+    /// departure threshold while still inside the runway's own lateral corridor, or null
+    /// when it is not on the axis at all (or the graph built no centreline to measure
+    /// against). Null is the pre-2026-09 behaviour exactly, so a caller that cannot measure
+    /// it loses nothing.</param>
     public static RunwayReachResult Evaluate(
         bool isRunwayDestination,
         double destinationCrossMeters,
@@ -41,7 +57,8 @@ public static class RunwayReachGate
         bool endIsRunwayHold,
         bool hasRouteEnd,
         Func<double> walkProbeMeters,
-        double maxWalkMeters)
+        double maxWalkMeters,
+        double? routeEndBehindThresholdMeters = null)
     {
         // Gate destinations leave the runway-only safety net disarmed.
         if (!isRunwayDestination)
@@ -60,6 +77,23 @@ public static class RunwayReachGate
             return new RunwayReachResult(
                 RunwayReachVerdict.Reaches, destinationCrossMeters, 0.0);
 
+        // The route ends on the runway's OWN axis, behind the threshold: its full-length
+        // departure point, on pavement the navdata models as taxiway rather than runway.
+        // Placed above the walk deliberately — it is cheaper AND more specific, and the walk
+        // gives the wrong answer here by construction: it measures taxiing to the MODELLED
+        // pavement, which at a runway with a large displaced threshold is most of a
+        // kilometre of the runway's own surface (OMDB 12R: 1,018 m from the end of K1, which
+        // is 31 m from where X-Plane's apt.dat puts the real pavement start).
+        //
+        // This CANNOT disarm StopsShortOfRunway's motivating case. That case — PHNL 04L — is
+        // a clearance that ended on a taxiway PARALLELING the runway, and a parallel taxiway
+        // is laterally OFFSET, so it is never inside the corridor the caller measures this
+        // against and never reports a distance here at all.
+        if (routeEndBehindThresholdMeters is { } behind)
+            return new RunwayReachResult(
+                RunwayReachVerdict.ReachesBehindThreshold,
+                destinationCrossMeters, 0.0, behind);
+
         double walk = walkProbeMeters();
         return new RunwayReachResult(
             walk > maxWalkMeters ? RunwayReachVerdict.StopsShortOfRunway : RunwayReachVerdict.Reaches,
@@ -67,14 +101,27 @@ public static class RunwayReachGate
     }
 
     /// <summary>
-    /// The spoken warning for a failing verdict, or null when the route reaches. Distance
+    /// What to say about a verdict, or null when there is nothing worth saying. Named
+    /// Describe rather than DescribeFailure since 2026-09: not every verdict it speaks for
+    /// is a failure — <see cref="RunwayReachVerdict.ReachesBehindThreshold"/> is a route
+    /// that DOES reach, described so the pilot is not surprised by where it ends. Distance
     /// rendering is the caller's (it owns the pilot's metres/feet setting).
     /// </summary>
-    public static string? DescribeFailure(
+    public static string? Describe(
         RunwayReachResult result, string destinationName, Func<double, string> formatDistance)
     {
         switch (result.Verdict)
         {
+            case RunwayReachVerdict.ReachesBehindThreshold:
+                // Deliberately NOT a warning, and deliberately WITHOUT "reprogram": the
+                // clearance that produced this is correct, and there is no other taxiway to
+                // enter. Telling a pilot to re-enter a correct clearance is how they learn to
+                // ignore the reach warnings that are real.
+                return $"Note: this route ends on the centreline of {destinationName} about " +
+                       $"{formatDistance(result.BehindThresholdMeters)} before the threshold " +
+                       $"in this airport's data — the full-length line-up point. Line-up " +
+                       $"guidance works from there.";
+
             case RunwayReachVerdict.EndsAsideOfRunway:
                 return $"Warning: this route ends about {formatDistance(result.CrossMeters)} to the " +
                        $"side of {destinationName} and does not reach the runway. You may be missing " +

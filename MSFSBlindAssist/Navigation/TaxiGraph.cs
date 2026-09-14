@@ -1265,6 +1265,47 @@ public class TaxiGraph
     /// bounded by <paramref name="maxSearchMeters"/> so a disconnected end can never walk the
     /// whole airport. Called once per route load, never per frame.</para>
     /// </summary>
+    /// <summary>
+    /// How far <paramref name="fromNodeId"/> sits BEHIND the departure threshold while still
+    /// inside the runway's own lateral corridor (half-width + 5 m, the same corridor
+    /// <see cref="GraphWalkToRunwayPavement"/> uses) — i.e. on the runway's STARTER
+    /// EXTENSION. Null when the node is not behind the threshold, or is behind it but off to
+    /// the side, which is the ordinary case and must stay indistinguishable from "no answer".
+    ///
+    /// <para>Why this exists: MSFS models a runway from its DISPLACED threshold onward, so at
+    /// a runway with a large displacement the full-length departure end is pavement the
+    /// navdata does not call runway at all. OMDB 12R is modelled 3,724 m long from
+    /// (25.252785, 55.364380); X-Plane's apt.dat gives the same runway a 713 m displaced
+    /// threshold and puts its physical pavement start 719 m further back. Taxiway K1 — the
+    /// full-length access, and what SayIntentions and the real-world routing both use — ends
+    /// 31 m from that physical start, 699 m behind the MODELLED threshold and 20.1 m off the
+    /// centreline. Measuring that end by taxi distance to the modelled pavement returns
+    /// 1,018 m and reads as "this taxiway does not connect to the runway", which is false.</para>
+    ///
+    /// <para>The lateral corridor is what makes this SAFE rather than merely permissive. The
+    /// fault <see cref="RunwayReachGate"/> exists to catch is a clearance that ended on a
+    /// taxiway PARALLELING the runway (PHNL 04L), and a parallel taxiway is laterally
+    /// OFFSET — so it can never be inside the corridor and can never be mistaken for a
+    /// starter extension. There is deliberately NO distance cap: a cap is exactly the kind of
+    /// tuned constant this codebase has learned not to guess at, and the corridor already
+    /// bounds the answer to the runway's own axis. Callers that need a bound apply it
+    /// themselves.</para>
+    /// </summary>
+    public double? MetersBehindRunwayThreshold(
+        int fromNodeId,
+        double thrLat, double thrLon, double farLat, double farLon,
+        double halfWidthMeters)
+    {
+        if (!Nodes.TryGetValue(fromNodeId, out var node)) return null;
+        if (FastDistanceMeters(thrLat, thrLon, farLat, farLon) < 1.0) return null;
+
+        var (perp, along, _, _) = ProjectOntoCenterline(
+            node.Latitude, node.Longitude, thrLat, thrLon, farLat, farLon);
+
+        if (perp > halfWidthMeters + 5.0) return null;
+        return along < 0.0 ? -along : (double?)null;
+    }
+
     public double GraphWalkToRunwayPavement(
         int fromNodeId,
         double thrLat, double thrLon, double farLat, double farLon,

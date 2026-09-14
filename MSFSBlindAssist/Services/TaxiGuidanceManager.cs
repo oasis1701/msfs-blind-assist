@@ -858,7 +858,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // RunwayReachGate UNCHANGED. It must never be mapped onto this constant to make it
     // "exceed the threshold": the number then reaches the pilot as a spoken distance, and
     // "about 1500 metres of taxiing away" is a confident, fabricated figure for a route that
-    // has NO path at all. RunwayReachGate.DescribeFailure gives infinity its own wording.
+    // has NO path at all. RunwayReachGate.Describe gives infinity its own wording.
     private const double RUNWAY_REACH_WALK_SEARCH_M = 1500.0;
     // During LiningUp, cross-track this far off the centerline (≈122 m) sustained for
     // LINEUP_UNREACHABLE_SEC without converging means the route never reached the runway —

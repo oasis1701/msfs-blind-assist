@@ -421,10 +421,14 @@ public partial class TaxiGuidanceManager
                         RouteEndIsRunwayHold(preTruncationEndNode, destinationName),
                     preTruncationEndNode != null,
                     () => RouteEndWalkToRunwayMeters(preTruncationEndNode!, destinationName),
-                    RUNWAY_REACH_MAX_WALK_M);
+                    RUNWAY_REACH_MAX_WALK_M,
+                    preTruncationEndNode == null
+                        ? null
+                        : RouteEndBehindThresholdMeters(preTruncationEndNode, destinationName));
 
-                _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
-                runwayReachWarning = RunwayReachGate.DescribeFailure(
+                _routeReachesRunway = reach.Verdict is RunwayReachVerdict.Reaches
+                                                       or RunwayReachVerdict.ReachesBehindThreshold;
+                runwayReachWarning = RunwayReachGate.Describe(
                     reach, destinationName, FormatDistance);
             }
 
@@ -1115,8 +1119,12 @@ public partial class TaxiGuidanceManager
                 recalcEndNode != null && RouteEndIsRunwayHold(recalcEndNode, _destinationName),
                 recalcEndNode != null,
                 () => RouteEndWalkToRunwayMeters(recalcEndNode!, _destinationName),
-                RUNWAY_REACH_MAX_WALK_M);
-            _routeReachesRunway = reach.Verdict == RunwayReachVerdict.Reaches;
+                RUNWAY_REACH_MAX_WALK_M,
+                recalcEndNode == null
+                    ? null
+                    : RouteEndBehindThresholdMeters(recalcEndNode, _destinationName));
+            _routeReachesRunway = reach.Verdict is RunwayReachVerdict.Reaches
+                                                   or RunwayReachVerdict.ReachesBehindThreshold;
         }
         else
         {
@@ -1854,6 +1862,48 @@ public partial class TaxiGuidanceManager
         return _graph.GraphWalkToRunwayPavement(
             endNode.NodeId, cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2,
             cl.PavementHalfWidthMeters, RUNWAY_REACH_WALK_SEARCH_M);
+    }
+
+    /// <summary>
+    /// How far the route's end sits BEHIND the destination runway's threshold while still on
+    /// its centreline, or null when it is not on the axis (or the graph built no centreline
+    /// for that runway). Feeds <see cref="RunwayReachGate"/>'s starter-extension verdict —
+    /// see <see cref="TaxiGraph.MetersBehindRunwayThreshold"/> for the OMDB 12R measurements
+    /// behind it.
+    ///
+    /// <para>ORIENTATION IS THE WHOLE JOB HERE. <see cref="TaxiGraph.FindCenterlineByName"/>
+    /// matches on EITHER end's designator and hands back the same physical line whichever
+    /// direction it was asked for, so Pavement1 is the DEPARTURE threshold only when Name1 is
+    /// the runway we are departing. Taking it on trust would measure every other runway from
+    /// the wrong end and report the far end's overrun as this end's starter extension.
+    /// Designators go through RouteRunwayCrossings.NormalizeDesignator on both sides, as
+    /// every designator compare in this codebase must.</para>
+    ///
+    /// <para>The PAVEMENT frame, not the start-row one, for the same reason
+    /// <see cref="RouteEndWalkToRunwayMeters"/> uses it: the start rows sit hundreds of
+    /// metres inside the pavement at a displaced threshold, which would inflate the
+    /// behind-threshold figure by that much again.</para>
+    /// </summary>
+    private double? RouteEndBehindThresholdMeters(
+        Database.Models.TaxiNode endNode, string destinationName)
+    {
+        if (_graph == null) return null;
+        var cl = _graph.FindCenterlineByName(destinationName);
+        if (cl == null) return null;
+
+        string bare = Navigation.RouteRunwayCrossings.NormalizeDesignator(
+            Navigation.RouteRunwayCrossings.StripRunwayPrefix(destinationName));
+        bool departingEnd1 = string.Equals(
+            Navigation.RouteRunwayCrossings.NormalizeDesignator(cl.Name1 ?? ""), bare,
+            StringComparison.OrdinalIgnoreCase);
+
+        double thrLat = departingEnd1 ? cl.PavementLat1 : cl.PavementLat2;
+        double thrLon = departingEnd1 ? cl.PavementLon1 : cl.PavementLon2;
+        double farLat = departingEnd1 ? cl.PavementLat2 : cl.PavementLat1;
+        double farLon = departingEnd1 ? cl.PavementLon2 : cl.PavementLon1;
+
+        return _graph.MetersBehindRunwayThreshold(
+            endNode.NodeId, thrLat, thrLon, farLat, farLon, cl.PavementHalfWidthMeters);
     }
 
 }
