@@ -71,10 +71,7 @@ public partial class CowsDA40Definition
     /// </summary>
     private bool NoteBaroChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
-        string label;
-        if (varKey == "DA40_G1000_BARO") label = "Altimeter";
-        else if (varKey == "DA40_STBY_ALTIMETER_SET") label = "Standby altimeter";
-        else return false;
+        if (varKey != "DA40_G1000_BARO" && varKey != "DA40_STBY_ALTIMETER_SET") return false;
 
         _baroAnnouncer = announcer;
 

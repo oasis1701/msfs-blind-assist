@@ -1105,6 +1105,22 @@ public class CowsDA40PanelStructureTests
     }
 
     [Fact]
+    public void EmergencyTransferIsListedAfterTheMainTank()
+    {
+        // Same dependency as the difference row, for the same reason: the overboard
+        // clause is decided by how full the main tank is, and that quantity is captured
+        // as DA40_FUEL_MAIN_ACTUAL renders. Listed above it, the row would judge "main
+        // tank full" from the previous refresh's reading while fuel is going overboard.
+        var display = Ng().GetPanelDisplayVariables()["Fuel System"];
+
+        int main = display.IndexOf("DA40_FUEL_MAIN_ACTUAL");
+        int xfer = display.IndexOf("DA40_FUEL_XFER_EMERG");
+
+        Assert.True(main >= 0 && xfer > main,
+            "the emergency-transfer row must render after the main tank quantity");
+    }
+
+    [Fact]
     public void TransferPumpReportsWhetherItIsActuallyRunning()
     {
         // The switch can be ON with the pump stopped for four different reasons - main

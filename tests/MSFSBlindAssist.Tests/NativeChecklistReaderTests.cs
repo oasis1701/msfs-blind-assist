@@ -140,6 +140,39 @@ public class NativeChecklistReaderTests
         => Assert.Contains("Starting tips", NativeChecklistReader.RenderFile(Sample()), StringComparison.Ordinal);
 
     /// <summary>
+    /// A block inside a block keeps BOTH headings. Neither shipped file nests today, so
+    /// this pins the shape rather than a measurement: a Descendants("Checkpoint") sweep
+    /// would find the inner checkpoint and silently drop the inner heading, which is the
+    /// half that says which table a row belongs to.
+    /// </summary>
+    [Fact]
+    public void ANestedBlockKeepsItsOwnHeading()
+    {
+        string text = NativeChecklistReader.RenderFile(XDocument.Parse("""
+            <Checklist>
+              <Step>
+                <Page SubjectTT="Cruise">
+                  <Block SubjectTT="Power settings">
+                    <Block SubjectTT="At 8000 feet">
+                      <Checkpoint>
+                        <CheckpointDesc SubjectTT="Manifold pressure" ExpectationTT="22 inches"/>
+                      </Checkpoint>
+                    </Block>
+                  </Block>
+                </Page>
+              </Step>
+            </Checklist>
+            """));
+
+        int outer = text.IndexOf("Power settings", StringComparison.Ordinal);
+        int inner = text.IndexOf("At 8000 feet", StringComparison.Ordinal);
+        int row = text.IndexOf("Manifold pressure ... 22 inches", StringComparison.Ordinal);
+
+        Assert.True(outer >= 0 && inner > outer && row > inner,
+            $"order was outer {outer}, inner {inner}, row {row}");
+    }
+
+    /// <summary>
     /// A page can mix loose checkpoints with blocks, so the walk is over the page's
     /// children IN ORDER and the author's sequence survives.
     /// </summary>

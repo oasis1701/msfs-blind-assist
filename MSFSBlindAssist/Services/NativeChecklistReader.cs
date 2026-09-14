@@ -137,18 +137,7 @@ public static class NativeChecklistReader
             // which is a real heading ("Cruise:65%, 9.5gph (Best Power)") and renders as
             // one. The walk is over the page's children IN ORDER, so a page that mixes
             // loose checkpoints with blocks keeps the author's sequence.
-            foreach (var element in page.Elements())
-            {
-                if (element.Name == "Block")
-                {
-                    string blockTitle = Attr(element, "SubjectTT");
-                    if (blockTitle.Length > 0) lines.Add(blockTitle);
-                    foreach (var inner in element.Descendants("Checkpoint")) RenderCheckpoint(inner, lines);
-                    continue;
-                }
-
-                if (element.Name == "Checkpoint") RenderCheckpoint(element, lines);
-            }
+            RenderChildren(page, lines);
 
             if (lines.Count == 0) continue;
 
@@ -157,6 +146,30 @@ public static class NativeChecklistReader
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// A page's or a block's children, in the author's own order: a block renders its
+    /// SubjectTT as a heading and then its own children, a checkpoint renders itself.
+    ///
+    /// Recursive rather than a Descendants("Checkpoint") sweep, which would find the same
+    /// checkpoints but lose a nested block's heading. Both shipped files are one level
+    /// deep today, so this costs nothing and is what keeps a deeper one readable.
+    /// </summary>
+    private static void RenderChildren(XElement parent, List<string> lines)
+    {
+        foreach (var element in parent.Elements())
+        {
+            if (element.Name == "Block")
+            {
+                string blockTitle = Attr(element, "SubjectTT");
+                if (blockTitle.Length > 0) lines.Add(blockTitle);
+                RenderChildren(element, lines);
+                continue;
+            }
+
+            if (element.Name == "Checkpoint") RenderCheckpoint(element, lines);
+        }
     }
 
     /// <summary>One checkpoint: its subject, its expectation, and any clue lines under it.</summary>
