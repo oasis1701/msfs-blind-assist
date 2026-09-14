@@ -99,16 +99,54 @@ public partial class CowsDA40Definition
         AddFailureFlag(v, "DA40_FAIL_ALT", "FAILURES_ALT", "Alternator");
 
         // ---------- Indication Failures ----------
+        //
+        // ⚠️ THE TWO AIRFRAMES HAVE DIFFERENT INDICATION FAILURES AND THIS BLOCK WAS THE
+        // NG'S ON BOTH. Grepped out of each model's own XML, the sets overlap in five and
+        // then diverge completely:
+        //
+        //   shared   OP, OT, AMPS, VOLT, FUEL:1, FUEL:2
+        //   NG only  FUEL_T:1, FUEL_T:2, GT (gearbox), WT (coolant)
+        //   XLS only CHT:1-4, EGT:1-4, FF, FP, MAP, RPM
+        //
+        // So the XLS was carrying FOUR rows that can never read anything but "No failure" -
+        // the phantom trap this file's own history warns about, where a pilot scans a row
+        // and is reassured about a system nothing watches - and was MISSING ELEVEN that
+        // really fire, including the tachometer, the manifold pressure and the fuel flow,
+        // which are the three numbers its cruise tables are entered with, and the eight
+        // per-cylinder temperatures the lean assist is read from.
+        //
+        // It matters more here than anywhere else on this aeroplane because of the DISP_
+        // rule: a failed indication ZEROES the variable MSFSBA reads while the engine runs
+        // on perfectly, so without a row the reading simply becomes 0 and there is nothing
+        // to tell that from a real zero.
         AddFailureFlag(v, "DA40_FAIL_DISP_OP", "FAILURES_DISP_OP", "Oil Pressure");
         AddFailureFlag(v, "DA40_FAIL_DISP_OT", "FAILURES_DISP_OT", "Oil Temperature");
         AddFailureFlag(v, "DA40_FAIL_DISP_AMPS", "FAILURES_DISP_AMPS", "Ammeter");
         AddFailureFlag(v, "DA40_FAIL_DISP_VOLT", "FAILURES_DISP_VOLT", "Voltmeter");
         AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_1", "FAILURES_DISP_FUEL:1", "Main Tank Quantity");
         AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_2", "FAILURES_DISP_FUEL:2", "Auxiliary Tank Quantity");
-        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T1", "FAILURES_DISP_FUEL_T:1", "Main Tank Temperature");
-        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T2", "FAILURES_DISP_FUEL_T:2", "Auxiliary Tank Temperature");
-        AddFailureFlag(v, "DA40_FAIL_DISP_GT", "FAILURES_DISP_GT", "Gearbox Temperature");
-        AddFailureFlag(v, "DA40_FAIL_DISP_WT", "FAILURES_DISP_WT", "Coolant Temperature");
+
+        if (isNg)
+        {
+            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T1", "FAILURES_DISP_FUEL_T:1", "Main Tank Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T2", "FAILURES_DISP_FUEL_T:2", "Auxiliary Tank Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_GT", "FAILURES_DISP_GT", "Gearbox Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_WT", "FAILURES_DISP_WT", "Coolant Temperature");
+        }
+        else
+        {
+            AddFailureFlag(v, "DA40_FAIL_DISP_RPM", "FAILURES_DISP_RPM", "Tachometer");
+            AddFailureFlag(v, "DA40_FAIL_DISP_MAP", "FAILURES_DISP_MAP", "Manifold Pressure");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FF", "FAILURES_DISP_FF", "Fuel Flow");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FP", "FAILURES_DISP_FP", "Fuel Pressure");
+            for (int c = 1; c <= DA40CylinderState.CylinderCount; c++)
+            {
+                AddFailureFlag(v, $"DA40_FAIL_DISP_CHT_{c}", $"FAILURES_DISP_CHT:{c}",
+                    $"Cylinder {c} Head Temperature");
+                AddFailureFlag(v, $"DA40_FAIL_DISP_EGT_{c}", $"FAILURES_DISP_EGT:{c}",
+                    $"Cylinder {c} Exhaust Temperature");
+            }
+        }
 
         // ---------- Flight System Failures ----------
         AddFailureFlag(v, "DA40_FAIL_AFCS_ELE", "FAILURES_AFCS_ELE", "Elevator Servo");
@@ -386,19 +424,50 @@ public partial class CowsDA40Definition
         "DA40_FAIL_ALT",
     };
 
-    private static readonly List<string> SimIndicationControls = new()
+    /// <summary>The six indications both airframes have.</summary>
+    private static readonly List<string> SharedIndicationControls = new()
     {
         "DA40_FAIL_DISP_OP",
         "DA40_FAIL_DISP_OT",
         "DA40_FAIL_DISP_AMPS",
         "DA40_FAIL_DISP_VOLT",
         "DA40_FAIL_DISP_FUEL_1",
-        "DA40_FAIL_DISP_FUEL_2",
+        "DA40_FAIL_DISP_FUEL_2"
+    };
+
+    /// <summary>The Austro's own four: fuel temperature per tank, gearbox, coolant.</summary>
+    private static readonly List<string> NgIndicationControls = new()
+    {
         "DA40_FAIL_DISP_FUEL_T1",
         "DA40_FAIL_DISP_FUEL_T2",
         "DA40_FAIL_DISP_GT",
         "DA40_FAIL_DISP_WT"
     };
+
+    /// <summary>
+    /// The Lycoming's own eleven. The first four are the numbers the cruise tables and the
+    /// mixture are set by; the eight after them are what the lean assist is read from.
+    /// </summary>
+    private static List<string> XlsIndicationControls()
+    {
+        var l = new List<string>
+        {
+            "DA40_FAIL_DISP_RPM",
+            "DA40_FAIL_DISP_MAP",
+            "DA40_FAIL_DISP_FF",
+            "DA40_FAIL_DISP_FP"
+        };
+        for (int c = 1; c <= DA40CylinderState.CylinderCount; c++) l.Add($"DA40_FAIL_DISP_CHT_{c}");
+        for (int c = 1; c <= DA40CylinderState.CylinderCount; c++) l.Add($"DA40_FAIL_DISP_EGT_{c}");
+        return l;
+    }
+
+    private static List<string> IndicationControlsFor(bool isNg)
+    {
+        var l = new List<string>(SharedIndicationControls);
+        l.AddRange(isNg ? NgIndicationControls : XlsIndicationControls());
+        return l;
+    }
 
     private static readonly List<string> SimSystemsControls = new()
     {
@@ -522,7 +591,7 @@ public partial class CowsDA40Definition
             ? new List<string>(SimFuelControls)
             : XlsFuelFailureControls();
         d[SimElecPanel] = new List<string>(SimElecControls);
-        d[SimIndicationPanel] = new List<string>(SimIndicationControls);
+        d[SimIndicationPanel] = IndicationControlsFor(isNg);
         d[SimSystemsPanel] = new List<string>(SimSystemsControls);
         d[SimLightsPanel] = new List<string>(SimLightsControls);
         d[SimBrakesPanel] = new List<string>(SimBrakesControls);

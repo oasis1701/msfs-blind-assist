@@ -174,4 +174,73 @@ public class CowsDA40PohFindingsTests
         Assert.True(withHelp.Count == 0,
             $"{variant}: help text is not used on this aircraft - {string.Join(", ", withHelp)}");
     }
+    // ------------------------------------------------- Indication failures, per airframe
+
+    /// <summary>
+    /// ⚠️ THE TWO AIRFRAMES HAVE DIFFERENT INDICATION FAILURES AND MSFSBA CARRIED THE NG's
+    /// SET ON BOTH. Grepped from each model's own XML: they share six, the NG adds four
+    /// (fuel temperature per tank, gearbox, coolant) and the XLS adds eleven (tachometer,
+    /// manifold pressure, fuel flow, fuel pressure, and CHT and EGT per cylinder).
+    ///
+    /// It matters more here than anywhere else on this aeroplane because of the DISP_ rule:
+    /// a failed indication ZEROES the variable MSFSBA reads while the engine runs on
+    /// perfectly. Verified live on the XLS — `FAILURES_DISP_CHT:1 = 1` took `DISP_CHT:1` to
+    /// 0 while cylinder 2 still read 353 °F — so without a row the pilot sees a cylinder at
+    /// zero with nothing to tell that from a real reading.
+    /// </summary>
+    [Theory]
+    [InlineData("DA40_FAIL_DISP_OP")]
+    [InlineData("DA40_FAIL_DISP_OT")]
+    [InlineData("DA40_FAIL_DISP_AMPS")]
+    [InlineData("DA40_FAIL_DISP_VOLT")]
+    [InlineData("DA40_FAIL_DISP_FUEL_1")]
+    [InlineData("DA40_FAIL_DISP_FUEL_2")]
+    public void BothAirframesShareSixIndicationFailures(string key)
+    {
+        Assert.Contains(key, Ng().GetPanelControls()["Indication Failures"]);
+        Assert.Contains(key, Xls().GetPanelControls()["Indication Failures"]);
+    }
+
+    /// <summary>
+    /// The XLS's own eleven. The first four are the numbers its cruise tables and its
+    /// mixture are set by; the eight after them are what the lean assist is read from.
+    /// </summary>
+    [Theory]
+    [InlineData("DA40_FAIL_DISP_RPM", "FAILURES_DISP_RPM")]
+    [InlineData("DA40_FAIL_DISP_MAP", "FAILURES_DISP_MAP")]
+    [InlineData("DA40_FAIL_DISP_FF", "FAILURES_DISP_FF")]
+    [InlineData("DA40_FAIL_DISP_FP", "FAILURES_DISP_FP")]
+    [InlineData("DA40_FAIL_DISP_CHT_1", "FAILURES_DISP_CHT:1")]
+    [InlineData("DA40_FAIL_DISP_CHT_4", "FAILURES_DISP_CHT:4")]
+    [InlineData("DA40_FAIL_DISP_EGT_1", "FAILURES_DISP_EGT:1")]
+    [InlineData("DA40_FAIL_DISP_EGT_4", "FAILURES_DISP_EGT:4")]
+    public void TheXlsCarriesItsOwnIndicationFailures(string key, string lvar)
+    {
+        var xls = Xls();
+        Assert.True(xls.GetVariables().ContainsKey(key), $"{key} is not defined on the XLS");
+        Assert.Equal(lvar, xls.GetVariables()[key].Name);
+        Assert.Contains(key, xls.GetPanelControls()["Indication Failures"]);
+
+        // And never on the NG, whose model has none of them.
+        Assert.False(Ng().GetVariables().ContainsKey(key), $"{key} must not exist on the NG");
+    }
+
+    /// <summary>
+    /// ⚠️ A ROW FOR A FAILURE THE AIRFRAME CANNOT HAVE IS WORSE THAN NO ROW — a pilot scans
+    /// it and is reassured about a system nothing watches. The XLS has no gearbox, no
+    /// coolant and no fuel-temperature indication, and none of those four variables exists
+    /// in its package.
+    /// </summary>
+    [Theory]
+    [InlineData("DA40_FAIL_DISP_FUEL_T1")]
+    [InlineData("DA40_FAIL_DISP_FUEL_T2")]
+    [InlineData("DA40_FAIL_DISP_GT")]
+    [InlineData("DA40_FAIL_DISP_WT")]
+    public void TheXlsDoesNotCarryTheAustrosIndicationFailures(string key)
+    {
+        Assert.Contains(key, Ng().GetPanelControls()["Indication Failures"]);
+
+        Assert.False(Xls().GetVariables().ContainsKey(key), $"{key} is a phantom on the XLS");
+        Assert.DoesNotContain(key, Xls().GetPanelControls()["Indication Failures"]);
+    }
 }
