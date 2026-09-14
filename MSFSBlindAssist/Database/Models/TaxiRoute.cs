@@ -42,3 +42,13 @@ public class TaxiHoldShort
     public string RunwayOrTaxiway { get; set; } = "";
     public bool IsRunway { get; set; }
 }
+
+/// <summary>
+/// How a route meets a runway it does not start on: it goes onto the pavement and back off the
+/// SAME side (an entry — also a route that ends on the runway), or off the OTHER side (a crossing).
+/// </summary>
+public enum RunwayEventKind
+{
+    Entry,
+    Crossing,
+}
