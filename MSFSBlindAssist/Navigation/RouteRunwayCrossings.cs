@@ -100,6 +100,37 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
+    /// Every runway designator a hold label names, normalized, in order, without repeats — a stop
+    /// shared by two runways reads "runway 06 and runway 29".
+    /// </summary>
+    public static IReadOnlyList<string> ExtractRunwayDesignators(string? holdShortLabel)
+    {
+        var found = new List<string>();
+        if (string.IsNullOrEmpty(holdShortLabel)) return found;
+        foreach (Match m in RunwayToken.Matches(holdShortLabel))
+        {
+            string d = NormalizeDesignator(m.Groups[1].Value);
+            if (!found.Contains(d, StringComparer.OrdinalIgnoreCase)) found.Add(d);
+        }
+        return found;
+    }
+
+    /// <summary>
+    /// True when the label names at least one runway and every runway it names is
+    /// <paramref name="designator"/>'s pavement (either end). A stop shared with another runway is
+    /// not "only" this runway's, so clearing this runway must not remove it.
+    /// </summary>
+    public static bool LabelNamesOnlyRunway(string? holdShortLabel, string designator)
+    {
+        var named = ExtractRunwayDesignators(holdShortLabel);
+        if (named.Count == 0 || string.IsNullOrWhiteSpace(designator)) return false;
+        string want = NormalizeDesignator(designator);
+        string recip = Reciprocal(want);
+        return named.All(d => d.Equals(want, StringComparison.OrdinalIgnoreCase) ||
+                              d.Equals(recip, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Canonical designator form for comparisons and speech: trimmed, uppercase,
     /// runway number zero-padded to two digits ("9L" → "09L" — also the correct
     /// ATC phraseology, "runway zero nine left"). Non-runway designators
@@ -583,5 +614,122 @@ public static class RouteRunwayCrossings
         }
 
         return crossed;
+    }
+
+    /// <summary>
+    /// Label for a stop point that is ALREADY a hold-short, when another runway's hold resolves to
+    /// it: the label names both runways, in route order. Returns null to keep the existing label
+    /// (it already names this pavement, or it is the pilot's own "end of taxiway" stop).
+    /// </summary>
+    public static string? ComposeSharedLabel(string? existingLabel, string designator)
+    {
+        if (string.IsNullOrEmpty(existingLabel)) return $"runway {designator}";
+        if (existingLabel.StartsWith("end of taxiway", StringComparison.OrdinalIgnoreCase)) return null;
+        var named = ExtractRunwayDesignators(existingLabel);
+        if (named.Count == 0) return ComposeCrossingLabel(existingLabel, designator);
+        string want = NormalizeDesignator(designator);
+        string recip = Reciprocal(want);
+        if (named.Any(d => d.Equals(want, StringComparison.OrdinalIgnoreCase) ||
+                           d.Equals(recip, StringComparison.OrdinalIgnoreCase)))
+            return null;
+        return $"{existingLabel} and runway {designator}";
+    }
+
+    /// <summary>The one hold-short sentence, for a hold reached en route and for a start hold.</summary>
+    public static string ComposeHoldShortInstruction(string? holdShortLabel)
+        => string.IsNullOrEmpty(holdShortLabel)
+            ? "Stop. Hold short. Press continue when cleared."
+            : $"Stop. Hold short of {holdShortLabel}. Press continue when cleared.";
+
+    /// <summary>
+    /// The route summary / "Route changed" clause: every crossing, then every entry, each group in
+    /// taxi order, reciprocal designators merged as one pavement speaking both names, repeats
+    /// counted ("crossing runway 10L/28R twice, entering runway 04L"). Built from the recorded
+    /// events, not from hold labels, so a crossing that could not be held is still named.
+    /// </summary>
+    public static string DescribeRunwayEvents(IReadOnlyList<TaxiRouteRunwayEvent>? events)
+    {
+        if (events is null || events.Count == 0) return "";
+        var parts = new List<string>();
+        string crossing = ComposeRunwayGroup("crossing",
+            events.Where(e => e.Kind == RunwayEventKind.Crossing).Select(e => e.Designator));
+        string entering = ComposeRunwayGroup("entering",
+            events.Where(e => e.Kind == RunwayEventKind.Entry).Select(e => e.Designator));
+        if (crossing.Length > 0) parts.Add(crossing);
+        if (entering.Length > 0) parts.Add(entering);
+        return string.Join(", ", parts);
+    }
+
+    private static string ComposeRunwayGroup(string verb, IEnumerable<string> designators)
+    {
+        // Designator key → count, first-encounter order; reciprocals merge onto the first-seen key
+        // and keep every signed name, because the tactical callouts speak each stop's own label.
+        var order = new List<string>();
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var namesByKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in designators)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+            string designator = NormalizeDesignator(raw);
+            string key = designator;
+            if (!counts.ContainsKey(key) && counts.ContainsKey(Reciprocal(designator)))
+                key = Reciprocal(designator);
+            if (counts.TryGetValue(key, out int c))
+            {
+                counts[key] = c + 1;
+                if (!namesByKey[key].Contains(designator, StringComparer.OrdinalIgnoreCase))
+                    namesByKey[key].Add(designator);
+            }
+            else
+            {
+                counts[key] = 1;
+                namesByKey[key] = new List<string> { designator };
+                order.Add(key);
+            }
+        }
+        if (order.Count == 0) return "";
+
+        var parts = order.Select(key =>
+        {
+            string name = string.Join("/", namesByKey[key]);
+            return counts[key] switch { 1 => name, 2 => $"{name} twice", var n => $"{name} {n} times" };
+        }).ToList();
+        string joined = parts.Count == 1
+            ? parts[0]
+            : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
+        return $"{verb} {(order.Count == 1 ? "runway" : "runways")} {joined}";
+    }
+
+    /// <summary>
+    /// Hold-short points whose label names no runway (end of taxiway, bare holding-point names) —
+    /// the "N hold short points" count. <paramref name="excludeLastSegment"/> drops a runway
+    /// destination's own countdown rail (see <see cref="ShouldExcludeFinalHold"/>).
+    /// </summary>
+    public static int CountNonRunwayHoldShorts(IReadOnlyList<TaxiRouteSegment> segments, bool excludeLastSegment)
+    {
+        if (segments is null) return 0;
+        int end = segments.Count - (excludeLastSegment ? 1 : 0);
+        int count = 0;
+        for (int i = 0; i < end; i++)
+            if (segments[i].IsHoldShortPoint && ExtractRunwayDesignator(segments[i].HoldShortRunway) == null)
+                count++;
+        return count;
+    }
+
+    /// <summary>The "Route crossings:" line written once per route adopted.</summary>
+    public static string DescribeForLog(string phase, string destinationName, TaxiRoute route)
+    {
+        static string ListOrNone(IEnumerable<string> items)
+        {
+            string joined = string.Join(",", items);
+            return joined.Length > 0 ? joined : "(none)";
+        }
+        var events = route.RunwayEvents ?? new List<TaxiRouteRunwayEvent>();
+        string startHold = route.StartHoldRunway is null ? "(none)" : $"\"{route.StartHoldRunway}\"";
+        return $"Route crossings: phase={phase} dest=\"{destinationName}\" segments={route.Segments.Count} " +
+               $"crosses={ListOrNone(events.Where(e => e.Kind == RunwayEventKind.Crossing).Select(e => e.Designator))} " +
+               $"enters={ListOrNone(events.Where(e => e.Kind == RunwayEventKind.Entry).Select(e => e.Designator))} " +
+               $"unheld={ListOrNone(events.Where(e => !e.Held).Select(e => e.Designator))} " +
+               $"startHold={startHold}";
     }
 }
