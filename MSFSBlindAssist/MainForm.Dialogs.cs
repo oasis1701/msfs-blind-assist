@@ -235,7 +235,8 @@ public partial class MainForm
                 // latest choice wins.
                 if (dialog.ManualLandingAssist)
                 {
-                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport);
+                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport,
+                        airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO));
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
                 }
                 else

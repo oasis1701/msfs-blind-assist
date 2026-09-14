@@ -33,6 +33,12 @@ namespace MSFSBlindAssist.Services;
 ///    when the pilot deliberately turns off the runway; landing-exit guidance /
 ///    taxi guidance then own the arrival exactly as today.
 ///
+/// Runway check: at flare engage and again at touchdown the assist identifies the runway the
+/// aircraft is actually over (Navigation.LandingRunwayMatch). When that is not the armed runway —
+/// typically a runway change after arming — the tones steer at the actual runway for that
+/// engagement and the switch is spoken once ("Flare guidance, runway 12R, not 12L."). The armed
+/// runway stays the pilot's choice and is restored when the engagement ends.
+///
 /// There is deliberately NO spoken approach phase. Rate-limited intercept
 /// headings from 1000 ft were tried and rejected by the pilot as too much
 /// talking on short final; the flare tones are the whole airborne instrument.
@@ -82,8 +88,16 @@ public class LandingFlareAssistManager : IDisposable
     // Monotonic clock for the cross-track rate differentiator.
     private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
 
-    // Armed reference (destination runway)
+    // The runway the pilot armed the assist for — their choice, never changed by a runway switch.
+    private Runway? armedRunway;
+    private Airport? armedAirport;
+    // Every runway end at the armed airport, loaded at arming time, for the runway check.
+    private IReadOnlyList<Runway> airportRunways = Array.Empty<Runway>();
+    // The ACTIVE runway every measurement below uses: the armed runway, or for one engagement the
+    // runway the aircraft is actually landing on. StopEngagement restores the armed runway.
     private Runway? runway;
+    // The "…runway 12R, not 12L." correction has been spoken this engagement.
+    private bool runwayCorrectionSpoken;
     // The PAINTED LANDING THRESHOLD — every distance and centerline measurement in this class
     // anchors here. NOT runway.StartLat/StartLon, which is the physical pavement EDGE: at a
     // displaced-threshold runway the two are hundreds of feet apart (LGKR 16: 1341 ft, KJFK 22R:
@@ -198,34 +212,44 @@ public class LandingFlareAssistManager : IDisposable
     /// <summary>
     /// Arms the assist for the given destination runway. Silent — the caller composes
     /// the "destination set" announcement. Re-arming (new destination) resets any
-    /// in-progress state first.
+    /// in-progress state first. <paramref name="airportRunways"/> is every runway end at the
+    /// destination, used to tell which runway the aircraft is actually landing on.
     /// </summary>
-    public void Arm(Runway destinationRunway, Airport destinationAirport)
+    public void Arm(Runway destinationRunway, Airport destinationAirport, IReadOnlyList<Runway> airportRunways)
     {
         // A destination change mid-approach must not leave a tone running against
         // the old runway's geometry.
         StopEngagement(raiseEvents: true);
 
-        runway = destinationRunway;
-
-        // Project the anchor from the pavement edge down the runway to the PAINTED threshold. A
-        // zero offset (94 % of runway ends, including every EGLL and KJFK end) is an exact no-op,
-        // so this costs nothing where it doesn't apply.
-        (thresholdLat, thresholdLon) = NavigationCalculator.CalculateTouchdownAimPoint(
-            destinationRunway.StartLat, destinationRunway.StartLon,
-            destinationRunway.Heading, destinationRunway.ThresholdOffset);
-
-        thresholdElevationFt = destinationRunway.ThresholdElevation != 0
-            ? destinationRunway.ThresholdElevation
-            : destinationAirport.Altitude;
-        runwayLabel = destinationRunway.RunwayID;
+        armedRunway = destinationRunway;
+        armedAirport = destinationAirport;
+        this.airportRunways = airportRunways ?? Array.Empty<Runway>();
+        ApplyActiveRunway(destinationRunway);
         armed = true;
         phase = Phase.Armed;
         wasAboveFlareBand = false;
 
         Log.Debug("LandingFlareAssist",
             $"Armed: {destinationAirport.ICAO} rwy {runwayLabel}, " +
-            $"thrElev={thresholdElevationFt:F0} ft, displaced={destinationRunway.ThresholdOffset:F0} ft");
+            $"thrElev={thresholdElevationFt:F0} ft, displaced={destinationRunway.ThresholdOffset:F0} ft, " +
+            $"runways={this.airportRunways.Count}");
+    }
+
+    /// <summary>
+    /// Points every measurement at <paramref name="r"/>: the aim point projected from the pavement
+    /// edge down the runway to the PAINTED threshold (a zero offset — 94 % of runway ends,
+    /// including every EGLL and KJFK end — is an exact no-op), the threshold elevation, and the
+    /// spoken label.
+    /// </summary>
+    private void ApplyActiveRunway(Runway r)
+    {
+        runway = r;
+        (thresholdLat, thresholdLon) = NavigationCalculator.CalculateTouchdownAimPoint(
+            r.StartLat, r.StartLon, r.Heading, r.ThresholdOffset);
+        thresholdElevationFt = r.ThresholdElevation != 0
+            ? r.ThresholdElevation
+            : armedAirport?.Altitude ?? 0.0;
+        runwayLabel = r.RunwayID;
     }
 
     /// <summary>Disarms completely (destination re-selected without the checkbox, or reset).</summary>
@@ -235,6 +259,9 @@ public class LandingFlareAssistManager : IDisposable
         StopEngagement(raiseEvents: true);
         armed = false;
         runway = null;
+        armedRunway = null;
+        armedAirport = null;
+        airportRunways = Array.Empty<Runway>();
         SetMonitoringRequested(false);
 
         if (announce && wasArmed)
@@ -314,14 +341,14 @@ public class LandingFlareAssistManager : IDisposable
                         d.Latitude, d.Longitude,
                         thresholdLat, thresholdLon) <= FLARE_ENGAGE_MAX_DIST_NM)
                 {
-                    EnterFlare();
+                    EnterFlare(d);
                 }
                 break;
 
             case Phase.Flare:
                 if (onGround)
                 {
-                    EnterRollout();
+                    EnterRollout(d);
                     UpdateRolloutTone(d);
                 }
                 else if (gearAgl > GO_AROUND_GEAR_AGL_FT)
@@ -367,7 +394,7 @@ public class LandingFlareAssistManager : IDisposable
         }
     }
 
-    private void EnterFlare()
+    private void EnterFlare(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         phase = Phase.Flare;
         rolloutAnnounced = false;
@@ -377,11 +404,32 @@ public class LandingFlareAssistManager : IDisposable
         // because VG auto-deactivates on the touchdown edge.
         silentFlare = isVisualGuidanceActive();
 
+        // Lined up with a different runway from the armed one (a runway change after arming)? The
+        // tones must steer at the runway actually being landed on, or they pan hard toward the armed
+        // one in the last 50 ft. Approach mode: the aircraft can still be short of the pavement.
+        bool speakCorrection = false;
+        if (armedRunway != null)
+        {
+            var verdict = LandingRunwayMatch.Evaluate(
+                d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation,
+                armedRunway, airportRunways, LandingRunwayMatch.ApproachBeforeThresholdMarginM);
+            var decision = LandingAssistRunwaySwitch.AtFlareEngage(verdict, silentFlare);
+            if (decision.SwitchTo != null)
+            {
+                ApplyActiveRunway(decision.SwitchTo);
+                Log.Debug("LandingFlareAssist",
+                    $"Flare engage: armed rwy {armedRunway.RunwayID}, {verdict.Verdict} {decision.SwitchTo.RunwayID} — switched");
+            }
+            speakCorrection = decision.SpeakCorrection;
+        }
+
         if (!silentFlare)
         {
             StartVerticalToneIfNeeded();
             StartLateralToneIfNeeded();
-            announcer.AnnounceImmediate("Flare guidance");
+            announcer.AnnounceImmediate(LandingAssistRunwaySwitch.FlareGuidancePhrase(
+                runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+            if (speakCorrection) runwayCorrectionSpoken = true;
         }
 
         EngagedChanged?.Invoke(this, true);
@@ -472,7 +520,7 @@ public class LandingFlareAssistManager : IDisposable
         lastCrossTrackSec = now;
     }
 
-    private void EnterRollout()
+    private void EnterRollout(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         phase = Phase.Rollout;
         StopVerticalTone();            // flare sink-rate cue is done at touchdown
@@ -481,10 +529,29 @@ public class LandingFlareAssistManager : IDisposable
         StartLateralToneIfNeeded();
         tone.UpdatePitch(0);           // pan mode: park the frequency at centre, meaning is the pan
 
+        // Confirm the runway on the ground: switch if the aircraft touched down on a different runway
+        // from the active one, and say so once when that is not the armed runway.
+        bool speakCorrection = false;
+        if (armedRunway != null && runway != null)
+        {
+            var verdict = LandingRunwayMatch.Evaluate(
+                d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation, runway, airportRunways);
+            var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken);
+            if (decision.SwitchTo != null)
+            {
+                ApplyActiveRunway(decision.SwitchTo);
+                Log.Debug("LandingFlareAssist",
+                    $"Touchdown: {verdict.Verdict} {decision.SwitchTo.RunwayID} — switched (armed {armedRunway.RunwayID})");
+            }
+            speakCorrection = decision.SpeakCorrection;
+        }
+
         if (!rolloutAnnounced)
         {
             rolloutAnnounced = true;
-            announcer.AnnounceImmediate("Rollout guidance");
+            announcer.AnnounceImmediate(LandingAssistRunwaySwitch.RolloutGuidancePhrase(
+                runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+            if (speakCorrection) runwayCorrectionSpoken = true;
         }
         Log.Debug("LandingFlareAssist", "Rollout engaged");
     }
@@ -761,6 +828,11 @@ public class LandingFlareAssistManager : IDisposable
         vsSmootherInitialized = false;
         crossTrackRateInitialized = false;
         crossTrackRateFps = 0.0;
+
+        // A runway switch lasts one engagement: circuits keep the pilot's armed choice.
+        runwayCorrectionSpoken = false;
+        if (armedRunway != null && !ReferenceEquals(runway, armedRunway))
+            ApplyActiveRunway(armedRunway);
 
         if (raiseEvents && wasEngaged)
             EngagedChanged?.Invoke(this, false);
