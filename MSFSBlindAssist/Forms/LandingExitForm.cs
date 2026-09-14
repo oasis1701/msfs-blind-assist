@@ -65,6 +65,10 @@ public class LandingExitForm : Form
     private string _currentIcao = "";
     private TaxiGraph? _graph;
     private List<Runway> _runways = new();
+    // Every runway end at the loaded airport, closed ones included — the list the graph was built
+    // from. Handed to the planner so touchdown can tell which runway it landed on without a
+    // database query.
+    private List<Runway> _allRunways = new();
     private List<LandingExit> _exits = new();
 
     // The augmentation decorator, when the app wired one up (null when the feature is
@@ -314,6 +318,7 @@ public class LandingExitForm : Form
         // a superseded load) must leave NO graph standing rather than the previous
         // airport's under the new ICAO.
         _graph = null;
+        _allRunways = new();
         cmbRunway.Items.Clear();
         cmbExit.Items.Clear();
         _exits.Clear();
@@ -366,6 +371,7 @@ public class LandingExitForm : Form
         lblStatus.Text = $"{icao}: building taxi graph…";
         btnPlan.Enabled = false;
         Navigation.TaxiGraph? builtGraph = null;
+        List<Runway> allRunways = new();
         try
         {
             var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
@@ -373,7 +379,8 @@ public class LandingExitForm : Form
             // Runways passed so Build can repair laterally-bogus start rows
             // (SnapStartToRunwayCenterline) — the exit planner's runway geometry must
             // agree with every other graph in the app.
-            builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts, _dataProvider.GetRunways(icao));
+            allRunways = _dataProvider.GetRunways(icao);
+            builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts, allRunways);
         }
         finally
         {
@@ -392,11 +399,12 @@ public class LandingExitForm : Form
         if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
 
         _graph = builtGraph;
+        _allRunways = allRunways;
 
         // Only exclude closed runways. IsLanding=false just means no published
         // instrument approach in the navdata — ATC can still assign the runway
         // for landing (as at EIDW 10R), so let the pilot pick any open direction.
-        _runways = _dataProvider.GetRunways(icao)
+        _runways = allRunways
             .Where(r => !r.IsClosed)
             .ToList();
 
@@ -582,7 +590,7 @@ public class LandingExitForm : Form
         // also default to airborne (better to arm and let the GS≥40 kt floor
         // reject false touchdowns than to fail to arm at all).
         bool currentlyAirborne = _simConnectManager?.LastKnownOnGround != true;
-        _planner.SetExit(_dataProvider, _currentIcao, rwy, exit, _graph, currentlyAirborne);
+        _planner.SetExit(_dataProvider, _currentIcao, rwy, exit, _graph, _allRunways, currentlyAirborne);
         lblStatus.Text = $"Plan set: {exit}";
         this.Close();
     }

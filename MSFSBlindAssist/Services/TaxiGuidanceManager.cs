@@ -708,8 +708,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // are private and called only from within the static Build() method; no
     // public TaxiGraph method mutates Nodes afterward (verified by inspection,
     // 2026-07). So it's safe to rebuild only when the _graph REFERENCE changes
-    // (every _graph assignment site — LoadRoute's two branches, StopGuidance —
-    // installs a brand-new TaxiGraph or null, never mutates the existing one).
+    // (every _graph assignment site — LoadRoute's two branches,
+    // BeginRunwayEndCountdownRollout, StopGuidance — installs a TaxiGraph reference or
+    // null and never mutates the graph it replaces).
     private TaxiGraph? _holdShortNodesGraph;
     private List<TaxiNode>? _cachedHoldShortNodes;
 
@@ -1113,6 +1114,15 @@ public partial class TaxiGuidanceManager : IDisposable
     // CLAUDE.md's liftoff-handoff rule forbids: nothing here mutes speech.
     private const double ROLLOUT_DECLINE_CALLOUT_LEAD_SEC = 4.0;
 
+    // Lead window for the touchdown sentence that carries a landing-exit runway correction
+    // ("Touchdown on runway 30L, not 12L. High-speed exit taxiway M12A in 4,000 feet."): a rollout
+    // milestone the aircraft reaches inside it is retired and folded into that sentence
+    // (Navigation.TouchdownCallout), so its AnnounceImmediate cannot cut the correction off.
+    // MEASURED, not estimated: that sentence renders in 7.51 s through System.Speech at Rate 0 (the
+    // rate ScreenReaderAnnouncer's SAPI fallback uses; voice Microsoft David Desktop, trailing
+    // silence trimmed), plus about a fifth. Not a speech mute.
+    private const double ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC = 9.0;
+
     // Distance from the chosen exit at which the rollout speaks "turn now". Not a
     // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
     // callout's lower bound is deliberately the same number so the two never overlap.
@@ -1222,6 +1232,23 @@ public partial class TaxiGuidanceManager : IDisposable
             lock (_stateLock)
             {
                 return _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while a landing-exit rollout is steering at an exit: <c>LandingRollout</c> outside the
+    /// runway-end countdown. Read by the manual-landing assist to decide whether an exit-steering
+    /// tone will take over from its rollout tone. The countdown pauses the taxi tone, so it must
+    /// not count, or the assist would stop its own tone at 55 kt with nothing taking over.
+    /// </summary>
+    public bool IsLandingExitRolloutGuidanceActive
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == TaxiGuidanceState.LandingRollout && !_rolloutNoExitMode;
             }
         }
     }
@@ -1581,6 +1608,16 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     public event EventHandler<TaxiGuidanceState>? StateChanged;
+
+    /// <summary>
+    /// Raised by the two landing-rollout entries that can be reached with NO position stream
+    /// running: <see cref="BeginLandingRolloutNoGraph"/> (after a failed LoadRoute, so no Taxiing
+    /// transition ever started one) and <see cref="BeginRunwayEndCountdownRollout"/> (no route at
+    /// all). MainForm answers by starting the taxi-guidance position stream; without it those
+    /// rollouts would speak their touchdown sentence and never receive another frame. Raised under
+    /// the state lock after the state change, like <see cref="StateChanged"/>.
+    /// </summary>
+    public event EventHandler? PositionStreamRequired;
 
     /// <summary>
     /// Fires once per route when the aircraft becomes lined up on the
@@ -3259,13 +3296,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
-        _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
-        _landingExitMissed = false;
-        _landingExitVacatedEarly = false;
-        _landingExitVacatedEarlyPlannedName = null;
-        _landingExitRouteUnreachable = false;
-        _landingExitMinDistToTargetM = double.MaxValue;
-        _missedVacateSince = DateTime.MinValue;
+        ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         ResetRolloutApproachLatches();

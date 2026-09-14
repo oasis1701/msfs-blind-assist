@@ -25,6 +25,90 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// Resets the landing-exit OUTCOME flags that decide HandleArrival's closure. One owner for a
+    /// block that was hand-copied into LoadRoute, StopGuidance and the no-route rollout entry and had
+    /// already drifted (the rollout copy lacked the last two fields). The values are LoadRoute's:
+    /// <c>_landingExitOffPavement</c> resets to TRUE, because a new route re-decides it at its own
+    /// handoff.
+    /// </summary>
+    private void ResetLandingExitOutcomeFlags()
+    {
+        _landingExitOffPavement = true;
+        _landingExitMissed = false;
+        _landingExitVacatedEarly = false;
+        _landingExitVacatedEarlyPlannedName = null;
+        _landingExitRouteUnreachable = false;
+        _landingExitMinDistToTargetM = double.MaxValue;
+        _missedVacateSince = DateTime.MinValue;
+    }
+
+    /// <summary>
+    /// Applies the pilot's crossings and steering-tone settings and starts the tone, for the two
+    /// landing-rollout entries reached without StartGuidance (which normally does this):
+    /// BeginLandingRolloutNoGraph and BeginRunwayEndCountdownRollout.
+    /// </summary>
+    private void StartRolloutSteeringTone(UserSettings settings)
+    {
+        _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
+        _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
+        _steeringTone.HardPan = settings.TaxiGuidanceHardPanTone;
+        _steeringTone.Start(settings.TaxiGuidanceToneWaveform, settings.TaxiGuidanceToneVolume);
+    }
+
+    /// <summary>
+    /// Speaks a landing-exit rollout's touchdown sentence through AnnounceInstruction, so Ctrl+Y can
+    /// replay it. With a runway correction it first retires every approach milestone the aircraft
+    /// is already inside, or will reach within ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC, and folds what
+    /// they uniquely add into the sentence (Navigation.TouchdownCallout). Without one, nothing is
+    /// retired and the sentence is the pre-existing one. Callers set _rolloutExit and
+    /// _rolloutRunwayHeadingTrue and reset the approach latches first.
+    /// </summary>
+    private void AnnounceTouchdownCallout(
+        Navigation.LandingExit exit, double touchdownLat, double touchdownLon,
+        double groundSpeedKts, Navigation.TouchdownRunwayCorrection? correction)
+    {
+        // Use the actual aircraft-to-exit distance when the caller provides touchdown coordinates —
+        // this accounts for short or long landings. Fall back to the precomputed
+        // DistanceFromTouchdownFeet only when coordinates are unavailable.
+        int distFt = touchdownLat != 0 && touchdownLon != 0
+            ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
+            : (int)Math.Round(exit.DistanceFromTouchdownFeet);
+
+        var retired = default(Navigation.ExitCalloutRetirement);
+        string? turnPhrase = null;
+        if (correction.HasValue)
+        {
+            var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
+            retired = Navigation.TouchdownCallout.RetireExitCallouts(
+                distFt, groundSpeedKts, exit.ExitType, ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC,
+                xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                ROLLOUT_TURN_NOW_FT, ROLLOUT_TAXI_GS_KTS);
+
+            if (retired.Retire1500) _rolloutApproach1500Announced = true;
+            if (retired.Retire900) _rolloutApproach900Announced = true;
+            if (retired.Retire500) _rolloutApproach500Announced = true;
+            if (retired.RetireTurnNow)
+            {
+                _rolloutTurnNowAnnounced = true;
+                // The turn-now block's own side effect, reproduced because that block will not run.
+                if (exit.ExitType == "Normal" && exit.ExitBearingTrue > 0.0)
+                    _headingErrorInitialized = false;
+                turnPhrase = ComposeExitTurnPhrase(touchdownLat, touchdownLon, _rolloutRunwayHeadingTrue);
+            }
+
+            RolloutDiag($"Touchdown correction {correction.Value.PlannedRunwayId} -> {correction.Value.ActualRunwayId}: " +
+                $"distToExit={distFt}ft gs={groundSpeedKts:F1}kt retire1500={retired.Retire1500} " +
+                $"retire900={retired.Retire900} retire500={retired.Retire500} " +
+                $"retireTurnNow={retired.RetireTurnNow} slowDown={retired.SlowDown}");
+        }
+
+        AnnounceInstruction(Navigation.TouchdownCallout.ComposeExit(
+            correction, exit.ExitType, exit.TaxiwayName, distFt, retired, turnPhrase));
+    }
+
+    /// <summary>
     /// Switches active guidance into landing-rollout mode. Called by
     /// <see cref="LandingExitPlanner"/> after StartGuidance, before the
     /// aircraft has decelerated to taxi speed.
@@ -48,15 +132,11 @@ public partial class TaxiGuidanceManager
     /// route already being loaded and the tone generator already alive
     /// (so Pause/Resume do the right thing).
     /// </summary>
-    /// <param name="touchdownPrefix">
-    /// A sentence to speak AHEAD of the touchdown callout, in the SAME utterance. The
-    /// touchdown callout goes out through AnnounceInstruction, i.e. AnnounceImmediate, which
-    /// DISCARDS the queue — so a caller that speaks its own line just before calling this has
-    /// it thrown away milliseconds later. That is this codebase's recurring
-    /// two-announcements-stomp-each-other failure, and the house remedy is one utterance.
-    /// Used by <see cref="LandingExitPlanner"/> to say that the exit plan was made for the
-    /// other end of this runway before naming the exit it is now guiding to.
-    /// </param>
+    /// <param name="groundSpeedKts">Ground speed at touchdown. Used only to decide which milestones a
+    /// runway-correction sentence retires.</param>
+    /// <param name="correction">Set when the landing-exit plan was made for another runway or the
+    /// other end; the touchdown sentence leads with it (Navigation.TouchdownCallout). Null for a
+    /// landing on the planned runway, which keeps the pre-existing sentence.</param>
     public void BeginLandingRollout(
         Navigation.LandingExit exit,
         double runwayHeadingTrue,
@@ -64,7 +144,8 @@ public partial class TaxiGuidanceManager
         List<Navigation.LandingExit> allExits,
         double touchdownLat = 0,
         double touchdownLon = 0,
-        string? touchdownPrefix = null)
+        double groundSpeedKts = 0,
+        Navigation.TouchdownRunwayCorrection? correction = null)
     {
         lock (_stateLock)
         {
@@ -122,25 +203,75 @@ public partial class TaxiGuidanceManager
             RolloutDiag($"BeginLandingRollout DONE: state -> LandingRollout, " +
                 $"tone active (bearing-to-exit), touchdown callout queued");
 
-            // Touchdown callout. Use the actual aircraft-to-exit distance when the
-            // caller provides touchdown coordinates — this accounts for short or long
-            // landings. Fall back to the precomputed DistanceFromTouchdownFeet only
-            // when coordinates are unavailable (shouldn't happen in normal flow).
-            string exitClass = exit.ExitType switch
-            {
-                "High-speed" => "high-speed exit",
-                "End"        => "runway-end exit",
-                _            => "exit"
-            };
-            string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "exit" : $"taxiway {exit.TaxiwayName}";
-            int distFt = touchdownLat != 0 && touchdownLon != 0
-                ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
-                : (int)Math.Round(exit.DistanceFromTouchdownFeet);
-            string lead = string.IsNullOrWhiteSpace(touchdownPrefix) ? "" : touchdownPrefix.Trim() + " ";
-            if (distFt > 0)
-                AnnounceInstruction($"{lead}Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
-            else
-                AnnounceInstruction($"{lead}Touchdown. {exitClass} {name}.");
+            // Touchdown callout, and with a runway correction, the milestones it retires.
+            AnnounceTouchdownCallout(exit, touchdownLat, touchdownLon, groundSpeedKts, correction);
+        }
+    }
+
+    /// <summary>
+    /// Enters landing rollout with NO exit — the runway-end countdown — on the runway the aircraft
+    /// is actually on, when a landing-exit plan was made for another runway (or the other end) and
+    /// no usable exit exists on this one (LandingExitPlanner). No LoadRoute runs first, so this sets
+    /// up everything the countdown and a following backtrack read: this airport's taxi graph, data
+    /// provider and ICAO (FindBacktrackConnectionNode and Where Am I need them), and the steering
+    /// tone started with the pilot's settings (EnterRunwayEndCountdown pauses it and
+    /// UpdateBacktracking resumes it — Resume cannot revive a stopped tone). Speaks the correction
+    /// sentence after the state change, folding any countdown milestone already due, then asks
+    /// MainForm for the position stream.
+    /// </summary>
+    public void BeginRunwayEndCountdownRollout(
+        Database.Models.Runway runway,
+        TaxiGraph graph,
+        IAirportDataProvider dataProvider,
+        string icao,
+        UserSettings settings,
+        double touchdownLat,
+        double touchdownLon,
+        double groundSpeedKts,
+        Navigation.TouchdownRunwayCorrection correction)
+    {
+        lock (_stateLock)
+        {
+            RolloutDiag($"BeginRunwayEndCountdownRollout: runway={runway.RunwayID} " +
+                $"hdgTrue={runway.Heading:F2} len={runway.Length:F0} icao={icao} state={_state}");
+
+            _graph = graph;
+            _dataProvider = dataProvider;
+            _icao = icao ?? "";
+
+            StartRolloutSteeringTone(settings);
+            _steeringTone.SetPulse(false);
+
+            ResetLandingExitOutcomeFlags();
+            _rolloutRunway = runway;
+            _rolloutRunwayHeadingTrue = runway.Heading;
+            _rolloutHandoffActive = false;
+            _rolloutDiagFirstCallDone = false;
+            _rolloutDiagLastPeriodic = DateTime.MinValue;
+
+            // Owns the rest: _route/_rolloutExit clearing, no-exit mode, the countdown and approach
+            // latches, the tone pause and the LandingRollout state.
+            EnterRunwayEndCountdown();
+
+            double alongFromStartM = SignedAlongRunwayMeters(
+                touchdownLat, touchdownLon, runway.StartLat, runway.StartLon, runway.Heading);
+            double distToEndFt = (runway.Length * 0.3048 - alongFromStartM) * METERS_TO_FEET;
+
+            var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
+            var retired = Navigation.TouchdownCallout.RetireRunwayEndCallouts(
+                distToEndFt, groundSpeedKts, ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC,
+                rm[0].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot,
+                ROLLOUT_TAXI_GS_KTS);
+            if (retired.Retire1500) _rolloutEnd1500Announced = true;
+            if (retired.Retire500) _rolloutEnd500Announced = true;
+            if (retired.Retire100) _rolloutEnd100Announced = true;
+
+            AnnounceInstruction(Navigation.TouchdownCallout.ComposeNoUsableExit(
+                correction, (int)Math.Round(distToEndFt), retired));
+
+            PositionStreamRequired?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -157,65 +288,8 @@ public partial class TaxiGuidanceManager
     /// Must be called AFTER a failed <see cref="LoadRoute"/> so that _graph,
     /// _dataProvider, and _icao are populated for the subsequent handoff re-route.
     /// </summary>
-    /// <summary>
-    /// Enters landing rollout with NO exit — just the runway-end countdown — against a
-    /// runway supplied by the caller. The distance callouts ("Runway end in 1,500 feet",
-    /// "500 feet, slow down", "100 feet, stop") and the stopped/turn handoff to
-    /// backtracking all come from <see cref="UpdateRunwayEndCountdown"/>, which needs only
-    /// <c>_rolloutRunway</c> and <c>_rolloutRunwayHeadingTrue</c>.
-    ///
-    /// <para>Used when a landing-exit plan turns out not to apply to this landing — the
-    /// aircraft touched down on a DIFFERENT runway from the one the exit was planned for
-    /// (<see cref="Navigation.LandingRunwayVerdict.DifferentRunway"/>). The planned exit
-    /// belongs to pavement the aircraft is not on, so there is no exit to steer to, but a
-    /// blind pilot at 160 kt still needs to know how much runway is left. The alternative
-    /// — the pre-2026-09 behaviour — was to measure the whole rollout in the planned
-    /// runway's frame, which at OMDB was reversed 179 degrees and abandoned the rollout on
-    /// its first frame with nothing spoken at all.</para>
-    ///
-    /// <para>No steering tone: the countdown is a voice-only phase (
-    /// <see cref="EnterRunwayEndCountdown"/> pauses the tone for exactly that reason), and
-    /// there is no exit to pan at. The caller speaks its own explanation BEFORE calling —
-    /// this method is silent.</para>
-    /// </summary>
-    public void BeginRunwayEndCountdownRollout(
-        Database.Models.Runway runway, double runwayHeadingTrue)
-    {
-        lock (_stateLock)
-        {
-            RolloutDiag($"BeginRunwayEndCountdownRollout: runway={runway.RunwayID} " +
-                $"hdgTrue={runwayHeadingTrue:F2} len={runway.Length:F0} state={_state}");
-
-            // Same leak resets BeginLandingRolloutNoGraph makes, and for the same reason:
-            // this entry is reached without a successful LoadRoute, so LoadRoute's own
-            // fresh-route reset block never ran and a previous landing's flags would
-            // otherwise survive into this one.
-            _route = null;
-            _landingExitOffPavement = true;
-            _landingExitMissed = false;
-            _landingExitVacatedEarly = false;
-            _landingExitVacatedEarlyPlannedName = null;
-            _landingExitRouteUnreachable = false;
-
-            _rolloutRunway = runway;
-            _rolloutRunwayHeadingTrue = runwayHeadingTrue;
-            _rolloutExit = null;
-            _rolloutHandoffActive = false;
-            _rolloutEarlyHandoffDone = false;
-            _lastUndershootRetargetTime = DateTime.MinValue;
-            _rolloutDiagFirstCallDone = false;
-            _rolloutDiagLastPeriodic = DateTime.MinValue;
-            _smoothedHeadingError = 0.0;
-            _headingErrorInitialized = false;
-
-            // Owns the rest: _rolloutNoExitMode, the countdown latches, _route/_rolloutExit
-            // clearing, the tone pause and the LandingRollout state.
-            EnterRunwayEndCountdown();
-        }
-    }
-
-    /// <param name="touchdownPrefix">See <see cref="BeginLandingRollout"/> — same one-utterance
-    /// rule, same reason.</param>
+    /// <param name="groundSpeedKts">See <see cref="BeginLandingRollout"/>.</param>
+    /// <param name="correction">See <see cref="BeginLandingRollout"/>.</param>
     public void BeginLandingRolloutNoGraph(
         Navigation.LandingExit exit,
         double runwayHeadingTrue,
@@ -224,7 +298,8 @@ public partial class TaxiGuidanceManager
         double touchdownLat,
         double touchdownLon,
         UserSettings settings,
-        string? touchdownPrefix = null)
+        double groundSpeedKts = 0,
+        Navigation.TouchdownRunwayCorrection? correction = null)
     {
         lock (_stateLock)
         {
@@ -245,14 +320,9 @@ public partial class TaxiGuidanceManager
             // LoadRoute intervene: landing 2's handoff captures a stale
             // _landingExitVacatedEarlyPlannedName, the reachability guard takes its != null
             // branch, and the pilot is told "You have left the runway short of Taxiway X"
-            // naming a taxiway from a previous flight. Values match LoadRoute's reset block
-            // exactly — note _landingExitOffPavement resets to TRUE (a new route re-decides
-            // it at its own handoff), not false.
-            _landingExitOffPavement = true;
-            _landingExitMissed = false;
-            _landingExitVacatedEarly = false;
-            _landingExitVacatedEarlyPlannedName = null;
-            _landingExitRouteUnreachable = false;
+            // naming a taxiway from a previous flight. ResetLandingExitOutcomeFlags is the
+            // same reset LoadRoute performs.
+            ResetLandingExitOutcomeFlags();
 
             // Precondition: a prior LoadRoute (even one that failed at route
             // construction) must have populated _graph, _dataProvider, and _icao.
@@ -270,10 +340,7 @@ public partial class TaxiGuidanceManager
 
             // Start the tone now — StartGuidance (which normally does this) was
             // never called because LoadRoute failed.
-            _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
-            _steeringTone.InvertPan = settings.TaxiGuidanceInvertSteeringTone;
-            _steeringTone.HardPan = settings.TaxiGuidanceHardPanTone;
-            _steeringTone.Start(settings.TaxiGuidanceToneWaveform, settings.TaxiGuidanceToneVolume);
+            StartRolloutSteeringTone(settings);
 
             // Populate rollout state (mirrors BeginLandingRollout, without the _route guard).
             _rolloutExit = exit;
@@ -302,22 +369,12 @@ public partial class TaxiGuidanceManager
             RolloutDiag($"BeginLandingRolloutNoGraph: exit='{exit.TaxiwayName}' node={exit.NodeId} " +
                 $"runway={runway.RunwayID} hdgTrue={runwayHeadingTrue:F2} allExits={allExits.Count}");
 
-            // Touchdown callout — same logic as BeginLandingRollout.
-            string exitClass = exit.ExitType switch
-            {
-                "High-speed" => "high-speed exit",
-                "End"        => "runway-end exit",
-                _            => "exit"
-            };
-            string name = string.IsNullOrEmpty(exit.TaxiwayName) ? "exit" : $"taxiway {exit.TaxiwayName}";
-            int distFt = touchdownLat != 0 && touchdownLon != 0
-                ? (int)Math.Round(TaxiGraph.FastDistanceMeters(touchdownLat, touchdownLon, exit.Latitude, exit.Longitude) * METERS_TO_FEET)
-                : (int)Math.Round(exit.DistanceFromTouchdownFeet);
-            string lead = string.IsNullOrWhiteSpace(touchdownPrefix) ? "" : touchdownPrefix.Trim() + " ";
-            if (distFt > 0)
-                AnnounceInstruction($"{lead}Touchdown. {exitClass} {name} in {DistanceFormatter.FromFeet(distFt)}.");
-            else
-                AnnounceInstruction($"{lead}Touchdown. {exitClass} {name}.");
+            // Touchdown callout — same composer as BeginLandingRollout.
+            AnnounceTouchdownCallout(exit, touchdownLat, touchdownLon, groundSpeedKts, correction);
+
+            // No Taxiing transition ran on this path (LoadRoute failed), so nothing has started the
+            // position stream: ask for it, or UpdateLandingRollout would never run.
+            PositionStreamRequired?.Invoke(this, EventArgs.Empty);
         }
     }
 

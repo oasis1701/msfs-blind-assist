@@ -699,6 +699,9 @@ public partial class MainForm : Form
         // taxi form, landing-exit auto-activation, future entry points — gets
         // monitoring wired up automatically.
         taxiGuidanceManager.StateChanged += OnTaxiGuidanceStateChanged;
+        // The two landing-rollout entries that can begin with no position stream running ask for
+        // one (TaxiGuidanceManager.PositionStreamRequired).
+        taxiGuidanceManager.PositionStreamRequired += (s, e) => simConnectManager.StartTaxiGuidanceMonitoring();
         taxiGuidanceManager.RequestTakeoffAssistAutoActivate += OnTaxiGuidanceRequestTakeoffAssistAutoActivate;
 
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
@@ -712,7 +715,7 @@ public partial class MainForm : Form
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
+            () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
             () => taxiGuidanceManager.IsLandingExitTaxiSteering);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;

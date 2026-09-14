@@ -1810,17 +1810,10 @@ public partial class MainForm
                 // the stale gate can't keep IsActive latched and mute the rollout steering tone.
                 // Covers hand-flown departures where the takeoff-assist clear never ran.
                 dockingGuidanceManager?.SetDestinationGate(null);
-                // ALSO start the position stream. This case used to note that monitoring
-                // was "unchanged here — it's already running from the route-load Taxiing
-                // transition", which holds only for the path that HAS a route.
-                // BeginLandingRolloutNoGraph is reached after LoadRoute FAILED, and
-                // BeginRunwayEndCountdownRollout when the exit plan turns out to be for
-                // another runway — neither passes through Taxiing, so neither has a stream
-                // of its own and both would sit in LandingRollout with UpdateLandingRollout
-                // never called: an announcement, then silence, on an active runway.
-                // Re-issuing request 507 at SIM_FRAME is idempotent (same request id, same
-                // period), so the common path is byte-for-byte unaffected.
-                simConnectManager.StartTaxiGuidanceMonitoring();
+                // No stream start here. BeginLandingRollout arrives through StartGuidance's Taxiing
+                // transition, which started the stream, and every mid-rollout return to LandingRollout
+                // happens inside a position frame. The two entries that can arrive with no stream
+                // raise TaxiGuidanceManager.PositionStreamRequired instead.
                 break;
             case TaxiGuidanceState.Arrived:
             case TaxiGuidanceState.Inactive:
