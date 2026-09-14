@@ -71,8 +71,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "The aircraft's own keybind: walks the mixture to 12.5 to 1 (72 percent with Automixture on)."
+            IsAnnounced = false
         };
 
         v["DA40_XLS_PROP_CYCLE"] = new SimVarDefinition
@@ -83,8 +82,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Run-up item: lever to minimum until the rpm has dropped 300, then back to where it was."
+            IsAnnounced = false
         };
 
         // ---------- Lean assist ----------
@@ -108,13 +106,6 @@ public partial class CowsDA40Definition
         // ---------- Temperatures: what the bars are drawn from ----------
 
         v["DA40_XLS_EGT_HOT"] = Temperature("DISP_LEAN_HOTEST", "Hottest EGT");
-        // ⚠️ THE EGT BARS CARRY NO ARC, so there is nothing for DA40InstrumentBands to
-        // annotate and no colour a sighted pilot reads either — the limit exists only as a
-        // sentence in the POH ("We recommend not exceeding EGTs of 1350 °F"). It goes in
-        // the help rather than becoming a band: inventing an arc the display does not draw
-        // would hand a blind pilot an instrument the aeroplane has not got.
-        v["DA40_XLS_EGT_HOT"].HelpText =
-            "The POH recommends not exceeding 1350 Fahrenheit. The bars carry no arc.";
         v["DA40_XLS_CHT_HOT"] = Temperature("DISP_CHT_HOT", "Hottest Cylinder Head");
         v["DA40_XLS_CHT_HOT_CYL"] = Capture("DISP_CHT_HOT_CYL", "Hottest Cylinder Number");
         for (int n = 1; n <= DA40CylinderState.CylinderCount; n++)
@@ -195,9 +186,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Off",
                 [1] = "On"
-            },
-            HelpText = "The simulator's own mixture assistance, detected by the aircraft. "
-                     + "On, the lever sets an air/fuel target and the engine cannot flood."
+            }
         };
 
         v["DA40_XLS_PROP_PRIME"] = new SimVarDefinition

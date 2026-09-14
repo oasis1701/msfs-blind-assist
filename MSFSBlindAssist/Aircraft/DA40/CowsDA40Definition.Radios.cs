@@ -39,20 +39,16 @@ public partial class CowsDA40Definition
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
-        AddStandbySet(v, "DA40_RADIO_COM1_SET", "COM STANDBY FREQUENCY:1", "COM 1 Standby",
-            "Type a frequency in megahertz, for example 124.80. 25 kHz spacing.");
+        AddStandbySet(v, "DA40_RADIO_COM1_SET", "COM STANDBY FREQUENCY:1", "COM 1 Standby");
         AddSwap(v, "DA40_RADIO_COM1_SWAP", "Swap COM 1");
 
-        AddStandbySet(v, "DA40_RADIO_COM2_SET", "COM STANDBY FREQUENCY:2", "COM 2 Standby",
-            "Type a frequency in megahertz. 25 kHz spacing.");
+        AddStandbySet(v, "DA40_RADIO_COM2_SET", "COM STANDBY FREQUENCY:2", "COM 2 Standby");
         AddSwap(v, "DA40_RADIO_COM2_SWAP", "Swap COM 2");
 
-        AddStandbySet(v, "DA40_RADIO_NAV1_SET", "NAV STANDBY FREQUENCY:1", "NAV 1 Standby",
-            "Type a frequency in megahertz, 108.00 to 117.95.");
+        AddStandbySet(v, "DA40_RADIO_NAV1_SET", "NAV STANDBY FREQUENCY:1", "NAV 1 Standby");
         AddSwap(v, "DA40_RADIO_NAV1_SWAP", "Swap NAV 1");
 
-        AddStandbySet(v, "DA40_RADIO_NAV2_SET", "NAV STANDBY FREQUENCY:2", "NAV 2 Standby",
-            "Type a frequency in megahertz, 108.00 to 117.95.");
+        AddStandbySet(v, "DA40_RADIO_NAV2_SET", "NAV STANDBY FREQUENCY:2", "NAV 2 Standby");
         AddSwap(v, "DA40_RADIO_NAV2_SWAP", "Swap NAV 2");
 
 
@@ -68,7 +64,7 @@ public partial class CowsDA40Definition
     }
 
     private static void AddStandbySet(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display, string help)
+        string simvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -102,8 +98,7 @@ public partial class CowsDA40Definition
             // moved. Nothing is lost on the knob, because a key the pilot just pressed is
             // read back over the Coherent socket; this path is for changes made ELSEWHERE.
             ExcludeFromBatch = true,
-            Format = "F3",
-            HelpText = help
+            Format = "F3"
         };
     }
 

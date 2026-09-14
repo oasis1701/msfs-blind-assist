@@ -33,7 +33,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// architecture notes — MSFSBA reports, the pilot decides):
 ///   - Starter motor: max 10 seconds continuous, 60 s between attempts.
 ///   - Oil pressure must leave the red range within 3 seconds of starting.
-/// Both live in HelpText and in the status display's elapsed-crank readout. Nothing
+/// Both are in docs/da40.md; the status display carries the elapsed crank. Nothing
 /// here stops the pilot cranking for as long as they like.
 ///
 /// The Engine Master lives HERE and nowhere else. The AFM's instrument-panel legend
@@ -84,8 +84,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "The model opens the guard by itself."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         };
 
         v["DA40_START_STARTER_ENGAGE"] = new SimVarDefinition
@@ -96,8 +95,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Wait for the glow plugs to go off first. Max 10 seconds cranking, 60 between tries."
+            IsAnnounced = false
         };
 
         v["DA40_START_STARTER_RELEASE"] = new SimVarDefinition
@@ -108,8 +106,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Only needed if the engine did not catch."
+            IsAnnounced = false
         };
 
         // ---------- Status ----------
@@ -169,8 +166,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Off",
                 [1] = "On, wait"
-            },
-            HelpText = "Cold engine only. Wait for it to go off before cranking."
+            }
         };
 
         v["DA40_START_COMBUSTION"] = new SimVarDefinition

@@ -84,8 +84,7 @@ public partial class CowsDA40Definition
             Units = "percent",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Format = "F0",
-            HelpText = "Minus 100 nose down to plus 100 nose up. Full travel is 7 degrees."
+            Format = "F0"
         };
 
         v["DA40_TRIM_NOSE_UP"] = new SimVarDefinition
@@ -96,8 +95,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "One second, about a tenth of travel. Needs the electric trim circuit."
+            IsAnnounced = false
         };
 
         v["DA40_TRIM_NOSE_DOWN"] = new SimVarDefinition
@@ -108,8 +106,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "One second, about a tenth of travel."
+            IsAnnounced = false
         };
 
         // The AP DISC button on the stick. It lives HERE rather than waiting for the
@@ -125,8 +122,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Held. Blocks the electric trim while pressed - the before-takeoff check."
+            IsAnnounced = false
         };
 
         v["DA40_TRIM_CENTRE"] = new SimVarDefinition
@@ -137,8 +133,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Centre of travel. Not the take-off mark - the AFM gives no number for that."
+            IsAnnounced = false
         };
 
         // ---------- Status ----------

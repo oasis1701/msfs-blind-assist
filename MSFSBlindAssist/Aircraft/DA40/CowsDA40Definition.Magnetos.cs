@@ -71,8 +71,7 @@ public partial class CowsDA40Definition
                 [DA40MagnetoCheck.PositionLeft] = "Left",
                 [DA40MagnetoCheck.PositionBoth] = "Both",
                 [DA40MagnetoCheck.PositionStart] = "Start"
-            },
-            HelpText = "Start cranks until you press Release. Mag check: 2000 RPM, max drop 175, max difference 50."
+            }
         };
 
         v["DA40_MAG_RELEASE"] = new SimVarDefinition
@@ -83,8 +82,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "The XLS does not let go of the starter by itself; press this when it fires."
+            IsAnnounced = false
         };
 
         // ---------- Status ----------

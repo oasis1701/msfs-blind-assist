@@ -54,8 +54,7 @@ public partial class CowsDA40Definition
             // a hardware throttle it would be speaking a new percentage several times a
             // second, over everything else. Switches announce; values are read.
             IsAnnounced = true,
-            Format = "F0",
-            HelpText = "0 to 100 percent. Commands load, not RPM. Below 20 is disc mode: high RPM, lots of drag."
+            Format = "F0"
         };
 
         // ---------- Status ----------
@@ -66,14 +65,6 @@ public partial class CowsDA40Definition
         // What the FADEC is ASKING for, against what it is getting. A gap between the two
         // is the governor working, or failing to.
         AddReadout(v, "DA40_POWER_TARGET_RPM", "FADEC_TARGET_RPM:1", "Commanded RPM", "rpm", "F0");
-        // ⚠️ A COLD DAY CAPS IT AT 2100 AND NOTHING ELSE SAYS SO. Above 92 % the FADEC
-        // normally walks 2100 to 2300, but the model gates that whole branch on
-        // `(A:AMBIENT TEMPERATURE, celsius) > -10` and otherwise writes a flat 2100
-        // (NG Logic 176-184) — so full power on a cold morning reads 200 rpm low and looks
-        // like a governor fault. ⚠️ The POH's TEXT says minus ten and its own chart bubble
-        // says ten; the MODEL settles it at minus ten.
-        v["DA40_POWER_TARGET_RPM"].HelpText =
-            "Falls 2150 to 1800 by 20 percent, then climbs to 2300. Held at 2100 below minus 10 Celsius.";
         AddReadout(v, "DA40_POWER_FUEL_FLOW", "DISP_FF", "Fuel Flow", "gallons per hour", "F2");
 
         // The two lever channels. They should agree; a divergence is a sensor fault.

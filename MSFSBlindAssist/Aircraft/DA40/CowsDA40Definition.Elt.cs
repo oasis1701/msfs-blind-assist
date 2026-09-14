@@ -41,8 +41,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Armed",
                 [EltOnValue] = "ON — transmitting"
-            },
-            HelpText = "Armed is normal. The shutdown check is that it is not transmitting."
+            }
         }
     };
 

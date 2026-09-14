@@ -86,8 +86,7 @@ public partial class CowsDA40Definition
             // the value as a PERCENTAGE of the slider range — right for a lighting knob,
             // but it reported this subscale as "0 to 100" instead of 28 to 31.5. The key
             // ends in _SET, so dropping RenderAsSlider gives a typed entry instead.
-            Format = "F2",
-            HelpText = "Separate from the G1000 subscale - set both. Takes hectopascals or inches."
+            Format = "F2"
         };
 
         // ---------- THE KNOB ITSELF ----------
@@ -139,8 +138,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             IsAnnounced = false,
             ExcludeFromMonitorManager = true,
-            CurrentValueSourceKey = "DA40_G1000_BARO",
-            HelpText = "The G1000 subscale. Takes hectopascals or inches."
+            CurrentValueSourceKey = "DA40_G1000_BARO"
         };
 
         v["DA40_STBY_GYRO_CAGE"] = new SimVarDefinition
@@ -151,8 +149,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Re-erects the backup horizon. Cage it level."
+            IsAnnounced = false
         };
 
         v["DA40_STBY_DISPLAY_BACKUP"] = new SimVarDefinition
@@ -166,8 +163,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Normal",
                 [1] = "Reversionary"
-            },
-            HelpText = "Reversionary mode after a display failure."
+            }
         };
 
         // ---------- Status ----------

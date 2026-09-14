@@ -82,8 +82,7 @@ public partial class CowsDA40Definition
                 [0] = "UP",
                 [1] = "T/O",
                 [2] = "LDG"
-            },
-            HelpText = "The flaps travel after the switch moves - the scan says where they are."
+            }
         };
 
         // ---------- Status ----------

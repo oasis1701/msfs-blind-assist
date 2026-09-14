@@ -50,8 +50,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "COWS's own sequence, master to alternator; clears a flood itself, gives up after seven seconds of cranking."
+            IsAnnounced = false
         };
 
         // The counterpart the aircraft binds beside it (ENGINE_AUTO_SHUTDOWN): mixture to
@@ -66,8 +65,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Mixture to cut-off and pump off; once stopped, throttle closed and the key to OFF."
+            IsAnnounced = false
         };
 
         // ---------- Readiness ----------

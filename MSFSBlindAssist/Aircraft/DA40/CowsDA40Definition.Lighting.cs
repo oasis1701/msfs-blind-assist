@@ -60,11 +60,8 @@ public partial class CowsDA40Definition
         AddLightSwitch(v, "DA40_LIGHT_STROBE", "LIGHT STROBE", "Strobe Lights");
 
         // Brightness knobs, 0-100 %.
-        AddBrightness(v, "DA40_LIGHT_INSTRUMENT_SET", "LIGHT POTENTIOMETER:3", "Instrument Lights",
-            "Rotary knob. Sets instrument panel brightness from 0 to 100 percent.");
-        AddBrightness(v, "DA40_LIGHT_FLOOD_SET", "LIGHT POTENTIOMETER:5", "Flood Light",
-            "Rotary knob, 0 to 100 percent. The pilot's flood light is wired straight to " +
-            "the main battery and works with the electric master off.");
+        AddBrightness(v, "DA40_LIGHT_INSTRUMENT_SET", "LIGHT POTENTIOMETER:3", "Instrument Lights");
+        AddBrightness(v, "DA40_LIGHT_FLOOD_SET", "LIGHT POTENTIOMETER:5", "Flood Light");
 
         // Overhead cabin lights — individually switched, as on the aeroplane.
         AddLightSwitch(v, "DA40_LIGHT_CABIN_RIGHT", "LIGHT CABIN:1", "Cabin Light Right");
@@ -106,7 +103,7 @@ public partial class CowsDA40Definition
     }
 
     private static void AddBrightness(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display, string help)
+        string simvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -118,8 +115,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsSlider = true,
             SliderMin = 0,
-            SliderMax = 100,
-            HelpText = help
+            SliderMax = 100
         };
     }
 

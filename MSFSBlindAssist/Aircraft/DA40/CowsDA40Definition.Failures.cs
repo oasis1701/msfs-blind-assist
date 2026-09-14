@@ -341,8 +341,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false,
             Format = "F0",
-            Scale = 100.0,
-            HelpText = "Severity, 0 to 100 percent."
+            Scale = 100.0
         };
     }
 

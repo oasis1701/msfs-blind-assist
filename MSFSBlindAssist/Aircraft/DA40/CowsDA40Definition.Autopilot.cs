@@ -61,12 +61,10 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Flight director to wings level, 10 degrees nose up. Verified live."
+            IsAnnounced = false
         };
 
-        AddApMode(v, "DA40_AP_MASTER", "AUTOPILOT MASTER", "Autopilot",
-            "Engages the GFC 700. The stick disconnect button also releases it.");
+        AddApMode(v, "DA40_AP_MASTER", "AUTOPILOT MASTER", "Autopilot");
         // ⚠️ NO YAW DAMPER CONTROL. THIS AEROPLANE HAS NONE, AND THE CONTROL WAS INERT.
         //
         // It read as a normal GFC 700 switch and did NOTHING. Measured in flight: firing
@@ -84,34 +82,27 @@ public partial class CowsDA40Definition
         // singles, not a fixed-gear four-seat trainer.
 
         // ---------- Lateral modes ----------
-        AddApMode(v, "DA40_AP_HDG", "AUTOPILOT HEADING LOCK", "Heading Mode",
-            "Flies the heading bug below.");
-        AddApMode(v, "DA40_AP_NAV", "AUTOPILOT NAV1 LOCK", "Navigation Mode",
-            "Follows the active navigation source - GPS, VOR or localiser.");
-        AddApMode(v, "DA40_AP_APR", "AUTOPILOT APPROACH HOLD", "Approach Mode",
-            "Arms the localiser and glideslope together.");
-        AddApMode(v, "DA40_AP_BC", "AUTOPILOT BACKCOURSE HOLD", "Backcourse Mode",
-            "For a localiser flown from the back beam.");
+        AddApMode(v, "DA40_AP_HDG", "AUTOPILOT HEADING LOCK", "Heading Mode");
+        AddApMode(v, "DA40_AP_NAV", "AUTOPILOT NAV1 LOCK", "Navigation Mode");
+        AddApMode(v, "DA40_AP_APR", "AUTOPILOT APPROACH HOLD", "Approach Mode");
+        AddApMode(v, "DA40_AP_BC", "AUTOPILOT BACKCOURSE HOLD", "Backcourse Mode");
 
         // ---------- Vertical modes ----------
-        AddApMode(v, "DA40_AP_ALT", "AUTOPILOT ALTITUDE LOCK", "Altitude Hold",
-            "Holds the altitude at the moment of engagement, not the selected one.");
-        AddApMode(v, "DA40_AP_VS", "AUTOPILOT VERTICAL HOLD", "Vertical Speed Mode",
-            "Flies the vertical speed below.");
-        AddApMode(v, "DA40_AP_FLC", "AUTOPILOT FLIGHT LEVEL CHANGE", "Flight Level Change",
-            "Climbs or descends at the selected airspeed, pitching for speed.");
+        AddApMode(v, "DA40_AP_ALT", "AUTOPILOT ALTITUDE LOCK", "Altitude Hold");
+        AddApMode(v, "DA40_AP_VS", "AUTOPILOT VERTICAL HOLD", "Vertical Speed Mode");
+        AddApMode(v, "DA40_AP_FLC", "AUTOPILOT FLIGHT LEVEL CHANGE", "Flight Level Change");
 
         // ---------- Selected values ----------
         AddApValue(v, "DA40_AP_ALT_SET", "AUTOPILOT ALTITUDE LOCK VAR", "Selected Altitude",
-            "feet", "F0", "The altitude the autopilot captures. Feet.");
+            "feet", "F0");
         AddApValue(v, "DA40_AP_VS_SET", "AUTOPILOT VERTICAL HOLD VAR", "Selected Vertical Speed",
-            "feet per minute", "F0", "Feet per minute. Negative to descend.");
+            "feet per minute", "F0");
         AddApValue(v, "DA40_AP_IAS_SET", "AUTOPILOT AIRSPEED HOLD VAR", "Selected Airspeed",
-            "knots", "F0", "The speed flight level change pitches for. Knots.");
+            "knots", "F0");
         AddApValue(v, "DA40_AP_HDG_SET", "AUTOPILOT HEADING LOCK DIR", "Heading Bug",
-            "degrees", "F0", "0 to 359. What heading mode flies.");
+            "degrees", "F0");
         AddApValue(v, "DA40_AP_CRS_SET", "NAV OBS:1", "Course",
-            "degrees", "F0", "0 to 359. The NAV 1 course pointer.");
+            "degrees", "F0");
 
         // ---------- THE KNOBS THEMSELVES ----------
         //
@@ -181,13 +172,11 @@ public partial class CowsDA40Definition
                 // ⚠️ "running", NOT "running - do not touch the disconnect". That tail was
                 // COACHING - it told the pilot what not to do, which is the one thing an
                 // announcement must never carry. That the disconnect fails the test is in
-                // the HelpText below, which is documentation for a control and exempt from
-                // the rule; it does not belong on a state a pilot hears in flight.
+                // docs/da40.md; it does not belong on a state a pilot hears in flight.
                 [1] = "running",
                 [2] = "passed",
                 [3] = "passed"
-            },
-            HelpText = "Needs five seconds undisturbed. The disconnect button fails it."
+            }
         };
 
         v["DA40_AP_SELFTEST"] = new SimVarDefinition
@@ -204,8 +193,7 @@ public partial class CowsDA40Definition
                 [0] = "not started",
                 [1] = "running",
                 [2] = "complete"
-            },
-            HelpText = "Runs for ten seconds after power-up, before the pre-flight test."
+            }
         };
 
         // ⚠️ NOT AddFlag's defaults. That helper leaves a flag OnRequest and unannounced,
@@ -220,8 +208,7 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "YES" },
-            HelpText = "Set when the AFCS drops out, including on a partial-panel failure."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "YES" }
         };
 
         // ---------- Flight Director ----------
@@ -233,8 +220,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = "Command bars. The autopilot turns it on by itself when engaged."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
         // The command attitude the bars are showing. A sighted pilot flies the bars by
@@ -244,13 +230,13 @@ public partial class CowsDA40Definition
         // MSFS reports pitch NEGATIVE for nose up - established here rather than assumed:
         // the aeroplane sitting on its gear reads PLANE PITCH DEGREES -2.90 with
         // ATTITUDE INDICATOR PITCH DEGREES agreeing at -2.90, and a DA40 on its gear sits
-        // nose UP. So a commanded -3.0 is three degrees nose UP, and the old help text
+        // nose UP. So a commanded -3.0 is three degrees nose UP, and the old note
         // saying "Positive is nose up" had it exactly backwards. That is not cosmetic: a
         // blind pilot hand-flying to this number would push when they should pull.
         AddApValue(v, "DA40_AP_FD_PITCH", "AUTOPILOT FLIGHT DIRECTOR PITCH", "Commanded Pitch",
-            "degrees", "F1", "Spoken as nose up or nose down; MSFS reports it inverted.");
+            "degrees", "F1");
         AddApValue(v, "DA40_AP_FD_BANK", "AUTOPILOT FLIGHT DIRECTOR BANK", "Commanded Bank",
-            "degrees", "F1", "Spoken as left or right; MSFS reports bank left-positive.");
+            "degrees", "F1");
 
         return v;
     }
@@ -287,7 +273,7 @@ public partial class CowsDA40Definition
 
     /// <summary>An autopilot mode: a two-state combo backed by a stock SimVar.</summary>
     private static void AddApMode(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display, string help)
+        string simvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -297,8 +283,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = help
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
     }
 
@@ -308,7 +293,7 @@ public partial class CowsDA40Definition
     /// altitude or a vertical speed; a key ending _SET renders as a typed field instead.
     /// </summary>
     private static void AddApValue(Dictionary<string, SimVarDefinition> v, string key,
-        string simvar, string display, string units, string format, string help)
+        string simvar, string display, string units, string format)
     {
         v[key] = new SimVarDefinition
         {
@@ -324,8 +309,7 @@ public partial class CowsDA40Definition
             // was never called for them. Exactly the fault the radios had. The generic
             // announcer is kept out by NoteRadioChange returning true, not by this flag.
             IsAnnounced = true,
-            Format = format,
-            HelpText = help
+            Format = format
         };
     }
 

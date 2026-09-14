@@ -111,8 +111,7 @@ public partial class CowsDA40Definition
             Units = "pounds",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false,
-            Format = "F0",
-            HelpText = "Weight in pounds."
+            Format = "F0"
         };
     }
 

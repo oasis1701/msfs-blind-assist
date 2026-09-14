@@ -60,8 +60,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ExcludeFromMonitorManager = true,
-            Format = "F0",
-            HelpText = "0 to 100 percent. Sets manifold pressure. The aeroplane trims what you type; the row shows where the lever really is."
+            Format = "F0"
         };
 
         v["DA40_XLS_PROP_SET"] = new SimVarDefinition
@@ -72,8 +71,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ExcludeFromMonitorManager = true,
-            Format = "F0",
-            HelpText = "0 coarse to 100 fine. Full forward for take-off and landing; the governor target row says what RPM it is asking for."
+            Format = "F0"
         };
 
         v["DA40_XLS_MIXTURE_SET"] = new SimVarDefinition
@@ -84,8 +82,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ExcludeFromMonitorManager = true,
-            Format = "F0",
-            HelpText = "0 idle cut-off to 100 full rich. Full rich is 10 to 1; lean until the air-to-fuel ratio row reads what you want."
+            Format = "F0"
         };
 
         // ---------- Status ----------

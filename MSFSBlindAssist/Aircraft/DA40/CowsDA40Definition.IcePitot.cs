@@ -50,8 +50,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = "On the ground it raises PITOT FAIL - that is modelled, not a fault."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
         v["DA40_ICE_ALTERNATE_AIR"] = new SimVarDefinition
@@ -61,8 +60,7 @@ public partial class CowsDA40Definition
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "Closed for take-off. Open for icing or engine trouble."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         };
 
         v["DA40_ICE_ALTERNATE_STATIC"] = new SimVarDefinition
@@ -73,8 +71,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" },
-            HelpText = "Cabin static source if the port blocks. Altimeter and airspeed will shift."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Closed", [1] = "Open" }
         };
 
         // ---------- Status ----------
@@ -106,8 +103,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             // Announced only to reach the batch; the graded announcer speaks the onset.
             IsAnnounced = true,
-            RenderAsReadOnlyStatus = true,
-            HelpText = "Builds in precipitation above 60 knots with alternate air CLOSED."
+            RenderAsReadOnlyStatus = true
         };
         // Moves off 1.00 when alternate air opens — the induction restriction, so the
         // pilot can see the door is actually doing something.

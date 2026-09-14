@@ -106,8 +106,7 @@ public partial class CowsDA40Definition
                 [0] = "ECU B",
                 [1] = "Auto",
                 [2] = "ECU A"
-            },
-            HelpText = "Auto normally. On an ECU failure select the failed ECU, then back to Auto."
+            }
         };
 
         // The same physical button, held for ten seconds with the engine master OFF. See
@@ -120,8 +119,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Holds the ECU test button 10 seconds. Engine master must be OFF."
+            IsAnnounced = false
         };
 
         v["DA40_ECU_TEST"] = new SimVarDefinition
@@ -132,8 +130,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Runs the full 26-second test. Needs idle, Auto, on the ground, gearbox above 38."
+            IsAnnounced = false
         };
 
         // ---------- Status ----------
@@ -193,8 +190,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
-            Format = "F1",
-            HelpText = "Per-stage watchdog, not elapsed time. Four latches a fault."
+            Format = "F1"
         };
 
         // MSFSBA's own elapsed timer for the press — the thing a pilot actually wants,

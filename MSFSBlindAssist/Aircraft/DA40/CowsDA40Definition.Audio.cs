@@ -59,8 +59,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Transmit radio only",
                 [1] = "Both"
-            },
-            HelpText = "Listens to the radio you are not transmitting on as well."
+            }
         };
 
         v["DA40_AUDIO_HEADSET"] = new SimVarDefinition
@@ -74,8 +73,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Unplugged",
                 [1] = "Plugged in"
-            },
-            HelpText = "The jack on the console. Changes what you hear, nothing else."
+            }
         };
 
         // ---------- Status ----------

@@ -79,7 +79,7 @@ public class CowsDA40MessageAuditTests
     {
         // ⚠️ A ValueDescriptions label is read every time the row is scanned, so a label
         // that explains prerequisites becomes a sentence a pilot hears on every pass. The
-        // explanation belongs in HelpText, which is read once, on demand.
+        // explanation belongs in docs/da40.md; the panel names the state and stops.
         var offenders = new List<string>();
 
         foreach (string file in Sources())
@@ -95,7 +95,7 @@ public class CowsDA40MessageAuditTests
 
         File.WriteAllLines(Path.Combine(Path.GetTempPath(), "audit_labels.txt"), offenders.Distinct());
         Assert.True(offenders.Count == 0,
-            "These state labels are long enough to be tiring on a scan; move the detail to " +
-            "HelpText: " + string.Join(" | ", offenders.Distinct()));
+            "These state labels are long enough to be tiring on a scan; the detail belongs " +
+            "in docs/da40.md: " + string.Join(" | ", offenders.Distinct()));
     }
 }

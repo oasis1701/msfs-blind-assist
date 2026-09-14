@@ -61,8 +61,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Removes the fuel and cools the lines. Or: pump off, mixture aft, throttle mid, crank until it coughs, then mixture forward."
+            IsAnnounced = false
         };
 
         // ---------- The cylinders, and what classifies them ----------
@@ -125,7 +124,7 @@ public partial class CowsDA40Definition
                 // ⚠️ "Off", not "Off, on the Engine page menu". A ValueDescriptions
                 // label is read EVERY time the row is scanned, so a label carrying
                 // directions becomes a sentence the pilot hears on every pass. Where the
-                // setting lives belongs in HelpText, which is read once and on demand.
+                // setting lives is in docs/da40.md.
                 [0] = "Off",
                 [1] = "On"
             }
@@ -142,7 +141,7 @@ public partial class CowsDA40Definition
             ValueDescriptions = new Dictionary<double, string>
             {
                 // ⚠️ "Idle", not the prerequisites. Same rule: a state label names the
-                // STATE, and what it would take to leave that state is HelpText.
+                // STATE; what it would take to leave it is in docs/da40.md.
                 [0] = "Idle",
                 [1] = "Computing"
             }

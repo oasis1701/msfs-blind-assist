@@ -40,85 +40,76 @@ public partial class CowsDA40Definition
         for (int c = 1; c <= 4; c++)
         {
             XlsFail(v, $"DA40_XLS_FAIL_CYL_{c}", $"FAILURES_CYL:{c}",
-                $"Cylinder {c}", "The cylinder itself fails.");
+                $"Cylinder {c}");
             XlsFail(v, $"DA40_XLS_FAIL_INJ_{c}", $"FAILURES_FUEL_INJ:{c}",
-                $"Cylinder {c} Injector", "A blocked injector leans that cylinder alone.");
+                $"Cylinder {c} Injector");
             XlsFail(v, $"DA40_XLS_FAIL_CHT_OIL_{c}", $"FAILURES_CHT_OIL:{c}",
-                $"Cylinder {c} Oil Cooling", "Oil cooling to one cylinder.");
+                $"Cylinder {c} Oil Cooling");
 
             // ⚠️ TWO PLUGS PER CYLINDER, LEFT AND RIGHT - which is exactly what a magneto
             // drop tests, and why the mag check is spoken as numbers on this aeroplane.
             XlsFail(v, $"DA40_XLS_FAIL_MAG_{c}L", $"FAILURES_MAG:{c}L",
-                $"Cylinder {c} Left Plug", "One spark plug. A mag check finds it as a rough drop.");
+                $"Cylinder {c} Left Plug");
             XlsFail(v, $"DA40_XLS_FAIL_MAG_{c}R", $"FAILURES_MAG:{c}R",
-                $"Cylinder {c} Right Plug", "One spark plug. A mag check finds it as a rough drop.");
+                $"Cylinder {c} Right Plug");
 
             XlsReadout(v, $"DA40_XLS_CYL_HEALTH_{c}", $"HEALTH_CYL:{c}",
-                $"Cylinder {c} Health", "1.0 is undamaged.");
+                $"Cylinder {c} Health");
             XlsFlag(v, $"DA40_XLS_CYL_DEAD_{c}", $"KAPUTT_CYL:{c}",
-                $"Cylinder {c} Destroyed", "Past saving.");
+                $"Cylinder {c} Destroyed");
             XlsReadout(v, $"DA40_XLS_CYL_DAMAGE_FAC_{c}", $"DAMAGE_CYL_FAC:{c}",
-                $"Cylinder {c} Damage Rate", "How fast this cylinder is being damaged.");
+                $"Cylinder {c} Damage Rate");
         }
 
         // ---------- Magnetos, whole side ----------
-        XlsFail(v, "DA40_XLS_FAIL_MAG_LEFT", "FAILURES_MAG_L", "Left Magneto",
-            "The whole left magneto.");
-        XlsFail(v, "DA40_XLS_FAIL_MAG_RIGHT", "FAILURES_MAG_R", "Right Magneto",
-            "The whole right magneto.");
+        XlsFail(v, "DA40_XLS_FAIL_MAG_LEFT", "FAILURES_MAG_L", "Left Magneto");
+        XlsFail(v, "DA40_XLS_FAIL_MAG_RIGHT", "FAILURES_MAG_R", "Right Magneto");
 
         // ⚠️ A MAGNETO THAT WILL NOT GROUND IS LIVE WITH THE KEY OFF - the hand-propping
         // killer, and the one failure here that matters before the engine is even running.
-        XlsFail(v, "DA40_XLS_FAIL_MAG_GND_L", "FAILURES_MAG_GND_L", "Left Magneto Grounding",
-            "Failed grounding leaves that magneto LIVE with the key off.");
-        XlsFail(v, "DA40_XLS_FAIL_MAG_GND_R", "FAILURES_MAG_GND_R", "Right Magneto Grounding",
-            "Failed grounding leaves that magneto LIVE with the key off.");
+        XlsFail(v, "DA40_XLS_FAIL_MAG_GND_L", "FAILURES_MAG_GND_L", "Left Magneto Grounding");
+        XlsFail(v, "DA40_XLS_FAIL_MAG_GND_R", "FAILURES_MAG_GND_R", "Right Magneto Grounding");
 
         // ---------- The three levers ----------
-        XlsFail(v, "DA40_XLS_FAIL_THROT_LEVER", "FAILURES_THROT_LEVER", "Throttle Lever",
-            "The lever comes adrift and stops commanding the engine.");
-        XlsFail(v, "DA40_XLS_FAIL_PROP_LEVER", "FAILURES_PROP_LEVER", "Propeller Lever",
-            "The lever comes adrift and stops commanding the governor.");
-        XlsFail(v, "DA40_XLS_FAIL_MIX_LEVER", "FAILURES_MIX_LEVER", "Mixture Lever",
-            "The lever comes adrift and stops commanding mixture.");
+        XlsFail(v, "DA40_XLS_FAIL_THROT_LEVER", "FAILURES_THROT_LEVER", "Throttle Lever");
+        XlsFail(v, "DA40_XLS_FAIL_PROP_LEVER", "FAILURES_PROP_LEVER", "Propeller Lever");
+        XlsFail(v, "DA40_XLS_FAIL_MIX_LEVER", "FAILURES_MIX_LEVER", "Mixture Lever");
 
         // ---------- Engine, whole ----------
-        XlsFail(v, "DA40_XLS_FAIL_BLOCK", "FAILURES_BLOCK", "Engine Block", "");
-        XlsFail(v, "DA40_XLS_FAIL_OIL", "FAILURES_OIL", "Oil System", "");
-        XlsFail(v, "DA40_XLS_FAIL_BYPASS", "FAILURES_BYPASS", "Oil Bypass", "");
-        XlsFail(v, "DA40_XLS_FAIL_THERMOSTAT", "FAILURES_THERMOSTAT_OIL", "Oil Thermostat", "");
-        XlsFail(v, "DA40_XLS_FAIL_CHT_BAFFLE", "FAILURES_CHT_BAFFLE", "Cooling Baffle",
-            "Cylinder cooling airflow.");
-        XlsFail(v, "DA40_XLS_FAIL_VACC_LEAK", "FAILURES_VACC_LEAK", "Induction Leak", "");
+        XlsFail(v, "DA40_XLS_FAIL_BLOCK", "FAILURES_BLOCK", "Engine Block");
+        XlsFail(v, "DA40_XLS_FAIL_OIL", "FAILURES_OIL", "Oil System");
+        XlsFail(v, "DA40_XLS_FAIL_BYPASS", "FAILURES_BYPASS", "Oil Bypass");
+        XlsFail(v, "DA40_XLS_FAIL_THERMOSTAT", "FAILURES_THERMOSTAT_OIL", "Oil Thermostat");
+        XlsFail(v, "DA40_XLS_FAIL_CHT_BAFFLE", "FAILURES_CHT_BAFFLE", "Cooling Baffle");
+        XlsFail(v, "DA40_XLS_FAIL_VACC_LEAK", "FAILURES_VACC_LEAK", "Induction Leak");
         XlsFail(v, "DA40_XLS_FAIL_PROP_PUMP", "FAILURES_PROP_PUMP",
-            "Propeller Governor Pump", "");
+            "Propeller Governor Pump");
         XlsFail(v, "DA40_XLS_FAIL_ALT_OVERVOLT", "FAILURES_ALT_OVERVOLT",
-            "Alternator Overvoltage", "");
+            "Alternator Overvoltage");
 
-        XlsReadout(v, "DA40_XLS_BLOCK_DAMAGE_FAC", "DAMAGE_BLOCK_FAC", "Block Damage Rate",
-            "How fast the block is being damaged.");
+        XlsReadout(v, "DA40_XLS_BLOCK_DAMAGE_FAC", "DAMAGE_BLOCK_FAC", "Block Damage Rate");
 
         // ---------- Fuel ----------
-        XlsFail(v, "DA40_XLS_FAIL_FUEL_PUMP", "FAILURES_FUEL_PUMP", "Electric Fuel Pump", "");
+        XlsFail(v, "DA40_XLS_FAIL_FUEL_PUMP", "FAILURES_FUEL_PUMP", "Electric Fuel Pump");
         XlsFail(v, "DA40_XLS_FAIL_FUEL_SPRING", "FAILURES_FUEL_SPRING",
-            "Fuel Pressure Spring", "");
-        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK", "FAILURES_FUEL_LEAK", "Fuel Leak", "");
-        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_L", "FAILURES_FUEL_LEAK_L", "Left Tank Leak", "");
-        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_R", "FAILURES_FUEL_LEAK_R", "Right Tank Leak", "");
+            "Fuel Pressure Spring");
+        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK", "FAILURES_FUEL_LEAK", "Fuel Leak");
+        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_L", "FAILURES_FUEL_LEAK_L", "Left Tank Leak");
+        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_R", "FAILURES_FUEL_LEAK_R", "Right Tank Leak");
 
         // ---------- Breaker trips ----------
         // The six the XLS carries that had no row. Its trip list is longer than this; the
         // rest already have one.
-        XlsFail(v, "DA40_XLS_TRIP_ADF", "FAILURES_CB_ADF", "ADF Breaker Trip", "");
+        XlsFail(v, "DA40_XLS_TRIP_ADF", "FAILURES_CB_ADF", "ADF Breaker Trip");
         XlsFail(v, "DA40_XLS_TRIP_ALT_CONT", "FAILURES_CB_ALT_CONT",
-            "Alternator Control Breaker Trip", "");
+            "Alternator Control Breaker Trip");
         XlsFail(v, "DA40_XLS_TRIP_ALT_PROT", "FAILURES_CB_ALT_PROT",
-            "Alternator Protection Breaker Trip", "");
+            "Alternator Protection Breaker Trip");
         XlsFail(v, "DA40_XLS_TRIP_AV_BUS", "FAILURES_CB_AV_BUS",
-            "Avionics Bus Breaker Trip", "");
-        XlsFail(v, "DA40_XLS_TRIP_BATT", "FAILURES_CB_BATT", "Battery Breaker Trip", "");
+            "Avionics Bus Breaker Trip");
+        XlsFail(v, "DA40_XLS_TRIP_BATT", "FAILURES_CB_BATT", "Battery Breaker Trip");
         XlsFail(v, "DA40_XLS_TRIP_FUEL_PUMP", "FAILURES_CB_FUEL_PUMP",
-            "Fuel Pump Breaker Trip", "");
+            "Fuel Pump Breaker Trip");
 
         return v;
     }
@@ -128,7 +119,7 @@ public partial class CowsDA40Definition
     /// shape every other failure on this aeroplane uses.
     /// </summary>
     private static void XlsFail(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -139,14 +130,13 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             Format = "F0",
-            ValueDescriptions = new Dictionary<double, string>(XlsFailedStates),
-            HelpText = help
+            ValueDescriptions = new Dictionary<double, string>(XlsFailedStates)
         };
     }
 
     /// <summary>A silent flag: a state a pilot looks up rather than one that interrupts.</summary>
     private static void XlsFlag(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -158,14 +148,13 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             Format = "F0",
-            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "YES" },
-            HelpText = help
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "YES" }
         };
     }
 
     /// <summary>A number whose unit the package never names - read as a bare figure.</summary>
     private static void XlsReadout(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -177,8 +166,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Format = "F2",
-            HelpText = help
+            Format = "F2"
         };
     }
 

@@ -31,7 +31,7 @@ public partial class CowsDA40Definition
     private const string OptionsPanel = "Aircraft Options";
 
     private static void AddOptionSwitch(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label, string off, string on, string help)
+        string lvar, string label, string off, string on)
     {
         v[key] = new SimVarDefinition
         {
@@ -41,14 +41,13 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            HelpText = help,
             ValueDescriptions = new Dictionary<double, string> { [0] = off, [1] = on }
         };
     }
 
     /// <summary>A COWS option whose value is one of a named set.</summary>
     private static void AddOptionEnum(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label, string help, Dictionary<double, string> states)
+        string lvar, string label, Dictionary<double, string> states)
     {
         v[key] = new SimVarDefinition
         {
@@ -59,14 +58,13 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             Format = "F0",
-            HelpText = help,
             ValueDescriptions = states
         };
     }
 
     /// <summary>A COWS option that carries a number rather than a state.</summary>
     private static void AddOptionNumber(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label, string help)
+        string lvar, string label)
     {
         v[key] = new SimVarDefinition
         {
@@ -76,8 +74,7 @@ public partial class CowsDA40Definition
             Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            Format = "F0",
-            HelpText = help
+            Format = "F0"
         };
     }
 
@@ -92,9 +89,7 @@ public partial class CowsDA40Definition
         // in the AIR. So a pilot who shut down tidily and reloads on a runway gets the
         // masters wherever the sim put them, not where they left them.
         AddOptionSwitch(v, "DA40_OPT_STATE_SAVING", "STATE_SAVING_ENABLED",
-            "State Saving", "Off - load factory fresh", "On - restore last state",
-            "Off makes the NEXT load take factory defaults, including full batteries. "
-                + "Masters, ignition, doors and parking position are never saved.");
+            "State Saving", "Off - load factory fresh", "On - restore last state");
 
         // The POH's own list of what inflicts damage, split by airframe: improper warmup,
         // overheating, oil starvation, overspeeding and unfiltered dirty air on both;
@@ -102,36 +97,26 @@ public partial class CowsDA40Definition
         // 92 percent and improper cooldown on the NG (the Austro is water-cooled, so it is
         // immune to the shock cooling the Lycoming is not).
         AddOptionSwitch(v, "DA40_OPT_DAMAGE", "DAMAGE_ENABLED",
-            "Engine Damage Modelling", "Off", "On",
-            isNg
-                ? "Damage survives a reload. Warmup, overheating, oil starvation, "
-                    + "overspeeding, dirty air, load above 92 percent, poor cooldown."
-                : "Damage survives a reload. Warmup, overheating, oil starvation, "
-                    + "overspeeding, dirty air, leaning, shock cooling, lead fouling.");
+            "Engine Damage Modelling", "Off", "On");
 
         AddOptionSwitch(v, "DA40_OPT_REALISTIC_PARK_BRAKE", "REALISTIC_PARKING_BRAKE",
-            "Realistic Parking Brake", "Simplified", "Realistic",
-            "Realistic models the real handle, which bleeds off rather than holding for ever.");
+            "Realistic Parking Brake", "Simplified", "Realistic");
 
         AddOptionSwitch(v, "DA40_OPT_WHEEL_ASSIST", "INPUT_WHEEL_ASSIST",
-            "Nosewheel Steering Assist", "Off", "On",
-            "The DA40 nosewheel is free-castoring; assist steers it for you.");
+            "Nosewheel Steering Assist", "Off", "On");
 
         AddOptionSwitch(v, "DA40_OPT_SLOW_PROPS", "SLOW_PROPS",
-            "Slow Propeller Animation", "Off", "On",
-            "Cosmetic only - slows the prop disc so it does not strobe.");
+            "Slow Propeller Animation", "Off", "On");
 
         AddOptionSwitch(v, "DA40_OPT_PANEL_SHAKE", "PANEL_SHAKE_OFF",
-            "Panel Shake Suppressed", "No - panel shakes", "Yes - panel steady",
-            "Note the sense: 1 means shake is SUPPRESSED, which is the variable's own name.");
+            "Panel Shake Suppressed", "No - panel shakes", "Yes - panel steady");
 
         // ⚠️ Named for the STATE, not the action. As "Hide G1000 FMA" with values
         // "FMA shown"/"FMA hidden" it announced "Hide G1000 FMA: FMA shown" - the letters
         // FMA three times in one breath, and a control whose name is an instruction read
         // against a value that contradicts it.
         AddOptionSwitch(v, "DA40_OPT_KILL_FMA", "COWS_KILL_FMA",
-            "G1000 FMA", "Shown", "Hidden",
-            "The flight-mode annunciator strip along the top of the PFD.");
+            "G1000 FMA", "Shown", "Hidden");
 
         // ⚠️ THE MODES HAVE NAMES AND THE AEROPLANE'S OWN MANUAL GIVES THEM. This used to
         // read "0 is off. The aircraft uses modes 1 to 4; it does not name them", on the
@@ -152,9 +137,6 @@ public partial class CowsDA40Definition
         // the model is what the aeroplane does.
         AddOptionEnum(v, "DA40_OPT_FAILURES_MODE", "FAILURES_MODE",
             "Random Failures Mode",
-            "Normal is about one failure in twenty per hour, High one every hour, Chaos one "
-                + "every thirty seconds above 35 knots. Mode 4 is not in the manual; it "
-                + "steps through the failure list.",
             new Dictionary<double, string>
             {
                 [0] = "Off",
@@ -167,12 +149,10 @@ public partial class CowsDA40Definition
         // COWS ship a "timer expired" voice alert; this is its setting. Named from their
         // own feature list rather than guessed from the variable.
         AddOptionNumber(v, "DA40_OPT_TIMER_EXPIRED_SET", "COWS_TIMER_EXP",
-            "Timer Expired Alert",
-            "The aircraft's own spoken alert when the G1000 timer runs out.");
+            "Timer Expired Alert");
 
         AddOptionNumber(v, "DA40_OPT_TRIM_SPEED", "INPUT_TRIM_SPEED",
-            "Electric Trim Speed",
-            "Scales how fast the electric trim runs. The model forces 1 if it is ever 0.");
+            "Electric Trim Speed");
 
         // ⚠️ XLS ONLY, AND THE ONE OPTION THE NG'S MENU DOES NOT CARRY. The POH's two
         // screenshots of the same menu differ by exactly this row and Priming Assist (which
@@ -186,8 +166,7 @@ public partial class CowsDA40Definition
         if (!isNg)
         {
             AddOptionSwitch(v, "DA40_OPT_START_MIXTURE", "START_MIXTURE",
-                "Engage Starter with Mixture", "Off", "On",
-                "Pulling the mixture back cranks. Needs the ignition at Both.");
+                "Engage Starter with Mixture", "Off", "On");
         }
 
         return v;

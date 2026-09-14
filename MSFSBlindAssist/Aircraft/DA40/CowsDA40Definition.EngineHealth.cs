@@ -104,8 +104,7 @@ public partial class CowsDA40Definition
                 // speaks instead, because health sitting at 100 percent is not news and a
                 // percentage that drifts would otherwise chatter.
                 IsAnnounced = true,
-                ExcludeFromMonitorManager = false,
-                HelpText = "100 is a factory engine. Damage survives a reload; Reset clears it."
+                ExcludeFromMonitorManager = false
             };
         }
     }

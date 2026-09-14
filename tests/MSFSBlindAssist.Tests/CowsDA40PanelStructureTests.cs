@@ -371,8 +371,6 @@ public class CowsDA40PanelStructureTests
             Assert.True(v.SuppressRestingButtonState, $"{key} has no meaningful resting value");
             Assert.Equal(MSFSBlindAssist.SimConnect.UpdateFrequency.Never, v.UpdateFrequency);
         }
-
-        Assert.Contains("10", vars["DA40_START_STARTER_ENGAGE"].HelpText);
     }
 
     [Fact]

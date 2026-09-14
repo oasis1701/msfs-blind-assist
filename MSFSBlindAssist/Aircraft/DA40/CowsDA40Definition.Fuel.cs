@@ -111,8 +111,7 @@ public partial class CowsDA40Definition
             Units = "gallons",
             UpdateFrequency = UpdateFrequency.Never,
             IsAnnounced = false,
-            Format = "0.0",
-            HelpText = "0 to 19.5 gallons in this tank. Ground only, engine off."
+            Format = "0.0"
         };
     }
 
@@ -135,9 +134,7 @@ public partial class CowsDA40Definition
                 [0] = "Main",
                 [1] = "Emergency",
                 [2] = "Off"
-            },
-            HelpText = "Emergency feeds from the aux tank and keeps transferring with nothing "
-                     + "to stop it. Off is the engine fire drill. Locked until the wire is broken."
+            }
         };
 
         v["DA40_FUEL_WIRE"] = new SimVarDefinition
@@ -148,8 +145,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Unlocks the fuel valve. Cannot be undone."
+            IsAnnounced = false
         };
 
         // ---------- Refuelling ----------
@@ -184,8 +180,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Both tanks to 19.5 gallons. Ground only, engine off."
+            IsAnnounced = false
         };
 
         v["DA40_FUEL_PUMPS"] = new SimVarDefinition
@@ -200,8 +195,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Off",
                 [1] = "On"
-            },
-            HelpText = "Runs both pumps. On for take-off and landing, and for low fuel pressure."
+            }
         };
 
         v["DA40_FUEL_TRANSFER"] = new SimVarDefinition
@@ -215,8 +209,7 @@ public partial class CowsDA40Definition
             {
                 [0] = "Off",
                 [1] = "On"
-            },
-            HelpText = "Aux to main, about a gallon a minute. Stops itself when main is full or aux is empty."
+            }
         };
 
         // ---------- Status ----------
@@ -334,9 +327,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
-            ExcludeFromMonitorManager = true,
-            HelpText = "Aux to main while the valve is at Emergency. Nothing stops it; a full "
-                     + "main tank means the surplus is going overboard."
+            ExcludeFromMonitorManager = true
         };
 
         return v;

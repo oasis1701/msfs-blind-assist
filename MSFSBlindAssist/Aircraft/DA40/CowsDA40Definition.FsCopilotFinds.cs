@@ -43,7 +43,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 public partial class CowsDA40Definition
 {
     private static void AddFsCopilotReadout(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -55,8 +55,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Format = "F1",
-            HelpText = help
+            Format = "F1"
         };
     }
 
@@ -68,16 +67,16 @@ public partial class CowsDA40Definition
         // back the DA or MDA they set on the PFD, and 0 genuinely means "not set" - which
         // is a different answer from "I cannot tell you".
         AddFsCopilotReadout(v, "DA40_G1000_MINIMUMS", "COWS_MINIMUMS_ALTITUDE",
-            "Minimums Altitude", "What the PFD minimums bug is set to. 0 means not set.");
+            "Minimums Altitude");
 
         // The MFD fuel calculator. ⚠️ NOT the tanks - it is a TOTALISER the pilot sets and
         // which counts down by fuel USED, so it can disagree with the tank gauges by design
         // (measured: tanks 37.2 gal against a calculator showing 32.2 remaining). Both
         // numbers are true and they answer different questions.
         AddFsCopilotReadout(v, "DA40_FUEL_TOTALISER_REM", "FUEL_TOTALISER_REM",
-            "Fuel Calculator Remaining", "The MFD totaliser, not the tanks. Gallons.");
+            "Fuel Calculator Remaining");
         AddFsCopilotReadout(v, "DA40_FUEL_TOTALISER_USED", "FUEL_TOTALISER_USE",
-            "Fuel Calculator Used", "Fuel counted as burned since the totaliser was set.");
+            "Fuel Calculator Used");
 
         // ⚠️ NO FUEL TEMPERATURES HERE, AND THEY WERE REMOVED RATHER THAN NEVER ADDED.
         // FUEL_TEMP_C:1/:2 are the physics behind DISP_FT:1/:2, which this definition
@@ -96,24 +95,24 @@ public partial class CowsDA40Definition
         // CAS message both say what was COMMANDED; this is the only thing that says the
         // element is warming. It sits near ambient when off.
         AddFsCopilotReadout(v, "DA40_PITOT_TEMP", "PITOT_TEMP",
-            "Pitot Temperature", "Rises when the heat is working. Near ambient when off.");
+            "Pitot Temperature");
 
         // The ECU's own backup battery - what keeps the FADEC alive if the main bus dies.
         // Unit deliberately unnamed; see the class comment.
         AddFsCopilotReadout(v, "DA40_ELEC_BATT_ECU_CAPACITY", "ELEC_BATT_ECU_CAPACITY",
-            "ECU Battery Capacity", "The FADEC's backup battery. Falls as it discharges.");
+            "ECU Battery Capacity");
         // ⚠️ IT RUNS 0 DOWN TO -2, NOT 0 TO 100, and calling it a "charge" made a rested
         // battery read "0.0" as though it were flat. The model clamps it (`-2 max 0 min`),
         // drives it NEGATIVE while the battery is loaded and recovers it toward 0 when the
         // load comes off, then feeds it into the charge factor as -SURF/6. So zero is the
         // RESTED state and -2 is the worst case - the opposite reading to the obvious one.
         AddFsCopilotReadout(v, "DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF",
-            "Battery Surface Depletion", "0 when rested, down to -2 under load.");
+            "Battery Surface Depletion");
 
         // Is the autopilot POWERED - a different question from whether it is engaged, and
         // one the GFC 700 panel could not answer at all. It lives on the avionics bus.
         AddFsCopilotReadout(v, "DA40_AP_POWERED", "AFCS_POWER",
-            "Autopilot Powered", "The AFCS is on the avionics bus, not the battery bus.");
+            "Autopilot Powered");
 
         return v;
     }
@@ -192,7 +191,7 @@ public partial class CowsDA40Definition
     // ==================================================================================
 
     private static void AddFind(Dictionary<string, SimVarDefinition> v, string key, string name,
-        SimVarType type, string display, string help, string units = "number",
+        SimVarType type, string display, string units = "number",
         string format = "F1", Dictionary<double, string>? states = null, bool announce = false)
     {
         var d = new SimVarDefinition
@@ -203,8 +202,7 @@ public partial class CowsDA40Definition
             Units = units,
             UpdateFrequency = announce ? UpdateFrequency.Continuous : UpdateFrequency.OnRequest,
             IsAnnounced = announce,
-            Format = format,
-            HelpText = help
+            Format = format
         };
         if (states != null) d.ValueDescriptions = states;
         else { d.RenderAsReadOnlyStatus = true; d.ExcludeFromMonitorManager = true; }
@@ -224,11 +222,10 @@ public partial class CowsDA40Definition
         // documentation - "turning the valve OFF really does clear ENG ON FIRE:1" - so it
         // was known to exist and still never read.
         AddFind(v, "DA40_ENG_FIRE", "ENG ON FIRE:1", SimVarType.SimVar, "Engine Fire",
-            "The AFM procedure is the fuel valve to OFF, which needs the wire broken.",
             "bool", "F0", new Dictionary<double, string> { [0] = "No", [1] = "FIRE" }, true);
 
         AddFind(v, "DA40_ENG_FAILED", "GENERAL ENG FAILED:1", SimVarType.SimVar,
-            "Engine Failed", "The engine has failed outright, not merely degraded.",
+            "Engine Failed",
             "bool", "F0", yesNo, true);
 
         // ---------- ENGINE THERMAL, AT FULL RESOLUTION ----------
@@ -238,19 +235,18 @@ public partial class CowsDA40Definition
         // switch - so it is the temperature that can wreck the engine while every gauge a
         // pilot can read stays green. Measured 84.99 C on the ground.
         AddFind(v, "DA40_ENG_BLOCK_TEMP", "WC_TEMP_BLOCK:1", SimVarType.LVar,
-            "Block Temperature", "Celsius. The model damages the block above 140.");
+            "Block Temperature");
         AddFind(v, "DA40_ENG_RAD_TEMP", "WC_TEMP_RAD:1", SimVarType.LVar,
-            "Radiator Temperature", "Celsius. Measured 37.6 on the ground.");
+            "Radiator Temperature");
         AddFind(v, "DA40_ENG_THERMOSTAT", "WC_THERMOSTAT:1", SimVarType.LVar,
-            "Thermostat", "How far the thermostat has opened.");
+            "Thermostat");
 
         // The coolant, both halves: how much is left and how fast it is going.
         AddFind(v, "DA40_ENG_COOLANT_LEVEL", "RECIP ENG COOLANT RESERVOIR PERCENT:1",
             SimVarType.SimVar, "Coolant Reservoir",
-            "Percent remaining. Falls when the coolant-leak failure is active.",
             "percent", "F0");
         AddFind(v, "DA40_ENG_COOLANT_LEAK_RATE", "ENG_COOLANT_LEAK:1", SimVarType.LVar,
-            "Coolant Leak", "How much coolant is being lost.");
+            "Coolant Leak");
 
         // ---------- DAMAGE THE HEALTH FIGURES DO NOT COVER ----------
         //
@@ -258,28 +254,28 @@ public partial class CowsDA40Definition
         // friction and fuel oscillation each track their own wear, so an engine can be
         // accumulating damage that every health percentage still reports as fine.
         AddFind(v, "DA40_DAMAGE_TURBO_FRICTION", "DAMAGE_TURBO_FRIC:1", SimVarType.LVar,
-            "Turbo Friction Damage", "Tracked separately from turbocharger health.");
+            "Turbo Friction Damage");
         AddFind(v, "DA40_DAMAGE_FUEL_OSCILLATION", "DAMAGE_FUEL_OSCI:1", SimVarType.LVar,
-            "Fuel Oscillation Damage", "Tracked separately from fuel-system health.");
+            "Fuel Oscillation Damage");
 
         // ---------- THE ECUs, BEYOND PASS/FAIL ----------
         AddFind(v, "DA40_ECU_A_STARTING", "FADEC_START_ECU_A:1", SimVarType.LVar,
-            "ECU A Starting", "Which ECU is running the start.", "number", "F0", yesNo);
+            "ECU A Starting", "number", "F0", yesNo);
         AddFind(v, "DA40_ECU_B_STARTING", "FADEC_START_ECU_B:1", SimVarType.LVar,
-            "ECU B Starting", "Which ECU is running the start.", "number", "F0", yesNo);
+            "ECU B Starting", "number", "F0", yesNo);
         AddFind(v, "DA40_ECU_A_FAIL_TIME", "FADEC_ECU_FAIL_TIME_A:1", SimVarType.LVar,
-            "ECU A Fault Timer", "Counts while ECU A is faulted.");
+            "ECU A Fault Timer");
         AddFind(v, "DA40_ECU_B_FAIL_TIME", "FADEC_ECU_FAIL_TIME_B:1", SimVarType.LVar,
-            "ECU B Fault Timer", "Counts while ECU B is faulted.");
+            "ECU B Fault Timer");
 
         // ---------- WHAT THE AUTOPILOT SERVOS ARE PULLING AGAINST ----------
         //
         // The one honest answer to "is the autopilot fighting me". A servo working hard is
         // how an out-of-trim aeroplane shows itself before the autopilot gives up.
         AddFind(v, "DA40_AP_FORCE_AILERON", "AFCS_FORCE_AIL", SimVarType.LVar,
-            "Aileron Servo Force", "What the roll servo is holding.");
+            "Aileron Servo Force");
         AddFind(v, "DA40_AP_FORCE_ELEVATOR", "AFCS_FORCE_ELE", SimVarType.LVar,
-            "Elevator Servo Force", "What the pitch servo is holding.");
+            "Elevator Servo Force");
 
         // ---------- TO/GA, WHICH THE BUTTON SAID COULD NOT BE READ BACK ----------
         //
@@ -288,25 +284,25 @@ public partial class CowsDA40Definition
         // aeroplane was said to answer only through the flight director's pitch command.
         // WT_TOGA_ACTIVE is exactly that read-back, and it was in the package all along.
         AddFind(v, "DA40_AP_TOGA_ACTIVE", "WT_TOGA_ACTIVE", SimVarType.LVar,
-            "Go Around Mode", "Whether TO/GA is engaged.", "number", "F0",
+            "Go Around Mode", "number", "F0",
             new Dictionary<double, string> { [0] = "Off", [1] = "Active" }, true);
 
         // ---------- THE START, WHILE IT IS HAPPENING ----------
         AddFind(v, "DA40_START_AUTOSTART_STEP", "AUTOSTART_STEP", SimVarType.LVar,
-            "Auto Start Step", "Which step the aircraft's own auto-start has reached.",
+            "Auto Start Step",
             "number", "F0");
         AddFind(v, "DA40_START_INPUT", "INPUT_START", SimVarType.LVar,
-            "Start Input", "How far the start control is being held.", "percent", "F0");
+            "Start Input", "percent", "F0");
 
         // ---------- FAILURES THAT HAD NO ROW ----------
         AddFind(v, "DA40_FAIL_FUEL_LEFT", "FAILURES_FUEL_L", SimVarType.LVar,
-            "Left Fuel Failure", "Left fuel system failure.", "number", "F0", yesNo, true);
+            "Left Fuel Failure", "number", "F0", yesNo, true);
         AddFind(v, "DA40_FAIL_FUEL_RIGHT", "FAILURES_FUEL_R", SimVarType.LVar,
-            "Right Fuel Failure", "Right fuel system failure.", "number", "F0", yesNo, true);
+            "Right Fuel Failure", "number", "F0", yesNo, true);
         AddFind(v, "DA40_FAIL_WASTEGATE_A", "FAILURES_WASTEGATE_A:1", SimVarType.LVar,
-            "Wastegate A Failure", "Wastegate channel A.", "number", "F0", yesNo, true);
+            "Wastegate A Failure", "number", "F0", yesNo, true);
         AddFind(v, "DA40_FAIL_WASTEGATE_B", "FAILURES_WASTEGATE_B:1", SimVarType.LVar,
-            "Wastegate B Failure", "Wastegate channel B.", "number", "F0", yesNo, true);
+            "Wastegate B Failure", "number", "F0", yesNo, true);
 
         return v;
     }
@@ -413,30 +409,29 @@ public partial class CowsDA40Definition
         // completely destroyed block publishes 0.875 health. The health percentages are
         // rescaled for the pilot; these are what the model actually counts.
         AddFind(v, "DA40_DAMAGE_BLOCK_RAW", "DAMAGE_BLOCK:1", SimVarType.LVar,
-            "Block Damage", "Raw accumulator. Self-sustaining past 90.");
+            "Block Damage");
         AddFind(v, "DA40_DAMAGE_OIL_RAW", "DAMAGE_OIL:1", SimVarType.LVar,
-            "Oil Damage", "Raw accumulator. Ignores the damage-enabled switch.");
+            "Oil Damage");
         AddFind(v, "DA40_DAMAGE_TURBO_RAW", "DAMAGE_TURBO:1", SimVarType.LVar,
-            "Turbocharger Damage", "Raw accumulator.");
+            "Turbocharger Damage");
         AddFind(v, "DA40_DAMAGE_FUEL_RAW", "DAMAGE_FUEL:1", SimVarType.LVar,
-            "Fuel System Damage", "Raw accumulator.");
+            "Fuel System Damage");
         AddFind(v, "DA40_DAMAGE_FUEL_PUMP_1", "DAMAGE_FUEL:11", SimVarType.LVar,
-            "Fuel Pump 1 Damage", "Index 11 is the first pump.");
+            "Fuel Pump 1 Damage");
         AddFind(v, "DA40_DAMAGE_FUEL_PUMP_2", "DAMAGE_FUEL:12", SimVarType.LVar,
-            "Fuel Pump 2 Damage", "Index 12 is the second pump.");
+            "Fuel Pump 2 Damage");
 
         // ---------- FAILURES WITH NO ROW ----------
         AddFind(v, "DA40_FAIL_PROP_COMBINED", "FAILURES_PROP:1", SimVarType.LVar,
-            "Propeller Failure", "The combined propeller failure, beside channels A and B.",
+            "Propeller Failure",
             "number", "F0", yesNo, true);
         AddFind(v, "DA40_FAIL_TURBO_STOCK", "RECIP ENG TURBOCHARGER FAILED:1",
             SimVarType.SimVar, "Turbocharger Failed",
-            "The stock failure flag, which the sim sets as well as the model.",
             "bool", "F0", yesNo, true);
 
         // ---------- WHAT THE PILOT IS HOLDING ----------
         AddFind(v, "DA40_TRIM_AXIS_INPUT", "INPUT_TRIM_AXIS", SimVarType.LVar,
-            "Trim Axis Input", "The trim axis, as distinct from the resulting trim position.");
+            "Trim Axis Input");
         // ⚠️ "ECU_TEST:1_IsDown" DOES NOT EXIST AND THE ROW COULD ONLY EVER SAY "No". It is
         // FS Copilot's spelling, taken from its YAML, and grepping the whole installed
         // package - binary files included - finds ECU_TEST, ECU_TEST1 and ECU_TEST:1 but no
@@ -452,7 +447,7 @@ public partial class CowsDA40Definition
         // reads about 0.67 while held and never exactly 1. Hence a THRESHOLD rather than a
         // yes/no on the raw value.
         AddFind(v, "DA40_ECU_TEST_HELD", "ECU_TEST:1", SimVarType.LVar,
-            "ECU Test Button Held", "Whether the button is being held down right now.",
+            "ECU Test Button Held",
             "number", "F2");
 
         // ---------- THE STOCK SWITCH MIRRORS ----------
@@ -468,12 +463,12 @@ public partial class CowsDA40Definition
         var offOn = new Dictionary<double, string> { [0] = "Off", [1] = "On" };
 
         AddFind(v, "DA40_PITOT_HEAT_STOCK", "PITOT HEAT SWITCH:1", SimVarType.SimVar,
-            "Pitot Heat Switch", "The stock switch state.", "bool", "F0", offOn);
+            "Pitot Heat Switch", "bool", "F0", offOn);
         AddFind(v, "DA40_ENGINE_MASTER_STOCK", "RECIP ENG ENGINE MASTER SWITCH:1",
-            SimVarType.SimVar, "Engine Master Switch", "The stock switch state.",
+            SimVarType.SimVar, "Engine Master Switch",
             "bool", "F0", offOn);
         AddFind(v, "DA40_FUEL_PUMP_STOCK", "GENERAL ENG FUEL PUMP SWITCH EX1:1",
-            SimVarType.SimVar, "Fuel Pump Switch", "The stock switch state.",
+            SimVarType.SimVar, "Fuel Pump Switch",
             "bool", "F0", offOn);
 
         return v;

@@ -58,20 +58,13 @@ public partial class CowsDA40Definition
         // The range beside each one is the model's OWN generation range, read off the
         // block that rolls them (Logic 5540ff) - without it the number means nothing, and
         // the whole point of the panel is telling a healthy engine from the trapped one.
-        XlsNum(v, "DA40_XLS_VAR_INJ_TRIM", "SPREAD_INJ_TRIM", "Injector Trim",
-            "The mean of the four injector variations. Multiplies the idle jet.");
-        XlsNum(v, "DA40_XLS_VAR_OIL_PRESSURE", "SPREAD_OP", "Oil Pressure Variation",
-            "0.95 to 1.05.");
-        XlsNum(v, "DA40_XLS_VAR_OIL_COOLING", "SPREAD_OC", "Oil Cooling Variation",
-            "0.9 to 1.1.");
-        XlsNum(v, "DA40_XLS_VAR_OIL_BYPASS", "OP_SPREAD_BYPASS", "Oil Bypass Variation",
-            "Minus 0.1 to plus 0.1.");
-        XlsNum(v, "DA40_XLS_VAR_ROUGHNESS", "SPREAD_ROUGH", "Roughness Threshold",
-            "650 to 700. Not a multiplier.");
-        XlsNum(v, "DA40_XLS_VAR_MAG_TIMING", "MAG_SPREAD_TIMING", "Magneto Timing Variation",
-            "Minus 1.5 to plus 1.5.");
-        XlsNum(v, "DA40_XLS_VAR_THROTTLE", "THROTTLE_SPREAD", "Throttle Variation",
-            "0 to 0.04.");
+        XlsNum(v, "DA40_XLS_VAR_INJ_TRIM", "SPREAD_INJ_TRIM", "Injector Trim");
+        XlsNum(v, "DA40_XLS_VAR_OIL_PRESSURE", "SPREAD_OP", "Oil Pressure Variation");
+        XlsNum(v, "DA40_XLS_VAR_OIL_COOLING", "SPREAD_OC", "Oil Cooling Variation");
+        XlsNum(v, "DA40_XLS_VAR_OIL_BYPASS", "OP_SPREAD_BYPASS", "Oil Bypass Variation");
+        XlsNum(v, "DA40_XLS_VAR_ROUGHNESS", "SPREAD_ROUGH", "Roughness Threshold");
+        XlsNum(v, "DA40_XLS_VAR_MAG_TIMING", "MAG_SPREAD_TIMING", "Magneto Timing Variation");
+        XlsNum(v, "DA40_XLS_VAR_THROTTLE", "THROTTLE_SPREAD", "Throttle Variation");
 
         // The governor's own travel, in rpm — rolled as 1450 to 1470 low and 2670 to 2690
         // high; 1469.86 / 2676.38 on the probed engine. INPUT_PROPELLER maps linearly onto
@@ -86,12 +79,9 @@ public partial class CowsDA40Definition
         // (IN.xml 561ff). They are rolled by the same block as the engine's, and the doc's
         // unstartable-engine trap turns on the fact that THESE self-heal and the engine's
         // do not - so they belong beside the instruments they explain.
-        XlsNum(v, "DA40_XLS_VAR_AIR", "SPREAD_AIR", "Standby Airspeed Variation",
-            "0.99 to 1.01. Why the standby airspeed differs slightly from the G1000.");
-        XlsNum(v, "DA40_XLS_VAR_ALT", "SPREAD_ALT", "Standby Altimeter Variation",
-            "0.99 to 1.01.");
-        XlsNum(v, "DA40_XLS_VAR_ALT_OFF", "SPREAD_ALT_OFF", "Standby Altimeter Offset",
-            "Minus 30 to plus 30 feet, added before the variation multiplies.");
+        XlsNum(v, "DA40_XLS_VAR_AIR", "SPREAD_AIR", "Standby Airspeed Variation");
+        XlsNum(v, "DA40_XLS_VAR_ALT", "SPREAD_ALT", "Standby Altimeter Variation");
+        XlsNum(v, "DA40_XLS_VAR_ALT_OFF", "SPREAD_ALT_OFF", "Standby Altimeter Offset");
 
         for (int c = 1; c <= 4; c++)
         {
@@ -100,12 +90,12 @@ public partial class CowsDA40Definition
             // it rather than redefined. Its DisplayName is renamed to match these three.
             if (c > 1)
                 XlsNum(v, $"DA40_XLS_EGT_SPREAD_{c}", $"CYL_SPREAD_EGT:{c}",
-                    $"Cylinder {c} EGT Variation", "0.98 to 1.02.");
+                    $"Cylinder {c} EGT Variation");
 
             XlsNum(v, $"DA40_XLS_INJ_SPREAD_{c}", $"CYL_SPREAD_INJ:{c}",
-                $"Cylinder {c} Injector Variation", "0.95 to 1.05.");
+                $"Cylinder {c} Injector Variation");
             XlsNum(v, $"DA40_XLS_COOL_SPREAD_{c}", $"CYL_SPREAD_COOL:{c}",
-                $"Cylinder {c} Cooling Variation", "0.96 to 1.04.");
+                $"Cylinder {c} Cooling Variation");
         }
 
         // ⚠️ THE WAY OUT OF THE TRAP IS RESET: DAMAGE, and it is not guessable from any
@@ -117,8 +107,8 @@ public partial class CowsDA40Definition
         // because either one is where a pilot lands when the numbers look wrong.
         const string regenerate =
             "Reads yes in the trapped state too - check the numbers. Reset: Damage regenerates them.";
-        XlsBool(v, "DA40_XLS_VAR_SET", "SPREAD_SET", "Engine Variation Generated", regenerate);
-        XlsBool(v, "DA40_XLS_VAR_CYL_SET", "CYL_SPREAD_SET", "Cylinder Variation Generated", regenerate);
+        XlsBool(v, "DA40_XLS_VAR_SET", "SPREAD_SET", "Engine Variation Generated");
+        XlsBool(v, "DA40_XLS_VAR_CYL_SET", "CYL_SPREAD_SET", "Cylinder Variation Generated");
 
         return v;
     }
@@ -168,26 +158,22 @@ public partial class CowsDA40Definition
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
-        XlsGram(v, "DA40_XLS_PRIME_SYS_GRAM", "ENG_FUEL_SYSTEM_GRAM", "Fuel System Charge",
-            "Grams in the system, capped at 20. Primes above 18.");
-        XlsBool(v, "DA40_XLS_PRIME_SYS_PRIMED", "ENG_FUEL_SYSTEM_PRIMED", "Fuel System Primed",
-            "Latches above 18 grams, drops below 1.");
+        XlsGram(v, "DA40_XLS_PRIME_SYS_GRAM", "ENG_FUEL_SYSTEM_GRAM", "Fuel System Charge");
+        XlsBool(v, "DA40_XLS_PRIME_SYS_PRIMED", "ENG_FUEL_SYSTEM_PRIMED", "Fuel System Primed");
 
-        XlsGram(v, "DA40_XLS_PRIME_SPIDER_GRAM", "ENG_FUEL_LINE_GRAM:S", "Spider Charge",
-            "Grams in the distribution spider. Primes above 2.49.");
-        XlsBool(v, "DA40_XLS_PRIME_SPIDER_PRIMED", "ENG_FUEL_LINE_PRIMED:S", "Spider Primed",
-            "Latches above 2.49 grams, drops below 0.2.");
+        XlsGram(v, "DA40_XLS_PRIME_SPIDER_GRAM", "ENG_FUEL_LINE_GRAM:S", "Spider Charge");
+        XlsBool(v, "DA40_XLS_PRIME_SPIDER_PRIMED", "ENG_FUEL_LINE_PRIMED:S", "Spider Primed");
 
         for (int c = 1; c <= 4; c++)
         {
             XlsGram(v, $"DA40_XLS_PRIME_LINE_GRAM_{c}", $"ENG_FUEL_LINE_GRAM:{c}",
-                $"Cylinder {c} Line Charge", "Grams in that injector line. Primes above 1.99.");
+                $"Cylinder {c} Line Charge");
             XlsBool(v, $"DA40_XLS_PRIME_LINE_PRIMED_{c}", $"ENG_FUEL_LINE_PRIMED:{c}",
-                $"Cylinder {c} Line Primed", "Latches above 1.99 grams, drops below 0.2.");
+                $"Cylinder {c} Line Primed");
         }
 
         XlsBool(v, "DA40_XLS_PRIME_START_MIXTURE", "START_MIXTURE_START",
-            "Start Mixture Engaged", "Set by the cockpit start sequence.");
+            "Start Mixture Engaged");
 
         return v;
     }
@@ -224,25 +210,25 @@ public partial class CowsDA40Definition
         for (int c = 1; c <= 4; c++)
         {
             XlsNum(v, $"DA40_XLS_FOUL_PWR_{c}L", $"ENG_MAG_FOUL_PWR:{c}L",
-                $"Cylinder {c} Left Plug Power", "");
+                $"Cylinder {c} Left Plug Power");
             XlsNum(v, $"DA40_XLS_FOUL_PWR_{c}R", $"ENG_MAG_FOUL_PWR:{c}R",
-                $"Cylinder {c} Right Plug Power", "");
+                $"Cylinder {c} Right Plug Power");
             XlsNum(v, $"DA40_XLS_FOUL_RATE_{c}", $"DAMAGE_MAG_FOUL_RATE:{c}",
-                $"Cylinder {c} Fouling Rate", "");
+                $"Cylinder {c} Fouling Rate");
         }
 
         // The oil COOLER and its thermostat. Neither has a gauge — the oil TEMPERATURE
         // does, and is read from its indication — so both are exposed from the model.
         XlsCelsius(v, "DA40_XLS_OIL_COOLER_TEMP", "OC_TEMPERATURE", "Oil Cooler Temperature");
-        XlsNum(v, "DA40_XLS_OIL_THERMOSTAT", "OC_THERMOSTAT", "Oil Thermostat", "");
+        XlsNum(v, "DA40_XLS_OIL_THERMOSTAT", "OC_THERMOSTAT", "Oil Thermostat");
 
         // ⚠️ THE XLS SPELLS THESE THREE WITHOUT AN INDEX. The NG's DAMAGE_BLOCK:1 /
         // DAMAGE_OIL:1 / HEALTH_OIL:1 do not exist on this airframe — reading one returns
         // a phantom 0, which is indistinguishable from an undamaged engine.
-        XlsNum(v, "DA40_XLS_BLOCK_DAMAGE", "DAMAGE_BLOCK", "Block Damage", "");
-        XlsNum(v, "DA40_XLS_OIL_DAMAGE", "DAMAGE_OIL", "Oil Damage", "");
-        XlsNum(v, "DA40_XLS_OIL_HEALTH", "HEALTH_OIL", "Oil Health", "1.0 is undamaged.");
-        XlsNum(v, "DA40_XLS_DUST_DAMAGE", "DAMAGE_DUST", "Dust Damage", "");
+        XlsNum(v, "DA40_XLS_BLOCK_DAMAGE", "DAMAGE_BLOCK", "Block Damage");
+        XlsNum(v, "DA40_XLS_OIL_DAMAGE", "DAMAGE_OIL", "Oil Damage");
+        XlsNum(v, "DA40_XLS_OIL_HEALTH", "HEALTH_OIL", "Oil Health");
+        XlsNum(v, "DA40_XLS_DUST_DAMAGE", "DAMAGE_DUST", "Dust Damage");
 
         return v;
     }
@@ -295,7 +281,7 @@ public partial class CowsDA40Definition
     // ==================================================================================
 
     private static void XlsNum(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -307,8 +293,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Format = "F3",
-            HelpText = help
+            Format = "F3"
         };
     }
 
@@ -325,13 +310,12 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Format = "F0",
-            HelpText = "Revolutions per minute."
+            Format = "F0"
         };
     }
 
     private static void XlsGram(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -343,8 +327,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             ExcludeFromMonitorManager = true,
-            Format = "F2",
-            HelpText = help
+            Format = "F2"
         };
     }
 
@@ -370,7 +353,7 @@ public partial class CowsDA40Definition
     /// a start, not ones that should interrupt them.
     /// </summary>
     private static void XlsBool(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -382,8 +365,7 @@ public partial class CowsDA40Definition
             IsAnnounced = false,
             RenderAsReadOnlyStatus = true,
             Format = "F0",
-            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" },
-            HelpText = help
+            ValueDescriptions = new Dictionary<double, string> { [0] = "No", [1] = "Yes" }
         };
     }
 }

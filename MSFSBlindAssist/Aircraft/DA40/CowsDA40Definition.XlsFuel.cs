@@ -63,8 +63,7 @@ public partial class CowsDA40Definition
                 [0] = "Left",
                 [1] = "Right",
                 [2] = "Off"
-            },
-            HelpText = "Fullest tank for take-off and landing; switch tanks after start and every hour. Off stops the engine."
+            }
         };
 
         v["DA40_XLS_FUEL_PUMP"] = new SimVarDefinition
@@ -75,8 +74,7 @@ public partial class CowsDA40Definition
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
-            HelpText = "On for priming, take-off, landing, tank changes and a hot start; it is also the cure for vapour lock."
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
         // Refuelling: the transaction, not a cockpit control (see Fuel.cs). Left and right,
@@ -91,8 +89,7 @@ public partial class CowsDA40Definition
                 Units = "gallons",
                 UpdateFrequency = UpdateFrequency.Never,
                 IsAnnounced = false,
-                Format = "0.0",
-                HelpText = "0 to 20.1 gallons in this tank. Ground only, engine off."
+                Format = "0.0"
             };
         }
 
@@ -104,8 +101,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,
             SuppressRestingButtonState = true,
-            IsAnnounced = false,
-            HelpText = "Both tanks to 20.1 gallons, 40.2 total. Ground only, engine off."
+            IsAnnounced = false
         };
 
         // ---------- Status ----------

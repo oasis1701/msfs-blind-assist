@@ -70,10 +70,8 @@ public partial class CowsDA40Definition
         // So the binding is UNCONFIRMED, not disproven, and the honest action is to leave a
         // working-looking control alone. If it is ever shown dead, the fix is to find what
         // the Asobo template actually declares - not to delete the panel a third time.
-        AddCabinLever(v, "DA40_CABIN_HEAT_SET", "XMLVAR_CabinHeat", "Cabin Heat",
-            "Engine heat exchanger, so it needs a warm engine. The simulation models no cabin temperature.");
-        AddCabinLever(v, "DA40_CABIN_AIR_SET", "XMLVAR_CabinAir", "Cabin Air",
-            "Fresh air to the cabin. The simulation models no cabin temperature.");
+        AddCabinLever(v, "DA40_CABIN_HEAT_SET", "XMLVAR_CabinHeat", "Cabin Heat");
+        AddCabinLever(v, "DA40_CABIN_AIR_SET", "XMLVAR_CabinAir", "Cabin Air");
 
         // ---------- Status ----------
 
@@ -108,7 +106,7 @@ public partial class CowsDA40Definition
     }
 
     private static void AddCabinLever(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string display, string help)
+        string lvar, string display)
     {
         v[key] = new SimVarDefinition
         {
@@ -119,8 +117,7 @@ public partial class CowsDA40Definition
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = false,
             RenderAsSlider = true,
-            Format = "F0",
-            HelpText = help
+            Format = "F0"
         };
     }
 

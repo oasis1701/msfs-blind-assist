@@ -64,9 +64,7 @@ public partial class CowsDA40Definition
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 IsAnnounced = false,
                 RenderAsReadOnlyStatus = true,
-                ExcludeFromMonitorManager = true,
-                HelpText = "What the POH says full power must reach here. The check is "
-                         + "yours: set max power and compare the load."
+                ExcludeFromMonitorManager = true
             };
         }
         else
@@ -80,9 +78,7 @@ public partial class CowsDA40Definition
                 UpdateFrequency = UpdateFrequency.OnRequest,
                 IsAnnounced = false,
                 RenderAsReadOnlyStatus = true,
-                ExcludeFromMonitorManager = true,
-                HelpText = "The POH setting nearest the manifold pressure and RPM set now, "
-                         + "with its fuel flows."
+                ExcludeFromMonitorManager = true
             };
         }
 

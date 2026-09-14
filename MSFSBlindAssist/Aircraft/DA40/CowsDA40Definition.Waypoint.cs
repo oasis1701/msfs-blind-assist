@@ -47,8 +47,7 @@ public partial class CowsDA40Definition
             Units = "Bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            RenderAsReadOnlyStatus = true,
-            HelpText = "Untick to stop the call announcing when a waypoint sequences."
+            RenderAsReadOnlyStatus = true
         };
     }
 
