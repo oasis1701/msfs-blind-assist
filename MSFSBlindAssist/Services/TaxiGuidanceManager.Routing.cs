@@ -94,14 +94,15 @@ public partial class TaxiGuidanceManager
         try
         {
             // Snapshot every field this method is about to overwrite, so a reachability
-            // refusal below (DestinationNotConnected / the first-leg runway crossing) can
-            // put the manager back exactly as it found it: a refused Calculate mid-taxi
-            // must leave the route currently being flown untouched — recalculations must
-            // keep targeting the OLD destination, not the refused one, and an old runway
-            // route must keep its lineup target. The older failure returns further down
-            // (no taxi path data, destination node not found, no nearby taxiway node,
-            // could not calculate a route) are deliberately left as they are; widening the
-            // rollback to cover them is a separate, unasked-for change.
+            // refusal below (no start node in range for a destination off the network, or a
+            // first leg across a runway) can put the manager back exactly as it found it: a
+            // refused Calculate mid-taxi must leave the route currently being flown
+            // untouched — recalculations must keep targeting the OLD destination, not the
+            // refused one, and an old runway route must keep its lineup target. The older
+            // failure returns further down (no taxi path data, destination node not found,
+            // no nearby taxiway node for a destination that IS on the network, could not
+            // calculate a route) are deliberately left as they are; widening the rollback to
+            // cover them is a separate, unasked-for change.
             var rollback = CaptureLoadRouteRollback();
 
             // Store for recalculation
@@ -193,21 +194,13 @@ public partial class TaxiGuidanceManager
             // would snap to the island and A* would fail with no path.
             int destComponentId = _graph.Nodes[destinationNodeId].ComponentId;
 
-            // Route reachability (Navigation.RouteReachability): refuse a destination on a piece of
-            // network the aircraft is not on, instead of starting the route on that piece and
-            // steering a straight line across unmapped ground to it. On runway pavement or on no taxi
-            // edge the class is Unchanged and everything below runs exactly as before.
+            // Route reachability (Navigation.RouteReachability). When the aircraft is not on the
+            // destination's piece of network the route is still built exactly as below, starting on the
+            // destination's piece, and its straight unmapped first leg is checked once the route exists:
+            // refused when that leg touches a runway, otherwise announced with a warning. On runway
+            // pavement or on no taxi edge the class is Unchanged and everything below runs exactly as
+            // before.
             var reachability = RouteReachability.Classify(_graph, aircraftLat, aircraftLon, destinationNodeId);
-            if (reachability == ReachabilityClass.DestinationNotConnected)
-            {
-                _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
-                                  $"ac={aircraftLat:F6},{aircraftLon:F6}");
-                // A refused Calculate mid-taxi must leave the route currently being flown
-                // untouched (see the capture comment above); LastRouteUnmappedStartWarning
-                // stays cleared so this refusal can never leave a warning to be spoken later.
-                RestoreLoadRouteRollback(rollback);
-                return RouteReachabilityMessages.DestinationNotConnected(destinationName);
-            }
 
             // Start-node selection. With a constrained taxiway sequence we prefer
             // a node ON the first cleared taxiway (heading-irrelevant) so the route
@@ -286,7 +279,18 @@ public partial class TaxiGuidanceManager
                     requiredComponentId: destComponentId);
             }
             if (startNode == null)
+            {
+                // A destination off the network the aircraft is on, with no start node in range: name it,
+                // instead of the generic message, and leave the route currently being flown untouched.
+                if (reachability == ReachabilityClass.DestinationNotConnected)
+                {
+                    _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
+                                      $"no start node ac={aircraftLat:F6},{aircraftLon:F6}");
+                    RestoreLoadRouteRollback(rollback);
+                    return RouteReachabilityMessages.DestinationNotConnected(destinationName);
+                }
                 return "Could not find a nearby taxiway node.";
+            }
 
             // Calculate route
             var router = new TaxiRouter(_graph);
@@ -351,29 +355,43 @@ public partial class TaxiGuidanceManager
                     leadIn = TaxiLeadIn.Extract(route, firstCleared);
             }
 
-            // Leaving a disconnected position for the main network: the route starts with a straight
-            // unmapped leg from the aircraft to its first node. Refuse when that leg touches runway
-            // pavement; otherwise compose the warning the pilot hears when guidance starts.
+            // The aircraft is not on the destination's piece of network, so the route starts with a
+            // straight unmapped leg from the aircraft to its first node. Refuse when that leg touches
+            // runway pavement; otherwise compose the warning the pilot hears when guidance starts.
             string? unmappedStartWarning = null;
-            if (reachability == ReachabilityClass.LeavingUnconnectedPosition)
+            if (reachability != ReachabilityClass.Unchanged)
             {
                 var firstLeg = RouteReachability.CheckFirstLeg(
                     _graph, aircraftLat, aircraftLon, route.Segments[0].FromNode);
+                bool destinationOffNetwork = reachability == ReachabilityClass.DestinationNotConnected;
                 if (firstLeg.CrossesRunway)
                 {
                     _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
-                                      $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0}");
-                    // Same rollback as the DestinationNotConnected refusal above — leave the
-                    // route currently being flown (if any) untouched.
+                                      $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0} " +
+                                      $"ac={aircraftLat:F6},{aircraftLon:F6}");
+                    // A refused Calculate mid-taxi must leave the route currently being flown untouched
+                    // (see the capture above).
                     RestoreLoadRouteRollback(rollback);
-                    return RouteReachabilityMessages.FirstLegCrossesRunway(firstLeg.RunwayDesignator);
+                    return destinationOffNetwork
+                        ? RouteReachabilityMessages.DestinationLegCrossesRunway(destinationName, firstLeg.RunwayDesignator)
+                        : RouteReachabilityMessages.FirstLegCrossesRunway(firstLeg.RunwayDesignator);
                 }
-                string? firstNamedTaxiway = route.Segments
-                    .FirstOrDefault(s => !string.IsNullOrEmpty(s.TaxiwayName))?.TaxiwayName;
-                unmappedStartWarning = RouteReachabilityMessages.UnmappedFirstLeg(
-                    firstLeg.GapMeters, FormatDistance, firstNamedTaxiway);
-                _guidanceLog.Info($"Reachability: leaving unconnected position dest=\"{destinationName}\" " +
-                                  $"class={reachability} gapM={firstLeg.GapMeters:F0} firstTaxiway=\"{firstNamedTaxiway}\"");
+                if (destinationOffNetwork)
+                {
+                    unmappedStartWarning = RouteReachabilityMessages.UnmappedLegToDestination(
+                        destinationName, firstLeg.GapMeters, FormatDistance);
+                    _guidanceLog.Info($"Reachability: destination not connected dest=\"{destinationName}\" " +
+                                      $"class={reachability} gapM={firstLeg.GapMeters:F0}");
+                }
+                else
+                {
+                    string? firstNamedTaxiway = route.Segments
+                        .FirstOrDefault(s => !string.IsNullOrEmpty(s.TaxiwayName))?.TaxiwayName;
+                    unmappedStartWarning = RouteReachabilityMessages.UnmappedFirstLeg(
+                        firstLeg.GapMeters, FormatDistance, firstNamedTaxiway);
+                    _guidanceLog.Info($"Reachability: leaving unconnected position dest=\"{destinationName}\" " +
+                                      $"class={reachability} gapM={firstLeg.GapMeters:F0} firstTaxiway=\"{firstNamedTaxiway}\"");
+                }
             }
 
             string? constrainedLengthWarning = null;
@@ -702,14 +720,15 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Every field LoadRoute writes before it can reach a reachability refusal
-    /// (DestinationNotConnected or the first-leg runway crossing), captured so a refused
-    /// Calculate mid-taxi can be rolled back to leave the route currently being flown
-    /// untouched. Deliberately excludes <see cref="LastRouteUnmappedStartWarning"/>: that
-    /// field must stay cleared on a refusal, never restored, so a refused load can never
-    /// leave a warning behind for the form or the one-shot to speak later. The older
-    /// failure returns in LoadRoute (no taxi path data, destination node not found, no
-    /// nearby taxiway node, could not calculate a route) are unaffected by this — they are
+    /// Every field LoadRoute writes before it can reach a reachability refusal (no start
+    /// node in range for a destination off the network, or a first leg across a runway),
+    /// captured so a refused Calculate mid-taxi can be rolled back to leave the route
+    /// currently being flown untouched. Deliberately excludes
+    /// <see cref="LastRouteUnmappedStartWarning"/>: that field must stay cleared on a
+    /// refusal, never restored, so a refused load can never leave a warning behind for the
+    /// form or the one-shot to speak later. The older failure returns in LoadRoute (no taxi
+    /// path data, destination node not found, no nearby taxiway node for a destination that
+    /// IS on the network, could not calculate a route) are unaffected by this — they are
     /// deliberately left as they were before this rollback existed.
     /// </summary>
     private readonly record struct LoadRouteRollback(
@@ -1059,18 +1078,12 @@ public partial class TaxiGuidanceManager
             ? _graph.Nodes[_destinationNodeId].ComponentId
             : (int?)null;
 
-        // Same reachability decision as LoadRoute: a destination the aircraft cannot reach from where it
-        // now is gets one spoken refusal instead of a straight-line recalculation.
+        // Same reachability decision as LoadRoute: when the aircraft is not on the destination's piece of
+        // network, the recalculated route still starts on that piece, and its straight unmapped first leg
+        // is checked once the route exists.
         var recalcReachability = destComponentId.HasValue
             ? RouteReachability.Classify(_graph, lat, lon, _destinationNodeId)
             : ReachabilityClass.Unchanged;
-        if (recalcReachability == ReachabilityClass.DestinationNotConnected)
-        {
-            _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
-                              $"ac={lat:F6},{lon:F6}");
-            _announcer.AnnounceImmediate(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
-            return;
-        }
 
         (List<string>? remainingSequence, TaxiNode? nearestNode) =
             FindRemainingSequenceByPosition(lat, lon, destComponentId);
@@ -1083,7 +1096,16 @@ public partial class TaxiGuidanceManager
         {
             nearestNode = _graph.FindNearestNodeInDirection(
                 lat, lon, headingTrue, requiredComponentId: destComponentId);
-            if (nearestNode == null) return;
+            if (nearestNode == null)
+            {
+                if (recalcReachability == ReachabilityClass.DestinationNotConnected)
+                {
+                    _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
+                                      $"no start node ac={lat:F6},{lon:F6}");
+                    _announcer.AnnounceImmediate(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
+                }
+                return;
+            }
         }
 
         var router = new TaxiRouter(_graph);
@@ -1127,23 +1149,24 @@ public partial class TaxiGuidanceManager
             newRoute = pinnedRecalc;
         }
 
-        if (recalcReachability == ReachabilityClass.LeavingUnconnectedPosition)
+        if (recalcReachability != ReachabilityClass.Unchanged)
         {
             var firstLeg = RouteReachability.CheckFirstLeg(_graph!, lat, lon, newRoute.Segments[0].FromNode);
+            bool destinationOffNetwork = recalcReachability == ReachabilityClass.DestinationNotConnected;
             if (firstLeg.CrossesRunway)
             {
                 _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
                                   $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0} " +
                                   $"ac={lat:F6},{lon:F6}");
-                _announcer.AnnounceImmediate(
-                    RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
+                _announcer.AnnounceImmediate(destinationOffNetwork
+                    ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
+                    : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
                 return;
             }
-            // The recalculated route also starts with an unmapped leg from a disconnected
-            // position -- same case LoadRoute warns about, but a recalculation never speaks
-            // a start warning (it isn't "the start" of guidance). Diagnostic-only, so "why
-            // did guidance steer me across here" can still be answered from the log.
-            _guidanceLog.Info($"Reachability: recalc leaving unconnected position dest=\"{_destinationName}\" " +
+            // The recalculated route starts with an unmapped leg, the case LoadRoute warns about, but a
+            // recalculation never speaks a start warning (it is not the start of guidance). Diagnostic
+            // only, so "why did guidance steer me across here" can still be answered from the log.
+            _guidanceLog.Info($"Reachability: recalc proceeds across an unmapped first leg dest=\"{_destinationName}\" " +
                               $"class={recalcReachability} gapM={firstLeg.GapMeters:F0} ac={lat:F6},{lon:F6}");
         }
 

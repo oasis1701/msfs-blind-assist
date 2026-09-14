@@ -19,6 +19,17 @@ public static class RouteReachabilityMessages
     public static string FirstLegCrossesRunway(string runwayDesignator) =>
         $"No taxi route from here. You aren't on the connected taxiway network, and the way onto it crosses runway {runwayDesignator}.";
 
+    /// <summary>The destination is on a piece of taxi network the aircraft is not on, and the straight
+    /// unmapped way to it crosses a runway.</summary>
+    public static string DestinationLegCrossesRunway(string destinationName, string runwayDesignator) =>
+        $"No taxi route to {destinationName}. It isn't connected to the taxiway network you're on, and the way to it crosses runway {runwayDesignator}.";
+
+    /// <summary>The route to a destination on a piece of taxi network the aircraft is not on starts with a
+    /// straight unmapped leg.</summary>
+    public static string UnmappedLegToDestination(
+        string destinationName, double gapMeters, Func<double, string> formatDistance) =>
+        $"{destinationName} isn't connected to the taxiway network you're on. The first {formatDistance(gapMeters)} of the route aren't mapped.";
+
     /// <summary>The route starts with a straight unmapped leg from a disconnected position.</summary>
     public static string UnmappedFirstLeg(
         double gapMeters, Func<double, string> formatDistance, string? firstTaxiwayName)
@@ -36,6 +47,11 @@ public static class RouteReachabilityMessages
     /// <summary>A recalculation refused because the way onto the main network crosses a runway.</summary>
     public static string RecalculationRefusedRunway(string runwayDesignator) =>
         $"Off route. Unable to recalculate. The way onto the connected taxiway network crosses runway {runwayDesignator}.";
+
+    /// <summary>A recalculation refused because the straight unmapped way to a destination on another
+    /// piece of network crosses a runway.</summary>
+    public static string RecalculationRefusedDestinationRunway(string destinationName, string runwayDesignator) =>
+        $"Off route. Unable to recalculate. The way to {destinationName} crosses runway {runwayDesignator}.";
 
     /// <summary>
     /// One utterance for the start of guidance: the unmapped-leg warning first, then the route-start

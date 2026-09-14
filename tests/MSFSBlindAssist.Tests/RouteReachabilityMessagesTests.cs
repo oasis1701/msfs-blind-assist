@@ -76,4 +76,31 @@ public class RouteReachabilityMessagesTests
         Assert.Equal("C.", RouteReachabilityMessages.JoinStartSpeech("", "C."));
         Assert.Null(RouteReachabilityMessages.JoinStartSpeech(null, ""));
     }
+
+    [Fact]
+    public void The_destination_runway_refusal_names_the_destination_and_the_runway()
+    {
+        Assert.Equal(
+            "No taxi route to Parking 40. It isn't connected to the taxiway network you're on, and the way to it crosses runway 13.",
+            RouteReachabilityMessages.DestinationLegCrossesRunway("Parking 40", "13"));
+    }
+
+    [Fact]
+    public void The_unmapped_leg_to_a_destination_names_the_destination_in_the_callers_unit()
+    {
+        Assert.Equal(
+            "C 51L isn't connected to the taxiway network you're on. The first 35 metres of the route aren't mapped.",
+            RouteReachabilityMessages.UnmappedLegToDestination("C 51L", 35, Metres));
+        Assert.Equal(
+            "C 51L isn't connected to the taxiway network you're on. The first 115 feet of the route aren't mapped.",
+            RouteReachabilityMessages.UnmappedLegToDestination("C 51L", 35, Feet));
+    }
+
+    [Fact]
+    public void The_recalculation_refusal_for_a_destination_across_a_runway_leads_with_off_route()
+    {
+        Assert.Equal(
+            "Off route. Unable to recalculate. The way to Parking 40 crosses runway 13.",
+            RouteReachabilityMessages.RecalculationRefusedDestinationRunway("Parking 40", "13"));
+    }
 }

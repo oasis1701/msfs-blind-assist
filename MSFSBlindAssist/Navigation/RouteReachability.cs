@@ -13,8 +13,9 @@ public enum ReachabilityClass
     /// route, but warn that the first leg is unmapped (refuse if that leg touches a runway).</summary>
     LeavingUnconnectedPosition,
 
-    /// <summary>Aircraft on another piece of network, destination not on the main network:
-    /// refuse.</summary>
+    /// <summary>Aircraft on another piece of network, destination not on the main network: route from
+    /// the destination's piece with a warning that the first leg is unmapped, and refuse when that leg
+    /// touches a runway or no start node is in range.</summary>
     DestinationNotConnected,
 }
 
