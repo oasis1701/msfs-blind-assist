@@ -186,6 +186,7 @@ public partial class TaxiGuidanceManager
             _rolloutEnd1500Announced = false;
             _rolloutEnd500Announced = false;
             _rolloutEnd100Announced = false;
+            _rolloutStoppedNoticeGiven = false;
             // DIAGNOSTIC: reset per-rollout instrumentation gates
             _rolloutDiagFirstCallDone = false;
             _rolloutDiagLastPeriodic = DateTime.MinValue;
@@ -358,6 +359,7 @@ public partial class TaxiGuidanceManager
             _rolloutEnd1500Announced = false;
             _rolloutEnd500Announced = false;
             _rolloutEnd100Announced = false;
+            _rolloutStoppedNoticeGiven = false;
             _rolloutDiagFirstCallDone = false;
             _rolloutDiagLastPeriodic = DateTime.MinValue;
             _smoothedHeadingError = 0.0;
@@ -1943,13 +1945,15 @@ public partial class TaxiGuidanceManager
         // How the countdown ends is decided from WHERE the aircraft is, not merely from a stop or
         // a turn (Navigation.RunwayEndCountdownGate). Any stop or 15-degree turn used to mean
         // "End of runway. Turn around." — false for a pilot turning off at a taxiway or holding for
-        // ATC mid-runway (PR #236 review). "At the end" is the 500 ft / 150 m runway-end milestone.
-        double nearEndFeet = DistanceMilestones.RunwayEnd()[1].TriggerMetres / DistanceFormatter.MetresPerFoot;
+        // ATC mid-runway (PR #236 review). "At the end" is the 500 ft / 150 m runway-end milestone,
+        // computed once at countdown entry (_rolloutNearEndFeet) rather than rebuilt here every
+        // frame — DistanceMilestones.RunwayEnd() allocates, and this method is on the per-frame path
+        // for as long as the pilot is stopped mid-runway for ATC.
         var action = Navigation.RunwayEndCountdownGate.Decide(
             distToEndFt, groundSpeedKts, hdgDeltaAbs,
             laterallyClear: !IsWithinRolloutRunwayLaterally(lat, lon),
             stoppedNoticeGiven: _rolloutStoppedNoticeGiven,
-            nearEndFeet: nearEndFeet);
+            nearEndFeet: _rolloutNearEndFeet);
 
         switch (action)
         {
@@ -1976,7 +1980,7 @@ public partial class TaxiGuidanceManager
             case Navigation.RunwayEndCountdownAction.StoppedMidRunwayNotice:
                 _rolloutStoppedNoticeGiven = true;
                 AnnounceInstruction(
-                    $"Stopped on runway {_rolloutRunway.RunwayID}. " +
+                    $"Stopped on runway {_rolloutRunway.RunwayID ?? "runway"}. " +
                     $"Runway end in {DistanceFormatter.FromFeet(Math.Max(0.0, distToEndFt))}.");
                 return;
         }
@@ -2572,6 +2576,7 @@ public partial class TaxiGuidanceManager
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
         _rolloutStoppedNoticeGiven = false;
+        _rolloutNearEndFeet = DistanceMilestones.RunwayEnd()[1].TriggerMetres / DistanceFormatter.MetresPerFoot;
         // Defence in depth, matching the _rolloutEnd*Announced resets above: setting
         // _rolloutNoExitMode below makes UpdateLandingRollout divert into
         // UpdateRunwayEndCountdown before the handoff block can be reached at all, so

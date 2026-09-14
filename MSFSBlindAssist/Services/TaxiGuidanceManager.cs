@@ -976,8 +976,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutEnd500Announced;
     private bool _rolloutEnd100Announced;
     // One-shot "Stopped on runway X. Runway end in N." for a mid-runway stop during the countdown
-    // (Navigation.RunwayEndCountdownGate). Reset by EnterRunwayEndCountdown and StopGuidance.
+    // (Navigation.RunwayEndCountdownGate). Reset at all four rollout latch sites, matching
+    // _rolloutEnd*Announced: BeginLandingRollout, BeginLandingRolloutNoGraph,
+    // EnterRunwayEndCountdown and StopGuidance.
     private bool _rolloutStoppedNoticeGiven;
+    // The 500 ft / 150 m runway-end milestone trigger, in feet — "near the end" for
+    // Navigation.RunwayEndCountdownGate. Computed once per countdown entry (EnterRunwayEndCountdown)
+    // rather than per frame, because DistanceMilestones.RunwayEnd() allocates.
+    private double _rolloutNearEndFeet;
 
     // Backtrack state. Entered from runway-end countdown once the pilot has stopped
     // or begun a 180° turn. Guides on the reciprocal runway heading until the
