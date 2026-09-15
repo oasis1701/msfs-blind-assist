@@ -36,17 +36,14 @@ public static class RolloutRunwayReCrossing
         => RouteRunwayCrossings.FindCenterlineForDesignator(centerlines, runwayId);
 
     /// <summary>
-    /// True when any segment from <paramref name="fromSegmentIndex"/> onward crosses the
-    /// runway's centerline between its thresholds.
+    /// True when the route, judged from <paramref name="fromSegmentIndex"/> onward, enters or crosses
+    /// the runway (<see cref="RunwayRouteClassifier"/>). A route that starts on the runway and turns off
+    /// meets nothing, however close to the centerline its exit junction sits (KORD 10R W5); one that
+    /// goes back onto the pavement — across it, or onto it and off the same side — is refused.
     ///
-    /// <para>Uses <see cref="TaxiGraph.EdgeCrossesRunwayStatic"/> — a segment-vs-segment
-    /// intersection, NOT a point-on-pavement test. The point test silently missed every
-    /// crossing whose flanking nodes sit more than half-width + 5 m out (KBOS 33L via K/B/C,
-    /// docs/taxi-guidance.md), which is most of them.</para>
-    ///
-    /// <para>Judged from <paramref name="fromSegmentIndex"/> because that is the segment
-    /// the tone is about to steer at — a crossing already behind the aircraft is history,
-    /// not a route it is about to fly.</para>
+    /// <para>Judged from <paramref name="fromSegmentIndex"/> because that is the segment the tone is
+    /// about to steer at — a crossing already behind the aircraft is history, not a route it is about
+    /// to fly.</para>
     /// </summary>
     public static bool RouteReCrossesRunway(
         IReadOnlyList<TaxiRouteSegment>? segments,
@@ -56,17 +53,8 @@ public static class RolloutRunwayReCrossing
         if (segments is null || runway is null) return false;
         if (fromSegmentIndex < 0 || fromSegmentIndex >= segments.Count) return false;
 
-        for (int i = fromSegmentIndex; i < segments.Count; i++)
-        {
-            var s = segments[i];
-            if (s?.FromNode is null || s.ToNode is null) continue;
-            if (RouteRunwayCrossings.EdgeCrossesRunway(
-                    s.FromNode.Latitude, s.FromNode.Longitude,
-                    s.ToNode.Latitude, s.ToNode.Longitude,
-                    runway))
-                return true;
-        }
-        return false;
+        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex);
+        return RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway)).Count > 0;
     }
 
     /// <summary>

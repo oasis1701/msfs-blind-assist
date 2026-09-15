@@ -1154,7 +1154,7 @@ public partial class TaxiGuidanceManager
         // summary cannot drift on how a crossing is described — see that class for why the
         // crossings belong here at all.
         AnnounceInstruction(RouteChangedCallout.Compose(
-            viaNames, distStr, _destinationName, newRoute.Segments, _isRunwayLineup));
+            viaNames, distStr, _destinationName, newRoute.RunwayEvents));
 
         _lastAnnouncedTaxiway = firstTaxiway;
     }
