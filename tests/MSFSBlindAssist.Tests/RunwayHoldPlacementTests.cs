@@ -271,7 +271,8 @@ public class RunwayHoldPlacementTests
     {
         var route = RouteOf(Node(1, 1000, 21), Node(2, 1000, -21), Node(3, 1000, -105));
 
-        Assert.Empty(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(10), Lon(1000))));
+        // 6 m along the route: taken as its first point while standing on the runway, so the route starts on the runway and meets nothing.
+        Assert.Empty(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(15), Lon(1000))));
         Assert.Null(route.StartHoldRunway);
     }
 

@@ -497,7 +497,10 @@ public static class RouteRunwayCrossings
     ///     and found no existing stop ends in a -1 instead.
     /// Neither walk passes a segment that is already a hold-short: reaching one, or (in walk 2)
     /// reaching this runway's own pavement, ends the walk before a clear node is found — the existing
-    /// hold-short is shared; this runway's own pavement leaves no stop at all.
+    /// hold-short is shared; this runway's own pavement leaves no stop at all. The one exception is an
+    /// existing stop on ANOTHER runway's pavement (in practice a pilot's "end of taxiway" stop): like
+    /// every node there it is never a stop for this runway, so walk 2 passes it and may still share an
+    /// existing stop behind it.
     ///
     /// <para>Every candidate is at or before the runway and off the pavement of every runway on the
     /// pass's list, so a stop can only move EARLIER than the old "segment before the crossing edge",

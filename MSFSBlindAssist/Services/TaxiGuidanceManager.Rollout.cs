@@ -1432,6 +1432,11 @@ public partial class TaxiGuidanceManager
         // S5 while committed to S6), sending A* up that exit and across the parallel taxiway: a
         // ~600 m hairpin. Empty name (unnamed exit) → null → legacy nearest-node snap.
         string? startTwy = _rolloutExit.TaxiwayName.Length > 0 ? _rolloutExit.TaxiwayName : null;
+        // The verdict is computed before LoadRoute because the re-route's start hold below,
+        // the reachability guard and the crossing guard all need it, from the same lat/lon,
+        // under the same name the UpdateLandingRollout site uses. One definition of "off the
+        // runway", three uses.
+        bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
         string? err = LoadRoute(
             _dataProvider, _icao,
             lat, lon, headingTrue,
@@ -1440,8 +1445,9 @@ public partial class TaxiGuidanceManager
             prebuiltGraph: _graph,
             announceSummary: false,
             startTaxiwayName: startTwy,
-            // Fires while the aircraft is still on the runway: a start hold would stop it there.
-            allowStartHold: false);
+            // A start hold only once the aircraft is off the runway, as at UpdateLandingRollout's
+            // handoff: on the pavement it would stop the aircraft there.
+            allowStartHold: offRunwayAtHandoff);
 
         if (err != null)
         {
@@ -1562,11 +1568,6 @@ public partial class TaxiGuidanceManager
                 lat, lon,
                 firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
                 firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
-
-            // Hoisted out of the reachability call below because the crossing guard after it
-            // needs the same verdict, from the same lat/lon, under the same name the
-            // UpdateLandingRollout site uses. One definition of "off the runway", two guards.
-            bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
 
             if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
                     offRunwayAtHandoff, crossToFirstM, firstSeg.PathWidth))

@@ -88,11 +88,11 @@ public partial class TaxiGuidanceManager
         // Do not remove this conversion.
         double aircraftHeadingMagVar = 0.0,
         // Whether the route may start held (TaxiRoute.StartHoldRunway). Not while the aircraft is still
-        // on the landing runway, where the hold would stop it: LandingExitPlanner's touchdown route,
-        // RetargetLandingExit's route to another exit and TryEarlyExitHandoff's re-route pass false;
-        // UpdateLandingRollout's handoff re-route passes offRunwayAtHandoff. A false route's crossings
-        // log line reads phase=touchdown. Whatever this says, the pass sets no start hold while the
-        // aircraft stands on any runway's pavement.
+        // on the landing runway, where the hold would stop it: LandingExitPlanner's touchdown route and
+        // RetargetLandingExit's route to another exit pass false; both landing handoff re-routes
+        // (UpdateLandingRollout's and TryEarlyExitHandoff's) pass offRunwayAtHandoff. A false route's
+        // crossings log line reads phase=touchdown. Whatever this says, the pass sets no start hold
+        // while the aircraft stands on any runway's pavement.
         bool allowStartHold = true)
     {
         lock (_stateLock)
