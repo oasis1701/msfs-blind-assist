@@ -217,7 +217,9 @@ public class LandingExitPlanner
             destinationHeadingTrue: null,
             isRunwayDestination: false,
             prebuiltGraph: _graph,
-            announceSummary: false);
+            announceSummary: false,
+            // The aircraft is still rolling at landing speed: this route never starts held.
+            allowStartHold: false);
 
         // Compute the full exit list once — used by both the success and no-route
         // fallback paths below. GetLandingExits returns exits sorted by

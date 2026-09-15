@@ -393,6 +393,8 @@ public partial class TaxiGuidanceManager
         {
             if (_holdShortAtDestination)
                 return $"Holding short of {_destinationName}. Press continue when cleared.";
+            if (_currentSegmentIndex == 0 && !string.IsNullOrEmpty(_route.StartHoldRunway))
+                return $"Holding short of {_route.StartHoldRunway}. Press continue when cleared.";
             if (_currentSegmentIndex > 0 && _currentSegmentIndex <= _route.Segments.Count)
             {
                 var holdSeg = _route.Segments[_currentSegmentIndex - 1];

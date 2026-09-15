@@ -836,7 +836,7 @@ public static class RouteRunwayCrossings
     /// pavement.</para>
     /// </summary>
     /// <param name="destinationName">The runway destination as spoken ("Runway 33L"), or "" for other routes.</param>
-    /// <param name="allowStartHold">True only when the route is adopted by <c>LoadRoute</c> (phase "load").</param>
+    /// <param name="allowStartHold">True only when <c>LoadRoute</c> adopts a fresh route (phase "load"); false on a recalculation and on the landing touchdown route.</param>
     /// <param name="holdPointPassed">True when the aircraft has rolled past a candidate hold segment's end. Null = nothing passed.</param>
     /// <param name="startPointPassed">True when the aircraft is already more than 10 m past the start node. Null = not passed.</param>
     public static IReadOnlyList<TaxiRouteRunwayEvent> InsertRunwayHoldShorts(

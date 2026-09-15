@@ -4519,7 +4519,7 @@ public class TaxiAssistForm : Form
         // time two announcements at Calculate have stomped each other here.
         //
         // The two are MUTUALLY EXCLUSIVE, and that is the design, not an accident of this
-        // if/else: whichever applies is the LAST thing said. A reach warning means the route
+        // if/else: whichever applies is said last, before only a start-hold sentence. A reach warning means the route
         // never gets to the runway, so the pilot will reprogram and a turn cue is both moot
         // and extra words in front of the warning -- exactly the suppression the per-frame
         // one-shot has always applied. Never "fix" this into two Add calls: that reinstates
@@ -4536,6 +4536,12 @@ public class TaxiAssistForm : Form
         {
             standstillParts.Add(turnCue);
         }
+        // A route that begins at a runway hold line started HELD. Its hold sentence is the LAST part of
+        // this one utterance — it is what the pilot must act on — and is consumed so the per-frame
+        // update never repeats it.
+        string? startHoldCue = _guidanceManager.ConsumeStartHoldCue();
+        if (!string.IsNullOrEmpty(startHoldCue))
+            standstillParts.Add(startHoldCue);
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
