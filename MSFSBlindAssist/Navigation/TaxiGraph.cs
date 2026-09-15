@@ -798,8 +798,8 @@ public class TaxiGraph
     /// Distance within which a stranded stand stub is treated as a navdata SEAM rather than
     /// genuinely disconnected ground, and joined to the main taxi network with one bridge edge.
     /// Bridging further would draw a straight steering line across whatever is actually between
-    /// them. The measured effect of this limit is recorded in docs/taxi-guidance.md, in one place,
-    /// so the figures cannot drift between copies.
+    /// them. The narrowed rule's bridge counts are recorded in docs/taxi-guidance.md's "Stranded
+    /// stand stubs are reattached" bullet, so the figures cannot drift between copies.
     /// </summary>
     private const double MAX_ORPHAN_PARKING_BRIDGE_M = 50.0;
 
