@@ -1271,13 +1271,15 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// The start-hold sentence ("Stop. Hold short of runway 12R. Press continue when cleared.") for a
     /// route that begins at a runway hold line (<see cref="TaxiRoute.StartHoldRunway"/>), set when
-    /// guidance enters that hold. The form folds it LAST into its single standstill utterance and
-    /// consumes it; whatever is left unconsumed is spoken once by the per-frame update, so a route the
-    /// form did not start (a Progressive leg, a landing-exit re-route) still hears it. Never both.
+    /// guidance enters that hold, and spoken exactly once. EVERY caller of <see cref="StartGuidance"/>
+    /// must consume and speak it: MainForm feeds no position frames while guidance holds, so no later
+    /// frame will. <c>TaxiAssistForm</c> folds it LAST into its standstill utterance on Calculate and
+    /// speaks it as a Progressive leg's opening instruction. A landing-exit re-route, which no caller
+    /// starts, enters the hold in <see cref="UpdatePosition"/> and is spoken in that same frame.
     /// </summary>
     public string? LastRouteStartHoldCue { get; private set; }
 
-    /// <summary>Takes the start-hold sentence and clears it, so the per-frame update will not repeat it.</summary>
+    /// <summary>Takes the start-hold sentence and clears it, so it is spoken only once.</summary>
     public string? ConsumeStartHoldCue()
     {
         string? cue = LastRouteStartHoldCue;
@@ -1648,13 +1650,12 @@ public partial class TaxiGuidanceManager : IDisposable
         SetState(TaxiGuidanceState.Taxiing);
 
         // A route that begins at a runway hold line starts HELD: no "steering guidance active"
-        // callout — the hold sentence is the instruction, delivered through LastRouteStartHoldCue
-        // (see its doc). Continue resumes taxiing on segment 0. Entered FROM Taxiing on purpose:
-        // MainForm starts the position feed only on the Taxiing transition
-        // (OnTaxiGuidanceStateChanged), and a held route still needs its frames — a Progressive
-        // leg's hold sentence is spoken by the per-frame update, and the previous leg's
-        // ProgressiveHold stopped the feed. No taxiing frame can run in between: this method holds
-        // _stateLock until it returns.
+        // callout — the hold sentence is the instruction, published as LastRouteStartHoldCue for
+        // the caller to speak (see its doc). Continue resumes taxiing on segment 0. Entered FROM
+        // Taxiing so every state listener sees guidance start: MainForm starts the position feed on
+        // that transition (OnTaxiGuidanceStateChanged) — the previous Progressive leg's
+        // ProgressiveHold stopped it — though it hands guidance no frames until Continue leaves
+        // HoldShort. No taxiing frame can run in between: this method holds _stateLock until it returns.
         if (_route.StartHoldRunway != null)
         {
             EnterStartHold();
@@ -1835,23 +1836,26 @@ public partial class TaxiGuidanceManager : IDisposable
             return;
         }
 
-        // Start hold (TaxiRoute.StartHoldRunway). StartGuidance enters it for routes it starts; a route
-        // adopted while guidance was already running — a landing-exit re-route, which goes straight to
-        // Taxiing — enters it here on its first taxiing frame, unless the aircraft has already rolled
-        // past the start node. The sentence is spoken here only when nobody consumed it.
-        if (_route?.StartHoldRunway != null && _currentSegmentIndex == 0)
+        // Start hold (TaxiRoute.StartHoldRunway) for a route adopted while guidance was already
+        // running — a landing-exit re-route, which goes straight to Taxiing without StartGuidance.
+        // It enters the hold on its first taxiing frame and speaks the sentence in that same frame:
+        // MainForm feeds no frames while guidance holds. An aircraft already past the start node
+        // gets no hold, and the skip is logged beside the adoption's "Route crossings:" line.
+        if (_state == TaxiGuidanceState.Taxiing && _currentSegmentIndex == 0
+            && _route?.StartHoldRunway != null)
         {
-            if (_state == TaxiGuidanceState.Taxiing)
+            if (RouteStartIsBehindAircraft(_route, lat, lon))
             {
-                if (RouteStartIsBehindAircraft(_route, lat, lon))
-                    _route.StartHoldRunway = null;
-                else
-                    EnterStartHold();
+                _guidanceLog.Info(
+                    $"Start hold skipped: startHold=\"{_route.StartHoldRunway}\" — aircraft already past the start node.");
+                _route.StartHoldRunway = null;
             }
-            if (_state == TaxiGuidanceState.HoldShort)
+            else
             {
+                EnterStartHold();
                 string? cue = ConsumeStartHoldCue();
                 if (cue != null) AnnounceInstruction(cue);
+                return;
             }
         }
 

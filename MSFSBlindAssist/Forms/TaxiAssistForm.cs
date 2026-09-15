@@ -4281,6 +4281,13 @@ public class TaxiAssistForm : Form
             txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
             lblStatus.Text = "Route loaded. Guidance active.";
             _guidanceManager.StartGuidance(progSettings);
+            // A leg that begins at a runway hold line started HELD, with no opening callout. Its hold
+            // sentence is this leg's one opening instruction, spoken here and consumed: MainForm feeds
+            // no position frames while guidance holds, so nothing later would say it. Immediate, like
+            // the unheld leg's opening callout.
+            string? progStartHold = _guidanceManager.ConsumeStartHoldCue();
+            if (!string.IsNullOrEmpty(progStartHold))
+                _announcer.AnnounceImmediate(progStartHold);
             return;
         }
 

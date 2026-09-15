@@ -87,10 +87,10 @@ public partial class TaxiGuidanceManager
         // RIGHT to come around", contradicting the tone on the exact flight being fixed.
         // Do not remove this conversion.
         double aircraftHeadingMagVar = 0.0,
-        // False only for the TOUCHDOWN route LandingExitPlanner loads while the aircraft is still
-        // rolling at landing speed: that route never starts held (TaxiRoute.StartHoldRunway), and
-        // its crossings log line reads phase=touchdown. The rollout's own handoff re-route, adopted
-        // at taxi speed, decides any start hold after it.
+        // False for a route adopted for the LANDING ROLLOUT while the aircraft is still on the
+        // runway — the touchdown route LandingExitPlanner loads and RetargetLandingExit's route to
+        // another exit: neither starts held (TaxiRoute.StartHoldRunway), and their crossings log line
+        // reads phase=touchdown. The rollout's handoff re-route decides any start hold after it.
         bool allowStartHold = true)
     {
         lock (_stateLock)
@@ -1446,7 +1446,7 @@ public partial class TaxiGuidanceManager
     /// "never disable the auto-inserted runway-crossing hold-shorts" invariant exist to
     /// prevent. Any future path that adopts a route must call THIS, not the pass directly.</para>
     /// </summary>
-    /// <param name="phase">"load", "recalc" or "touchdown" (the rollout's touchdown route) — recorded in the log line so they are
+    /// <param name="phase">"load", "recalc" or "touchdown" (a route adopted for the landing rollout) — recorded in the log line so they are
     /// separable. The recalc produced no line at all before, which is why it took a segment-
     /// cursor reset to prove it had even happened. The phase also gates the start hold
     /// (<see cref="TaxiRoute.StartHoldRunway"/>): only "load" may set one.</param>

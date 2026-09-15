@@ -1915,7 +1915,9 @@ public partial class TaxiGuidanceManager
                 taxiwaySequence: null,
                 prebuiltGraph: _graph,
                 announceSummary: false,
-                isRunwayDestination: false);
+                isRunwayDestination: false,
+                // Adopted for the landing rollout, not at the handoff: never starts held.
+                allowStartHold: false);
 
             if (error == null)
             {
