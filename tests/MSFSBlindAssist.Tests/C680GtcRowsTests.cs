@@ -80,6 +80,77 @@ public class C680GtcRowsTests
         Assert.Null(C680GtcRows.KeyToButtonLabel(Keys.Control | Keys.K, keyboardUp: true));   // chords are never typing
     }
 
+    // Rows the agent produced on the live Active Flight Plan page (EGNX–EKCH), 2026-09-15.
+    private static readonly string[] FlightPlan =
+    {
+        "Page: Active Flight Plan", "EGNX / EKCH | ALT | FPA/SPD", "[PROC]", "[Standby Flight Plan] (disabled)",
+        "[Departure – EGNX–RW27.TNT2N]", "[RW27] {alt=-1;spd=54}",
+        "[EME01, active leg, fly-over, at or above 810 feet, climb] {alt=55;spd=56}",
+        "[ABEGI, at or below 4000 feet, angle -3.00 degrees, at 220 knots] {alt=95;spd=96}",
+        "Bottom bar:", "[Back]", "Knobs: a / b"
+    };
+
+    [Fact]
+    public void AFlightPlanLegRowCarriesItsBoxIndicesAndHidesTheSuffix()
+    {
+        var rows = C680GtcRows.Parse(FlightPlan);
+        var eme = rows.Single(r => r.Label.StartsWith("EME01", StringComparison.Ordinal));
+        Assert.Equal("EME01, active leg, fly-over, at or above 810 feet, climb", eme.Label);
+        Assert.Equal("[EME01, active leg, fly-over, at or above 810 feet, climb]", eme.Display);
+        Assert.True(eme.IsFlightPlanLeg);
+        Assert.Equal(55, eme.AltButtonIndex);
+        Assert.Equal(56, eme.SpeedButtonIndex);
+        Assert.Equal(4, eme.ButtonIndex);   // the leg button keeps its place among the listed buttons
+
+        var rwy = rows.Single(r => r.Label == "RW27");
+        Assert.Equal(-1, rwy.AltButtonIndex);   // a runway leg has no altitude box
+        Assert.Equal(54, rwy.SpeedButtonIndex);
+
+        var proc = rows.Single(r => r.Label == "PROC");
+        Assert.False(proc.IsFlightPlanLeg);
+        Assert.Equal("[PROC]", proc.Display);
+        Assert.False(rows.Single(r => r.Label == "Standby Flight Plan").Enabled);
+    }
+
+    [Fact]
+    public void ADisabledLegRowStillParsesItsIndices()
+    {
+        var row = C680GtcRows.Parse(new[] { "[MANSEQ] (disabled) {alt=-1;spd=97}" }).Single();
+        Assert.Equal("MANSEQ", row.Label);
+        Assert.False(row.Enabled);
+        Assert.Equal(97, row.SpeedButtonIndex);
+        Assert.Equal("[MANSEQ] (disabled)", row.Display);
+    }
+
+    [Fact]
+    public void AAndSPressTheLegBoxesOnlyOffKeyboardPages()
+    {
+        Assert.Equal("altitude", C680GtcRows.KeyToLegBox(Keys.A, keyboardUp: false));
+        Assert.Equal("speed", C680GtcRows.KeyToLegBox(Keys.S, keyboardUp: false));
+        Assert.Null(C680GtcRows.KeyToLegBox(Keys.A, keyboardUp: true));   // letters type on a keyboard page
+        Assert.Null(C680GtcRows.KeyToLegBox(Keys.Shift | Keys.A, keyboardUp: false));
+        Assert.Null(C680GtcRows.KeyToLegBox(Keys.D, keyboardUp: false));
+    }
+
+    [Fact]
+    public void PageSummaryReadsTheTitleAndTextButNotTheBars()
+    {
+        // Weight and Fuel, Landing tab, 2026-09-15.
+        var rows = C680GtcRows.Parse(new[]
+        {
+            "Page: Weight and Fuel", "Est. Landing Weight | blank | LB", "minus | 0 | LB", "[Landing tab, selected]", "[Fuel Reserves 0 GAL]",
+            "Radio bar:", "[COM1 124.850]", "Bottom bar:", "[Back]", "Knobs: a / b"
+        });
+        Assert.Equal("Weight and Fuel. Est. Landing Weight, blank, LB. minus, 0, LB", C680GtcRows.PageSummary(rows));
+    }
+
+    [Fact]
+    public void PageSummaryOfAButtonOnlyPageCountsItsOwnButtons()
+    {
+        var rows = C680GtcRows.Parse(new[] { "Page: Services", "[Music] (disabled)", "[ACARS]", "Bottom bar:", "[Back]", "[Home]", "Knobs: a / b" });
+        Assert.Equal("Services. 2 buttons", C680GtcRows.PageSummary(rows));
+    }
+
     [Fact]
     public void KnobChordsMapToTheVerticalGtcEvents()
     {

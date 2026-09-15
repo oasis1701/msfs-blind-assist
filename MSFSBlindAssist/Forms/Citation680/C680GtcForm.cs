@@ -8,10 +8,12 @@ namespace MSFSBlindAssist.Forms.Citation680;
 /// <summary>
 /// One G5000 touchscreen controller (GTC) as a list: the page title, its text, one row per
 /// button and the knob labels, read through coherent-gtc-agent.js over the Coherent debugger.
-/// Enter on a button row presses it; on a keyboard or keypad page typed keys press the
+/// Enter on a button row presses it; on an Active Flight Plan leg row (one row per leg, reading
+/// the waypoint, its altitude and its speed / flight path angle) A opens the leg's altitude
+/// constraint and S its speed and angle; on a keyboard or keypad page typed keys press the
 /// on-screen keys; Ctrl/Alt arrow chords turn the knobs; Ctrl+Home / Ctrl+Backspace / Ctrl+G
 /// press Home / Back / MSG; Ctrl+R hides or shows the two persistent bars (radios, XPDR / Back /
-/// Home / MSG) every page carries; F5 re-reads; Escape closes. The Side combo swaps the window
+/// Home / MSG) every page carries; F2 speaks the page title and its text; F5 re-reads; Escape closes. The Side combo swaps the window
 /// to the other seat's unit (PFD GTC 1 or 4, MFD GTC 2 or 3).
 /// </summary>
 public sealed class C680GtcForm : Form
@@ -19,7 +21,10 @@ public sealed class C680GtcForm : Form
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    private const int PressSettleMs = 900;   // a page press: the GTC's view slide still reports the old view's buttons 700 ms in (measured 2026-09-10)
+    // A page press. The agent skips a page that is sliding away or covered by a popup, so the new
+    // page reads cleanly 150 ms in (measured 2026-09-15); the slide itself takes ~300 ms, and a read
+    // after it also has the new page's buttons at their final positions for the next click.
+    private const int PressSettleMs = 400;
     private const int KeySettleMs = 250;     // a typed key on a keyboard page
     private readonly bool _isMfd;
     private C680Seat.Side _seat;
@@ -104,7 +109,7 @@ public sealed class C680GtcForm : Form
         var parsed = C680GtcRows.Parse(rows);
         _rows = _hideBars ? C680GtcRows.WithoutBars(parsed) : parsed;
         int keep = _list.SelectedIndex;
-        _list.SetLines(_rows.Select(r => r.Raw).ToList());
+        _list.SetLines(_rows.Select(r => r.Display).ToList());
         if (keep >= 0 && keep < _list.Items.Count && _list.SelectedIndex < 0) _list.SelectedIndex = keep;
         if (_list.SelectedIndex < 0 && _list.Items.Count > 0) _list.SelectedIndex = 0;
     }
@@ -120,6 +125,13 @@ public sealed class C680GtcForm : Form
         if (_client == null) { base.OnKeyDown(e); return; }
         if (e.KeyData == Keys.Escape) { e.Handled = true; Close(); return; }
         if (e.KeyData == Keys.F5) { e.Handled = true; ApplyRows(await _client.ScrapeNowAsync()); return; }
+        if (e.KeyData == Keys.F2)
+        {
+            e.Handled = true;
+            ApplyRows(await _client.ScrapeNowAsync());
+            _announcer.AnnounceImmediate(C680GtcRows.PageSummary(_rows));
+            return;
+        }
         if (e.KeyData == (Keys.Control | Keys.R))
         {
             e.Handled = true; _hideBars = !_hideBars;
@@ -136,6 +148,21 @@ public sealed class C680GtcForm : Form
         if (e.KeyData == (Keys.Control | Keys.G)) { e.Handled = true; await Act("__MSFSBA_GTC.press('MSG')", "MSG"); return; }
 
         bool keyboard = C680GtcRows.IsKeyboardPage(_rows);
+        var box = C680GtcRows.KeyToLegBox(e.KeyData, keyboard);
+        if (box != null)
+        {
+            int i = _list.SelectedIndex;
+            if (i >= 0 && i < _rows.Count && _rows[i].IsFlightPlanLeg)
+            {
+                e.Handled = true; e.SuppressKeyPress = true;
+                var leg = _rows[i];
+                int index = box == "altitude" ? leg.AltButtonIndex : leg.SpeedButtonIndex;
+                string what = box == "altitude" ? "altitude constraint" : "speed and flight path angle";
+                if (index < 0) { _announcer.AnnounceImmediate($"This leg has no {what}"); return; }
+                await Act($"__MSFSBA_GTC.click({index})", what);
+                return;
+            }
+        }
         if (e.KeyData == Keys.Enter && !keyboard)
         {
             int i = _list.SelectedIndex;

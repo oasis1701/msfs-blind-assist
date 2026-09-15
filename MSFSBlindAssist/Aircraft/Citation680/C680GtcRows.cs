@@ -11,9 +11,21 @@ public static class C680GtcRows
 {
     public enum Kind { Title, Text, Button, Knobs }
 
-    public sealed record GtcRow(Kind Kind, string Label, bool Enabled, int ButtonIndex, string Raw);
+    /// <summary>
+    /// One row. <see cref="Display"/> is what the list shows (the raw row without the agent's
+    /// machine suffix). A flight-plan leg row carries the agent indices of its altitude box and its
+    /// FPA/speed box (-1 when the leg has none — a runway or a manual-sequence leg has no altitude
+    /// box), pressed with A and S.
+    /// </summary>
+    public sealed record GtcRow(Kind Kind, string Label, bool Enabled, int ButtonIndex, string Raw, int AltButtonIndex = -1, int SpeedButtonIndex = -1)
+    {
+        public string Display { get; init; } = Raw;
+        public bool IsFlightPlanLeg => AltButtonIndex >= 0 || SpeedButtonIndex >= 0;
+    }
 
     private const string DisabledSuffix = " (disabled)";
+    private static readonly System.Text.RegularExpressions.Regex LegSuffix =
+        new(@" \{alt=(-?\d+);spd=(-?\d+)\}$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     public static IReadOnlyList<GtcRow> Parse(IReadOnlyList<string> rows)
     {
@@ -27,14 +39,33 @@ public static class C680GtcRows
                 list.Add(new GtcRow(Kind.Knobs, raw.Substring(7), true, -1, raw));
             else if (raw.StartsWith("[", StringComparison.Ordinal))
             {
-                bool disabled = raw.EndsWith(DisabledSuffix, StringComparison.Ordinal);
-                string body = disabled ? raw.Substring(0, raw.Length - DisabledSuffix.Length) : raw;
+                // "[label] (disabled) {alt=N;spd=M}" — the leg suffix is last, then the disabled flag.
+                int alt = -1, spd = -1; string shown = raw;
+                var m = LegSuffix.Match(raw);
+                if (m.Success)
+                {
+                    alt = int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    spd = int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    shown = raw.Substring(0, m.Index);
+                }
+                bool disabled = shown.EndsWith(DisabledSuffix, StringComparison.Ordinal);
+                string body = disabled ? shown.Substring(0, shown.Length - DisabledSuffix.Length) : shown;
                 string label = body.Length >= 2 && body.EndsWith("]", StringComparison.Ordinal) ? body.Substring(1, body.Length - 2) : body;
-                list.Add(new GtcRow(Kind.Button, label, !disabled, button++, raw));
+                list.Add(new GtcRow(Kind.Button, label, !disabled, button++, raw, alt, spd) { Display = shown });
             }
             else list.Add(new GtcRow(Kind.Text, raw, true, -1, raw));
         }
         return list;
+    }
+
+    /// <summary>
+    /// A (altitude constraint) / S (speed and flight path angle) on a flight-plan leg row → which box
+    /// to press, or null. Never while a keyboard or keypad page is up, where letters type.
+    /// </summary>
+    public static string? KeyToLegBox(Keys key, bool keyboardUp)
+    {
+        if (keyboardUp || (key & (Keys.Control | Keys.Alt | Keys.Shift)) != 0) return null;
+        return (key & Keys.KeyCode) switch { Keys.A => "altitude", Keys.S => "speed", _ => null };
     }
 
     /// <summary>The page title, or an empty string when the scrape carried none.</summary>
@@ -108,6 +139,29 @@ public static class C680GtcRows
         if (pressedIndex >= 0 && pressedIndex < rows.Count && rows[pressedIndex].Kind == Kind.Button && rows[pressedIndex].Label != pressedLabel)
             return rows[pressedIndex].Label;
         return pressedLabel;
+    }
+
+    /// <summary>
+    /// F2 "read this page": the title, then every text row in order (the bars' marker rows are not
+    /// text), as one sentence each; a page with no text says how many of its own buttons it has, so
+    /// the pilot knows to arrow through them. The " | " cell separators become commas.
+    /// </summary>
+    public static string PageSummary(IReadOnlyList<GtcRow> rows)
+    {
+        var parts = new List<string>();
+        string title = TitleOf(rows);
+        if (title.Length > 0) parts.Add(title);
+        int buttons = 0; bool inBar = false;
+        foreach (var r in rows)
+        {
+            if (r.Kind == Kind.Text && (r.Raw == "Radio bar:" || r.Raw == "Bottom bar:")) { inBar = true; continue; }
+            if (r.Kind == Kind.Knobs) inBar = false;
+            if (inBar) continue;
+            if (r.Kind == Kind.Text) parts.Add(r.Label.Replace(" | ", ", "));
+            else if (r.Kind == Kind.Button) buttons++;
+        }
+        if (parts.Count <= 1) parts.Add(buttons == 1 ? "1 button" : $"{buttons} buttons");
+        return string.Join(". ", parts);
     }
 
     /// <summary>Knob and joystick chords → the H: event suffix for a VERTICAL GTC (the Sovereign's four are all vertical).</summary>
