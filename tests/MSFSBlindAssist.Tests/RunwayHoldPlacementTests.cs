@@ -221,4 +221,68 @@ public class RunwayHoldPlacementTests
             RouteRunwayCrossings.InsertRunwayHoldShorts(Lebl(), null!, "", allowStartHold: true));
         Assert.Empty(RouteRunwayCrossings.InsertRunwayHoldShorts(null!, new[] { EastWest() }, "", allowStartHold: true));
     }
+
+    [Fact]
+    public void A_second_crossing_of_the_same_runway_never_shares_the_firsts_stop()
+    {
+        // Reviewer probe S1: a "runway 09" hold node 35 m south of a first crossing, then two nodes
+        // 41 m north, 20 m apart along the runway, forming a second crossing. The second crossing's
+        // walk must not reach back across the first crossing's own pavement to share that hold node.
+        var route = RouteOf(
+            Node(1, 1000, -300), Node(2, 1000, -150), Node(3, 1000, -35, TaxiNodeType.HoldShort, "runway 09"),
+            Node(4, 1000, 0), Node(5, 1000, 41), Node(6, 1020, 41), Node(7, 1020, 0), Node(8, 1020, -150));
+
+        var events = Pass(route, new[] { EastWest() });
+
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.True(e.Held));
+        Assert.True(route.Segments[1].IsHoldShortPoint);
+        Assert.True(route.Segments[4].IsHoldShortPoint);
+    }
+
+    [Fact]
+    public void A_route_starting_on_the_runway_that_re_crosses_it_never_gets_a_start_hold()
+    {
+        // Reviewer probe S4 (Minor 3): the route begins ON the runway (no entry to hold at), leaves
+        // to nodes inside the 10 m clear margin, then re-crosses. The start node sits on the
+        // pavement, so it must never become a start hold.
+        var route = RouteOf(Node(1, 1000, 0), Node(2, 1000, 35), Node(3, 1060, 35), Node(4, 1060, 0), Node(5, 1060, -60));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }));
+
+        Assert.Equal(RunwayEventKind.Crossing, ev.Kind);
+        Assert.False(ev.Held);
+        Assert.Null(route.StartHoldRunway);
+        Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
+    }
+
+    [Fact]
+    public void An_event_names_the_designator_its_own_stop_actually_announces()
+    {
+        // Reviewer probe S5: pick "27" for a crossing whose geometry sits in the 09 half, then run
+        // the automatic pass. The event must name "27" (what the stop says), not "09" (the
+        // designator the crossing geometry reports).
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
+
+        Assert.True(RouteRunwayCrossings.ApplyUserRunwayHold(route, EastWest(), "27", runStartSegmentIndex: 0, allowStartHold: true));
+        var events = Pass(route, new[] { EastWest() });
+
+        Assert.Equal("runway 27", route.Segments[0].HoldShortRunway);
+        var ev = Assert.Single(events);
+        Assert.Equal("27", ev.Designator);
+        Assert.Equal("crossing runway 27", RouteRunwayCrossings.DescribeRunwayEvents(route.RunwayEvents));
+    }
+
+    [Fact]
+    public void A_kept_scenery_label_naming_the_reciprocal_end_is_what_the_event_records()
+    {
+        var route = RouteOf(
+            Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 27 at C"),
+            Node(3, 1000, 51), Node(4, 1000, 21), Node(5, 1000, -21), Node(6, 1000, -105));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }));
+
+        Assert.Equal("runway 27 at C", route.Segments[0].HoldShortRunway);
+        Assert.Equal("27", ev.Designator);
+    }
 }
