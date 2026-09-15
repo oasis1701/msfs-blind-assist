@@ -1007,6 +1007,9 @@ public class TaxiGraph
         if (standNodes.Contains(node.NodeId)) return false;
         if (holdShortNodes.Contains(node.NodeId)) return false;
         if (leadInChainNodes.Contains(node.NodeId)) return false;
+        // Only prunes candidates ChooseBridgePair's segment-touches-pavement check would reject
+        // anyway (a pair whose main end is on the pavement always touches it) — an early filter,
+        // not a second guarantee.
         if (RunwayPavement.IsOnPavement(node.Latitude, node.Longitude, RunwayCenterlines)) return false;
         return true;
     }

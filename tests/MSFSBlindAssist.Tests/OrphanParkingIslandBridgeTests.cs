@@ -230,8 +230,10 @@ public class OrphanParkingIslandBridgeTests
     }
 
     [Fact]
-    public void A_network_node_on_runway_pavement_is_never_the_network_end()
+    public void A_bridge_never_starts_on_runway_pavement()
     {
+        // Pinned by ChooseBridgePair's segment-touches-pavement check, not by
+        // IsEligibleMainEndpoint's pavement exclusion (deleting that exclusion still leaves this passing).
         // E1 ends on the runway centreline at 500 E. The stub's connector 35 m south of the
         // centreline is within 50 m of only that on-pavement node, so nothing is bridged.
         var paths = new List<TaxiPath>
