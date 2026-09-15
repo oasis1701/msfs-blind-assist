@@ -43,7 +43,6 @@ public partial class SkywardC680Definition
         // ---- MFD Touchscreen (FMS summary rows; the window is Input Shift+M)
         AddSimReadout(v, "C680_FMS_DIST", "GPS WP DISTANCE", "Distance to Next Waypoint", "nautical miles", "F1");
         AddSimReadout(v, "C680_FMS_ETE", "GPS WP ETE", "Time to Next Waypoint", "seconds", "F0");
-        AddSimReadout(v, "C680_FMS_DEST_DIST", "GPS FLIGHT PLAN TOTAL DISTANCE", "Flight Plan Total Distance", "nautical miles", "F0");
         AddSimReadout(v, "C680_FMS_DEST_ETE", "GPS ETE", "Time to Destination", "seconds", "F0");
         AddFlag(v, "C680_FMS_ACTIVE", "GPS IS ACTIVE FLIGHT PLAN", "Flight Plan", "None", "Active", simvar: true);
         AddSimReadout(v, "C680_FMS_GS", "GPS GROUND SPEED", "Ground Speed", "knots", "F0");
@@ -62,7 +61,7 @@ public partial class SkywardC680Definition
     private static readonly List<string> PilotGtcControls = new() { "C680_COM1_STBY_SET", "C680_COM1_SWAP", "C680_COM2_STBY_SET", "C680_COM2_SWAP", "C680_NAV1_SET", "C680_NAV2_SET", "C680_XPDR_SET", "C680_BARO_SET", "C680_BARO_STD" };
     private static readonly List<string> PilotGtcDisplay = new() { "C680_COM1_ACT", "C680_COM1_STBY", "C680_COM2_ACT", "C680_COM2_STBY", "C680_NAV1_ACT", "C680_NAV2_ACT", "C680_ADF_ACT", "C680_XPDR_CODE", "C680_XPDR_STATE", "C680_BARO_1", "C680_BARO_2" };
     private static readonly List<string> MfdGtcControls = new();
-    private static readonly List<string> MfdGtcDisplay = new() { "C680_FMS_ACTIVE", "C680_FMS_DIST", "C680_FMS_ETE", "C680_FMS_DEST_DIST", "C680_FMS_DEST_ETE", "C680_FMS_GS" };
+    private static readonly List<string> MfdGtcDisplay = new() { "C680_FMS_ACTIVE", "C680_FMS_DIST", "C680_FMS_ETE", "C680_FMS_DEST_ETE", "C680_FMS_GS" };
     private static readonly List<string> DisplaysControls = new() { "C680_DISPLAY_REV_L", "C680_DISPLAY_REV_R", "C680_BARO_SYNC" };
 
     private bool HandleAvionicsSet(string varKey, double value, SimConnectManager sc)

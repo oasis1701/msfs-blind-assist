@@ -147,6 +147,7 @@
   // - a radio row's volume is a slider whose .vol-label sits outside every button → spoken on the
   //   row's first button ("NAV1, on, volume 100%") and dropped from the text rows.
   function decorate(e, label) {
+    var base = label;
     var act = e.querySelector(".active-freq"), stby = e.querySelector(".stby-freq");
     if (act && stby) {
       // Whatever else the button says (the ADF button's "Mode ADF", a navaid ident) follows.
@@ -161,9 +162,17 @@
       var tl = e.querySelector(".gtc-tab-label");
       label = (tl ? txt(tl) : label) + " tab" + (hasClass(e, "gtc-tab-selected") ? ", selected" : "");
     }
-    if (hasClass(e, "touch-button-toggle")) {
-      var bar = e.querySelector(".toggle-status-bar");
-      if (bar) label += hasClass(bar, "toggle-status-bar-on") ? ", on" : ", off";
+    // State (measured 2026-09-15, in flight): a toggle's status bar carries toggle-status-bar-on;
+    // a CHOICE button (touch-button-set-value: PFD map Off / HSI Map / Inset Map, Traffic Auto /
+    // TA Only, Relative / Absolute) carries the same class on the chosen one. A toggle whose text IS
+    // a state word is also a choice in practice (Exterior Lights "Navigation: On | Off", "Beacon:
+    // Normal | On | Off"; Traffic "On" / "Standby"), so it reads "selected", never "On, on".
+    var sbar = e.querySelector(".toggle-status-bar");
+    var lit = !!sbar && hasClass(sbar, "toggle-status-bar-on");
+    if (hasClass(e, "touch-button-set-value") || (hasClass(e, "touch-button-toggle") && STATE_WORD.test(base))) {
+      if (lit) label += ", selected";
+    } else if (hasClass(e, "touch-button-toggle")) {
+      if (sbar) label += lit ? ", on" : ", off";
     }
     var item = ancestorWith(e, "list-item");
     if (item && item.querySelector(".touch-button") === e) {
@@ -173,14 +182,55 @@
     // A list row's own text names what its button acts on: ACARS Flight Plan Request rows are
     // "BVI4MF / EGNX-EKCH / Ready for Import" beside an [Import] or [Request] button, and read as
     // four bare "Request" buttons without it (measured 2026-09-15).
-    if (item) { var rt = rowText(item); if (rt) label = rt + ", " + label; }
+    var rt = item ? rowText(item) : "";
+    if (rt) return rt + ", " + label;
+    // A group title beside the buttons ("XPDR/TCAS Mode", "Altitude Display", "ADS-B" over their
+    // choices; the Exterior Lights <label> "Navigation" before On / Off) names them.
+    var gl = groupLabel(e);
+    if (gl) return gl + ": " + label;
+    // A row of buttons with no text of its own: the first names the rest (Speed Bugs "Vapp" then
+    // "117 KT"; map settings "Traffic" then "Settings", "Connext Radar" then "1000 NM"). ONLY for a
+    // button that says nothing by itself — a bare value or a generic word: MFD Home lays its
+    // directory buttons out four to a row, and "Map Settings: TAWS" is wrong (measured 2026-09-15).
+    var row = item || e.parentNode;
+    if (row && row.nodeType === 1 && BARE_VALUE.test(base)) {
+      var peers = row.querySelectorAll(".touch-button, .bg-img-touch-button");
+      if (peers.length >= 2 && peers.length <= 4 && peers[0] !== e && sameLine(peers[0], e)) {
+        var firstBase = labelOf(peers[0]);
+        if (firstBase && firstBase !== base) return firstBase + ": " + label;
+      }
+    }
     return label;
   }
+  var STATE_WORD = /^(On|Off|Normal|Auto|Standby|Enabled?|Disabled?|Manual|Dim|Bright|Norm)$/i;
+  var BARE_VALUE = /^(blank|[-−+]?[\d.,:]+\s*(KT|KTS|NM|FT|M|MIN|SEC|S|LB|LBS|KG|GAL|%|°|FPM|MHZ|KHZ|HPA|IN)?|Settings|Options|Setup|Edit)$/i;
+  function sameLine(a, b) { var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect(); return Math.abs((ra.top + ra.bottom) / 2 - (rb.top + rb.bottom) / 2) < 12; }
+  // The title of the button's own group: a <label>, or an element whose class ENDS in "title"
+  // (xpdr-tcas-group-title, tfc-settings-group-title), that comes BEFORE the group's first button.
+  // Narrow on purpose (measured 2026-09-15): a "-label" class is usually a value caption — Landing
+  // Data's "Landing Weight" sits AFTER its buttons and captions a number, and Weight and Fuel's
+  // "wf-label-value-row" is a label + value line — and either would have named unrelated buttons.
+  // Marked so the text rows do not repeat it.
+  function groupLabel(e) {
+    var p = e.parentNode; if (!p || p.nodeType !== 1 || hasClass(p, "list-item")) return "";
+    var buttons = p.querySelectorAll(".touch-button, .bg-img-touch-button"); if (buttons.length > 8) return "";
+    for (var c = p.firstElementChild; c; c = c.nextElementSibling) {
+      if (isButton(c) || c.querySelector(".touch-button, .bg-img-touch-button")) return "";   // reached a button first: no title precedes the group
+      var cls = String(c.className);
+      if (c.tagName !== "LABEL" && !/(^|\s)[\w-]*title(\s|$)/i.test(cls)) continue;
+      var t = txt(c); if (!t || !visible(c)) continue;
+      c.__msfsbaGroupTitle = A._stamp;
+      return t;
+    }
+    return "";
+  }
   // The visible text of a list row that sits outside every button (and is not a volume label).
+  // A unit in an element of its own stays with its number: Nearest Airport rows are "100 | ° | 33.7 |
+  // NM | VFR | 4950 | FT | EGFE Haverfordwest", read "100°, 33.7 NM, VFR, 4950 FT, EGFE Haverfordwest".
   function rowText(item) {
     return collect(item, function (p) {
       return !!p && p.nodeType === 1 && visible(p) && !isButton(p) && !insideButton(p) && !hasClass(p, "vol-label");
-    }, ", ");
+    }, ", ").replace(/, (°)/g, "$1").replace(/, (NM|FT|KT|LB|LBS|GAL|MHZ|MHz|KHZ|kHz|MIN|SEC|%|FPM|M)(?=,|$)/g, " $1");
   }
   // A list row's text is spoken on its buttons (see decorate), so the text rows drop it.
   function ownedByRowButton(e) {
@@ -233,7 +283,9 @@
     if (hasClass(item, "active-leg")) parts.push("active leg");
     var icon = item.querySelector(".leg-icon");
     if (icon && /fly_over/.test(String(icon.getAttribute("src")))) parts.push("fly-over");
-    var exit = one(item, ".airway-exit-text"); if (exit) parts.push("exit " + exit);
+    // An airway-exit row writes "MADUX exit Airway Q70" (name included), so it replaces the name.
+    var exit = one(item, ".airway-exit-text");
+    if (exit) { if (exit.indexOf(name) === 0) parts[0] = exit; else parts.push(/\bexit\b/i.test(exit) ? exit : "exit " + exit); }
 
     var box = item.querySelector(".flight-plan-altitude-box");
     var disp = box && !hasClass(box, "hidden") ? box.querySelector(".altitude-constraint-display") : null;
@@ -282,7 +334,9 @@
   // its altitude and FPA/speed boxes are appended after every listed button, unlisted, and the
   // leg row names their indices so the window can press them (A / S).
   A.buttons = function () {
-    A._top = findTopPopup();
+    // _stamp marks group titles on page elements; those marks outlive a re-installed agent, so a new
+    // install starts at a random value rather than 1 (the EFB agent hid a whole table that way).
+    A._top = findTopPopup(); A._stamp = (A._stamp || Math.floor(Math.random() * 1e9) * 1000) + 1;
     var popup = [], main = [], top = [], bottom = [], sub = []; var bs = document.querySelectorAll(BUTTONS);
     for (var i = 0; i < bs.length; i++) {
       var e = bs[i]; if (isHidden(e)) continue;
@@ -313,7 +367,23 @@
   // nodes (see labelOf); a popup's own .gtc-panel-title is the page title and is not repeated.
   A.rows = function () {
     A._top = findTopPopup();
-    var items = []; var w = document.createTreeWalker(main(), NodeFilter.SHOW_TEXT, null, false); var n;
+    var items = [];
+    // A caption over its value — VNAV Profile's .box of .label "VS REQ" and .data "____ FPM" (measured
+    // 2026-09-15) — read "VS REQ: blank FPM" as one item, or the labels line up in one row and the
+    // values in the next with nothing tying them together.
+    var labels = main().querySelectorAll(".label");
+    var pairStamp = (A._stamp || 0) + 0.5;
+    for (var li = 0; li < labels.length; li++) {
+      var lab = labels[li], val = lab.nextElementSibling;
+      if (!val || !/(^|\s)(data|value)(\s|$)|-value(\s|$)/.test(String(val.className))) continue;
+      if (isButton(lab) || insideButton(lab) || inDeadView(lab) || !visible(lab) || inChrome(lab)) continue;
+      var lt = txt(lab), vt = collect(val, function (p) { return !(p && p !== val && !visible(p)); }, " ");
+      if (!lt) continue;
+      var lr = lab.getBoundingClientRect();
+      lab.__msfsbaPair = pairStamp; val.__msfsbaPair = pairStamp;
+      items.push({ t: lt + ": " + (vt || "blank"), x: Math.round(lr.left), y: Math.round(lr.top + lr.height / 2), pop: inPopup(lab) ? 0 : 1, p: lab, o: items.length });
+    }
+    var w = document.createTreeWalker(main(), NodeFilter.SHOW_TEXT, null, false); var n;
     while ((n = w.nextNode())) {
       var t = clean(n.nodeValue); if (!t) continue;
       var e = n.parentNode; if (!e || e.nodeType !== 1) continue;
@@ -326,6 +396,8 @@
       if (ancestorWith(e, "flight-plan-leg-list-item")) continue;   // the leg row's own button carries the whole leg
       if (ancestorWith(e, "gtc-panel-title")) continue;
       if (ownedByRowButton(e)) continue;   // a list row's text and volume are spoken on its buttons
+      if (ancestorWithProp(e, "__msfsbaGroupTitle", A._stamp)) continue;   // a group title is spoken on its buttons
+      if (ancestorWithProp(e, "__msfsbaPair", pairStamp)) continue;   // already read as "caption: value"
       items.push({ t: t, x: Math.round(r.left), y: Math.round(r.top + r.height / 2), pop: inPopup(e) ? 0 : 1, p: e, o: items.length });
     }
     // Same parent keeps document order (x ties inside one element); otherwise row, then x.
@@ -340,17 +412,23 @@
     return lines;
   };
 
+  function ancestorWithProp(e, prop, value) {
+    var p = e; while (p && p !== document) { if (p[prop] === value) return p; p = p.parentNode; }
+    return null;
+  }
+  // The label bar draws the knob push/hold hints with arrow glyphs ("Push:1–2 Hold:↕").
   A.knobLabel = function () {
     var d = document.querySelector(".label-bar-label.dual-knob");
     var c = document.querySelector(".label-bar-label.center-knob");
-    return (d ? txt(d) : "") + " / " + (c ? txt(c) : "");
+    function k(e) { return e ? txt(e).replace(/[←-⇿]/g, "").replace(/:\s*(?=\s|$)/g, "").replace(/\s+/g, " ").trim() : ""; }
+    return k(d) + " / " + k(c);
   };
 
   A.scrape = function () {
     try {
       var rows = ["Page: " + A.title()];
+      var bs = A.buttons(); var lastBar = "";   // buttons first: labelling them marks the group titles the text rows then skip
       var text = A.rows(); for (var i = 0; i < text.length; i++) rows.push(text[i]);
-      var bs = A.buttons(); var lastBar = "";
       for (var k = 0; k < bs.length; k++) {
         if (bs[k].bar === "sub") break;   // a leg's altitude / FPA-speed boxes: pressed through the leg row, never listed
         if (bs[k].bar !== lastBar) { rows.push(bs[k].bar === "top" ? "Radio bar:" : "Bottom bar:"); lastBar = bs[k].bar; }

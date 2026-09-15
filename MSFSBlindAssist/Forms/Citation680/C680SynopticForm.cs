@@ -14,11 +14,13 @@ public sealed class C680SynopticForm : Form
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    /// <summary>The MFD touchscreen's Aircraft Systems buttons (measured 2026-09-10) plus the Home page's Checklist.</summary>
-    public static readonly string[] Pages =
-    {
-        "Summary", "Hydraulics", "Fuel", "Electrical", "Systems Test", "Cabin Management", "Exterior Lights", "Temp", "Propulsion", "Cabin Pressure", "Checklist"
-    };
+    /// <summary>
+    /// The MFD touchscreen's Aircraft Systems SYNOPTICS plus the Home page's Checklist. The same page's
+    /// "Controls" buttons (Systems Test, Cabin Management, Exterior Lights, Temp, Propulsion, Cabin
+    /// Pressure) open TOUCHSCREEN pages and leave the MFD pane on the previous synoptic (measured
+    /// 2026-09-15), so they are not listed here: they are read in the touchscreen window.
+    /// </summary>
+    public static readonly string[] Pages = { "Summary", "Hydraulics", "Fuel", "Electrical", "Checklist" };
 
     private readonly Func<Task<List<string>>> _paneRows;
     private readonly Func<string, Task<string>> _selectPage;

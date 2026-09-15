@@ -96,9 +96,11 @@ public partial class SkywardC680Definition
             }
             case HotkeyAction.ReadDistanceToDest:
             {
-                double? active = ReadNow(sc, "C680_FMS_ACTIVE"); double? ete = ReadNow(sc, "C680_FMS_DEST_ETE"); double? dist = ReadNow(sc, "C680_FMS_DEST_DIST");
+                // The G3000 publishes no destination distance (GPS FLIGHT PLAN TOTAL DISTANCE reads 0,
+                // measured in flight 2026-09-15): it is summed from the FMS's own legs on the MFD view.
+                double? active = ReadNow(sc, "C680_FMS_ACTIVE");
                 if (active != null && active < 0.5) { ann.AnnounceImmediate("No active flight plan"); return true; }
-                ann.AnnounceImmediate($"Destination {(dist == null ? "distance not yet read" : $"{dist:0} miles")}, {Hm(ete)}; next waypoint {N(ReadNow(sc, "C680_FMS_DIST"), "0.0")} miles, {Hm(ReadNow(sc, "C680_FMS_ETE"))}");
+                _ = SpeakDestinationAsync(sc, ann);
                 return true;
             }
             case HotkeyAction.ReadDistanceToTOD:
@@ -138,6 +140,15 @@ public partial class SkywardC680Definition
             case HotkeyAction.ToggleAutothrust: sc.ExecuteCalculatorCodeUnique("(>K:AUTO_THROTTLE_ARM)"); return true;
         }
         return false;
+    }
+
+    /// <summary>Output D: the MFD agent's FMS distance, spoken on the UI thread the hotkey came from.</summary>
+    private async Task SpeakDestinationAsync(SimConnectManager sc, ScreenReaderAnnouncer ann)
+    {
+        string json = "";
+        try { json = await MfdClient.InvokeAsync("__MSFSBA_C680_EIS && __MSFSBA_C680_EIS.dest ? __MSFSBA_C680_EIS.dest() : ''"); }
+        catch (Exception) { json = ""; }
+        ann.AnnounceImmediate(C680Destination.Compose(json, ReadNow(sc, "C680_FMS_DEST_ETE"), ReadNow(sc, "C680_FMS_DIST"), ReadNow(sc, "C680_FMS_ETE")));
     }
 
     private static string Kg(double? lb) => lb == null ? "not read" : (lb.Value / 2.20462).ToString("0", System.Globalization.CultureInfo.InvariantCulture);

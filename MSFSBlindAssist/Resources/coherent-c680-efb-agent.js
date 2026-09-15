@@ -36,7 +36,11 @@
 (function () {
   "use strict";
   var A = {}; A.VERSION = 2; A._acts = []; A._clTarget = "";
-  var scrapeId = 0;
+  // Ownership marks are expando properties left on page elements, and they outlive this agent: a
+  // re-install (reconnect, a second window) must not start counting where an earlier install's marks
+  // already sit, or read N of the new agent matches read N of the old one and silently hides content
+  // (the whole Payload weight table vanished that way, measured 2026-09-15). Start at random.
+  var scrapeId = Math.floor(Math.random() * 1e9) * 1000;
   function clean(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
   function txt(e) { return clean(e.innerText || e.textContent || ""); }
   function visible(e) {
@@ -178,12 +182,18 @@
     for (var i = 0; i < secs.length; i++) if (secs[i].id === id) { A._clTarget = id; clickEl(secs[i].el); return "ok"; }
     return "none";
   };
+  // Checklist text is read from textContent: the vendor draws some content only when its category is
+  // showing, and a visibility test would drop a header built of SVG message boxes. The vendor's
+  // renderer also leaves the literal text "undefined" where it lost an item (Abnormal "This CAS
+  // message indicates:" followed by three "undefined" lines, measured 2026-09-15) — said as missing.
+  var MISSING = "(item missing from the aircraft's EFB)";
+  function clText(e) { var t = clean(e ? e.textContent : ""); return t === "undefined" ? MISSING : t; }
   function checklistRows(node, rows) {
     var kids = node.children;
     for (var i = 0; i < kids.length; i++) {
       var c = kids[i];
       if (hasClass(c, "checklist-item")) {
-        var num = one(c, ".checklist-number"), action = one(c, ".checklist-action"), state = one(c, ".checklist-state");
+        var num = clText(c.querySelector(".checklist-number")), action = clText(c.querySelector(".checklist-action")), state = clText(c.querySelector(".checklist-state"));
         if (hasClass(c, "checklist-bullet")) { rows.push("• " + action); continue; }
         var row = (num ? num + " " : "") + action;
         if (state && !hasClass(c, "checklist-no-state")) row += ": " + state;
@@ -191,40 +201,64 @@
         rows.push(row);
       } else if (hasClass(c, "checklist-division")) {
         var lv = /checklist-division-(\d)/.exec(String(c.className)); var level = lv ? parseInt(lv[1], 10) : 1;
-        rows.push((level > 1 ? "Condition, level " + level + ": " : "Condition: ") + one(c, ".division-text"));
-      } else if (hasClass(c, "checklist-tag-row") || hasClass(c, "checklist-divider")) {
-        rows.push(txt(c) + ":");
+        rows.push((level > 1 ? "Condition, level " + level + ": " : "Condition: ") + clText(c.querySelector(".division-text")));
+      } else if (hasClass(c, "checklist-tag-row")) {
+        rows.push(clText(c) + ":");   // CAUTION / WARNING
+      } else if (hasClass(c, "checklist-divider")) {
+        // "NOTE" introduces the rows after it; anything else is a heading, often dash-decorated
+        // ("-WHEN PASSING 10'000'-", "- - WHEN CLEARED TO LAND - -", "MAXIMUM GLIDE AIRSPEED (KIAS)").
+        var dt = clText(c).replace(/^[-–—\s]+|[-–—\s]+$/g, "");
+        if (/^(NOTES?|CAUTION|WARNING)$/i.test(dt)) rows.push(dt + ":"); else if (dt) rows.push("Heading: " + dt);
       } else if (hasClass(c, "checklist-subtitle")) {
-        rows.push("Heading: " + txt(c));
+        rows.push("Heading: " + clText(c));
       } else if (hasClass(c, "checklist-plain")) {
-        var pt = textOf(c); if (pt) rows.push(pt);
+        var pt = clText(c); if (pt) rows.push(pt);
       } else if (hasClass(c, "checklist-table-container")) {
         var trs = c.querySelectorAll("tr");
         for (var t = 0; t < trs.length; t++) {
           var cells = [], cs = trs[t].children;
-          for (var k = 0; k < cs.length; k++) { var ct = txt(cs[k]); if (ct) cells.push(ct); }
+          for (var k = 0; k < cs.length; k++) { var ct = clText(cs[k]); if (ct) cells.push(ct); }
           if (cells.length) rows.push(cells.join(" | "));
         }
       } else if (c.children.length) {
         checklistRows(c, rows);   // memory groups, division content, anything nesting the above
       } else {
-        var lt = txt(c); if (lt) rows.push(lt);
+        var lt = clText(c); if (lt) rows.push(lt);
       }
     }
   }
   function scrapeChecklists(p, tab) {
     var rows = ["Page: Checklists" + (tab ? ", " + tab : "")], secs = navSections(), cur = currentSection(secs);
     if (cur < 0) { rows.push("No checklist sections on this tab"); A._acts = [null, null]; return JSON.stringify({ ok: true, rows: rows }); }
-    var group = document.getElementById(secs[cur].id);
-    var head = group.querySelector(".cl-group-header"), title = head ? textOf(head.querySelector(".cl-group-header-title") || head) : secs[cur].label;
-    var kind = hasClass(head, "cl-cas-warning") ? "warning" : hasClass(head, "cl-cas-caution") ? "caution" : hasClass(head, "cl-cas-advisory") ? "advisory" : "";
-    var code = head ? one(head, ".cl-group-header-tab") : "";
-    rows.push("Section: " + title + (kind ? ", " + kind : "") + (code ? ", " + code : "") + " (" + (cur + 1) + " of " + secs.length + ")");
-    var body = group.querySelector(".cl-group-body"); if (body) checklistRows(body, rows);
+    var g = groupRows(document.getElementById(secs[cur].id), secs[cur].label);
+    rows.push("Section: " + g.title + " (" + (cur + 1) + " of " + secs.length + ")");
+    for (var r = 0; r < g.rows.length; r++) rows.push(g.rows[r]);
     var acts = []; for (var i = 0; i < rows.length; i++) acts.push(null);
     A._acts = acts;
     return JSON.stringify({ ok: true, rows: rows });
   }
+  // One checklist: its header ("title, severity, code") and body rows. Header severity is
+  // cl-cas-{warning,caution,advisory} with two variants (measured over all 354 checklists,
+  // 2026-09-15): "-pfd" is drawn INVERSE (a filled block) — the PFD's own annunciation (AP, ALT,
+  // PULL UP, RWY TOO SHORT), not a CAS list message — and "-clr" is a title built from several
+  // message boxes, some drawn as SVG text. Plain cl-cas-header (the Emergency procedures) has none.
+  function groupRows(group, fallbackTitle) {
+    var head = group.querySelector(".cl-group-header");
+    var titleEl = head ? head.querySelector(".cl-group-header-title") || head : null;
+    var title = titleEl ? clText(titleEl) : (fallbackTitle || "");
+    var sev = head ? /cl-cas-(warning|caution|advisory)(-pfd|-clr)?(\s|$)/.exec(String(head.className)) : null;
+    var kind = sev ? (sev[2] === "-pfd" ? "PFD " + sev[1] : sev[1]) : "";
+    var code = head ? one(head, ".cl-group-header-tab") : "";
+    var rows = [];
+    var body = group.querySelector(".cl-group-body"); if (body) checklistRows(body, rows);
+    return { title: title + (kind ? ", " + kind : "") + (code ? ", " + code : ""), rows: rows };
+  }
+  // Diagnostic: any checklist by its group id, whichever category is showing (audits every section
+  // without scrolling the EFB).
+  A.readChecklist = function (id) {
+    var g = document.getElementById(id); if (!g) return "none";
+    var r = groupRows(g, ""); return JSON.stringify({ title: r.title, rows: r.rows });
+  };
 
   // ---- popups ----------------------------------------------------------------------------------
   function scrapeOverlay(ov) {
@@ -346,6 +380,54 @@
       var fb = g.querySelectorAll("button");
       for (q = 0; q < fb.length; q++) if (visible(fb[q])) gr.push(btnRow(fb[q], buttonLabel(fb[q])));
       own(g, gr);
+    }
+    // Services > Payload (measured 2026-09-15): the FUEL QTY panel's two tank figures carry no text
+    // label, only ids; a payload station (Cargo Bay) is label + unit + a value button; the SimBrief
+    // import chips sit either side of a bare "+".
+    var fq = p.querySelector(".fuel-qty-panel");
+    if (fq && visible(fq)) {
+      var unit = one(fq, "#fuel-qty-unit-label");
+      own(fq, [{ t: "Fuel quantity: total " + one(fq, "#fuel-qty-total") + " " + unit + ", left " + one(fq, "#fuel-qty-left") + ", right " + one(fq, "#fuel-qty-right"), act: null }]);
+    }
+    var stations = p.querySelectorAll("[class*='payload-station-']");
+    for (i = 0; i < stations.length; i++) {
+      var st = stations[i]; if (!visible(st) || !/(^|\s)payload-station-\d+(\s|$)/.test(String(st.className))) continue;
+      var sb = st.querySelector("button");
+      var sl = one(st, ".payload-station-label"), su = one(st, ".payload-unit-display");
+      own(st, sb ? [btnRow(sb, sl + ": " + txt(sb) + (su ? " " + su : ""))] : [{ t: sl + ": " + textOf(st), act: null }]);
+    }
+    var imp = p.querySelector(".simbrief-import-compound");
+    if (imp && visible(imp)) {
+      var ir = [], chips = imp.querySelectorAll("button");
+      for (q = 0; q < chips.length; q++) if (visible(chips[q])) ir.push(btnRow(chips[q], "SimBrief Import: " + txt(chips[q])));
+      own(imp, ir);
+    }
+    // Any table (the Payload WEIGHT & BALANCE table): one row per table row, cells joined, so a
+    // cell drawn taller than its neighbours ("Gross Weight" over "31582 lbs") stays with its row.
+    var tables = p.querySelectorAll("table");
+    for (i = 0; i < tables.length; i++) {
+      var tb = tables[i]; if (!visible(tb) || tb.__msfsbaOwned === scrapeId) continue;
+      var tr = [], trs = tb.querySelectorAll("tr");
+      for (q = 0; q < trs.length; q++) {
+        if (!visible(trs[q])) continue;
+        if (Array.prototype.some.call(trs[q].querySelectorAll("*"), function (x) { return x.__msfsbaOwned === scrapeId; })) continue;   // a row holding a block another reader owns (the SimBrief import chips)
+        var cells = [], tds = trs[q].children;
+        for (var z = 0; z < tds.length; z++) { var cellText = textOf(tds[z]); if (cellText) cells.push(cellText); }
+        if (cells.length) tr.push({ t: cells.join(" | "), act: null });
+      }
+      own(tb, tr);
+    }
+    // Services > Electrical: each battery is a title, a "24V / LEFT BATTERY" drawing, a "+" terminal
+    // (data-lvar L:BAT_DISC_*; pointer-events:none while it cannot be used), the status and voltage.
+    var bats = p.querySelectorAll(".battery-system");
+    for (i = 0; i < bats.length; i++) {
+      var bt = bats[i]; if (!visible(bt)) continue;
+      var bn = one(bt, ".battery-title"), status = one(bt, ".connection-status"), volts = one(bt, ".voltage-display"), rating = one(bt, ".battery-labels");
+      var br = [{ t: bn.charAt(0) + bn.slice(1).toLowerCase() + ": " + [rating, status.toLowerCase(), volts].filter(function (x) { return !!x; }).join(", "), act: null }];
+      var term = bt.querySelector(".terminal");
+      var usable = term && (window.getComputedStyle(term).pointerEvents !== "none");
+      if (term && usable) br.push(btnRow(term, bn.charAt(0) + bn.slice(1).toLowerCase() + ": " + (/disconnect/i.test(status) ? "connect" : "disconnect") + " the terminal"));
+      own(bt, br);
     }
     // Preformatted text (the Flight page OFP): one row per non-blank line; rules of dashes dropped.
     var pres = p.querySelectorAll("pre");

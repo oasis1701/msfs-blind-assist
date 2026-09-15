@@ -71,6 +71,12 @@ What the rows say beyond the button text (measured 2026-09-15):
   reads the new page after 400 ms. While a popup is open (Audio & Radios, a keypad, the VNAV
   Constraint slide-out) its buttons are the only page buttons listed, and its own title is the
   page title.
+- **Choices say which is selected.** A choice button (PFD map Off / HSI Map / Inset Map, Traffic
+  Auto / TA Only, a map range) reads ", selected" on the chosen one, and a group title before it
+  names the group: "XPDR/TCAS Mode: Auto, selected", "Navigation: On, selected", "Beacon: Off".
+  A row's second button that says nothing on its own takes the first button's name: "Vapp: 117
+  KT", "Traffic: Settings", "Connext Radar: 1000 NM". Captions read with their values ("VS REQ:
+  blank FPM"); Nearest lists keep units with numbers ("270°, 2.9 NM, ILS, 7015 FT, EICK Cork").
 - **Toggles say on or off** ("MIC, on", "Marker, off", "ACARS Enabled, on"); tabs are rows
   ("Freqs tab, selected"); a list row's text names its button ("BVI4MF, EGNX-EKCH, Ready for
   Import, Import"); a radio row carries its volume ("COM1, on, volume 100%") and its frequency
@@ -111,7 +117,20 @@ route, aircraft, weather and "Flight: ground speed 0 kts, altitude 294 ft, headi
 row that jumps to its service tab; O2 / N2 reads "Left tank: 1814 PSI"; Payload reads the fuel
 column, then the weight and balance column. Checklists read one checklist at a time: pick the
 category in Tab and the checklist in Section; steps read "3. APU GEN: ON", with memory items,
-conditions ("Condition: If Message Remains"), CAUTION / WARNING / NOTE and table rows marked.
+conditions ("Condition: If Message Remains"), CAUTION / WARNING / NOTE and table rows marked; a
+checklist headed by a PFD annunciation says so ("AP, PFD warning, A1"), and where the aircraft's
+own EFB lost an item's text it says "(item missing from the aircraft's EFB)". Payload reads "Fuel
+quantity: total …, left …, right …", the weight and balance table one row per line, and
+Electrical "Left battery: 24V, connected, 28.0V".
+
+**The synoptic reader (Alt+S)** reads Summary, Hydraulics, Fuel, Electrical and the Checklist as
+statements rather than diagram fragments: "Left generator: online, 28 V, 45 A", "Powered buses:
+L AVN, …", "Crossfeed valve: closed", "Electric hydraulic pump: off", "Landing Gear: DOWN; VERIFY
+3 GREEN, not done, current item". Temp, Propulsion, Cabin Pressure, Systems Test, Cabin
+Management and Exterior Lights are touchscreen pages, not synoptics — read them in Shift+M.
+The Alt+E engine strip reads "TRIM: stabilizer 0.0", "FUEL QTY: total 9900 LBS, left 4940, right
+4940 …", "HYDRAULICS: pressure 3000 PSI, volume 260 CU IN" and "ELECTRICAL: BATT V left 28,
+right 28; …".
 
 ## Announcements
 
@@ -172,6 +191,21 @@ altimeters (or `std`).
   - The meaning of the altitude display comes from the WT G3000 v2 source
     (`FlightPlanLegData.isAltitudeCyan` / `altDescDisplay`): cyan = designated, `-unused` = no
     constraint (a number there is the VNAV prediction). Do not guess colours from other Garmins.
+  - State (measured in flight 2026-09-15): `touch-button-set-value` is a CHOICE and a
+    `touch-button-toggle` whose text is a state word (On / Off / Normal / Auto / Standby) behaves as
+    one — both read ", selected" when `toggle-status-bar-on`, nothing otherwise; only a real toggle
+    reads ", on" / ", off". Never render "On, on".
+  - A group title is ONLY a `<label>` or a class ending in `title`, placed BEFORE the group's first
+    button. "-label" classes are value captions (Landing Data's "Landing Weight" after its buttons,
+    Weight and Fuel's `wf-label-value-row`) and named unrelated buttons when they were accepted.
+  - The "first button names the rest" rule applies only to a button that is a bare value or a
+    generic word (`BARE_VALUE`: "117 KT", "1000 NM", "Settings") — MFD Home lays out its directory
+    buttons four to a row, and "Map Settings: TAWS" was the result without that gate.
+  - `press(label)` matches the spoken label first, then the button's own text (`base`), so a
+    caller naming "Aircraft Systems" or a keyboard key survives any decoration.
+  - Marks left on page elements (`__msfsbaGroupTitle`, `__msfsbaPair`) are stamped from a RANDOM
+    start per install: they outlive a re-installed agent, and counting from 1 again collides with
+    the old marks and hides content (see the EFB rule below).
 - **EFB agent rules that must not regress**:
   - Checklists has its own reader over ONE `.cl-checklist-group`; never run the whole-page walk
     there (every category is pre-rendered: Abnormal ~9,800 elements, Emergency ~9,300). A read
@@ -186,3 +220,30 @@ altimeters (or `std`).
   - `act()` answers "noaction" for a text-only row and "none" when the control is gone; the
     window speaks the result through `C680EfbRows.SpokenAfterAct`, never by re-reading the same
     list position (a removed cover's alert shifts every row below it).
+  - `scrapeId` starts at a RANDOM value per install. Ownership marks are expando properties on
+    page elements and survive a re-install; counting from 0 made read N of a new install match
+    read N of the old one, and the whole Payload weight table vanished.
+  - Checklist text comes from `textContent` (a header can be SVG message boxes), severity from
+    `cl-cas-{warning,caution,advisory}` with `-pfd` (the PFD's own annunciation) and `-clr`
+    variants — all 354 checklists were read through the agent in 62 ms with no unknown block
+    kinds. `A.readChecklist(id)` reads any one without scrolling, for audits.
+- **Output D (destination distance)**: the G3000 publishes none — `GPS FLIGHT PLAN TOTAL DISTANCE`
+  reads 0 and the stock GPS waypoint list is empty (measured in flight). `coherent-c680-mfd-agent.js`
+  `dest()` reads the live FMS on the MFD view (`wtg3000-mfd` element → `.fms` →
+  `getPrimaryFlightPlan()`): last leg's `calculated.cumulativeDistanceWithTransitions` minus the
+  active leg's (METRES), plus `GPS WP DISTANCE`. The time is `GPS ETE`, which does track the
+  destination. `C680Destination.Compose` builds the sentence and never invents a distance.
+- **MFD agent (synoptics and strip) rules**: the synoptic diagrams are unclassed SVG tspans, so
+  they are read by GROUP ID (`L-GEN-OUTPUT`, `L-AVN-BUS`, `LEFT-BOOST-PUMP`,
+  `FUEL-TRANSFER-VALVE`, `Frame 6`…) and colour (green `#00BF4A` = powered / running / open,
+  white = off / closed; a valve's one visible line is green when open). Only the two engine
+  generators have a GEN OFF box. The checklist pane is `.checklist-pane-item` (label, dot leader,
+  action, complete icon, `-selected`). In the strip, HYDRAULICS values are spans with children and
+  ELECTRICAL labels sit between their left and right values: both are read by class, not position.
+- **Walking the touchscreens in flight** (2026-09-15, owner-authorised): never press a choice
+  button (`touch-button-set-value`, state-word toggles), a pane selector (Map / Traffic / Weather,
+  the synoptics), a test (Engine Fire, Smoke Detect, Overspeed, HF1/HF2), or Nav Source /
+  Bearing; revert a relabelled button by its POSITION, not its label; never press inside a popup
+  (most are selection lists). The first attempt broke each of these rules once — the PFD map mode,
+  map orientation, Nav Source and both bearing pointers were changed and put back, and the
+  system tests ran.

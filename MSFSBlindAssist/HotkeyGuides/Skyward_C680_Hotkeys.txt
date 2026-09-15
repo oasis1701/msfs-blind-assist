@@ -43,7 +43,8 @@ Inside a touchscreen window:
   shows (press again for that display's settings). On PFD Home, Nav Source cycles the
   autopilot's lateral source (FMS, LOC1, ...) on every press - read the label first.
   Reading the rows: toggle buttons say "on" or "off", tabs say "tab" and "selected", an empty
-  entry field says "blank". While a popup is open (Audio & Radios, a keypad, VNAV Constraint)
+  entry field says "blank". Choice buttons say "selected" on the chosen one and carry their group
+  name ("XPDR/TCAS Mode: Auto, selected", "Navigation: On, selected"). While a popup is open (Audio & Radios, a keypad, VNAV Constraint)
   only the popup and the two bars are listed, and the page title is the popup's.
   Active Flight Plan: one row per leg, for example "ABEGI, at or below 4000 feet, angle -3.00
   degrees, at 220 knots". "predicted" is VNAV's estimate, not a constraint; "not designated" is
