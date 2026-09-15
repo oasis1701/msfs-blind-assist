@@ -1238,9 +1238,11 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// True once the landing-exit handoff has completed and the exit route's own
     /// steering tone is panning the pilot onto the taxiway. Read by the manual-landing
-    /// assist, which must stop its rollout pan tone the moment this turns true — the
+    /// assist as a backstop: it normally hands over on the state change itself
+    /// (LandingFlareAssistManager.StepTaxiHandover, forwarded from StateChanged), and this
+    /// catches an assist that re-enters rollout while taxi guidance already steers — the
     /// handoff can fire as high as 90 kt (turnBegun) or at any speed at all
-    /// (exitedLaterally), so its speed threshold alone cannot keep the two apart.
+    /// (exitedLaterally), so a speed threshold alone cannot keep the two apart.
     /// </summary>
     public bool IsLandingExitTaxiSteering
     {

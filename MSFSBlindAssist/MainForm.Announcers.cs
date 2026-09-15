@@ -686,6 +686,12 @@ public partial class MainForm
             // arrival wording redirects forward instead of saying "parking brake" at
             // the navdata point (KATL F3 2026-06-11: 26 s parked short, docking Armed).
             taxiGuidanceManager.SetDockingPending(dockingGuidanceManager.IsArmedAwaitingEngage);
+
+            // Exactly one panning tone, landing edition: when taxi guidance has just taken over from a
+            // landing rollout, the manual landing assist hands its rollout tone over SILENTLY on this
+            // frame — after UpdatePosition spoke taxi guidance's own sentence, and before its tone's first
+            // audible frame (LandingFlareAssistManager.StepTaxiHandover).
+            flareAssistManager.YieldIfTaxiGuidanceTookOver();
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are
@@ -1798,6 +1804,10 @@ public partial class MainForm
         // LandingRollout so each rollout gets its own fresh log entry.
         if (newState == TaxiGuidanceState.LandingRollout)
             _diagLoggedFirstRolloutPos = false;
+
+        // Record only: this runs inside TaxiGuidanceManager.SetState. The manual landing assist hands
+        // over on the TAXI_GUIDANCE_POSITION frame (YieldIfTaxiGuidanceTookOver) or on its own frame.
+        flareAssistManager?.ObserveTaxiGuidanceState(newState);
 
         switch (newState)
         {

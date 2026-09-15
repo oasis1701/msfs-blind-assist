@@ -30,8 +30,13 @@ namespace MSFSBlindAssist.Services;
 ///    timbre thins at touchdown, which marks the boundary audibly.
 ///  • HANDOFF: tone stops below taxi-ish speed (earlier when landing-exit
 ///    guidance is running, so its exit-steering tone never overlaps ours) or
-///    when the pilot deliberately turns off the runway; landing-exit guidance /
-///    taxi guidance then own the arrival exactly as today.
+///    when the pilot deliberately turns off the runway — "Rollout guidance
+///    complete", QUEUED when taxi guidance ran during the rollout so it never
+///    cuts taxi guidance off. On the frame taxi guidance TAKES OVER from a
+///    landing rollout (exit handover, backtrack, runway vacated, closure) the
+///    tone stops SILENTLY instead: taxi guidance's own sentence is the one
+///    utterance and its tone the only one (StepTaxiHandover). Taxi guidance
+///    then owns the arrival.
 ///
 /// Runway check: at flare engage and again at touchdown the assist identifies the runway the
 /// aircraft is actually over (Navigation.LandingRunwayMatch). When that is not the armed runway —
@@ -74,7 +79,9 @@ public class LandingFlareAssistManager : IDisposable
     // is panning. That handoff (turnBegun at up to 90 kt, exitedLaterally with no speed
     // cap at all) can fire well above the raised threshold above, so speed alone cannot
     // keep the two tones apart — and they steer opposite ways, ours back to the runway
-    // centreline while the taxi tone leads onto the exit.
+    // centreline while the taxi tone leads onto the exit. The takeover itself is caught on
+    // the state change (StepTaxiHandover); this is the backstop for a rollout entered while
+    // taxi guidance already steers (a bounce).
     private readonly Func<bool> isLandingExitTaxiSteering;
 
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
@@ -118,6 +125,11 @@ public class LandingFlareAssistManager : IDisposable
     private bool verticalCueLostAnnounced; // "sink rate cue unavailable" spoken this engagement
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
+    // Taxi guidance as MainForm forwards it from TaxiGuidanceManager.StateChanged (StepTaxiHandover).
+    private bool taxiInLandingRollout;        // taxi guidance is in, or momentarily reloading, a landing rollout
+    private bool taxiGuidanceActive;          // its last observed state is not Inactive
+    private bool taxiGuidanceSeenThisRollout; // it ran during this rollout: the end callout is queued
+    private bool taxiHandoverPending;         // it took over this rollout: yield on the next hook or frame
     private double vsSmoothed;
     private bool vsSmootherInitialized;
 
@@ -382,6 +394,9 @@ public class LandingFlareAssistManager : IDisposable
                 break;
 
             case Phase.Rollout:
+                // MainForm yields on the taxi position frame; this catches a takeover it did not see first.
+                YieldIfTaxiGuidanceTookOver();
+                if (phase != Phase.Rollout) return;
                 if (!onGround && gearAgl > BOUNCE_AIRBORNE_GEAR_AGL_FT)
                 {
                     // Bounce — back into the air below go-around height. Resume flare
@@ -399,6 +414,36 @@ public class LandingFlareAssistManager : IDisposable
                 CheckRolloutHandoff(d);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Forwarded by MainForm from <see cref="TaxiGuidanceManager.StateChanged"/>. Runs INSIDE
+    /// TaxiGuidanceManager.SetState, usually under its state lock, so it only RECORDS: no tone, speech,
+    /// logging or events. <see cref="YieldIfTaxiGuidanceTookOver"/> acts on what it records.
+    /// </summary>
+    public void ObserveTaxiGuidanceState(TaxiGuidanceState newState)
+    {
+        var step = StepTaxiHandover(taxiInLandingRollout, newState);
+        taxiInLandingRollout = step.InLandingRollout;
+        taxiGuidanceActive = newState != TaxiGuidanceState.Inactive;
+        if (phase != Phase.Rollout) return;
+        if (taxiGuidanceActive) taxiGuidanceSeenThisRollout = true;
+        if (step.TookOver) taxiHandoverPending = true;
+    }
+
+    /// <summary>
+    /// Ends the rollout SILENTLY once taxi guidance has taken over from a landing rollout
+    /// (<see cref="StepTaxiHandover"/>): taxi guidance's own sentence is the one utterance, and its tone
+    /// first sounds on the next position frame, so two pan tones never play together. MainForm calls this
+    /// after the taxi position update, on the frame of the transition; the rollout frame calls it too.
+    /// </summary>
+    public void YieldIfTaxiGuidanceTookOver()
+    {
+        if (!taxiHandoverPending) return;
+        taxiHandoverPending = false;
+        if (phase != Phase.Rollout) return;
+        StopEngagement(raiseEvents: true);
+        Log.Debug("LandingFlareAssist", "Rollout handed over to taxi guidance");
     }
 
     private void EnterFlare(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
@@ -530,6 +575,9 @@ public class LandingFlareAssistManager : IDisposable
     private void EnterRollout(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         phase = Phase.Rollout;
+        // A takeover belongs to THIS rollout; taxi guidance already running counts as seen.
+        taxiHandoverPending = false;
+        taxiGuidanceSeenThisRollout = taxiGuidanceActive;
         StopVerticalTone();            // flare sink-rate cue is done at touchdown
         // The lateral tone carries straight through from the flare — only the law feeding it
         // changes. (StartLateralToneIfNeeded is a no-op unless the flare was silent under VG.)
@@ -635,35 +683,84 @@ public class LandingFlareAssistManager : IDisposable
     {
         if (runway == null) return;
 
-        double gs = d.GroundSpeedKnots;
-
         double headingDiff = (d.HeadingMagnetic + d.MagneticVariation) - runway.Heading;
         while (headingDiff > 180.0) headingDiff -= 360.0;
         while (headingDiff < -180.0) headingDiff += 360.0;
-        bool turnedOff = Math.Abs(headingDiff) > ROLLOUT_TURNOFF_HDG_DEG &&
-                         gs < ROLLOUT_TURNOFF_MAX_GS_KTS;
 
-        // Hand off earlier when the landing-exit planner's rollout guidance is running,
-        // so its exit-steering tone (which activates below ~50 kt near the exit) never
-        // plays on top of ours.
-        double endGs = isLandingExitGuidanceActive()
-            ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS
-            : ROLLOUT_END_GS_KTS;
+        var end = DecideRolloutEnd(d.GroundSpeedKnots, headingDiff,
+            exitGuidanceActive: isLandingExitGuidanceActive(),
+            taxiGuidanceSteering: isLandingExitTaxiSteering(),
+            taxiGuidanceSeen: taxiGuidanceSeenThisRollout);
+        if (end == RolloutEnd.Continue) return;
 
-        // ...but a rapid exit can take the handoff ABOVE that speed, and the moment it
-        // does, the taxi steering tone is already panning toward the exit. Speed is the
-        // wrong question then: end here whatever the groundspeed, or two pan tones give
-        // the pilot opposite steering (worst on a shallow exit, where the heading never
-        // swings the 20 degrees `turnedOff` needs).
-        if (gs < endGs || turnedOff || isLandingExitTaxiSteering())
-        {
-            StopEngagement(raiseEvents: true);
+        StopEngagement(raiseEvents: true);
+        if (end == RolloutEnd.Interrupting)
             announcer.AnnounceImmediate("Rollout guidance complete");
-            // Stay ARMED: circuits / touch-and-go get flare guidance again on the next
-            // approach without re-opening the destination dialog. The feed gate drops
-            // the SIM_FRAME request within a second (on ground, not engaged).
-        }
+        else if (end == RolloutEnd.Queued)
+            announcer.Announce("Rollout guidance complete");
+        // Stay ARMED: circuits / touch-and-go get flare guidance again on the next
+        // approach without re-opening the destination dialog. The feed gate drops
+        // the SIM_FRAME request within a second (on ground, not engaged).
     }
+
+    /// <summary>What <see cref="CheckRolloutHandoff"/> does on a rollout frame.</summary>
+    internal enum RolloutEnd
+    {
+        /// <summary>Keep guiding.</summary>
+        Continue,
+        /// <summary>Stop with no speech: taxi guidance already steers, and its words and tone are the handover.</summary>
+        Silent,
+        /// <summary>Stop and interrupt with "Rollout guidance complete": no taxi guidance ran this rollout.</summary>
+        Interrupting,
+        /// <summary>Stop and QUEUE "Rollout guidance complete", so it cannot cut off taxi guidance's speech.</summary>
+        Queued,
+    }
+
+    /// <summary>
+    /// When the rollout ends and what it says. Pure — <c>LandingFlareRolloutEndTests</c>.
+    ///
+    /// Ends below ROLLOUT_END_GS_KTS; below ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS while the landing-exit
+    /// planner's rollout guidance runs, so our pan tone is gone before its exit-steering tone (active below
+    /// ~50 kt near the exit) starts; or once the pilot turns off the runway below ROLLOUT_TURNOFF_MAX_GS_KTS.
+    /// Taxi guidance ALREADY steering ends it at any speed, silently: a rapid exit can take the handoff far
+    /// above either speed, and two pan tones would steer the pilot opposite ways (worst on a shallow exit,
+    /// where the heading never swings the turn-off angle). When taxi guidance ran during the rollout the
+    /// callout is QUEUED, never interrupting, so it cannot cut off a countdown milestone, "Runway vacated…"
+    /// or "Exit reached…".
+    /// </summary>
+    internal static RolloutEnd DecideRolloutEnd(double groundSpeedKts, double headingOffRunwayDeg,
+        bool exitGuidanceActive, bool taxiGuidanceSteering, bool taxiGuidanceSeen)
+    {
+        if (taxiGuidanceSteering) return RolloutEnd.Silent;
+
+        double endGs = exitGuidanceActive ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS : ROLLOUT_END_GS_KTS;
+        bool turnedOff = Math.Abs(headingOffRunwayDeg) > ROLLOUT_TURNOFF_HDG_DEG &&
+                         groundSpeedKts < ROLLOUT_TURNOFF_MAX_GS_KTS;
+        if (groundSpeedKts >= endGs && !turnedOff) return RolloutEnd.Continue;
+
+        return taxiGuidanceSeen ? RolloutEnd.Queued : RolloutEnd.Interrupting;
+    }
+
+    /// <summary>
+    /// One taxi-guidance state change, classified for the manual landing assist. Pure —
+    /// <c>LandingFlareTaxiHandoverTests</c>.
+    ///
+    /// Taxi guidance TAKES OVER when it leaves a landing rollout for anything but a momentary route reload
+    /// (retargets and declines pass through RouteLoaded) or a full stop (a Taxi Stop must not end the
+    /// independent assist). That covers the exit handover, backtracking, the countdown's "Runway vacated"
+    /// and every landing-exit closure without a call at any of their sites. Touchdown passes through
+    /// Taxiing before the rollout starts and a departure never enters one, so neither counts. Counting
+    /// backtracking in IsLandingExitTaxiSteering instead let the assist's interrupting "Rollout guidance
+    /// complete" cut off "End of runway … Turn around" within a frame.
+    /// </summary>
+    internal static (bool InLandingRollout, bool TookOver) StepTaxiHandover(bool inLandingRollout, TaxiGuidanceState newState) =>
+        newState switch
+        {
+            TaxiGuidanceState.LandingRollout => (true, false),
+            TaxiGuidanceState.RouteLoaded => (inLandingRollout, false),
+            TaxiGuidanceState.Inactive => (false, false),
+            _ => (false, inLandingRollout),
+        };
 
     /// <summary>
     /// What to do about a tone that came back from a routing sweep with no device.
@@ -846,6 +943,7 @@ public class LandingFlareAssistManager : IDisposable
         vsSmootherInitialized = false;
         crossTrackRateInitialized = false;
         crossTrackRateFps = 0.0;
+        taxiHandoverPending = false;
 
         // A runway switch lasts one engagement: circuits keep the pilot's armed choice.
         runwayCorrectionSpoken = false;
