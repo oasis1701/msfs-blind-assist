@@ -553,13 +553,6 @@ public partial class TaxiGuidanceManager : IDisposable
     // the hold-short segment instead — never advanced past it, never announced early.
     private const double HOLD_SHORT_ANNOUNCE_MAX_DIST_M = 40.0;
 
-    // How far past a candidate stop point the aircraft must be before no hold is placed there —
-    // a hold segment's end (HoldPointIsBehindAircraft) or a start hold's start node
-    // (RouteStartIsBehindAircraft), for the automatic pass, explicit picks and a re-route's
-    // first taxiing frame alike. Generous on purpose: a stop point a metre or two back is
-    // still effectively at the aircraft, and dropping it there would cost a legitimate safety stop.
-    private const double HOLD_POINT_BEHIND_M = 10.0;
-
     // Never-joined escape for the off-route detector. _hasJoinedRoute exists so the taxi
     // from a gate onto the first cleared taxiway doesn't read as off-route before the
     // pilot has joined it — but it had no way out: a route the aircraft NEVER joins left
@@ -1839,15 +1832,23 @@ public partial class TaxiGuidanceManager : IDisposable
         // Start hold (TaxiRoute.StartHoldRunway) for a route adopted while guidance was already
         // running — a landing-exit re-route, which goes straight to Taxiing without StartGuidance.
         // It enters the hold on its first taxiing frame and speaks the sentence in that same frame:
-        // MainForm feeds no frames while guidance holds. An aircraft already past the start node
-        // gets no hold, and the skip is logged beside the adoption's "Route crossings:" line.
+        // MainForm feeds no frames while guidance holds. An aircraft already more than 10 m along the
+        // route, or standing on any runway's pavement, gets no hold (the pass's own tests), and the
+        // skip is logged with its reason beside the adoption's "Route crossings:" line.
         if (_state == TaxiGuidanceState.Taxiing && _currentSegmentIndex == 0
             && _route?.StartHoldRunway != null)
         {
-            if (RouteStartIsBehindAircraft(_route, lat, lon))
+            string? skipReason = null;
+            if (Navigation.RouteRunwayCrossings.RouteProgressMeters(_route.Segments, lat, lon)
+                > Navigation.RouteRunwayCrossings.StopPassedToleranceMetres)
+                skipReason = "aircraft already past the start node";
+            else if (Navigation.RouteRunwayCrossings.RunwayUnder(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
+                skipReason = $"aircraft on the pavement of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
+
+            if (skipReason != null)
             {
                 _guidanceLog.Info(
-                    $"Start hold skipped: startHold=\"{_route.StartHoldRunway}\" — aircraft already past the start node.");
+                    $"Start hold skipped: startHold=\"{_route.StartHoldRunway}\" — {skipReason}.");
                 _route.StartHoldRunway = null;
             }
             else

@@ -1456,15 +1456,15 @@ public partial class TaxiGuidanceManager
     {
         // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
         // The start hold is allowed only when LoadRoute adopts the route: a recalculation is built
-        // from a moving aircraft that may already be committed to the crossing.
+        // from a moving aircraft that may already be committed to the crossing. The aircraft's
+        // position is the route's first point and decides which stops it has already passed.
         if (_graph != null)
         {
             RouteRunwayCrossings.InsertRunwayHoldShorts(
                 route, _graph.RunwayCenterlines,
                 isRunwayDestination ? destinationName : "",
                 allowStartHold: phase == "load",
-                holdSeg => HoldPointIsBehindAircraft(holdSeg, aircraftLat, aircraftLon),
-                () => RouteStartIsBehindAircraft(route, aircraftLat, aircraftLon));
+                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon));
         }
 
         // One line per route ADOPTED. Answering "did that route really drive across 08L?" for the
@@ -1496,12 +1496,14 @@ public partial class TaxiGuidanceManager
     /// CALL, which is the half that actually goes missing. Assign <c>_route</c> through this
     /// method and nowhere else.</para>
     ///
-    /// <para>The aircraft position is required, not optional: the crossing pass must know which
-    /// candidate stop points — a hold segment or the start node — the aircraft has already
-    /// rolled past (see <see cref="HoldPointIsBehindAircraft"/> and
-    /// <see cref="RouteStartIsBehindAircraft"/>). A caller at a standstill passes its own
-    /// position; only a candidate the aircraft is already more than
-    /// <see cref="HOLD_POINT_BEHIND_M"/> past is then dropped.</para>
+    /// <para>The aircraft position is required, not optional: the crossing pass treats it as the
+    /// route's first point, and must know which candidate stop points the aircraft has already
+    /// rolled past. A recalculation or a landing re-route is built from the live position, and a
+    /// fresh hold on pavement the aircraft is already standing on ("Stop. Hold short of runway
+    /// 26R" while ON 26R) is a stop in the worst possible place. "Passed" is measured along the
+    /// route (<see cref="RouteRunwayCrossings.RouteProgressMeters"/>): a caller at a standstill
+    /// passes its own position, and only a stop the aircraft is already more than
+    /// <see cref="RouteRunwayCrossings.StopPassedToleranceMetres"/> past is dropped.</para>
     /// </summary>
     private void AdoptRoute(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
@@ -1515,47 +1517,6 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Whether the aircraft is already more than <see cref="HOLD_POINT_BEHIND_M"/> past the route's
-    /// START node along its first segment — the start-hold counterpart of
-    /// <see cref="HoldPointIsBehindAircraft"/>. A start hold is a stop at the aircraft's own position;
-    /// one it has already rolled past would command a stop beyond the hold line.
-    /// </summary>
-    private static bool RouteStartIsBehindAircraft(TaxiRoute route, double aircraftLat, double aircraftLon)
-    {
-        var first = route.Segments.Count > 0 ? route.Segments[0] : null;
-        if (first?.FromNode == null || first.ToNode == null) return false;
-        double lengthM = TaxiGraph.FastDistanceMeters(
-            first.FromNode.Latitude, first.FromNode.Longitude, first.ToNode.Latitude, first.ToNode.Longitude);
-        if (lengthM < 1.0) return false;
-        AlongTrackToSegmentEnd(aircraftLat, aircraftLon, first, out double alongRemainingM, out _);
-        return lengthM - alongRemainingM > HOLD_POINT_BEHIND_M;
-    }
-
-    /// <summary>
-    /// Whether the aircraft has already rolled past a candidate crossing hold segment's stop
-    /// point, measured along that segment's own axis.
-    ///
-    /// <para>The crossing pass knows nothing about where the aircraft is, which was harmless
-    /// while it ran only from a standstill at the stand. It now runs on every route the manager
-    /// adopts, including a recalculation built from the live position and the rollout/landing-exit
-    /// re-routes, whose start node can sit BEHIND the aircraft: a pilot who has been cleared
-    /// across a runway, pressed Continue and rolled onto the pavement could otherwise be handed a
-    /// fresh hold-short on the segment they are standing on and told "Stop. Hold short of runway
-    /// 26R" while ON 26R. A hold that far back is not a safety stop, it is a stop in the worst
-    /// possible place — so it is dropped, and the crossing is reported instead.</para>
-    ///
-    /// <para>The tolerance is deliberately generous: a hold a metre or two behind is still
-    /// effectively AT the aircraft, and dropping it there would cost a legitimate stop.</para>
-    /// </summary>
-    private static bool HoldPointIsBehindAircraft(
-        TaxiRouteSegment holdSeg, double aircraftLat, double aircraftLon)
-    {
-        if (holdSeg?.FromNode == null || holdSeg.ToNode == null) return false;
-        AlongTrackToSegmentEnd(aircraftLat, aircraftLon, holdSeg, out double alongRemainingM, out _);
-        return alongRemainingM < -HOLD_POINT_BEHIND_M;
-    }
-
-    /// <summary>
     /// Honors the pilot's explicit "Hold short of runway X" pickers from the form. For each
     /// (sequenceIndex → runway) pair the pick binds to the matching run of segments tagged with that
     /// taxiway (first run, counting repeats — KSFO D keeps its name across 10R/28L) and is honoured
@@ -1563,9 +1524,10 @@ public partial class TaxiGuidanceManager
     /// resolver as the automatic pass and labelled as the pilot typed it
     /// (<see cref="RouteRunwayCrossings.ApplyUserRunwayHold"/>).
     ///
-    /// Returns a warning string when one or more picks could not be matched to the route (announced
-    /// with the route summary so the pilot hears the clearance/route mismatch), or null when every
-    /// pick was honoured. Runs before the automatic pass, which shares a stop it resolves to.
+    /// Returns a warning string when one or more picks could not be set — the runway is not in the
+    /// airport data, the taxiway or runway is not on the route, or there is no safe place to hold short
+    /// (announced with the route summary so the pilot hears the clearance/route mismatch), or null when
+    /// every pick was honoured. Runs before the automatic pass, which shares a stop it resolves to.
     /// </summary>
     private string? ApplyUserRunwayHoldShorts(
         TaxiRoute route,
@@ -1654,17 +1616,24 @@ public partial class TaxiGuidanceManager
                 continue;
             }
 
-            if (!RouteRunwayCrossings.ApplyUserRunwayHold(
-                    route, targetRwy, runwayId, runStart, allowStartHold: allowStartHold,
-                    holdSeg => HoldPointIsBehindAircraft(holdSeg, aircraftLat, aircraftLon),
-                    () => RouteStartIsBehindAircraft(route, aircraftLat, aircraftLon)))
+            switch (RouteRunwayCrossings.ApplyUserRunwayHold(
+                        route, targetRwy, _graph.RunwayCenterlines, runwayId, runStart,
+                        allowStartHold: allowStartHold,
+                        aircraft: new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon)))
             {
-                unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
+                case RouteRunwayCrossings.UserRunwayHoldResult.NotOnRoute:
+                    unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
+                    break;
+                // The route does enter or cross it, but no stop could be placed (already passed, no
+                // safe stop before it, or a start hold refused): said, never left to the log alone.
+                case RouteRunwayCrossings.UserRunwayHoldResult.NotHeld:
+                    unmatched.Add($"runway {runwayId} (no safe place to hold short after taxiway {taxiwayName})");
+                    break;
             }
         }
 
         if (unmatched.Count == 0) return null;
-        return $"Note: requested hold-short(s) not on route — {string.Join("; ", unmatched)}.";
+        return $"Note: requested hold-short(s) could not be set — {string.Join("; ", unmatched)}.";
     }
 
     private static void ApplyUserHoldShorts(TaxiRoute route, List<string> taxiwaySequence, List<int> userHoldShortIndices)

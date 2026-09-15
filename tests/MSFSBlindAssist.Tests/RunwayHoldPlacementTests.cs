@@ -1,11 +1,14 @@
 // Where a runway entry's or crossing's hold goes: the scenery's own hold line within 150 m, else the
 // nearest node clear of the runway (half-width + 10 m), else the route's start node (a start hold).
-// Every candidate is at or before the runway and off its pavement, so a stop can only move earlier.
-// Shapes: LEBL D5, EGKK C, KBOS C, KSFO's double crossing (docs/taxi-guidance.md).
+// Every candidate is at or before the runway and off the pavement of every runway, so a stop can only
+// move earlier. "Passed" is measured along the route from the aircraft, which also counts as the
+// route's first point. Shapes: LEBL D5, EGKK C, KBOS C, KSFO's double crossing (docs/taxi-guidance.md).
 
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using static MSFSBlindAssist.Tests.RunwayFixture;
+using AircraftPosition = MSFSBlindAssist.Navigation.RouteRunwayCrossings.AircraftPosition;
+using UserRunwayHoldResult = MSFSBlindAssist.Navigation.RouteRunwayCrossings.UserRunwayHoldResult;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -14,13 +17,26 @@ public class RunwayHoldPlacementTests
     private static TaxiRoute RouteOf(params TaxiNode[] nodes) => new() { Segments = Route(nodes) };
 
     private static IReadOnlyList<TaxiRouteRunwayEvent> Pass(TaxiRoute route, TaxiGraph.RunwayCenterline[] runways,
-        string destination = "", bool allowStartHold = true,
-        RouteRunwayCrossings.HoldPointPassed? passed = null, Func<bool>? startPassed = null)
-        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, destination, allowStartHold, passed, startPassed);
+        string destination = "", bool allowStartHold = true, AircraftPosition? aircraft = null)
+        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, destination, allowStartHold, aircraft);
 
     private static TaxiRoute Lebl() => RouteOf(
         Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 06L at D5"),
         Node(3, 1000, 51), Node(4, 1000, 21), Node(5, 1000, -21), Node(6, 1000, -105));
+
+    // LEBL's shape with a pilot's "end of taxiway D" stop already on the segment ending 51 m out.
+    private static TaxiRoute LeblWithEndOfTaxiwayStop()
+    {
+        var route = RouteOf(Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 06L at D5"),
+            Node(3, 1000, 70), Node(4, 1000, 51), Node(5, 1000, 21), Node(6, 1000, -21), Node(7, 1000, -105));
+        route.Segments[2].IsHoldShortPoint = true;
+        route.Segments[2].HoldShortRunway = "end of taxiway D";
+        return route;
+    }
+
+    // Along 11/29's centerline and across 14/32 (at east 1100): every node before 14/32 is on 11/29.
+    private static TaxiRoute AlongElevenAcrossFourteen() => RouteOf(
+        Node(1, 900, 0), Node(2, 1000, 0), Node(3, 1060, 0), Node(4, 1100, 0), Node(5, 1140, 0), Node(6, 1300, 0));
 
     [Fact]
     public void The_painted_hold_line_within_150_metres_wins()
@@ -47,6 +63,17 @@ public class RunwayHoldPlacementTests
         Assert.True(route.Segments[0].IsHoldShortPoint);
         Assert.Equal("runway 06L", route.Segments[0].HoldShortRunway);
         Assert.False(route.Segments[1].IsHoldShortPoint);
+
+        // Nor on another runway's: a "runway 14" hold node on 11/29's pavement, from which one edge jumps across
+        // 14/32, is not the stop even though it is the walk's own starting node.
+        var runway14 = NorthSouth("14", "32", eastM: 1000, fromNorthM: -1500, toNorthM: 1500);
+        var alongEleven = RouteOf(Node(1, 800, 100), Node(2, 960, 20, TaxiNodeType.HoldShort, "runway 14"),
+            Node(3, 1040, 20), Node(4, 1200, 100));
+
+        var events = Pass(alongEleven, new[] { EastWest("11", "29"), runway14 });
+
+        Assert.All(alongEleven.Segments, s => Assert.False(s.IsHoldShortPoint));
+        Assert.False(Assert.Single(events, e => RouteRunwayCrossings.CenterlineHasDesignator(runway14, e.Designator)).Held);
     }
 
     [Fact]
@@ -106,10 +133,7 @@ public class RunwayHoldPlacementTests
     [Fact]
     public void A_hold_line_behind_an_existing_stop_is_never_reached()
     {
-        var route = RouteOf(Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 06L at D5"),
-            Node(3, 1000, 70), Node(4, 1000, 51), Node(5, 1000, 21), Node(6, 1000, -21), Node(7, 1000, -105));
-        route.Segments[2].IsHoldShortPoint = true;
-        route.Segments[2].HoldShortRunway = "end of taxiway D";
+        var route = LeblWithEndOfTaxiwayStop();
 
         var ev = Assert.Single(Pass(route, new[] { EastWest("06L", "24R") }));
 
@@ -175,9 +199,11 @@ public class RunwayHoldPlacementTests
     [Fact]
     public void A_start_hold_the_aircraft_has_rolled_past_is_not_set()
     {
+        // The aircraft stands 75 m along the route, past the runway: it is on the route, so it is not taken
+        // as the route's first point, and the start node is behind it.
         var route = RouteOf(Node(1, 1000, 35), Node(2, 1000, 10), Node(3, 1000, -60));
 
-        var ev = Assert.Single(Pass(route, new[] { EastWest() }, startPassed: () => true));
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(-40), Lon(1000))));
 
         Assert.Null(route.StartHoldRunway);
         Assert.False(ev.Held);
@@ -186,13 +212,81 @@ public class RunwayHoldPlacementTests
     [Fact]
     public void A_stop_the_aircraft_has_passed_is_recorded_but_not_placed()
     {
+        // The aircraft stands 54 m along the route past the hold line at 105; the resolver does not fall forward.
         var route = Lebl();
 
         var ev = Assert.Single(Pass(route, new[] { EastWest("06L", "24R") },
-            passed: seg => ReferenceEquals(seg, route.Segments[0])));
+            aircraft: new AircraftPosition(Lat(51), Lon(1000))));
 
         Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
         Assert.False(ev.Held);
+    }
+
+    [Fact]
+    public void A_hold_far_ahead_on_a_looping_route_is_never_treated_as_passed()
+    {
+        // Projected onto the hold segment's own axis, this hold read as 45 m behind the aircraft.
+        var route = RouteOf(Node(1, 0, 60), Node(2, 0, 1000), Node(3, 800, 1000), Node(4, 800, 200),
+            Node(5, 800, 105, TaxiNodeType.HoldShort, "runway 09 at K"), Node(6, 800, 51), Node(7, 800, 21),
+            Node(8, 800, -21), Node(9, 800, -105));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest("09", "27") }, aircraft: new AircraftPosition(Lat(60), Lon(0))));
+
+        Assert.Equal(RunwayEventKind.Crossing, ev.Kind);
+        Assert.True(ev.Held);
+        Assert.Same(route.Segments[3], Assert.Single(route.Segments, s => s.IsHoldShortPoint));
+        Assert.Equal("runway 09 at K", route.Segments[3].HoldShortRunway);
+    }
+
+    [Fact]
+    public void RouteProgressMeters_measures_along_the_route_not_along_one_segment()
+    {
+        var segments = Route(Node(1, 0, 0), Node(2, 0, 100), Node(3, 100, 100));
+
+        Assert.Equal(50.0, RouteRunwayCrossings.RouteProgressMeters(segments, Lat(50), Lon(0)), 0.5);
+        Assert.Equal(150.0, RouteRunwayCrossings.RouteProgressMeters(segments, Lat(100), Lon(50)), 0.5);
+        Assert.Equal(0.0, RouteRunwayCrossings.RouteProgressMeters(segments, Lat(-30), Lon(-30)), 0.5);
+        // 40 m beside segment 0 the aircraft has not joined the route: no progress.
+        Assert.Equal(0.0, RouteRunwayCrossings.RouteProgressMeters(segments, Lat(50), Lon(-40)), 0.5);
+    }
+
+    [Fact]
+    public void Standing_at_a_hold_line_starts_held_even_when_the_route_starts_on_the_runway()
+    {
+        // Calculate at a hold line often starts the route at the runway node ahead (KORD 22R at D).
+        var route = RouteOf(Node(1, 1000, 21), Node(2, 1000, -21), Node(3, 1000, -105));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(105), Lon(1000))));
+
+        Assert.Equal(RunwayEventKind.Crossing, ev.Kind);
+        Assert.True(ev.Held);
+        Assert.Equal("runway 09", route.StartHoldRunway);
+
+        var withoutAircraft = RouteOf(Node(1, 1000, 21), Node(2, 1000, -21), Node(3, 1000, -105));
+        Assert.Empty(Pass(withoutAircraft, new[] { EastWest() }));
+    }
+
+    [Fact]
+    public void An_aircraft_on_the_runway_gets_no_passage_or_start_hold_for_a_route_leaving_it()
+    {
+        var route = RouteOf(Node(1, 1000, 21), Node(2, 1000, -21), Node(3, 1000, -105));
+
+        Assert.Empty(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(10), Lon(1000))));
+        Assert.Null(route.StartHoldRunway);
+    }
+
+    [Fact]
+    public void Standing_beside_the_runway_a_route_starting_along_it_still_starts_held()
+    {
+        // KORD 04L at G: the aircraft waits 45 m beside a route that starts on the runway and runs along it.
+        // It has not joined the route, so it is not 40 m along it and the start is not passed.
+        var route = RouteOf(Node(1, 1000, 0), Node(2, 1300, 0), Node(3, 1300, -60), Node(4, 1300, -200));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, aircraft: new AircraftPosition(Lat(45), Lon(1040))));
+
+        Assert.Equal(RunwayEventKind.Crossing, ev.Kind);
+        Assert.True(ev.Held);
+        Assert.Equal("runway 09", route.StartHoldRunway);
     }
 
     private static (TaxiRoute Route, TaxiGraph.RunwayCenterline[] Runways) Intersection()
@@ -214,6 +308,58 @@ public class RunwayHoldPlacementTests
         Assert.True(route.Segments[0].IsHoldShortPoint);
         Assert.Equal("runway 09 and runway 01", route.Segments[0].HoldShortRunway);
         Assert.All(route.Segments.Skip(1), s => Assert.False(s.IsHoldShortPoint));
+    }
+
+    [Fact]
+    public void A_stop_is_never_placed_on_another_runways_pavement_and_shares_that_runways_stop()
+    {
+        // LEBL: 20's stop once landed on 06L/24R, 38 m before 20. The route meets 02/20 40 m from its 02 end.
+        var route = RouteOf(Node(1, 1400, -300), Node(2, 1400, -105, TaxiNodeType.HoldShort, "runway 06L at D5"),
+            Node(3, 1400, -51), Node(4, 1400, -21), Node(5, 1400, 21), Node(6, 1460, 70), Node(7, 1460, 200));
+        var runways = new[] { EastWest("06L", "24R"), NorthSouth("02", "20", eastM: 1460, fromNorthM: 30, toNorthM: 3000) };
+
+        var events = Pass(route, runways);
+
+        Assert.Same(route.Segments[0], Assert.Single(route.Segments, s => s.IsHoldShortPoint));
+        Assert.Equal("runway 06L at D5 and runway 02", route.Segments[0].HoldShortRunway);
+        Assert.False(route.Segments[3].IsHoldShortPoint);
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.True(e.Held));
+    }
+
+    [Fact]
+    public void A_route_starting_on_one_runway_gets_no_start_hold_for_the_next()
+    {
+        var runways = new[] { EastWest("11", "29"), NorthSouth("14", "32", eastM: 1100, fromNorthM: -1500, toNorthM: 1500) };
+
+        foreach (var aircraft in new AircraftPosition?[] { null, new AircraftPosition(Lat(0), Lon(900)) })
+        {
+            var route = AlongElevenAcrossFourteen();
+
+            var ev = Assert.Single(Pass(route, runways, aircraft: aircraft));
+
+            Assert.Equal("14", ev.Designator);
+            Assert.False(ev.Held);
+            Assert.Null(route.StartHoldRunway);
+            Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
+        }
+    }
+
+    [Fact]
+    public void No_start_hold_while_the_aircraft_stands_on_another_runway()
+    {
+        var runways = new[] { EastWest("11", "29"), NorthSouth("14", "32", eastM: 1000, fromNorthM: 45, toNorthM: 3000) };
+
+        // The aircraft stands on 11/29's pavement, where a start hold would stop it.
+        var onRunway = RouteOf(Node(1, 940, 35), Node(2, 1000, 80), Node(3, 1000, 200));
+        var ev = Assert.Single(Pass(onRunway, runways, aircraft: new AircraftPosition(Lat(0), Lon(940))));
+        Assert.Equal("14", ev.Designator);
+        Assert.False(ev.Held);
+        Assert.Null(onRunway.StartHoldRunway);
+
+        var withoutAircraft = RouteOf(Node(1, 940, 35), Node(2, 1000, 80), Node(3, 1000, 200));
+        Assert.True(Assert.Single(Pass(withoutAircraft, runways)).Held);
+        Assert.Equal("runway 14", withoutAircraft.StartHoldRunway);
     }
 
     [Fact]
@@ -248,13 +394,16 @@ public class RunwayHoldPlacementTests
     [Fact]
     public void An_explicit_pick_is_honoured_only_at_or_after_its_taxiway_run()
     {
+        var runway = EastWest();
         var picked = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
-        Assert.True(RouteRunwayCrossings.ApplyUserRunwayHold(picked, EastWest(), "27", runStartSegmentIndex: 0, allowStartHold: true));
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            picked, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
         Assert.True(picked.Segments[0].IsHoldShortPoint);
         Assert.Equal("runway 27", picked.Segments[0].HoldShortRunway);
 
         var late = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
-        Assert.False(RouteRunwayCrossings.ApplyUserRunwayHold(late, EastWest(), "27", runStartSegmentIndex: 3, allowStartHold: true));
+        Assert.Equal(UserRunwayHoldResult.NotOnRoute, RouteRunwayCrossings.ApplyUserRunwayHold(
+            late, runway, new[] { runway }, "27", runStartSegmentIndex: 3, allowStartHold: true));
         Assert.All(late.Segments, s => Assert.False(s.IsHoldShortPoint));
     }
 
@@ -262,12 +411,47 @@ public class RunwayHoldPlacementTests
     public void An_explicit_pick_whose_crossing_is_the_first_segment_starts_held_instead_of_tagging_the_far_side()
     {
         // KBOS C shape on segment 0: the old fallback tagged the crossing segment, whose end is past the runway.
+        var runway = EastWest();
         var route = RouteOf(Node(1, 500, -60), Node(2, 500, 60));
 
-        Assert.True(RouteRunwayCrossings.ApplyUserRunwayHold(route, EastWest(), "27", runStartSegmentIndex: 0, allowStartHold: true));
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
 
         Assert.Equal("runway 27", route.StartHoldRunway);
         Assert.False(route.Segments[0].IsHoldShortPoint);
+    }
+
+    [Fact]
+    public void An_explicit_pick_that_cannot_be_placed_says_so()
+    {
+        var runway14 = NorthSouth("14", "32", eastM: 1100, fromNorthM: -1500, toNorthM: 1500);
+        var runways = new[] { EastWest("11", "29"), runway14 };
+
+        Assert.Equal(UserRunwayHoldResult.NotHeld, RouteRunwayCrossings.ApplyUserRunwayHold(
+            AlongElevenAcrossFourteen(), runway14, runways, "14", runStartSegmentIndex: 0, allowStartHold: true));
+        Assert.Equal(UserRunwayHoldResult.NotOnRoute, RouteRunwayCrossings.ApplyUserRunwayHold(
+            AlongElevenAcrossFourteen(), EastWest("09", "27", northM: 5000), runways, "09",
+            runStartSegmentIndex: 0, allowStartHold: true));
+
+        var leblRunway = EastWest("06L", "24R");
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            Lebl(), leblRunway, new[] { leblRunway }, "06L", runStartSegmentIndex: 0, allowStartHold: true));
+    }
+
+    [Fact]
+    public void An_explicit_pick_names_its_runway_at_an_end_of_taxiway_stop()
+    {
+        var runway = EastWest("06L", "24R");
+
+        var picked = LeblWithEndOfTaxiwayStop();
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            picked, runway, new[] { runway }, "06L", runStartSegmentIndex: 0, allowStartHold: true));
+        Assert.Equal("runway 06L", picked.Segments[2].HoldShortRunway);
+
+        // The automatic pass never touches a pilot's "end of taxiway" label.
+        var automatic = LeblWithEndOfTaxiwayStop();
+        Pass(automatic, new[] { runway });
+        Assert.Equal("end of taxiway D", automatic.Segments[2].HoldShortRunway);
     }
 
     [Fact]
@@ -337,10 +521,12 @@ public class RunwayHoldPlacementTests
         // Reviewer probe S5: pick "27" for a crossing whose geometry sits in the 09 half, then run
         // the automatic pass. The event must name "27" (what the stop says), not "09" (the
         // designator the crossing geometry reports).
+        var runway = EastWest();
         var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
 
-        Assert.True(RouteRunwayCrossings.ApplyUserRunwayHold(route, EastWest(), "27", runStartSegmentIndex: 0, allowStartHold: true));
-        var events = Pass(route, new[] { EastWest() });
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
+        var events = Pass(route, new[] { runway });
 
         Assert.Equal("runway 27", route.Segments[0].HoldShortRunway);
         var ev = Assert.Single(events);
