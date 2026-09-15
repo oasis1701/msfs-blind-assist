@@ -2472,23 +2472,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// True when the taxi edge (a→b) crosses the runway centerline (t1→t2)
-    /// between the thresholds — a proper segment-segment intersection.
+    /// True when the taxi edge (a→b) crosses the segment t1→t2 (a runway centerline between its
+    /// thresholds) — a proper, strict opposite-sides segment-segment intersection, so an edge that merely
+    /// touches an endpoint or runs alongside is not flagged.
     ///
-    /// This is the CORRECT "does the route cross this runway" test. A taxiway
-    /// crosses a runway via an EDGE that spans the pavement, with its endpoint
-    /// NODES sitting OFF the runway on either side — so a "is a node ON the
-    /// pavement?" test (perpendicular distance ≤ half-width) silently misses the
-    /// crossing whenever the flanking nodes are more than ~half-width+5 m from
-    /// the centerline. KBOS taxiway C over runway 04L is the motivating case:
-    /// C plainly crosses 04L, but C's nearest node is 35 m from the 04L
-    /// centerline (half-width is 25 m), so the node test found nothing and no
-    /// hold-short was inserted — even though the route clearly traverses the
-    /// runway. The edge-intersection test catches it regardless of node spacing.
-    ///
-    /// "Proper" (strict opposite-sides) intersection by design: a taxiway that
-    /// merely touches a threshold endpoint or runs parallel alongside the runway
-    /// is NOT flagged, avoiding false hold-shorts.
+    /// A segment-intersection primitive kept for tools/ProgressiveTaxiProbe and TaxiGraphStaticsTests. The
+    /// runway crossing pass does not use it: whether a route crosses or enters a runway is decided by
+    /// <see cref="RunwayRouteClassifier"/> (docs/taxi-guidance.md, "Runway crossings and entries").
     /// </summary>
     public static bool EdgeCrossesRunwayStatic(
         double aLat, double aLon, double bLat, double bLon,
