@@ -91,4 +91,34 @@ public class RunwayPavementTests
         Assert.False(RunwayPavement.IsOnPavement(0, 0, none));
         Assert.False(RunwayPavement.SegmentTouchesPavement(1 * M, 0, -1 * M, 0, none, out _));
     }
+
+    [Fact]
+    public void A_segment_crossing_two_runways_is_named_after_the_nearer_crossing()
+    {
+        // Two parallel east-west runways, 300 m apart (09L at lat 0, 09R at lat 300 m).
+        // The leg runs north-south at Lon 500 m, crossing 09L first (100 m from `a`) and
+        // then 09R (400 m from `a`). The FARTHER runway (09R) is listed FIRST, so a naive
+        // "first touched in list order" pick would name it instead of the nearer one.
+        var near = new TaxiGraph.RunwayCenterline
+        {
+            Lat1 = 0, Lon1 = 0, Lat2 = 0, Lon2 = FarLon, Name1 = "09L", Name2 = "27L",
+            HalfWidthMeters = 22.5,
+            PavementLat1 = 0, PavementLon1 = 0, PavementLat2 = 0, PavementLon2 = FarLon,
+            PavementHalfWidthMeters = 22.5,
+        };
+        var far = new TaxiGraph.RunwayCenterline
+        {
+            Lat1 = 300 * M, Lon1 = 0, Lat2 = 300 * M, Lon2 = FarLon, Name1 = "09R", Name2 = "27R",
+            HalfWidthMeters = 22.5,
+            PavementLat1 = 300 * M, PavementLon1 = 0, PavementLat2 = 300 * M, PavementLon2 = FarLon,
+            PavementHalfWidthMeters = 22.5,
+        };
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { far, near };
+
+        bool touches = RunwayPavement.SegmentTouchesPavement(
+            -100 * M, 500 * M, 400 * M, 500 * M, centerlines, out string designator);
+
+        Assert.True(touches);
+        Assert.Equal("09L", designator);
+    }
 }
