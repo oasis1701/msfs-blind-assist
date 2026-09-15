@@ -552,9 +552,12 @@ public class LandingExitForm : Form
             {
                 var paths = _dataProvider.GetTaxiPaths(icao);
                 if (paths.Count == 0) return;
-                var parking = _dataProvider.GetParkingSpots(icao);
+                // Exactly as LoadAirportCoreAsync builds it: the app-wide stand names (this graph
+                // becomes taxi guidance's when a plan activates, and a stand has ONE name) and the
+                // runway list Build repairs start rows from. _allRunways is set and cleared with _graph.
+                var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
                 var starts = _dataProvider.GetRunwayStarts(icao);
-                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts);
+                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts, _allRunways);
 
                 // The form can be closed, or the pilot can have typed another ICAO, during the
                 // build — re-check both before touching _graph or any control.
