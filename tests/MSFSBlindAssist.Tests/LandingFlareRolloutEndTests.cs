@@ -45,5 +45,9 @@ public class LandingFlareRolloutEndTests
 
     [Fact]
     public void Taxi_guidance_already_steering_ends_it_silently_at_any_speed()
-        => Assert.Equal(End.Silent, Decide(85.0, hdg: 2.0, taxiSteering: true, taxiSeen: true));
+    {
+        Assert.Equal(End.Silent, Decide(85.0, hdg: 2.0, taxiSteering: true, taxiSeen: true));
+        // Below every end limit too: steering must win over Queued, not only over Continue.
+        Assert.Equal(End.Silent, Decide(30.0, hdg: 25.0, taxiSteering: true, taxiSeen: true));
+    }
 }

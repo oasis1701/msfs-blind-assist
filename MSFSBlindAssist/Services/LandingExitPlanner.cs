@@ -291,7 +291,7 @@ public class LandingExitPlanner
                 LandingExitLeadTier.Floor);
 
         DiagLog($"Re-plan on {actual.RunwayID} ({match.Verdict}): aircraftFromThr={aircraftFromThresholdFt:F0}ft " +
-                $"lead={RolloutExitGate.ExitLeadFeet(groundSpeedKnots):F0}ft " +
+                $"floorLead={RolloutExitGate.ExitLeadFeet(groundSpeedKnots):F0}ft " +
                 $"plannedDist={plannedExit.DistanceFromThresholdFeet:F0}ft exits={exits.Count} " +
                 $"rescued={rescued} rule={choice.Rule} tier={choice.Tier} " +
                 (choice.Exit == null

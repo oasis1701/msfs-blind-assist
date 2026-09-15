@@ -155,13 +155,15 @@ public class LandingExitReplanTests
         Assert.False(LandingExitReplan.PhysicalSideAgreesAcrossTwinEnds("Left", "left"));
         Assert.True(LandingExitReplan.PhysicalSideAgreesAcrossTwinEnds("", "Left"));
         Assert.True(LandingExitReplan.PhysicalSideAgreesAcrossTwinEnds("Right", ""));
+        Assert.True(LandingExitReplan.PhysicalSideAgreesAcrossTwinEnds("", ""));
     }
 
     [Fact]
     public void Own_taxiway_is_found_by_name_when_the_other_end_keeps_a_different_node()
     {
         // OMDB 12R/30L K14: the two ends keep different nodes of one connector about 80 ft apart,
-        // and "Right" seen from 12R is "Left" seen from 30L. By distance alone B would win.
+        // and "Right" seen from 12R is "Left" seen from 30L. The distance rules would reach K14 too, but
+        // only as ClosestBeforePlannedDistance; the rule is what proves the name match chose it.
         var planned = Exit(784, "K14", 8487, 65, side: "Right");
         var exits = new List<LandingExit>
         {
@@ -169,7 +171,7 @@ public class LandingExitReplanTests
             Exit(2, "B", 6500, 90, side: "Left", lon: 0.01),
         };
 
-        var c = LandingExitReplan.ChooseExit(exits, planned, 3652, 1000, 100, Comfortable);
+        var c = LandingExitReplan.ChooseExit(exits, planned, 8487, 1000, 100, Comfortable);
 
         Assert.Equal(1080, c.Exit?.NodeId);
         Assert.Equal(LandingExitReplanRule.PilotsOwnTaxiway, c.Rule);
@@ -335,7 +337,7 @@ public class LandingExitReplanTests
     [Fact]
     public void Own_taxiway_must_also_be_comfortably_reachable_in_the_first_pass()
     {
-        var planned = Exit(110, "S", 7000, 90, side: "Left");
+        var planned = Exit(110, "S", 8000, 90, side: "Left");
         var exits = new List<LandingExit>
         {
             Exit(111, "S", 4000, 90, side: "Right", lon: 0.0002),

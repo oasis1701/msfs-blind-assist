@@ -441,6 +441,9 @@ public class LandingFlareAssistManager : IDisposable
     {
         if (!taxiHandoverPending) return;
         taxiHandoverPending = false;
+        // A real takeover always leaves the landing rollout. Taxi guidance already back in one means the
+        // pending flag was a misread: a new landing's planner activation passes through Taxiing on its way in.
+        if (taxiInLandingRollout) return;
         if (phase != Phase.Rollout) return;
         StopEngagement(raiseEvents: true);
         Log.Debug("LandingFlareAssist", "Rollout handed over to taxi guidance");
@@ -698,6 +701,8 @@ public class LandingFlareAssistManager : IDisposable
             announcer.AnnounceImmediate("Rollout guidance complete");
         else if (end == RolloutEnd.Queued)
             announcer.Announce("Rollout guidance complete");
+        else
+            Log.Debug("LandingFlareAssist", "Rollout ended silently: taxi guidance already steering");
         // Stay ARMED: circuits / touch-and-go get flare guidance again on the next
         // approach without re-opening the destination dialog. The feed gate drops
         // the SIM_FRAME request within a second (on ground, not engaged).
