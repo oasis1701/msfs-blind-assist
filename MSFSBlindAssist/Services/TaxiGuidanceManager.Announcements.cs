@@ -567,20 +567,14 @@ public partial class TaxiGuidanceManager
                 : "";
         }
 
-        // Describe the hold-short points. Runway crossings are NAMED, not just
-        // counted — "2 hold short points" told the pilot nothing about the
-        // route's shape, and at KSFO (2026-07-01, "Q hold short 10R" from D
-        // between the 28s) the only route onto Q re-crossed 28R twice; the
-        // pilot heard two unexplained "hold short of runway 10L" callouts and
-        // perceived a giant loop. "crossing runway 10L twice" up front makes
-        // the route's runway crossings audible before the pilot starts rolling.
-        // For runway destinations, TruncateToHoldShort tags the last segment
-        // purely as an internal countdown rail — it is NOT an ATC-assigned hold
-        // point and is excluded (same exclusion the old bare count applied).
-        // The rule itself lives in RouteRunwayCrossings.ShouldExcludeFinalHold — shared with the
-        // recalculation's "Route changed" callout, which describes the same kind of route and
-        // must not reach a different verdict about it.
-        var (crossingClause, otherHolds) = RouteRunwayCrossings.Describe(
+        // Every runway the route crosses or enters is NAMED, held or not — "2 hold short points"
+        // told the pilot nothing about the route's shape, and at KSFO (2026-07-01) two unexplained
+        // "hold short of runway 10L" callouts read as a giant loop. The clause comes from the route's
+        // recorded events, never from hold labels, so a crossing that could not be held is still
+        // said. Other hold-short points (end of taxiway, named holding points) are counted; a
+        // runway destination's own countdown rail is excluded (ShouldExcludeFinalHold).
+        string crossingClause = RouteRunwayCrossings.DescribeRunwayEvents(route.RunwayEvents);
+        int otherHolds = RouteRunwayCrossings.CountNonRunwayHoldShorts(
             route.Segments,
             RouteRunwayCrossings.ShouldExcludeFinalHold(route.Segments, isRunwayDestination));
         string holdStr = "";

@@ -31,12 +31,11 @@ public partial class TaxiGuidanceManager
         // we don't want three announcements fighting for audio during rollout.
         bool announceSummary = true,
         // User-explicit runway hold-shorts from the form: maps taxiway-sequence
-        // index → runway designator. After taxiway[seqIdx], guidance stops at
-        // the route segment whose endpoint sits on that runway. Auto-detection
-        // (`InsertRunwayCrossingHoldShorts`) still runs on top, so most users
-        // never need this; it's the explicit override for ATC clearances where
-        // the pilot wants to confirm the SPECIFIC runway named, or where the
-        // auto-detect didn't fire for some reason.
+        // index → runway designator. After taxiway[seqIdx], guidance holds before
+        // the route enters or crosses that runway (ApplyUserRunwayHoldShorts). The
+        // automatic runway hold pass still runs on top, so most users never need
+        // this; it's the explicit override for ATC clearances where the pilot
+        // wants to confirm the SPECIFIC runway named.
         Dictionary<int, string>? userRunwayHoldShorts = null,
         // Non-null for Progressive Taxi legs. Carries the terminal end-state
         // type/target; drives the progressive-hold end announcement and (for
@@ -345,7 +344,7 @@ public partial class TaxiGuidanceManager
             if (userRunwayHoldShorts != null && userRunwayHoldShorts.Count > 0 && taxiwaySequence != null)
             {
                 runwayHoldShortWarning = ApplyUserRunwayHoldShorts(
-                    route, taxiwaySequence, userRunwayHoldShorts);
+                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon);
             }
 
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
@@ -1448,40 +1447,34 @@ public partial class TaxiGuidanceManager
         TaxiRoute route, bool isRunwayDestination, string destinationName,
         double aircraftLat, double aircraftLon, string phase)
     {
-        var crossedRunways = InsertRunwayCrossingHoldShorts(
-            route, isRunwayDestination ? destinationName : "", aircraftLat, aircraftLon);
+        // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
+        // The start hold is allowed only when LoadRoute adopts the route: a recalculation is built
+        // from a moving aircraft that may already be committed to the crossing.
+        if (_graph != null)
+        {
+            RouteRunwayCrossings.InsertRunwayHoldShorts(
+                route, _graph.RunwayCenterlines,
+                isRunwayDestination ? destinationName : "",
+                allowStartHold: phase == "load",
+                holdSeg => HoldPointIsBehindAircraft(holdSeg, aircraftLat, aircraftLon),
+                () => RouteStartIsBehindAircraft(route, aircraftLat, aircraftLon));
+        }
 
-        // One line per route ADOPTED, naming every runway it crosses. Answering "did that route
-        // really drive across 08L?" for the 2026-08-27 KATL arrival meant reconstructing
-        // segment coordinates against the navdata by hand; the pipeline already knows the
-        // answer at build time. `phase` distinguishes the two adopters — the recalc wrote
-        // nothing at all before 2026-09, which is why proving a recalculation had even
-        // happened at PHNL took a segment-cursor reset rather than a log line.
+        // One line per route ADOPTED. Answering "did that route really drive across 08L?" for the
+        // 2026-08-27 KATL arrival meant reconstructing segment coordinates against the navdata by
+        // hand; the pipeline already knows the answer at build time. `phase` distinguishes the two
+        // adopters — the recalc wrote nothing at all before 2026-09, which is why proving a
+        // recalculation had even happened at PHNL took a segment-cursor reset rather than a log line.
         //
         // ADOPTED, not built: this runs from AdoptRoute, below the recalculation's no-op guard,
-        // so a recalc the guard discards writes nothing. A line for a route that was never
-        // loaded reads as proof of exactly the thing it did not do — the same trap the reach
-        // probe was moved below that guard to avoid.
-        _guidanceLog.Info(crossedRunways.Count > 0
-            ? $"Route crossings: phase={phase} dest=\"{destinationName}\" " +
-              $"segments={route.Segments.Count} crosses={string.Join(",", crossedRunways)}"
-            : $"Route crossings: phase={phase} dest=\"{destinationName}\" " +
-              $"segments={route.Segments.Count} crosses=(none)");
+        // so a recalc the guard discards writes nothing. Written before the Progressive strip, so
+        // it records the holds the pass placed.
+        _guidanceLog.Info(RouteRunwayCrossings.DescribeForLog(phase, destinationName, route));
 
         // Progressive "after crossing" terminator: the pilot is cleared to cross the terminator
-        // runway, so strip the auto hold-short for it (other crossings keep their safety hold).
+        // runway, so strip the holds for it alone (a stop shared with another runway stays).
         if (_progressiveTerminator?.ClearedCrossingRunway is string clearedRwy)
-        {
-            foreach (var seg in route.Segments)
-            {
-                if (seg.IsHoldShortPoint && !string.IsNullOrEmpty(seg.HoldShortRunway) &&
-                    RunwayDesignatorsMatch(seg.HoldShortRunway, clearedRwy))
-                {
-                    seg.IsHoldShortPoint = false;
-                    seg.HoldShortRunway = "";
-                }
-            }
-        }
+            RouteRunwayCrossings.StripClearedCrossing(route, clearedRwy);
     }
 
     /// <summary>
@@ -1497,8 +1490,9 @@ public partial class TaxiGuidanceManager
     /// method and nowhere else.</para>
     ///
     /// <para>The aircraft position is required, not optional: the crossing pass must know which
-    /// candidate hold points the aircraft has already rolled past (see
-    /// <see cref="HoldPointIsBehindAircraft"/>). Callers that adopt a route from a standstill
+    /// candidate stop points — a hold segment or the start node — the aircraft has already
+    /// rolled past (see <see cref="HoldPointIsBehindAircraft"/> and
+    /// <see cref="RouteStartIsBehindAircraft"/>). Callers that adopt a route from a standstill
     /// pass their own position and the test is simply never satisfied.</para>
     /// </summary>
     private void AdoptRoute(
@@ -1511,34 +1505,20 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Thin adapter: hands the live graph's edge probe (<see cref="WhichRunwayCrossedByEdge"/>)
-    /// and the designator-match delegate to the pure
-    /// <see cref="RouteRunwayCrossings.InsertCrossingHoldShorts"/>, which owns the actual
-    /// rules — read that method's doc, not this one, for what gets tagged and skipped.
-    ///
-    /// Two assumptions a reader might bring to this method are both WRONG, documented
-    /// regressions: the destination runway is NOT excluded wholesale — only the route's own
-    /// final arrival segment is (`TruncateToHoldShort` already tags that one; a blanket
-    /// same-runway skip dropped genuine mid-route crossings of the active runway). And
-    /// crossing detection is NOT point-on-pavement (endpoint-within-half-width of the
-    /// centerline) — that missed crossings whose flanking nodes sit off the runway and was
-    /// replaced by edge-vs-centerline intersection (<see cref="TaxiGraph.EdgeCrossesRunwayStatic"/>).
-    /// Do not revert to either; see docs/taxi-guidance.md.
+    /// Whether the aircraft is already more than <see cref="HOLD_POINT_BEHIND_M"/> past the route's
+    /// START node along its first segment — the start-hold counterpart of
+    /// <see cref="HoldPointIsBehindAircraft"/>. A start hold is a stop at the aircraft's own position;
+    /// one it has already rolled past would command a stop beyond the hold line.
     /// </summary>
-    private List<string> InsertRunwayCrossingHoldShorts(
-        TaxiRoute route, string destinationName, double aircraftLat, double aircraftLon)
+    private static bool RouteStartIsBehindAircraft(TaxiRoute route, double aircraftLat, double aircraftLon)
     {
-        if (route == null || route.Segments.Count == 0) return new List<string>();
-        // The graph is what the crossing probe needs; with no centrelines there is nothing to
-        // cross and the pure pass would return empty anyway — this just skips the walk.
-        if (_graph == null || _graph.RunwayCenterlines.Count == 0) return new List<string>();
-
-        return RouteRunwayCrossings.InsertCrossingHoldShorts(
-            route.Segments,
-            destinationName,
-            WhichRunwayCrossedByEdge,
-            RunwayDesignatorsMatch,
-            holdSeg => HoldPointIsBehindAircraft(holdSeg, aircraftLat, aircraftLon)).ToList();
+        var first = route.Segments.Count > 0 ? route.Segments[0] : null;
+        if (first?.FromNode == null || first.ToNode == null) return false;
+        double lengthM = TaxiGraph.FastDistanceMeters(
+            first.FromNode.Latitude, first.FromNode.Longitude, first.ToNode.Latitude, first.ToNode.Longitude);
+        if (lengthM < 1.0) return false;
+        AlongTrackToSegmentEnd(aircraftLat, aircraftLon, first, out double alongRemainingM, out _);
+        return lengthM - alongRemainingM > HOLD_POINT_BEHIND_M;
     }
 
     /// <summary>
@@ -1566,57 +1546,23 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Returns the name of the runway crossed by the taxi edge (a→b), or "" if
-    /// the edge crosses no runway. Uses edge-vs-centerline intersection
-    /// (<see cref="TaxiGraph.EdgeCrossesRunwayStatic"/>) so a crossing is found
-    /// regardless of how far the edge's endpoint nodes sit from the centerline.
-    /// Names the runway after the threshold closer to the edge midpoint — same
-    /// convention as TaxiGraph.DescribeLocation.
-    /// </summary>
-    private string WhichRunwayCrossedByEdge(double aLat, double aLon, double bLat, double bLon)
-    {
-        if (_graph == null) return "";
-
-        foreach (var rwy in _graph.RunwayCenterlines)
-        {
-            if (!RouteRunwayCrossings.EdgeCrossesRunway(aLat, aLon, bLat, bLon, rwy))
-                continue;
-
-            // Name it from the PAVEMENT thresholds too, for the same reason the test uses
-            // them: a crossing inside the displaced-threshold band is nearer the pavement
-            // end than the start row, and naming it off the start row can pick the far
-            // designator for a crossing that is plainly at this end.
-            double mLat = (aLat + bLat) * 0.5;
-            double mLon = (aLon + bLon) * 0.5;
-            double d1 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.PavementLat1, rwy.PavementLon1);
-            double d2 = TaxiGraph.FastDistanceMeters(mLat, mLon, rwy.PavementLat2, rwy.PavementLon2);
-            string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
-            if (string.IsNullOrEmpty(name)) name = rwy.Name1;
-            return name;
-        }
-        return "";
-    }
-
-    /// <summary>
-    /// Honors the user's explicit "Hold short of runway X" pickers from the
-    /// form. For each (sequenceIndex → runway) pair, finds the route segment
-    /// whose endpoint sits on that runway's centerline AND comes after the
-    /// last segment of taxiway[sequenceIndex], and tags it as a hold-short.
+    /// Honors the pilot's explicit "Hold short of runway X" pickers from the form. For each
+    /// (sequenceIndex → runway) pair the pick binds to the matching run of segments tagged with that
+    /// taxiway (first run, counting repeats — KSFO D keeps its name across 10R/28L) and is honoured
+    /// when the route enters or crosses X at or after that run's start. The hold is placed by the same
+    /// resolver as the automatic pass and labelled as the pilot typed it
+    /// (<see cref="RouteRunwayCrossings.ApplyUserRunwayHold"/>).
     ///
-    /// Returns a non-null warning string when one or more user picks could
-    /// not be matched to the route (clearance/route mismatch — caller may
-    /// announce alongside the route summary so the pilot sees the issue).
-    /// Returns null when every pick was honored cleanly.
-    ///
-    /// Auto-detection (`InsertRunwayCrossingHoldShorts`) runs after this and
-    /// will pick up any crossings the user didn't explicitly mark. When both
-    /// fire on the same segment, this method's label wins because auto-detect
-    /// respects an existing non-empty `HoldShortRunway`.
+    /// Returns a warning string when one or more picks could not be matched to the route (announced
+    /// with the route summary so the pilot hears the clearance/route mismatch), or null when every
+    /// pick was honoured. Runs before the automatic pass, which shares a stop it resolves to.
     /// </summary>
     private string? ApplyUserRunwayHoldShorts(
         TaxiRoute route,
         List<string> taxiwaySequence,
-        Dictionary<int, string> userRunwayHoldShorts)
+        Dictionary<int, string> userRunwayHoldShorts,
+        double aircraftLat,
+        double aircraftLon)
     {
         if (_graph == null) return null;
 
@@ -1699,47 +1645,13 @@ public partial class TaxiGuidanceManager
                 continue;
             }
 
-            // Forward scan from the run start for the first segment whose EDGE
-            // crosses the target runway (edge-vs-centerline intersection, not
-            // node-on-pavement). A taxiway crosses a runway via an edge that
-            // spans the pavement with both endpoint nodes OFF the runway, so the
-            // old "is a node within half-width of the centerline?" test silently
-            // rejected the user's correct pick whenever the flanking nodes were
-            // more than half-width+5 m out (KBOS "hold short 04L" on taxiway C:
-            // nearest C node is 35 m from the 04L centerline → falsely reported
-            // "route does not cross 04L after taxiway C").
-            int crossingSeg = -1;
-            for (int i = runStart; i < route.Segments.Count; i++)
-            {
-                var seg = route.Segments[i];
-                if (seg.FromNode == null || seg.ToNode == null) continue;
-                if (RouteRunwayCrossings.EdgeCrossesRunway(
-                        seg.FromNode.Latitude, seg.FromNode.Longitude,
-                        seg.ToNode.Latitude, seg.ToNode.Longitude,
-                        targetRwy))
-                {
-                    crossingSeg = i;
-                    break;
-                }
-            }
-
-            if (crossingSeg < 0)
+            if (!RouteRunwayCrossings.ApplyUserRunwayHold(
+                    route, targetRwy, runwayId, runStart, allowStartHold: true,
+                    holdSeg => HoldPointIsBehindAircraft(holdSeg, aircraftLat, aircraftLon),
+                    () => RouteStartIsBehindAircraft(route, aircraftLat, aircraftLon)))
             {
                 unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
-                continue;
             }
-
-            // Tag the segment ending at the scenery's own hold line before the
-            // crossing (the segment immediately before the crossing edge when
-            // there is none) — the crossing edge straddles the CENTERLINE, so
-            // its start node is routinely on the pavement itself. See
-            // RouteRunwayCrossings.ResolveCrossingHoldSegment.
-            int holdSegIdx = RouteRunwayCrossings.ResolveCrossingHoldSegment(
-                route.Segments, crossingSeg, runwayId);
-            var holdSeg = route.Segments[holdSegIdx];
-            holdSeg.IsHoldShortPoint = true;
-            // User intent wins on the label.
-            holdSeg.HoldShortRunway = $"runway {runwayId}";
         }
 
         if (unmatched.Count == 0) return null;
@@ -1845,17 +1757,14 @@ public partial class TaxiGuidanceManager
         // taxiing away" — a specific, confident, fabricated distance for a route with no
         // path at all, which a blind pilot has no way to check. RunwayReachGate compares
         // it (infinity exceeds any threshold) and gives it its own wording.
-        // The PAVEMENT frame, not the start-row one. The centerline's Lat1/Lon1 come from the
-        // navdata `start` rows, which are repaired only laterally — at a displaced threshold
-        // they sit hundreds of metres inside the pavement, so a start-row-framed "on the
-        // runway" window rejects real runway pavement and reports an aircraft standing on the
-        // runway as having no path to it. HalfWidthMeters is likewise a fixed 75 ft default.
-        // TaxiAssistForm hands FindRunwayLineupEntryNode the runway table's own geometry, and
-        // these two are the halves of one reach test — they have to agree about where the
-        // runway is.
+        // Where the runway is comes from the one runway shape: the runway-table pavement when it is a
+        // sound line for this centerline, otherwise the start rows (docs/taxi-guidance.md). At a
+        // displaced threshold the start rows sit hundreds of metres inside the pavement, and a
+        // start-row window reports an aircraft standing on the runway as having no path to it.
+        var shape = RunwayShape.For(cl);
         return _graph.GraphWalkToRunwayPavement(
-            endNode.NodeId, cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2,
-            cl.PavementHalfWidthMeters, RUNWAY_REACH_WALK_SEARCH_M);
+            endNode.NodeId, shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2,
+            shape.HalfWidthMeters, RUNWAY_REACH_WALK_SEARCH_M);
     }
 
 }
