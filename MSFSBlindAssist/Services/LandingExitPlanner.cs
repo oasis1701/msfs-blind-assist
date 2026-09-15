@@ -258,11 +258,14 @@ public class LandingExitPlanner
         double aircraftFromThresholdFt =
             RunwayFrame.For(actual, lat).Along(lat, lon) / 0.3048 - actual.ThresholdOffset;
         // Only the other end of the SAME runway can still offer the pilot's own taxiway.
-        int? preferredNodeId = match.Verdict == LandingRunwayVerdict.ReciprocalEnd ? plannedExit.NodeId : null;
+        LandingExit? reciprocalPlanned = match.Verdict == LandingRunwayVerdict.ReciprocalEnd ? plannedExit : null;
 
+        // An exit the aircraft can slow down for comfortably first; the reachability floor only when
+        // there is none, even after the rescue scan (LandingExitReplan).
         List<LandingExit> exits = graph.GetLandingExits(actual);
-        var choice = LandingExitReplan.ChooseExit(exits, preferredNodeId,
-            plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots);
+        var choice = LandingExitReplan.ChooseExit(exits, reciprocalPlanned,
+            plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots,
+            LandingExitLeadTier.Comfortable);
 
         bool rescued = false;
         List<LandingExit>? rescue = null;
@@ -276,19 +279,30 @@ public class LandingExitPlanner
             {
                 rescued = true;
                 exits = RolloutExitGate.MergeRescueExits(exits, rescue);
-                choice = LandingExitReplan.ChooseExit(exits, preferredNodeId,
-                    plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots);
+                choice = LandingExitReplan.ChooseExit(exits, reciprocalPlanned,
+                    plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots,
+                    LandingExitLeadTier.Comfortable);
             }
         }
+
+        if (choice.Exit == null)
+            choice = LandingExitReplan.ChooseExit(exits, reciprocalPlanned,
+                plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots,
+                LandingExitLeadTier.Floor);
 
         DiagLog($"Re-plan on {actual.RunwayID} ({match.Verdict}): aircraftFromThr={aircraftFromThresholdFt:F0}ft " +
                 $"lead={RolloutExitGate.ExitLeadFeet(groundSpeedKnots):F0}ft " +
                 $"plannedDist={plannedExit.DistanceFromThresholdFeet:F0}ft exits={exits.Count} " +
-                $"rescued={rescued} rule={choice.Rule} " +
+                $"rescued={rescued} rule={choice.Rule} tier={choice.Tier} " +
                 (choice.Exit == null
                     ? "exit=none"
                     : $"exit='{choice.Exit.TaxiwayName}' node={choice.Exit.NodeId} " +
-                      $"dist={choice.Exit.DistanceFromThresholdFeet:F0}ft angle={choice.Exit.ExitAngleDegrees:F0}") +
+                      $"dist={choice.Exit.DistanceFromThresholdFeet:F0}ft angle={choice.Exit.ExitAngleDegrees:F0} " +
+                      $"needLead={LandingExitReplan.LeadFeet(choice.Exit, groundSpeedKnots, choice.Tier):F0}ft" +
+                      (choice.Rule == LandingExitReplanRule.PilotsOwnTaxiway
+                          ? $" own={(choice.Exit.NodeId == plannedExit.NodeId ? "node" : "name")} " +
+                            $"sep={LandingExitReplan.SeparationMetres(plannedExit, choice.Exit):F0}m"
+                          : "")) +
                 $" allExits={TaxiGuidanceManager.DescribeExits(exits)}" +
                 (rescued ? $" rescue={TaxiGuidanceManager.DescribeExits(rescue)}" : ""));
 
