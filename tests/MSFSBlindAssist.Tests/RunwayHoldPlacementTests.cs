@@ -64,6 +64,81 @@ public class RunwayHoldPlacementTests
     }
 
     [Fact]
+    public void An_ILS_hold_line_within_150_metres_wins()
+    {
+        var route = RouteOf(Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.ILSHoldShort, "runway 06L at D5"),
+            Node(3, 1000, 51), Node(4, 1000, 21), Node(5, 1000, -21), Node(6, 1000, -105));
+
+        Pass(route, new[] { EastWest("06L", "24R") });
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 06L at D5", route.Segments[0].HoldShortRunway);
+        Assert.All(route.Segments.Skip(1), s => Assert.False(s.IsHoldShortPoint));
+    }
+
+    [Fact]
+    public void A_hold_line_naming_no_runway_is_used_for_this_runway()
+    {
+        var route = RouteOf(Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "D5"),
+            Node(3, 1000, 51), Node(4, 1000, 21), Node(5, 1000, -21), Node(6, 1000, -105));
+
+        Pass(route, new[] { EastWest("06L", "24R") });
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 06L at D5", route.Segments[0].HoldShortRunway);
+        Assert.All(route.Segments.Skip(1), s => Assert.False(s.IsHoldShortPoint));
+    }
+
+    [Fact]
+    public void A_hold_line_beyond_150_metres_is_not_reached()
+    {
+        // Walk 1 covers 179 m reaching node 2, so the stop falls back to the nearest clear node.
+        var route = RouteOf(Node(1, 1000, 400), Node(2, 1000, 200, TaxiNodeType.HoldShort, "runway 06L at D5"),
+            Node(3, 1000, 120), Node(4, 1000, 51), Node(5, 1000, 21), Node(6, 1000, -60));
+
+        Pass(route, new[] { EastWest("06L", "24R") });
+
+        Assert.False(route.Segments[0].IsHoldShortPoint);
+        Assert.True(route.Segments[2].IsHoldShortPoint);
+        Assert.Equal("runway 06L", route.Segments[2].HoldShortRunway);
+    }
+
+    [Fact]
+    public void A_hold_line_behind_an_existing_stop_is_never_reached()
+    {
+        var route = RouteOf(Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 06L at D5"),
+            Node(3, 1000, 70), Node(4, 1000, 51), Node(5, 1000, 21), Node(6, 1000, -21), Node(7, 1000, -105));
+        route.Segments[2].IsHoldShortPoint = true;
+        route.Segments[2].HoldShortRunway = "end of taxiway D";
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest("06L", "24R") }));
+
+        Assert.True(ev.Held);
+        Assert.False(route.Segments[0].IsHoldShortPoint);
+        Assert.False(route.Segments[1].IsHoldShortPoint);
+        Assert.True(route.Segments[2].IsHoldShortPoint);
+        Assert.Equal("end of taxiway D", route.Segments[2].HoldShortRunway);
+    }
+
+    [Fact]
+    public void A_crossing_inside_a_displaced_threshold_band_is_held()
+    {
+        // OMDB 12R: the start row sits 600 m inside the pavement.
+        var runway = EastWest("12R", "30L");
+        runway.Lon1 = Lon(600);
+        var route = RouteOf(Node(1, 300, 250), Node(2, 300, 105, TaxiNodeType.HoldShort, "runway 12R at K5"),
+            Node(3, 300, 51), Node(4, 300, 21), Node(5, 300, -21), Node(6, 300, -105));
+
+        var ev = Assert.Single(Pass(route, new[] { runway }));
+
+        Assert.Equal(RunwayEventKind.Crossing, ev.Kind);
+        Assert.Equal("12R", ev.Designator);
+        Assert.True(ev.Held);
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 12R at K5", route.Segments[0].HoldShortRunway);
+    }
+
+    [Fact]
     public void A_node_inside_the_10_metre_margin_is_not_a_stop()
     {
         var route = RouteOf(Node(1, 1000, 300), Node(2, 1000, 200), Node(3, 1000, 35), Node(4, 1000, 10), Node(5, 1000, -60));
