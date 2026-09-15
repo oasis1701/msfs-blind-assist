@@ -238,7 +238,7 @@ public class LandingExitPlanner
             // component, so that re-route succeeds and normal taxi guidance follows.
             _guidanceManager.BeginLandingRolloutNoGraph(
                 _exit, _runway.Heading, _runway, allExits, lat, lon,
-                SettingsManager.Current);
+                SettingsManager.Current, _graph, _dataProvider, _icao);
 
             _activatedThisLanding = true;
             return true;
