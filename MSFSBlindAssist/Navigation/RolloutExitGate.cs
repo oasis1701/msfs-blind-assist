@@ -533,7 +533,9 @@ public static class RolloutExitGate
     /// speed. Shared by the rollout's undershoot retarget scan and the touchdown re-plan
     /// (<see cref="LandingExitReplan"/>), so the two can never disagree about reachability. The
     /// values were tuned on the undershoot scan (YSSY 16R: an exit 79 ft ahead at 52 kt was picked
-    /// and could not be made).
+    /// and could not be made), which runs only below 50 kt. At touchdown speed this floor asks for
+    /// 4-6 m/s² of braking, so the re-plan tries <see cref="ComfortableExitLeadFeet"/> first and
+    /// uses this only in its fallback pass.
     /// </summary>
     public const double ExitLeadMinFeet = 200.0;
 
@@ -543,6 +545,57 @@ public static class RolloutExitGate
     /// <summary>The lead an exit needs ahead of the aircraft at <paramref name="groundSpeedKts"/>.</summary>
     public static double ExitLeadFeet(double groundSpeedKts)
         => Math.Max(ExitLeadMinFeet, groundSpeedKts * ExitLeadFeetPerKnot);
+
+    /// <summary>
+    /// Turn-off speed for a rapid exit, below <see cref="SteepExitAngleDeg"/>. The three turn-off values
+    /// are shared with the rollout's undershoot retarget scan, whose ROLLOUT_UNDERSHOOT_* constants alias
+    /// them.
+    /// </summary>
+    public const double ShallowExitTurnOffSpeedKts = 50.0;
+
+    /// <summary>At or above this turn an exit is steep and taken at <see cref="SteepExitTurnOffSpeedKts"/>.</summary>
+    public const double SteepExitAngleDeg = 45.0;
+
+    /// <summary>Turn-off speed for a steep exit: the tighter turn demands more braking margin.</summary>
+    public const double SteepExitTurnOffSpeedKts = 20.0;
+
+    /// <summary>
+    /// Braking the touchdown re-plan assumes a pilot is comfortable with, after
+    /// <see cref="BrakingTransitionSeconds"/> at touchdown speed. A stated assumption, not aircraft
+    /// performance (repo owner, 2026-09-15). 1.5 and 2.5 m/s² were measured as the bounds: 1.5 lengthened
+    /// the median re-planned rollout by another ~600 ft, and 2.5 left a pilot braking at 2 m/s² hearing a
+    /// retarget in about a quarter of re-planned landings.
+    /// </summary>
+    public const double ComfortableDecelerationMps2 = 2.0;
+
+    /// <summary>Seconds at touchdown speed before braking builds (spoilers, brake onset).</summary>
+    public const double BrakingTransitionSeconds = 2.0;
+
+    private const double FeetPerSecondPerKnot = 1.6878;
+    private const double FeetPerMetre = 1.0 / 0.3048;
+
+    /// <summary>
+    /// Turn-off speed for an exit of <paramref name="exitAngleDeg"/>. The unmeasured angle 0 counts as
+    /// steep: the re-plan must not assume a rapid exit it cannot see.
+    /// </summary>
+    public static double ExitTurnOffSpeedKts(double exitAngleDeg)
+        => exitAngleDeg > 0.0 && exitAngleDeg < SteepExitAngleDeg ? ShallowExitTurnOffSpeedKts : SteepExitTurnOffSpeedKts;
+
+    /// <summary>
+    /// How far ahead an exit must be for the aircraft to reach its turn-off speed with comfortable braking:
+    /// <see cref="BrakingTransitionSeconds"/> at <paramref name="groundSpeedKts"/>, then
+    /// <see cref="ComfortableDecelerationMps2"/> down to <see cref="ExitTurnOffSpeedKts"/>, and never less
+    /// than <see cref="ExitLeadFeet"/>. At 140 kt: about 4,640 ft for a 90° exit and 4,184 ft for a 30°
+    /// rapid exit, where <see cref="ExitLeadFeet"/> gives 1,540 ft.
+    /// </summary>
+    public static double ComfortableExitLeadFeet(double groundSpeedKts, double exitAngleDeg)
+    {
+        double v = groundSpeedKts * FeetPerSecondPerKnot;
+        double vTurnOff = Math.Min(ExitTurnOffSpeedKts(exitAngleDeg), groundSpeedKts) * FeetPerSecondPerKnot;
+        double deceleration = ComfortableDecelerationMps2 * FeetPerMetre;
+        double kinematic = v * BrakingTransitionSeconds + (v * v - vTurnOff * vTurnOff) / (2.0 * deceleration);
+        return Math.Max(ExitLeadFeet(groundSpeedKts), kinematic);
+    }
 
     /// <summary>
     /// Where "downfield" starts when looking for the exit to retarget to after an overshoot.

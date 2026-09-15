@@ -22,6 +22,30 @@ public class LandingExitReplanTests
     }
 
     [Fact]
+    public void Comfortable_lead_at_140_kt_is_about_4640_ft_for_a_90_degree_exit_and_4184_for_a_rapid_exit()
+    {
+        // 2 s at touchdown speed, then 2.0 m/s² down to 20 kt (90°) or 50 kt (30°).
+        Assert.InRange(RolloutExitGate.ComfortableExitLeadFeet(140.0, 90.0), 4635.0, 4645.0);
+        Assert.InRange(RolloutExitGate.ComfortableExitLeadFeet(140.0, 30.0), 4179.0, 4189.0);
+    }
+
+    [Fact]
+    public void Comfortable_lead_never_undercuts_the_floor()
+    {
+        Assert.Equal(550.0, RolloutExitGate.ComfortableExitLeadFeet(50.0, 30.0), 3);   // already at turn-off speed
+        Assert.Equal(200.0, RolloutExitGate.ComfortableExitLeadFeet(15.0, 90.0), 3);   // below turn-off speed
+    }
+
+    [Fact]
+    public void Turn_off_speed_is_50_kt_below_45_degrees_and_20_kt_otherwise()
+    {
+        Assert.Equal(20.0, RolloutExitGate.ExitTurnOffSpeedKts(0.0));   // unmeasured counts as steep
+        Assert.Equal(50.0, RolloutExitGate.ExitTurnOffSpeedKts(44.9));
+        Assert.Equal(20.0, RolloutExitGate.ExitTurnOffSpeedKts(45.0));
+        Assert.Equal(20.0, RolloutExitGate.ExitTurnOffSpeedKts(90.0));
+    }
+
+    [Fact]
     public void Prefers_the_pilots_own_taxiway_when_it_is_still_usable()
     {
         var exits = new List<LandingExit> { Exit(1, "A", 3000, 90), Exit(2, "B", 7000, 90) };

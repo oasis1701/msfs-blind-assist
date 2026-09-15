@@ -1064,12 +1064,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // 1000 ft gives ~15 s at 40 kt to hear the callout and react.
     private const double ROLLOUT_UNDERSHOOT_RANGE_FT = 1000.0;
     // Outer speed threshold for the undershoot scan. Below this speed any
-    // earlier shallow or high-speed exit is viable.
-    private const double ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS = 50.0;
+    // earlier shallow or high-speed exit is viable. These three turn-off values
+    // are RolloutExitGate's, shared with the touchdown re-plan's comfortable lead.
+    private const double ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS = Navigation.RolloutExitGate.ShallowExitTurnOffSpeedKts;
     // Steep exits need the aircraft to be slower — the tighter turn demands
     // more braking margin. Only included in the undershoot scan below this speed.
-    private const double ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG = 45.0;
-    private const double ROLLOUT_UNDERSHOOT_STEEP_GS_KTS = 20.0;
+    private const double ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG = Navigation.RolloutExitGate.SteepExitAngleDeg;
+    private const double ROLLOUT_UNDERSHOOT_STEEP_GS_KTS = Navigation.RolloutExitGate.SteepExitTurnOffSpeedKts;
     // Minimum gap between consecutive undershoot retargets. Prevents rapid
     // cascade when multiple earlier exits fall within the range window.
     private const double ROLLOUT_UNDERSHOOT_COOLDOWN_SEC = 8.0;
