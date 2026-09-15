@@ -597,7 +597,7 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// Drives the lateral generator from a steer command in degrees (+ = steer RIGHT), honoring
-    /// the shared TakeoffAssist pan settings (waveform/volume/invert/hard-pan) so the flare, the
+    /// the shared TakeoffAssist pan settings (waveform/volume/steer-toward/hard-pan) so the flare, the
     /// rollout, takeoff assist and taxi guidance all behave identically for a given configuration.
     /// </summary>
     /// <param name="silenceBelowDeg">
@@ -609,15 +609,26 @@ public class LandingFlareAssistManager : IDisposable
     {
         var settings = SettingsManager.Current;
 
-        float pan = settings.TakeoffAssistHardPanTone
-            ? Math.Sign(steerCommandDeg)
-            : (float)Math.Clamp(steerCommandDeg / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
-        if (settings.TakeoffAssistInvertPanning) pan = -pan;
-        tone.SetPan(pan);
+        tone.SetPan(PanFor(steerCommandDeg, settings));
 
         double threshold = silenceBelowDeg ?? settings.TakeoffAssistHeadingToneThreshold;
         bool shouldPlay = threshold <= 0 || Math.Abs(steerCommandDeg) >= threshold;
         tone.UpdateVolume(shouldPlay ? settings.TakeoffAssistToneVolume : 0);
+    }
+
+    /// <summary>
+    /// Pan for a steer command (+ = steer RIGHT) under the shared takeoff-assist tone settings: hard
+    /// pan or proportional over PAN_FULL_RANGE_DEGREES, on the steer side when the pilot steers toward
+    /// the tone. Reads TakeoffAssistSteerTowardTone, the setting takeoff assist reads — never the
+    /// retired TakeoffAssistInvertPanning, whose value after the July tone migration means the
+    /// opposite of how this assist once used it. Pure — <c>LandingFlareAssistPanTests</c>.
+    /// </summary>
+    internal static float PanFor(double steerCommandDeg, UserSettings settings)
+    {
+        float pan = settings.TakeoffAssistHardPanTone
+            ? Math.Sign(steerCommandDeg)
+            : (float)Math.Clamp(steerCommandDeg / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+        return settings.TakeoffAssistSteerTowardTone ? pan : -pan;
     }
 
     private void CheckRolloutHandoff(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
