@@ -75,6 +75,14 @@ public class TaxiGraph
     public const string StandBridgePathType = "STAND_BRIDGE";
 
     /// <summary>
+    /// True when <paramref name="edge"/> is a fabricated stand bridge (<see cref="StandBridgePathType"/>).
+    /// A fabricated stand bridge leads to a stranded stand. It is never part of a landing-exit
+    /// corridor, an exit extension, or a post-landing vacate path.
+    /// </summary>
+    public static bool IsStandBridge(TaxiEdge edge) =>
+        string.Equals(edge.PathType, StandBridgePathType, StringComparison.Ordinal);
+
+    /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph
     /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
     /// bridges are added and components renumbered. Ties go to the component met first in node
@@ -4617,6 +4625,8 @@ public class TaxiGraph
             if (!Adjacency.TryGetValue(nodeId, out var edges)) continue;
             foreach (var e in edges)
             {
+                // A fabricated stand bridge is never part of a landing-exit corridor.
+                if (IsStandBridge(e)) continue;
                 // Follow all edges (named and unnamed) so unnamed connector segments
                 // between the named portions of a RET don't break the chain.
                 if (visited.Contains(e.ToNodeId)) continue;

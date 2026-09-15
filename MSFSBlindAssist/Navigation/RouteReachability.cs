@@ -68,7 +68,7 @@ public static class RouteReachability
         {
             foreach (var edge in edges)
             {
-                if (edge.PathType == TaxiGraph.StandBridgePathType) continue;
+                if (TaxiGraph.IsStandBridge(edge)) continue;
                 if (!graph.Nodes.TryGetValue(edge.FromNodeId, out var a) ||
                     !graph.Nodes.TryGetValue(edge.ToNodeId, out var b)) continue;
 

@@ -1713,7 +1713,7 @@ public partial class TaxiGuidanceManager
         {
             if (seg.FromNode == null || seg.ToNode == null) continue;
             var edge = _graph.GetEdge(seg.FromNode.NodeId, seg.ToNode.NodeId);
-            if (edge?.PathType != TaxiGraph.StandBridgePathType) continue;
+            if (edge == null || !TaxiGraph.IsStandBridge(edge)) continue;
             _guidanceLog.Info(
                 $"Route uses stand bridge: phase={phase} nodes={seg.FromNode.NodeId}->{seg.ToNode.NodeId} " +
                 $"from={seg.FromNode.Latitude:F6},{seg.FromNode.Longitude:F6} " +
