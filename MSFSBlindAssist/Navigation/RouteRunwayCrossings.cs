@@ -178,8 +178,8 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
-    /// Label policy for an auto-detected runway crossing's hold segment
-    /// (<c>TaxiGuidanceManager.InsertRunwayCrossingHoldShorts</c>). Returns the
+    /// Label policy for the stop an automatic runway hold places
+    /// (<see cref="InsertRunwayHoldShorts"/>). Returns the
     /// label to write, or null to KEEP the existing label. Rules:
     ///  - empty → "runway {crossedRwy}";
     ///  - user "end of taxiway …" terminator label → keep (user intent wins);

@@ -4483,12 +4483,14 @@ public class TaxiAssistForm : Form
         // Calculate, in-sim 2026-06-13, when spoken before StartGuidance), and
         // it must be a SINGLE AnnounceImmediate: consecutive calls stomp each
         // other, so the intersection confirmation and the reach warning are
-        // joined, warning last so the safety-relevant text ends the utterance.
+        // joined, warning last so the safety-relevant text ends the utterance (only a
+        // start-hold sentence, the instruction to act on, follows it).
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
         //
         // An imported (SayIntentions) route's summary rides at the FRONT of that same
-        // utterance — see StartImportedRoute. Front, because the reach warning stays the
+        // utterance — see StartImportedRoute. Front, because the reach warning (or a
+        // start-hold sentence after it) stays the
         // last thing said, per the ordering above; the import summary leads with its own
         // warnings for the same reason.
         var standstillParts = new List<string>();
@@ -4544,8 +4546,8 @@ public class TaxiAssistForm : Form
             standstillParts.Add(turnCue);
         }
         // A route that begins at a runway hold line started HELD. Its hold sentence is the LAST part of
-        // this one utterance — it is what the pilot must act on — and is consumed so the per-frame
-        // update never repeats it.
+        // this one utterance — it is what the pilot must act on — and is consumed here, because
+        // MainForm feeds guidance no frames while it holds and nothing else would say it.
         string? startHoldCue = _guidanceManager.ConsumeStartHoldCue();
         if (!string.IsNullOrEmpty(startHoldCue))
             standstillParts.Add(startHoldCue);
@@ -4726,8 +4728,8 @@ public class TaxiAssistForm : Form
     /// Finds the nearest graph node on the opposite side of <paramref name="runway"/>
     /// from the aircraft's current position. Used by the Progressive Taxi "After
     /// crossing runway" terminator to produce a routing target that forces A*
-    /// across the runway; the InsertRunwayCrossingHoldShorts pass then auto-tags
-    /// the hold-short point (which LoadRoute strips for the cleared crossing).
+    /// across the runway; the automatic runway hold pass then places the hold
+    /// (which LoadRoute strips for the cleared crossing).
     ///
     /// If the aircraft is ON the runway (within half-width of the centerline), the
     /// aircraft's heading is used to determine the intended exit side.

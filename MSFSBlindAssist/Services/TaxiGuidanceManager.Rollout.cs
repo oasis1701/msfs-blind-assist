@@ -604,10 +604,10 @@ public partial class TaxiGuidanceManager
             // RunwayVacateResolver walk that pushes the stop point past the
             // runway-holding position.
             //
-            // A side-effect of always re-routing: the initial route's false "hold short of
-            // runway X" tag (inserted by InsertRunwayCrossingHoldShorts because the route's
-            // destination sits on the runway) is replaced with a clean 1-2 segment route
-            // that has no runway-crossing tags.
+            // A side-effect of always re-routing: the touchdown route is replaced with a clean
+            // 1-2 segment route from the handoff position. (The old per-edge crossing pass used to
+            // leave a false "hold short of runway X" tag on the touchdown route, whose destination
+            // sits on the runway.)
             bool handoffRerouted = false;
             if (_rolloutExit != null && _dataProvider != null && _graph != null)
             {

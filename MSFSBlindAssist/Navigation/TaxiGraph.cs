@@ -1792,8 +1792,8 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Detects which runway the aircraft is sitting on, using the same half-width
-    /// tolerance as DescribeLocation but exposing structured data for callers that
+    /// Detects which runway the aircraft is sitting on — on the runway shape, strictly, with no
+    /// margin (unlike DescribeLocation) — exposing structured data for callers that
     /// need geometry (threshold lat/lon, true heading, designator) rather than a
     /// spoken string. Uses the aircraft's true heading to pick the correct
     /// reciprocal designator (e.g. 27L vs 09R) — the "threshold" is the upwind
@@ -1813,7 +1813,7 @@ public class TaxiGraph
     /// Out: true heading of the runway in the takeoff direction (degrees, 0..360).
     /// </param>
     /// <returns>
-    /// True if the aircraft is within half-width of a runway centerline. False
+    /// True if the aircraft is on a runway's shape (within its half-width and inside its extent). False
     /// if the aircraft is not on any runway in this graph's RunwayCenterlines list.
     /// </returns>
     public bool TryGetRunwayAtPosition(
@@ -2423,8 +2423,9 @@ public class TaxiGraph
 
     /// <summary>
     /// Public wrapper for the internal perpendicular-distance calculation, so
-    /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
-    /// runway-pavement membership tests without duplicating the projection math.
+    /// other components (e.g. the landing-exit handoff's first-segment check in
+    /// TaxiGuidanceManager.Rollout) can measure a point's distance to a segment without
+    /// duplicating the projection math. Runway membership goes through RunwayShape instead.
     /// </summary>
     public static double PerpendicularDistanceMetersStatic(
         double plat, double plon,
