@@ -633,7 +633,9 @@ public partial class TaxiGuidanceManager
                     exitName,
                     taxiwaySequence: null,
                     prebuiltGraph: _graph,
-                    announceSummary: false);
+                    announceSummary: false,
+                    // Still on the landing runway, a start hold would stop the aircraft on it.
+                    allowStartHold: offRunwayAtHandoff);
                 handoffRerouted = rerouteErr == null;
                 if (handoffRerouted)
                 {
@@ -1437,7 +1439,9 @@ public partial class TaxiGuidanceManager
             taxiwaySequence: null,
             prebuiltGraph: _graph,
             announceSummary: false,
-            startTaxiwayName: startTwy);
+            startTaxiwayName: startTwy,
+            // Fires while the aircraft is still on the runway: a start hold would stop it there.
+            allowStartHold: false);
 
         if (err != null)
         {

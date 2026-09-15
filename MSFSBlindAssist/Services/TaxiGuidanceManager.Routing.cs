@@ -87,10 +87,12 @@ public partial class TaxiGuidanceManager
         // RIGHT to come around", contradicting the tone on the exact flight being fixed.
         // Do not remove this conversion.
         double aircraftHeadingMagVar = 0.0,
-        // False for a route adopted for the LANDING ROLLOUT while the aircraft is still on the
-        // runway — the touchdown route LandingExitPlanner loads and RetargetLandingExit's route to
-        // another exit: neither starts held (TaxiRoute.StartHoldRunway), and their crossings log line
-        // reads phase=touchdown. The rollout's handoff re-route decides any start hold after it.
+        // Whether the route may start held (TaxiRoute.StartHoldRunway). Not while the aircraft is still
+        // on the landing runway, where the hold would stop it: LandingExitPlanner's touchdown route,
+        // RetargetLandingExit's route to another exit and TryEarlyExitHandoff's re-route pass false;
+        // UpdateLandingRollout's handoff re-route passes offRunwayAtHandoff. A false route's crossings
+        // log line reads phase=touchdown. Whatever this says, the pass sets no start hold while the
+        // aircraft stands on any runway's pavement.
         bool allowStartHold = true)
     {
         lock (_stateLock)
