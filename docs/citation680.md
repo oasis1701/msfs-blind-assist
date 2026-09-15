@@ -45,10 +45,10 @@ ground; engine covers with an engine running revert by the aircraft's own rule).
 
 | Key | Window |
 |---|---|
-| Shift+M / Ctrl+Shift+R (input) | The crew seat's MFD / PFD touchscreen: the page title, its text, one row per button, the knob labels. Enter presses, typing presses keyboard keys, Ctrl/Alt arrows turn the knobs, Ctrl+Home / Ctrl+Backspace / Ctrl+G press Home / Back / MSG. A Side combo swaps to the other seat's unit. |
+| Shift+M / Ctrl+Shift+R (input) | The crew seat's MFD / PFD touchscreen: the page title, its text, one row per button, the knob labels. Enter presses, typing presses keyboard keys, Ctrl/Alt arrows turn the knobs, Ctrl+Home / Ctrl+Backspace / Ctrl+G press Home / Back / MSG, F2 speaks the page title and its text. On Active Flight Plan each leg is one row; A opens its altitude constraint, S its speed and flight path angle. A Side combo swaps to the other seat's unit. |
 | Ctrl+Shift+M / Alt+Shift+R (input) | The other seat's touchscreens (for shared cockpit or a copilot). |
 | Ctrl+Shift+C (output) | The MFD touchscreen opened on its Checklist page. |
-| Shift+T (input) | The vendor EFB: Page and Tab combos over the page's rows; Enter toggles a service card or setting, or presses a button. |
+| Shift+T (input) | The vendor EFB: Page, Tab and Section combos over the page's rows (Section lists the chosen checklist category's checklists — Abnormal has 243, by CAS message); Enter toggles a service card, door or setting, or presses a button. |
 | Ctrl+P (input) | The autopilot buttons. |
 | Alt+E (output) | The CAS list (warnings first) above the engine strip, live. |
 | Alt+S (output) | The crew seat's MFD half — a synoptic or the checklist — with a Page combo that selects it through the touchscreen. |
@@ -64,6 +64,30 @@ Map / Traffic / Weather are pane selectors: the first press shows that display i
 touchscreen's half of the MFD, the second opens its settings. Nav Source on PFD Home CYCLES the
 autopilot's lateral source on every press; check the label before pressing it in NAV.
 
+What the rows say beyond the button text (measured 2026-09-15):
+
+- **Only the layer the pilot can touch is read.** A page sliding away and a page under a popup
+  stay in the DOM (the slid page for about a second, off-screen); both are skipped, so a press
+  reads the new page after 400 ms. While a popup is open (Audio & Radios, a keypad, the VNAV
+  Constraint slide-out) its buttons are the only page buttons listed, and its own title is the
+  page title.
+- **Toggles say on or off** ("MIC, on", "Marker, off", "ACARS Enabled, on"); tabs are rows
+  ("Freqs tab, selected"); a list row's text names its button ("BVI4MF, EGNX-EKCH, Ready for
+  Import, Import"); a radio row carries its volume ("COM1, on, volume 100%") and its frequency
+  button reads "124.850, standby 124.850"; Initialization tasks say "completed" or "not
+  completed".
+- **Blank entry fields read "blank"** instead of a run of underscores or dashes, and the Weight
+  and Fuel worksheet's operator cells read "plus", "minus", "equals", "at". The Garmin slashed
+  zero and the direct-to glyph (Ð) are spoken as 0 and "Direct To".
+- **Active Flight Plan, one row per leg**: "ABEGI, at or below 4000 feet, angle -3.00 degrees, at
+  220 knots". An altitude with no restriction word is VNAV's prediction ("CH645, predicted 9821
+  feet"); a constraint VNAV will not fly says "not designated"; "edited" and "invalid" follow the
+  display. The active leg says "active leg", a fly-over waypoint "fly-over".
+- **Opened from Utilities → Initialization**, Weight and Fuel and Takeoff Data run in a
+  step-through mode whose bottom bar has Next instead of Home: use Back to leave it.
+- **GPS Status** (Utilities) changes the MFD display pane, not the touchscreen page; MFD Home's
+  first button then reads "Map" (press it to put the map back).
+
 **Speed target.** The G3000 has two speed sources. In FMS mode it computes the FLC speed from
 the performance plan and silently refuses every typed target (the target sat at 80 knots
 whatever was entered — measured airborne). Ctrl+S, the panel entry and the autopilot window
@@ -74,9 +98,20 @@ Autopilot panel and in the Ctrl+P window.
 **SimBrief flight plans.** Log in once on the EFB (Shift+T → Settings → 3rd Party Options: the
 "[*]" button under SimBrief User ID opens a keypad; type the ID, Set ID; "Log In / Go to
 Charts" for Navigraph). The flight plans then live where the real aircraft keeps them: MFD
-touchscreen → Services → ACARS → Flight Plan Request lists the account's generated plans;
-selecting one loads it into the FMS. The EFB's Flight page has its own "[Fetch SimBrief OFP]"
-for reading the OFP text.
+touchscreen → Services → ACARS → Flight Plan Request lists the account's generated plans, one
+row each ("BVI4MF, EGNX-EKCH, Ready for Request, Request"): Request fetches a plan, and once
+its row reads "Ready for Import", Import loads it into the FMS. Refresh List re-reads the
+account. The EFB's Flight page has its own "[Fetch SimBrief OFP]"; the OFP then reads one line
+per row.
+
+**The EFB, page by page** (Shift+T). Home leads with the cover alerts — "Pitot Tube Covers
+installed" with "[Remove Pitot Tube Covers]" and "[Dismiss … alert]" beneath it — then the
+route, aircraft, weather and "Flight: ground speed 0 kts, altitude 294 ft, heading 299, fuel
+3876 kg". Services → Access reads each door "Main Cabin Door: closed" (Enter opens it) with a
+row that jumps to its service tab; O2 / N2 reads "Left tank: 1814 PSI"; Payload reads the fuel
+column, then the weight and balance column. Checklists read one checklist at a time: pick the
+category in Tab and the checklist in Section; steps read "3. APU GEN: ON", with memory items,
+conditions ("Condition: If Message Remains"), CAUTION / WARNING / NOTE and table rows marked.
 
 ## Announcements
 
@@ -121,3 +156,33 @@ altimeters (or `std`).
 - The agents: `coherent-gtc-agent.js` (touchscreens), `coherent-c680-cas-agent.js` (PFD CAS),
   `coherent-c680-mfd-agent.js` (engine strip and panes), `coherent-c680-efb-agent.js` (EFB).
   All ES5, installed by `CoherentDisplayClient`, no Community package, no sim restart.
+- **GTC agent rules that must not regress** (all measured 2026-09-15):
+  - Liveness is per `.gtc-view`: skip `hidden`, `occlude-hidden` and any `-close-…animation`
+    class, AND every view but the topmost live popup when one is open (overlay-stack popups above
+    main-stack ones, last in the DOM on top). Audio & Radios slides over PFD Home without marking
+    Home at all, so class checks alone are not enough. Rect checks are useless: the slid-away
+    page keeps a 480-px rect at x = -480.
+  - Labels and text rows are built from TEXT NODES, not leaf elements — "4000<span>FT</span>"
+    lost its number and "EGNX" "-" "EKCH" (adjacent text nodes) needs joining with no separator,
+    while "Wind REQ<br>ALT" keeps its space.
+  - A flight-plan leg row's altitude and FPA/speed boxes are appended to `A._buttons` AFTER every
+    listed button and never listed, so the rows' button indices stay dense; the leg row carries
+    `{alt=N;spd=M}` (stripped from the displayed text by `C680GtcRows.Parse`). The altitude box's
+    touch button has no text — a label-less-button filter drops it, which is why A and S exist.
+  - The meaning of the altitude display comes from the WT G3000 v2 source
+    (`FlightPlanLegData.isAltitudeCyan` / `altDescDisplay`): cyan = designated, `-unused` = no
+    constraint (a number there is the VNAV prediction). Do not guess colours from other Garmins.
+- **EFB agent rules that must not regress**:
+  - Checklists has its own reader over ONE `.cl-checklist-group`; never run the whole-page walk
+    there (every category is pre-rendered: Abnormal ~9,800 elements, Emergency ~9,300). A read
+    costs ~20 ms.
+  - Reading order is by column: a container whose children include two tall blocks side by side
+    is a column container (absolutely placed children count only at >= 180 x 150 px, so the
+    Access door panels stay spatial); the key is the column's LEFT EDGE, not its DOM index.
+  - Icon-only buttons are named from `data-tip` / `title` / `aria-label` — the Home cover
+    alerts' Remove and Dismiss buttons have nothing else.
+  - A paragraph with inline highlights is read whole, in markup order, or the highlights sort
+    onto their own lines and leave holes in the sentence.
+  - `act()` answers "noaction" for a text-only row and "none" when the control is gone; the
+    window speaks the result through `C680EfbRows.SpokenAfterAct`, never by re-reading the same
+    list position (a removed cover's alert shifts every row below it).
