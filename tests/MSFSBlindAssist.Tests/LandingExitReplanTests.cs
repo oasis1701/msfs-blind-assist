@@ -364,4 +364,61 @@ public class LandingExitReplanTests
         Assert.Equal("U", floor.Exit?.TaxiwayName);
         Assert.Equal(LandingExitLeadTier.Floor, floor.Tier);
     }
+
+    // ---------------------------------------------------------------------------------
+    // PR #236 follow-up: prefer an exit that actually gets you off the runway.
+    //
+    // When the pilot picks an exit in the planner, the dialog works out for each one whether the
+    // taxiways it leads to actually take the aircraft clear of the runway, flags the ones that do
+    // not ("no taxiway mapped clear of the runway") and refuses to default to one — "better to
+    // learn while choosing than at 60 knots on the rollout". The touchdown re-plan picks an exit
+    // with nobody watching, at landing speed, and had no equivalent: it sorted purely by distance,
+    // so a junction that dead-ends on the runway could beat a real turn-off a few hundred feet
+    // further on. The flagged ones are still offered when they are all there is, exactly as the
+    // dialog keeps them in its list — at some airports they are the only exits mapped.
+    // ---------------------------------------------------------------------------------
+
+    private static LandingExit DeadEnd(int node, string name, double distFt, double angleDeg)
+    {
+        var e = Exit(node, name, distFt, angleDeg);
+        e.VacatesRunway = false;
+        return e;
+    }
+
+    [Fact]
+    public void An_exit_that_leads_clear_of_the_runway_beats_a_nearer_dead_end()
+    {
+        var exits = new List<LandingExit> { DeadEnd(1, "A", 4000, 90), Exit(2, "B", 4500, 90) };
+
+        var c = LandingExitReplan.ChooseExit(exits, null, 3500, 1000, 40, Comfortable);
+
+        Assert.Equal("B", c.Exit?.TaxiwayName);
+    }
+
+    [Fact]
+    public void A_dead_end_is_still_offered_when_it_is_the_only_exit_there_is()
+    {
+        var exits = new List<LandingExit> { DeadEnd(1, "A", 4000, 90) };
+
+        var c = LandingExitReplan.ChooseExit(exits, null, 3500, 1000, 40, Comfortable);
+
+        Assert.Equal("A", c.Exit?.TaxiwayName);
+    }
+
+    [Fact]
+    public void The_pilots_own_taxiway_is_only_preferred_when_it_leads_clear_of_the_runway()
+    {
+        // Their own taxiway normally wins outright. Not when the far end of it has nothing mapped
+        // off the runway and a plain exit does.
+        var planned = Exit(1, "A", 6000, 90, side: "Left");
+        var exits = new List<LandingExit>
+        {
+            DeadEnd(1, "A", 4000, 90),
+            Exit(2, "B", 4500, 90),
+        };
+
+        var c = LandingExitReplan.ChooseExit(exits, planned, 3500, 1000, 40, Comfortable);
+
+        Assert.Equal("B", c.Exit?.TaxiwayName);
+    }
 }

@@ -482,15 +482,10 @@ public class LandingExitForm : Form
         // warning and the in-flight behaviour cannot disagree. At a few airports the
         // navdata maps no taxiway past the junction at all — better to learn that while
         // choosing than at 60 knots on the rollout.
-        int unusable = 0;
-        foreach (var exit in _exits)
-        {
-            Navigation.LandingExitDestination.Resolve(
-                _graph, exit, _exits, rwy, rwy.Heading,
-                out _, out double endLateralM, out _);
-            exit.VacatesRunway = Navigation.RunwayVacateResolver.IsOffPavement(endLateralM, rwy);
-            if (!exit.VacatesRunway) unusable++;
-        }
+        // Through the one owner (LandingExitVacateScreen) so this and the touchdown re-plan, which
+        // now applies the same preference, cannot drift apart on what "gets clear" means.
+        Navigation.LandingExitVacateScreen.Mark(_graph, _exits, rwy);
+        int unusable = _exits.Count(e => !e.VacatesRunway);
 
         foreach (var exit in _exits)
             cmbExit.Items.Add(exit);

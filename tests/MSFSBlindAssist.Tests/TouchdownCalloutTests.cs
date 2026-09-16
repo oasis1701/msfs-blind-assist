@@ -123,8 +123,14 @@ public class TouchdownCalloutTests
         Assert.False(stopped.SlowDown);
 
         Assert.True(TouchdownCallout.RetireRunwayEndCallouts(80, 60, Lead, 1500, 500, 100, TaxiKts).Retire100);
-        // 60 kt is about 101 ft/s, so 9 s covers about 911 ft: from 1,300 ft the 500 ft trigger is 800 ft away.
-        Assert.True(TouchdownCallout.RetireRunwayEndCallouts(1300, 60, Lead, 1500, 500, 100, TaxiKts).SlowDown);
+
+        // 60 kt is about 101 ft/s, but the aircraft is braking: it slows to taxi speed after ~7.7 s
+        // and covers about 650 ft in the 9 s the sentence takes, not the 911 ft of holding 60 kt.
+        // From 1,100 ft the 500 ft trigger is 600 ft away and comes due inside the sentence, so it
+        // is folded in (with its "Slow down."); from 1,300 ft it is 800 ft away and is left to
+        // speak for itself, which is the countdown the pilot still wants.
+        Assert.True(TouchdownCallout.RetireRunwayEndCallouts(1100, 60, Lead, 1500, 500, 100, TaxiKts).SlowDown);
+        Assert.False(TouchdownCallout.RetireRunwayEndCallouts(1300, 60, Lead, 1500, 500, 100, TaxiKts).Retire500);
     }
 
     [Fact]

@@ -586,6 +586,18 @@ public static class RolloutExitGate
     /// <summary>Seconds at touchdown speed before braking builds (spoilers, brake onset).</summary>
     public const double BrakingTransitionSeconds = 2.0;
 
+    /// <summary>
+    /// The speed a landing rollout is braking TOWARD, not through: below it the aircraft is at
+    /// normal taxi speed and is no longer shedding energy hard. Mirrors
+    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the same 30 kt at which the rollout hands
+    /// over to ordinary taxi guidance and stops appending "Slow down."
+    ///
+    /// <para>Used by <see cref="RolloutCalloutSupersession.ReachFeet"/> so that assuming braking
+    /// does not run away at the slow end: at 22 kt an aircraft is not decelerating at
+    /// <see cref="ComfortableDecelerationMps2"/>, it is taxiing.</para>
+    /// </summary>
+    public const double TaxiGroundSpeedKts = 30.0;
+
     private const double FeetPerSecondPerKnot = 1.6878;
     private const double FeetPerMetre = 1.0 / 0.3048;
 

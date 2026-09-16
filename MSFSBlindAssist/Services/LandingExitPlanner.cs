@@ -25,8 +25,8 @@ namespace MSFSBlindAssist.Services;
 /// on another runway, or the other end, it re-plans an exit on the runway actually
 /// landed on (<see cref="Navigation.LandingExitReplan"/>) and says so in the touchdown
 /// sentence; with no usable exit there it runs the runway-end countdown; with no
-/// aligned runway under the aircraft it cancels the plan. The pilot's stored plan is
-/// never modified.
+/// aligned runway under the aircraft it gives no guidance for THAT landing and keeps
+/// the plan set for the next one. The pilot's stored plan is never modified.
 /// </summary>
 public class LandingExitPlanner
 {
@@ -46,6 +46,10 @@ public class LandingExitPlanner
     // Touchdown detection state
     private bool _wasAirborne;
     private bool _activatedThisLanding;
+    // "Runway not identified" has been said for THIS plan. The plan itself survives that verdict
+    // (LandingExitActivationPolicy), so without this latch a bounce or a touch-and-go would repeat
+    // the message on every touchdown the app could not place.
+    private bool _unidentifiedRunwayAnnounced;
 
     // Minimum ground speed at on-ground transition for it to count as a real landing
     // rather than a teleport or taxi-onto-ground. Light aircraft touch down around
@@ -99,6 +103,7 @@ public class LandingExitPlanner
         _graph = graph;
         _airportRunways = airportRunways ?? Array.Empty<Runway>();
         _activatedThisLanding = false;
+        _unidentifiedRunwayAnnounced = false;
 
         // Arm the touchdown edge detector based on the aircraft's CURRENT
         // air/ground state. Setting it to true unconditionally is wrong:
@@ -141,6 +146,7 @@ public class LandingExitPlanner
         _dataProvider = null;
         _airportRunways = Array.Empty<Runway>();
         _activatedThisLanding = false;
+        _unidentifiedRunwayAnnounced = false;
         // Also reset the airborne-edge tracker so any latent "true" from before
         // the clear can't trick the next plan into firing on a stale ground bit.
         _wasAirborne = false;
@@ -231,10 +237,22 @@ public class LandingExitPlanner
                 // No aligned runway contains the aircraft (a stale plan at another airport, or a
                 // runway the navdata lacks). The planned frame provably does not describe this
                 // landing, and a rollout measured in it says things like "left the runway short of
-                // the exit, stop and hold position" at landing speed.
-                _announcer.AnnounceImmediate("Touchdown. Exit plan cancelled, runway not identified.");
-                DiagLog("ActivateGuidance: no aligned runway contains the aircraft — plan cancelled, no guidance");
-                _activatedThisLanding = true;
+                // the exit, stop and hold position" at landing speed — so no guidance this time.
+                //
+                // The plan SURVIVES (LandingExitActivationPolicy): nothing was started, so nothing
+                // was used up, and this verdict rests on one position sample taken at the instant
+                // the wheels touched. A bounce, a touch-and-go or a go-around used to fly the next
+                // approach with no exit guidance at all and no second word about why. Returning
+                // true still clears the airborne edge, so the message cannot repeat as the aircraft
+                // rolls; the latch keeps it to once per plan across later touchdowns.
+                if (LandingExitActivationPolicy.AnnouncesUnidentifiedRunway(
+                        match.Verdict, _unidentifiedRunwayAnnounced))
+                {
+                    _announcer.AnnounceImmediate(LandingExitActivationPolicy.UnidentifiedRunwayMessage);
+                    _unidentifiedRunwayAnnounced = true;
+                }
+                DiagLog("ActivateGuidance: no aligned runway contains the aircraft — no guidance, plan kept");
+                _activatedThisLanding = LandingExitActivationPolicy.ConsumesPlan(match.Verdict);
                 return true;
         }
     }
@@ -263,6 +281,10 @@ public class LandingExitPlanner
         // An exit the aircraft can slow down for comfortably first; the reachability floor only when
         // there is none, even after the rescue scan (LandingExitReplan).
         List<LandingExit> exits = graph.GetLandingExits(actual);
+        // Ask, for each one, whether the taxiways past it actually lead clear of THIS runway — the
+        // same screen the planner dialog shows the pilot. These exits were built for a runway the
+        // pilot never selected, so nothing had asked, and every one arrived flagged as fine.
+        LandingExitVacateScreen.Mark(graph, exits, actual);
         var choice = LandingExitReplan.ChooseExit(exits, reciprocalPlanned,
             plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots,
             LandingExitLeadTier.Comfortable);
@@ -279,6 +301,7 @@ public class LandingExitPlanner
             {
                 rescued = true;
                 exits = RolloutExitGate.MergeRescueExits(exits, rescue);
+                LandingExitVacateScreen.Mark(graph, exits, actual);
                 choice = LandingExitReplan.ChooseExit(exits, reciprocalPlanned,
                     plannedExit.DistanceFromThresholdFeet, aircraftFromThresholdFt, groundSpeedKnots,
                     LandingExitLeadTier.Comfortable);

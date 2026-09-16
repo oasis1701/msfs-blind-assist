@@ -58,6 +58,38 @@ public static class LandingExitReplan
         if (exits == null || exits.Count == 0)
             return new LandingExitReplanChoice(null, LandingExitReplanRule.None, tier);
 
+        // Prefer an exit the graph can actually get the aircraft off the runway on. The planner
+        // DIALOG works this out per exit, flags the ones with "no taxiway mapped clear of the
+        // runway" and refuses to default to one — "better to learn while choosing than at 60 knots
+        // on the rollout". This chooses with nobody watching, at landing speed, so it needs the
+        // same preference; without it a junction that dead-ends on the runway beat a real turn-off
+        // a few hundred feet further on. A flagged exit is still offered when it is all there is,
+        // exactly as the dialog keeps them in its list — at some airports they are the only ones.
+        var vacating = new List<LandingExit>();
+        foreach (var e in exits)
+            if (e != null && e.VacatesRunway) vacating.Add(e);
+
+        if (vacating.Count > 0)
+        {
+            var preferred = ChooseFrom(vacating, reciprocalPlannedExit,
+                plannedExitDistanceFromThresholdFeet, aircraftDistanceFromThresholdFeet,
+                groundSpeedKts, tier);
+            if (preferred.Exit != null) return preferred;
+        }
+
+        return ChooseFrom(exits, reciprocalPlannedExit,
+            plannedExitDistanceFromThresholdFeet, aircraftDistanceFromThresholdFeet,
+            groundSpeedKts, tier);
+    }
+
+    private static LandingExitReplanChoice ChooseFrom(
+        IReadOnlyList<LandingExit> exits,
+        LandingExit? reciprocalPlannedExit,
+        double plannedExitDistanceFromThresholdFeet,
+        double aircraftDistanceFromThresholdFeet,
+        double groundSpeedKts,
+        LandingExitLeadTier tier)
+    {
         if (reciprocalPlannedExit != null)
         {
             LandingExit? own = null;
