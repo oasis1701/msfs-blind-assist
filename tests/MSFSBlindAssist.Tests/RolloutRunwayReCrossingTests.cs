@@ -47,6 +47,28 @@ public class RolloutRunwayReCrossingTests
     }
 
     [Fact]
+    public void An_end_exit_whose_junction_sits_centimetres_over_the_centerline_is_not_a_re_crossing()
+    {
+        // KORD 10R exit W5: the route starts on the runway, its junction node is 29 cm past the
+        // centerline, then it leaves. The per-edge test read that as crossing the landing runway.
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 2800.0, 0.0), RunwayFixture.Node(2, 2950.0, -0.292), RunwayFixture.Node(3, 2960.0, -60.0));
+
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy));
+    }
+
+    [Fact]
+    public void Driving_back_onto_the_landing_runway_from_a_taxiway_is_refused_even_without_crossing_it()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, -90.0), RunwayFixture.Node(2, 1000.0, -10.0), RunwayFixture.Node(3, 1100.0, -90.0));
+
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy));
+    }
+
+    [Fact]
     public void A_normal_vacate_that_only_moves_away_from_the_axis_is_not_a_crossing()
     {
         // Exit B1 southbound and onward down B -- never returns to the north side.

@@ -335,49 +335,39 @@ Console.WriteLine("\n-- route summary runway-crossing clause --");
         IsHoldShortPoint = hold,
         HoldShortRunway = label,
     };
+    TaxiRouteRunwayEvent Cross(string d) =>
+        new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = d, Held = true };
 
-    // KSFO incident shape: two auto-inserted crossings of the same runway.
-    var ksfo = new List<TaxiRouteSegment>
-    {
-        Seg(false, null), Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
-    };
-    var (c1, o1) = RouteRunwayCrossings.Describe(ksfo, excludeLastSegment: false);
-    Check(c1 == "crossing runway 10L twice" && o1 == 0,
-        $"crossings: 2x same runway -> 'crossing runway 10L twice' (got '{c1}', others={o1})");
+    // KSFO incident shape: two crossings of the same runway.
+    string c1 = RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross("10L"), Cross("10L") });
+    Check(c1 == "crossing runway 10L twice",
+        $"crossings: 2x same runway -> 'crossing runway 10L twice' (got '{c1}')");
 
     // KBOS shape: three distinct runways, taxi order preserved.
-    var kbos = new List<TaxiRouteSegment>
-    {
-        Seg(true, "runway 04L"), Seg(true, "runway 04R at C"), Seg(true, "runway 27"),
-    };
-    var (c2, o2) = RouteRunwayCrossings.Describe(kbos, excludeLastSegment: false);
-    Check(c2 == "crossing runways 04L, 04R and 27" && o2 == 0,
+    string c2 = RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross("04L"), Cross("04R"), Cross("27") });
+    Check(c2 == "crossing runways 04L, 04R and 27",
         $"crossings: 3 distinct runways in taxi order (got '{c2}')");
 
-    // Mixed: centerline naming + threshold-fallback naming + non-runway holds.
+    // Label shapes: holds naming a runway are not counted as plain hold-short points.
     var mixed = new List<TaxiRouteSegment>
     {
         Seg(true, "runway 15R at N"), Seg(true, "D5, Runway 22R"),
         Seg(true, "end of taxiway B"), Seg(true, "A5"),
     };
-    var (c3, o3) = RouteRunwayCrossings.Describe(mixed, excludeLastSegment: false);
-    Check(c3 == "crossing runways 15R and 22R" && o3 == 2,
-        $"crossings: label shapes parsed, non-runway holds counted separately (got '{c3}', others={o3})");
+    int o3 = RouteRunwayCrossings.CountNonRunwayHoldShorts(mixed, excludeLastSegment: false);
+    Check(o3 == 2, $"crossings: label shapes parsed, non-runway holds counted separately (got others={o3})");
 
-    // Runway destination: the TruncateToHoldShort tag on the LAST segment is an
-    // internal countdown rail, not an ATC crossing — excluded.
+    // Runway destination: the countdown rail on the LAST segment is not counted.
     var rwyDest = new List<TaxiRouteSegment>
     {
-        Seg(true, "runway 04L"), Seg(false, null), Seg(true, "Runway 33L"),
+        Seg(true, "end of taxiway B"), Seg(false, null), Seg(true, "A5"),
     };
-    var (c4, o4) = RouteRunwayCrossings.Describe(rwyDest, excludeLastSegment: true);
-    Check(c4 == "crossing runway 04L" && o4 == 0,
-        $"crossings: destination truncation tag excluded (got '{c4}')");
+    int o4 = RouteRunwayCrossings.CountNonRunwayHoldShorts(rwyDest, excludeLastSegment: true);
+    Check(o4 == 1, $"crossings: destination countdown rail excluded from the count (got {o4})");
 
-    // No crossings at all.
-    var none = new List<TaxiRouteSegment> { Seg(false, null), Seg(false, null) };
-    var (c5, o5) = RouteRunwayCrossings.Describe(none, excludeLastSegment: false);
-    Check(c5 == "" && o5 == 0, "crossings: no hold-shorts -> empty clause");
+    // No runway events at all.
+    string c5 = RouteRunwayCrossings.DescribeRunwayEvents(Array.Empty<TaxiRouteRunwayEvent>());
+    Check(c5 == "", "crossings: no events -> empty clause");
 }
 
 // ---------------------------------------------------------------------------
@@ -560,33 +550,17 @@ Console.WriteLine("\n-- resolver preference tiers + summary reciprocal merge --"
     Check(pLow != null && Math.Abs(pLow.Latitude - LatAt(90)) < 0.00002,
         $"floor: designated node hugging the pavement edge rejected (got {(pLow == null ? double.NaN : (pLow.Latitude - 40.0) * 111320.0):F1} m)");
 
-    // (f) Summary reciprocal merge: one pavement crossed near opposite ends is
-    // tagged with reciprocal designators — the clause must merge them.
-    TaxiRouteSegment Seg(bool hold, string? label) => new TaxiRouteSegment
-    {
-        FromNode = new TaxiNode(),
-        ToNode = new TaxiNode(),
-        IsHoldShortPoint = hold,
-        HoldShortRunway = label,
-    };
-    var recipSegs = new List<TaxiRouteSegment>
-    {
-        Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 28R"),
-    };
-    var (cr, or_) = RouteRunwayCrossings.Describe(recipSegs, excludeLastSegment: false);
-    Check(cr == "crossing runway 10L/28R twice" && or_ == 0,
-        $"crossings: reciprocal designators merge as one pavement, BOTH names spoken (got '{cr}', others={or_})");
+    // (f) Summary reciprocal merge: one pavement crossed near opposite ends carries reciprocal
+    // designators — the clause must merge them and speak both names.
+    TaxiRouteRunwayEvent CrossF(string d) =>
+        new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = d, Held = true };
+    string cr = RouteRunwayCrossings.DescribeRunwayEvents(new[] { CrossF("10L"), CrossF("28R") });
+    Check(cr == "crossing runway 10L/28R twice",
+        $"crossings: reciprocal designators merge as one pavement, BOTH names spoken (got '{cr}')");
 
-    // Same-designator crossings must keep the single name — the dual form is
-    // only for a pavement whose two crossings carry reciprocal labels (the
-    // tactical callouts will speak each crossing's own closer-end label, so
-    // the summary must pre-announce both names the pilot will hear).
-    var sameSegs = new List<TaxiRouteSegment>
-    {
-        Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
-    };
-    var (cs, os_) = RouteRunwayCrossings.Describe(sameSegs, excludeLastSegment: false);
-    Check(cs == "crossing runway 10L twice" && os_ == 0,
+    // Same-designator crossings keep the single name.
+    string cs = RouteRunwayCrossings.DescribeRunwayEvents(new[] { CrossF("10L"), CrossF("10L") });
+    Check(cs == "crossing runway 10L twice",
         $"crossings: same-designator crossings keep the single name (got '{cs}')");
 
     // (g) Tier-2 connectivity: a NEIGHBOURING connector's HSND inside the 75 m
@@ -680,19 +654,12 @@ Console.WriteLine("\n-- designator normalization + W suffix --");
     Check(RouteRunwayCrossings.ExtractRunwayDesignator("runway 9 at Q") == "09",
         "extract: unpadded label normalizes to '09'");
 
-    // Unpadded labels must merge with their padded reciprocal in the clause.
-    TaxiRouteSegment Seg10(bool hold, string? label) => new TaxiRouteSegment
-    {
-        FromNode = new TaxiNode(), ToNode = new TaxiNode(),
-        IsHoldShortPoint = hold, HoldShortRunway = label,
-    };
-    var unpadded = new List<TaxiRouteSegment>
-    {
-        Seg10(true, "runway 9"), Seg10(false, null), Seg10(true, "runway 27"),
-    };
-    var (cu, ou) = RouteRunwayCrossings.Describe(unpadded, excludeLastSegment: false);
-    Check(cu == "crossing runway 09/27 twice" && ou == 0,
-        $"crossings: unpadded reciprocal labels merge as one pavement, padded dual name (got '{cu}')");
+    // Unpadded designators must merge with their padded reciprocal in the clause.
+    TaxiRouteRunwayEvent Cross10(string d) =>
+        new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = d, Held = true };
+    string cu = RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross10("9"), Cross10("27") });
+    Check(cu == "crossing runway 09/27 twice",
+        $"crossings: unpadded reciprocal designators merge as one pavement, padded dual name (got '{cu}')");
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,1 @@
+Traffic warnings are no longer silenced while you sit stopped on the runway. They are held back during the landing rollout so they cannot talk over the exit callouts, but that now ends the moment you come to a stop — so a hold on the runway for ATC is no longer spent hearing nothing about aircraft around you.

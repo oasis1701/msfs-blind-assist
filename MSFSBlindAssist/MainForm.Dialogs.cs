@@ -235,7 +235,8 @@ public partial class MainForm
                 // latest choice wins.
                 if (dialog.ManualLandingAssist)
                 {
-                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport);
+                    flareAssistManager.Arm(dialog.SelectedRunway, dialog.SelectedAirport,
+                        airportDataProvider.GetRunways(dialog.SelectedAirport.ICAO));
                     announcer.AnnounceImmediate($"Destination runway set: {dialog.SelectedAirport.ICAO} Runway {dialog.SelectedRunway.RunwayID}. Manual landing assist armed.");
                 }
                 else
@@ -911,8 +912,9 @@ public partial class MainForm
 
     /// <summary>
     /// Opens the Landing Exit Planner form. Pre-fills the airport + runway from the
-    /// pilot's existing ILS destination selection (SimConnectManager.GetDestinationRunway)
-    /// so there's no duplicate UI for picking the destination — the pilot only picks the
+    /// pilot's existing ILS destination selection (SimConnectManager.GetDestinationRunway),
+    /// or failing that from the loaded flight plan's arrival (LandingExitPlannerPreset), so
+    /// there's no duplicate UI for picking the destination — the pilot only picks the
     /// exit taxiway here.
     /// </summary>
     private void ShowLandingExitForm()
@@ -927,22 +929,24 @@ public partial class MainForm
         hotkeyManager.ExitOutputHotkeyMode();
 
         // Reuse the existing ILS destination selection (already settable via the
-        // "select runway as destination" hotkey). If nothing is set, the form still
-        // opens empty so the pilot can type an ICAO + pick a runway manually.
-        string? presetIcao = null;
-        Database.Models.Runway? presetRunway = null;
-        if (simConnectManager.HasDestinationRunway())
-        {
-            presetRunway = simConnectManager.GetDestinationRunway();
-            var destAp = simConnectManager.GetDestinationAirport();
-            presetIcao = destAp?.ICAO;
-            // Task 1 — Destination prefetch (silent, fire-and-forget)
-            if (!string.IsNullOrEmpty(presetIcao) && _augmentPrefetched.Add(presetIcao))
-                _ = _augmentingProvider?.PrefetchAsync(presetIcao, force: true);
-        }
+        // "select runway as destination" hotkey); failing that, the loaded flight plan's
+        // arrival airport and runway. Without either, the runway box fell back to the
+        // airport's first runway, which is how issue #234 began. If nothing is known, the
+        // form still opens empty so the pilot can type an ICAO + pick a runway manually.
+        // flightPlanManager can be null after an aircraft switch.
+        bool hasIlsDestination = simConnectManager.HasDestinationRunway();
+        var arrivalPlan = flightPlanManager?.CurrentFlightPlan;
+        var preset = LandingExitPlannerPreset.Resolve(
+            hasIlsDestination ? simConnectManager.GetDestinationAirport()?.ICAO : null,
+            hasIlsDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
+            arrivalPlan?.ArrivalICAO,
+            arrivalPlan?.ArrivalRunway);
+        // Task 1 — Destination prefetch (silent, fire-and-forget)
+        if (!string.IsNullOrEmpty(preset.Icao) && _augmentPrefetched.Add(preset.Icao))
+            _ = _augmentingProvider?.PrefetchAsync(preset.Icao, force: true);
 
         // Always rebuild the form so the preset (ICAO + runway from the current
-        // ILS destination selection) is fresh. The preset is only consumed by
+        // ILS destination or flight plan) is fresh. The preset is only consumed by
         // the constructor/Load handler; reusing a prior instance would show
         // stale values if the user changed ILS destination between opens.
         if (landingExitForm != null && !landingExitForm.IsDisposed)
@@ -952,7 +956,7 @@ public partial class MainForm
         }
 
         landingExitForm = new LandingExitForm(
-            airportDataProvider, announcer, landingExitPlanner, presetIcao, presetRunway,
+            airportDataProvider, announcer, landingExitPlanner, preset.Icao, preset.RunwayId,
             simConnectManager, BuildGateDataSource());
 
         landingExitForm.Show();

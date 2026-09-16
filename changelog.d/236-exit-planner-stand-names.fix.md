@@ -1,0 +1,1 @@
+After the Landing Exit Planner updates taxiway names online, Where Am I names stands the same way as the rest of the app.

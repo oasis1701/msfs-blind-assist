@@ -758,6 +758,9 @@ public partial class MainForm : Form
         // taxi form, landing-exit auto-activation, future entry points — gets
         // monitoring wired up automatically.
         taxiGuidanceManager.StateChanged += OnTaxiGuidanceStateChanged;
+        // The two landing-rollout entries that can begin with no position stream running ask for
+        // one (TaxiGuidanceManager.PositionStreamRequired).
+        taxiGuidanceManager.PositionStreamRequired += (s, e) => simConnectManager.StartTaxiGuidanceMonitoring();
         taxiGuidanceManager.RequestTakeoffAssistAutoActivate += OnTaxiGuidanceRequestTakeoffAssistAutoActivate;
 
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
@@ -771,8 +774,12 @@ public partial class MainForm : Form
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
-            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
+            () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering,
+            // With a landing-exit plan pending, the planner leads its own touchdown sentence with
+            // the runway correction and interrupts — so the assist leaves the telling to it rather
+            // than having its own sentence cut off mid-word.
+            () => landingExitPlanner.HasPendingExit);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
@@ -787,10 +794,15 @@ public partial class MainForm : Form
         // rudder, and the exit/runway-end callouts must not be talked over).
         // Hotkey summary (Alt+G) remains available in all cases because it
         // lives outside this poll loop.
+        // The rule lives in Services/GroundTrafficSuppression so it can be pinned. Note the
+        // landing-rollout arm is speed-qualified: once the aircraft has STOPPED neither reason for
+        // holding callouts back applies, and a pilot held on the runway by ATC can now stay in the
+        // rollout indefinitely (the runway-end countdown no longer treats a stop as a backtrack).
         groundTrafficMonitor.SuppressCheck = () =>
-            takeoffAssistManager.IsActive
-            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive
-            || taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout;
+            GroundTrafficSuppression.Suppress(
+                takeoffAssistManager.IsActive,
+                taxiGuidanceManager.State,
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
