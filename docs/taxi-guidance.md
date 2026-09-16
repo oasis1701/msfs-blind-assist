@@ -539,6 +539,8 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 > deliberately deferred, with measurements, tripwires and fixes written up in
 > [docs/design/2026-09-16-pr238-deferred-runway-findings-plan.md](design/2026-09-16-pr238-deferred-runway-findings-plan.md).
 > Read §0 of that document — the derived-constant tripwire — before changing any tolerance here.
+> ⚠ TEMPORARY: the PR that closes the last item deletes that file, this banner and the
+> `CLAUDE.md` index entry, per its own teardown checklist.
 
 FAA AIM 4-3-18 and ICAO Doc 4444 require an aircraft to hold short of every runway it crosses, with an explicit clearance for each. Guidance holds before every runway a route **crosses or enters**, reports every one of them, and places each stop off the pavement. The rules live in pure code — `Navigation/RunwayShape`, `Navigation/RunwayRouteClassifier`, `Navigation/RouteRunwayCrossings` — pinned by `RunwayShapeTests`, `RunwayRouteClassifierTests`, `RunwayHoldPlacementTests`, `RunwayEventDescriptionTests` and `RunwayMembershipTests`.
 

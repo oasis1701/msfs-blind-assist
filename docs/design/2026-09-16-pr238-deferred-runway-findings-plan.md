@@ -17,6 +17,25 @@ other constants with nothing in the code linking them (§0). Several can only be
 them. Deferring was a judgement that shipping an unverified change to a blind pilot's runway-safety
 path is worse than shipping a known, documented gap.
 
+> ### ⚠ This document is TEMPORARY — delete it and its two references when the work lands
+>
+> It is a work list, not a permanent record, and it must not outlive the findings it describes. The
+> PR that closes the last open item **must** remove all three of these in the same commit:
+>
+> - [ ] this file, `docs/design/2026-09-16-pr238-deferred-runway-findings-plan.md`
+> - [ ] the "Known open items" banner at the top of the **Runway crossings and entries** section in
+>       `docs/taxi-guidance.md`
+> - [ ] the **PR #238 deferred runway findings** entry in `CLAUDE.md`'s *Available documentation* list
+>
+> `grep -rn "2026-09-16-pr238-deferred-runway-findings-plan" --include=*.md .` must return nothing
+> afterwards. Closing only *some* items: strike those sections through and leave the rest, but do
+> **not** remove the references until every item is closed or explicitly withdrawn.
+>
+> Anything here that turns out to be a durable rule rather than a task — most likely §0's
+> derived-constant tripwire and §9's two "do not fix these" measurements — should be **moved into
+> `CLAUDE.md`'s taxi-guidance invariants or `docs/taxi-guidance.md` before this file is deleted**, so
+> the knowledge survives the cleanup. Do not simply delete §0 and §9.
+
 ---
 
 ## 0. Read this first — the derived-constant tripwire
