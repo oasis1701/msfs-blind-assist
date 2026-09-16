@@ -535,6 +535,11 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 
 ### Runway crossings and entries
 
+> **Known open items.** Ten reviewed findings in this area and the landing-rollout path were
+> deliberately deferred, with measurements, tripwires and fixes written up in
+> [docs/design/2026-09-16-pr238-deferred-runway-findings-plan.md](design/2026-09-16-pr238-deferred-runway-findings-plan.md).
+> Read §0 of that document — the derived-constant tripwire — before changing any tolerance here.
+
 FAA AIM 4-3-18 and ICAO Doc 4444 require an aircraft to hold short of every runway it crosses, with an explicit clearance for each. Guidance holds before every runway a route **crosses or enters**, reports every one of them, and places each stop off the pavement. The rules live in pure code — `Navigation/RunwayShape`, `Navigation/RunwayRouteClassifier`, `Navigation/RouteRunwayCrossings` — pinned by `RunwayShapeTests`, `RunwayRouteClassifierTests`, `RunwayHoldPlacementTests`, `RunwayEventDescriptionTests` and `RunwayMembershipTests`.
 
 **One adoption seam.** A route becomes the live route only through `TaxiGuidanceManager.AdoptRoute`, which runs `ApplyAutoHoldShortPasses` (the pass, its `Route crossings:` log line and the Progressive Taxi cleared-crossing strip) and then assigns `_route`. `LoadRoute` adopts with phase `load`; `TryRecalculateRoute` adopts with phase `recalc`, **below** its no-op guard, so a discarded recalc neither re-tags a route nobody adopts nor logs a line claiming it did. Before 2026-09 only `LoadRoute` ran the pass, and a recalculation silently produced a route with no crossing holds (PHNL 2026-09-03: 26R, 04L and 04R were tagged at build time, a recalc 88 s later dropped all three, and the aircraft crossed them at 13-19 kt with no callout). Assign `_route` there and nowhere else.
