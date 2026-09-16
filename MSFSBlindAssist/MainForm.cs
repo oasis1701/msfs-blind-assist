@@ -716,7 +716,11 @@ public partial class MainForm : Form
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
             () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
-            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering,
+            // With a landing-exit plan pending, the planner leads its own touchdown sentence with
+            // the runway correction and interrupts — so the assist leaves the telling to it rather
+            // than having its own sentence cut off mid-word.
+            () => landingExitPlanner.HasPendingExit);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);

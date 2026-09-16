@@ -425,28 +425,36 @@ public class LandingExitForm : Form
 
         lblStatus.Text = $"{icao}: {_runways.Count} runway directions loaded.";
 
-        if (cmbRunway.Items.Count > 0)
-            cmbRunway.SelectedIndex = PresetRunwayIndex(icao);
+        SelectPresetRunway(icao);
     }
 
     /// <summary>
-    /// The runway row a load selects: the preset runway when <paramref name="icao"/> is the preset
-    /// airport and a row's designator matches it, otherwise the first row as before. Here rather than
-    /// in the Load handler so it also applies when the pilot retypes the preset airport.
+    /// Selects the runway row a load opens on: the preset runway when <paramref name="icao"/> is the
+    /// preset airport and a row matches it, otherwise the first row as before. Here rather than in
+    /// the Load handler so it also applies when the pilot retypes the preset airport.
+    ///
+    /// <para>When the preset runway is NOT in the list, the pilot is told. Falling back to the first
+    /// runway silently is the very default issue #234 grew from, and the runway box now advertises
+    /// itself as pre-filled — so a pilot who plans an exit against what they see has every reason to
+    /// think it came from their flight plan.</para>
     /// </summary>
-    private int PresetRunwayIndex(string icao)
+    private void SelectPresetRunway(string icao)
     {
-        if (string.IsNullOrEmpty(_presetRunwayId)
-            || !string.Equals(icao.Trim(), _presetIcao, StringComparison.OrdinalIgnoreCase))
-            return 0;
+        bool presetAirport = !string.IsNullOrEmpty(_presetRunwayId)
+            && string.Equals(icao.Trim(), _presetIcao, StringComparison.OrdinalIgnoreCase);
 
-        for (int i = 0; i < cmbRunway.Items.Count; i++)
+        var ids = _runways.Select(r => r.RunwayID).ToList();
+        var selection = LandingExitPlannerPreset.SelectRunway(
+            ids, presetAirport ? _presetRunwayId : null);
+
+        if (selection.Index >= 0 && selection.Index < cmbRunway.Items.Count)
+            cmbRunway.SelectedIndex = selection.Index;
+
+        if (selection.Notice != null)
         {
-            if (cmbRunway.Items[i] is RunwayChoice rc
-                && LandingExitPlannerPreset.DesignatorsMatch(rc.Runway.RunwayID, _presetRunwayId))
-                return i;
+            lblStatus.Text = selection.Notice;
+            _announcer.Announce(selection.Notice);
         }
-        return 0;
     }
 
     /// <param name="announce">

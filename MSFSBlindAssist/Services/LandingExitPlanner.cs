@@ -331,7 +331,16 @@ public class LandingExitPlanner
 
         if (choice.Exit == null)
         {
-            DiagLog($"ActivateGuidance: no usable exit on {actual.RunwayID} — runway-end countdown");
+            // Both the planner's exit list and the rescue scan need a taxiway NAME on the edge, so
+            // a database that names nothing at this airport produces the same empty answer as a
+            // runway that genuinely has no turnoffs. Record which it was, or a report of "it said
+            // no usable exit and there obviously is one" cannot be answered from the log.
+            int namedEdges = graph.GetNamedEdges().Count();
+            DiagLog($"ActivateGuidance: no usable exit on {actual.RunwayID} — runway-end countdown " +
+                    $"(airport named taxiway edges={namedEdges}" +
+                    (namedEdges == 0
+                        ? "; this database names no taxiways here, so no exit could be found on ANY runway)"
+                        : ")"));
             _guidanceManager.BeginRunwayEndCountdownRollout(
                 actual, graph, _dataProvider!, _icao!, SettingsManager.Current,
                 lat, lon, groundSpeedKnots, correction);

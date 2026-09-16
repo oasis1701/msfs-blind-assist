@@ -26,13 +26,28 @@ public static class LandingAssistRunwaySwitch
             : new LandingAssistRunwayDecision(other, SpeakCorrection: !flareSilent);
     }
 
+    /// <param name="exitPlanWillSayIt">
+    /// True when the landing-exit planner has a plan pending and is about to lead its own touchdown
+    /// sentence with the runway correction.
+    ///
+    /// <para>Both features notice a runway change, and at touchdown they speak a few hundredths of
+    /// a second apart: the assist runs on the simulator's frame rate and speaks as the wheels
+    /// touch, the planner asks for a fresh position first and then interrupts. The assist's
+    /// sentence was cut off mid-word — and on an approach flown with visual guidance, where the
+    /// assist stays silent through the flare, that cut-off sentence was the only time the pilot
+    /// would have been told before the planner's own. The planner's names the runway AND what to do
+    /// about it, so the assist leaves the telling to it and still re-points its tones.</para>
+    /// </param>
     public static LandingAssistRunwayDecision AtTouchdown(
-        LandingRunwayResult verdictAgainstActive, Runway active, Runway armed, bool correctionSpoken)
+        LandingRunwayResult verdictAgainstActive, Runway active, Runway armed,
+        bool correctionSpoken, bool exitPlanWillSayIt)
     {
         Runway? switchTo = NamesAnotherRunway(verdictAgainstActive);
         Runway after = switchTo ?? active;
         bool differsFromArmed = !LandingRunwayMatch.IsSameEnd(after, armed);
-        return new LandingAssistRunwayDecision(switchTo, SpeakCorrection: differsFromArmed && !correctionSpoken);
+        return new LandingAssistRunwayDecision(
+            switchTo,
+            SpeakCorrection: differsFromArmed && !correctionSpoken && !exitPlanWillSayIt);
     }
 
     public static string FlareGuidancePhrase(string activeRunwayId, string armedRunwayId, bool correction)

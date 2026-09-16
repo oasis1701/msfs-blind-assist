@@ -26,6 +26,69 @@ public class LandingExitPlannerPresetTests
         => Assert.Equal(new LandingExitPlannerPresetResult("OMDB", "30L"),
             LandingExitPlannerPreset.Resolve("", "  ", "OMDB", "30L"));
 
+    // ---------------------------------------------------------------------------------
+    // PR #236 follow-up: say so when the runway you planned for is not in the list.
+    //
+    // The whole point of pre-filling the runway box is that issue #234 began with it quietly
+    // defaulting to the airport's first runway. It still did exactly that whenever the pre-filled
+    // runway could not be found — and the box now tells the pilot it is "pre-filled from your ILS
+    // destination or flight plan", so they have MORE reason to trust what they see.
+    //
+    // Two ways a database makes that happen: the runway list leaves out runways the database marks
+    // closed, and a runway renamed for magnetic drift is spelled one way in the flight plan and
+    // another in the database.
+    // ---------------------------------------------------------------------------------
+
+    private static readonly string[] Runways = { "12L", "12R", "30L", "30R" };
+
+    [Fact]
+    public void The_runway_you_planned_for_is_selected_and_nothing_is_said()
+    {
+        var s = LandingExitPlannerPreset.SelectRunway(Runways, "30L");
+
+        Assert.Equal(2, s.Index);
+        Assert.True(s.PresetApplied);
+        Assert.Null(s.Notice);
+    }
+
+    [Fact]
+    public void Spelling_differences_still_count_as_the_same_runway()
+    {
+        Assert.Equal(0, LandingExitPlannerPreset.SelectRunway(new[] { "09", "27" }, "9").Index);
+        Assert.Equal(1, LandingExitPlannerPreset.SelectRunway(Runways, "12r").Index);
+    }
+
+    [Fact]
+    public void With_nothing_pre_filled_the_first_runway_is_shown_as_before_and_nothing_is_said()
+    {
+        var s = LandingExitPlannerPreset.SelectRunway(Runways, null);
+
+        Assert.Equal(0, s.Index);
+        Assert.False(s.PresetApplied);
+        Assert.Null(s.Notice);
+    }
+
+    [Fact]
+    public void A_runway_missing_from_the_list_falls_back_to_the_first_one_and_says_so()
+    {
+        var s = LandingExitPlannerPreset.SelectRunway(Runways, "16C");
+
+        Assert.Equal(0, s.Index);
+        Assert.False(s.PresetApplied);
+        Assert.NotNull(s.Notice);
+        Assert.Contains("16C", s.Notice);
+        Assert.Contains("12L", s.Notice);   // what is actually showing instead
+    }
+
+    [Fact]
+    public void An_airport_with_no_runways_loaded_selects_nothing()
+    {
+        var s = LandingExitPlannerPreset.SelectRunway(Array.Empty<string>(), "30L");
+
+        Assert.Equal(-1, s.Index);
+        Assert.Null(s.Notice);
+    }
+
     [Theory]
     [InlineData("OMDB", "")]
     [InlineData("OMDB", null)]

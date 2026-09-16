@@ -84,6 +84,12 @@ public class LandingFlareAssistManager : IDisposable
     // taxi guidance already steers (a bounce).
     private readonly Func<bool> isLandingExitTaxiSteering;
 
+    // True while the landing-exit planner holds a plan, so it will lead its own touchdown sentence
+    // with the runway correction. Both features notice a runway change and both say so, a few
+    // hundredths of a second apart at touchdown, and the planner interrupts 2014 so this assist leaves
+    // the telling to it (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones.
+    private readonly Func<bool> hasLandingExitPlan;
+
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
     // the landing-exit handoff; only the law feeding it changes at touchdown.
     private readonly AudioToneGenerator tone = new();
@@ -212,13 +218,15 @@ public class LandingFlareAssistManager : IDisposable
         Func<double> flareAglBiasFtProvider,
         Func<bool> visualGuidanceActiveCheck,
         Func<bool> landingExitGuidanceActiveCheck,
-        Func<bool> landingExitTaxiSteeringCheck)
+        Func<bool> landingExitTaxiSteeringCheck,
+        Func<bool> landingExitPlanPendingCheck)
     {
         announcer = screenReaderAnnouncer;
         getFlareAglBiasFt = flareAglBiasFtProvider;
         isVisualGuidanceActive = visualGuidanceActiveCheck;
         isLandingExitGuidanceActive = landingExitGuidanceActiveCheck;
         isLandingExitTaxiSteering = landingExitTaxiSteeringCheck;
+        hasLandingExitPlan = landingExitPlanPendingCheck;
     }
 
     /// <summary>
@@ -594,7 +602,8 @@ public class LandingFlareAssistManager : IDisposable
         {
             var verdict = LandingRunwayMatch.Evaluate(
                 d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation, runway, airportRunways);
-            var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken);
+            var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken,
+                exitPlanWillSayIt: hasLandingExitPlan());
             if (decision.SwitchTo != null)
             {
                 ApplyActiveRunway(decision.SwitchTo);
