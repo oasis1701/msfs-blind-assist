@@ -90,8 +90,11 @@ public static class LandingRunwayMatch
 
         foreach (var rwy in allRunways)
         {
-            if (IsSameEnd(rwy, planned)) plannedListed = true;
-            Consider(rwy);
+            // The pilot's own runway is always judged, whatever the database says about it — they
+            // chose it, and refusing to recognise the landing would cancel their plan outright.
+            bool isPlanned = IsSameEnd(rwy, planned);
+            if (isPlanned) plannedListed = true;
+            if (isPlanned || IsLandable(rwy)) Consider(rwy);
         }
         if (!plannedListed) Consider(planned);
 
@@ -128,6 +131,27 @@ public static class LandingRunwayMatch
         }
     }
 
+    /// <summary><c>Runway.Surface</c>'s water code (see <c>Runway.GetSurfaceType</c>).</summary>
+    private const int WaterSurface = 2;
+
+    /// <summary>
+    /// Whether a runway from the database is one an aeroplane could have just landed on.
+    ///
+    /// <para>The candidate list is the airport's WHOLE runway table, while the list the pilot may
+    /// PLAN on excludes closed runways — so without this a runway the planner would never offer
+    /// could still win the touchdown match, be named back to the pilot and have the rollout
+    /// re-planned onto it. Two shapes make that reachable: a magnetic-drift renumbering leaves a
+    /// second, closed record on or beside the same pavement, and a water runway (1,166 W-suffixed
+    /// ends in an fs2024 build) sits in the table with a scenery-authored width and no taxiways at
+    /// all, so winning it turns an ordinary landing into "no usable exit". Runway START positions
+    /// are already filtered for water in the database layer; the runway table is not.</para>
+    ///
+    /// <para><c>IsLanding</c> is deliberately NOT consulted: it only means the navdata publishes no
+    /// instrument approach, and ATC assigns such runways for landing routinely (EIDW 10R).</para>
+    /// </summary>
+    public static bool IsLandable(Runway rwy)
+        => rwy != null && !rwy.IsClosed && rwy.Surface != WaterSurface;
+
     public static bool IsSameEnd(Runway a, Runway b)
         => string.Equals(a.RunwayID, b.RunwayID, StringComparison.OrdinalIgnoreCase)
            && TaxiGraph.FastDistanceMeters(a.StartLat, a.StartLon, b.StartLat, b.StartLon) <= SameEndToleranceM;
@@ -136,17 +160,26 @@ public static class LandingRunwayMatch
         => TaxiGraph.FastDistanceMeters(candidate.StartLat, candidate.StartLon, planned.EndLat, planned.EndLon) <= TwinEndpointToleranceM
            && TaxiGraph.FastDistanceMeters(candidate.EndLat, candidate.EndLon, planned.StartLat, planned.StartLon) <= TwinEndpointToleranceM;
 
-    /// <summary>On the runway's pavement: laterally by the shared
-    /// <see cref="RunwayVacateResolver.IsOffPavement"/> test (half-width + 15 m), along-track from
-    /// <paramref name="beforeThresholdMarginM"/> before its start to <see cref="AfterEndMarginM"/>
-    /// past its end.</summary>
+    /// <summary>
+    /// On the runway's pavement: laterally by <see cref="RolloutExitGate.IsLaterallyClearOfRunway"/>,
+    /// along-track from <paramref name="beforeThresholdMarginM"/> before its start to
+    /// <see cref="AfterEndMarginM"/> past its end.
+    ///
+    /// <para>The lateral half MUST be the rollout's own test. This match decides which runway the
+    /// rollout is measured in, and the runway-end countdown then asks the same question of the same
+    /// aircraft a frame later through <c>IsWithinRolloutRunwayLaterally</c> — which routes here.
+    /// They used to differ: this side allowed half-width + 15 m and defaulted an unrecorded width
+    /// to 150 ft, the rollout allowed half-width + 10 m and defaulted to 200 ft. In the band
+    /// between, the app believed the aircraft was on the runway AND had vacated it, and the first
+    /// countdown frame announced "Runway vacated" and dropped guidance at landing speed.</para>
+    /// </summary>
     private static bool IsOnRunway(double lat, double lon, Runway rwy, double beforeThresholdMarginM,
                                    out double absCrossTrackM)
     {
         var frame = RunwayFrame.For(rwy, lat);
         absCrossTrackM = Math.Abs(frame.SignedCrossTrack(lat, lon));
         if (frame.LengthM < 1.0) return false;
-        if (RunwayVacateResolver.IsOffPavement(absCrossTrackM, rwy)) return false;
+        if (RolloutExitGate.IsLaterallyClearOfRunway(absCrossTrackM, rwy.Width)) return false;
 
         double along = frame.Along(lat, lon);
         return along >= -beforeThresholdMarginM && along <= frame.LengthM + AfterEndMarginM;

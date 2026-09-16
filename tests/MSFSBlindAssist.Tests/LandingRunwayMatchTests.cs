@@ -457,4 +457,127 @@ public class LandingRunwayMatchTests
         Assert.Equal(LandingRunwayVerdict.DifferentRunway, r.Verdict);
         Assert.Equal("25", r.Actual?.RunwayID);
     }
+
+    // ---------------------------------------------------------------------------------
+    // PR #236 follow-up: what counts as a runway you can land on.
+    //
+    // The candidate list is the airport's WHOLE runway table straight from the navigation
+    // database, while the list the pilot may PLAN on excludes closed runways. So a runway the
+    // planner would never offer could still win the touchdown match, be named back to the pilot
+    // ("Touchdown on runway 08, not 09") and have the rollout re-planned onto it.
+    //
+    // Two database shapes make that reachable. A magnetic-drift renumbering leaves a second,
+    // closed record on or beside the same pavement; and a water runway (1,166 W-suffixed ends in
+    // an fs2024 build) sits in the runway table with a scenery-authored width but no taxiways at
+    // all, so winning it turns a perfectly normal landing into "no usable exit". Runway START
+    // positions are already filtered for water in the database layer; the runway table is not.
+    // ---------------------------------------------------------------------------------
+
+    /// <summary>A closed record whose centreline passes exactly through the touchdown point, so it
+    /// beats the open runway on cross-track — the renumbering shape, in miniature.</summary>
+    private static Runway ClosedRenumberOf09() => new Runway
+    {
+        RunwayID = "08", Heading = 89.9, Length = LengthM / 0.3048, Width = WidthFt,
+        StartLat = CrossM * DEG_PER_M, StartLon = 0.0,
+        EndLat = CrossM * DEG_PER_M,   EndLon = LengthM * DEG_PER_M,
+        IsClosed = true,
+    };
+
+    /// <summary>A water runway on the same alignment, also through the touchdown point.</summary>
+    private static Runway WaterLaneOver09() => new Runway
+    {
+        RunwayID = "09W", Heading = 89.9, Length = LengthM / 0.3048, Width = 600.0,
+        StartLat = CrossM * DEG_PER_M, StartLon = 0.0,
+        EndLat = CrossM * DEG_PER_M,   EndLon = LengthM * DEG_PER_M,
+        Surface = 2,   // Runway.GetSurfaceType: 2 = Water
+    };
+
+    [Fact]
+    public void A_closed_runway_record_never_wins_the_touchdown()
+    {
+        var runways = new List<Runway> { Rwy09(), Rwy27(), ClosedRenumberOf09() };
+
+        var r = LandingRunwayMatch.Evaluate(
+            CrossM * DEG_PER_M, AlongM * DEG_PER_M, 90.0, Rwy09(), runways);
+
+        Assert.Equal(LandingRunwayVerdict.Matches, r.Verdict);
+    }
+
+    [Fact]
+    public void A_water_runway_never_wins_the_touchdown()
+    {
+        var runways = new List<Runway> { Rwy09(), Rwy27(), WaterLaneOver09() };
+
+        var r = LandingRunwayMatch.Evaluate(
+            CrossM * DEG_PER_M, AlongM * DEG_PER_M, 90.0, Rwy09(), runways);
+
+        Assert.Equal(LandingRunwayVerdict.Matches, r.Verdict);
+    }
+
+    [Fact]
+    public void The_runway_the_pilot_planned_on_is_judged_even_when_the_database_calls_it_closed()
+    {
+        // The pilot picked it, so it is theirs to land on whatever the database says. Landing on
+        // it must still read as a match, not as "runway not identified".
+        var planned = Rwy09();
+        planned.IsClosed = true;
+
+        var r = LandingRunwayMatch.Evaluate(
+            CrossM * DEG_PER_M, AlongM * DEG_PER_M, 90.0, planned,
+            new List<Runway> { planned, Rwy27() });
+
+        Assert.Equal(LandingRunwayVerdict.Matches, r.Verdict);
+    }
+
+    // ---------------------------------------------------------------------------------
+    // PR #236 follow-up: one answer to "am I still on the runway?".
+    //
+    // The touchdown match and the runway-end countdown ask that question of the same aircraft one
+    // frame apart — the match decides which runway the rollout is measured in, the countdown then
+    // decides whether the aircraft has left it. They were asking two different questions: the
+    // match allowed half-width + 15 m and defaulted an unrecorded width to 150 ft, the countdown
+    // allowed half-width + 10 m and defaulted to 200 ft. In the band between them the app believed
+    // the aircraft was on the runway AND had vacated it, and the very first countdown frame said
+    // "Runway vacated", stopped the tone and dropped guidance at landing speed. The rollout's own
+    // test is the one the rest of the app already shares, so the match now uses it too.
+    // ---------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_edge_of_the_pavement_is_where_the_rest_of_the_rollout_puts_it()
+    {
+        // 35 m off the centreline of a 150 ft runway: 12 m outside the edge. The rollout has always
+        // called this clear of the runway; the match used to call it still on it.
+        Assert.True(RolloutExitGate.IsLaterallyClearOfRunway(35.0, WidthFt));
+
+        var r = LandingRunwayMatch.Evaluate(
+            35.0 * DEG_PER_M, AlongM * DEG_PER_M, 90.0, Rwy09(), AllFour());
+
+        Assert.Equal(LandingRunwayVerdict.Unknown, r.Verdict);
+    }
+
+    [Fact]
+    public void Well_inside_the_pavement_is_still_a_match()
+    {
+        Assert.False(RolloutExitGate.IsLaterallyClearOfRunway(20.0, WidthFt));
+
+        var r = LandingRunwayMatch.Evaluate(
+            20.0 * DEG_PER_M, AlongM * DEG_PER_M, 90.0, Rwy09(), AllFour());
+
+        Assert.Equal(LandingRunwayVerdict.Matches, r.Verdict);
+    }
+
+    [Fact]
+    public void A_runway_with_no_recorded_width_uses_the_same_fallback_as_the_rollout()
+    {
+        // Plenty of scenery leaves the width column empty. The two tests disagreed here too, in
+        // the other direction — the match was the STRICTER of the pair.
+        var noWidth = Rwy09();
+        noWidth.Width = 0.0;
+        Assert.False(RolloutExitGate.IsLaterallyClearOfRunway(39.0, 0.0));
+
+        var r = LandingRunwayMatch.Evaluate(
+            39.0 * DEG_PER_M, AlongM * DEG_PER_M, 90.0, noWidth, new List<Runway> { noWidth });
+
+        Assert.Equal(LandingRunwayVerdict.Matches, r.Verdict);
+    }
 }
