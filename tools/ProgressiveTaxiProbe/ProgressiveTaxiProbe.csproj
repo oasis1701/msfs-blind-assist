@@ -18,6 +18,14 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\HoldShortNodeResolver.cs" Link="Linked\HoldShortNodeResolver.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RouteRunwayCrossings.cs"  Link="Linked\RouteRunwayCrossings.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayFrame.cs"           Link="Linked\RunwayFrame.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayShape.cs"           Link="Linked\RunwayShape.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
+    <!-- TaxiGraph.ResolveHoldingPointEntries calls NamedHoldingPointResolver.SnapOrInsert (added
+         2026-08-16, unrelated to the runway classifier work) — pre-existing gap in this probe's
+         link set that a build now surfaces. Self-contained (TaxiGraph + Database.Models only, both
+         already linked below), so pinning it here adds no further dependency. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />

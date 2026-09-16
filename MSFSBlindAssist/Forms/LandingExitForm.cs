@@ -513,9 +513,11 @@ public class LandingExitForm : Form
             {
                 var paths = _dataProvider.GetTaxiPaths(icao);
                 if (paths.Count == 0) return;
-                var parking = _dataProvider.GetParkingSpots(icao);
+                // Same inputs as the first load: stand names through the one naming seam, and the
+                // runway table so start rows are repaired and runway shapes carry the real pavement.
+                var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
                 var starts = _dataProvider.GetRunwayStarts(icao);
-                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts);
+                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts, _dataProvider.GetRunways(icao));
 
                 // The form can be closed, or the pilot can have typed another ICAO, during the
                 // build — re-check both before touching _graph or any control.

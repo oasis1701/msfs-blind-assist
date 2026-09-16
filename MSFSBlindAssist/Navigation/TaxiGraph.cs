@@ -51,16 +51,13 @@ public class TaxiGraph
         public double HeadingDeg1;         // heading from end 1 (0..360, true)
         public double HalfWidthMeters;     // centerline → edge tolerance
 
-        // The PAVEMENT, as the runway table describes it. Lat1..Lon2 above come from the
-        // navdata `start` rows, which SnapStartToRunwayCenterline repairs only LATERALLY —
-        // at a displaced threshold the along-track position stays hundreds of metres inside
-        // the pavement (LPPT 20: 626 m; 7,123 of 95,989 fs2024 runway ends are more than
-        // 50 m inboard, 344 by over 400 m), and HalfWidthMeters is a fixed 75 ft default
-        // while 5,127 of 48,040 runways are wider than 150 ft. Any caller asking "is this
-        // node ON the runway?" needs these, not those. ADDITIVE on purpose: the start-row
-        // fields keep their tuned behaviour for every existing consumer (hold-short naming,
-        // DescribeLocation, crossing detection). Falls back to the start-row values when
-        // Build was given no runway table (tests, probes), so those callers are unchanged.
+        // The PAVEMENT, as the runway table describes it (Pavement1 is the end named Name1). Lat1..Lon2
+        // above are the navdata `start` rows, repaired only LATERALLY, so at a displaced threshold they
+        // sit hundreds of metres inside the pavement; HalfWidthMeters is a fixed 75 ft default. Filled
+        // from the runway table when Build has one, else copied from the start rows. Never read these
+        // directly: RunwayShape.For decides when they are usable (a hand-built centerline leaves them
+        // unset; a heading-pass mis-pair can carry another runway's) and is the one definition every
+        // on-the-runway question uses. See docs/taxi-guidance.md, "Runway crossings and entries".
         public double PavementLat1, PavementLon1;
         public double PavementLat2, PavementLon2;
         public double PavementHalfWidthMeters;
@@ -1587,7 +1584,7 @@ public class TaxiGraph
     ///
     /// Priority order (more specific wins):
     ///   1. Parking node within 40 m (gate).
-    ///   2. Runway edge within half-width+5 m perpendicular distance (on the runway surface).
+    ///   2. Runway edge (PathType 'R') within half-width+5 m, then the runway shape (RunwayShape) within half-width+5 m.
     ///      Runway edges are those with PathType indicating a runway (first char 'R').
     ///   3. Runway threshold node within 50 m (near a runway start).
     ///   4. Taxiway edge within half-width+3 m perpendicular distance (on a named taxiway).
@@ -1763,27 +1760,15 @@ public class TaxiGraph
             return $"Runway {bestRunwayEdge.TaxiwayName}";
 
         // Runway centerline scan (works for the whole length, not just the
-        // thresholds). Each RunwayCenterline is the segment between the two
-        // opposing-end thresholds; if the aircraft is within half-width-plus-
-        // a-bit of that segment, it's on the runway. Pick the runway end whose
-        // heading is closer to the aircraft's bearing along the centerline so
-        // we report the correct designator (27L vs 09R).
+        // thresholds): on the runway shape within half-width + 5 m, named after the nearer
+        // end — for a stationary aircraft, the end it would line up to depart from. RunwayShape
+        // covers the displaced-threshold band the start rows leave out.
         foreach (var rwy in RunwayCenterlines)
         {
-            double perp = PerpendicularDistanceMeters(
-                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
-            double tolerance = rwy.HalfWidthMeters + 5.0;
-            if (perp > tolerance) continue;
-
-            // Pick the directional name. For a stationary aircraft we can't use
-            // its heading, so default to the end the aircraft is closer to:
-            // it'll be lined up to take off in that direction. (For a rolling
-            // aircraft this same convention happens to match the takeoff end.)
-            double d1 = FastDistanceMeters(lat, lon, rwy.Lat1, rwy.Lon1);
-            double d2 = FastDistanceMeters(lat, lon, rwy.Lat2, rwy.Lon2);
-            string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
-            if (string.IsNullOrEmpty(name)) name = rwy.Name1;
-            return $"Runway {name}";
+            var shape = RunwayShape.For(rwy);
+            var (along, lateral) = shape.Project(lat, lon);
+            if (!shape.ContainsAlongLateral(along, lateral, 5.0)) continue;
+            return $"Runway {shape.NameAt(along)}";
         }
 
         // Otherwise if we're near a runway threshold node
@@ -1807,8 +1792,8 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Detects which runway the aircraft is sitting on, using the same half-width
-    /// tolerance as DescribeLocation but exposing structured data for callers that
+    /// Detects which runway the aircraft is sitting on — on the runway shape, strictly, with no
+    /// margin (unlike DescribeLocation) — exposing structured data for callers that
     /// need geometry (threshold lat/lon, true heading, designator) rather than a
     /// spoken string. Uses the aircraft's true heading to pick the correct
     /// reciprocal designator (e.g. 27L vs 09R) — the "threshold" is the upwind
@@ -1828,7 +1813,7 @@ public class TaxiGraph
     /// Out: true heading of the runway in the takeoff direction (degrees, 0..360).
     /// </param>
     /// <returns>
-    /// True if the aircraft is within half-width of a runway centerline. False
+    /// True if the aircraft is on a runway's shape (within its half-width and inside its extent). False
     /// if the aircraft is not on any runway in this graph's RunwayCenterlines list.
     /// </returns>
     public bool TryGetRunwayAtPosition(
@@ -1843,14 +1828,12 @@ public class TaxiGraph
 
         foreach (var rwy in RunwayCenterlines)
         {
-            double perp = PerpendicularDistanceMeters(
-                lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
-            // Strict half-width (no +5 m tolerance). Stricter than DescribeLocation
-            // because takeoff-assist centerline math depends on the chosen runway
-            // actually being the one under the aircraft — a 5 m fudge could
-            // mis-attribute when the aircraft is sitting on a high-speed exit
-            // immediately adjacent to a runway.
-            if (perp > rwy.HalfWidthMeters) continue;
+            // Strict: the runway shape's own half-width, no margin. Stricter than DescribeLocation
+            // because takeoff-assist centerline math depends on the chosen runway actually being the
+            // one under the aircraft — a 5 m fudge could mis-attribute when the aircraft is sitting on
+            // a high-speed exit immediately adjacent to a runway. The threshold point, heading and
+            // end choice below are unchanged.
+            if (!RunwayShape.For(rwy).Contains(lat, lon, 0.0)) continue;
 
             // Pick the end whose takeoff heading is closer to the aircraft's
             // heading. End 1's takeoff heading is HeadingDeg1; end 2's is
@@ -2407,8 +2390,8 @@ public class TaxiGraph
     /// runway centerline (full length, perpendicular distance clamped to the
     /// threshold endpoints). Length-invariant: a hold-short where a taxiway
     /// crosses a long runway far from either threshold is still matched — unlike a
-    /// distance-to-threshold test. Returns the closer-end designator (same
-    /// convention as DescribeLocation / WhichRunwayContains), or null when no
+    /// distance-to-threshold test. Returns the designator of the nearer runway END on
+    /// the runway shape (same convention as DescribeLocation), or null when no
     /// centerline is within <paramref name="maxMatchMeters"/> (the caller then
     /// falls back to the threshold heuristic). Public static for probe coverage.
     /// </summary>
@@ -2425,12 +2408,11 @@ public class TaxiGraph
                 lat, lon, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
             if (perp > maxMatchMeters || perp >= bestPerp) continue;
 
-            // Closer-end designator (same convention as DescribeLocation): the end
-            // the aircraft is nearer is the one it would line up to depart from.
-            double d1 = FastDistanceMeters(lat, lon, rwy.Lat1, rwy.Lon1);
-            double d2 = FastDistanceMeters(lat, lon, rwy.Lat2, rwy.Lon2);
-            string name = d1 <= d2 ? rwy.Name1 : rwy.Name2;
-            if (string.IsNullOrEmpty(name)) name = rwy.Name1;
+            // MATCHING stays on the start rows above (tuned: at EGKK the nodes between 26L and 26R are
+            // 26L's lines, and a pavement match would rename them). Only the END named uses the runway
+            // shape, so the name agrees with crossing designators and Where-Am-I.
+            var shape = RunwayShape.For(rwy);
+            string name = shape.NameAt(shape.Project(lat, lon).Along);
             if (string.IsNullOrEmpty(name)) continue; // unnamed centerline — skip
 
             best = name;
@@ -2441,8 +2423,9 @@ public class TaxiGraph
 
     /// <summary>
     /// Public wrapper for the internal perpendicular-distance calculation, so
-    /// other components (e.g. TaxiGuidanceManager.WhichRunwayContains) can do
-    /// runway-pavement membership tests without duplicating the projection math.
+    /// other components (e.g. the landing-exit handoff's first-segment check in
+    /// TaxiGuidanceManager.Rollout) can measure a point's distance to a segment without
+    /// duplicating the projection math. Runway membership goes through RunwayShape instead.
     /// </summary>
     public static double PerpendicularDistanceMetersStatic(
         double plat, double plon,
@@ -2489,23 +2472,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// True when the taxi edge (a→b) crosses the runway centerline (t1→t2)
-    /// between the thresholds — a proper segment-segment intersection.
+    /// True when the taxi edge (a→b) crosses the segment t1→t2 (a runway centerline between its
+    /// thresholds) — a proper, strict opposite-sides segment-segment intersection, so an edge that merely
+    /// touches an endpoint or runs alongside is not flagged.
     ///
-    /// This is the CORRECT "does the route cross this runway" test. A taxiway
-    /// crosses a runway via an EDGE that spans the pavement, with its endpoint
-    /// NODES sitting OFF the runway on either side — so a "is a node ON the
-    /// pavement?" test (perpendicular distance ≤ half-width) silently misses the
-    /// crossing whenever the flanking nodes are more than ~half-width+5 m from
-    /// the centerline. KBOS taxiway C over runway 04L is the motivating case:
-    /// C plainly crosses 04L, but C's nearest node is 35 m from the 04L
-    /// centerline (half-width is 25 m), so the node test found nothing and no
-    /// hold-short was inserted — even though the route clearly traverses the
-    /// runway. The edge-intersection test catches it regardless of node spacing.
-    ///
-    /// "Proper" (strict opposite-sides) intersection by design: a taxiway that
-    /// merely touches a threshold endpoint or runs parallel alongside the runway
-    /// is NOT flagged, avoiding false hold-shorts.
+    /// A segment-intersection primitive kept for tools/ProgressiveTaxiProbe and TaxiGraphStaticsTests. The
+    /// runway crossing pass does not use it: whether a route crosses or enters a runway is decided by
+    /// <see cref="RunwayRouteClassifier"/> (docs/taxi-guidance.md, "Runway crossings and entries").
     /// </summary>
     public static bool EdgeCrossesRunwayStatic(
         double aLat, double aLon, double bLat, double bLon,
