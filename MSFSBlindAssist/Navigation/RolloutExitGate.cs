@@ -73,6 +73,21 @@ public static class RolloutExitGate
     public const double NoExitStoppedGroundSpeedKts = 3.0;
 
     /// <summary>
+    /// How close to the far end of the runway counts as "at the end" for
+    /// <see cref="RunwayEndCountdownGate"/> — the distance at which a stop means the pavement has
+    /// run out and the pilot must turn around, rather than that they have simply stopped.
+    ///
+    /// <para>A GUIDANCE threshold, deliberately its own constant rather than the 500 ft / 150 m
+    /// runway-end SPOKEN milestone it happens to coincide with. That table is built from the
+    /// pilot's distance-unit setting (<c>DistanceMilestones</c> → <c>DistanceFormatter.IsMetres</c>),
+    /// so reading it here moved this decision by ~8 ft when the pilot switched between feet and
+    /// metres, and by whatever a future extra milestone would shift the positional index to.
+    /// CLAUDE.md: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
+    /// thresholds; those must stay unit-native internally."</para>
+    /// </summary>
+    public const double NearRunwayEndFeet = 500.0;
+
+    /// <summary>
     /// How close to the exit a turn must begin to count as taking it.
     ///
     /// <para>Derived, not fitted. An exit node can sit forward of its actual pavement

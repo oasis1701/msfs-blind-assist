@@ -33,23 +33,25 @@ public static class RunwayEndCountdownGate
     /// pavement. Well past a normal exit turn, short of a full 180.</summary>
     public const double TurnedAroundMinDeg = 150.0;
 
-    /// <param name="nearEndFeet">The runway-end milestone that counts as "at the end" — the
-    /// manager passes the 500 ft / 150 m runway-end countdown trigger.</param>
     public static RunwayEndCountdownAction Decide(
         double distToEndFeet, double groundSpeedKts, double headingDeltaAbsDeg,
-        bool laterallyClear, bool stoppedNoticeGiven, double nearEndFeet)
+        bool laterallyClear, bool stoppedNoticeGiven)
     {
         if (laterallyClear) return RunwayEndCountdownAction.Vacated;
 
-        bool nearEnd = distToEndFeet <= nearEndFeet;
+        bool nearEnd = distToEndFeet <= RolloutExitGate.NearRunwayEndFeet;
         if (headingDeltaAbsDeg >= TurnedAroundMinDeg)
             return nearEnd ? RunwayEndCountdownAction.BacktrackAtEnd : RunwayEndCountdownAction.BacktrackMidRunway;
 
+        // A TURN near the end is deliberately NOT a backtrack trigger. Between 15 and 150 degrees a
+        // turn onto the taxiway at the runway end and the start of a turnaround look identical, and
+        // backtracking is a different guidance state — once entered, the "laterally clear" rule above
+        // never runs again, so a wrong call could not be taken back and the pilot was told to turn
+        // around while they were correctly leaving the runway. Keep counting: a turn-off becomes
+        // laterally clear, a turnaround passes TurnedAroundMinDeg or stops.
         bool stopped = groundSpeedKts < RolloutExitGate.NoExitStoppedGroundSpeedKts;
-        bool turning = headingDeltaAbsDeg >= RolloutExitGate.TurnBegunHeadingDeg
-                       && groundSpeedKts < RolloutExitGate.TurnMaxGroundSpeedKts;
 
-        if (nearEnd && (stopped || turning)) return RunwayEndCountdownAction.BacktrackAtEnd;
+        if (nearEnd && stopped) return RunwayEndCountdownAction.BacktrackAtEnd;
         if (stopped && !stoppedNoticeGiven) return RunwayEndCountdownAction.StoppedMidRunwayNotice;
         return RunwayEndCountdownAction.Continue;
     }

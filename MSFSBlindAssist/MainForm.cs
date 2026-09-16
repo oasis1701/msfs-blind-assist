@@ -731,10 +731,15 @@ public partial class MainForm : Form
         // rudder, and the exit/runway-end callouts must not be talked over).
         // Hotkey summary (Alt+G) remains available in all cases because it
         // lives outside this poll loop.
+        // The rule lives in Services/GroundTrafficSuppression so it can be pinned. Note the
+        // landing-rollout arm is speed-qualified: once the aircraft has STOPPED neither reason for
+        // holding callouts back applies, and a pilot held on the runway by ATC can now stay in the
+        // rollout indefinitely (the runway-end countdown no longer treats a stop as a backtrack).
         groundTrafficMonitor.SuppressCheck = () =>
-            takeoffAssistManager.IsActive
-            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive
-            || taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout;
+            GroundTrafficSuppression.Suppress(
+                takeoffAssistManager.IsActive,
+                taxiGuidanceManager.State,
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).

@@ -254,9 +254,12 @@ public partial class TaxiGuidanceManager
             // latches, the tone pause and the LandingRollout state.
             EnterRunwayEndCountdown();
 
-            double alongFromStartM = SignedAlongRunwayMeters(
-                touchdownLat, touchdownLon, runway.StartLat, runway.StartLon, runway.Heading);
-            double distToEndFt = (runway.Length * 0.3048 - alongFromStartM) * METERS_TO_FEET;
+            // Through RunwayFrame so a runway row with no recorded length still yields a real
+            // distance (it falls back to the threshold-to-threshold distance). Reading the raw
+            // column here produced a NEGATIVE number on those rows — and they are exactly the rows
+            // that reach this method, because the exit finders skip them and leave no usable exit.
+            double distToEndFt = Navigation.RunwayFrame.For(runway, touchdownLat)
+                .DistanceToEnd(touchdownLat, touchdownLon) * METERS_TO_FEET;
 
             var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
             var retired = Navigation.TouchdownCallout.RetireRunwayEndCallouts(
@@ -1934,14 +1937,12 @@ public partial class TaxiGuidanceManager
             return;
         }
 
-        // Distance from runway start to current position, along the runway heading.
-        double alongFromStartM = SignedAlongRunwayMeters(
-            lat, lon,
-            _rolloutRunway.StartLat, _rolloutRunway.StartLon,
-            _rolloutRunwayHeadingTrue);
-        double lengthM = _rolloutRunway.Length * 0.3048; // Length is feet
-        double distToEndM = lengthM - alongFromStartM;
-        double distToEndFt = distToEndM * METERS_TO_FEET;
+        // How much pavement is left, through the one RunwayFrame answer so a runway row with no
+        // recorded length falls back to the threshold-to-threshold distance instead of counting
+        // down from zero. (_rolloutRunwayHeadingTrue is _rolloutRunway.Heading at all three rollout
+        // entries, so the frame's own heading is the same one this used to project with.)
+        double distToEndFt = Navigation.RunwayFrame.For(_rolloutRunway, lat)
+            .DistanceToEnd(lat, lon) * METERS_TO_FEET;
 
         // Heading deviation from runway centerline.
         double hdgDelta = NormalizeAngle(headingTrue - _rolloutRunwayHeadingTrue);
@@ -1950,15 +1951,14 @@ public partial class TaxiGuidanceManager
         // How the countdown ends is decided from WHERE the aircraft is, not merely from a stop or
         // a turn (Navigation.RunwayEndCountdownGate). Any stop or 15-degree turn used to mean
         // "End of runway. Turn around." — false for a pilot turning off at a taxiway or holding for
-        // ATC mid-runway (PR #236 review). "At the end" is the 500 ft / 150 m runway-end milestone,
-        // computed once at countdown entry (_rolloutNearEndFeet) rather than rebuilt here every
-        // frame — DistanceMilestones.RunwayEnd() allocates, and this method is on the per-frame path
-        // for as long as the pilot is stopped mid-runway for ATC.
+        // ATC mid-runway (PR #236 review). "At the end" is RolloutExitGate.NearRunwayEndFeet, a
+        // guidance constant of its own: it used to be read out of the SPOKEN milestone table, which
+        // DistanceMilestones builds from the pilot's distance-unit setting, so the decision moved
+        // when they switched between feet and metres.
         var action = Navigation.RunwayEndCountdownGate.Decide(
             distToEndFt, groundSpeedKts, hdgDeltaAbs,
             laterallyClear: !IsWithinRolloutRunwayLaterally(lat, lon),
-            stoppedNoticeGiven: _rolloutStoppedNoticeGiven,
-            nearEndFeet: _rolloutNearEndFeet);
+            stoppedNoticeGiven: _rolloutStoppedNoticeGiven);
 
         switch (action)
         {
@@ -2583,7 +2583,6 @@ public partial class TaxiGuidanceManager
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
         _rolloutStoppedNoticeGiven = false;
-        _rolloutNearEndFeet = DistanceMilestones.RunwayEnd()[1].TriggerMetres / DistanceFormatter.MetresPerFoot;
         // Defence in depth, matching the _rolloutEnd*Announced resets above: setting
         // _rolloutNoExitMode below makes UpdateLandingRollout divert into
         // UpdateRunwayEndCountdown before the handoff block can be reached at all, so

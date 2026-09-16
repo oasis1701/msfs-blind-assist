@@ -980,13 +980,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // _rolloutEnd*Announced: BeginLandingRollout, BeginLandingRolloutNoGraph,
     // EnterRunwayEndCountdown and StopGuidance.
     private bool _rolloutStoppedNoticeGiven;
-    // The 500 ft / 150 m runway-end milestone trigger, in feet — "near the end" for
-    // Navigation.RunwayEndCountdownGate. Computed once per countdown entry (EnterRunwayEndCountdown)
-    // rather than per frame, because DistanceMilestones.RunwayEnd() allocates.
-    private double _rolloutNearEndFeet;
-
-    // Backtrack state. Entered from runway-end countdown when the pilot is stopped or
-    // turning within the 500 ft / 150 m runway-end milestone, or has turned around (150°+)
+    // Backtrack state. Entered from runway-end countdown when the pilot has STOPPED within
+    // RolloutExitGate.NearRunwayEndFeet of the end, or has turned around (150°+)
     // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
     // reciprocal runway heading until the aircraft reaches the first taxi-graph
     // connection node.
@@ -1919,11 +1914,13 @@ public partial class TaxiGuidanceManager : IDisposable
 
         if (_state != TaxiGuidanceState.Taxiing || _route == null || _graph == null)
         {
-            // After a landing-exit arrival the pilot is in Arrived state with no
-            // route — they still need runway incursion warnings while taxiing to
-            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW
-            // lies east of the S6 exit on the way to the terminal).
-            if (_state == TaxiGuidanceState.Arrived && _graph != null)
+            // With no route the pilot still needs runway incursion warnings while they taxi to
+            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW lies east of
+            // the S6 exit on the way to the terminal). That covers a landing-exit arrival AND the
+            // three route-less ways guidance can now finish on the airfield still taxiing: the
+            // countdown's "Runway vacated" close-out and both backtrack endings, all of which land
+            // in Taxiing. See Services/RunwayIncursionWatch for why the map, not the state, decides.
+            if (RunwayIncursionWatch.RunsWithoutARoute(_state, _graph != null))
                 CheckRunwayIncursion(lat, lon);
             // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
             // the pilot sets the next leg. No tone, no recalc, no movement logic.

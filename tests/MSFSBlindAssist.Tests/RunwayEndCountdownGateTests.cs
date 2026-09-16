@@ -9,12 +9,22 @@ namespace MSFSBlindAssist.Tests;
 
 public class RunwayEndCountdownGateTests
 {
-    private const double NearEnd = 500.0;
-
     private static RunwayEndCountdownAction Decide(
         double distToEndFeet, double groundSpeedKts, double headingDeltaAbsDeg,
         bool clear = false, bool noticeGiven = false)
-        => RunwayEndCountdownGate.Decide(distToEndFeet, groundSpeedKts, headingDeltaAbsDeg, clear, noticeGiven, NearEnd);
+        => RunwayEndCountdownGate.Decide(distToEndFeet, groundSpeedKts, headingDeltaAbsDeg, clear, noticeGiven);
+
+    // PR #236 follow-up. "At the runway end" decides whether a stop means "turn around and
+    // backtrack" or just a notice, so it must not move when the pilot switches the app between
+    // feet and metres. It used to be read out of the SPOKEN milestone table by position, and that
+    // table is built from the display-unit setting — 500 ft in feet mode, 150 m (492 ft) in metres.
+    [Fact]
+    public void The_runway_end_window_is_a_fixed_distance_not_the_spoken_milestone()
+    {
+        Assert.Equal(500.0, RolloutExitGate.NearRunwayEndFeet, 3);
+        Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(499, 1, 0));
+        Assert.Equal(RunwayEndCountdownAction.StoppedMidRunwayNotice, Decide(501, 1, 0));
+    }
 
     [Fact]
     public void Rolling_straight_down_the_runway_continues_the_countdown()
@@ -44,12 +54,30 @@ public class RunwayEndCountdownGateTests
         => Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(300, 5, 160));
 
     [Fact]
-    public void Stopping_or_turning_near_or_past_the_end_backtracks()
+    public void Stopping_near_or_past_the_end_backtracks()
     {
         Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(400, 2, 0));
-        Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(450, 20, 30));
-        Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(-50, 10, 20));
+        Assert.Equal(RunwayEndCountdownAction.BacktrackAtEnd, Decide(-50, 1, 20));
     }
+
+    // PR #236 follow-up. A pilot rolling to the end of the runway and turning onto the taxiway
+    // there is doing the RIGHT thing, and at 15-90 degrees of heading change that is
+    // indistinguishable from the start of a turnaround. The old rule committed immediately and
+    // said "End of runway. Turn around." over a correct turn-off — and because backtracking is a
+    // different guidance state, the "Runway vacated" rule below could never take it back. Keep
+    // counting instead: a real turn-off becomes laterally clear, and a real turnaround passes
+    // 150 degrees or stops. Only a STOP near the end still means there is no pavement left.
+    [Fact]
+    public void Turning_off_at_the_end_keeps_counting_until_the_aircraft_is_clear()
+    {
+        Assert.Equal(RunwayEndCountdownAction.Continue, Decide(450, 20, 30));
+        Assert.Equal(RunwayEndCountdownAction.Continue, Decide(200, 12, 75));
+        Assert.Equal(RunwayEndCountdownAction.Vacated, Decide(150, 10, 88, clear: true));
+    }
+
+    [Fact]
+    public void A_turn_past_the_runway_end_still_waits_for_the_aircraft_to_clear()
+        => Assert.Equal(RunwayEndCountdownAction.Continue, Decide(-50, 10, 20));
 
     [Fact]
     public void Stopping_mid_runway_gives_one_notice_then_waits()
