@@ -735,10 +735,10 @@ public partial class TaxiGuidanceManager
             // RunwayVacateResolver walk that pushes the stop point past the
             // runway-holding position.
             //
-            // A side-effect of always re-routing: the initial route's false "hold short of
-            // runway X" tag (inserted by InsertRunwayCrossingHoldShorts because the route's
-            // destination sits on the runway) is replaced with a clean 1-2 segment route
-            // that has no runway-crossing tags.
+            // A side-effect of always re-routing: the touchdown route is replaced with a clean
+            // 1-2 segment route from the handoff position. (The old per-edge crossing pass used to
+            // leave a false "hold short of runway X" tag on the touchdown route, whose destination
+            // sits on the runway.)
             bool handoffRerouted = false;
             if (_rolloutExit != null && _dataProvider != null && _graph != null)
             {
@@ -764,7 +764,9 @@ public partial class TaxiGuidanceManager
                     exitName,
                     taxiwaySequence: null,
                     prebuiltGraph: _graph,
-                    announceSummary: false);
+                    announceSummary: false,
+                    // Still on the landing runway, a start hold would stop the aircraft on it.
+                    allowStartHold: offRunwayAtHandoff);
                 handoffRerouted = rerouteErr == null;
                 if (handoffRerouted)
                 {
@@ -1561,6 +1563,11 @@ public partial class TaxiGuidanceManager
         // S5 while committed to S6), sending A* up that exit and across the parallel taxiway: a
         // ~600 m hairpin. Empty name (unnamed exit) → null → legacy nearest-node snap.
         string? startTwy = _rolloutExit.TaxiwayName.Length > 0 ? _rolloutExit.TaxiwayName : null;
+        // The verdict is computed before LoadRoute because the re-route's start hold below,
+        // the reachability guard and the crossing guard all need it, from the same lat/lon,
+        // under the same name the UpdateLandingRollout site uses. One definition of "off the
+        // runway", three uses.
+        bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
         string? err = LoadRoute(
             _dataProvider, _icao,
             lat, lon, headingTrue,
@@ -1568,7 +1575,10 @@ public partial class TaxiGuidanceManager
             taxiwaySequence: null,
             prebuiltGraph: _graph,
             announceSummary: false,
-            startTaxiwayName: startTwy);
+            startTaxiwayName: startTwy,
+            // A start hold only once the aircraft is off the runway, as at UpdateLandingRollout's
+            // handoff: on the pavement it would stop the aircraft there.
+            allowStartHold: offRunwayAtHandoff);
 
         if (err != null)
         {
@@ -1689,11 +1699,6 @@ public partial class TaxiGuidanceManager
                 lat, lon,
                 firstSeg.FromNode.Latitude, firstSeg.FromNode.Longitude,
                 firstSeg.ToNode.Latitude, firstSeg.ToNode.Longitude);
-
-            // Hoisted out of the reachability call below because the crossing guard after it
-            // needs the same verdict, from the same lat/lon, under the same name the
-            // UpdateLandingRollout site uses. One definition of "off the runway", two guards.
-            bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
 
             if (!Navigation.RolloutExitGate.IsHandoffRouteReachable(
                     offRunwayAtHandoff, crossToFirstM, firstSeg.PathWidth))
@@ -2076,7 +2081,9 @@ public partial class TaxiGuidanceManager
                 taxiwaySequence: null,
                 prebuiltGraph: _graph,
                 announceSummary: false,
-                isRunwayDestination: false);
+                isRunwayDestination: false,
+                // Adopted for the landing rollout, not at the handoff: never starts held.
+                allowStartHold: false);
 
             if (error == null)
             {

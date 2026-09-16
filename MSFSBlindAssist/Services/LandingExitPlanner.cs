@@ -350,7 +350,9 @@ public class LandingExitPlanner
             destinationHeadingTrue: null,
             isRunwayDestination: false,
             prebuiltGraph: _graph,
-            announceSummary: false);
+            announceSummary: false,
+            // The aircraft is still rolling at landing speed: this route never starts held.
+            allowStartHold: false);
 
         if (error != null)
         {

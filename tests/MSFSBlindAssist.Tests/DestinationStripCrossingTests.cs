@@ -1,23 +1,21 @@
-// Characterization tests for how a crossing of the DESTINATION runway's own strip is handled
-// by TaxiGuidanceManager.InsertRunwayCrossingHoldShorts (audit finding, 2026-08-24).
+// Characterization tests for how a crossing of the DESTINATION runway's own strip is handled by the
+// automatic runway hold pass (RouteRunwayCrossings.InsertRunwayHoldShorts; audit finding 2026-08-24).
 //
-// `WhichRunwayCrossedByEdge` names a crossing after whichever runway END is nearer the
-// crossing point, not after the end the pilot selected. The old rule skipped any crossing
-// whose name equalled the destination's, which was wrong in both directions:
+// A crossing is named after whichever runway END is nearer it, not after the end the pilot selected.
+// The old rule skipped any crossing whose name equalled the destination's, which was wrong in both
+// directions:
 //
-//   - a route to 04L crossing the 04L/22R strip nearer the 22R end reported "22R", slipped
-//     past the exclusion, and announced a hold-short of a runway the pilot never named;
-//   - the same crossing nearer the 04L end reported "04L" and was DROPPED ENTIRELY — no
-//     hold-short before crossing the active runway, which is the runway-incursion direction
+//   - a route to 04L crossing the 04L/22R strip nearer the 22R end reported "22R", slipped past the
+//     exclusion, and announced a hold-short of a runway the pilot never named;
+//   - the same crossing nearer the 04L end reported "04L" and was DROPPED ENTIRELY — no hold-short
+//     before crossing the active runway, which is the runway-incursion direction
 //     (FAA AIM 4-3-18 / ICAO Doc 4444), and the one CLAUDE.md forbids disabling.
 //
-// The rule is now: skip ONLY the route's own arrival (the FINAL segment, which
-// TruncateToHoldShort already truncated to and tagged), reciprocal-aware; every other
-// crossing of that strip is tagged, and labelled with the designator the pilot selected.
-//
-// These pin the two ingredients the fix rests on. The composition itself
-// (`sameStripAsDestination && i >= route.Segments.Count - 1`) needs a live graph and route,
-// so it is covered by the in-sim plan rather than here.
+// The rule is now: skip ONLY the route's own arrival (an entry that ends on the destination strip);
+// every other entry or crossing of that strip is held and labelled with the designator the pilot
+// selected. The pass itself, destination-strip rule included, is pinned in RunwayHoldPlacementTests;
+// these pin the label it composes (RouteRunwayCrossings.ComposeCrossingLabel with the pilot's
+// designator) and the reciprocal-aware designator match (TaxiGuidanceManager.RunwayDesignatorsMatch).
 
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;

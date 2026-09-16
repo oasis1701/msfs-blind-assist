@@ -1,4 +1,4 @@
-﻿using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -552,9 +552,10 @@ public class LandingExitForm : Form
             {
                 var paths = _dataProvider.GetTaxiPaths(icao);
                 if (paths.Count == 0) return;
-                // Exactly as LoadAirportCoreAsync builds it: the app-wide stand names (this graph
-                // becomes taxi guidance's when a plan activates, and a stand has ONE name) and the
-                // runway list Build repairs start rows from. _allRunways is set and cleared with _graph.
+                // Same inputs as the first load: the app-wide stand names through the one naming
+                // seam (this graph becomes taxi guidance's when a plan activates, and a stand has ONE
+                // name) and the runway table, so start rows are repaired and runway shapes carry the
+                // real pavement. _allRunways is set and cleared with _graph, so it is live here.
                 var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
                 var starts = _dataProvider.GetRunwayStarts(icao);
                 var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts, _allRunways);
