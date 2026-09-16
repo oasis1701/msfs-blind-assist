@@ -57,8 +57,11 @@ public class RouteChangedCalloutTests
             RouteChangedCallout.Compose(new[] { "D" }, "1.2 kilometres", "Runway 04R", new[] { Cross("04R") }));
 
     [Fact]
-    public void A_crossing_that_could_not_be_held_is_still_named()
-        => Assert.Equal("Route changed. Now via D, crossing runway 26R. 900 metres to Gate B 12.",
+    public void A_crossing_that_could_not_be_held_is_still_named_and_flagged()
+        // The recalculation is the path that most often cannot place a stop (it is built from a
+        // moving aircraft), so this is where hearing "crossing runway 26R" with no hold to follow
+        // was most misleading.
+        => Assert.Equal("Route changed. Now via D, crossing runway 26R, with no hold short point for runway 26R. 900 metres to Gate B 12.",
             RouteChangedCallout.Compose(new[] { "D" }, "900 metres", "Gate B 12", new[] { Cross("26R", held: false) }));
 
     [Fact]

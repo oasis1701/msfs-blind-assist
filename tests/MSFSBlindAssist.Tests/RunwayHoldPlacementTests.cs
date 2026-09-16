@@ -73,7 +73,15 @@ public class RunwayHoldPlacementTests
         var events = Pass(alongEleven, new[] { EastWest("11", "29"), runway14 });
 
         Assert.All(alongEleven.Segments, s => Assert.False(s.IsHoldShortPoint));
-        Assert.False(Assert.Single(events, e => RouteRunwayCrossings.CenterlineHasDesignator(runway14, e.Designator)).Held);
+        // The hold NODE is still never the stop — that is this test's subject and no segment is tagged.
+        // 14 is nonetheless HELD: the route enters 11/29 first, whose own stop is the route's start
+        // node (a start hold), and that stop sits before BOTH runways, so 14 shares it and the label
+        // names both. It used to be dropped entirely — see
+        // A_second_runway_crossed_beyond_the_first_shares_the_start_hold.
+        // "32", not "14": the crossing sits just past that runway's midpoint, so the shape names
+        // the nearer end — which is what the pilot hears at the stop.
+        Assert.Equal("runway 11 and runway 32", alongEleven.StartHoldRunway);
+        Assert.True(Assert.Single(events, e => RouteRunwayCrossings.CenterlineHasDesignator(runway14, e.Designator)).Held);
     }
 
     [Fact]
@@ -475,6 +483,38 @@ public class RunwayHoldPlacementTests
     }
 
     [Fact]
+    public void A_cleared_progressive_crossing_stops_being_announced_at_all()
+    {
+        // The strip removes the stop but used to leave the recorded event standing, so the leg's
+        // summary still said "crossing runway 09" for a runway the pilot is cleared across — and
+        // now that an unheld event is flagged, it would have read "with no hold short point for
+        // runway 09" over a deliberate clearance. The Progressive terminator already names it.
+        var single = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
+        Pass(single, new[] { EastWest() });
+        Assert.Equal("crossing runway 09", RouteRunwayCrossings.DescribeRunwayEvents(single.RunwayEvents));
+
+        RouteRunwayCrossings.StripClearedCrossing(single, "27");
+
+        Assert.Empty(single.RunwayEvents);
+        Assert.Equal("", RouteRunwayCrossings.DescribeRunwayEvents(single.RunwayEvents));
+    }
+
+    [Fact]
+    public void Clearing_one_runway_of_a_shared_stop_leaves_the_others_event_standing()
+    {
+        // The shared stop itself survives (the other runway is not cleared), so its event must too.
+        var (shared, runways) = Intersection();
+        Pass(shared, runways);
+
+        RouteRunwayCrossings.StripClearedCrossing(shared, "09");
+
+        Assert.True(shared.Segments[0].IsHoldShortPoint);
+        var remaining = Assert.Single(shared.RunwayEvents);
+        Assert.Equal("01", remaining.Designator);
+        Assert.True(remaining.Held);
+    }
+
+    [Fact]
     public void Missing_runways_fail_loudly_and_a_missing_route_meets_nothing()
     {
         Assert.Throws<ArgumentNullException>(() =>
@@ -546,5 +586,40 @@ public class RunwayHoldPlacementTests
 
         Assert.Equal("runway 27 at C", route.Segments[0].HoldShortRunway);
         Assert.Equal("27", ev.Designator);
+    }
+
+    [Fact]
+    public void A_second_runway_crossed_beyond_the_first_shares_the_start_hold()
+    {
+        // A start hold tags NO segment, so it used to be invisible to the next runway's walk:
+        // 01's walk back meets 09's pavement, latches crossedOther, finds no "existing stop" at
+        // node 0 (IsExistingStop is false there by construction) and returned -1 — so the pilot
+        // heard only "hold short of runway 09", pressed Continue, and crossed BOTH runways.
+        // The start hold sits before everything on the route, so it is always a safe stop to share.
+        var runways = new[] { EastWest("09", "27"), NorthSouth("01", "19", eastM: 1200, fromNorthM: -1500, toNorthM: 1500) };
+        var route = RouteOf(Node(1, 900, 35), Node(2, 1000, 0), Node(3, 1300, 0), Node(4, 1300, -60));
+
+        var events = Pass(route, runways);
+
+        Assert.Equal("runway 09 and runway 01", route.StartHoldRunway);
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.True(e.Held));
+        Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
+    }
+
+    [Fact]
+    public void A_second_runway_is_still_unheld_when_there_is_no_start_hold_to_share()
+    {
+        // The same shape with the start hold refused (a recalculation): nothing safe exists, so
+        // the -1 "no stop" verdict must survive. The fix must not manufacture a stop out of nothing.
+        var runways = new[] { EastWest("09", "27"), NorthSouth("01", "19", eastM: 1200, fromNorthM: -1500, toNorthM: 1500) };
+        var route = RouteOf(Node(1, 900, 35), Node(2, 1000, 0), Node(3, 1300, 0), Node(4, 1300, -60));
+
+        var events = Pass(route, runways, allowStartHold: false);
+
+        Assert.Null(route.StartHoldRunway);
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.False(e.Held));
+        Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
     }
 }

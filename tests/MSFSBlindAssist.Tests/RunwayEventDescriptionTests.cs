@@ -103,8 +103,10 @@ public class RunwayEventDescriptionTests
     }
 
     [Fact]
-    public void A_crossing_that_could_not_be_held_is_still_named()
-        => Assert.Equal("crossing runway 26R",
+    public void A_crossing_that_could_not_be_held_is_still_named_and_flagged()
+        // Named, as it always was — and now flagged, because an unheld crossing worded exactly
+        // like a held one left the pilot waiting for a callout that never comes.
+        => Assert.Equal("crossing runway 26R, with no hold short point for runway 26R",
             RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross("26R", held: false) }));
 
     [Fact]
@@ -156,4 +158,70 @@ public class RunwayEventDescriptionTests
         => Assert.Equal(
             "Route crossings: phase=recalc dest=\"Gate A 5\" segments=0 crosses=(none) enters=(none) unheld=(none) startHold=(none)",
             RouteRunwayCrossings.DescribeForLog("recalc", "Gate A 5", new TaxiRoute()));
+
+    // --- a crossing with NO hold must not sound like one with a hold ---------------------
+
+    [Fact]
+    public void A_crossing_with_no_hold_short_point_says_so()
+    {
+        // The pilot is told the route crosses 26R and then waits for "Stop. Hold short of runway
+        // 26R" that never comes. Held must reach the words, not only the log line.
+        Assert.Equal("crossing runway 26R, with no hold short point for runway 26R",
+            RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross("26R", held: false) }));
+    }
+
+    [Fact]
+    public void Only_the_runways_without_a_hold_are_named_in_the_warning()
+    {
+        Assert.Equal("crossing runways 26R and 09L, entering runway 04L, with no hold short point for runways 09L and 04L",
+            RouteRunwayCrossings.DescribeRunwayEvents(
+                new[] { Cross("26R"), Cross("09L", held: false), Enter("04L", held: false) }));
+    }
+
+    [Fact]
+    public void A_route_whose_runways_are_all_held_gains_no_warning()
+        => Assert.Equal("crossing runway 26R, entering runway 04L",
+            RouteRunwayCrossings.DescribeRunwayEvents(new[] { Cross("26R"), Enter("04L") }));
+
+    // --- compass-point runway designators -----------------------------------------------
+    // fs2024 carries 204 runway ends named N/S/E/W/NE/NW/SE/SW, at 21 airports that also have
+    // taxi paths. The designator pattern matched digits only, so none of them was ever read.
+
+    [Fact]
+    public void A_compass_point_designator_is_read_from_a_label()
+    {
+        Assert.Equal("N", RouteRunwayCrossings.ExtractRunwayDesignator("runway N at A"));
+        Assert.Equal("NE", RouteRunwayCrossings.ExtractRunwayDesignator("runway NE at A5"));
+        Assert.Equal(new[] { "E" }, RouteRunwayCrossings.ExtractRunwayDesignators("runway E"));
+        // A numeric designator still wins where both could match, and a locative is not a runway.
+        Assert.Equal("15R", RouteRunwayCrossings.ExtractRunwayDesignator("runway 15R at N"));
+        Assert.Equal(new[] { "15R" }, RouteRunwayCrossings.ExtractRunwayDesignators("runway 15R at N"));
+        // Ordinary words beginning with a compass letter are not designators.
+        Assert.Null(RouteRunwayCrossings.ExtractRunwayDesignator("runway North side"));
+    }
+
+    [Fact]
+    public void A_compass_point_label_is_not_prefixed_a_second_time()
+        // Live 3KS4 and RJSSE spoke "Stop. Hold short of runway N at runway N."
+        => Assert.Null(RouteRunwayCrossings.ComposeCrossingLabel("runway N at A", "N"));
+
+    [Fact]
+    public void A_compass_point_runway_can_be_cleared_and_has_a_reciprocal()
+    {
+        Assert.True(RouteRunwayCrossings.LabelNamesOnlyRunway("runway NE at A5", "NE"));
+        // Cleared across "S" must clear a stop labelled for its own other end, "N".
+        Assert.True(RouteRunwayCrossings.LabelNamesOnlyRunway("runway N at A", "S"));
+        Assert.False(RouteRunwayCrossings.LabelNamesOnlyRunway("runway N at A", "E"));
+        Assert.Equal("S", RouteRunwayCrossings.Reciprocal("N"));
+        Assert.Equal("N", RouteRunwayCrossings.Reciprocal("S"));
+        Assert.Equal("W", RouteRunwayCrossings.Reciprocal("E"));
+        Assert.Equal("SW", RouteRunwayCrossings.Reciprocal("NE"));
+        Assert.Equal("NW", RouteRunwayCrossings.Reciprocal("SE"));
+    }
+
+    [Fact]
+    public void The_warning_names_one_pavement_once_however_many_times_it_is_unheld()
+        => Assert.Equal("crossing runway 10L/28R twice, with no hold short point for runway 10L",
+            RouteRunwayCrossings.DescribeRunwayEvents(
+                new[] { Cross("10L", held: false), Cross("28R", held: false) }));
 }
