@@ -686,6 +686,12 @@ public partial class MainForm
             // arrival wording redirects forward instead of saying "parking brake" at
             // the navdata point (KATL F3 2026-06-11: 26 s parked short, docking Armed).
             taxiGuidanceManager.SetDockingPending(dockingGuidanceManager.IsArmedAwaitingEngage);
+
+            // Exactly one panning tone, landing edition: when taxi guidance has just taken over from a
+            // landing rollout, the manual landing assist hands its rollout tone over SILENTLY on this
+            // frame — after UpdatePosition spoke taxi guidance's own sentence, and before its tone's first
+            // audible frame (LandingFlareAssistManager.StepTaxiHandover).
+            flareAssistManager.YieldIfTaxiGuidanceTookOver();
         }
 
         // Cache SIM_ON_GROUND on every update, regardless of which features are
@@ -1799,6 +1805,10 @@ public partial class MainForm
         if (newState == TaxiGuidanceState.LandingRollout)
             _diagLoggedFirstRolloutPos = false;
 
+        // Record only: this runs inside TaxiGuidanceManager.SetState. The manual landing assist hands
+        // over on the TAXI_GUIDANCE_POSITION frame (YieldIfTaxiGuidanceTookOver) or on its own frame.
+        flareAssistManager?.ObserveTaxiGuidanceState(newState);
+
         switch (newState)
         {
             case TaxiGuidanceState.Taxiing:
@@ -1809,9 +1819,11 @@ public partial class MainForm
                 // destination still set belongs to the PREVIOUS flight's arrival — clear it so
                 // the stale gate can't keep IsActive latched and mute the rollout steering tone.
                 // Covers hand-flown departures where the takeoff-assist clear never ran.
-                // (Position monitoring is unchanged here — it's already running from the
-                // route-load Taxiing transition.)
                 dockingGuidanceManager?.SetDestinationGate(null);
+                // No stream start here. BeginLandingRollout arrives through StartGuidance's Taxiing
+                // transition, which started the stream, and every mid-rollout return to LandingRollout
+                // happens inside a position frame. The two entries that can arrive with no stream
+                // raise TaxiGuidanceManager.PositionStreamRequired instead.
                 break;
             case TaxiGuidanceState.Arrived:
             case TaxiGuidanceState.Inactive:
