@@ -1,0 +1,1 @@
+When guidance re-plans your exit because you landed on a different runway, it now prefers an exit that actually leads clear of the runway — the same check the planner shows you when you pick one by hand. Exits with no taxiway mapped past them are still offered when they are all the airport has.
