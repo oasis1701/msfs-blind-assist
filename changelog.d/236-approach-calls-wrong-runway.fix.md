@@ -1,0 +1,1 @@
+Landing on a runway you did not plan for no longer costs you the approach calls to your new exit. The touchdown sentence folds in any callout that would come due while it is still being spoken, and it now allows for the fact that you are braking hard — so the calls you would only reach afterwards are left to speak for themselves.

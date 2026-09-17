@@ -445,7 +445,7 @@ public static class RunwayVacateResolver
 
     /// <summary>
     /// True when the node sits on the pavement of a runway OTHER than the one just
-    /// landed on. Uses the same strict half-width test as
+    /// landed on. Uses the same strict runway-shape test as
     /// <see cref="TaxiGraph.TryGetRunwayAtPosition"/> — no tolerance fudge, so a node
     /// on an exit immediately abeam a runway isn't mis-attributed to it.
     /// </summary>
@@ -454,9 +454,7 @@ public static class RunwayVacateResolver
     {
         foreach (var rwy in graph.RunwayCenterlines)
         {
-            double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
-                node.Latitude, node.Longitude, rwy.Lat1, rwy.Lon1, rwy.Lat2, rwy.Lon2);
-            if (perp > rwy.HalfWidthMeters) continue;
+            if (!RunwayShape.For(rwy).Contains(node.Latitude, node.Longitude, 0.0)) continue;
             if (IsLandingRunway(rwy, landingRunway, runwayHeadingTrue)) continue;
             return true;
         }

@@ -238,4 +238,34 @@ public class RunwayFrameTests
         Assert.Equal(expected, frame.LengthM, 1e-9);
         Assert.Equal(1000.0, frame.LengthM, 2.0); // sanity: still ~1000 m as constructed
     }
+
+    // PR #236 follow-up. "How much runway is left" had three spellings, and the runway-end
+    // countdown used the one that reads the `length` column raw. A database row with length 0 —
+    // a real state the exit finders already guard for, and one that is GUARANTEED to reach the
+    // countdown because those guards leave it with no exits — then produced a NEGATIVE distance:
+    // the pilot was told "Stop." at touchdown speed with the whole runway ahead, got no countdown
+    // at all, and the first stop anywhere was called the end of the runway.
+    [Fact]
+    public void DistanceToEnd_uses_the_fallback_length_when_the_length_column_is_zero()
+    {
+        double endLat = 3000.0 / MPD;                                  // ~3000 m runway
+        var runway = MakeRunway(0.0, lengthFt: 0.0, endLat: endLat, endLon: 0.0);
+
+        var frame = RunwayFrame.For(runway, refLat: 0.0);
+
+        // 300 m down the runway: ~2700 m of pavement left, not a negative number.
+        Assert.Equal(2700.0, frame.DistanceToEnd(300.0 / MPD, 0.0), 5.0);
+    }
+
+    [Fact]
+    public void DistanceToEnd_counts_down_the_runway_and_goes_negative_past_the_far_end()
+    {
+        var runway = MakeRunway(0.0, lengthFt: 3000.0 / 0.3048);       // exactly 3000 m
+
+        var frame = RunwayFrame.For(runway, refLat: 0.0);
+
+        Assert.Equal(3000.0, frame.DistanceToEnd(0.0, 0.0), Tol);      // at the threshold
+        Assert.Equal(1000.0, frame.DistanceToEnd(2000.0 / MPD, 0.0), Tol);
+        Assert.True(frame.DistanceToEnd(3100.0 / MPD, 0.0) < 0.0);     // 100 m past the end
+    }
 }

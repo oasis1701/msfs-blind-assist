@@ -15,8 +15,7 @@ namespace MSFSBlindAssist.Navigation;
 /// are MOST likely to have changed and the pilot is LEAST likely to expect it, so the same
 /// clause belongs here.</para>
 ///
-/// <para>Pure (strings and segments in, one sentence out) so the exclusion rule it applies
-/// through <see cref="RouteRunwayCrossings.ShouldExcludeFinalHold"/> — the subtle half — is
+/// <para>Pure (strings and the route's recorded runway events in, one sentence out) so the wording is
 /// pinned by unit tests rather than only in the sim.</para>
 /// </summary>
 public static class RouteChangedCallout
@@ -32,26 +31,18 @@ public static class RouteChangedCallout
     /// Empty yields the short form with no "Now via" clause.</param>
     /// <param name="distanceText">Already formatted in the pilot's active unit by the caller —
     /// <c>DistanceFormatter</c> is a display layer and must not be reached from pure logic.</param>
-    /// <param name="isRunwayDestination">Whether the route ends at a runway. For a runway
-    /// route <c>TruncateToHoldShort</c> tags the FINAL segment purely as the countdown rail
-    /// for the destination's own hold-short; that is not an ATC crossing, and announcing it
-    /// would tell the pilot they cross the runway they are taxiing to. A gate route has no
-    /// such pass, so a hold-short on its final segment IS a real crossing and is named.
-    /// Same exclusion <c>LoadRoute</c>'s summary applies.</param>
+    /// <param name="runwayEvents">The new route's <see cref="TaxiRoute.RunwayEvents"/>: every runway it
+    /// crosses or enters, held or not. The route's own arrival at a destination runway is never one.
+    /// Null or empty omits the clause.</param>
     public static string Compose(
         IReadOnlyList<string> viaNames,
         string distanceText,
         string destinationName,
-        IReadOnlyList<TaxiRouteSegment> segments,
-        bool isRunwayDestination)
+        IReadOnlyList<TaxiRouteRunwayEvent>? runwayEvents)
     {
-        // Only the crossing clause is used. The non-runway hold-short count is deliberately
-        // dropped: a recalculated route carries none, because the recalc does not re-apply the
-        // pilot's per-row hold-short picks at all (those bind to a taxiway-sequence index the
-        // recalc legitimately rewrites). Speaking "0 hold short points" — or a count that
-        // could only ever be zero — would be noise.
-        var (crossingClause, _) = RouteRunwayCrossings.Describe(
-            segments, RouteRunwayCrossings.ShouldExcludeFinalHold(segments, isRunwayDestination));
+        // A recalculated route carries no per-row user holds (the recalc does not re-apply them), so
+        // the non-runway hold count is never spoken here.
+        string crossingClause = RouteRunwayCrossings.DescribeRunwayEvents(runwayEvents);
 
         // The crossing clause rides with the TAXIWAY list, ahead of the distance, and is NOT
         // appended after the destination. Two reasons, both real:

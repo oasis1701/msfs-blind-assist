@@ -100,13 +100,11 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Returns true when the tagged segment's HoldShortRunway designator (which
-    /// may include the "runway " prefix added by
-    /// <see cref="InsertRunwayCrossingHoldShorts"/>) names the same physical
-    /// pavement as <paramref name="target"/> — either as the same designator
-    /// or its reciprocal (e.g. "09" matches "27", "09L" matches "27R").
-    /// Used by the Progressive Taxi suppression pass to strip the cleared
-    /// crossing hold-short without touching other auto-inserted holds.
+    /// Returns true when a hold-short label (which may carry the "runway " prefix and a locative,
+    /// "runway 15R at N") names the same physical pavement as <paramref name="target"/> — either as
+    /// the same designator or its reciprocal (e.g. "09" matches "27", "09L" matches "27R"). Reads the
+    /// FIRST runway a label names; a label naming several goes through
+    /// <see cref="RouteRunwayCrossings.LabelNamesOnlyRunway"/>.
     /// </summary>
     internal static bool RunwayDesignatorsMatch(string tagged, string target)
     {
