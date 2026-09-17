@@ -199,16 +199,23 @@ public class OrphanParkingIslandBridgeTests
 
     // ---------------------------------------------------------------- network end and runways
 
-    /// <summary>Runway 09/27 on the equator from (0,0) to (0,1000 m E).</summary>
+    /// <summary>Runway 09/27 on the equator from (0, 10 m E) to (0, 1010 m E) — never literally
+    /// (0, 0), which RunwayShape.For (routed through since the RunwayPavement rewrite in Task 3)
+    /// treats as an unset pavement end and silently falls back to the start-row half-width
+    /// instead of the runway table's (see RunwayFixture's own "never (0, 0)" comment). At (0,0)
+    /// this coincidentally left A_bridge_never_starts_on_runway_pavement passing (150 ft / 2 = the
+    /// same 75 ft default the fallback uses) while breaking this class's other runway test, whose
+    /// 60 ft width does not match the default. The 10 m offset only moves the runway itself; every
+    /// taxiway/connector coordinate below is unchanged.</summary>
     private static List<StartPosition> Starts09And27() => new()
     {
-        new() { RunwayName = "09", Type = "R", Heading = 90, Latitude = 0, Longitude = 0 },
-        new() { RunwayName = "27", Type = "R", Heading = 270, Latitude = 0, Longitude = 1000 * M },
+        new() { RunwayName = "09", Type = "R", Heading = 90, Latitude = 0, Longitude = 10 * M },
+        new() { RunwayName = "27", Type = "R", Heading = 270, Latitude = 0, Longitude = 1010 * M },
     };
 
     private static List<Runway> Runway09(double widthFt) => new()
     {
-        new() { RunwayID = "09", StartLat = 0, StartLon = 0, EndLat = 0, EndLon = 1000 * M, Width = widthFt },
+        new() { RunwayID = "09", StartLat = 0, StartLon = 10 * M, EndLat = 0, EndLon = 1010 * M, Width = widthFt },
     };
 
     [Fact]

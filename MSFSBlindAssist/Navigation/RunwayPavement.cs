@@ -1,10 +1,14 @@
 namespace MSFSBlindAssist.Navigation;
 
 /// <summary>
-/// Runway PAVEMENT geometry for "is this point on, or does this line touch, a runway?" questions.
-/// Uses only the <c>Pavement*</c> fields of <see cref="TaxiGraph.RunwayCenterline"/>, which
-/// come from the runway table (and fall back to the start rows when Build had no runway
-/// table).
+/// Runway geometry for "is this point on, or does this line touch, a runway?" questions. Every
+/// centerline goes through <see cref="RunwayShape.For"/> — the ONE accessor for where a runway
+/// physically is — rather than reading a centerline's <c>Pavement*</c> fields directly: it
+/// rejects a pavement line that is non-finite, sits at (0,0), is under a metre long, or belongs
+/// to a DIFFERENT runway (a heading-pass mis-pair), falling back to the start rows in each case,
+/// and it caps an implausible width (<see cref="RunwayShape.MaxPlausibleHalfWidthMeters"/>) so
+/// one malformed navdata row can't swallow an airport's whole taxi network. A degenerate shape
+/// (no axis — <see cref="RunwayShape.IsDegenerate"/>) contributes nothing to either method below.
 ///
 /// <para>Shared by <c>TaxiGraph.BridgeOrphanParkingIslands</c> (a fabricated bridge must never
 /// end on or cross a runway) and <see cref="RouteReachability"/> (a route must never start
@@ -14,33 +18,34 @@ namespace MSFSBlindAssist.Navigation;
 public static class RunwayPavement
 {
     /// <summary>
-    /// True when the point lies within any runway's pavement half-width of its pavement
-    /// centreline segment (distance clamped to the segment, so points beyond a runway end
-    /// are measured to that end).
+    /// True when the point lies within any runway's half-width of its centreline AND inside its
+    /// extent (<see cref="RunwayShape.Contains"/>) — unlike the old clamped-distance-to-segment
+    /// test, a point beyond a runway's end is off the runway even when it sits close to the end
+    /// laterally.
     /// </summary>
     public static bool IsOnPavement(
         double lat, double lon, IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines)
     {
         foreach (var cl in centerlines)
         {
-            double perp = TaxiGraph.PerpendicularDistanceMetersStatic(
-                lat, lon, cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2);
-            if (perp <= cl.PavementHalfWidthMeters) return true;
+            var shape = RunwayShape.For(cl);
+            if (shape.IsDegenerate) continue;
+            if (shape.Contains(lat, lon, 0.0)) return true;
         }
         return false;
     }
 
     /// <summary>
-    /// True when the segment a→b strictly crosses a runway's pavement centreline, or comes
-    /// within that runway's pavement half-width of it anywhere along its length. The minimum
-    /// distance between two non-crossing segments is the smallest of the four clamped
-    /// endpoint-to-segment distances.
+    /// True when the segment a→b strictly crosses a runway's centreline, or comes within that
+    /// runway's half-width of it anywhere along its length. The minimum distance between two
+    /// non-crossing segments is the smallest of the four clamped endpoint-to-segment distances.
     /// </summary>
     /// <param name="designator">The touched runway whose contact is NEAREST a along the
-    /// segment — where the leg crosses that runway's pavement centreline, the distance to the
+    /// segment — where the leg crosses that runway's centreline, the distance to the
     /// crossing point; otherwise the distance to the point on the leg closest to that
-    /// centreline segment. Named after the end nearer the segment's midpoint (the
-    /// <c>WhichRunwayCrossedByEdge</c> convention); empty when nothing is touched.</param>
+    /// centreline segment. Named via <see cref="RunwayShape.NameAt"/> (the end nearer the
+    /// segment's midpoint, falling back to the other end when that one has no name); empty when
+    /// nothing is touched.</param>
     public static bool SegmentTouchesPavement(
         double aLat, double aLon, double bLat, double bLon,
         IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines, out string designator)
@@ -51,45 +56,47 @@ public static class RunwayPavement
 
         foreach (var cl in centerlines)
         {
+            var shape = RunwayShape.For(cl);
+            if (shape.IsDegenerate) continue;
+
             bool crosses = TaxiGraph.EdgeCrossesRunwayStatic(
                 aLat, aLon, bLat, bLon,
-                cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2);
+                shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2);
 
             double distAToCl = TaxiGraph.PerpendicularDistanceMetersStatic(
-                aLat, aLon, cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2);
+                aLat, aLon, shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2);
             double distBToCl = TaxiGraph.PerpendicularDistanceMetersStatic(
-                bLat, bLon, cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2);
+                bLat, bLon, shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2);
             double distCl1ToLeg = TaxiGraph.PerpendicularDistanceMetersStatic(
-                cl.PavementLat1, cl.PavementLon1, aLat, aLon, bLat, bLon);
+                shape.Lat1, shape.Lon1, aLat, aLon, bLat, bLon);
             double distCl2ToLeg = TaxiGraph.PerpendicularDistanceMetersStatic(
-                cl.PavementLat2, cl.PavementLon2, aLat, aLon, bLat, bLon);
+                shape.Lat2, shape.Lon2, aLat, aLon, bLat, bLon);
 
             double minDistance = Math.Min(Math.Min(distAToCl, distBToCl), Math.Min(distCl1ToLeg, distCl2ToLeg));
 
             // The "touched" test itself is UNCHANGED — only the choice among several touched
             // runways changes, below.
-            if (!crosses && minDistance > cl.PavementHalfWidthMeters) continue;
+            if (!crosses && minDistance > shape.HalfWidthMeters) continue;
 
             found = true;
 
             double alongMetersFromA = crosses
                 ? CrossingDistanceFromA(
                     aLat, aLon, bLat, bLon,
-                    cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2)
+                    shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2)
                 : NearestTouchDistanceFromA(
                     aLat, aLon, bLat, bLon,
-                    cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2,
+                    shape.Lat1, shape.Lon1, shape.Lat2, shape.Lon2,
                     distAToCl, distBToCl, distCl1ToLeg, distCl2ToLeg);
 
             if (alongMetersFromA >= bestAlongMetersFromA) continue;
             bestAlongMetersFromA = alongMetersFromA;
 
-            // Unchanged: which end names a touched runway.
+            // Unchanged: which end names a touched runway — through the runway's own shape, so a
+            // name-swapped pair (AYCH) still speaks the physical threshold, and an end with no
+            // name falls back to the other one instead of always defaulting to Name1.
             double midLat = (aLat + bLat) * 0.5, midLon = (aLon + bLon) * 0.5;
-            double d1 = TaxiGraph.FastDistanceMeters(midLat, midLon, cl.Lat1, cl.Lon1);
-            double d2 = TaxiGraph.FastDistanceMeters(midLat, midLon, cl.Lat2, cl.Lon2);
-            string name = d1 <= d2 ? cl.Name1 : cl.Name2;
-            designator = string.IsNullOrEmpty(name) ? cl.Name1 : name;
+            designator = shape.NameAt(shape.Project(midLat, midLon).Along);
         }
 
         return found;

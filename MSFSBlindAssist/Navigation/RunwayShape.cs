@@ -21,6 +21,19 @@ public sealed class RunwayShape
     /// <summary>TaxiGraph.Build's 75 ft default half-width, for a centerline that carries none.</summary>
     public const double DefaultHalfWidthMeters = 75.0 * 0.3048;
 
+    /// <summary>
+    /// Sanity cap on a pavement half-width derived from navdata's <c>runway.width</c>: measured
+    /// over the shipped fs2024 database, that field reaches 2001 ft (105 rows over 400 ft) — at
+    /// ZBAT a 546 ft width gives an 83.2 m half-width that alone swallows all 28 nodes of the
+    /// airport's entire main taxi component (19 fs2024 airports have >= 50% of their main network
+    /// swallowed this way; KMSP loses 213 of 3891 nodes). 400 ft is above any real runway and
+    /// below every malformed row measured, so capping a pavement half-width to it here — where
+    /// <see cref="For"/> derives <c>pavementHalf</c> — repairs the value for every consumer of
+    /// <see cref="RunwayShape"/> at once. A sound runway's width never approaches this, so the cap
+    /// never changes the pavement-usable decision below for one.
+    /// </summary>
+    public const double MaxPlausibleHalfWidthMeters = 400.0 * 0.3048 / 2.0;
+
     private const double MetersPerDegLat = 111132.0;
 
     private readonly double _metersPerDegLon;
@@ -80,7 +93,8 @@ public sealed class RunwayShape
         ArgumentNullException.ThrowIfNull(centerline);
 
         double pavementHalf = centerline.PavementHalfWidthMeters > 0.0
-            ? centerline.PavementHalfWidthMeters : DefaultHalfWidthMeters;
+            ? Math.Min(centerline.PavementHalfWidthMeters, MaxPlausibleHalfWidthMeters)
+            : DefaultHalfWidthMeters;
         if (PavementIsUsable(centerline, pavementHalf))
             return new RunwayShape(centerline,
                 centerline.PavementLat1, centerline.PavementLon1,

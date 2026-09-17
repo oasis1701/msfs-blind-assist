@@ -92,6 +92,82 @@ public class RunwayPavementTests
         Assert.False(RunwayPavement.SegmentTouchesPavement(1 * M, 0, -1 * M, 0, none, out _));
     }
 
+    // ---- RunwayShape-backed fixes: width cap, mis-pair rejection, degenerate skip -------------
+    // These three use RunwayFixture (base lat/lon 0.01, never (0, 0) — see its own comment) rather
+    // than this file's own equator fixture, because they deliberately probe RunwayShape.For's
+    // (0, 0) "unset pavement" sentinel and its mis-pair rejection, which the equator fixture above
+    // would trip on by coincidence rather than by design.
+
+    [Fact]
+    public void A_malformed_2001_foot_width_is_capped_so_a_point_off_the_centerline_is_no_longer_swallowed()
+    {
+        // fs2024's worst observed runway.width defect: 2001 ft gives an uncapped ~304.95 m
+        // half-width. RunwayShape.MaxPlausibleHalfWidthMeters caps it to 60.96 m, so a point
+        // 50 m off the centreline (inside the cap) is still swallowed like any wide runway, but
+        // one 70 m off (beyond the cap, still well inside the raw malformed value) is not.
+        double malformedHalfWidth = 2001.0 * 0.3048 / 2.0;
+        var runway = RunwayFixture.EastWest(halfWidthM: malformedHalfWidth);
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { runway };
+
+        Assert.True(RunwayPavement.IsOnPavement(
+            RunwayFixture.Lat(50.0), RunwayFixture.Lon(1500.0), centerlines));
+        Assert.False(RunwayPavement.IsOnPavement(
+            RunwayFixture.Lat(70.0), RunwayFixture.Lon(1500.0), centerlines));
+    }
+
+    [Fact]
+    public void A_mis_paired_pavement_line_falls_back_to_the_start_rows()
+    {
+        // EDVQ-style: the heading pass paired these start rows with ANOTHER runway's pavement,
+        // 150 m to the side (mirrors RunwayShapeTests' own
+        // Start_rows_off_the_pavement_axis_mean_the_pavement_belongs_to_another_runway, from the
+        // other direction). RunwayShape.For must discard the mis-paired pavement and fall back to
+        // the start rows, so the bogus pavement location counts for nothing here.
+        var runway = RunwayFixture.EastWest();
+        runway.PavementLat1 = RunwayFixture.Lat(150.0);
+        runway.PavementLat2 = RunwayFixture.Lat(150.0);
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { runway };
+
+        // On the real (start-row) runway line.
+        Assert.True(RunwayPavement.IsOnPavement(
+            RunwayFixture.Lat(0.0), RunwayFixture.Lon(1500.0), centerlines));
+
+        // Near the discarded, mis-paired pavement location: not this runway's pavement.
+        Assert.False(RunwayPavement.IsOnPavement(
+            RunwayFixture.Lat(150.0), RunwayFixture.Lon(1500.0), centerlines));
+    }
+
+    [Fact]
+    public void A_degenerate_runway_is_skipped_entirely()
+    {
+        // Start AND pavement rows collapsed to a single point, but still carrying a plausible
+        // 30 m half-width — a malformed row with no real axis must contribute nothing, not a
+        // phantom circular "pavement" around that one point.
+        var degenerate = new TaxiGraph.RunwayCenterline
+        {
+            Name1 = "09", Name2 = "27",
+            Lat1 = RunwayFixture.BaseLat, Lon1 = RunwayFixture.BaseLon,
+            Lat2 = RunwayFixture.BaseLat, Lon2 = RunwayFixture.BaseLon,
+            HalfWidthMeters = 30.0,
+            PavementLat1 = RunwayFixture.BaseLat, PavementLon1 = RunwayFixture.BaseLon,
+            PavementLat2 = RunwayFixture.BaseLat, PavementLon2 = RunwayFixture.BaseLon,
+            PavementHalfWidthMeters = 30.0,
+        };
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { degenerate };
+
+        // 10 m from the collapsed point: well inside a naive 30 m radius, but there is no real
+        // runway here.
+        Assert.False(RunwayPavement.IsOnPavement(
+            RunwayFixture.Lat(10.0), RunwayFixture.Lon(0.0), centerlines));
+
+        bool touches = RunwayPavement.SegmentTouchesPavement(
+            RunwayFixture.Lat(-10.0), RunwayFixture.Lon(0.0),
+            RunwayFixture.Lat(10.0), RunwayFixture.Lon(0.0),
+            centerlines, out string designator);
+        Assert.False(touches);
+        Assert.Equal("", designator);
+    }
+
     [Fact]
     public void A_segment_crossing_two_runways_is_named_after_the_nearer_crossing()
     {
