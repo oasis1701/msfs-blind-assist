@@ -65,6 +65,76 @@ public class TaxiGraph
     public List<RunwayCenterline> RunwayCenterlines { get; } = new();
 
     /// <summary>
+    /// PathType carried by the edges <see cref="BridgeOrphanParkingIslands"/> fabricates to join a
+    /// stranded stand stub to the main taxi network. Distinct from navdata's "P" lead-ins so no
+    /// consumer can mistake a guessed straight line for a navdata row.
+    /// </summary>
+    public const string StandBridgePathType = "STAND_BRIDGE";
+
+    /// <summary>
+    /// True when <paramref name="edge"/> is a fabricated stand bridge (<see cref="StandBridgePathType"/>).
+    /// A fabricated stand bridge leads to a stranded stand. It is never part of a landing-exit
+    /// corridor, an exit extension, or a post-landing vacate path.
+    /// </summary>
+    public static bool IsStandBridge(TaxiEdge edge) =>
+        string.Equals(edge.PathType, StandBridgePathType, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Every member of an island <see cref="BridgeOrphanParkingIslands"/> successfully bridged —
+    /// recorded there, before components are renumbered, from the island's own member list (node
+    /// IDs, never component IDs: the renumbering that follows resets every
+    /// <see cref="TaxiNode.ComponentId"/> to -1 and reassigns them, so a component id captured here
+    /// would be meaningless one line later). Never a main-network node — the bridge's network end
+    /// keeps its real taxiway edges and is not a member of the island being bridged. See
+    /// <see cref="IsBridgeOnlyStandStub"/>.
+    /// </summary>
+    private readonly HashSet<int> _bridgeOnlyStandStubNodes = new();
+
+    /// <summary>
+    /// True when <paramref name="nodeId"/>'s only way out of its original navdata island is a
+    /// fabricated <see cref="StandBridgePathType"/> edge — the mirror of the GCLP S5 defect the
+    /// <c>requiredComponentId</c> filter was added for, except here the bridge itself is what
+    /// satisfies that filter (bridging merges the stub into the main component). A node like this
+    /// must never be picked as a route START — <see cref="FindNearestNode"/>,
+    /// <see cref="FindNearestNodeInDirection"/> and <see cref="FindNearestNodeOnTaxiway"/> all take
+    /// an <c>excludeBridgeOnlyStandStubs</c> parameter for exactly that — or the route opens inside
+    /// a stand lead-in and crosses the guessed bridge line to get out, landing the first
+    /// steering-tone target in a stand the pilot was never cleared into. It stays reachable as a
+    /// DESTINATION: nothing filters a destination lookup (e.g. the gate/deice dropdowns in
+    /// TaxiAssistForm) on this predicate, and it must not start to — reaching that stand is the
+    /// entire reason the bridge exists.
+    ///
+    /// <para><b>The contract for every future route-start picker (PR #238 review, Minor 3):</b> a
+    /// node under this predicate cannot be told apart from a real network node by
+    /// <c>ComponentId</c> alone once bridged, and it is NOT safely excluded by assuming a stand
+    /// lead-in ("P") row is unnamed — measured against the real fs2024 database, 1,810 of 319,004
+    /// "P" rows carry a non-empty name (KNZY 503, KCLT 119, plus LEMG/LEMD/CYVR/EPWR), so a stub's
+    /// node can register on a real taxiway name too, including one a real network node also
+    /// carries. Any method that can hand its return value to a caller which uses it as (or derives)
+    /// an A*/Dijkstra start node — not just the three named above — must add the same
+    /// <c>excludeBridgeOnlyStandStubs</c> opt-in (default <c>false</c>, so destination lookups are
+    /// unaffected unless they explicitly ask) and every call site that feeds a route start must
+    /// pass <c>true</c>. <see cref="SplitEdgeAt"/> is the other half of the contract: a node it
+    /// mints on an edge interior to an already-bridged island inherits membership too, so a search
+    /// that subdivides pavement (<see cref="InsertHoldingPointNodeOnEdge"/>) can't mint an
+    /// unmarked escape hatch.</para>
+    /// </summary>
+    public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
+
+    /// <summary>
+    /// Component id of the largest connected component (the main taxi network), or -1 for a graph
+    /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
+    /// bridges are added and components renumbered. Ties do occur (EGUW has two 63-node
+    /// components; measured against the real fs2024 database, ~0.6% of airports tie) and are
+    /// broken on the component containing the node with the smallest (latitude, longitude) pair —
+    /// never on component id / node order. Component ids are assigned in node-insertion order,
+    /// which follows <c>ORDER BY taxi_path_id</c>, i.e. scenery authoring order: a row-order tie-
+    /// break meant a scenery update that merely reordered rows could flip which half of a
+    /// genuinely split airport is "main" with no change to the airfield itself.
+    /// </summary>
+    public int MainComponentId { get; private set; } = -1;
+
+    /// <summary>
     /// A taxiway that meets a runway partway down its length — an intersection
     /// (a.k.a. intersection-departure) point. Enumerated by
     /// <see cref="GetRunwayIntersections"/> so the Taxi form can offer "depart
@@ -354,6 +424,12 @@ public class TaxiGraph
         // see BuildCanonicalTaxiwayNames for the CYVR "D"/"d" case this removes.
         var canonicalTaxiwayNames = BuildCanonicalTaxiwayNames(paths);
 
+        // Navdata endpoint identity for BridgeOrphanParkingIslands. Recorded from the rows'
+        // endpoint types because TaxiNode.Type is later overwritten by the parking pass (the
+        // node nearest a parking spot becomes Parking, in any component).
+        var standNodes = new HashSet<int>();
+        var holdShortNodes = new HashSet<int>();
+
         foreach (var path in paths)
         {
             // Defense-in-depth: trim here in case the path was constructed directly
@@ -371,6 +447,9 @@ public class TaxiGraph
             // trimmed name so node.TaxiwayNames HashSet entries are canonical.
             int startNodeId = graph.ResolveNode(path.StartLat, path.StartLon, path.StartType, name);
             int endNodeId = graph.ResolveNode(path.EndLat, path.EndLon, path.EndType, name);
+
+            RecordEndpointIdentity(path.StartType, startNodeId, standNodes, holdShortNodes);
+            RecordEndpointIdentity(path.EndType, endNodeId, standNodes, holdShortNodes);
 
             if (startNodeId == endNodeId)
                 continue; // degenerate segment
@@ -750,12 +829,373 @@ public class TaxiGraph
         // upgrades are in place.
         graph.AssignConnectedComponents();
 
+        // Reattach stand stubs the navdata stranded, then renumber. Runs after the first
+        // component assignment (it needs to know what is an island) and before the main
+        // component is recorded (a bridge can change which component is largest).
+        graph.BridgeOrphanParkingIslands(standNodes, holdShortNodes);
+        graph.MainComponentId = graph.ComputeMainComponentId();
+
         return graph;
     }
 
     /// <summary>
+    /// Distance within which a stranded stand stub is treated as a navdata SEAM rather than
+    /// genuinely disconnected ground, and joined to the main taxi network with one bridge edge.
+    /// Bridging further would draw a straight steering line across whatever is actually between
+    /// them. The narrowed rule's bridge counts are recorded in docs/taxi-guidance.md's "Stranded
+    /// stand stubs are reattached" bullet, so the figures cannot drift between copies.
+    /// </summary>
+    private const double MAX_ORPHAN_PARKING_BRIDGE_M = 50.0;
+
+    /// <summary>
+    /// How far from a stand <see cref="MarkStandLeadInChains"/> follows its lead-in chain. Long
+    /// enough to cover a real multi-segment lead-in bend (the review's KJFK bend sat 45 m from its
+    /// stand); short enough that a tiny airport whose only taxiway is one unbranched path is not
+    /// excluded end to end.
+    /// </summary>
+    private const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
+
+    /// <summary>
+    /// Joins each stranded STAND STUB to the main (largest) taxi network with one fabricated edge
+    /// of type <see cref="StandBridgePathType"/>, then renumbers components so every caller sees
+    /// the repaired reachability.
+    ///
+    /// <para>Motivating defect (issue #228, OMDB gate B 18R): the stand and its connector are one
+    /// "P" lead-in row whose open end stops 12 m short of taxiway U. Build's node merge is 1.5 m, so
+    /// the stub stayed its own component, and LoadRoute, which picks start nodes only from the
+    /// DESTINATION's component, found no start node: "Could not find a nearby taxiway node."</para>
+    ///
+    /// <para>What qualifies: a component other than the main one whose EVERY edge is a navdata
+    /// lead-in (PathType "P") and which contains a stand. Identity comes from the endpoint types
+    /// Build recorded, <paramref name="standNodes"/> ("P") and <paramref name="holdShortNodes"/>
+    /// (HS/HSND/IHS/IHSND), never from <see cref="TaxiNode.Type"/>, which the parking pass stamps
+    /// on whichever node is nearest a spot, in any component. An island carrying any taxiway or
+    /// apron edge is never bridged: that is the GCLP S5 shape the start-node filter exists to
+    /// reject, and bridging whole networks at their closest pair drew routes along runways and
+    /// kilometre-long detours through a single guessed line.</para>
+    ///
+    /// <para>The island end of a bridge is never a stand or a hold-short node (for a two-node stub
+    /// that is the connector), and when only the stand is within range nothing is bridged. One
+    /// bridge per island keeps it a dead-end spur.</para>
+    ///
+    /// <para>The network end is never a stand, a hold-short node, a node on runway pavement, or a
+    /// node on another stand's lead-in chain (<see cref="MarkStandLeadInChains"/>), and a pair
+    /// whose straight line would touch runway pavement is skipped for the next closest
+    /// (<see cref="RunwayPavement"/>). Without these, bridges ran along runways with no hold-short
+    /// instruction, produced false "Crossing runway" callouts, and steered pilots up a
+    /// neighbouring stand's lead-in.</para>
+    /// </summary>
+    private void BridgeOrphanParkingIslands(HashSet<int> standNodes, HashSet<int> holdShortNodes)
+    {
+        int mainComponentId = ComputeMainComponentId();
+        if (mainComponentId < 0) return;
+
+        var islands = new Dictionary<int, List<TaxiNode>>();
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId == mainComponentId) continue;
+            if (!islands.TryGetValue(node.ComponentId, out var members))
+                islands[node.ComponentId] = members = new List<TaxiNode>();
+            members.Add(node);
+        }
+
+        var standStubs = islands.Values.Where(island => IsStandStubIsland(island, standNodes)).ToList();
+        if (standStubs.Count == 0) return;
+
+        // Coarse grid over the main component's eligible nodes so each island node only measures
+        // against its own neighbourhood. Each cell is one bridge distance across ON THE GROUND, so
+        // the 3x3 block around a node always contains every candidate within that distance. The
+        // longitude cell is widened by 1/cos(latitude) to match FastDistanceMeters, which scales
+        // longitude the same way: a uniform degree cell spans only 50 x cos(lat) metres east-west
+        // (25 m at ENGM, 10 m at ENSB). An airport spans a negligible latitude range, so one cosine
+        // from any of its nodes serves all of them; the floor keeps the cell finite near a pole.
+        const double METERS_PER_DEG_LAT = 111132.0;
+        double latCell = MAX_ORPHAN_PARKING_BRIDGE_M / METERS_PER_DEG_LAT;
+        double cosLat = Math.Max(Math.Cos(Nodes.Values.First().Latitude * (Math.PI / 180.0)), 0.01);
+        double lonCell = latCell / cosLat;
+
+        var leadInChainNodes = MarkStandLeadInChains(standNodes);
+
+        // One RunwayShape per centerline, built ONCE for this whole graph build rather than once
+        // per node/pair below: RunwayShape.For allocates (and PavementIsUsable allocates a second
+        // shape inside it), and IsEligibleMainEndpoint alone runs for every main-component node
+        // (~3891 at a KMSP-sized graph) — ~62k allocations at a KMSP-sized graph before this hoist.
+        var runwayShapes = RunwayPavement.BuildShapes(RunwayCenterlines);
+
+        var grid = new Dictionary<(long, long), List<TaxiNode>>();
+        foreach (var node in Nodes.Values)
+        {
+            if (node.ComponentId != mainComponentId) continue;
+            if (!IsEligibleMainEndpoint(node, standNodes, holdShortNodes, leadInChainNodes, runwayShapes)) continue;
+            var key = ((long)Math.Floor(node.Latitude / latCell),
+                       (long)Math.Floor(node.Longitude / lonCell));
+            if (!grid.TryGetValue(key, out var bucket))
+                grid[key] = bucket = new List<TaxiNode>();
+            bucket.Add(node);
+        }
+        if (grid.Count == 0) return;
+
+        bool bridged = false;
+        foreach (var island in standStubs)
+        {
+            var pairs = new List<(double Distance, TaxiNode IslandNode, TaxiNode MainNode)>();
+            foreach (var member in island)
+            {
+                if (standNodes.Contains(member.NodeId) || holdShortNodes.Contains(member.NodeId)) continue;
+                long gLat = (long)Math.Floor(member.Latitude / latCell);
+                long gLon = (long)Math.Floor(member.Longitude / lonCell);
+                for (long dLat = -1; dLat <= 1; dLat++)
+                    for (long dLon = -1; dLon <= 1; dLon++)
+                    {
+                        if (!grid.TryGetValue((gLat + dLat, gLon + dLon), out var bucket)) continue;
+                        foreach (var main in bucket)
+                        {
+                            double d = FastDistanceMeters(
+                                member.Latitude, member.Longitude, main.Latitude, main.Longitude);
+                            if (d < MAX_ORPHAN_PARKING_BRIDGE_M) pairs.Add((d, member, main));
+                        }
+                    }
+            }
+
+            var chosen = ChooseBridgePair(pairs, runwayShapes);
+            if (chosen == null) continue;
+
+            AddOrphanParkingBridge(chosen.Value.IslandNode, chosen.Value.MainNode, chosen.Value.Distance);
+            // Every member of THIS island — not just the node the bridge actually attaches to —
+            // has no way out but that one fabricated edge (Task 6 Defect A). Record node ids now,
+            // before the renumbering below resets every ComponentId to -1.
+            foreach (var member in island)
+                _bridgeOnlyStandStubNodes.Add(member.NodeId);
+            bridged = true;
+        }
+
+        if (!bridged) return;
+
+        foreach (var node in Nodes.Values)
+            node.ComponentId = -1;
+        AssignConnectedComponents();
+    }
+
+    /// <summary>
+    /// The bridge to build from an island's candidate pairs: the closest whose straight line does
+    /// not touch runway pavement, ties broken by node ids so the choice never depends on grid
+    /// enumeration order. Null when no pair is valid.
+    /// </summary>
+    private (double Distance, TaxiNode IslandNode, TaxiNode MainNode)? ChooseBridgePair(
+        List<(double Distance, TaxiNode IslandNode, TaxiNode MainNode)> pairs,
+        IReadOnlyList<RunwayShape> runwayShapes)
+    {
+        foreach (var pair in pairs.OrderBy(p => p.Distance)
+                                  .ThenBy(p => p.IslandNode.NodeId)
+                                  .ThenBy(p => p.MainNode.NodeId))
+        {
+            if (RunwayPavement.SegmentTouchesPavement(
+                    pair.IslandNode.Latitude, pair.IslandNode.Longitude,
+                    pair.MainNode.Latitude, pair.MainNode.Longitude,
+                    runwayShapes, out _))
+                continue;
+            return pair;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Component id of the largest connected component, or -1 when the graph has no nodes. Ties
+    /// are broken on the component containing the node with the smallest (latitude, longitude)
+    /// pair — an attribute intrinsic to the geometry — NEVER on component id or node order.
+    /// Component ids are assigned in node-insertion order, which follows
+    /// <c>ORDER BY taxi_path_id</c>, i.e. scenery authoring order, so breaking ties on id/order
+    /// let a scenery update that merely reordered rows flip which component is "main" (Task 9,
+    /// PR #238 review) with the airfield itself unchanged.
+    /// </summary>
+    private int ComputeMainComponentId()
+    {
+        var sizes = new Dictionary<int, int>();
+        foreach (var node in Nodes.Values)
+            sizes[node.ComponentId] = sizes.GetValueOrDefault(node.ComponentId) + 1;
+
+        int mainSize = -1;
+        foreach (var size in sizes.Values)
+            if (size > mainSize) mainSize = size;
+
+        // Empty-graph contract (PR #238 review, Minor 4): carried by mainId's own initializer,
+        // not by a guard here. When Nodes is empty, sizes is empty too, so the loop above never
+        // runs (mainSize stays -1) and the scan below never runs either (it also iterates
+        // Nodes.Values) — mainId is returned exactly as initialized, -1. A prior "if (mainSize <
+        // 0) return -1" guard here was dead code (mutation-proved: removing it left the full
+        // suite green) that only obscured this.
+        int mainId = -1;
+        double bestLat = double.MaxValue, bestLon = double.MaxValue;
+        foreach (var node in Nodes.Values)
+        {
+            if (sizes[node.ComponentId] != mainSize) continue;
+            if (node.Latitude > bestLat || (node.Latitude == bestLat && node.Longitude >= bestLon))
+                continue;
+            bestLat = node.Latitude;
+            bestLon = node.Longitude;
+            mainId = node.ComponentId;
+        }
+        return mainId;
+    }
+
+    /// <summary>True when every edge in the island is a navdata stand lead-in and the island
+    /// holds a stand.</summary>
+    private bool IsStandStubIsland(List<TaxiNode> island, HashSet<int> standNodes)
+    {
+        bool hasStand = false, hasEdge = false;
+        foreach (var node in island)
+        {
+            if (standNodes.Contains(node.NodeId)) hasStand = true;
+            if (!Adjacency.TryGetValue(node.NodeId, out var edges)) continue;
+            foreach (var e in edges)
+            {
+                if (!IsParkingLeadIn(e)) return false;
+                hasEdge = true;
+            }
+        }
+        return hasStand && hasEdge;
+    }
+
+    /// <summary>Records a stand ("P") or hold-short (HS/HSND/IHS/IHSND) endpoint, classified by the
+    /// same <see cref="MapNodeType"/> Build uses for node types.</summary>
+    private static void RecordEndpointIdentity(
+        string? endpointType, int nodeId, HashSet<int> standNodes, HashSet<int> holdShortNodes)
+    {
+        switch (MapNodeType(endpointType ?? ""))
+        {
+            case TaxiNodeType.Parking:
+                standNodes.Add(nodeId);
+                break;
+            case TaxiNodeType.HoldShort:
+            case TaxiNodeType.ILSHoldShort:
+                holdShortNodes.Add(nodeId);
+                break;
+        }
+    }
+
+    private static bool IsParkingLeadIn(TaxiEdge edge) =>
+        string.Equals(edge.PathType, "P", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when a main-network node may be the network end of a stand-stub bridge: not a stand,
+    /// not a hold-short node, not on another stand's lead-in chain, and not on runway pavement.
+    /// </summary>
+    private bool IsEligibleMainEndpoint(
+        TaxiNode node, HashSet<int> standNodes, HashSet<int> holdShortNodes, HashSet<int> leadInChainNodes,
+        IReadOnlyList<RunwayShape> runwayShapes)
+    {
+        if (standNodes.Contains(node.NodeId)) return false;
+        if (holdShortNodes.Contains(node.NodeId)) return false;
+        if (leadInChainNodes.Contains(node.NodeId)) return false;
+        // USED to only prune candidates ChooseBridgePair's segment-touches-pavement check would
+        // reject anyway (a pair whose main end is on the pavement always touches it) — an early
+        // filter, not a second guarantee. That held only while both read the same clamped
+        // distance to the same pavement line. IsOnPavement now goes through RunwayShape.Contains,
+        // which is EXTENT-bounded, and the extent envelopes an outboard start row
+        // (RunwayShapeTests.The_extent_covers_an_outboard_start_row, e.g. LIMC 17L) — so a node
+        // can sit inside the extent here, and be excluded, while its clamped distance to the raw
+        // pavement SEGMENT (what SegmentTouchesPavement measures) exceeds the half-width. In that
+        // outboard case this filter now prunes a candidate the touches check alone would allow —
+        // a second guarantee after all, not merely an early one.
+        if (RunwayPavement.IsOnPavement(node.Latitude, node.Longitude, runwayShapes)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// Nodes lying on a stand's own lead-in chain. From each stand the walk follows every edge
+    /// outward and, at each node reached:
+    /// <list type="bullet">
+    ///   <item>exactly 2 distinct neighbours: mark it and continue to its other neighbour;</item>
+    ///   <item>1 neighbour (a dead end): mark it and stop;</item>
+    ///   <item>3 or more (a junction): stop without marking;</item>
+    ///   <item>also stop at another stand, on revisiting a node, or once the walk has covered
+    ///   <see cref="STAND_LEAD_IN_CHAIN_MAX_M"/>.</item>
+    /// </list>
+    ///
+    /// <para>Navdata draws a multi-segment lead-in as taxiway-type rows plus a final "P" row, so
+    /// its bend nodes carry a non-P edge and a "lies only on P edges" test can never see them. A
+    /// bridge onto such a bend ran a KJFK route 31.6 m up stand GD 7's lead-in and then 109° across
+    /// open apron. At airports whose
+    /// main component is itself a stand stub, the dead-end rule marks its connector, so no
+    /// stub-to-stub bridge is built.</para>
+    /// </summary>
+    private HashSet<int> MarkStandLeadInChains(HashSet<int> standNodes)
+    {
+        var marked = new HashSet<int>();
+        foreach (int standId in standNodes)
+        {
+            if (!Adjacency.TryGetValue(standId, out var standEdges)) continue;
+            foreach (int firstId in standEdges.Select(e => e.ToNodeId).Distinct())
+            {
+                int previousId = standId;
+                int currentId = firstId;
+                var visited = new HashSet<int> { standId };
+                double walked = 0.0;
+                while (Nodes.TryGetValue(currentId, out var current))
+                {
+                    var previous = Nodes[previousId];
+                    walked += FastDistanceMeters(
+                        previous.Latitude, previous.Longitude, current.Latitude, current.Longitude);
+                    if (walked > STAND_LEAD_IN_CHAIN_MAX_M) break;
+                    if (standNodes.Contains(currentId)) break;
+                    if (!visited.Add(currentId)) break;
+
+                    var neighbours = Adjacency.TryGetValue(currentId, out var edges)
+                        ? edges.Select(e => e.ToNodeId).Distinct().ToList()
+                        : new List<int>();
+                    if (neighbours.Count == 1)
+                    {
+                        marked.Add(currentId);
+                        break;
+                    }
+                    if (neighbours.Count != 2) break;
+
+                    marked.Add(currentId);
+                    int nextId = neighbours[0] == previousId ? neighbours[1] : neighbours[0];
+                    previousId = currentId;
+                    currentId = nextId;
+                }
+            }
+        }
+        return marked;
+    }
+
+    /// <summary>
+    /// Adds the two directions of one stand-stub bridge: unnamed (there is no taxiway to announce),
+    /// typed <see cref="StandBridgePathType"/> so nothing can mistake it for a navdata lead-in, with
+    /// the widest pavement width either end already carries (the steering tone scales its corridor
+    /// by it and a zero falls back to a generic baseline).
+    /// </summary>
+    private void AddOrphanParkingBridge(TaxiNode a, TaxiNode b, double distanceMeters)
+    {
+        double width = 0.0;
+        foreach (int id in new[] { a.NodeId, b.NodeId })
+            if (Adjacency.TryGetValue(id, out var existing))
+                foreach (var e in existing)
+                    if (e.WidthFeet > width) width = e.WidthFeet;
+
+        double bearing = NavigationCalculator.CalculateBearing(
+            a.Latitude, a.Longitude, b.Latitude, b.Longitude);
+
+        AddEdge(new TaxiEdge
+        {
+            FromNodeId = a.NodeId, ToNodeId = b.NodeId,
+            DistanceMeters = distanceMeters, TaxiwayName = "",
+            BearingDegrees = bearing, WidthFeet = width, PathType = StandBridgePathType,
+        });
+        AddEdge(new TaxiEdge
+        {
+            FromNodeId = b.NodeId, ToNodeId = a.NodeId,
+            DistanceMeters = distanceMeters, TaxiwayName = "",
+            BearingDegrees = (bearing + 180.0) % 360.0, WidthFeet = width, PathType = StandBridgePathType,
+        });
+    }
+
+    /// <summary>
     /// Assigns each node a ComponentId so callers can filter start-node candidates
-    /// by reachability. Runs once at Build time after all edges are added. BFS over
+    /// by reachability. Runs at Build time after all edges are added, and again after
+    /// BridgeOrphanParkingIslands adds bridges; it only assigns nodes whose ComponentId is -1,
+    /// so a re-run must reset every node first. BFS over
     /// Adjacency; nodes in the same connected component share an integer ID
     /// starting at 0.
     ///
@@ -855,6 +1295,13 @@ public class TaxiGraph
                 if (!Nodes.TryGetValue(e.FromNodeId, out var a) ||
                     !Nodes.TryGetValue(e.ToNodeId, out var b)) continue;
                 if (a.Type == TaxiNodeType.Parking || b.Type == TaxiNodeType.Parking) continue;
+                // Task 6 Defect B: a fabricated stand bridge's network end is guaranteed NOT to be
+                // a stand, so neither endpoint carries the Parking flag the check above relies on —
+                // the bridge is a live candidate for the Parking-only guard and must be excluded
+                // explicitly, or a painted holding point within range gets projected onto the
+                // guessed bridge line and SplitEdgeAt subdivides it, pinning a Progressive Taxi
+                // terminator or a named holding-point departure to fabricated geometry.
+                if (IsStandBridge(e)) continue;
 
                 var (perp, t, projLat, projLon) = ProjectOntoSegmentClamped(
                     lat, lon, a.Latitude, a.Longitude, b.Latitude, b.Longitude);
@@ -898,6 +1345,19 @@ public class TaxiGraph
         };
         if (!string.IsNullOrEmpty(fwd.TaxiwayName))
             node.TaxiwayNames.Add(fwd.TaxiwayName);
+        // Minor 5 (PR #238 review): a holding point can project onto a "P" lead-in edge INTERIOR
+        // to an already-bridged stand-stub island — a bend node on a multi-segment lead-in, where
+        // neither endpoint is Parking-typed (the parking pass stamps only the single nearest node
+        // per spot) and the edge isn't the fabricated bridge itself (Defect B's IsStandBridge skip
+        // only excludes StandBridgePathType, not an ordinary "P" edge), so it is a live candidate
+        // for InsertHoldingPointNodeOnEdge. Inherit island membership the same way ComponentId is
+        // inherited just above — correct by construction, since subdividing an edge cannot change
+        // which bridge (if any) is its only way out. Both endpoints, not just one: fwd's two ends
+        // are always either both inside the same bridged island or both outside it (an island's
+        // edges never cross its boundary — the bridge itself is a distinct, separately-excluded
+        // edge type), so this can never half-mark a real taxiway/bridge edge's endpoint.
+        if (_bridgeOnlyStandStubNodes.Contains(aId) && _bridgeOnlyStandStubNodes.Contains(bId))
+            _bridgeOnlyStandStubNodes.Add(newId);
 
         Nodes[newId] = node;
         Adjacency[newId] = new List<TaxiEdge>();
@@ -1413,8 +1873,16 @@ public class TaxiGraph
     /// connected component are considered (the spatial-hash ring and the
     /// full-scan fallback both honour it) — used to keep an aircraft's start
     /// node in the destination's component.
+    /// <paramref name="excludeBridgeOnlyStandStubs"/> is a SEPARATE, narrower filter (Task 6
+    /// Defect A): when true, a node with no way out but a fabricated stand bridge
+    /// (<see cref="IsBridgeOnlyStandStub"/>) is skipped even though bridging already put it in the
+    /// SAME component as everything else, so <paramref name="requiredComponentId"/> alone cannot
+    /// exclude it. Route-START callers must pass true; a DESTINATION lookup (e.g. resolving a gate
+    /// or deice pad to its nearest graph node) must leave it false, or the very stand the bridge
+    /// exists to reach could stop resolving as a destination.
     /// </summary>
-    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null)
+    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null,
+        bool excludeBridgeOnlyStandStubs = false)
     {
         // Fast path: search the spatial hash with an expanding ring of cells.
         // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
@@ -1436,6 +1904,8 @@ public class TaxiGraph
                             var node = Nodes[nodeId];
                             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
                                 continue;
+                            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(nodeId))
+                                continue;
                             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
                             if (dist < bestDist)
                             {
@@ -1455,6 +1925,8 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
         {
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < fallbackDist)
@@ -1476,11 +1948,22 @@ public class TaxiGraph
     /// null if no node on <paramref name="taxiwayName"/> lies within
     /// <paramref name="maxDistanceM"/> of the position (and within the requested
     /// component if set).
+    /// <paramref name="excludeBridgeOnlyStandStubs"/> is the same Task 6 Defect A filter
+    /// <see cref="FindNearestNode"/> documents — this is a THIRD unfiltered route-start picker
+    /// found in PR #238 review (Important 1): a bridge-only stand stub's node is not always
+    /// unnamed. Measured against the real fs2024 database, 1,810 of 319,004 "P" (stand lead-in)
+    /// rows carry a non-empty name (KNZY 503, KCLT 119, plus LEMG/LEMD/CYVR/EPWR) — <c>Build</c>
+    /// adds a row's trimmed name to both of its endpoints' <see cref="TaxiNode.TaxiwayNames"/>
+    /// unconditionally, regardless of <c>PathType</c>, so a stub can register under a real
+    /// taxiway name (including the SAME name a real network node carries, at EPWR/KCLT). A
+    /// route-START caller must pass true or this method can hand back the stub the component
+    /// filter cannot exclude on its own. A DESTINATION lookup must leave it false.
     /// </summary>
     public TaxiNode? FindNearestNodeOnTaxiway(
         double lat, double lon, string taxiwayName,
         double maxDistanceM = 800.0,
-        int? requiredComponentId = null)
+        int? requiredComponentId = null,
+        bool excludeBridgeOnlyStandStubs = false)
     {
         if (string.IsNullOrEmpty(taxiwayName)) return null;
 
@@ -1490,6 +1973,8 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
         {
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
             if (!node.TaxiwayNames.Contains(taxiwayName)) continue;
             double d = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
@@ -1513,11 +1998,16 @@ public class TaxiGraph
     /// something far away. Caller can pass <paramref name="requiredComponentId"/>
     /// to restrict candidates (including the fallback) to a connected component
     /// (typically the destination's) so isolated-island taxiways are skipped —
-    /// see <see cref="FindNearestNodeOnTaxiway"/>.
+    /// see <see cref="FindNearestNodeOnTaxiway"/>. <paramref name="excludeBridgeOnlyStandStubs"/> is
+    /// the same Task 6 Defect A filter <see cref="FindNearestNode"/> documents — a separate,
+    /// narrower exclusion the component filter cannot express because bridging already merged the
+    /// stub into <paramref name="requiredComponentId"/>'s component. It is honoured in the "ahead"
+    /// search below AND threaded into the overall-nearest fallback, so a route-start caller cannot
+    /// be handed the stub either way.
     /// </summary>
     public TaxiNode? FindNearestNodeInDirection(
         double lat, double lon, double headingDeg,
-        int? requiredComponentId = null)
+        int? requiredComponentId = null, bool excludeBridgeOnlyStandStubs = false)
     {
         // Tiered caps: prefer ahead-of-aircraft nodes within 300m (the common case at
         // a gate pushback), widen to 800m before giving up. Small airports with a large
@@ -1536,6 +2026,8 @@ public class TaxiGraph
             // against navdata defects where a nearby taxiway is an isolated island
             // (e.g. GCLP S5 in fs2024 — 13 nodes, 0 external connections).
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
 
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
@@ -1570,7 +2062,7 @@ public class TaxiGraph
 
         // Nothing ahead — try the overall nearest, but only if within the extended range
         // AND (when filtering) in the requested component.
-        var fallback = FindNearestNode(lat, lon);
+        var fallback = FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: excludeBridgeOnlyStandStubs);
         if (fallback == null) return null;
         if (requiredComponentId.HasValue && fallback.ComponentId != requiredComponentId.Value)
             return null;
@@ -4251,6 +4743,8 @@ public class TaxiGraph
             if (!Adjacency.TryGetValue(nodeId, out var edges)) continue;
             foreach (var e in edges)
             {
+                // A fabricated stand bridge is never part of a landing-exit corridor.
+                if (IsStandBridge(e)) continue;
                 // Follow all edges (named and unnamed) so unnamed connector segments
                 // between the named portions of a RET don't break the chain.
                 if (visited.Contains(e.ToNodeId)) continue;

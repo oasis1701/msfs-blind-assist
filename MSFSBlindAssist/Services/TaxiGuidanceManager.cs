@@ -300,7 +300,30 @@ public partial class TaxiGuidanceManager : IDisposable
     // vacate.
     private bool _landingExitRouteUnreachable = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
+    // The ReachabilityRefusalGate key for the most recently SPOKEN recalculation
+    // reachability refusal (Navigation.ReachabilityRefusalGate), or null before any refusal
+    // has been spoken for the current route. A reachability verdict is a standing property
+    // of the airport data and the current destination, so without this latch the same
+    // ~20-word AnnounceImmediate refusal repeated every RECALCULATION_COOLDOWN_SEC (15 s)
+    // for as long as the aircraft stayed off-route, cutting off hold-short and
+    // runway-crossing callouts each time. Reset on LoadRoute and StopGuidance so a new
+    // route or a new destination can speak its own first refusal.
+    private string? _lastReachabilityRefusalKey = null;
     private string _lastAnnouncedTaxiway = "";
+    // A taxiway-change name deferred by TaxiwayChangeGate while the start-warning chatter
+    // window (_startChatterSuppressUntil) was open, waiting to be spoken -- or discarded
+    // silently -- once it closes. Null whenever nothing is waiting. Set only by
+    // AnnounceOrDeferTaxiwayChange (the one shared helper both AdvanceToNearestSegment and
+    // AdvanceSegment go through) and consumed only by FlushPendingTaxiwayAnnouncement, which
+    // UpdatePosition calls on every Taxiing-state frame -- never while guidance is holding,
+    // lining up, arrived, or otherwise off that state, because none of those states ever
+    // reach that call again. SetState clears this the instant guidance LEAVES Taxiing (PR
+    // #238 review, Important 1), so a name deferred just before a hold-short can no longer
+    // sit waiting through the whole hold and then be flushed against a changed world once
+    // Continue is pressed -- see SetState's own remarks. Also reset on LoadRoute and
+    // StopGuidance so a stale deferred name from one route can never leak into (and be
+    // spoken over) the next.
+    private string? _pendingTaxiwayAnnouncement = null;
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
@@ -475,12 +498,26 @@ public partial class TaxiGuidanceManager : IDisposable
     // INITIAL_TURN_CUE_DEG / INITIAL_TURN_UTURN_DEG consts were deleted rather than
     // left in place, so nobody tunes a number here and wonders why nothing changes.
     private bool _initialTurnCueAnnounced = false;
-    // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
-    // and taxiway-change callouts so they don't stomp that (longer, safety-
-    // critical) warning at guidance start — 2026-06-13: "Crossing taxiway G" cut
-    // the warning off mid-sentence. Hold-shorts, runway-crossing callouts, and the
-    // lineup bailout are NOT gated by this.
-    private const double REACH_WARNING_CHATTER_GRACE_SEC = 8.0;
+    // After a route-reach warning OR an unmapped-start warning (either "start warning"),
+    // briefly hold the INFORMATIONAL taxiway-crossing, taxiway-change, curve and
+    // final-destination-ahead callouts so they don't stomp that (longer, safety-critical)
+    // warning at guidance start — 2026-06-13: "Crossing taxiway G" cut the reach warning
+    // off mid-sentence, and the same collision reproduces for the unmapped-start warning
+    // on the very first frame (Progressive Taxi cuts the warning itself; a normal
+    // Calculate cuts the whole standstill utterance ~33 ms later). Hold-shorts,
+    // runway-crossing callouts, lineup, speed warnings, and "Straighten." are NOT gated
+    // by this.
+    //
+    // Sized from the measured System.Speech Rate-0 length (trailing silence trimmed) of the
+    // LONGEST start utterance this window protects: a destination-not-connected warning
+    // followed by the route-start turn cue it can be folded ahead of ("B 18R isn't connected
+    // to the taxiway network you're on. The first 35 metres of the route aren't mapped. Make
+    // a U-turn to the left onto taxiway B." — 10.41 s), plus about a fifth for margin ≈ 12.5 s.
+    // Was 8.0 s, sized before the destination-off-network warning existed and too short for
+    // this one — a route-reach or unmapped-start warning is safety-critical and must never be
+    // the thing that gets cut. Does NOT cover a longer SayIntentions import summary spoken
+    // ahead of the warning in the same utterance; that combination is not measured here.
+    private const double START_WARNING_CHATTER_GRACE_SEC = 12.5;
     private DateTime _startChatterSuppressUntil = DateTime.MinValue;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
@@ -503,15 +540,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // outside of the turn.
     private const double SHARP_TURN_ANGLE_DEG = 60.0;
 
-    // Off-route (perpendicular cross-track) thresholds.
-    // Tolerance = max(halfWidth + margin, floor). The margin absorbs navdata
-    // centerline sampling error and pilot-discretion margin on wide aprons;
-    // the floor protects against tiny/zero width values on unnamed connectors.
-    // 75 ft default taxiway width covers FAA AC 150/5300 Code B/C taxiways
-    // (50–82 ft) — good enough as a fallback when the DB row has no width.
-    private const double OFF_ROUTE_PERP_FLOOR_M = 25.0;
-    private const double OFF_ROUTE_PERP_MARGIN_M = 15.0;
-    private const double DEFAULT_TAXIWAY_WIDTH_FT = 75.0;
+    // Off-route (perpendicular cross-track) tolerance lives in Navigation.PavementTolerance.
     // Minimum negative along-track (behind the segment's start node) before the
     // "going backwards" off-route condition fires. GPS at taxi scale has <1 m
     // noise; 10 m gives a comfortable margin while catching deliberate rearward
@@ -520,11 +549,6 @@ public partial class TaxiGuidanceManager : IDisposable
     // cross-track near zero (PerpendicularDistance returns ~0), so the lateral
     // check never fires even as the pilot drives steadily away from the route.
     private const double OFF_ROUTE_BEHIND_START_M = 10.0;
-    // Some navdata rows report absurd widths (up to thousands of feet on aprons
-    // / combined surfaces). Cap so a malformed row can't blow the perpendicular
-    // off-route tolerance out to hundreds of meters — that would mean the
-    // aircraft is effectively never "off route" on those segments.
-    private const double OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0;
     // Grace window after a segment advance during which off-route is suppressed.
     // First-turn false-trigger: in the middle of the turn arc the aircraft's
     // perpendicular distance to the just-completed *or* just-entered segment can
@@ -1304,6 +1328,25 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// The unmapped-first-leg warning for the route just built, or null. Composed ONCE by LoadRoute
+    /// when RouteReachability finds the route starting with a straight unmapped leg: either the
+    /// aircraft is leaving a disconnected piece of network ("Your position isn't connected to the
+    /// taxiway network…") or the destination is on a piece of network the aircraft is not on ("{name}
+    /// isn't connected to the taxiway network you're on…"). Delivered exactly like
+    /// <see cref="LastRouteInitialTurnCue"/>: folded into the form's standstill utterance, or spoken by
+    /// the first-taxiing-frame one-shot together with the turn cue. Never both.
+    /// </summary>
+    public string? LastRouteUnmappedStartWarning { get; private set; }
+
+    /// <summary>Takes the warning and clears it, so neither delivery path can repeat it.</summary>
+    public string? ConsumeUnmappedStartWarning()
+    {
+        string? warning = LastRouteUnmappedStartWarning;
+        LastRouteUnmappedStartWarning = null;
+        return warning;
+    }
+
+    /// <summary>
     /// The start-hold sentence ("Stop. Hold short of runway 12R. Press continue when cleared.") for a
     /// route that begins at a runway hold line (<see cref="TaxiRoute.StartHoldRunway"/>), set when
     /// guidance enters that hold, and spoken exactly once. EVERY caller of <see cref="StartGuidance"/>
@@ -1325,6 +1368,18 @@ public partial class TaxiGuidanceManager : IDisposable
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
+
+    /// <summary>
+    /// True while a route is actually being flown (see <see cref="LiveRouteStates"/>) --
+    /// the question <c>TaxiAssistForm.ShowRouteFailure</c>'s <c>keepSummary</c> decision
+    /// needs, and which <see cref="CurrentRoute"/> cannot answer on its own: <c>HandleArrival</c>
+    /// sets <see cref="State"/> to <see cref="TaxiGuidanceState.Arrived"/> without ever
+    /// nulling <c>_route</c>, so <c>CurrentRoute != null</c> stayed true for the rest of the
+    /// session after a completed, docking-off arrival with no Stop pressed -- wrongly
+    /// protecting the NEXT leg's failed-Calculate summary with a route that was no longer
+    /// live (PR #238 review, Important 3).
+    /// </summary>
+    public bool HasLiveRoute => LiveRouteStates.IsRouteLive(_state);
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
     // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
@@ -1671,11 +1726,16 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_route == null || _route.Segments.Count == 0) return;
 
-        // If this route can't reach its runway, the form speaks the reach warning
-        // right after this call. Open a short grace window so the informational
-        // taxiway-crossing / taxiway-change callouts don't stomp it at start.
-        _startChatterSuppressUntil = LastRouteReachWarning != null
-            ? DateTime.UtcNow.AddSeconds(REACH_WARNING_CHATTER_GRACE_SEC)
+        // If this route can't reach its runway, or starts with an unmapped first leg --
+        // either because the aircraft leaves a disconnected position for the main network, or
+        // because the destination itself is on a piece of network the aircraft is not on --
+        // the form's standstill utterance (or the first-taxiing-frame one-shot, for paths the
+        // form doesn't run) speaks that warning right after this call -- both warnings are
+        // still unconsumed here. Open a short grace window so the informational
+        // taxiway-crossing / taxiway-change / curve / destination-ahead callouts don't stomp
+        // it at start.
+        _startChatterSuppressUntil = (LastRouteReachWarning != null || LastRouteUnmappedStartWarning != null)
+            ? DateTime.UtcNow.AddSeconds(START_WARNING_CHATTER_GRACE_SEC)
             : DateTime.MinValue;
 
         _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
@@ -2079,6 +2139,21 @@ public partial class TaxiGuidanceManager : IDisposable
             ? ARRIVAL_RADIUS_M
             : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft → ~6 m
 
+        // WHERE A CALLOUT IS LOST is a different question from WHEN WE HAVE ARRIVED, and
+        // the two must not share one local. CheckUpcomingAnnouncements needs the radius at
+        // which the destination-ahead callout stops being deliverable, which for a
+        // landing-exit route is its own LANDING_EXIT_ARRIVAL_RADIUS_M (the dedicated
+        // `_isLandingExitRoute && onFinalSegment` block below measures arrival against
+        // that, not against arrivalRadius). Folding that branch into arrivalRadius itself
+        // was tried and reverted: the fallback arrival check further down has no
+        // stillOnRunway guard of its own, so widening its radius from ~6 m to 25 m let a
+        // landing-exit route DECLARE ARRIVAL while still laterally on the runway -- which
+        // the dedicated block deliberately withholds. Arrival behaviour is unchanged by
+        // this local; only the announcement gate reads it.
+        double announcementClearRadius = _isLandingExitRoute
+            ? LANDING_EXIT_ARRIVAL_RADIUS_M
+            : arrivalRadius;
+
         bool onFinalSegment = _currentSegmentIndex == _route.Segments.Count - 1;
 
         // Landing-exit ("vacate onto the taxiway") arrival — fire the "Off the runway.
@@ -2193,8 +2268,17 @@ public partial class TaxiGuidanceManager : IDisposable
             // ASTERN the 50/20/10 ft cadence has nothing left to say anyway.
             //
             // Runway lineup stays excluded — LiningUp owns that approach and has its own
-            // unreachable-route warning. Landing-exit routes are handled (and returned)
-            // by the branch above.
+            // unreachable-route warning. Landing-exit routes are normally handled (and
+            // returned) by the branch above, but NOT while stillOnRunway is true there —
+            // that guard deliberately withholds arrival while the aircraft is still
+            // laterally within the runway, so a landing-exit route on its final segment
+            // can still fall through to here on every frame until it clears the pavement.
+            // This block therefore keeps the ~6 m gate radius: `arrivalRadius` is
+            // deliberately NOT widened to LANDING_EXIT_ARRIVAL_RADIUS_M (25 m), because
+            // this fallback has no stillOnRunway guard of its own and a 25 m radius here
+            // would let a landing-exit route declare arrival while still laterally on the
+            // runway — exactly what the block above withholds. See the
+            // `announcementClearRadius` comment at the top of this method.
             if (!arrived && !_isRunwayLineup)
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
@@ -2225,10 +2309,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // starts with the aircraft pointing well away from the route's first
         // segment — the normal post-pushback case — a tone alone can't convey
         // "turn around, which way." Speak a one-shot direction cue (sign matches
-        // the tone). Skipped when the route doesn't reach its runway
-        // (LastRouteReachWarning set): that warning is the priority — the form
-        // speaks it after StartGuidance, and a turn cue here would be moot (the
-        // pilot will reprogram) AND would stomp the warning.
+        // the tone). The cue (not the unmapped-start warning below) is dropped when
+        // the route doesn't reach its runway (LastRouteReachWarning set): that
+        // warning is the priority — the form speaks it after StartGuidance, and a
+        // turn cue here would be moot (the pilot will reprogram) AND would stomp it.
         if (!_initialTurnCueAnnounced)
         {
             _initialTurnCueAnnounced = true;
@@ -2238,12 +2322,33 @@ public partial class TaxiGuidanceManager : IDisposable
             // have nobody else to say it. Never recomposed here: two composers would be two
             // wordings and, worse, two chances to disagree on left versus right.
             //
-            // Still suppressed entirely when the route does not reach its runway: that
-            // warning is the priority, the form speaks it after StartGuidance, and a turn
-            // cue would be moot (the pilot will reprogram) AND would stomp it.
+            // Consumed UNCONDITIONALLY (so the per-frame one-shot can never repeat it
+            // behind the form's back) regardless of whether a reach warning drops it from
+            // what actually gets spoken.
             string? cue = ConsumeInitialTurnCue();
-            if (cue != null && LastRouteReachWarning == null)
-                AnnounceInstruction(cue);
+            // The unmapped-start warning is a DIFFERENT kind of fact from the cue -- a
+            // safety-relevant statement about ground the aircraft is about to taxi across
+            // unmapped -- and must survive a reach warning rather than being dropped with
+            // the cue (ComposeStartSpeech's job). It is read here WITHOUT being consumed
+            // yet: only once we know it is actually about to be spoken is it taken
+            // (cleared), so a route with nothing to say at all can never silently discard a
+            // warning nobody else will ever say.
+            //
+            // PR #238 review, Task 5 Defect A: this used to consume (clear) BOTH the cue and
+            // the warning unconditionally via JoinStartSpeech, then drop the WHOLE result --
+            // warning included -- behind a `LastRouteReachWarning == null` guard that was
+            // written only to suppress the moot cue. On every path that doesn't run
+            // TaxiAssistForm's standstill block (Progressive Taxi, landing-exit handoffs,
+            // announceSummary:false) nothing else speaks either message, so the warning was
+            // silently lost instead of merely reordered.
+            bool reachWarningPresent = LastRouteReachWarning != null;
+            string? startSpeech = RouteReachabilityMessages.ComposeStartSpeech(
+                LastRouteUnmappedStartWarning, cue, reachWarningPresent);
+            if (startSpeech != null)
+            {
+                ConsumeUnmappedStartWarning();
+                AnnounceInstruction(startSpeech);
+            }
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
@@ -2413,8 +2518,18 @@ public partial class TaxiGuidanceManager : IDisposable
                 headingError, _smoothedHeadingError);
         }
 
+        // Deliver a taxiway-change name AnnounceOrDeferTaxiwayChange deferred while the
+        // start-warning chatter window was open, now that it may have closed. Cheap no-op
+        // when nothing is pending; must run every Taxiing frame this method reaches, not
+        // only on a segment advance, or a deferred name could sit unspoken until the window
+        // closes several frames later. This point in UpdatePosition is only ever reached
+        // while _state == Taxiing (every earlier branch of this method returns first for
+        // every other state), so nothing pending can survive past a transition out of
+        // Taxiing without help -- SetState provides that help; see its own remarks.
+        FlushPendingTaxiwayAnnouncement(currentSeg.TaxiwayName);
+
         // Check for upcoming announcements
-        CheckUpcomingAnnouncements(distToTarget, currentSeg);
+        CheckUpcomingAnnouncements(distToTarget, currentSeg, announcementClearRadius);
 
         // Check hold-short countdown (300/150/50ft cadence) — critical runway incursion prevention
         CheckHoldShortCountdown(distToTarget, currentSeg);
@@ -2450,17 +2565,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // persistence window and the recalc then fell back to shortest path,
         // bypassing the ATC-cleared sequence.
         //
-        // Tolerance = max(edge half-width + 15 m, OFF_ROUTE_PERP_FLOOR_M), capped
-        // at an upper bound so bogus DB widths (we see values up to 4000+ ft in
-        // some rows — aprons mis-tagged as taxi paths) don't produce a 600 m
-        // tolerance that would mask real deviations.
-        // PathWidth is in feet and may be 0 for unnamed connectors; 75 ft is a
-        // reasonable default taxiway width — FAA AC 150/5300 Code B/C = 50-82 ft.
-        double widthFt = currentSeg.PathWidth > 0 ? currentSeg.PathWidth : DEFAULT_TAXIWAY_WIDTH_FT;
-        if (widthFt > OFF_ROUTE_PERP_WIDTH_CAP_FT) widthFt = OFF_ROUTE_PERP_WIDTH_CAP_FT;
-        double widthM = widthFt * 0.3048;
-        double halfWidth = widthM * 0.5;
-        double perpTolerance = Math.Max(halfWidth + OFF_ROUTE_PERP_MARGIN_M, OFF_ROUTE_PERP_FLOOR_M);
+        // Tolerance = max(edge half-width + 15 m, 25 m), width defaulted (75 ft) and capped
+        // (300 ft) against bogus DB rows. One definition, shared with RouteReachability:
+        // see Navigation.PavementTolerance.
+        double perpTolerance = PavementTolerance.ForWidthFeet(currentSeg.PathWidth);
 
         double perpCurrent = PerpendicularDistanceToSegmentMeters(
             lat, lon,
@@ -2546,7 +2654,41 @@ public partial class TaxiGuidanceManager : IDisposable
         // line once, the taxi from the gate onto the first taxiway reads as
         // "off-route" by definition — suppress recalc so the entered clearance
         // isn't trimmed before the pilot joins it.
-        if (perp <= perpTolerance) _hasJoinedRoute = true;
+        if (perp <= perpTolerance)
+        {
+            _hasJoinedRoute = true;
+
+            // PR #238 review, Critical A re-fix. The reachability-refusal latch
+            // (ReachabilityRefusalGate's _lastReachabilityRefusalKey) must ALSO clear here,
+            // on this SPECIFIC test — being back within the route's own pavement tolerance is
+            // the one signal that genuinely means an off-route episode has ended. This used to
+            // be decided by the `else` of the offRouteNow persistence guard further down (the
+            // ORIGINAL Important 2 fix) — but that guard's `else` runs whenever offRouteNow
+            // reads false, or ground speed drops below OFF_ROUTE_MIN_GS_KTS, and offRouteNow
+            // has THREE independent ways to read false, only one of which is "the episode is
+            // over":
+            //   - perp <= perpTolerance (this test) — genuinely back on the route line.
+            //   - nearTurn — true for POST_TURN_OFFROUTE_GRACE_SEC after EVERY ordinary
+            //     segment advance, and within the speed-scaled window before a turning next
+            //     segment. On navdata's short 5-15 m segments this is ROUTINE while an
+            //     excursion is still ongoing, not the end of one.
+            //   - _lastGroundSpeedKts < OFF_ROUTE_MIN_GS_KTS — a pilot who just heard a
+            //     refusal and stops to think crosses this for a single frame while STILL
+            //     laterally off-route. The old code read that stop as "episode over," cleared
+            //     the latch, and let the identical ~20-word interrupting refusal fire again the
+            //     moment RECALCULATION_COOLDOWN_SEC expired and the aircraft rolled on — the
+            //     exact 15-second nag Important 2 was written to close, reopened by clearing on
+            //     the wrong signal.
+            // Clearing on perp <= perpTolerance instead cannot fire on either in-episode case:
+            // both presuppose the aircraft is still laterally off the route, and offRouteNow's
+            // other two disjuncts (farBehindStart, goingBackward) are irrelevant to nearTurn or
+            // ground speed — they don't make perp small. Harmless to re-clear every frame the
+            // aircraft is on the route line, including frames where nothing was latched (this
+            // runs far more often than a genuine refusal latch exists to be cleared). The
+            // successful-recalculation clear in TryRecalculateRoute is untouched — that is the
+            // OTHER legitimate way an off-route episode ends, and is unaffected by this fix.
+            _lastReachabilityRefusalKey = null;
+        }
 
         // Never-joined escape (see NEVER_JOINED_OPENING_M). Track the closest the
         // aircraft has come to the route while it has yet to join; once it is clearly
@@ -2589,6 +2731,19 @@ public partial class TaxiGuidanceManager : IDisposable
             // Reset the persistence timer whenever we're back inside tolerance
             // (or not moving — a stationary off-route sample shouldn't count toward
             // the persistence window either).
+            //
+            // Deliberately does NOT ALSO clear _lastReachabilityRefusalKey here (PR #238
+            // review, Critical A re-fix — this branch used to, and that was the regression).
+            // This `else` is not specific to "the episode ended, the aircraft is back on
+            // route": it is reached whenever offRouteNow reads false for ANY of its three
+            // reasons (back on route, nearTurn, or a low-speed frame while still off-route —
+            // see the perp <= perpTolerance block above for the one test that actually means
+            // "on route," and for why the other two fire routinely INSIDE a sustained
+            // off-route episode). Clearing the latch on nearTurn or a momentary stop reopened
+            // the exact 15-second-nag defect Important 2 was written to close: a pilot who
+            // stopped below OFF_ROUTE_MIN_GS_KTS to think about a just-spoken refusal cleared
+            // the latch here, then rolled on and heard the identical refusal again the moment
+            // the recalculation cooldown expired.
             _offRouteSince = DateTime.MinValue;
         }
         } // end lock(_stateLock)
@@ -3057,6 +3212,16 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_state != TaxiGuidanceState.HoldShort || _route == null) return;
 
+        // Belt-and-braces (PR #238 review, Important 1): SetState's own leaving-Taxiing hook
+        // already cleared _pendingTaxiwayAnnouncement the moment guidance entered this hold
+        // -- reaching HoldShort at all requires having left Taxiing first -- so this is
+        // always a no-op today. Kept explicit anyway, right where _lastAnnouncedTaxiway is
+        // about to be re-set below for the ordinary resume: this method already owns
+        // speaking the taxiway name for the leg guidance is about to resume on, so a
+        // deferred copy of an EARLIER name would be redundant by construction even if some
+        // future change ever let one survive this far.
+        _pendingTaxiwayAnnouncement = null;
+
         // Leaving a start hold: it is spent. _holdShortAtDestination is false for it, so execution
         // falls through to the ordinary resume on segment 0 below. The route-start turn cue was
         // never spoken while held (its per-frame one-shot runs only on a taxiing frame), so unless
@@ -3372,12 +3537,20 @@ public partial class TaxiGuidanceManager : IDisposable
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _lastAnnouncedTaxiway = "";
+        // A deferred taxiway-change name from this session must never survive into the
+        // next one and be spoken (or wrongly discarded as stale) against a route it was
+        // never about.
+        _pendingTaxiwayAnnouncement = null;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
         _lastIncursionWarnedNodeId = -1;
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
         // instead of inheriting a stale cooldown from the prior session.
         _lastRecalculationTime = DateTime.MinValue;
+        // A new guidance session must be able to speak its own first reachability
+        // refusal, not stay silent because a prior route already spoke an
+        // identically-keyed one (ReachabilityRefusalGate).
+        _lastReachabilityRefusalKey = null;
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
@@ -3425,6 +3598,29 @@ public partial class TaxiGuidanceManager : IDisposable
         _state = newState;
         // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
         RolloutDiag($"SetState: {prev} -> {newState}");
+
+        // A taxiway-change name deferred by AnnounceOrDeferTaxiwayChange while the
+        // start-warning chatter window was open must not outlive the Taxiing frame it was
+        // deferred in. FlushPendingTaxiwayAnnouncement only ever runs from the Taxiing
+        // branch of UpdatePosition, so once guidance leaves Taxiing that method never runs
+        // again until (if ever) guidance returns to Taxiing -- a pending name held onto
+        // across the gap would then be flushed against a world that has moved on (PR #238
+        // review, Important 1). Concretely: a name deferred just before a mid-route
+        // hold-short used to survive the WHOLE hold, sometimes minutes, and
+        // ContinuePastHoldShort's own "Continuing. Taxiway X." resume sentence was then
+        // stomped by that stale deferred name on the very next Taxiing frame -- a segment
+        // just past a crossing hold-short routinely carries the SAME taxiway name (the
+        // documented KBOS "N, hold short 15R, N" shape), so IsStillCurrent read the stale
+        // name as still current and re-announced it, cutting the Continue confirmation off
+        // mid-word at the moment the pilot is entering an active runway. Dropping it here is
+        // safe and deliberate in every direction guidance can leave Taxiing: HoldShort and
+        // LiningUp both speak their own opening sentence moments later, Arrived needs no
+        // taxiway name at all, and ProgressiveHold speaks its own terminator sentence --
+        // none of them owe the pilot the name that was waiting (this is also why a name
+        // still pending at HandleArrival is correctly, not accidentally, lost outright:
+        // see FlushPendingTaxiwayAnnouncement's own remarks and Minor 2 of the same review).
+        if (prev == TaxiGuidanceState.Taxiing && newState != TaxiGuidanceState.Taxiing)
+            _pendingTaxiwayAnnouncement = null;
 
         // Lineup must never end in silence. The lineup tone is the pilot's only
         // alignment instrument; if a route reload / recalc (LiningUp ->
