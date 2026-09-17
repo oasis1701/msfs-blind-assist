@@ -36,19 +36,34 @@ namespace MSFSBlindAssist.Services;
 /// the raw junction/target distance, but that is not where the callout is actually
 /// lost — the true clearing point sits short of it by whatever radius fires first, e.g.
 /// <c>WAYPOINT_CAPTURE_RADIUS_M</c> for a mid-route junction or the destination's own
-/// arrival radius (<c>ARRIVAL_RADIUS_M</c> / <c>GATE_ARRIVAL_RADIUS_FEET</c>) on the
-/// final segment. Under constant velocity, hold-vs-speak-now is a straight line in
-/// (distance, speed) space, so measuring to the wrong point does not merely shift that
-/// line — it opens a whole BAND of (distance, speed) pairs where this method still says
-/// "hold" after the real clearing point has already been passed underneath it. Reviewer's
-/// worked example: a 45m junction at 5kt, 12.5s window — 5kt covers 32.15m by the time
-/// the window closes, comfortably under the raw 45m (says hold), but the 25m-early
-/// latch-clear is reached at just 7.78s, well before the window's own close. The
-/// <c>clearRadiusMeters</c> overload below closes that band by measuring to (junction
-/// distance - clear radius) instead of to the junction. The curve cue has no such
-/// radius — nothing clears <c>_curveAnnouncedSign</c> early — so its call site did not
-/// need a radius, it needed to stop passing a fixed 100m scan-window constant in place
-/// of the real, live distance to the next bend.</para>
+/// arrival radius (<c>ARRIVAL_RADIUS_M</c> / <c>GATE_ARRIVAL_RADIUS_FEET</c> /
+/// <c>LANDING_EXIT_ARRIVAL_RADIUS_M</c>) on the final segment. Under constant velocity,
+/// hold-vs-speak-now is a straight line in (distance, speed) space, so measuring to the
+/// wrong point does not merely shift that line — it opens a whole BAND of (distance,
+/// speed) pairs where this method still says "hold" after the real clearing point has
+/// already been passed underneath it. Reviewer's worked example: a 45m junction at 5kt,
+/// 12.5s window — 5kt covers 32.15m by the time the window closes, comfortably under
+/// the raw 45m (says hold), but the 25m-early latch-clear is reached at just 7.78s,
+/// well before the window's own close. The <c>clearRadiusMeters</c> parameter closes
+/// that band by measuring to (junction distance - clear radius) instead of to the
+/// junction. The curve cue has no early-clearing LATCH to protect against — nothing
+/// clears <c>_curveAnnouncedSign</c> early — so it passes <c>clearRadiusMeters: 0</c>;
+/// what its call site actually needed fixed was passing the real, live distance to the
+/// next bend instead of a fixed 100m scan-window constant. (A zero clear radius does
+/// not mean the curve cue is immune to being lost — <c>TaxiGuidanceManager.
+/// TryAnnounceCurve</c>'s own remarks cover the real mechanism: the GEOMETRY itself
+/// stops qualifying once <c>AdvanceSegment</c> moves the cumulative-turn scan's anchor
+/// point forward, not a latch reset.)</para>
+///
+/// <para>PR #238 second-round review, MINOR finding: this class used to split the above
+/// across a four-argument base method plus a five-argument radius-aware wrapper that
+/// subtracted the radius and delegated. That split was itself a footgun — a caller that
+/// forgot the radius argument bound SILENTLY to the shorter overload and reintroduced
+/// the Critical defect above with no compile error to catch it (CLAUDE.md documents the
+/// identical hazard for the A380 <c>Configure</c> method: "a second one differing only
+/// by a trailing double binds silently"). Merged into the single method below — every
+/// caller now states its clear radius explicitly, passing 0 when none applies rather
+/// than reaching for a shorter overload that no longer exists.</para>
 /// </summary>
 public static class StartWarningChatterGate
 {
@@ -61,12 +76,20 @@ public static class StartWarningChatterGate
 
     /// <param name="nowUtc">The current time.</param>
     /// <param name="suppressUntilUtc">When the start-warning window closes.</param>
-    /// <param name="distanceToTargetMeters">How far the aircraft currently is from the
-    /// point where holding would actually lose the callout -- the turn junction, the
-    /// destination, or the curve's next bend -- already adjusted for any early-clearing
-    /// radius (see the <c>clearRadiusMeters</c> overload below for a callout that has
-    /// one). Must be a positive, finite number to reason about — anything else means
-    /// "speak now."</param>
+    /// <param name="distanceToJunctionMeters">How far the aircraft currently is from the
+    /// point NAMED by the callout (the junction it will turn/change taxiway at, or the
+    /// destination) -- the raw geometric distance, before accounting for whatever clears
+    /// the callout early.</param>
+    /// <param name="clearRadiusMeters">How far short of <paramref
+    /// name="distanceToJunctionMeters"/> reaching zero the callout is actually lost --
+    /// e.g. <c>WAYPOINT_CAPTURE_RADIUS_M</c> for the advance-notice/turn-imminent
+    /// junction (<c>AdvanceSegment</c> clears their latches there, 25m short of it) or
+    /// the destination's own arrival radius on the final segment. Pass 0 for a callout
+    /// with no such radius (the curve cue) -- it is a pure pass-through to the
+    /// arithmetic below, not a special case, and there is deliberately no separate
+    /// shorter overload to reach for instead (PR #238 second-round review, MINOR
+    /// finding: the previous two-overload split let a caller who forgot this argument
+    /// bind silently to the shorter one and lose the radius adjustment entirely).</param>
     /// <param name="groundSpeedKts">The aircraft's current ground speed. NaN is treated
     /// as stationary, never as "reaches the target instantly" — an unread speed must
     /// never be the reason a callout is dropped.</param>
@@ -74,24 +97,41 @@ public static class StartWarningChatterGate
     /// delivered in time; false when it must be spoken immediately.</returns>
     public static bool ShouldHold(
         DateTime nowUtc, DateTime suppressUntilUtc,
-        double distanceToTargetMeters, double groundSpeedKts)
+        double distanceToJunctionMeters, double clearRadiusMeters, double groundSpeedKts)
     {
+        // Measure to the point that actually clears the callout, not to the raw
+        // junction/destination distance -- see the "review-of-the-review" class
+        // remarks above. A callout with no such radius passes clearRadiusMeters: 0,
+        // which leaves this unchanged.
+        double distanceToTargetMeters = distanceToJunctionMeters - clearRadiusMeters;
+
         // Window already closed: nothing left to hold for.
         if (nowUtc >= suppressUntilUtc) return false;
-
-        // A distance we cannot reason about — the target is already behind the
-        // aircraft (<= 0), or the geometry is undefined (NaN/infinite) — must never be
-        // used to justify a hold. Speak now rather than gamble on bad geometry.
-        if (!double.IsFinite(distanceToTargetMeters) || distanceToTargetMeters <= 0)
-            return false;
 
         // An unread ground speed must never be read as "closing in fast" — that would
         // drop the very callout this gate exists to protect. Treat it as stationary.
         double speedKts = double.IsNaN(groundSpeedKts) ? 0.0 : groundSpeedKts;
 
         // A stationary (or reversing) aircraft reaches nothing before the window
-        // closes, so holding costs nothing.
+        // closes, so holding costs nothing -- WHATEVER the distance says, including a
+        // negative, NaN, or infinite one. This check must run BEFORE the distance guard
+        // below (PR #238 second-round review, CRITICAL): the guard's own comment says it
+        // exists for "geometry we cannot reason about," but a parked aircraft's geometry
+        // is perfectly well understood -- it is not going to reach anything before the
+        // window closes, so there is no time pressure to protect against, and holding a
+        // callout it will never lose costs nothing. The reviewer's failure case: a
+        // parked aircraft (0 kt) at a bridged stand with segment 0 ending 20m away at a
+        // junction (WAYPOINT_CAPTURE_RADIUS_M 25m) computes an adjusted distance of
+        // 20 - 25 = -5. With the distance guard checked first that tripped "speak now"
+        // on a start-warning safety callout for an aircraft that had not moved at all.
         if (speedKts <= 0) return true;
+
+        // A distance we cannot reason about — the target is already behind the
+        // aircraft (<= 0), or the geometry is undefined (NaN/infinite) — must never be
+        // used to justify a hold for a MOVING aircraft. Speak now rather than gamble on
+        // bad geometry. (A stationary aircraft never reaches this line — see above.)
+        if (!double.IsFinite(distanceToTargetMeters) || distanceToTargetMeters <= 0)
+            return false;
 
         double remainingSeconds = (suppressUntilUtc - nowUtc).TotalSeconds;
         double metersCoveredBeforeWindowCloses =
@@ -104,37 +144,4 @@ public static class StartWarningChatterGate
         // aircraft, so speak now instead.
         return metersCoveredBeforeWindowCloses < distanceToTargetMeters;
     }
-
-    /// <summary>
-    /// Overload for a callout whose backing latch(es) clear BEFORE the aircraft
-    /// geometrically reaches the point the callout names -- e.g. the advance-notice /
-    /// turn-imminent junction (<c>AdvanceSegment</c> clears at
-    /// <c>WAYPOINT_CAPTURE_RADIUS_M</c>, 25m short of it) or the destination-ahead
-    /// callout on the final segment (<c>UpdatePosition</c>'s own arrival radius clears
-    /// it short of distance zero). Subtracts <paramref name="clearRadiusMeters"/> before
-    /// delegating to the four-argument overload, so the projection measures to the point
-    /// that actually clears the callout rather than to the named junction/destination
-    /// itself -- see the "review-of-the-review" class remarks above for why the
-    /// difference matters. A callout with no such radius (the curve cue -- nothing clears
-    /// <c>_curveAnnouncedSign</c> early) should call the four-argument overload directly
-    /// instead of passing 0 here.
-    /// </summary>
-    /// <param name="nowUtc">The current time.</param>
-    /// <param name="suppressUntilUtc">When the start-warning window closes.</param>
-    /// <param name="distanceToJunctionMeters">How far the aircraft currently is from the
-    /// point NAMED by the callout (the junction it will turn/change taxiway at, or the
-    /// destination) -- the raw geometric distance, before accounting for whatever clears
-    /// the callout early.</param>
-    /// <param name="clearRadiusMeters">How far short of <paramref
-    /// name="distanceToJunctionMeters"/> reaching zero the callout is actually lost.</param>
-    /// <param name="groundSpeedKts">The aircraft's current ground speed. NaN is treated
-    /// as stationary, never as "reaches the target instantly."</param>
-    /// <returns>True when the callout can wait for the window to close and still be
-    /// delivered in time; false when it must be spoken immediately.</returns>
-    public static bool ShouldHold(
-        DateTime nowUtc, DateTime suppressUntilUtc,
-        double distanceToJunctionMeters, double clearRadiusMeters, double groundSpeedKts)
-        => ShouldHold(
-            nowUtc, suppressUntilUtc,
-            distanceToJunctionMeters - clearRadiusMeters, groundSpeedKts);
 }

@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Services;
 
 public partial class TaxiGuidanceManager
 {
-    private void CheckUpcomingAnnouncements(double distToTargetM, TaxiRouteSegment currentSeg)
+    private void CheckUpcomingAnnouncements(double distToTargetM, TaxiRouteSegment currentSeg, double arrivalRadius)
     {
         if (_route == null) return;
 
@@ -27,17 +27,25 @@ public partial class TaxiGuidanceManager
             // The raw distToTargetM is NOT the point this callout is actually lost at
             // (PR #238 review finding). On the final segment, UpdatePosition's own
             // "arrived" check -- just above the onFinalSegment block, using the SAME
-            // arrivalRadius computed below -- fires (and transitions state via
+            // arrivalRadius passed in below -- fires (and transitions state via
             // HandleArrival) once distToTargetM drops under that radius, not under zero.
             // Passing the raw distance here only narrowed the loss band the
             // WAYPOINT_CAPTURE_RADIUS_M fix below closes for the advance notice -- a route
             // shorter than APPROACH_ANNOUNCE_DISTANCE_M (100m), exactly the short
             // bridged-stand routes PR #235 creates, could still reach that radius inside
-            // the window and lose "X ahead." outright. Recompute the SAME radius
-            // UpdatePosition uses (TaxiGuidanceManager.cs, the arrivalRadius local a few
-            // lines above the onFinalSegment block) and hand it to the gate as the clear
-            // radius, so it measures to the point that actually clears the callout
-            // instead of to the raw destination distance.
+            // the window and lose "X ahead." outright.
+            //
+            // arrivalRadius is a PARAMETER, not recomputed here (PR #238 second-round
+            // review) -- it is the exact same local UpdatePosition already computed a few
+            // lines above its call into this method (TaxiGuidanceManager.cs), covering
+            // every destination kind including a landing-exit route's own
+            // LANDING_EXIT_ARRIVAL_RADIUS_M. A local copy of that ternary here could drift
+            // from the original the moment either constant is re-tuned or a new
+            // destination-kind branch is added there — the gate would keep measuring to
+            // the OLD radius while UpdatePosition's own "arrived" check already moved to
+            // the new one, silently reopening the loss band this method exists to close,
+            // and nothing would fail: the StartWarningChatterGateTests hardcode the
+            // radius as a literal, so they cannot see this class recompute the wrong one.
             //
             // Don't set _approachAnnounced when holding, so it still fires normally on
             // the first frame after the window closes if it still applies.
@@ -47,9 +55,6 @@ public partial class TaxiGuidanceManager
             // the aircraft comes within WAYPOINT_CAPTURE_RADIUS_M of the junction -- 25m
             // BEFORE it is reached, not at it -- which is how a lost advance notice used
             // to cost "turn now" too, permanently rather than just late.
-            double arrivalRadius = _isRunwayLineup
-                ? ARRIVAL_RADIUS_M
-                : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft -> ~6 m; mirrors UpdatePosition's own arrivalRadius (TaxiGuidanceManager.cs)
             if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
                 !StartWarningChatterGate.ShouldHold(
                     DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
@@ -200,12 +205,22 @@ public partial class TaxiGuidanceManager
         // geometry, so the fix did nothing at this site; above that speed it was the
         // only non-monotonic call site (ShouldHold could say "speak now" at the top of
         // the window and flip back to "hold" moments later as the window's remaining
-        // time shrank). distToTargetM has no early-clear radius of its own to worry
-        // about -- AdvanceSegment does not reset _curveAnnouncedSign -- so it is passed
-        // to the four-argument overload unadjusted, unlike the junction-based callouts
-        // above.
+        // time shrank). distToTargetM needs no clear-radius ADJUSTMENT here (passed as
+        // clearRadiusMeters: 0 below) -- but that is not because nothing can lose this
+        // callout, just that it isn't lost via a latch. (PR #238 second-round review,
+        // MINOR finding: an earlier version of this comment justified the 0 with
+        // "AdvanceSegment does not reset _curveAnnouncedSign", which is true but not the
+        // actual loss mode.) The real mechanism is geometric: when AdvanceSegment fires
+        // at WAYPOINT_CAPTURE_RADIUS_M (25m), _currentSegmentIndex increments and
+        // CumulativeTurnDeg's scan above starts fresh from the NEW current segment's end
+        // node, so the first bend -- the one distToTargetM measures to -- drops out of
+        // the cumulative sum 25m early, same loss as the junction callouts above suffer,
+        // just with no flag to point at. distToTargetM is still the right value to pass;
+        // there is simply no second, closer point (short of the bend itself) where that
+        // dropping-out happens, so there is nothing to subtract.
         if (StartWarningChatterGate.ShouldHold(
-                DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, _lastGroundSpeedKts))
+                DateTime.UtcNow, _startChatterSuppressUntil,
+                distToTargetM, clearRadiusMeters: 0, _lastGroundSpeedKts))
             return;
 
         var (lats, lons) = RoutePoints();

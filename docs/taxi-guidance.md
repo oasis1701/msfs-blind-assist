@@ -1802,7 +1802,7 @@ Constants live at the top of `TaxiGuidanceManager.cs` and `TaxiSteeringTone.cs`.
 | `TURN_IMMINENT_MIN_M` / `MAX_M` | 20.0 / 75.0 | Floor / ceiling for speed-scaled turn trigger |
 | `TURN_IMMINENT_SEC_LEAD` | 4.0 | Target lead time at current ground speed |
 | `CROSSING_ANNOUNCE_DISTANCE_M` | 50.0 | "Crossing taxiway X" trigger |
-| `ARRIVAL_RADIUS_M` | 30.0 | Runway arrival radius |
+| `ARRIVAL_RADIUS_M` | 12.0 | Runway arrival radius |
 | `GATE_ARRIVAL_RADIUS_FEET` | 20.0 | Gate arrival radius |
 | `RECALCULATION_COOLDOWN_SEC` | 15.0 | Minimum gap between auto-reroutes |
 | `GUIDANCE_LOOK_AHEAD_SEC` | 6.0 | Speed-scaled look-ahead horizon for the heading target (continuous walk via `GuidanceGeometry.WalkTarget`) |
