@@ -80,6 +80,32 @@ public class TaxiGraph
         string.Equals(edge.PathType, StandBridgePathType, StringComparison.Ordinal);
 
     /// <summary>
+    /// Every member of an island <see cref="BridgeOrphanParkingIslands"/> successfully bridged —
+    /// recorded there, before components are renumbered, from the island's own member list (node
+    /// IDs, never component IDs: the renumbering that follows resets every
+    /// <see cref="TaxiNode.ComponentId"/> to -1 and reassigns them, so a component id captured here
+    /// would be meaningless one line later). Never a main-network node — the bridge's network end
+    /// keeps its real taxiway edges and is not a member of the island being bridged. See
+    /// <see cref="IsBridgeOnlyStandStub"/>.
+    /// </summary>
+    private readonly HashSet<int> _bridgeOnlyStandStubNodes = new();
+
+    /// <summary>
+    /// True when <paramref name="nodeId"/>'s only way out of its original navdata island is a
+    /// fabricated <see cref="StandBridgePathType"/> edge — the mirror of the GCLP S5 defect the
+    /// <c>requiredComponentId</c> filter was added for, except here the bridge itself is what
+    /// satisfies that filter (bridging merges the stub into the main component). A node like this
+    /// must never be picked as a route START — <see cref="FindNearestNode"/> and
+    /// <see cref="FindNearestNodeInDirection"/> take an <c>excludeBridgeOnlyStandStubs</c> parameter
+    /// for exactly that — or the route opens inside a stand lead-in and crosses the guessed bridge
+    /// line to get out, landing the first steering-tone target in a stand the pilot was never
+    /// cleared into. It stays reachable as a DESTINATION: nothing filters a destination lookup (e.g.
+    /// the gate/deice dropdowns in TaxiAssistForm) on this predicate, and it must not start to —
+    /// reaching that stand is the entire reason the bridge exists.
+    /// </summary>
+    public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
+
+    /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph
     /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
     /// bridges are added and components renumbered. Ties go to the component met first in node
@@ -914,6 +940,11 @@ public class TaxiGraph
             if (chosen == null) continue;
 
             AddOrphanParkingBridge(chosen.Value.IslandNode, chosen.Value.MainNode, chosen.Value.Distance);
+            // Every member of THIS island — not just the node the bridge actually attaches to —
+            // has no way out but that one fabricated edge (Task 6 Defect A). Record node ids now,
+            // before the renumbering below resets every ComponentId to -1.
+            foreach (var member in island)
+                _bridgeOnlyStandStubNodes.Add(member.NodeId);
             bridged = true;
         }
 
@@ -1220,6 +1251,13 @@ public class TaxiGraph
                 if (!Nodes.TryGetValue(e.FromNodeId, out var a) ||
                     !Nodes.TryGetValue(e.ToNodeId, out var b)) continue;
                 if (a.Type == TaxiNodeType.Parking || b.Type == TaxiNodeType.Parking) continue;
+                // Task 6 Defect B: a fabricated stand bridge's network end is guaranteed NOT to be
+                // a stand, so neither endpoint carries the Parking flag the check above relies on —
+                // the bridge is a live candidate for the Parking-only guard and must be excluded
+                // explicitly, or a painted holding point within range gets projected onto the
+                // guessed bridge line and SplitEdgeAt subdivides it, pinning a Progressive Taxi
+                // terminator or a named holding-point departure to fabricated geometry.
+                if (IsStandBridge(e)) continue;
 
                 var (perp, t, projLat, projLon) = ProjectOntoSegmentClamped(
                     lat, lon, a.Latitude, a.Longitude, b.Latitude, b.Longitude);
@@ -1778,8 +1816,16 @@ public class TaxiGraph
     /// connected component are considered (the spatial-hash ring and the
     /// full-scan fallback both honour it) — used to keep an aircraft's start
     /// node in the destination's component.
+    /// <paramref name="excludeBridgeOnlyStandStubs"/> is a SEPARATE, narrower filter (Task 6
+    /// Defect A): when true, a node with no way out but a fabricated stand bridge
+    /// (<see cref="IsBridgeOnlyStandStub"/>) is skipped even though bridging already put it in the
+    /// SAME component as everything else, so <paramref name="requiredComponentId"/> alone cannot
+    /// exclude it. Route-START callers must pass true; a DESTINATION lookup (e.g. resolving a gate
+    /// or deice pad to its nearest graph node) must leave it false, or the very stand the bridge
+    /// exists to reach could stop resolving as a destination.
     /// </summary>
-    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null)
+    public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null,
+        bool excludeBridgeOnlyStandStubs = false)
     {
         // Fast path: search the spatial hash with an expanding ring of cells.
         // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
@@ -1801,6 +1847,8 @@ public class TaxiGraph
                             var node = Nodes[nodeId];
                             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
                                 continue;
+                            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(nodeId))
+                                continue;
                             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
                             if (dist < bestDist)
                             {
@@ -1820,6 +1868,8 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
         {
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
             if (dist < fallbackDist)
@@ -1878,11 +1928,16 @@ public class TaxiGraph
     /// something far away. Caller can pass <paramref name="requiredComponentId"/>
     /// to restrict candidates (including the fallback) to a connected component
     /// (typically the destination's) so isolated-island taxiways are skipped —
-    /// see <see cref="FindNearestNodeOnTaxiway"/>.
+    /// see <see cref="FindNearestNodeOnTaxiway"/>. <paramref name="excludeBridgeOnlyStandStubs"/> is
+    /// the same Task 6 Defect A filter <see cref="FindNearestNode"/> documents — a separate,
+    /// narrower exclusion the component filter cannot express because bridging already merged the
+    /// stub into <paramref name="requiredComponentId"/>'s component. It is honoured in the "ahead"
+    /// search below AND threaded into the overall-nearest fallback, so a route-start caller cannot
+    /// be handed the stub either way.
     /// </summary>
     public TaxiNode? FindNearestNodeInDirection(
         double lat, double lon, double headingDeg,
-        int? requiredComponentId = null)
+        int? requiredComponentId = null, bool excludeBridgeOnlyStandStubs = false)
     {
         // Tiered caps: prefer ahead-of-aircraft nodes within 300m (the common case at
         // a gate pushback), widen to 800m before giving up. Small airports with a large
@@ -1901,6 +1956,8 @@ public class TaxiGraph
             // against navdata defects where a nearby taxiway is an isolated island
             // (e.g. GCLP S5 in fs2024 — 13 nodes, 0 external connections).
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
 
             double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
@@ -1935,7 +1992,7 @@ public class TaxiGraph
 
         // Nothing ahead — try the overall nearest, but only if within the extended range
         // AND (when filtering) in the requested component.
-        var fallback = FindNearestNode(lat, lon);
+        var fallback = FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: excludeBridgeOnlyStandStubs);
         if (fallback == null) return null;
         if (requiredComponentId.HasValue && fallback.ComponentId != requiredComponentId.Value)
             return null;

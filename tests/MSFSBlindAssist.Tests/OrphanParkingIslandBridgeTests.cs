@@ -321,4 +321,118 @@ public class OrphanParkingIslandBridgeTests
         Assert.Equal(2, bridges.Count);
         Assert.Contains(bridges, e => e.FromNodeId == NodeAt(g, 20, 205).NodeId && e.ToNodeId == NodeAt(g, 0, 205).NodeId);
     }
+
+    // ---------------------------------------------------------------- Task 6 Defect A: a bridge-only
+    // stand stub must not become a route start (it must stay reachable as a destination)
+
+    [Fact]
+    public void Bridged_island_members_are_marked_bridge_only_stand_stubs()
+    {
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+
+        var connector = NodeAt(g, 12, 120);
+        var stand = NodeAt(g, 51, 120);
+        var u120 = NodeAt(g, 0, 120);
+
+        // Both island members qualify -- the stand itself has no other way out either.
+        Assert.True(g.IsBridgeOnlyStandStub(connector.NodeId));
+        Assert.True(g.IsBridgeOnlyStandStub(stand.NodeId));
+        // The bridge's network end keeps its real taxiway edges and must never qualify.
+        Assert.False(g.IsBridgeOnlyStandStub(u120.NodeId));
+    }
+
+    [Fact]
+    public void An_unbridged_islands_nodes_are_never_marked_bridge_only_stand_stubs()
+    {
+        // Stand 20 m from U120, connector 60 m out: nothing valid within 50 m, so nothing is
+        // bridged at all. These nodes stay genuinely disconnected -- the pre-existing
+        // requiredComponentId filter already excludes them; they must not also get this label.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(60, 120, 20, 120)));
+
+        var connector = NodeAt(g, 60, 120);
+        var stand = NodeAt(g, 20, 120);
+        Assert.False(g.IsBridgeOnlyStandStub(connector.NodeId));
+        Assert.False(g.IsBridgeOnlyStandStub(stand.NodeId));
+    }
+
+    [Fact]
+    public void FindNearestNode_excludes_a_bridge_only_stand_stub_from_route_start_candidates_on_request()
+    {
+        // The OMDB B 18R shape: the stub's connector ends up objectively nearer to a point on
+        // the taxiway than any real network vertex -- "real taxiway vertices exist only at
+        // junctions and bends and can be 40 m away" (Task 6 Defect A).
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+        var connector = NodeAt(g, 12, 120);
+        var u120 = NodeAt(g, 0, 120);
+
+        // 10 N, 120 E: 2 m from the connector, 10 m from u120.
+        double lat = 10, lon = 120;
+
+        // Unfiltered (the default): the stub is still the nearest node -- e.g. a destination
+        // lookup for the stand itself must keep finding it.
+        var unfiltered = g.FindNearestNode(lat * M, lon * M);
+        Assert.Equal(connector.NodeId, unfiltered!.NodeId);
+
+        // A route-start picker asks to exclude it and lands on the real network node instead.
+        var filtered = g.FindNearestNode(lat * M, lon * M, excludeBridgeOnlyStandStubs: true);
+        Assert.Equal(u120.NodeId, filtered!.NodeId);
+    }
+
+    [Fact]
+    public void FindNearestNodeInDirection_excludes_a_bridge_only_stand_stub_from_route_start_candidates_on_request()
+    {
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+        var connector = NodeAt(g, 12, 120);
+        var u120 = NodeAt(g, 0, 120);
+
+        // Aircraft at 6 N, 120 E (between u120 and the connector, and beyond the "node right
+        // under us" 5 m exclusion on both sides) heading due north (000): the connector is 6 m
+        // dead ahead and wins the "ahead" search outright (the stand, further out on the same
+        // bearing, scores worse); u120 (6 m, due south) is behind and only reachable through the
+        // "nothing ahead" overall-nearest fallback.
+        double lat = 6, lon = 120;
+
+        var unfiltered = g.FindNearestNodeInDirection(lat * M, lon * M, headingDeg: 0);
+        Assert.Equal(connector.NodeId, unfiltered!.NodeId);
+
+        // Excluding the stub removes it from the "ahead" candidate set too (not merely the
+        // fallback) -- nothing else is ahead, so this must fall through to the overall-nearest
+        // fallback and land on u120, not return null.
+        var filtered = g.FindNearestNodeInDirection(lat * M, lon * M, headingDeg: 0, excludeBridgeOnlyStandStubs: true);
+        Assert.Equal(u120.NodeId, filtered!.NodeId);
+    }
+
+    // ---------------------------------------------------------------- Task 6 Defect B: a fabricated
+    // bridge must never host a projected holding point
+
+    [Fact]
+    public void InsertHoldingPointNodeOnEdge_never_projects_onto_a_fabricated_bridge()
+    {
+        // The bridge runs (0,120)->(12,120), pure latitude, longitude fixed at 120 E. A point at
+        // (6, 120) projects to perpendicular distance 0 at t=0.5 on the bridge -- and, because its
+        // longitude matches u120's exactly, projects to t=0/t=1 (excluded by the endpoint clamp
+        // check) on the two flanking real taxiway-U segments, and to a clamped-negative t (also
+        // excluded) on the stand lead-in. The bridge is the ONLY edge that would otherwise qualify,
+        // and neither of its endpoints is Parking-typed (Defect B: "a bridge's network end is
+        // guaranteed NOT to be a stand, so neither endpoint carries that flag").
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+
+        var result = g.InsertHoldingPointNodeOnEdge(6 * M, 120 * M, maxPerpMeters: 30);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void InsertHoldingPointNodeOnEdge_still_projects_onto_a_real_taxiway_near_a_bridge()
+    {
+        // Same bridge as above, but the probed point (30 N, 90 E) sits over the middle of the real
+        // U60-U120 taxiway segment instead -- confirms Defect B's fix (skipping bridges) does not
+        // also break the ordinary, non-bridge case at an airport that happens to have one.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120)));
+
+        var result = g.InsertHoldingPointNodeOnEdge(0, 90 * M, maxPerpMeters: 5);
+
+        Assert.NotNull(result);
+        Assert.Contains("U", result!.TaxiwayNames);
+    }
 }

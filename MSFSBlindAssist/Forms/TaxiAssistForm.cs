@@ -4150,8 +4150,10 @@ public class TaxiAssistForm : Form
 
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
-            // the resolved node is actually reachable from the aircraft.
-            var startNode = _graph.FindNearestNode(_aircraftLat, _aircraftLon);
+            // the resolved node is actually reachable from the aircraft. Task 6 Defect A:
+            // startNode.NodeId feeds FindTaxiwayEndNode below as a real route start, so a
+            // bridge-only stand stub must be excluded here too.
+            var startNode = _graph.FindNearestNode(_aircraftLat, _aircraftLon, excludeBridgeOnlyStandStubs: true);
             if (startNode == null)
             {
                 _announcer.AnnounceImmediate("Could not find your position on the taxi network.");

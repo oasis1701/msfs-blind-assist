@@ -248,8 +248,12 @@ public partial class TaxiGuidanceManager
                     aircraftLat, aircraftLon, firstTwNode.Latitude, firstTwNode.Longitude);
                 if (leadInGap > TaxiLeadIn.TriggerMeters)
                 {
+                    // Task 6 Defect A: this becomes routeStartNodeId below, so a bridge-only stand
+                    // stub must never win here even though it now shares destComponentId with
+                    // everything else — the component filter alone can't tell it apart post-bridge.
                     var entryNode = _graph.FindNearestNode(
-                        aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+                        aircraftLat, aircraftLon, requiredComponentId: destComponentId,
+                        excludeBridgeOnlyStandStubs: true);
                     if (entryNode != null && entryNode.NodeId != firstTwNode.NodeId)
                     {
                         startNode = entryNode;
@@ -285,9 +289,12 @@ public partial class TaxiGuidanceManager
             }
             else
             {
+                // Task 6 Defect A: the primary route-start picker. Excludes bridge-only stand
+                // stubs — see the entryNode comment above for why the component filter alone
+                // cannot.
                 startNode = _graph.FindNearestNodeInDirection(
                     aircraftLat, aircraftLon, aircraftHeading,
-                    requiredComponentId: destComponentId);
+                    requiredComponentId: destComponentId, excludeBridgeOnlyStandStubs: true);
             }
             if (startNode == null)
             {
@@ -580,9 +587,11 @@ public partial class TaxiGuidanceManager
             if (taxiwaySequence is { Count: > 0 } &&
                 string.IsNullOrEmpty(route.ConstrainedFallbackReason))
             {
+                // Task 6 Defect A: this feeds a real router.FindShortestPath call below, so it is
+                // a route start like any other, not just a display value.
                 var directStart = _graph.FindNearestNodeInDirection(
                     aircraftLat, aircraftLon, aircraftHeading,
-                    requiredComponentId: destComponentId) ?? startNode;
+                    requiredComponentId: destComponentId, excludeBridgeOnlyStandStubs: true) ?? startNode;
                 var direct = router.FindShortestPath(directStart.NodeId, destinationNodeId);
                 if (direct != null && direct.Segments.Count > 0 &&
                     fullRouteMeters >
@@ -1052,9 +1061,11 @@ public partial class TaxiGuidanceManager
 
         // Dijkstra needs a node to start from; the aircraft sits between nodes, so
         // use the nearest one. The hop from the aircraft onto it is the same for
-        // every candidate, so it can't affect the ranking.
+        // every candidate, so it can't affect the ranking. Task 6 Defect A: this is a route-start
+        // anchor like any other FindNearestNode call feeding a real path search below.
         var anchor = _graph.FindNearestNode(
-            aircraftLat, aircraftLon, requiredComponentId: destComponentId);
+            aircraftLat, aircraftLon, requiredComponentId: destComponentId,
+            excludeBridgeOnlyStandStubs: true);
         if (anchor == null) return euclideanNearest;
 
         int bestId = new TaxiRouter(_graph)
@@ -1152,8 +1163,11 @@ public partial class TaxiGuidanceManager
         // has drifted off every cleared taxiway.
         if (nearestNode == null)
         {
+            // Task 6 Defect A: the recalculated route start. Same exclusion as LoadRoute's
+            // primary picker.
             nearestNode = _graph.FindNearestNodeInDirection(
-                lat, lon, headingTrue, requiredComponentId: destComponentId);
+                lat, lon, headingTrue, requiredComponentId: destComponentId,
+                excludeBridgeOnlyStandStubs: true);
             if (nearestNode == null)
             {
                 if (recalcReachability == ReachabilityClass.DestinationNotConnected)
