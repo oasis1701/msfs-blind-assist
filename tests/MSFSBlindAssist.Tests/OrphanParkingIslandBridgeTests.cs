@@ -197,6 +197,38 @@ public class OrphanParkingIslandBridgeTests
         Assert.Equal(NodeAt(near, 51, 120).ComponentId, near.MainComponentId);
     }
 
+    [Fact]
+    public void A_tied_largest_component_is_broken_by_the_smallest_lat_lon_pair_not_row_order()
+    {
+        // Two same-size (2-node), never-bridged taxiway islands -- neither has a stand ("P")
+        // endpoint, so IsStandStubIsland is false for both and they stay genuinely disconnected,
+        // tied at 2 nodes each. "A" sits at the smaller (lat, lon); "B" at the larger. Under the
+        // retired row-order tie-break, whichever island's rows were listed FIRST got the lower
+        // component id (BFS assigns ids by node-insertion order, which follows row order) and so
+        // won the tie regardless of geometry -- the new rule must pick A in BOTH orderings.
+        var listedBFirst = BuildGraph(new List<TaxiPath>
+        {
+            Taxiway("B", 100, 100, 100, 110),
+            Taxiway("A", 0, 0, 0, 10),
+        });
+        var listedAFirst = BuildGraph(new List<TaxiPath>
+        {
+            Taxiway("A", 0, 0, 0, 10),
+            Taxiway("B", 100, 100, 100, 110),
+        });
+
+        foreach (var g in new[] { listedBFirst, listedAFirst })
+        {
+            var aNode = NodeAt(g, 0, 0);
+            var bNode = NodeAt(g, 100, 100);
+            Assert.NotEqual(aNode.ComponentId, bNode.ComponentId);                     // sanity: two components
+            Assert.Equal(2, g.Nodes.Values.Count(n => n.ComponentId == aNode.ComponentId));
+            Assert.Equal(2, g.Nodes.Values.Count(n => n.ComponentId == bNode.ComponentId));  // tied size
+
+            Assert.Equal(aNode.ComponentId, g.MainComponentId);
+        }
+    }
+
     // ---------------------------------------------------------------- network end and runways
 
     /// <summary>Runway 09/27 on the equator from (0, 10 m E) to (0, 1010 m E) — never literally

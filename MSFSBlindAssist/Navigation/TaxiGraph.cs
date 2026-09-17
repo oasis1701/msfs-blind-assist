@@ -108,8 +108,13 @@ public class TaxiGraph
     /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph
     /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
-    /// bridges are added and components renumbered. Ties go to the component met first in node
-    /// order; ties do occur (EGUW has two 63-node components).
+    /// bridges are added and components renumbered. Ties do occur (EGUW has two 63-node
+    /// components; measured against the real fs2024 database, ~0.6% of airports tie) and are
+    /// broken on the component containing the node with the smallest (latitude, longitude) pair —
+    /// never on component id / node order. Component ids are assigned in node-insertion order,
+    /// which follows <c>ORDER BY taxi_path_id</c>, i.e. scenery authoring order: a row-order tie-
+    /// break meant a scenery update that merely reordered rows could flip which half of a
+    /// genuinely split airport is "main" with no change to the airfield itself.
     /// </summary>
     public int MainComponentId { get; private set; } = -1;
 
@@ -979,8 +984,13 @@ public class TaxiGraph
     }
 
     /// <summary>
-    /// Component id of the largest connected component, or -1 when the graph has no nodes. Ties go
-    /// to the component met first in node order.
+    /// Component id of the largest connected component, or -1 when the graph has no nodes. Ties
+    /// are broken on the component containing the node with the smallest (latitude, longitude)
+    /// pair — an attribute intrinsic to the geometry — NEVER on component id or node order.
+    /// Component ids are assigned in node-insertion order, which follows
+    /// <c>ORDER BY taxi_path_id</c>, i.e. scenery authoring order, so breaking ties on id/order
+    /// let a scenery update that merely reordered rows flip which component is "main" (Task 9,
+    /// PR #238 review) with the airfield itself unchanged.
     /// </summary>
     private int ComputeMainComponentId()
     {
@@ -988,9 +998,22 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
             sizes[node.ComponentId] = sizes.GetValueOrDefault(node.ComponentId) + 1;
 
-        int mainId = -1, mainSize = -1;
-        foreach (var pair in sizes)
-            if (pair.Value > mainSize) { mainSize = pair.Value; mainId = pair.Key; }
+        int mainSize = -1;
+        foreach (var size in sizes.Values)
+            if (size > mainSize) mainSize = size;
+        if (mainSize < 0) return -1;
+
+        int mainId = -1;
+        double bestLat = double.MaxValue, bestLon = double.MaxValue;
+        foreach (var node in Nodes.Values)
+        {
+            if (sizes[node.ComponentId] != mainSize) continue;
+            if (node.Latitude > bestLat || (node.Latitude == bestLat && node.Longitude >= bestLon))
+                continue;
+            bestLat = node.Latitude;
+            bestLon = node.Longitude;
+            mainId = node.ComponentId;
+        }
         return mainId;
     }
 
