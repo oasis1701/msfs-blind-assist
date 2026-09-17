@@ -94,6 +94,22 @@ public class RunwayShapeTests
     }
 
     [Fact]
+    public void A_malformed_pavement_width_is_capped_to_the_plausible_maximum()
+    {
+        // fs2024's worst observed runway.width defect (2001 ft -> ~304.95 m half-width, measured
+        // over the shipped database). The pavement line itself is sound (on the start rows'
+        // axis), so it stays usable — only the implausible half-width is repaired.
+        var cl = Runway();
+        cl.PavementHalfWidthMeters = 2001.0 * 0.3048 / 2.0;
+
+        var shape = RunwayShape.For(cl);
+
+        Assert.True(shape.UsesPavement);
+        Assert.Equal(RunwayShape.MaxPlausibleHalfWidthMeters, shape.HalfWidthMeters, 6);
+        Assert.Equal(60.96, RunwayShape.MaxPlausibleHalfWidthMeters, 6);
+    }
+
+    [Fact]
     public void The_extent_covers_an_outboard_start_row()
     {
         // LIMC 17L / KSAW 01 shape: the start row sits 300 m BEYOND the pavement end.

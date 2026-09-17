@@ -1,0 +1,1 @@
+Gates whose airport data stops just short of the taxiway, such as OMDB B 18R, can now be taxied to. When a route has to start across ground the airport data doesn't map, taxi guidance now tells you how far that is, and refuses the route if that stretch crosses a runway.
