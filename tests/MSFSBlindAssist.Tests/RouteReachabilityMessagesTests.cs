@@ -115,6 +115,20 @@ public class RouteReachabilityMessagesTests
             RouteReachabilityMessages.CrossesUnnamedRunway());
     }
 
+    [Fact]
+    public void The_recalculation_unnamed_runway_refusal_leads_with_off_route()
+    {
+        // The load-time refusal above says "No taxi route." — accurate there, since LoadRoute is
+        // trying to build a brand new route and failed. A recalculation refusal is different: the
+        // route being flown is left INTACT (see RestoreLoadRouteRollback's absence on that path),
+        // so speaking the same "No taxi route." sentence there would tell a pilot guidance had been
+        // dropped when it had not. This is the recalculation path's own voice — same clause, its
+        // siblings' established "Off route. Unable to recalculate." lead.
+        Assert.Equal(
+            "Off route. Unable to recalculate. The way crosses a runway that isn't named in this database.",
+            RouteReachabilityMessages.RecalculationRefusedUnnamedRunway());
+    }
+
     [Theory]
     [InlineData("B 18R - Gate Heavy, Jetway", "B 18R")]
     [InlineData("A 24A - Gate Medium, also A24 (online)", "A 24A")]

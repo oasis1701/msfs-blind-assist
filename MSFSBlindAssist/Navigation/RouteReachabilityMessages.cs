@@ -65,15 +65,35 @@ public static class RouteReachabilityMessages
         $"Off route. Unable to recalculate. The way to {SpokenDestinationName(destinationName)} crosses runway {runwayDesignator}.";
 
     /// <summary>
-    /// The straight way crosses a runway whose centerline carries no designator at either end.
-    /// SegmentTouchesPavement still reports the crossing — the geometry is real, and a bridge or
-    /// unmapped leg over it must still be refused — but with an empty designator, and a sentence
-    /// built around that would have a hole where the runway name belongs ("...crosses runway.").
-    /// Every crosses-runway refusal in this class falls back to this generic wording instead,
-    /// whichever context (a first leg, a destination leg, or a recalculation) hit it.
+    /// The shared clause for a touched runway whose centerline carries no designator at either
+    /// end. SegmentTouchesPavement still reports the crossing — the geometry is real, and a
+    /// bridge or unmapped leg over it must still be refused — but with an empty designator, and a
+    /// sentence built around that would have a hole where the runway name belongs ("...crosses
+    /// runway."). Never spoken on its own: a load-time refusal and a recalculation refusal need
+    /// different LEADS ("No taxi route." vs "Off route. Unable to recalculate.", exactly as their
+    /// named siblings above use), so each gets its own method below sharing this one clause —
+    /// never two independently hand-written sentences that could drift apart on the wording they
+    /// actually share.
     /// </summary>
-    public static string CrossesUnnamedRunway() =>
-        "No taxi route. The way crosses a runway that isn't named in this database.";
+    private const string UnnamedRunwayClause = "The way crosses a runway that isn't named in this database.";
+
+    /// <summary>
+    /// The load-time version of <see cref="UnnamedRunwayClause"/>: LoadRoute is building a brand
+    /// new route and failed, so "No taxi route." is accurate here, matching the other load-time
+    /// refusals above. Falls back for whichever load-time context (a first leg or a destination
+    /// leg) hit an unnamed touched runway.
+    /// </summary>
+    public static string CrossesUnnamedRunway() => $"No taxi route. {UnnamedRunwayClause}";
+
+    /// <summary>
+    /// The recalculation-path version of <see cref="UnnamedRunwayClause"/>. A recalculation
+    /// refusal leaves the route currently being flown INTACT, so it must never claim "No taxi
+    /// route." — that is what <see cref="CrossesUnnamedRunway"/> speaks, and it would tell a
+    /// pilot guidance had been dropped when it had not. Leads with the same "Off route. Unable to
+    /// recalculate." every other recalculation refusal above uses.
+    /// </summary>
+    public static string RecalculationRefusedUnnamedRunway() =>
+        $"Off route. Unable to recalculate. {UnnamedRunwayClause}";
 
     /// <summary>
     /// One utterance for the start of guidance: the unmapped-leg warning first, then the route-start

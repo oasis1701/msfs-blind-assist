@@ -869,11 +869,17 @@ public class TaxiGraph
 
         var leadInChainNodes = MarkStandLeadInChains(standNodes);
 
+        // One RunwayShape per centerline, built ONCE for this whole graph build rather than once
+        // per node/pair below: RunwayShape.For allocates (and PavementIsUsable allocates a second
+        // shape inside it), and IsEligibleMainEndpoint alone runs for every main-component node
+        // (~3891 at a KMSP-sized graph) — ~62k allocations at a KMSP-sized graph before this hoist.
+        var runwayShapes = RunwayPavement.BuildShapes(RunwayCenterlines);
+
         var grid = new Dictionary<(long, long), List<TaxiNode>>();
         foreach (var node in Nodes.Values)
         {
             if (node.ComponentId != mainComponentId) continue;
-            if (!IsEligibleMainEndpoint(node, standNodes, holdShortNodes, leadInChainNodes)) continue;
+            if (!IsEligibleMainEndpoint(node, standNodes, holdShortNodes, leadInChainNodes, runwayShapes)) continue;
             var key = ((long)Math.Floor(node.Latitude / latCell),
                        (long)Math.Floor(node.Longitude / lonCell));
             if (!grid.TryGetValue(key, out var bucket))
@@ -904,7 +910,7 @@ public class TaxiGraph
                     }
             }
 
-            var chosen = ChooseBridgePair(pairs);
+            var chosen = ChooseBridgePair(pairs, runwayShapes);
             if (chosen == null) continue;
 
             AddOrphanParkingBridge(chosen.Value.IslandNode, chosen.Value.MainNode, chosen.Value.Distance);
@@ -924,7 +930,8 @@ public class TaxiGraph
     /// enumeration order. Null when no pair is valid.
     /// </summary>
     private (double Distance, TaxiNode IslandNode, TaxiNode MainNode)? ChooseBridgePair(
-        List<(double Distance, TaxiNode IslandNode, TaxiNode MainNode)> pairs)
+        List<(double Distance, TaxiNode IslandNode, TaxiNode MainNode)> pairs,
+        IReadOnlyList<RunwayShape> runwayShapes)
     {
         foreach (var pair in pairs.OrderBy(p => p.Distance)
                                   .ThenBy(p => p.IslandNode.NodeId)
@@ -933,7 +940,7 @@ public class TaxiGraph
             if (RunwayPavement.SegmentTouchesPavement(
                     pair.IslandNode.Latitude, pair.IslandNode.Longitude,
                     pair.MainNode.Latitude, pair.MainNode.Longitude,
-                    RunwayCenterlines, out _))
+                    runwayShapes, out _))
                 continue;
             return pair;
         }
@@ -999,15 +1006,23 @@ public class TaxiGraph
     /// not a hold-short node, not on another stand's lead-in chain, and not on runway pavement.
     /// </summary>
     private bool IsEligibleMainEndpoint(
-        TaxiNode node, HashSet<int> standNodes, HashSet<int> holdShortNodes, HashSet<int> leadInChainNodes)
+        TaxiNode node, HashSet<int> standNodes, HashSet<int> holdShortNodes, HashSet<int> leadInChainNodes,
+        IReadOnlyList<RunwayShape> runwayShapes)
     {
         if (standNodes.Contains(node.NodeId)) return false;
         if (holdShortNodes.Contains(node.NodeId)) return false;
         if (leadInChainNodes.Contains(node.NodeId)) return false;
-        // Only prunes candidates ChooseBridgePair's segment-touches-pavement check would reject
-        // anyway (a pair whose main end is on the pavement always touches it) — an early filter,
-        // not a second guarantee.
-        if (RunwayPavement.IsOnPavement(node.Latitude, node.Longitude, RunwayCenterlines)) return false;
+        // USED to only prune candidates ChooseBridgePair's segment-touches-pavement check would
+        // reject anyway (a pair whose main end is on the pavement always touches it) — an early
+        // filter, not a second guarantee. That held only while both read the same clamped
+        // distance to the same pavement line. IsOnPavement now goes through RunwayShape.Contains,
+        // which is EXTENT-bounded, and the extent envelopes an outboard start row
+        // (RunwayShapeTests.The_extent_covers_an_outboard_start_row, e.g. LIMC 17L) — so a node
+        // can sit inside the extent here, and be excluded, while its clamped distance to the raw
+        // pavement SEGMENT (what SegmentTouchesPavement measures) exceeds the half-width. In that
+        // outboard case this filter now prunes a candidate the touches check alone would allow —
+        // a second guarantee after all, not merely an early one.
+        if (RunwayPavement.IsOnPavement(node.Latitude, node.Longitude, runwayShapes)) return false;
         return true;
     }
 

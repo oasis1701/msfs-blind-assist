@@ -14,9 +14,36 @@ namespace MSFSBlindAssist.Navigation;
 /// end on or cross a runway) and <see cref="RouteReachability"/> (a route must never start
 /// with a straight unmapped leg across a runway). Known limit: a runway Build could not pair
 /// into a centreline (an unpaired start row) is invisible here.</para>
+///
+/// <para>Both methods below have a pre-built-<see cref="RunwayShape"/> overload alongside the
+/// centerline one, via <see cref="BuildShapes"/> — see its own doc for why.</para>
 /// </summary>
 public static class RunwayPavement
 {
+    /// <summary>
+    /// Builds one <see cref="RunwayShape"/> per centerline, skipping degenerate ones, for a
+    /// caller that will run <see cref="IsOnPavement(double,double,IReadOnlyList{RunwayShape})"/>
+    /// or <see cref="SegmentTouchesPavement(double,double,double,double,IReadOnlyList{RunwayShape},out string)"/>
+    /// many times against the SAME centerline list — e.g. once per node while
+    /// <c>TaxiGraph.BridgeOrphanParkingIslands</c> builds its bridge grid (~3891 nodes x ~8
+    /// centerlines at a KMSP-sized graph). Without this hoist, <see cref="RunwayShape.For"/>
+    /// (which itself allocates a second shape inside <c>PavementIsUsable</c>) reruns on every one
+    /// of those calls even though the centerline list never changes between them. Build once per
+    /// graph build — never per frame — and reuse; a caller checking a single position is better
+    /// served by the centerline overloads, which build their own shapes each call.
+    /// </summary>
+    public static IReadOnlyList<RunwayShape> BuildShapes(
+        IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines)
+    {
+        var shapes = new List<RunwayShape>(centerlines.Count);
+        foreach (var cl in centerlines)
+        {
+            var shape = RunwayShape.For(cl);
+            if (!shape.IsDegenerate) shapes.Add(shape);
+        }
+        return shapes;
+    }
+
     /// <summary>
     /// True when the point lies within any runway's half-width of its centreline AND inside its
     /// extent (<see cref="RunwayShape.Contains"/>) — unlike the old clamped-distance-to-segment
@@ -25,10 +52,15 @@ public static class RunwayPavement
     /// </summary>
     public static bool IsOnPavement(
         double lat, double lon, IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines)
+        => IsOnPavement(lat, lon, BuildShapes(centerlines));
+
+    /// <summary>Same test as the centerline overload above, against shapes pre-built by
+    /// <see cref="BuildShapes"/> — the hoist for a caller running this many times over one
+    /// centerline list.</summary>
+    public static bool IsOnPavement(double lat, double lon, IReadOnlyList<RunwayShape> shapes)
     {
-        foreach (var cl in centerlines)
+        foreach (var shape in shapes)
         {
-            var shape = RunwayShape.For(cl);
             if (shape.IsDegenerate) continue;
             if (shape.Contains(lat, lon, 0.0)) return true;
         }
@@ -54,14 +86,21 @@ public static class RunwayPavement
     public static bool SegmentTouchesPavement(
         double aLat, double aLon, double bLat, double bLon,
         IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines, out string designator)
+        => SegmentTouchesPavement(aLat, aLon, bLat, bLon, BuildShapes(centerlines), out designator);
+
+    /// <summary>Same test as the centerline overload above, against shapes pre-built by
+    /// <see cref="BuildShapes"/> — the hoist for a caller running this many times over one
+    /// centerline list.</summary>
+    public static bool SegmentTouchesPavement(
+        double aLat, double aLon, double bLat, double bLon,
+        IReadOnlyList<RunwayShape> shapes, out string designator)
     {
         designator = "";
         bool found = false;
         double bestAlongMetersFromA = double.MaxValue;
 
-        foreach (var cl in centerlines)
+        foreach (var shape in shapes)
         {
-            var shape = RunwayShape.For(cl);
             if (shape.IsDegenerate) continue;
 
             bool crosses = TaxiGraph.EdgeCrossesRunwayStatic(

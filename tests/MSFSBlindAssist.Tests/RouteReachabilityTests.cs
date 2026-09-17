@@ -47,15 +47,26 @@ public class RouteReachabilityTests
         return Build(paths);
     }
 
+    /// <summary>Runway 09/27 on the equator from (0, 10 m E) to (0, 1010 m E) — never literally
+    /// (0, 0), which RunwayShape.For (routed through since the RunwayPavement rewrite in Task 3)
+    /// treats as an unset pavement end and silently falls back to the start-row half-width
+    /// instead of the runway table's own width (see RunwayFixture's own "never (0, 0)" comment,
+    /// and OrphanParkingIslandBridgeTests' identical fix for the identical reason). At (0,0) this
+    /// left Runway09's widthFt argument dead: every call site here happens to pass 150, and
+    /// 150 ft / 2 = 75 ft is numerically identical to the fixed 75 ft start-row default the
+    /// fallback substitutes, so the tests kept passing while silently testing the DEFAULT
+    /// half-width rather than the width this fixture claims to set. The 10 m offset only moves
+    /// the runway itself; every taxiway/node coordinate in RunwayAirport() below is unchanged.
+    /// </summary>
     private static List<StartPosition> Starts09And27() => new()
     {
-        new() { RunwayName = "09", Type = "R", Heading = 90, Latitude = 0, Longitude = 0 },
-        new() { RunwayName = "27", Type = "R", Heading = 270, Latitude = 0, Longitude = 1000 * M },
+        new() { RunwayName = "09", Type = "R", Heading = 90, Latitude = 0, Longitude = 10 * M },
+        new() { RunwayName = "27", Type = "R", Heading = 270, Latitude = 0, Longitude = 1010 * M },
     };
 
     private static List<Runway> Runway09(double widthFt) => new()
     {
-        new() { RunwayID = "09", StartLat = 0, StartLon = 0, EndLat = 0, EndLon = 1000 * M, Width = widthFt },
+        new() { RunwayID = "09", StartLat = 0, StartLon = 10 * M, EndLat = 0, EndLon = 1010 * M, Width = widthFt },
     };
 
     /// <summary>Runway 09/27 (0-1000 m E, 150 ft wide), main taxiway B 100 m north of it, and a

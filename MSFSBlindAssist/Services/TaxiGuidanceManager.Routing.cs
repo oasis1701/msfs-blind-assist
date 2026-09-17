@@ -384,8 +384,9 @@ public partial class TaxiGuidanceManager
                 bool destinationOffNetwork = reachability == ReachabilityClass.DestinationNotConnected;
                 if (firstLeg.CrossesRunway)
                 {
+                    string loadRunwayLog = string.IsNullOrEmpty(firstLeg.RunwayDesignator) ? "(unnamed)" : firstLeg.RunwayDesignator;
                     _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
-                                      $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0} " +
+                                      $"first leg crosses runway {loadRunwayLog} gapM={firstLeg.GapMeters:F0} " +
                                       $"ac={aircraftLat:F6},{aircraftLon:F6}");
                     // A refused Calculate mid-taxi must leave the route currently being flown untouched
                     // (see the capture above).
@@ -1172,13 +1173,17 @@ public partial class TaxiGuidanceManager
             bool destinationOffNetwork = recalcReachability == ReachabilityClass.DestinationNotConnected;
             if (firstLeg.CrossesRunway)
             {
+                string recalcRunwayLog = string.IsNullOrEmpty(firstLeg.RunwayDesignator) ? "(unnamed)" : firstLeg.RunwayDesignator;
                 _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
-                                  $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0} " +
+                                  $"first leg crosses runway {recalcRunwayLog} gapM={firstLeg.GapMeters:F0} " +
                                   $"ac={lat:F6},{lon:F6}");
                 // A touched runway with no designator (both ends unnamed) must never speak a
-                // sentence with a hole where the runway name belongs.
+                // sentence with a hole where the runway name belongs. This path never dropped the
+                // route being flown (unlike LoadRoute's rollback above), so it gets its own
+                // "Off route. Unable to recalculate." lead rather than CrossesUnnamedRunway's
+                // load-time "No taxi route." — see RecalculationRefusedUnnamedRunway's own doc.
                 _announcer.AnnounceImmediate(string.IsNullOrEmpty(firstLeg.RunwayDesignator)
-                    ? RouteReachabilityMessages.CrossesUnnamedRunway()
+                    ? RouteReachabilityMessages.RecalculationRefusedUnnamedRunway()
                     : destinationOffNetwork
                         ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
                         : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
