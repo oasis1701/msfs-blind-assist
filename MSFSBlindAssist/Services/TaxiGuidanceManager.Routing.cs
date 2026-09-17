@@ -401,12 +401,23 @@ public partial class TaxiGuidanceManager
             // The aircraft is not on the destination's piece of network, so the route starts with a
             // straight unmapped leg from the aircraft to its first node. Refuse when that leg touches
             // runway pavement; otherwise compose the warning the pilot hears when guidance starts.
-            // Guarded by the same LoadRefusalRollback.ShouldRestore predicate as this method's other
-            // two refusal sites (PR #238 review, Important 5) -- this one already restored for both
-            // non-Unchanged classes before that fix, so switching it to the shared predicate changes
-            // nothing here; it just removes the third independent hand-typed copy of the comparison.
+            //
+            // Guarded by RouteReachability.IsOffDestinationNetwork, NOT LoadRefusalRollback
+            // .ShouldRestore (PR #238 review, Minor D re-fix). This guard answers "is the
+            // aircraft off the destination's network at all" -- whether the first leg needs
+            // checking -- which is a different question from ShouldRestore's "must a refusal
+            // roll back state LoadRoute already overwrote." The two share the exact same
+            // formula (`!= Unchanged`) today, which is why reusing ShouldRestore here read as
+            // harmless and changed nothing behaviourally -- but it coupled two unrelated
+            // decisions to one predicate for no reason beyond removing a duplicate, exactly
+            // what Minor D flagged. The RestoreLoadRouteRollback call a few lines below, inside
+            // the firstLeg.CrossesRunway branch, is the genuine "must roll back" decision at
+            // this site, and it needs no separate ShouldRestore guard of its own: being inside
+            // this IsOffDestinationNetwork block already guarantees ShouldRestore would agree
+            // (both predicates read the same reachability value, off Unchanged), so calling it
+            // there would only re-hand-type a fourth copy of the same comparison.
             string? unmappedStartWarning = null;
-            if (LoadRefusalRollback.ShouldRestore(reachability))
+            if (RouteReachability.IsOffDestinationNetwork(reachability))
             {
                 var firstLeg = RouteReachability.CheckFirstLeg(
                     _graph, aircraftLat, aircraftLon, route.Segments[0].FromNode);
@@ -1211,7 +1222,14 @@ public partial class TaxiGuidanceManager
             newRoute = pinnedRecalc;
         }
 
-        if (recalcReachability != ReachabilityClass.Unchanged)
+        // PR #238 review, Minor D re-fix: gated on RouteReachability.IsOffDestinationNetwork,
+        // not a hand-typed `!= Unchanged` comparison -- this was the fourth independent copy
+        // of that same expression (see the sibling guard in LoadRoute above for the full
+        // reasoning: "is the aircraft off network, so the first leg needs checking" and
+        // "must a refusal roll back state" are different questions that happen to share a
+        // formula today, and naming this one asks the actual question instead of re-deriving
+        // it inline yet again).
+        if (RouteReachability.IsOffDestinationNetwork(recalcReachability))
         {
             var firstLeg = RouteReachability.CheckFirstLeg(_graph!, lat, lon, newRoute.Segments[0].FromNode);
             bool destinationOffNetwork = recalcReachability == ReachabilityClass.DestinationNotConnected;
@@ -1558,22 +1576,37 @@ public partial class TaxiGuidanceManager
     /// is pending). It can only ever run while guidance is still IN Taxiing: every other
     /// state either returns before reaching this call or has no further position frames at
     /// all (e.g. HoldShort pauses the tone and waits for Continue), so <c>SetState</c> drops
-    /// any still-pending name the instant guidance leaves Taxiing rather than letting it
-    /// wait, unflushed, for a state this method never runs in again (PR #238 review,
-    /// Important 1 -- see <c>SetState</c>'s own remarks for the hold-short scenario that
-    /// motivated it).
+    /// any still-pending name the instant guidance LEAVES Taxiing rather than letting it wait,
+    /// unflushed, for a state this method never runs in again (PR #238 review, Important 1 --
+    /// see <c>SetState</c>'s own remarks for the hold-short scenario that motivated it). That
+    /// guarantee is about STATE EXITS only, though (PR #238 review, Minor E correction) -- a
+    /// pending name can still survive a RECALCULATION that stays entirely inside Taxiing
+    /// (<c>TryRecalculateRoute</c> never calls <c>SetState</c>, so it never trips that hook),
+    /// which is exactly the case <see cref="TaxiwayChangeGate.ShouldSpeakDeferred"/>'s extra
+    /// check below exists for.
     ///
     /// <paramref name="currentTaxiwayName"/> is read fresh from the CURRENT segment at flush
     /// time, never assumed equal to the pending value: a recalculation can replace <c>_route</c>
     /// and reset <c>_currentSegmentIndex</c> without going through
     /// <see cref="AnnounceOrDeferTaxiwayChange"/> at all, so the deferred name can go stale
-    /// without anything else clearing it. A stale name is discarded SILENTLY (per the fix's
-    /// resolution: announcing the wrong taxiway is worse than staying quiet about a change
-    /// the pilot will hear about anyway the next time the taxiway actually changes, or never
-    /// needed to hear about because the aircraft stayed on the one already announced) --
-    /// and, because it was never actually spoken, <c>_lastAnnouncedTaxiway</c> is left
-    /// untouched on a discard so that name remains eligible to be announced again later
-    /// (Minor 1).
+    /// without anything else clearing it. A stale name -- the route has since moved on to a
+    /// DIFFERENT current taxiway -- is discarded SILENTLY (per the fix's resolution:
+    /// announcing the wrong taxiway is worse than staying quiet about a change the pilot will
+    /// hear about anyway the next time the taxiway actually changes, or never needed to hear
+    /// about because the aircraft stayed on the one already announced) -- and, because it was
+    /// never actually spoken, <c>_lastAnnouncedTaxiway</c> is left untouched on a discard so
+    /// that name remains eligible to be announced again later (Minor 1).
+    ///
+    /// <para>A SECOND, narrower silent case (PR #238 review, Important C): the pending name can
+    /// still match the current taxiway and yet already have been SPOKEN by something else --
+    /// concretely, a same-frame-or-later recalculation whose new route starts on the very
+    /// taxiway that was deferred, and which stamps <c>_lastAnnouncedTaxiway</c> itself as part
+    /// of its own "Route changed. Now via ..." sentence. Speaking the deferred name there would
+    /// both repeat something the pilot was just told and, because <c>AnnounceInstruction</c> is
+    /// an interrupting <c>AnnounceImmediate</c>, risk cutting that sentence off mid-word -- the
+    /// one sentence naming which runways the new route crosses. <see
+    /// cref="TaxiwayChangeGate.ShouldSpeakDeferred"/> is what tells the two silent cases apart
+    /// from the one case that must still speak; see its own remarks.</para>
     /// </summary>
     private void FlushPendingTaxiwayAnnouncement(string? currentTaxiwayName)
     {
@@ -1582,7 +1615,7 @@ public partial class TaxiGuidanceManager
 
         string pending = _pendingTaxiwayAnnouncement;
         _pendingTaxiwayAnnouncement = null; // one-shot delivery either way
-        if (TaxiwayChangeGate.IsStillCurrent(pending, currentTaxiwayName))
+        if (TaxiwayChangeGate.ShouldSpeakDeferred(pending, currentTaxiwayName, _lastAnnouncedTaxiway))
         {
             AnnounceInstruction($"Taxiway {pending}.");
             // Only now -- actually spoken -- does it become the dedupe record (Minor 1).

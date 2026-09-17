@@ -18,6 +18,12 @@
 // still the one the aircraft is on, or has the route moved on since" (speak vs discard
 // silently, per the brief's resolution: losing a real taxiway name is unacceptable, but
 // announcing a STALE one is worse than saying nothing).
+//
+// PR #238 review, Important C (re-fix): a THIRD silent case was added alongside "the route
+// moved on" -- a recalculation can adopt a new route that starts on the very taxiway a
+// deferral names, without ever going through this gate's Classify/Defer path, and stamps
+// the dedupe field itself as part of its own "Route changed" sentence. ShouldSpeakDeferred
+// is IsStillCurrent plus that extra "not already spoken by someone else" check.
 
 using MSFSBlindAssist.Navigation;
 
@@ -145,6 +151,58 @@ public class TaxiwayChangeGateTests
         // must be judged fresh, not skipped as a duplicate of a decision that was never spoken.
         Assert.Equal(TaxiwayChangeGate.Decision.SpeakNow,
             TaxiwayChangeGate.Classify("B", lastAnnouncedTaxiway: "", windowOpen: false, pendingTaxiwayName: null));
+    }
+
+    // PR #238 review, Important C: FlushPendingTaxiwayAnnouncement used to speak a deferred
+    // name whenever IsStillCurrent said so, with no check against _lastAnnouncedTaxiway.
+    // TryRecalculateRoute can adopt a brand-new route between the defer and the flush WITHOUT
+    // going through AnnounceOrDeferTaxiwayChange at all -- it stamps _lastAnnouncedTaxiway
+    // itself as part of the "Route changed. Now via ..." sentence it speaks immediately, and a
+    // recalculation run from the aircraft's own position normally starts the new route on the
+    // very taxiway the aircraft is already on. So the new route's CURRENT segment can carry
+    // the exact same name as a stale deferral, and IsStillCurrent alone cannot tell "nothing
+    // changed" apart from "current again by coincidence, and already spoken by someone else":
+    // without ShouldSpeakDeferred's extra check, the flush both repeats a name the pilot was
+    // just told and, because AnnounceInstruction is an interrupting AnnounceImmediate, can cut
+    // the recalculation's own "Route changed" sentence off mid-word -- the one sentence naming
+    // which runways the new route crosses.
+    [Fact]
+    public void A_deferred_name_already_spoken_by_a_recalculation_is_not_repeated()
+    {
+        Assert.False(TaxiwayChangeGate.ShouldSpeakDeferred(
+            pendingTaxiwayName: "B", currentTaxiwayName: "B", lastAnnouncedTaxiway: "B"));
+    }
+
+    [Fact]
+    public void A_deferred_name_already_spoken_is_not_repeated_case_insensitively()
+    {
+        Assert.False(TaxiwayChangeGate.ShouldSpeakDeferred(
+            pendingTaxiwayName: "b", currentTaxiwayName: "B", lastAnnouncedTaxiway: "B"));
+    }
+
+    [Fact]
+    public void A_deferred_name_not_yet_spoken_by_anyone_is_still_delivered()
+    {
+        // Ordinary defer-then-flush with no intervening recalculation: lastAnnouncedTaxiway is
+        // still the OLDER name, so the deferred one is genuinely new information.
+        Assert.True(TaxiwayChangeGate.ShouldSpeakDeferred(
+            pendingTaxiwayName: "B", currentTaxiwayName: "B", lastAnnouncedTaxiway: "A"));
+    }
+
+    [Fact]
+    public void A_stale_deferred_name_is_still_discarded_regardless_of_lastAnnounced()
+    {
+        // IsStillCurrent's existing stale-discard case must survive unchanged: the route moved
+        // on to a different taxiway, so this is never spoken no matter what lastAnnounced says.
+        Assert.False(TaxiwayChangeGate.ShouldSpeakDeferred(
+            pendingTaxiwayName: "C", currentTaxiwayName: "D", lastAnnouncedTaxiway: "A"));
+    }
+
+    [Fact]
+    public void Nothing_pending_is_never_spoken_by_the_flush()
+    {
+        Assert.False(TaxiwayChangeGate.ShouldSpeakDeferred(
+            pendingTaxiwayName: null, currentTaxiwayName: "C", lastAnnouncedTaxiway: "A"));
     }
 
     [Fact]

@@ -98,4 +98,37 @@ public static class TaxiwayChangeGate
     public static bool IsStillCurrent(string? pendingTaxiwayName, string? currentTaxiwayName) =>
         !string.IsNullOrEmpty(pendingTaxiwayName) &&
         pendingTaxiwayName.Equals(currentTaxiwayName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// True when a deferred taxiway name should actually be SPOKEN now that the start-warning
+    /// chatter window has closed: it must still be <see cref="IsStillCurrent"/> AND must not
+    /// already be <paramref name="lastAnnouncedTaxiway"/> -- i.e. not already spoken by
+    /// something OTHER than the deferred-flush path itself in the meantime.
+    ///
+    /// <para>PR #238 review (Important C, a re-fix of Task 5 Defect B / Important 1).
+    /// <c>TaxiGuidanceManager.TryRecalculateRoute</c> can adopt a brand-new route between a
+    /// defer and the flush WITHOUT ever going through <c>AnnounceOrDeferTaxiwayChange</c> --
+    /// it stamps <c>_lastAnnouncedTaxiway</c> itself, as part of the "Route changed. Now via
+    /// ..." sentence it speaks immediately, and a recalculation run from the aircraft's own
+    /// position normally starts the new route on the very taxiway the aircraft is already on.
+    /// So the new route's CURRENT segment can carry the exact same name as a stale deferral by
+    /// simple coincidence of geography, not because nothing has happened since the defer.
+    /// <see cref="IsStillCurrent"/> alone cannot tell these apart -- it only asks whether the
+    /// pending name still matches the CURRENT segment, and after such a recalculation it now
+    /// does, same as it always did for an ordinary unchanged route. Without this extra check
+    /// the flush both re-speaks a name the pilot was just told, and, because the flush's own
+    /// <c>AnnounceInstruction</c> call is an interrupting <c>AnnounceImmediate</c>, can land
+    /// close enough behind the recalculation's own announcement to cut it off mid-sentence --
+    /// the one sentence that names which runways the new route crosses.</para>
+    ///
+    /// <para>The stale-discard case is untouched: a pending name the route has since moved
+    /// PAST (a different current taxiway) is still silently dropped by
+    /// <see cref="IsStillCurrent"/> regardless of <paramref name="lastAnnouncedTaxiway"/>, and
+    /// remains eligible to be announced again later exactly as before (Minor 1) -- this method
+    /// only adds a SECOND, narrower reason to stay silent: the name is current, but redundant.</para>
+    /// </summary>
+    public static bool ShouldSpeakDeferred(
+        string? pendingTaxiwayName, string? currentTaxiwayName, string lastAnnouncedTaxiway) =>
+        IsStillCurrent(pendingTaxiwayName, currentTaxiwayName) &&
+        !string.Equals(pendingTaxiwayName, lastAnnouncedTaxiway, StringComparison.OrdinalIgnoreCase);
 }

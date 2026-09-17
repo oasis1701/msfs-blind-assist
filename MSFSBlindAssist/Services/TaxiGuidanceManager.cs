@@ -2654,7 +2654,41 @@ public partial class TaxiGuidanceManager : IDisposable
         // line once, the taxi from the gate onto the first taxiway reads as
         // "off-route" by definition — suppress recalc so the entered clearance
         // isn't trimmed before the pilot joins it.
-        if (perp <= perpTolerance) _hasJoinedRoute = true;
+        if (perp <= perpTolerance)
+        {
+            _hasJoinedRoute = true;
+
+            // PR #238 review, Critical A re-fix. The reachability-refusal latch
+            // (ReachabilityRefusalGate's _lastReachabilityRefusalKey) must ALSO clear here,
+            // on this SPECIFIC test — being back within the route's own pavement tolerance is
+            // the one signal that genuinely means an off-route episode has ended. This used to
+            // be decided by the `else` of the offRouteNow persistence guard further down (the
+            // ORIGINAL Important 2 fix) — but that guard's `else` runs whenever offRouteNow
+            // reads false, or ground speed drops below OFF_ROUTE_MIN_GS_KTS, and offRouteNow
+            // has THREE independent ways to read false, only one of which is "the episode is
+            // over":
+            //   - perp <= perpTolerance (this test) — genuinely back on the route line.
+            //   - nearTurn — true for POST_TURN_OFFROUTE_GRACE_SEC after EVERY ordinary
+            //     segment advance, and within the speed-scaled window before a turning next
+            //     segment. On navdata's short 5-15 m segments this is ROUTINE while an
+            //     excursion is still ongoing, not the end of one.
+            //   - _lastGroundSpeedKts < OFF_ROUTE_MIN_GS_KTS — a pilot who just heard a
+            //     refusal and stops to think crosses this for a single frame while STILL
+            //     laterally off-route. The old code read that stop as "episode over," cleared
+            //     the latch, and let the identical ~20-word interrupting refusal fire again the
+            //     moment RECALCULATION_COOLDOWN_SEC expired and the aircraft rolled on — the
+            //     exact 15-second nag Important 2 was written to close, reopened by clearing on
+            //     the wrong signal.
+            // Clearing on perp <= perpTolerance instead cannot fire on either in-episode case:
+            // both presuppose the aircraft is still laterally off the route, and offRouteNow's
+            // other two disjuncts (farBehindStart, goingBackward) are irrelevant to nearTurn or
+            // ground speed — they don't make perp small. Harmless to re-clear every frame the
+            // aircraft is on the route line, including frames where nothing was latched (this
+            // runs far more often than a genuine refusal latch exists to be cleared). The
+            // successful-recalculation clear in TryRecalculateRoute is untouched — that is the
+            // OTHER legitimate way an off-route episode ends, and is unaffected by this fix.
+            _lastReachabilityRefusalKey = null;
+        }
 
         // Never-joined escape (see NEVER_JOINED_OPENING_M). Track the closest the
         // aircraft has come to the route while it has yet to join; once it is clearly
@@ -2697,16 +2731,20 @@ public partial class TaxiGuidanceManager : IDisposable
             // Reset the persistence timer whenever we're back inside tolerance
             // (or not moving — a stationary off-route sample shouldn't count toward
             // the persistence window either).
+            //
+            // Deliberately does NOT ALSO clear _lastReachabilityRefusalKey here (PR #238
+            // review, Critical A re-fix — this branch used to, and that was the regression).
+            // This `else` is not specific to "the episode ended, the aircraft is back on
+            // route": it is reached whenever offRouteNow reads false for ANY of its three
+            // reasons (back on route, nearTurn, or a low-speed frame while still off-route —
+            // see the perp <= perpTolerance block above for the one test that actually means
+            // "on route," and for why the other two fire routinely INSIDE a sustained
+            // off-route episode). Clearing the latch on nearTurn or a momentary stop reopened
+            // the exact 15-second-nag defect Important 2 was written to close: a pilot who
+            // stopped below OFF_ROUTE_MIN_GS_KTS to think about a just-spoken refusal cleared
+            // the latch here, then rolled on and heard the identical refusal again the moment
+            // the recalculation cooldown expired.
             _offRouteSince = DateTime.MinValue;
-            // This off-route episode (if there was one) has ended: the aircraft is back
-            // within tolerance, near a turn, or stationary, so TryRecalculateRoute has
-            // nothing standing to refuse right now. Clear the reachability-refusal latch
-            // here too (ReachabilityRefusalGate), not only on a successful recalculation —
-            // a pilot who corrects back onto the route without ever triggering a
-            // recalculation must still be able to hear the SAME refusal again if they drift
-            // off a second time later (PR #238 review, Important 2). Harmless when nothing
-            // was latched; this branch runs far more often than an actual episode ends.
-            _lastReachabilityRefusalKey = null;
         }
         } // end lock(_stateLock)
     }

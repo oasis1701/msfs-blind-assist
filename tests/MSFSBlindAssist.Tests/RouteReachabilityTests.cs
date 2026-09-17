@@ -217,4 +217,31 @@ public class RouteReachabilityTests
 
         Assert.True(RouteReachability.CheckFirstLeg(g, 10 * M, 200 * M, start).CrossesRunway);
     }
+
+    // PR #238 review, Minor D: LoadRoute's unmapped-start-warning block and
+    // TryRecalculateRoute's first-leg check both used to gate on
+    // `LoadRefusalRollback.ShouldRestore` (or a hand-typed `!= Unchanged` copy of it) to
+    // decide "should I check/warn about the first leg at all" -- a different question from
+    // ShouldRestore's own "must a refusal roll back the state LoadRoute already overwrote."
+    // The two happen to share the exact same formula today, but coupling them meant a future
+    // ReachabilityClass value answering the two questions differently would silently change
+    // both decisions through one edit. IsOffDestinationNetwork is the "off network" question's
+    // own name, living beside the classifier that produces the values it reads.
+    [Fact]
+    public void Unchanged_is_on_the_destinations_network()
+    {
+        Assert.False(RouteReachability.IsOffDestinationNetwork(ReachabilityClass.Unchanged));
+    }
+
+    [Fact]
+    public void Leaving_unconnected_position_is_off_the_destinations_network()
+    {
+        Assert.True(RouteReachability.IsOffDestinationNetwork(ReachabilityClass.LeavingUnconnectedPosition));
+    }
+
+    [Fact]
+    public void Destination_not_connected_is_off_the_destinations_network()
+    {
+        Assert.True(RouteReachability.IsOffDestinationNetwork(ReachabilityClass.DestinationNotConnected));
+    }
 }

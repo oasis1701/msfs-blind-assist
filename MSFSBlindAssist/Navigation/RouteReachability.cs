@@ -36,6 +36,30 @@ public readonly record struct FirstLegResult(bool CrossesRunway, string RunwayDe
 /// </summary>
 public static class RouteReachability
 {
+    /// <summary>
+    /// True when <paramref name="reachability"/> means the aircraft is on a DIFFERENT piece
+    /// of taxi network than the destination -- i.e. anything other than <see
+    /// cref="ReachabilityClass.Unchanged"/>.
+    ///
+    /// <para>PR #238 review, Minor D. This is a different question from
+    /// <c>LoadRefusalRollback.ShouldRestore</c> ("must a refusal roll back the state a
+    /// LoadRoute call already overwrote"), even though the two share the exact same formula
+    /// today (every non-<see cref="ReachabilityClass.Unchanged"/> class currently both means
+    /// "off network" AND "roll back on refusal"). <c>LoadRoute</c>'s unmapped-start-warning /
+    /// first-leg block, and <c>TryRecalculateRoute</c>'s equivalent check, both use THIS
+    /// predicate to decide whether the first leg needs checking at all -- whether or not that
+    /// check ends up refusing -- which is not a rollback decision. Before this was named
+    /// separately, both sites either called <c>ShouldRestore</c> for a question it does not
+    /// actually answer, or hand-typed a fourth independent copy of the same `!= Unchanged`
+    /// comparison (<c>TryRecalculateRoute</c>). Giving the two questions two names, even while
+    /// their bodies agree, means a future <see cref="ReachabilityClass"/> value that is "off
+    /// network but should not roll back" (or vice versa) only has to change the one predicate
+    /// whose question it actually answers, instead of silently flipping both decisions through
+    /// a single shared expression that happened to serve both by coincidence.</para>
+    /// </summary>
+    public static bool IsOffDestinationNetwork(ReachabilityClass reachability) =>
+        reachability != ReachabilityClass.Unchanged;
+
     public static ReachabilityClass Classify(
         TaxiGraph graph, double aircraftLat, double aircraftLon, int destinationNodeId)
     {
