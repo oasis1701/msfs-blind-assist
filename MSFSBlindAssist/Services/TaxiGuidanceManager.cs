@@ -2099,22 +2099,25 @@ public partial class TaxiGuidanceManager : IDisposable
         // Check if we've arrived at the final destination.
         // Use a SMALLER radius for gates so the 50/20/10ft parking countdown has time
         // to fire before HandleArrival transitions us out of Taxiing state. For runways,
-        // the larger radius lets the LiningUp centerline tracker pick up earlier. A
-        // landing-exit route (PR #238 second-round review) uses its own dedicated
-        // LANDING_EXIT_ARRIVAL_RADIUS_M -- the block below (`_isLandingExitRoute &&
-        // onFinalSegment`) already measures arrival against it directly, but this local
-        // is ALSO the value CheckUpcomingAnnouncements uses as the destination-ahead
-        // callout's clear radius (the point the callout is actually lost at, not raw
-        // distance zero), so it must resolve correctly for every destination kind, not
-        // just gate/runway. _isLandingExitRoute and _isRunwayLineup are mutually
-        // exclusive -- every LoadRoute call behind a landing-exit handoff/retarget passes
-        // isRunwayDestination: false -- so branching on it first changes nothing for the
-        // gate/runway cases.
-        double arrivalRadius = _isLandingExitRoute
+        // the larger radius lets the LiningUp centerline tracker pick up earlier.
+        double arrivalRadius = _isRunwayLineup
+            ? ARRIVAL_RADIUS_M
+            : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft → ~6 m
+
+        // WHERE A CALLOUT IS LOST is a different question from WHEN WE HAVE ARRIVED, and
+        // the two must not share one local. CheckUpcomingAnnouncements needs the radius at
+        // which the destination-ahead callout stops being deliverable, which for a
+        // landing-exit route is its own LANDING_EXIT_ARRIVAL_RADIUS_M (the dedicated
+        // `_isLandingExitRoute && onFinalSegment` block below measures arrival against
+        // that, not against arrivalRadius). Folding that branch into arrivalRadius itself
+        // was tried and reverted: the fallback arrival check further down has no
+        // stillOnRunway guard of its own, so widening its radius from ~6 m to 25 m let a
+        // landing-exit route DECLARE ARRIVAL while still laterally on the runway -- which
+        // the dedicated block deliberately withholds. Arrival behaviour is unchanged by
+        // this local; only the announcement gate reads it.
+        double announcementClearRadius = _isLandingExitRoute
             ? LANDING_EXIT_ARRIVAL_RADIUS_M
-            : _isRunwayLineup
-                ? ARRIVAL_RADIUS_M
-                : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft → ~6 m
+            : arrivalRadius;
 
         bool onFinalSegment = _currentSegmentIndex == _route.Segments.Count - 1;
 
@@ -2235,16 +2238,12 @@ public partial class TaxiGuidanceManager : IDisposable
             // that guard deliberately withholds arrival while the aircraft is still
             // laterally within the runway, so a landing-exit route on its final segment
             // can still fall through to here on every frame until it clears the pavement.
-            // arrivalRadius now resolves to the SAME LANDING_EXIT_ARRIVAL_RADIUS_M (25m)
-            // here as it does above (PR #238 second-round review) rather than the
-            // ~6m gate radius this block used before — consistent with the dedicated
-            // block's own threshold, but note this fallback has no stillOnRunway guard of
-            // its own, so a landing-exit route within 25m of its final node while still
-            // laterally on the runway can arrive here that the block above would have
-            // suppressed. That combination requires the aircraft to be close to a node
-            // that is itself placed clear of the runway (see the "hold-clear point past
-            // the runway" comment above) while still reading as laterally on it — narrow,
-            // and no narrower than the ~6m version of this same gap already was.
+            // This block therefore keeps the ~6 m gate radius: `arrivalRadius` is
+            // deliberately NOT widened to LANDING_EXIT_ARRIVAL_RADIUS_M (25 m), because
+            // this fallback has no stillOnRunway guard of its own and a 25 m radius here
+            // would let a landing-exit route declare arrival while still laterally on the
+            // runway — exactly what the block above withholds. See the
+            // `announcementClearRadius` comment at the top of this method.
             if (!arrived && !_isRunwayLineup)
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
@@ -2467,7 +2466,7 @@ public partial class TaxiGuidanceManager : IDisposable
         }
 
         // Check for upcoming announcements
-        CheckUpcomingAnnouncements(distToTarget, currentSeg, arrivalRadius);
+        CheckUpcomingAnnouncements(distToTarget, currentSeg, announcementClearRadius);
 
         // Check hold-short countdown (300/150/50ft cadence) — critical runway incursion prevention
         CheckHoldShortCountdown(distToTarget, currentSeg);
