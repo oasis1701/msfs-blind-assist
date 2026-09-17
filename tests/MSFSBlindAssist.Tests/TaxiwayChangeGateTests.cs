@@ -97,4 +97,81 @@ public class TaxiwayChangeGateTests
         // _route went null (StopGuidance/arrival) between deferring and the flush frame.
         Assert.False(TaxiwayChangeGate.IsStillCurrent(pendingTaxiwayName: "C", currentTaxiwayName: null));
     }
+
+    [Fact]
+    public void Two_missing_names_are_never_still_current_either()
+    {
+        // Minor 6: IsStillCurrent's second IsNullOrEmpty guard (on currentTaxiwayName) was
+        // removed as provably redundant given the first -- a non-empty pendingTaxiwayName can
+        // never .Equals a null/empty currentTaxiwayName, so the first guard plus the .Equals
+        // call alone already implies it. The FIRST guard stays, and this is exactly the input
+        // that proves why: a bare string.Equals(null, null, OrdinalIgnoreCase) is TRUE, which
+        // would contradict "a missing pending name... is never still current" above.
+        Assert.False(TaxiwayChangeGate.IsStillCurrent(pendingTaxiwayName: null, currentTaxiwayName: null));
+        Assert.False(TaxiwayChangeGate.IsStillCurrent(pendingTaxiwayName: "", currentTaxiwayName: ""));
+    }
+
+    // Minor 1: Classify used to be judged only against _lastAnnouncedTaxiway, and
+    // TaxiGuidanceManager stamped that field the instant a name was DEFERRED, not once it was
+    // actually SPOKEN. A deferral later discarded as stale (IsStillCurrent false at flush time)
+    // then left a name permanently marked "announced" that the pilot never actually heard --
+    // and a genuine later re-arrival on that same name was silently skipped forever. Classify
+    // now also takes the CURRENTLY-pending name, so "decided but not yet spoken" and "actually
+    // spoken" are tracked separately.
+
+    [Fact]
+    public void A_name_already_pending_is_skipped_even_though_it_was_never_spoken()
+    {
+        // A second advance onto the SAME still-pending taxiway (e.g. the taxiway is split
+        // across several navdata segments) must not re-defer a redundant duplicate -- even
+        // though the name was only DECIDED, not yet actually spoken, so lastAnnouncedTaxiway
+        // does not yet record it.
+        Assert.Equal(TaxiwayChangeGate.Decision.Skip,
+            TaxiwayChangeGate.Classify("B", lastAnnouncedTaxiway: "", windowOpen: true, pendingTaxiwayName: "B"));
+    }
+
+    [Fact]
+    public void A_name_only_pending_does_not_block_a_different_new_name()
+    {
+        Assert.Equal(TaxiwayChangeGate.Decision.SpeakNow,
+            TaxiwayChangeGate.Classify("C", lastAnnouncedTaxiway: "", windowOpen: false, pendingTaxiwayName: "B"));
+    }
+
+    [Fact]
+    public void Once_pending_is_cleared_the_same_name_is_a_fresh_decision()
+    {
+        // Once a deferred name has been delivered (spoken or discarded) and
+        // _pendingTaxiwayAnnouncement is cleared back to null, the SAME name reappearing later
+        // must be judged fresh, not skipped as a duplicate of a decision that was never spoken.
+        Assert.Equal(TaxiwayChangeGate.Decision.SpeakNow,
+            TaxiwayChangeGate.Classify("B", lastAnnouncedTaxiway: "", windowOpen: false, pendingTaxiwayName: null));
+    }
+
+    [Fact]
+    public void A_discarded_deferral_can_be_re_announced_later_for_the_same_name()
+    {
+        // End-to-end simulation of TaxiGuidanceManager's own field-juggling for the
+        // "B -> unnamed connector -> B" shape (PR #238 review, Minor 1's motivating case):
+        // deferred while the window is open, then discarded (never spoken) because the route
+        // moved on to an unnamed connector before the window closed, then "B" reappears. Under
+        // the OLD design (stamping _lastAnnouncedTaxiway at DEFER time) this second "B" was
+        // permanently skipped even though the pilot never heard it once.
+        string lastAnnounced = "";
+        string? pending = null;
+
+        // 1. Advance onto the first "B" segment, window open: defer.
+        Assert.Equal(TaxiwayChangeGate.Decision.Defer,
+            TaxiwayChangeGate.Classify("B", lastAnnounced, windowOpen: true, pendingTaxiwayName: pending));
+        pending = "B"; // AnnounceOrDeferTaxiwayChange's Defer case -- lastAnnounced NOT touched
+
+        // 2. The window closes while the route has already moved on to an unnamed connector:
+        // the flush discards "B" silently without ever speaking it.
+        Assert.False(TaxiwayChangeGate.IsStillCurrent(pending, currentTaxiwayName: ""));
+        pending = null; // one-shot delivery either way; lastAnnounced is untouched by a discard
+
+        // 3. The aircraft advances onto a SECOND "B" segment. Because "B" was never actually
+        // spoken, it must be treated as new, not skipped.
+        Assert.Equal(TaxiwayChangeGate.Decision.SpeakNow,
+            TaxiwayChangeGate.Classify("B", lastAnnounced, windowOpen: false, pendingTaxiwayName: pending));
+    }
 }

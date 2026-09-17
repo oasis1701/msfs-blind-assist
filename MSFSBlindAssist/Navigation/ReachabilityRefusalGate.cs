@@ -30,6 +30,27 @@ namespace MSFSBlindAssist.Navigation;
 /// drifted from a merely-disconnected position onto a piece of network that puts the
 /// destination itself out of reach), or a different runway all mean the pilot is hearing new
 /// information and must be told again.</para>
+///
+/// <para>PR #238 review, Important 2: this latch must live for the OFF-ROUTE EPISODE it was
+/// raised for, never for the whole route. <c>TaxiGuidanceManager</c> clears
+/// <c>_lastReachabilityRefusalKey</c> back to null both when the off-route condition ends
+/// (the aircraft is back on route) and when a recalculation succeeds -- so a SECOND,
+/// unrelated off-route episode later in the same taxi that refuses for the exact same reason
+/// is not silently swallowed by a latch this gate itself has no way to expire on its own (it
+/// is a pure equality check with no notion of time or position). Composing a key and
+/// comparing it here answers only "is this the SAME refusal as last time"; deciding when
+/// "last time" should stop counting is the caller's job.</para>
+///
+/// <para>PR #238 review, Minor 4: <see cref="KeyFor"/>'s original three parameters (verdict,
+/// destination, runway) cannot distinguish "no start node found at all" (the first
+/// recalculation refusal site, which never has a runway to name) from "a start node was
+/// found but the first leg crosses an UNNAMED runway" (the second site's
+/// <c>RecalculationRefusedUnnamedRunway</c> branch, which also passes an empty runway
+/// designator) when both occur for the same destination under the same reachability class --
+/// the two keys would collide and the second, materially different refusal would be silently
+/// suppressed as a "repeat" of the first. The optional <paramref name="site"/> tag closes
+/// that: the two call sites pass distinct tags, so the keys can never collide even when
+/// every other input happens to match.</para>
 /// </summary>
 public static class ReachabilityRefusalGate
 {
@@ -38,9 +59,13 @@ public static class ReachabilityRefusalGate
     /// same refusal, however many times the recalculation runs. <paramref
     /// name="runwayDesignator"/> should be the empty string when no runway is named by the
     /// refusal (e.g. the "no start node in range" refusal, which never crosses a runway).
+    /// <paramref name="site"/> is an opaque caller-chosen tag distinguishing call sites whose
+    /// other three inputs can otherwise coincide (Minor 4) -- defaulted to <c>""</c> so
+    /// existing single-site comparisons are unaffected.
     /// </summary>
-    public static string KeyFor(ReachabilityClass verdict, string destinationName, string runwayDesignator) =>
-        $"{verdict}|{destinationName}|{runwayDesignator}";
+    public static string KeyFor(
+        ReachabilityClass verdict, string destinationName, string runwayDesignator, string site = "") =>
+        $"{verdict}|{destinationName}|{runwayDesignator}|{site}";
 
     /// <summary>
     /// True when this refusal has not already been spoken -- <paramref name="lastSpokenKey"/>

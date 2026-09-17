@@ -315,8 +315,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // silently -- once it closes. Null whenever nothing is waiting. Set only by
     // AnnounceOrDeferTaxiwayChange (the one shared helper both AdvanceToNearestSegment and
     // AdvanceSegment go through) and consumed only by FlushPendingTaxiwayAnnouncement, which
-    // UpdatePosition calls every frame. Reset on LoadRoute and StopGuidance so a stale
-    // deferred name from one route can never leak into (and be spoken over) the next.
+    // UpdatePosition calls on every Taxiing-state frame -- never while guidance is holding,
+    // lining up, arrived, or otherwise off that state, because none of those states ever
+    // reach that call again. SetState clears this the instant guidance LEAVES Taxiing (PR
+    // #238 review, Important 1), so a name deferred just before a hold-short can no longer
+    // sit waiting through the whole hold and then be flushed against a changed world once
+    // Continue is pressed -- see SetState's own remarks. Also reset on LoadRoute and
+    // StopGuidance so a stale deferred name from one route can never leak into (and be
+    // spoken over) the next.
     private string? _pendingTaxiwayAnnouncement = null;
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
@@ -1362,6 +1368,18 @@ public partial class TaxiGuidanceManager : IDisposable
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
+
+    /// <summary>
+    /// True while a route is actually being flown (see <see cref="LiveRouteStates"/>) --
+    /// the question <c>TaxiAssistForm.ShowRouteFailure</c>'s <c>keepSummary</c> decision
+    /// needs, and which <see cref="CurrentRoute"/> cannot answer on its own: <c>HandleArrival</c>
+    /// sets <see cref="State"/> to <see cref="TaxiGuidanceState.Arrived"/> without ever
+    /// nulling <c>_route</c>, so <c>CurrentRoute != null</c> stayed true for the rest of the
+    /// session after a completed, docking-off arrival with no Stop pressed -- wrongly
+    /// protecting the NEXT leg's failed-Calculate summary with a route that was no longer
+    /// live (PR #238 review, Important 3).
+    /// </summary>
+    public bool HasLiveRoute => LiveRouteStates.IsRouteLive(_state);
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
     // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
@@ -2502,8 +2520,12 @@ public partial class TaxiGuidanceManager : IDisposable
 
         // Deliver a taxiway-change name AnnounceOrDeferTaxiwayChange deferred while the
         // start-warning chatter window was open, now that it may have closed. Cheap no-op
-        // when nothing is pending; must run every frame, not only on a segment advance, or
-        // a deferred name could sit unspoken long after the window closes.
+        // when nothing is pending; must run every Taxiing frame this method reaches, not
+        // only on a segment advance, or a deferred name could sit unspoken until the window
+        // closes several frames later. This point in UpdatePosition is only ever reached
+        // while _state == Taxiing (every earlier branch of this method returns first for
+        // every other state), so nothing pending can survive past a transition out of
+        // Taxiing without help -- SetState provides that help; see its own remarks.
         FlushPendingTaxiwayAnnouncement(currentSeg.TaxiwayName);
 
         // Check for upcoming announcements
@@ -2676,6 +2698,15 @@ public partial class TaxiGuidanceManager : IDisposable
             // (or not moving — a stationary off-route sample shouldn't count toward
             // the persistence window either).
             _offRouteSince = DateTime.MinValue;
+            // This off-route episode (if there was one) has ended: the aircraft is back
+            // within tolerance, near a turn, or stationary, so TryRecalculateRoute has
+            // nothing standing to refuse right now. Clear the reachability-refusal latch
+            // here too (ReachabilityRefusalGate), not only on a successful recalculation —
+            // a pilot who corrects back onto the route without ever triggering a
+            // recalculation must still be able to hear the SAME refusal again if they drift
+            // off a second time later (PR #238 review, Important 2). Harmless when nothing
+            // was latched; this branch runs far more often than an actual episode ends.
+            _lastReachabilityRefusalKey = null;
         }
         } // end lock(_stateLock)
     }
@@ -3143,6 +3174,16 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_state != TaxiGuidanceState.HoldShort || _route == null) return;
 
+        // Belt-and-braces (PR #238 review, Important 1): SetState's own leaving-Taxiing hook
+        // already cleared _pendingTaxiwayAnnouncement the moment guidance entered this hold
+        // -- reaching HoldShort at all requires having left Taxiing first -- so this is
+        // always a no-op today. Kept explicit anyway, right where _lastAnnouncedTaxiway is
+        // about to be re-set below for the ordinary resume: this method already owns
+        // speaking the taxiway name for the leg guidance is about to resume on, so a
+        // deferred copy of an EARLIER name would be redundant by construction even if some
+        // future change ever let one survive this far.
+        _pendingTaxiwayAnnouncement = null;
+
         // Leaving a start hold: it is spent. _holdShortAtDestination is false for it, so execution
         // falls through to the ordinary resume on segment 0 below. The route-start turn cue was
         // never spoken while held (its per-frame one-shot runs only on a taxiing frame), so unless
@@ -3519,6 +3560,29 @@ public partial class TaxiGuidanceManager : IDisposable
         _state = newState;
         // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
         RolloutDiag($"SetState: {prev} -> {newState}");
+
+        // A taxiway-change name deferred by AnnounceOrDeferTaxiwayChange while the
+        // start-warning chatter window was open must not outlive the Taxiing frame it was
+        // deferred in. FlushPendingTaxiwayAnnouncement only ever runs from the Taxiing
+        // branch of UpdatePosition, so once guidance leaves Taxiing that method never runs
+        // again until (if ever) guidance returns to Taxiing -- a pending name held onto
+        // across the gap would then be flushed against a world that has moved on (PR #238
+        // review, Important 1). Concretely: a name deferred just before a mid-route
+        // hold-short used to survive the WHOLE hold, sometimes minutes, and
+        // ContinuePastHoldShort's own "Continuing. Taxiway X." resume sentence was then
+        // stomped by that stale deferred name on the very next Taxiing frame -- a segment
+        // just past a crossing hold-short routinely carries the SAME taxiway name (the
+        // documented KBOS "N, hold short 15R, N" shape), so IsStillCurrent read the stale
+        // name as still current and re-announced it, cutting the Continue confirmation off
+        // mid-word at the moment the pilot is entering an active runway. Dropping it here is
+        // safe and deliberate in every direction guidance can leave Taxiing: HoldShort and
+        // LiningUp both speak their own opening sentence moments later, Arrived needs no
+        // taxiway name at all, and ProgressiveHold speaks its own terminator sentence --
+        // none of them owe the pilot the name that was waiting (this is also why a name
+        // still pending at HandleArrival is correctly, not accidentally, lost outright:
+        // see FlushPendingTaxiwayAnnouncement's own remarks and Minor 2 of the same review).
+        if (prev == TaxiGuidanceState.Taxiing && newState != TaxiGuidanceState.Taxiing)
+            _pendingTaxiwayAnnouncement = null;
 
         // Lineup must never end in silence. The lineup tone is the pilot's only
         // alignment instrument; if a route reload / recalc (LiningUp ->

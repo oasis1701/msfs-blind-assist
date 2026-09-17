@@ -1835,10 +1835,28 @@ public class TaxiAssistForm : Form
     /// clearance, hold-shorts and length advisory — worse than the staleness this method
     /// exists to prevent, because the route it would be discarding isn't stale, it's the one
     /// currently being flown. The caller decides this from the manager
-    /// (<c>TaxiGuidanceManager.CurrentRoute != null</c>), never by pattern-matching the error
+    /// (<c>TaxiGuidanceManager.HasLiveRoute</c>), never by pattern-matching the error
     /// string — a guess here is exactly the kind of silent mismatch this whole box exists to
     /// rule out. Default <c>false</c> keeps every other caller's behaviour unchanged: the
-    /// reason still replaces the box for every failure that leaves no route behind.</para>
+    /// reason still replaces the box for every failure that leaves no route behind.
+    ///
+    /// <para>PR #238 review, Important 3: <c>HasLiveRoute</c> replaced a plain
+    /// <c>CurrentRoute != null</c> check here -- <c>HandleArrival</c> sets the manager's
+    /// state to <c>Arrived</c> without ever nulling its route, so <c>CurrentRoute</c> stayed
+    /// non-null for the rest of the session after a completed, docking-off arrival with no
+    /// Stop pressed, and a stale COMPLETED flight's summary wrongly survived the next leg's
+    /// failed Calculate. <c>HasLiveRoute</c> reads the guidance STATE instead (see <see
+    /// cref="MSFSBlindAssist.Services.LiveRouteStates"/>), which does not carry that
+    /// staleness.</para>
+    ///
+    /// <para>PR #238 review, Important 4: every caller in this file is reachable while a
+    /// PREVIOUS Calculate's route is still live in the manager -- this dialog is hide-on-close
+    /// and cached, so a pilot can reopen it mid-taxi to plan the next leg and abort on ANY of
+    /// this method's callers (a failed airport reload, a gate list that changed under them, no
+    /// destination picked yet, an unreachable stand, or a refused <c>LoadRoute</c>) before ever
+    /// building a new route. "Does this fire after a <c>LoadRoute</c> call" is not the right
+    /// test — "is a route still live" is, and it is the same answer for every one of them, so
+    /// all of this file's callers pass <c>keepSummary: _guidanceManager.HasLiveRoute</c>.</para>
     /// </summary>
     public void ShowRouteFailure(string reason, bool keepSummary = false)
     {
@@ -4049,7 +4067,14 @@ public class TaxiAssistForm : Form
         {
             const string noAirport = "No airport loaded. Enter an ICAO code first.";
             AnnounceCalculateAbort(noAirport);
-            ShowRouteFailure(noAirport);
+            // PR #238 review, Important 4: this dialog is hide-on-close and cached, and
+            // LoadAirportDataAsync drops _graph before its awaits and only reassigns it on
+            // success -- so this form-level field can be null mid-taxi with the MANAGER
+            // still flying a route from an earlier, successful Calculate (a different
+            // dialog session, or an earlier airport load in this one). Reopen Taxi Assist,
+            // have the reload fail, press Calculate: without keepSummary the live route's
+            // summary box was wiped for a reason that has nothing to do with that route.
+            ShowRouteFailure(noAirport, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4065,7 +4090,9 @@ public class TaxiAssistForm : Form
         if (RefreshDestinationsIfGateSourceChanged())
         {
             AnnounceCalculateAbort(GateListUpdatedMessage);
-            ShowRouteFailure(GateListUpdatedMessage);
+            // Important 4, same class as the _graph == null guard above: a rebuilt gate
+            // list can abort Calculate while an EARLIER Calculate's route is still live.
+            ShowRouteFailure(GateListUpdatedMessage, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4288,8 +4315,10 @@ public class TaxiAssistForm : Form
                 // Same LoadRoute call, same reachability rollback as the main Calculate path
                 // below -- a refused progressive leg can leave the PREVIOUS route still live
                 // (RestoreLoadRouteRollback), so the summary box must not be overwritten with
-                // the failure reason in that case (see ShowRouteFailure's own doc).
-                ShowRouteFailure(progError, keepSummary: _guidanceManager.CurrentRoute != null);
+                // the failure reason in that case (see ShowRouteFailure's own doc). Decided
+                // from the manager's live guidance STATE (HasLiveRoute), not CurrentRoute !=
+                // null, which stays true well past arrival (PR #238 review, Important 3).
+                ShowRouteFailure(progError, keepSummary: _guidanceManager.HasLiveRoute);
                 return;
             }
 
@@ -4316,7 +4345,9 @@ public class TaxiAssistForm : Form
         {
             const string noDestination = "Please select a destination.";
             AnnounceCalculateAbort(noDestination);
-            ShowRouteFailure(noDestination);
+            // Important 4: reachable with a route already live too -- the dialog is
+            // reopened mid-taxi to plan the next leg before a destination is picked yet.
+            ShowRouteFailure(noDestination, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4327,8 +4358,9 @@ public class TaxiAssistForm : Form
             AnnounceCalculateAbort(unreachable);
             // The spoken sentence, not the old terse status line ("Selected stand has no
             // taxi route."): the box is where the pilot goes to re-read what they heard,
-            // so it must carry the same words, including WHICH stand.
-            ShowRouteFailure(unreachable);
+            // so it must carry the same words, including WHICH stand. Important 4: same
+            // live-route protection as every other early return in this method.
+            ShowRouteFailure(unreachable, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4470,9 +4502,10 @@ public class TaxiAssistForm : Form
             // (TaxiGuidanceManager.RestoreLoadRouteRollback) -- the pilot IS still flying a
             // route even though this Calculate failed, so the summary box must keep showing
             // it rather than being overwritten with the failure reason (PR #238 review, Task
-            // 7 Defect B). Decided from the manager's own live-route state, never guessed
-            // from the error string.
-            ShowRouteFailure(error, keepSummary: _guidanceManager.CurrentRoute != null);
+            // 7 Defect B). Decided from the manager's own guidance STATE (HasLiveRoute),
+            // never guessed from the error string, and never from CurrentRoute != null,
+            // which stays true well past arrival (PR #238 review, Important 3).
+            ShowRouteFailure(error, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 

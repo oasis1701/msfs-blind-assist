@@ -96,4 +96,63 @@ public class ReachabilityRefusalGateTests
             ReachabilityClass.DestinationNotConnected, "Gate B12", "31");
         Assert.Equal(a, b);
     }
+
+    // Minor 4: the two recalculation refusal call sites can otherwise produce the exact same
+    // key. Site 1 ("no start node found at all") never has a runway, so it always passes an
+    // empty runwayDesignator; site 2's CrossesUnnamedRunway branch ("a start node WAS found,
+    // but the first leg crosses a runway with no designator at either end") also passes an
+    // empty runwayDesignator. Without a site tag, the same destination refused for both
+    // reasons under the same verdict would collide and the second, materially different
+    // refusal would be silently swallowed as a "repeat."
+    [Fact]
+    public void The_two_call_sites_never_collide_even_with_the_same_verdict_destination_and_empty_runway()
+    {
+        string noStartNodeKey = ReachabilityRefusalGate.KeyFor(
+            ReachabilityClass.DestinationNotConnected, "Parking 40", "", site: "no-start-node");
+        string crossesUnnamedRunwayKey = ReachabilityRefusalGate.KeyFor(
+            ReachabilityClass.DestinationNotConnected, "Parking 40", "", site: "crosses-runway");
+        Assert.NotEqual(noStartNodeKey, crossesUnnamedRunwayKey);
+        Assert.True(ReachabilityRefusalGate.ShouldAnnounce(noStartNodeKey, crossesUnnamedRunwayKey));
+    }
+
+    [Fact]
+    public void Omitting_the_site_tag_keeps_existing_single_site_comparisons_unaffected()
+    {
+        // The default ("") must behave identically for two keys that both omit it -- this is
+        // what keeps every pre-existing 3-argument KeyFor call (both call sites' own OTHER
+        // key, and every test above) byte-for-byte unaffected by adding the parameter.
+        string a = ReachabilityRefusalGate.KeyFor(ReachabilityClass.DestinationNotConnected, "Parking 40", "");
+        string b = ReachabilityRefusalGate.KeyFor(ReachabilityClass.DestinationNotConnected, "Parking 40", "");
+        Assert.Equal(a, b);
+        Assert.False(ReachabilityRefusalGate.ShouldAnnounce(a, b));
+    }
+
+    // Important 2: the latch must live for the OFF-ROUTE EPISODE it was raised for, not the
+    // whole route -- TaxiGuidanceManager now clears _lastReachabilityRefusalKey back to null
+    // both when the off-route condition ends (aircraft back on route) and when a
+    // recalculation succeeds. This is a contract test on the gate's own null-handling: it
+    // pins the exact sequence that wiring depends on, since TaxiGuidanceManager itself has no
+    // constructible test double (it requires a live ScreenReaderAnnouncer window handle) --
+    // see the group-C report for why Important 2's manager-side wiring is otherwise
+    // unverifiable outside a live sim session.
+    [Fact]
+    public void After_the_episode_ends_and_the_latch_is_cleared_the_same_refusal_speaks_again()
+    {
+        string key = ReachabilityRefusalGate.KeyFor(
+            ReachabilityClass.DestinationNotConnected, "Parking 40", "");
+        string? latch = null;
+        Assert.True(ReachabilityRefusalGate.ShouldAnnounce(latch, key));
+        latch = key; // first episode: refusal spoken and latched
+
+        // A 15 s cooldown retry while STILL in the same off-route episode: silent, which is
+        // the whole point of Task 2's original fix.
+        Assert.False(ReachabilityRefusalGate.ShouldAnnounce(latch, key));
+
+        latch = null; // the episode ends (back on route, or a recalculation succeeded)
+
+        // A NEW episode later, refused for the exact same reason: must speak again -- a
+        // latch that survived the episode boundary would leave the pilot in total silence
+        // the second time, which is the failure Important 2 exists to close.
+        Assert.True(ReachabilityRefusalGate.ShouldAnnounce(latch, key));
+    }
 }
