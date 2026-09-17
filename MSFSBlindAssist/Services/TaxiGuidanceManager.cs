@@ -300,6 +300,15 @@ public partial class TaxiGuidanceManager : IDisposable
     // vacate.
     private bool _landingExitRouteUnreachable = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
+    // The ReachabilityRefusalGate key for the most recently SPOKEN recalculation
+    // reachability refusal (Navigation.ReachabilityRefusalGate), or null before any refusal
+    // has been spoken for the current route. A reachability verdict is a standing property
+    // of the airport data and the current destination, so without this latch the same
+    // ~20-word AnnounceImmediate refusal repeated every RECALCULATION_COOLDOWN_SEC (15 s)
+    // for as long as the aircraft stayed off-route, cutting off hold-short and
+    // runway-crossing callouts each time. Reset on LoadRoute and StopGuidance so a new
+    // route or a new destination can speak its own first refusal.
+    private string? _lastReachabilityRefusalKey = null;
     private string _lastAnnouncedTaxiway = "";
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
@@ -3423,6 +3432,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
         // instead of inheriting a stale cooldown from the prior session.
         _lastRecalculationTime = DateTime.MinValue;
+        // A new guidance session must be able to speak its own first reachability
+        // refusal, not stay silent because a prior route already spoke an
+        // identically-keyed one (ReachabilityRefusalGate).
+        _lastReachabilityRefusalKey = null;
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;

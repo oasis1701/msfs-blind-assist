@@ -127,6 +127,10 @@ public partial class TaxiGuidanceManager
             // Cleared for every load, so a failed load can never leave the previous route's
             // unmapped-start warning for the form or the one-shot to speak.
             LastRouteUnmappedStartWarning = null;
+            // A new route/destination must be able to speak its own first recalculation
+            // reachability refusal (ReachabilityRefusalGate), not stay silent because the
+            // PREVIOUS route already spoke an identically-keyed one.
+            _lastReachabilityRefusalKey = null;
 
             // Store lineup target data (runway threshold or gate position) for lineup phase
             _isRunwayLineup = isRunwayDestination;
@@ -1120,7 +1124,18 @@ public partial class TaxiGuidanceManager
                 {
                     _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
                                       $"no start node ac={lat:F6},{lon:F6}");
-                    _announcer.AnnounceImmediate(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
+                    // ReachabilityRefusalGate: this verdict is a standing property of the
+                    // airport data and the current destination, so it refuses IDENTICALLY
+                    // every RECALCULATION_COOLDOWN_SEC cycle for as long as the aircraft
+                    // stays off this destination's network. Speak it once, not every 15 s —
+                    // an unlatched AnnounceImmediate here used to cut off hold-short and
+                    // runway-crossing callouts on every retry.
+                    string refusalKey = ReachabilityRefusalGate.KeyFor(recalcReachability, _destinationName, "");
+                    if (ReachabilityRefusalGate.ShouldAnnounce(_lastReachabilityRefusalKey, refusalKey))
+                    {
+                        _lastReachabilityRefusalKey = refusalKey;
+                        _announcer.AnnounceImmediate(RouteReachabilityMessages.RecalculationRefusedDestination(_destinationName));
+                    }
                 }
                 return;
             }
@@ -1182,11 +1197,21 @@ public partial class TaxiGuidanceManager
                 // route being flown (unlike LoadRoute's rollback above), so it gets its own
                 // "Off route. Unable to recalculate." lead rather than CrossesUnnamedRunway's
                 // load-time "No taxi route." — see RecalculationRefusedUnnamedRunway's own doc.
-                _announcer.AnnounceImmediate(string.IsNullOrEmpty(firstLeg.RunwayDesignator)
-                    ? RouteReachabilityMessages.RecalculationRefusedUnnamedRunway()
-                    : destinationOffNetwork
-                        ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
-                        : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
+                //
+                // ReachabilityRefusalGate: the touched runway is a standing fact about this
+                // destination from this disconnected position, so it refuses IDENTICALLY every
+                // recalculation cycle — speak it once, not every RECALCULATION_COOLDOWN_SEC.
+                string refusalKey = ReachabilityRefusalGate.KeyFor(
+                    recalcReachability, _destinationName, firstLeg.RunwayDesignator);
+                if (ReachabilityRefusalGate.ShouldAnnounce(_lastReachabilityRefusalKey, refusalKey))
+                {
+                    _lastReachabilityRefusalKey = refusalKey;
+                    _announcer.AnnounceImmediate(string.IsNullOrEmpty(firstLeg.RunwayDesignator)
+                        ? RouteReachabilityMessages.RecalculationRefusedUnnamedRunway()
+                        : destinationOffNetwork
+                            ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
+                            : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
+                }
                 return;
             }
             // The recalculated route starts with an unmapped leg, the case LoadRoute warns about, but a
