@@ -390,9 +390,13 @@ public partial class TaxiGuidanceManager
                     // A refused Calculate mid-taxi must leave the route currently being flown untouched
                     // (see the capture above).
                     RestoreLoadRouteRollback(rollback);
-                    return destinationOffNetwork
-                        ? RouteReachabilityMessages.DestinationLegCrossesRunway(destinationName, firstLeg.RunwayDesignator)
-                        : RouteReachabilityMessages.FirstLegCrossesRunway(firstLeg.RunwayDesignator);
+                    // A touched runway with no designator (both ends unnamed) must never speak a
+                    // sentence with a hole where the runway name belongs.
+                    return string.IsNullOrEmpty(firstLeg.RunwayDesignator)
+                        ? RouteReachabilityMessages.CrossesUnnamedRunway()
+                        : destinationOffNetwork
+                            ? RouteReachabilityMessages.DestinationLegCrossesRunway(destinationName, firstLeg.RunwayDesignator)
+                            : RouteReachabilityMessages.FirstLegCrossesRunway(firstLeg.RunwayDesignator);
                 }
                 if (destinationOffNetwork)
                 {
@@ -1171,9 +1175,13 @@ public partial class TaxiGuidanceManager
                 _guidanceLog.Info($"Reachability: recalc refused dest=\"{_destinationName}\" class={recalcReachability} " +
                                   $"first leg crosses runway {firstLeg.RunwayDesignator} gapM={firstLeg.GapMeters:F0} " +
                                   $"ac={lat:F6},{lon:F6}");
-                _announcer.AnnounceImmediate(destinationOffNetwork
-                    ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
-                    : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
+                // A touched runway with no designator (both ends unnamed) must never speak a
+                // sentence with a hole where the runway name belongs.
+                _announcer.AnnounceImmediate(string.IsNullOrEmpty(firstLeg.RunwayDesignator)
+                    ? RouteReachabilityMessages.CrossesUnnamedRunway()
+                    : destinationOffNetwork
+                        ? RouteReachabilityMessages.RecalculationRefusedDestinationRunway(_destinationName, firstLeg.RunwayDesignator)
+                        : RouteReachabilityMessages.RecalculationRefusedRunway(firstLeg.RunwayDesignator));
                 return;
             }
             // The recalculated route starts with an unmapped leg, the case LoadRoute warns about, but a

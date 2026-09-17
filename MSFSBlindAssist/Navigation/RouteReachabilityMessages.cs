@@ -65,6 +65,17 @@ public static class RouteReachabilityMessages
         $"Off route. Unable to recalculate. The way to {SpokenDestinationName(destinationName)} crosses runway {runwayDesignator}.";
 
     /// <summary>
+    /// The straight way crosses a runway whose centerline carries no designator at either end.
+    /// SegmentTouchesPavement still reports the crossing — the geometry is real, and a bridge or
+    /// unmapped leg over it must still be refused — but with an empty designator, and a sentence
+    /// built around that would have a hole where the runway name belongs ("...crosses runway.").
+    /// Every crosses-runway refusal in this class falls back to this generic wording instead,
+    /// whichever context (a first leg, a destination leg, or a recalculation) hit it.
+    /// </summary>
+    public static string CrossesUnnamedRunway() =>
+        "No taxi route. The way crosses a runway that isn't named in this database.";
+
+    /// <summary>
     /// One utterance for the start of guidance: the unmapped-leg warning first, then the route-start
     /// turn cue, so the direction to turn is the last thing heard. Null when there is nothing to say.
     /// Consecutive announcements stomp each other in this app; never speak the two separately.

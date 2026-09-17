@@ -104,6 +104,17 @@ public class RouteReachabilityMessagesTests
             RouteReachabilityMessages.RecalculationRefusedDestinationRunway("Parking 40", "13"));
     }
 
+    [Fact]
+    public void The_unnamed_runway_refusal_names_no_runway()
+    {
+        // SegmentTouchesPavement can return true with an empty designator when the only touched
+        // centerline has no name at either end. This is the one refusal every crosses-runway call
+        // site falls back to instead of composing a sentence with a hole in it.
+        Assert.Equal(
+            "No taxi route. The way crosses a runway that isn't named in this database.",
+            RouteReachabilityMessages.CrossesUnnamedRunway());
+    }
+
     [Theory]
     [InlineData("B 18R - Gate Heavy, Jetway", "B 18R")]
     [InlineData("A 24A - Gate Medium, also A24 (online)", "A 24A")]

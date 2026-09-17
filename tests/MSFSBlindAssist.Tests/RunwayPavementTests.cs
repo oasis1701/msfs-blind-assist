@@ -197,4 +197,50 @@ public class RunwayPavementTests
         Assert.True(touches);
         Assert.Equal("09L", designator);
     }
+
+    // ---- Unnamed runways must never name a refusal (they must still be TOUCHED) --------------
+
+    [Fact]
+    public void An_unnamed_runway_nearer_the_start_does_not_block_a_named_one_farther_along()
+    {
+        // Two parallel east-west runways, 300 m apart. The leg crosses the UNNAMED one first
+        // (100 m from `a`) and the NAMED one second (400 m from `a`). Mirrors the "nearer
+        // crossing wins" test above, except the nearer one this time has no designator at
+        // either end — a naive "nearest touch always wins" pick (the pre-fix behaviour) leaves
+        // designator blank instead of falling through to the named runway behind it.
+        //
+        // Lon 500 (not the runway's own midpoint, 1500 of its 3000 m length) keeps NameAt's
+        // near/far pick well clear of its own tie-break boundary — at the exact midpoint two
+        // independently-projected RunwayShapes (this one at north 0, the named one at north 300)
+        // can legitimately disagree by float noise on which side of "along <= length / 2" a point
+        // falls, which is a projection-precision detail this test has nothing to do with.
+        var unnamed = RunwayFixture.EastWest(name1: "", name2: "");
+        var named = RunwayFixture.EastWest(name1: "09R", name2: "27R", northM: 300.0);
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { unnamed, named };
+
+        bool touches = RunwayPavement.SegmentTouchesPavement(
+            RunwayFixture.Lat(-100.0), RunwayFixture.Lon(500.0),
+            RunwayFixture.Lat(400.0), RunwayFixture.Lon(500.0),
+            centerlines, out string designator);
+
+        Assert.True(touches);
+        Assert.Equal("09R", designator);
+    }
+
+    [Fact]
+    public void Touching_only_an_unnamed_runway_still_refuses_but_names_nothing()
+    {
+        // The geometry is real (a bridge or first leg across it must still be refused), but with
+        // nothing to call it, the designator comes back empty rather than a stale/wrong name.
+        var unnamed = RunwayFixture.EastWest(name1: "", name2: "");
+        var centerlines = new List<TaxiGraph.RunwayCenterline> { unnamed };
+
+        bool touches = RunwayPavement.SegmentTouchesPavement(
+            RunwayFixture.Lat(40.0), RunwayFixture.Lon(1500.0),
+            RunwayFixture.Lat(-40.0), RunwayFixture.Lon(1500.0),
+            centerlines, out string designator);
+
+        Assert.True(touches);
+        Assert.Equal("", designator);
+    }
 }

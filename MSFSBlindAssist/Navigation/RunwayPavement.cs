@@ -40,12 +40,17 @@ public static class RunwayPavement
     /// runway's half-width of it anywhere along its length. The minimum distance between two
     /// non-crossing segments is the smallest of the four clamped endpoint-to-segment distances.
     /// </summary>
-    /// <param name="designator">The touched runway whose contact is NEAREST a along the
+    /// <param name="designator">The touched NAMED runway whose contact is NEAREST a along the
     /// segment — where the leg crosses that runway's centreline, the distance to the
     /// crossing point; otherwise the distance to the point on the leg closest to that
     /// centreline segment. Named via <see cref="RunwayShape.NameAt"/> (the end nearer the
     /// segment's midpoint, falling back to the other end when that one has no name); empty when
-    /// nothing is touched.</param>
+    /// nothing NAMED is touched. An unnamed runway still makes this method return true — see the
+    /// return value — it just never wins the naming, so it can't blank out a named one behind
+    /// it.</param>
+    /// <returns>True when ANY runway is touched, named or not: the geometry is real, and a
+    /// fabricated bridge or an unmapped first leg across it must still be refused even when
+    /// <paramref name="designator"/> comes back empty.</returns>
     public static bool SegmentTouchesPavement(
         double aLat, double aLon, double bLat, double bLon,
         IReadOnlyList<TaxiGraph.RunwayCenterline> centerlines, out string designator)
@@ -90,13 +95,21 @@ public static class RunwayPavement
                     distAToCl, distBToCl, distCl1ToLeg, distCl2ToLeg);
 
             if (alongMetersFromA >= bestAlongMetersFromA) continue;
-            bestAlongMetersFromA = alongMetersFromA;
 
-            // Unchanged: which end names a touched runway — through the runway's own shape, so a
+            // Which end names a touched runway — through the runway's own shape, so a
             // name-swapped pair (AYCH) still speaks the physical threshold, and an end with no
-            // name falls back to the other one instead of always defaulting to Name1.
+            // name falls back to the other one instead of always defaulting to Name1. A
+            // centerline with NO name at either end must never win the naming — exactly
+            // TaxiGraph.MatchHoldShortRunwayName's own "unnamed centerline — skip" rule — or a
+            // nearer unnamed runway blanks out a farther named one this leg also touches.
+            // bestAlongMetersFromA only advances past this point, so that farther named runway
+            // still gets its turn on the next iteration.
             double midLat = (aLat + bLat) * 0.5, midLon = (aLon + bLon) * 0.5;
-            designator = shape.NameAt(shape.Project(midLat, midLon).Along);
+            string name = shape.NameAt(shape.Project(midLat, midLon).Along);
+            if (string.IsNullOrEmpty(name)) continue; // unnamed centerline — skip
+
+            bestAlongMetersFromA = alongMetersFromA;
+            designator = name;
         }
 
         return found;
