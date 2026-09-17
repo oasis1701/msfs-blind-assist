@@ -1825,12 +1825,27 @@ public class TaxiAssistForm : Form
     /// than an empty box: nothing distinguishes last route's summary from one that was
     /// actually just built. Every exit that leaves the pilot with no route comes
     /// through here, so the box holds either a real route or the reason there isn't
-    /// one — never a route that was not built.</summary>
-    public void ShowRouteFailure(string reason)
+    /// one — never a route that was not built.
+    ///
+    /// <para><paramref name="keepSummary"/> is the exception PR #238's review found (Task 7
+    /// Defect B): a reachability refusal from <c>TaxiGuidanceManager.LoadRoute</c> now rolls
+    /// back and leaves the PREVIOUS route still live (see <c>RestoreLoadRouteRollback</c>),
+    /// so the pilot IS still flying a route even though this Calculate attempt failed. Wiping
+    /// the box in that case destroys the only re-readable record of that live route's
+    /// clearance, hold-shorts and length advisory — worse than the staleness this method
+    /// exists to prevent, because the route it would be discarding isn't stale, it's the one
+    /// currently being flown. The caller decides this from the manager
+    /// (<c>TaxiGuidanceManager.CurrentRoute != null</c>), never by pattern-matching the error
+    /// string — a guess here is exactly the kind of silent mismatch this whole box exists to
+    /// rule out. Default <c>false</c> keeps every other caller's behaviour unchanged: the
+    /// reason still replaces the box for every failure that leaves no route behind.</para>
+    /// </summary>
+    public void ShowRouteFailure(string reason, bool keepSummary = false)
     {
         if (string.IsNullOrWhiteSpace(reason)) return;
         lblStatus.Text = reason;
-        txtRouteSummary.Text = reason;
+        if (!keepSummary)
+            txtRouteSummary.Text = reason;
     }
 
     /// <summary>Puts every route-shaping control an import does not itself set back to
@@ -4270,7 +4285,11 @@ public class TaxiAssistForm : Form
             if (progError != null)
             {
                 _announcer.AnnounceImmediate(progError);
-                ShowRouteFailure(progError);
+                // Same LoadRoute call, same reachability rollback as the main Calculate path
+                // below -- a refused progressive leg can leave the PREVIOUS route still live
+                // (RestoreLoadRouteRollback), so the summary box must not be overwritten with
+                // the failure reason in that case (see ShowRouteFailure's own doc).
+                ShowRouteFailure(progError, keepSummary: _guidanceManager.CurrentRoute != null);
                 return;
             }
 
@@ -4447,7 +4466,13 @@ public class TaxiAssistForm : Form
             // and did not get, and the abort's own reason follows it.
             AnnounceCalculateAbort(
                 backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
-            ShowRouteFailure(error);
+            // A reachability refusal rolls back and leaves the PREVIOUS route still live
+            // (TaxiGuidanceManager.RestoreLoadRouteRollback) -- the pilot IS still flying a
+            // route even though this Calculate failed, so the summary box must keep showing
+            // it rather than being overwritten with the failure reason (PR #238 review, Task
+            // 7 Defect B). Decided from the manager's own live-route state, never guessed
+            // from the error string.
+            ShowRouteFailure(error, keepSummary: _guidanceManager.CurrentRoute != null);
             return;
         }
 

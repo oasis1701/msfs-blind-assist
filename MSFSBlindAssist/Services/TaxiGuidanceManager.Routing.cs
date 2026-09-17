@@ -293,12 +293,25 @@ public partial class TaxiGuidanceManager
             {
                 // A destination off the network the aircraft is on, with no start node in range: name it,
                 // instead of the generic message, and leave the route currently being flown untouched.
-                if (reachability == ReachabilityClass.DestinationNotConnected)
+                //
+                // The rollback below must fire for BOTH non-Unchanged reachability classes, not only
+                // DestinationNotConnected. It protects the SURVIVING route/destination this LoadRoute
+                // call was about to overwrite -- state that has nothing to do with which reachability
+                // class the NEW (refused) destination fell into. Restricting it to DestinationNotConnected
+                // left a LeavingUnconnectedPosition refusal (aircraft on a disconnected position, no
+                // main-network node within range) with _destinationNodeId/_isRunwayLineup/_hasLineupTarget
+                // still pointing at the just-refused destination while _route stayed the OLD route: the
+                // next off-route event then silently re-routed to the refused destination, and a surviving
+                // runway route could no longer reach its lineup phase (PR #238 review, Task 7 Defect A).
+                // Only DestinationNotConnected gets the NAMED message -- LeavingUnconnectedPosition still
+                // falls through to the generic one below, unchanged from before this fix.
+                if (reachability != ReachabilityClass.Unchanged)
                 {
                     _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
                                       $"no start node ac={aircraftLat:F6},{aircraftLon:F6}");
                     RestoreLoadRouteRollback(rollback);
-                    return RouteReachabilityMessages.DestinationNotConnected(destinationName);
+                    if (reachability == ReachabilityClass.DestinationNotConnected)
+                        return RouteReachabilityMessages.DestinationNotConnected(destinationName);
                 }
                 return "Could not find a nearby taxiway node.";
             }
@@ -350,14 +363,18 @@ public partial class TaxiGuidanceManager
 
             if (route == null || route.Segments.Count == 0)
             {
-                // A destination off the network the aircraft is on with no buildable route: the same named
-                // refusal, and the same rollback, as the no-start-node case above.
-                if (reachability == ReachabilityClass.DestinationNotConnected)
+                // A destination off the network the aircraft is on with no buildable route: the same
+                // rollback as the no-start-node case above, for the same reason and for BOTH non-Unchanged
+                // reachability classes (PR #238 review, Task 7 Defect A) -- only DestinationNotConnected
+                // gets the named refusal; LeavingUnconnectedPosition still falls through to the generic
+                // message below, unchanged from before this fix.
+                if (reachability != ReachabilityClass.Unchanged)
                 {
                     _guidanceLog.Info($"Reachability: refused dest=\"{destinationName}\" class={reachability} " +
                                       $"no route ac={aircraftLat:F6},{aircraftLon:F6}");
                     RestoreLoadRouteRollback(rollback);
-                    return RouteReachabilityMessages.DestinationNotConnected(destinationName);
+                    if (reachability == ReachabilityClass.DestinationNotConnected)
+                        return RouteReachabilityMessages.DestinationNotConnected(destinationName);
                 }
                 return "Could not calculate a route to the destination.";
             }
