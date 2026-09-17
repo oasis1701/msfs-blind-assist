@@ -582,6 +582,11 @@ public partial class TaxiGuidanceManager
             _crossingAnnounced = false;
             _lastCrossingNodeId = -1;
             _lastAnnouncedTaxiway = "";
+            // A deferred taxiway-change name from the PREVIOUS route must never survive
+            // into this one -- it names a segment on a route that no longer exists, so
+            // FlushPendingTaxiwayAnnouncement's "is it still current" check could
+            // otherwise pass by coincidence against the new route's own segment.
+            _pendingTaxiwayAnnouncement = null;
             _headingErrorInitialized = false;
             _initialTurnCueAnnounced = false;
             // Composed here, not on the first taxiing frame, so the form can fold it into
@@ -975,12 +980,7 @@ public partial class TaxiGuidanceManager
             _lastSegmentAdvanceTime = DateTime.UtcNow;
 
             var newSeg = _route.Segments[_currentSegmentIndex];
-            if (!string.IsNullOrEmpty(newSeg.TaxiwayName) &&
-                !newSeg.TaxiwayName.Equals(_lastAnnouncedTaxiway, StringComparison.OrdinalIgnoreCase))
-            {
-                AnnounceInstruction($"Taxiway {newSeg.TaxiwayName}.");
-                _lastAnnouncedTaxiway = newSeg.TaxiwayName;
-            }
+            AnnounceOrDeferTaxiwayChange(newSeg.TaxiwayName);
 
             _approachAnnounced = false;
             _turnImminentAnnounced = false;
@@ -1449,13 +1449,73 @@ public partial class TaxiGuidanceManager
         }
 
         var newSeg = _route.Segments[_currentSegmentIndex];
-        string newTaxiway = newSeg.TaxiwayName;
-        if (!string.IsNullOrEmpty(newTaxiway) &&
-            !newTaxiway.Equals(_lastAnnouncedTaxiway, StringComparison.OrdinalIgnoreCase))
+        AnnounceOrDeferTaxiwayChange(newSeg.TaxiwayName);
+    }
+
+    /// <summary>
+    /// The ONE taxiway-change decision point both <see cref="AdvanceToNearestSegment"/> and
+    /// <see cref="AdvanceSegment"/> go through, so the two call sites cannot drift (PR #238
+    /// review, Task 5 Defect B). Classifies via <see cref="TaxiwayChangeGate.Classify"/>:
+    /// skips a repeat, speaks immediately once the start-warning chatter window
+    /// (<c>_startChatterSuppressUntil</c>) is closed -- byte-identical to this method's
+    /// pre-fix behaviour -- or, while the window is open, DEFERS instead of announcing, so
+    /// the callout can no longer cut off the safety-critical start warning the window
+    /// exists to protect. <see cref="FlushPendingTaxiwayAnnouncement"/> (called every frame
+    /// from <c>UpdatePosition</c>) delivers a deferred name once the window closes, or
+    /// discards it silently if the route has since moved past it.
+    ///
+    /// <para><c>_lastAnnouncedTaxiway</c> is updated the moment a real change is recognised
+    /// -- whether spoken now or deferred -- never only once actually spoken. That is what
+    /// keeps a second advance onto the SAME (still-pending) taxiway from re-deferring a
+    /// redundant duplicate, and it is the same instant the pre-fix code updated it, so the
+    /// dedupe semantics documented on that field are unchanged.</para>
+    /// </summary>
+    private void AnnounceOrDeferTaxiwayChange(string? newTaxiwayName)
+    {
+        bool windowOpen = DateTime.UtcNow < _startChatterSuppressUntil;
+        switch (TaxiwayChangeGate.Classify(newTaxiwayName, _lastAnnouncedTaxiway, windowOpen))
         {
-            AnnounceInstruction($"Taxiway {newTaxiway}.");
-            _lastAnnouncedTaxiway = newTaxiway;
+            case TaxiwayChangeGate.Decision.Skip:
+                return;
+
+            case TaxiwayChangeGate.Decision.SpeakNow:
+                AnnounceInstruction($"Taxiway {newTaxiwayName}.");
+                _lastAnnouncedTaxiway = newTaxiwayName!;
+                // Supersedes anything still waiting from an earlier deferral: the pilot is
+                // about to hear the newest name directly, so a stale intermediate one must
+                // never surface later out of order.
+                _pendingTaxiwayAnnouncement = null;
+                return;
+
+            case TaxiwayChangeGate.Decision.Defer:
+                _pendingTaxiwayAnnouncement = newTaxiwayName;
+                _lastAnnouncedTaxiway = newTaxiwayName!;
+                return;
         }
+    }
+
+    /// <summary>
+    /// Delivers a taxiway-change name <see cref="AnnounceOrDeferTaxiwayChange"/> deferred
+    /// while the start-warning chatter window was open, once that window has closed --
+    /// called every frame from <c>UpdatePosition</c> (cheap no-op when nothing is pending).
+    /// <paramref name="currentTaxiwayName"/> is read fresh from the CURRENT segment at flush
+    /// time, never assumed equal to the pending value: a recalculation can replace <c>_route</c>
+    /// and reset <c>_currentSegmentIndex</c> without going through
+    /// <see cref="AnnounceOrDeferTaxiwayChange"/> at all, so the deferred name can go stale
+    /// without anything else clearing it. A stale name is discarded SILENTLY (per the fix's
+    /// resolution: announcing the wrong taxiway is worse than staying quiet about a change
+    /// the pilot will hear about anyway the next time the taxiway actually changes, or never
+    /// needed to hear about because the aircraft stayed on the one already announced).
+    /// </summary>
+    private void FlushPendingTaxiwayAnnouncement(string? currentTaxiwayName)
+    {
+        if (_pendingTaxiwayAnnouncement == null) return;
+        if (DateTime.UtcNow < _startChatterSuppressUntil) return; // still waiting
+
+        string pending = _pendingTaxiwayAnnouncement;
+        _pendingTaxiwayAnnouncement = null; // one-shot delivery either way
+        if (TaxiwayChangeGate.IsStillCurrent(pending, currentTaxiwayName))
+            AnnounceInstruction($"Taxiway {pending}.");
     }
 
     // Bounds on the detour a holding-point pin may add. A pinned route is EXPECTED to be

@@ -108,4 +108,24 @@ public static class RouteReachabilityMessages
         if (hasWarning) return unmappedStartWarning;
         return hasCue ? turnCue : null;
     }
+
+    /// <summary>
+    /// The start-of-guidance utterance, accounting for whether a route-reach warning
+    /// (<c>LastRouteReachWarning</c>) also exists for this route. The turn cue is moot when a
+    /// reach warning exists -- the route never reaches its runway, so the pilot will reprogram,
+    /// and the cue would additionally stomp the warning if spoken alongside it -- so it is
+    /// dropped entirely in that case. The unmapped-start warning is a DIFFERENT kind of fact: a
+    /// safety-relevant statement about ground the aircraft is about to taxi across unmapped, and
+    /// it must survive a reach warning rather than being dropped with the cue.
+    ///
+    /// <para>PR #238 review, Task 5 Defect A: the one-shot in <c>TaxiGuidanceManager</c> used to
+    /// consume (clear) BOTH the cue and the warning unconditionally, compose the joined
+    /// utterance via <see cref="JoinStartSpeech"/>, and then drop the WHOLE result -- warning
+    /// included -- behind a <c>LastRouteReachWarning == null</c> guard that was written only to
+    /// suppress the cue. On every path that does not run <c>TaxiAssistForm</c>'s standstill block
+    /// (Progressive Taxi, landing-exit handoffs, <c>announceSummary:false</c>) nothing else speaks
+    /// either message, so the warning was silently lost rather than merely reordered.</para>
+    /// </summary>
+    public static string? ComposeStartSpeech(string? unmappedStartWarning, string? turnCue, bool reachWarningPresent) =>
+        JoinStartSpeech(unmappedStartWarning, reachWarningPresent ? null : turnCue);
 }

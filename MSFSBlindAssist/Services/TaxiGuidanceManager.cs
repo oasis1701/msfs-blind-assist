@@ -310,6 +310,14 @@ public partial class TaxiGuidanceManager : IDisposable
     // route or a new destination can speak its own first refusal.
     private string? _lastReachabilityRefusalKey = null;
     private string _lastAnnouncedTaxiway = "";
+    // A taxiway-change name deferred by TaxiwayChangeGate while the start-warning chatter
+    // window (_startChatterSuppressUntil) was open, waiting to be spoken -- or discarded
+    // silently -- once it closes. Null whenever nothing is waiting. Set only by
+    // AnnounceOrDeferTaxiwayChange (the one shared helper both AdvanceToNearestSegment and
+    // AdvanceSegment go through) and consumed only by FlushPendingTaxiwayAnnouncement, which
+    // UpdatePosition calls every frame. Reset on LoadRoute and StopGuidance so a stale
+    // deferred name from one route can never leak into (and be spoken over) the next.
+    private string? _pendingTaxiwayAnnouncement = null;
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
@@ -2283,10 +2291,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // starts with the aircraft pointing well away from the route's first
         // segment — the normal post-pushback case — a tone alone can't convey
         // "turn around, which way." Speak a one-shot direction cue (sign matches
-        // the tone). Skipped when the route doesn't reach its runway
-        // (LastRouteReachWarning set): that warning is the priority — the form
-        // speaks it after StartGuidance, and a turn cue here would be moot (the
-        // pilot will reprogram) AND would stomp the warning.
+        // the tone). The cue (not the unmapped-start warning below) is dropped when
+        // the route doesn't reach its runway (LastRouteReachWarning set): that
+        // warning is the priority — the form speaks it after StartGuidance, and a
+        // turn cue here would be moot (the pilot will reprogram) AND would stomp it.
         if (!_initialTurnCueAnnounced)
         {
             _initialTurnCueAnnounced = true;
@@ -2296,15 +2304,33 @@ public partial class TaxiGuidanceManager : IDisposable
             // have nobody else to say it. Never recomposed here: two composers would be two
             // wordings and, worse, two chances to disagree on left versus right.
             //
-            // Still suppressed entirely when the route does not reach its runway: that
-            // warning is the priority, the form speaks it after StartGuidance, and a turn
-            // cue would be moot (the pilot will reprogram) AND would stomp it.
+            // Consumed UNCONDITIONALLY (so the per-frame one-shot can never repeat it
+            // behind the form's back) regardless of whether a reach warning drops it from
+            // what actually gets spoken.
             string? cue = ConsumeInitialTurnCue();
-            string? unmappedStart = ConsumeUnmappedStartWarning();
-            // One utterance: the unmapped-start warning (if any), then the turn cue. Never two calls.
-            string? startSpeech = RouteReachabilityMessages.JoinStartSpeech(unmappedStart, cue);
-            if (startSpeech != null && LastRouteReachWarning == null)
+            // The unmapped-start warning is a DIFFERENT kind of fact from the cue -- a
+            // safety-relevant statement about ground the aircraft is about to taxi across
+            // unmapped -- and must survive a reach warning rather than being dropped with
+            // the cue (ComposeStartSpeech's job). It is read here WITHOUT being consumed
+            // yet: only once we know it is actually about to be spoken is it taken
+            // (cleared), so a route with nothing to say at all can never silently discard a
+            // warning nobody else will ever say.
+            //
+            // PR #238 review, Task 5 Defect A: this used to consume (clear) BOTH the cue and
+            // the warning unconditionally via JoinStartSpeech, then drop the WHOLE result --
+            // warning included -- behind a `LastRouteReachWarning == null` guard that was
+            // written only to suppress the moot cue. On every path that doesn't run
+            // TaxiAssistForm's standstill block (Progressive Taxi, landing-exit handoffs,
+            // announceSummary:false) nothing else speaks either message, so the warning was
+            // silently lost instead of merely reordered.
+            bool reachWarningPresent = LastRouteReachWarning != null;
+            string? startSpeech = RouteReachabilityMessages.ComposeStartSpeech(
+                LastRouteUnmappedStartWarning, cue, reachWarningPresent);
+            if (startSpeech != null)
+            {
+                ConsumeUnmappedStartWarning();
                 AnnounceInstruction(startSpeech);
+            }
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
@@ -2473,6 +2499,12 @@ public partial class TaxiGuidanceManager : IDisposable
                 nextIsTurnDiag, targetLat, targetLon,
                 headingError, _smoothedHeadingError);
         }
+
+        // Deliver a taxiway-change name AnnounceOrDeferTaxiwayChange deferred while the
+        // start-warning chatter window was open, now that it may have closed. Cheap no-op
+        // when nothing is pending; must run every frame, not only on a segment advance, or
+        // a deferred name could sit unspoken long after the window closes.
+        FlushPendingTaxiwayAnnouncement(currentSeg.TaxiwayName);
 
         // Check for upcoming announcements
         CheckUpcomingAnnouncements(distToTarget, currentSeg, announcementClearRadius);
@@ -3426,6 +3458,10 @@ public partial class TaxiGuidanceManager : IDisposable
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _lastAnnouncedTaxiway = "";
+        // A deferred taxiway-change name from this session must never survive into the
+        // next one and be spoken (or wrongly discarded as stale) against a route it was
+        // never about.
+        _pendingTaxiwayAnnouncement = null;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
         _lastIncursionWarnedNodeId = -1;

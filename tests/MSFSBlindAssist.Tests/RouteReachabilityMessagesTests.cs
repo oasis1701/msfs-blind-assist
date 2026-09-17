@@ -77,6 +77,46 @@ public class RouteReachabilityMessagesTests
         Assert.Null(RouteReachabilityMessages.JoinStartSpeech(null, ""));
     }
 
+    // ComposeStartSpeech: the turn cue is moot when a reach warning exists (the route
+    // never reaches its runway, so the pilot will reprogram) -- but the unmapped-start
+    // warning is a safety-relevant fact about ground already taxied and must never be
+    // suppressed for that reason. PR #238 review, Task 5 Defect A: the one-shot in
+    // TaxiGuidanceManager used to consume (clear) the warning unconditionally and then
+    // drop the whole utterance -- warning included -- behind a `LastRouteReachWarning ==
+    // null` guard, silently losing it on any path that doesn't run TaxiAssistForm's
+    // standstill block (Progressive Taxi, landing-exit handoffs, announceSummary:false).
+    [Fact]
+    public void Compose_start_speech_lets_the_warning_survive_a_reach_warning()
+    {
+        Assert.Equal("W.", RouteReachabilityMessages.ComposeStartSpeech(
+            unmappedStartWarning: "W.", turnCue: "C.", reachWarningPresent: true));
+    }
+
+    [Fact]
+    public void Compose_start_speech_drops_the_cue_when_a_reach_warning_is_present()
+    {
+        // No warning, just a cue, with a reach warning present: the cue alone must be
+        // fully dropped (null), not merely reordered after something else.
+        Assert.Null(RouteReachabilityMessages.ComposeStartSpeech(
+            unmappedStartWarning: null, turnCue: "C.", reachWarningPresent: true));
+    }
+
+    [Fact]
+    public void Compose_start_speech_speaks_both_when_there_is_no_reach_warning()
+    {
+        Assert.Equal("W. C.", RouteReachabilityMessages.ComposeStartSpeech(
+            unmappedStartWarning: "W.", turnCue: "C.", reachWarningPresent: false));
+    }
+
+    [Fact]
+    public void Compose_start_speech_is_null_when_there_is_nothing_to_say()
+    {
+        Assert.Null(RouteReachabilityMessages.ComposeStartSpeech(
+            unmappedStartWarning: null, turnCue: null, reachWarningPresent: false));
+        Assert.Null(RouteReachabilityMessages.ComposeStartSpeech(
+            unmappedStartWarning: null, turnCue: null, reachWarningPresent: true));
+    }
+
     [Fact]
     public void The_destination_runway_refusal_names_the_destination_and_the_runway()
     {
