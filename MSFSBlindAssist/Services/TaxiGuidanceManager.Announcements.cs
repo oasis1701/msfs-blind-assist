@@ -19,12 +19,23 @@ public partial class TaxiGuidanceManager
             // armed by StartGuidance whenever a route-reach or unmapped-start warning
             // exists): this callout would otherwise cut off a warning spoken by the
             // form's standstill utterance or the first-frame one-shot at a standstill.
-            // Wait rather than skip -- don't set _approachAnnounced, so it still fires
-            // normally on the first frame after the window closes if it still applies.
-            // TryAnnounceCurve and the advance-notice block below wait the same way;
-            // "turn now" already waits on _approachAnnounced so it needs no extra gate.
+            // But holding is only safe when the callout can still be delivered once the
+            // window closes -- StartWarningChatterGate.ShouldHold projects the aircraft's
+            // ground speed forward to that moment and returns false (speak now) when it
+            // would not. This callout's own target is the destination itself, so on any
+            // route shorter than APPROACH_ANNOUNCE_DISTANCE_M (100m) -- exactly the short
+            // bridged-stand routes PR #235 creates -- the old raw time check lost "X
+            // ahead." outright (PR #238 review finding). Don't set _approachAnnounced
+            // when holding, so it still fires normally on the first frame after the
+            // window closes if it still applies.
+            // TryAnnounceCurve and the advance-notice block below hold the same way;
+            // "turn now" already waits on _approachAnnounced so it needs no extra gate,
+            // but AdvanceSegment clears that latch (and _turnImminentAnnounced) the
+            // instant the junction is passed -- which is how a lost advance notice used
+            // to cost "turn now" too, permanently rather than just late.
             if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
-                DateTime.UtcNow >= _startChatterSuppressUntil)
+                !StartWarningChatterGate.ShouldHold(
+                    DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, _lastGroundSpeedKts))
             {
                 AnnounceInstruction($"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
@@ -88,9 +99,12 @@ public partial class TaxiGuidanceManager
         // Advance notice (speed-scaled). Terse: direction + taxiway + angle for sharp.
         // Speed-slow warning is owned by CheckSpeedWarnings — don't duplicate it here.
         // Held during the start-warning grace window (see the comment above in this
-        // method) so it can't cut off a start warning at a standstill.
+        // method) via the same StartWarningChatterGate, so it can't cut off a start
+        // warning at a standstill AND can't be lost outright when the junction it
+        // describes is close enough to be passed before the window closes.
         if (distToTargetM < approachDist && !_approachAnnounced &&
-            DateTime.UtcNow >= _startChatterSuppressUntil)
+            !StartWarningChatterGate.ShouldHold(
+                DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, _lastGroundSpeedKts))
         {
             string distStr = distToTargetM > 15 ? $"In {FormatDistance(distToTargetM)}, " : "";
             // Direction is computed from the aircraft's CURRENT heading toward the
@@ -141,9 +155,16 @@ public partial class TaxiGuidanceManager
             _currentSegmentIndex >= _route.Segments.Count) return;
 
         // Hold during the start-warning grace window (see the comment in
-        // CheckUpcomingAnnouncements) — return before touching _curveAnnouncedSign so
-        // the cue still fires normally once the window closes.
-        if (DateTime.UtcNow < _startChatterSuppressUntil) return;
+        // CheckUpcomingAnnouncements) via the same StartWarningChatterGate — return
+        // before touching _curveAnnouncedSign so the cue still fires normally once the
+        // window closes. This method has no destination of its own, so its "target" is
+        // the far edge of the curve-detection lookahead, CURVE_SCAN_WINDOW_M: if the
+        // aircraft would already be past that window by the time the grace window
+        // closes, holding would only describe a bend already behind the aircraft, so
+        // fall through and let it announce now instead.
+        if (StartWarningChatterGate.ShouldHold(
+                DateTime.UtcNow, _startChatterSuppressUntil, CURVE_SCAN_WINDOW_M, _lastGroundSpeedKts))
+            return;
 
         var (lats, lons) = RoutePoints();
         double cum = GuidanceGeometry.CumulativeTurnDeg(
