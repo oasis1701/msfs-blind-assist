@@ -367,6 +367,17 @@ taxiway. At the realistic offset the PR is already better than `main` (3 misses 
 against 12). 42,661 of 48,321 runways are narrower than 150 ft, so this affects most of the database —
 and on all of them the strict real-width test is right and `main`'s fixed band was wrong.
 
+**`RunwayShape.MaxPlausibleHalfWidthMeters` (added on `pr235-fixes`) does not disturb this.** That
+cap only narrows a half-width computed from a MALFORMED `runway.width` row (over 400 ft — 105 of the
+database's rows) down toward 200 ft; it never widens a band, and it never moves one toward the old
+fixed 75 ft default this section is about. Every runway in this section's measurement is already far
+under the 400 ft trigger, so the cap is a no-op for the 42,661/48,321-runway population above — §0's
+five derived constants were re-derived against it and all five survive: `VacatedShortAlongTrackFeet`
+(350), `EarlyVacateMaxPassedFeet` (1400) and the 25 m corridor clamp all still descend from the same
+5 m gap in which `halfWidth` cancels; `RunwayClearMarginM` (10) and `DefaultRunwayWidthFeet` (200)
+are untouched by the cap; `RunwayVacateResolver`'s own 75 ft copy and `SameRunwayLateralM` are
+untouched too. Nobody needs to re-derive them again for this change.
+
 **Related, also do not change:** `RouteProgressMeters` returning `0.0` for both "at the route start"
 and "not near this route" (`RouteRunwayCrossings.cs:323`). It reads like a bug, but the 30 m
 `RouteJoinMaxCrossTrackMetres` bound exists so that an aircraft stopped at the KORD 04L hold line,

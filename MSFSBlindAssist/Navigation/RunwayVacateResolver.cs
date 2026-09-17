@@ -228,6 +228,7 @@ public static class RunwayVacateResolver
                 if (e.ToNodeId == prev) continue;
                 if (visited.Contains(e.ToNodeId)) continue;
                 if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TaxiGraph.IsStandBridge(e)) continue;
                 if (!graph.Nodes.TryGetValue(e.ToNodeId, out var cand)) continue;
 
                 // Never step onto ANOTHER runway's pavement — an exit that feeds
@@ -389,6 +390,7 @@ public static class RunwayVacateResolver
             {
                 if (e.ToNodeId == cameFromNodeId) continue;
                 if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TaxiGraph.IsStandBridge(e)) continue;
                 if (!graph.Nodes.TryGetValue(e.ToNodeId, out var cand)) continue;
                 if (IsOnDifferentRunway(graph, cand, runway, runwayHeadingTrue)) continue;
 
@@ -433,6 +435,7 @@ public static class RunwayVacateResolver
             if (e.ToNodeId == cameFrom) continue;
             if (e.DistanceMeters > PastHoldMarginMetres) continue;
             if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+            if (TaxiGraph.IsStandBridge(e)) continue;
             if (!graph.Nodes.TryGetValue(e.ToNodeId, out var cand)) continue;
             double p = progressOn(cand, side);
             if (p > pickProgress) { pick = e.ToNodeId; pickProgress = p; }

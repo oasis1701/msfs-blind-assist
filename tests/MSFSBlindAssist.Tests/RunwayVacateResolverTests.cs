@@ -51,6 +51,17 @@ public class RunwayVacateResolverTests
             Width = 98.0,
         };
 
+    /// <summary>A navdata stand lead-in: connector ("N") to stand ("P") — the shape
+    /// TaxiGraph.BridgeOrphanParkingIslands looks for when reattaching an orphan stub.</summary>
+    private static TaxiPath LeadIn(double connLat, double connLon, double standLat, double standLon)
+        => new TaxiPath
+        {
+            StartLat = connLat, StartLon = connLon,
+            EndLat = standLat, EndLon = standLon,
+            Type = "P", StartType = "N", EndType = "P",
+            Width = 60.0,
+        };
+
     // Lateral offsets in metres east of the runway axis, mirroring EVRA's B.
     private const double JunctionLat = 0.015;                  // mid-runway, on the axis
     private static double Lon(double metres) => metres * DEG_PER_M;
@@ -449,5 +460,87 @@ public class RunwayVacateResolverTests
         Assert.Equal(node, RunwayVacateResolver.ExtendClearOfRunway(null, node, 0, Runway18(), 180.0));
         Assert.Equal(node, RunwayVacateResolver.ExtendClearOfRunway(g, node, 0, null, 180.0));
         Assert.Equal(0, RunwayVacateResolver.ExtendClearOfRunway(g, 0, 0, Runway18(), 180.0));
+    }
+
+    [Fact]
+    public void NeverFollowsAFabricatedStandBridgeOffTheRunway()
+    {
+        // Taxiway B makes one real hop off the runway (junction -> A, 33 m out) and then
+        // dead-ends. An orphan stand stub sits 45 m further east of A — inside TaxiGraph's
+        // 50 m bridge cap — so Build fabricates a StandBridgePathType edge straight from A
+        // onto the stub. Because the stub reads as MORE progress away from the runway axis
+        // than any real taxiway node, the un-fixed greedy walk (and its fallback search)
+        // followed it and handed a just-landed pilot a stand they never chose (original
+        // review finding 5, EDUA).
+        double l1 = JunctionLat - 40.0 * DEG_PER_M;
+        const double ConnectorLonM = 33.0 + 45.0;   // 45 m east of A — inside the 50 m bridge cap
+        const double StandLonM = ConnectorLonM + 30.0;
+
+        var paths = new List<TaxiPath>
+        {
+            // Pads the main component so it is not size-tied with the 2-node island —
+            // ComputeMainComponentId must be unambiguous about which side is "main".
+            Path(JunctionLat, Lon(0), JunctionLat, Lon(-50), "PAD"),
+            Path(JunctionLat, Lon(0), l1, Lon(33), "B"),
+            LeadIn(l1, Lon(ConnectorLonM), l1, Lon(StandLonM)),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        int junction = NodeAtLon(g, 0);
+        int nodeA = NodeAtLon(g, 33);
+        int connector = NodeAtLon(g, ConnectorLonM);
+        int stand = NodeAtLon(g, StandLonM);
+
+        // The fixture really produced a fabricated bridge, so this cannot pass vacuously.
+        var bridgeEdge = Assert.Single(g.Adjacency[nodeA], e => e.ToNodeId == connector);
+        Assert.Equal(TaxiGraph.StandBridgePathType, bridgeEdge.PathType);
+        Assert.True(TaxiGraph.IsStandBridge(bridgeEdge));
+
+        int dest = RunwayVacateResolver.ExtendClearOfRunway(
+            g, nodeA, junction, Runway18(), 180.0, out _, out double endLateral);
+
+        Assert.NotEqual(connector, dest);
+        Assert.NotEqual(stand, dest);
+        Assert.Equal(nodeA, dest);        // the node the walk reaches with the bridge ignored
+        Assert.Equal(33.0, endLateral, 1);
+    }
+
+    [Fact]
+    public void ExtensionNodePickerNeverExtendsOntoAFabricatedStandBridge()
+    {
+        // A stand stub sits 40 m due east of the exit junction — inside the 50 m bridge cap
+        // — so Build fabricates a bridge from the junction straight onto it. Its bearing
+        // (090, dead east) is a far closer match to the exit's own bearing (090) than the
+        // REAL taxiway B (~140 degrees), so the un-fixed extension-node picker
+        // (LandingExitDestination.FindExitExtensionNode) preferred the fabricated straight
+        // line over the real taxiway.
+        double l1 = JunctionLat - 40.0 * DEG_PER_M;
+        var paths = new List<TaxiPath>
+        {
+            Path(JunctionLat, Lon(0), l1, Lon(33), "B"),
+            // Pads the main component so it is not size-tied with the 2-node island —
+            // ComputeMainComponentId must be unambiguous about which side is "main".
+            Path(JunctionLat, Lon(0), JunctionLat, Lon(-50), "PAD"),
+            LeadIn(JunctionLat, Lon(40), JunctionLat, Lon(70)),
+        };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        int junction = NodeAtLon(g, 0);
+        int nodeA = NodeAtLon(g, 33);
+        int connector = NodeAtLon(g, 40);
+
+        var bridgeEdge = Assert.Single(g.Adjacency[junction], e => e.ToNodeId == connector);
+        Assert.True(TaxiGraph.IsStandBridge(bridgeEdge));
+
+        var exit = new LandingExit
+        {
+            NodeId = junction, TaxiwayName = "B", ExitBearingTrue = 90.0,
+            DistanceFromThresholdFeet = 1000.0, ApronNodeId = -1,
+        };
+
+        int dest = LandingExitDestination.Pick(g, exit, new List<LandingExit> { exit }, out string src);
+
+        Assert.Equal(nodeA, dest);
+        Assert.Equal("ext", src);
     }
 }

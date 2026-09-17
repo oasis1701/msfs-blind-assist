@@ -288,9 +288,6 @@ public partial class TaxiGuidanceManager
     /// route — so they work without one. At handoff time (turnBegun / exitedLaterally),
     /// <see cref="UpdateLandingRollout"/> calls LoadRoute from the live aircraft position
     /// which by then is within the exit's graph component, so that re-route succeeds.
-    ///
-    /// Must be called AFTER a failed <see cref="LoadRoute"/> so that _graph,
-    /// _dataProvider, and _icao are populated for the subsequent handoff re-route.
     /// </summary>
     /// <param name="groundSpeedKts">See <see cref="BeginLandingRollout"/>.</param>
     /// <param name="correction">See <see cref="BeginLandingRollout"/>.</param>
@@ -302,11 +299,25 @@ public partial class TaxiGuidanceManager
         double touchdownLat,
         double touchdownLon,
         UserSettings settings,
+        TaxiGraph? graph,
+        IAirportDataProvider? dataProvider,
+        string icao,
         double groundSpeedKts = 0,
         Navigation.TouchdownRunwayCorrection? correction = null)
     {
         lock (_stateLock)
         {
+            // The caller (LandingExitPlanner.ActivateGuidance) supplies the graph, provider
+            // and ICAO it just used for its own (failed) LoadRoute attempt directly, rather
+            // than this method relying on a prior LoadRoute call having left them populated
+            // as a side effect — a reachability refusal now restores _graph/_dataProvider/
+            // _icao to their PREVIOUS values instead of leaving LoadRoute's failed attempt
+            // in place, so those fields can be null (a fresh session) or another airport's
+            // objects (a rejected recalc) by the time this runs.
+            _graph = graph;
+            _dataProvider = dataProvider;
+            _icao = icao;
+
             // Guarantee the handoff-failure fallback's _route == null invariant.
             // LoadRoute's failure paths leave _route untouched, so a stale value
             // from a prior route (e.g., hand-flown departure that didn't call
@@ -328,12 +339,12 @@ public partial class TaxiGuidanceManager
             // same reset LoadRoute performs.
             ResetLandingExitOutcomeFlags();
 
-            // Precondition: a prior LoadRoute (even one that failed at route
-            // construction) must have populated _graph, _dataProvider, and _icao.
-            // The handoff re-route in UpdateLandingRollout reads these directly.
-            // A null here means the caller skipped the LoadRoute attempt — log
-            // and proceed (geometry-driven callouts and tone still work, but the
-            // handoff re-route will fail until normal taxi guidance kicks in).
+            // Precondition: the caller supplies graph, dataProvider and icao above; the
+            // handoff re-route in UpdateLandingRollout reads the _graph/_dataProvider/_icao
+            // fields those arguments were just assigned to directly. A null/empty argument
+            // here means the caller had nothing to hand off with — log and proceed
+            // (geometry-driven callouts and tone still work, but the handoff re-route will
+            // fail until normal taxi guidance kicks in).
             if (_graph == null || _dataProvider == null || string.IsNullOrEmpty(_icao))
             {
                 RolloutDiag($"BeginLandingRolloutNoGraph precondition not met: " +
