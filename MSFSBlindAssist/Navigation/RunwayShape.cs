@@ -28,9 +28,21 @@ public sealed class RunwayShape
     /// airport's entire main taxi component (19 fs2024 airports have >= 50% of their main network
     /// swallowed this way; KMSP loses 213 of 3891 nodes). 400 ft is above any real runway and
     /// below every malformed row measured, so capping a pavement half-width to it here — where
-    /// <see cref="For"/> derives <c>pavementHalf</c> — repairs the value for every consumer of
-    /// <see cref="RunwayShape"/> at once. A sound runway's width never approaches this, so the cap
-    /// never changes the pavement-usable decision below for one.
+    /// <see cref="For"/> derives <c>pavementHalf</c> — bounds the value for every consumer of
+    /// <see cref="RunwayShape"/> at once, which is what rescues an unbounded case like KMSP's. A
+    /// sound runway's width never approaches this, so the cap never changes the pavement-usable
+    /// decision below for one.
+    ///
+    /// <para>⚠ ZBAT is cited above only as evidence the malformed-width problem is real — it is
+    /// NOT a worked "the cap fixes this airport" example, and re-measurement
+    /// (<c>tools/StandBridgeSweep</c>, 2026-09-17) disproves reading it as one: the cap IS active
+    /// there (capped half-width 60.96 m, down from the uncapped 83.2 m) but all 28 main-component
+    /// nodes STILL read as on-pavement afterward, because ZBAT's own taxi network sits at lateral
+    /// offset 6.6-52.1 m from the centreline — genuinely inside even the narrower, capped band.
+    /// ZBAT was also never a bridging case either way: its graph is a single connected component
+    /// (28 of 28 nodes), so there was no orphan stand-stub island there to bridge before or after
+    /// this cap existed. The cap bounds the unbounded, pathological rows (KMSP's shape) — it
+    /// cannot and does not rescue every tight-clearance apron, and ZBAT's is one it can't.</para>
     /// </summary>
     public const double MaxPlausibleHalfWidthMeters = 400.0 * 0.3048 / 2.0;
 
