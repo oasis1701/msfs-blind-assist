@@ -95,13 +95,29 @@ public class TaxiGraph
     /// fabricated <see cref="StandBridgePathType"/> edge — the mirror of the GCLP S5 defect the
     /// <c>requiredComponentId</c> filter was added for, except here the bridge itself is what
     /// satisfies that filter (bridging merges the stub into the main component). A node like this
-    /// must never be picked as a route START — <see cref="FindNearestNode"/> and
-    /// <see cref="FindNearestNodeInDirection"/> take an <c>excludeBridgeOnlyStandStubs</c> parameter
-    /// for exactly that — or the route opens inside a stand lead-in and crosses the guessed bridge
-    /// line to get out, landing the first steering-tone target in a stand the pilot was never
-    /// cleared into. It stays reachable as a DESTINATION: nothing filters a destination lookup (e.g.
-    /// the gate/deice dropdowns in TaxiAssistForm) on this predicate, and it must not start to —
-    /// reaching that stand is the entire reason the bridge exists.
+    /// must never be picked as a route START — <see cref="FindNearestNode"/>,
+    /// <see cref="FindNearestNodeInDirection"/> and <see cref="FindNearestNodeOnTaxiway"/> all take
+    /// an <c>excludeBridgeOnlyStandStubs</c> parameter for exactly that — or the route opens inside
+    /// a stand lead-in and crosses the guessed bridge line to get out, landing the first
+    /// steering-tone target in a stand the pilot was never cleared into. It stays reachable as a
+    /// DESTINATION: nothing filters a destination lookup (e.g. the gate/deice dropdowns in
+    /// TaxiAssistForm) on this predicate, and it must not start to — reaching that stand is the
+    /// entire reason the bridge exists.
+    ///
+    /// <para><b>The contract for every future route-start picker (PR #238 review, Minor 3):</b> a
+    /// node under this predicate cannot be told apart from a real network node by
+    /// <c>ComponentId</c> alone once bridged, and it is NOT safely excluded by assuming a stand
+    /// lead-in ("P") row is unnamed — measured against the real fs2024 database, 1,810 of 319,004
+    /// "P" rows carry a non-empty name (KNZY 503, KCLT 119, plus LEMG/LEMD/CYVR/EPWR), so a stub's
+    /// node can register on a real taxiway name too, including one a real network node also
+    /// carries. Any method that can hand its return value to a caller which uses it as (or derives)
+    /// an A*/Dijkstra start node — not just the three named above — must add the same
+    /// <c>excludeBridgeOnlyStandStubs</c> opt-in (default <c>false</c>, so destination lookups are
+    /// unaffected unless they explicitly ask) and every call site that feeds a route start must
+    /// pass <c>true</c>. <see cref="SplitEdgeAt"/> is the other half of the contract: a node it
+    /// mints on an edge interior to an already-bridged island inherits membership too, so a search
+    /// that subdivides pavement (<see cref="InsertHoldingPointNodeOnEdge"/>) can't mint an
+    /// unmarked escape hatch.</para>
     /// </summary>
     public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
 
@@ -1001,8 +1017,13 @@ public class TaxiGraph
         int mainSize = -1;
         foreach (var size in sizes.Values)
             if (size > mainSize) mainSize = size;
-        if (mainSize < 0) return -1;
 
+        // Empty-graph contract (PR #238 review, Minor 4): carried by mainId's own initializer,
+        // not by a guard here. When Nodes is empty, sizes is empty too, so the loop above never
+        // runs (mainSize stays -1) and the scan below never runs either (it also iterates
+        // Nodes.Values) — mainId is returned exactly as initialized, -1. A prior "if (mainSize <
+        // 0) return -1" guard here was dead code (mutation-proved: removing it left the full
+        // suite green) that only obscured this.
         int mainId = -1;
         double bestLat = double.MaxValue, bestLon = double.MaxValue;
         foreach (var node in Nodes.Values)
@@ -1324,6 +1345,19 @@ public class TaxiGraph
         };
         if (!string.IsNullOrEmpty(fwd.TaxiwayName))
             node.TaxiwayNames.Add(fwd.TaxiwayName);
+        // Minor 5 (PR #238 review): a holding point can project onto a "P" lead-in edge INTERIOR
+        // to an already-bridged stand-stub island — a bend node on a multi-segment lead-in, where
+        // neither endpoint is Parking-typed (the parking pass stamps only the single nearest node
+        // per spot) and the edge isn't the fabricated bridge itself (Defect B's IsStandBridge skip
+        // only excludes StandBridgePathType, not an ordinary "P" edge), so it is a live candidate
+        // for InsertHoldingPointNodeOnEdge. Inherit island membership the same way ComponentId is
+        // inherited just above — correct by construction, since subdividing an edge cannot change
+        // which bridge (if any) is its only way out. Both endpoints, not just one: fwd's two ends
+        // are always either both inside the same bridged island or both outside it (an island's
+        // edges never cross its boundary — the bridge itself is a distinct, separately-excluded
+        // edge type), so this can never half-mark a real taxiway/bridge edge's endpoint.
+        if (_bridgeOnlyStandStubNodes.Contains(aId) && _bridgeOnlyStandStubNodes.Contains(bId))
+            _bridgeOnlyStandStubNodes.Add(newId);
 
         Nodes[newId] = node;
         Adjacency[newId] = new List<TaxiEdge>();
@@ -1914,11 +1948,22 @@ public class TaxiGraph
     /// null if no node on <paramref name="taxiwayName"/> lies within
     /// <paramref name="maxDistanceM"/> of the position (and within the requested
     /// component if set).
+    /// <paramref name="excludeBridgeOnlyStandStubs"/> is the same Task 6 Defect A filter
+    /// <see cref="FindNearestNode"/> documents — this is a THIRD unfiltered route-start picker
+    /// found in PR #238 review (Important 1): a bridge-only stand stub's node is not always
+    /// unnamed. Measured against the real fs2024 database, 1,810 of 319,004 "P" (stand lead-in)
+    /// rows carry a non-empty name (KNZY 503, KCLT 119, plus LEMG/LEMD/CYVR/EPWR) — <c>Build</c>
+    /// adds a row's trimmed name to both of its endpoints' <see cref="TaxiNode.TaxiwayNames"/>
+    /// unconditionally, regardless of <c>PathType</c>, so a stub can register under a real
+    /// taxiway name (including the SAME name a real network node carries, at EPWR/KCLT). A
+    /// route-START caller must pass true or this method can hand back the stub the component
+    /// filter cannot exclude on its own. A DESTINATION lookup must leave it false.
     /// </summary>
     public TaxiNode? FindNearestNodeOnTaxiway(
         double lat, double lon, string taxiwayName,
         double maxDistanceM = 800.0,
-        int? requiredComponentId = null)
+        int? requiredComponentId = null,
+        bool excludeBridgeOnlyStandStubs = false)
     {
         if (string.IsNullOrEmpty(taxiwayName)) return null;
 
@@ -1928,6 +1973,8 @@ public class TaxiGraph
         foreach (var node in Nodes.Values)
         {
             if (requiredComponentId.HasValue && node.ComponentId != requiredComponentId.Value)
+                continue;
+            if (excludeBridgeOnlyStandStubs && IsBridgeOnlyStandStub(node.NodeId))
                 continue;
             if (!node.TaxiwayNames.Contains(taxiwayName)) continue;
             double d = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);

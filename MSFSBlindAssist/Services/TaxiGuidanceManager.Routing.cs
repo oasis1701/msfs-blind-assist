@@ -272,7 +272,8 @@ public partial class TaxiGuidanceManager
             else if (!string.IsNullOrEmpty(startTaxiwayName)
                      && _graph.FindNearestNodeOnTaxiway(
                             aircraftLat, aircraftLon, startTaxiwayName!,
-                            requiredComponentId: destComponentId) is { } exitStartNode)
+                            requiredComponentId: destComponentId,
+                            excludeBridgeOnlyStandStubs: true) is { } exitStartNode)
             {
                 // Landing-exit early handoff: anchor the start on the CHOSEN exit taxiway
                 // rather than the nearest node overall. When the early handoff fires the
@@ -285,6 +286,8 @@ public partial class TaxiGuidanceManager
                 // node on the exit — so the look-ahead tone is measured from where the
                 // aircraft actually is. Only reached when taxiwaySequence is null (this
                 // branch is the else of the sequence path), so it never fights a clearance.
+                // Task 6 Defect A (PR #238 review, Important 1): this becomes startNode
+                // directly, same as every other picker in this method.
                 startNode = exitStartNode;
             }
             else
@@ -1050,13 +1053,20 @@ public partial class TaxiGuidanceManager
     /// component) or picks something beyond the Euclidean search radius the caller
     /// has always been bounded by — so this can only ever change WHICH near node is
     /// chosen, never widen the search.
+    ///
+    /// Task 6 Defect A (PR #238 review, Important 1): <c>euclideanNearest</c> is returned
+    /// UNFILTERED on three of this method's four exits (<c>anchor == null</c>, <c>bestId ==
+    /// -1</c>, the gap check below) and becomes the A* start the same way the cost-ranked
+    /// <c>best</c> node does, so it must exclude a bridge-only stand stub just as the anchor
+    /// call below already does.
     /// </summary>
     private TaxiNode? SelectFirstTaxiwayEntry(
         double aircraftLat, double aircraftLon, string taxiwayName,
         int destComponentId, int destinationNodeId)
     {
         var euclideanNearest = _graph!.FindNearestNodeOnTaxiway(
-            aircraftLat, aircraftLon, taxiwayName, requiredComponentId: destComponentId);
+            aircraftLat, aircraftLon, taxiwayName, requiredComponentId: destComponentId,
+            excludeBridgeOnlyStandStubs: true);
         if (euclideanNearest == null) return null;
 
         // Dijkstra needs a node to start from; the aircraft sits between nodes, so
@@ -1470,6 +1480,11 @@ public partial class TaxiGuidanceManager
     /// the suffix starting at the first taxiway whose nearest graph node is within
     /// NEAR_TAXIWAY_M of the aircraft. Returns (null, null) if no sequence taxiway
     /// is near the aircraft — caller should fall back to shortest path.
+    ///
+    /// Task 6 Defect A (PR #238 review, Important 1): the returned node feeds
+    /// <see cref="TryRecalculateRoute"/>'s A* start directly, so a bridge-only stand stub must
+    /// be excluded here too — the LIVE failure the review measured (EPWR: cleared "via A", the
+    /// recalc landed inside the Parking-34 lead-in within 50 m of the stub).
     /// </summary>
     private (List<string>?, TaxiNode?) FindRemainingSequenceByPosition(
         double lat, double lon, int? requiredComponentId)
@@ -1482,7 +1497,7 @@ public partial class TaxiGuidanceManager
         {
             var node = _graph.FindNearestNodeOnTaxiway(
                 lat, lon, _originalTaxiwaySequence[i], NEAR_TAXIWAY_M,
-                requiredComponentId: requiredComponentId);
+                requiredComponentId: requiredComponentId, excludeBridgeOnlyStandStubs: true);
             if (node != null)
             {
                 var remaining = new List<string>();

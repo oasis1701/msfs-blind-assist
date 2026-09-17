@@ -36,10 +36,14 @@ public class OrphanParkingIslandBridgeTests
         StartLat = latN * M, StartLon = lonE * M, EndLat = lat2N * M, EndLon = lon2E * M,
     };
 
-    /// <summary>A navdata stand lead-in: connector ("N") to stand ("P").</summary>
-    private static TaxiPath LeadIn(double connLatN, double connLonE, double standLatN, double standLonE) => new()
+    /// <summary>A navdata stand lead-in: connector ("N") to stand ("P"). Real "P" rows are not
+    /// always unnamed (measured: 1,810 of 319,004 in the real fs2024 database carry a name) --
+    /// <paramref name="name"/> defaults to "" to match the common case, but a caller can pass a
+    /// real taxiway name to reproduce the collision shape (Important 1, PR #238 review).</summary>
+    private static TaxiPath LeadIn(double connLatN, double connLonE, double standLatN, double standLonE,
+                                   string name = "") => new()
     {
-        Name = "", Type = "P", Width = 60.0, StartType = "N", EndType = "P",
+        Name = name, Type = "P", Width = 60.0, StartType = "N", EndType = "P",
         StartLat = connLatN * M, StartLon = connLonE * M, EndLat = standLatN * M, EndLon = standLonE * M,
     };
 
@@ -417,12 +421,20 @@ public class OrphanParkingIslandBridgeTests
         var connector = NodeAt(g, 12, 120);
         var u120 = NodeAt(g, 0, 120);
 
-        // Aircraft at 6 N, 120 E (between u120 and the connector, and beyond the "node right
-        // under us" 5 m exclusion on both sides) heading due north (000): the connector is 6 m
-        // dead ahead and wins the "ahead" search outright (the stand, further out on the same
-        // bearing, scores worse); u120 (6 m, due south) is behind and only reachable through the
-        // "nothing ahead" overall-nearest fallback.
-        double lat = 6, lon = 120;
+        // Aircraft at 6.5 N, 120 E: 5.5 m from the connector (north, ahead, beyond the "node right
+        // under us" 5 m exclusion) and 6.5 m from u120 (south, behind) -- DELIBERATELY UNEQUAL (PR
+        // #238 review, Important 2). This test used to place the aircraft at an exact 6/6 m tie: at
+        // an exact tie the fallback's strict "dist < bestDist" (inside FindNearestNode, called from
+        // FindNearestNodeInDirection's "nothing ahead" branch) returns u120 regardless of whether
+        // excludeBridgeOnlyStandStubs is actually threaded into that call, so reverting the
+        // threading at TaxiGraph.cs's "var fallback = FindNearestNode(...)" line left every test in
+        // this file green -- the assertion was passing on coordinate symmetry, not on the filter
+        // (mutation-verified: reverting that one call's argument, this test alone fails; restoring
+        // it, passes). With the connector unambiguously nearer than u120, an unfiltered fallback
+        // would return the connector instead of u120 and the second assertion below would catch it.
+        // The connector still wins the "ahead" search outright when unfiltered (score 5.5 vs the
+        // stand's 44.5, both dead ahead on bearing 0); u120 stays behind (bearing 180) either way.
+        double lat = 6.5, lon = 120;
 
         var unfiltered = g.FindNearestNodeInDirection(lat * M, lon * M, headingDeg: 0);
         Assert.Equal(connector.NodeId, unfiltered!.NodeId);
@@ -466,5 +478,79 @@ public class OrphanParkingIslandBridgeTests
 
         Assert.NotNull(result);
         Assert.Contains("U", result!.TaxiwayNames);
+    }
+
+    // ---------------------------------------------------------------- Minor 5: SplitEdgeAt must mark
+    // a node it mints INSIDE an already-bridged stand-stub island
+
+    [Fact]
+    public void SplitEdgeAt_marks_a_new_node_on_an_interior_bridged_lead_in_edge_as_a_bridge_only_stand_stub()
+    {
+        // A 3-node bridged island: connector (12,120) -- mid (30,120) -- stand (51,120), BOTH legs
+        // typed "P" so IsStandStubIsland still holds (every edge in the island is a lead-in). The
+        // parking pass stamps TaxiNodeType.Parking on only the single node nearest a spot, so an
+        // interior lead-in node like "mid" is never Parking-typed -- InsertHoldingPointNodeOnEdge's
+        // "a.Type == Parking || b.Type == Parking" guard cannot see it. It also isn't the fabricated
+        // bridge itself (PathType stays "P", not StandBridgePathType), so Defect B's IsStandBridge
+        // skip doesn't apply either. The connector-mid leg is the live candidate that guard was
+        // missing (PR #238 review, Minor 5).
+        var paths = MainTaxiwayU();
+        paths.Add(new TaxiPath
+        {
+            Name = "", Type = "P", Width = 60.0, StartType = "N", EndType = "N",
+            StartLat = 12 * M, StartLon = 120 * M, EndLat = 30 * M, EndLon = 120 * M,
+        });
+        paths.Add(new TaxiPath
+        {
+            Name = "", Type = "P", Width = 60.0, StartType = "N", EndType = "P",
+            StartLat = 30 * M, StartLon = 120 * M, EndLat = 51 * M, EndLon = 120 * M,
+        });
+        var g = BuildGraph(paths);
+
+        var connector = NodeAt(g, 12, 120);
+        var mid = NodeAt(g, 30, 120);
+        var stand = NodeAt(g, 51, 120);
+        Assert.Equal(2, BridgeEdges(g).Count);   // sanity: the island did bridge, from the connector
+        Assert.True(g.IsBridgeOnlyStandStub(connector.NodeId));
+        Assert.True(g.IsBridgeOnlyStandStub(mid.NodeId));
+        Assert.True(g.IsBridgeOnlyStandStub(stand.NodeId));
+
+        // Probe (20 N, 120 E): t = (20-12)/(30-12) = 0.444 on the connector-mid leg (perpendicular
+        // distance exactly 0, same longitude), outside the bridge's own 0-12 span and the
+        // mid-stand leg's 30-51 span, so this is the only edge that can qualify.
+        var inserted = g.InsertHoldingPointNodeOnEdge(20 * M, 120 * M, maxPerpMeters: 5);
+
+        Assert.NotNull(inserted);
+        Assert.True(g.IsBridgeOnlyStandStub(inserted!.NodeId));
+    }
+
+    // ---------------------------------------------------------------- Important 1: FindNearestNodeOnTaxiway
+    // is a third unfiltered route-start picker (PR #238 review) -- a "P" lead-in row is NOT always
+    // unnamed, so a bridge-only stand stub's node can register on a real taxiway name too
+
+    [Fact]
+    public void FindNearestNodeOnTaxiway_excludes_a_bridge_only_stand_stub_carrying_a_taxiway_name()
+    {
+        // Measured against the real fs2024 database: 1,810 of 319,004 "P" (stand lead-in) rows
+        // carry a non-empty name (KNZY 503, KCLT 119, plus LEMG/LEMD/CYVR/EPWR) -- ResolveNode adds
+        // a row's name to both endpoints unconditionally, regardless of PathType. So a bridge-only
+        // stand stub's node CAN acquire a taxiway-name entry; this corrects the "every 'P' row
+        // carries an EMPTY TaxiwayName... structurally never acquire a taxiway-name entry" premise
+        // group-d-report.md used to leave this method unfiltered. Reuse taxiway "U"'s own name on
+        // the lead-in, matching the live EPWR/KCLT shape where the stub's taxiway name collides with
+        // a real one on the main network.
+        var g = BuildGraph(MainTaxiwayU().Append(LeadIn(12, 120, 51, 120, name: "U")));
+        var connector = NodeAt(g, 12, 120);
+        var u120 = NodeAt(g, 0, 120);
+
+        // 10 N, 120 E: 2 m from the connector, 10 m from u120. Unfiltered (the default): the stub
+        // is still the nearest "U" node -- e.g. a destination lookup for the stand itself must keep
+        // finding it.
+        var unfiltered = g.FindNearestNodeOnTaxiway(10 * M, 120 * M, "U");
+        Assert.Equal(connector.NodeId, unfiltered!.NodeId);
+
+        // A route-start picker asks to exclude it and lands on the real network node instead.
+        var filtered = g.FindNearestNodeOnTaxiway(10 * M, 120 * M, "U", excludeBridgeOnlyStandStubs: true);
+        Assert.Equal(u120.NodeId, filtered!.NodeId);
     }
 }
