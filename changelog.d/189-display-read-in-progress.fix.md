@@ -1,0 +1,1 @@
+"A display read is already in progress" no longer sticks. An error dialog left open used to block every later read until it was dismissed, and a scene description started during a display read could describe that read's instrument view instead of the outside world.

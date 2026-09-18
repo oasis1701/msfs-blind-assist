@@ -47,13 +47,23 @@ public static class Md11ControlState
     {
         if (spec == null) return null;
 
-        var lit = new List<string>();
+        // Lazily allocated: this runs on every stateful row of an open panel, once a second from
+        // the display auto-refresh and again per delivery, and on a normal panel NOTHING is lit —
+        // so the overwhelmingly common result was an empty list allocated and thrown away. Same
+        // idiom TakeoffVSpeedCallouts uses for the same reason. `lit` stays null until the first
+        // lamp is actually lit, and one lit lamp (the common non-empty case) never joins.
+        List<string>? lit = null;
+        string? onlyLit = null;
         foreach (var lamp in spec.Lamps)
         {
-            if (read(lamp.Var) is > LitThreshold && !string.IsNullOrEmpty(lamp.Lit) && !lit.Contains(lamp.Lit))
-                lit.Add(lamp.Lit);
+            if (read(lamp.Var) is not > LitThreshold || string.IsNullOrEmpty(lamp.Lit)) continue;
+            if (onlyLit == null) { onlyLit = lamp.Lit; continue; }
+            if (string.Equals(onlyLit, lamp.Lit, StringComparison.Ordinal)) continue;
+            lit ??= new List<string>(spec.Lamps.Count) { onlyLit };
+            if (!lit.Contains(lamp.Lit)) lit.Add(lamp.Lit);
         }
-        if (lit.Count > 0) return string.Join(", ", lit);
+        if (lit != null) return string.Join(", ", lit);
+        if (onlyLit != null) return onlyLit;
 
         if (spec.Latch != null && read(spec.Latch.Var) is { } position)
             return position > LitThreshold ? spec.Latch.On : spec.Latch.Off;

@@ -1,0 +1,1 @@
+Review follow-up: a hung screenshot capture no longer strands a thread-pool thread, the value-to-description classifier now reaches the read-only status rows as well as the combos, the six walkable MD-11 control kinds are spelled once instead of three times, and app exit no longer re-enters the just-disposed MD-11 definition.

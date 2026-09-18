@@ -1,0 +1,1 @@
+Switching aircraft from the Aircraft menu no longer leaves cockpit switches briefly unreliable. The app was re-testing a connection it had already proven, and overhead switches on the FlyByWire aircraft could silently revert during that window.

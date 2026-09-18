@@ -165,6 +165,12 @@ public partial class TFDiMD11Definition
     {
         var detent = Md11SpeedbrakeSystem.DescribeTravel(_spdbrkRng);
         if (detent == null) return;
+        // Renders the sentence before comparing it, so a lever in TRAVEL (Continuous + SIM_FRAME +
+        // CHANGED) allocates two short-lived strings per frame to discover the detent has not
+        // changed. Left alone deliberately: a detent memo beside _lastSpoilerSpoken would have to
+        // be reset in step with it at BOTH reset sites, and the two drifting apart would suppress
+        // a real announcement — a correctness risk for ~120 gen-0 allocations per second during
+        // the few seconds a flight spends moving the lever.
         var text = $"Spoilers {detent.ToLowerInvariant()}";
         if (string.Equals(text, _lastSpoilerSpoken, StringComparison.Ordinal)) return;
         bool first = _lastSpoilerSpoken.Length == 0;
