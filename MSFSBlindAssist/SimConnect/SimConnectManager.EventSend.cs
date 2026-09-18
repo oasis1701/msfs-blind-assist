@@ -125,11 +125,20 @@ public partial class SimConnectManager
     {
         if (!CanExecuteCalculatorCode) return;
 
+        // Read the module ONCE for the call itself. The gate above stays the shared condition (it
+        // is what CalcWriteCanLand and every "will this land?" caller ask), but it re-reads the
+        // field, so checking and then dereferencing read it twice — and the MD-11's CEVENT pump
+        // calls in from a POOL THREAD roughly sixteen times a second for the whole session while
+        // Disconnect() nulls this field on the UI thread partway through its teardown, so a null
+        // could land between the two reads. SendMFCommand swallows its own exceptions and the
+        // catch below takes the rest, so the race cost a silently dropped write rather than a
+        // crash; the local makes it impossible instead of merely survivable.
+        var wasm = mobiFlightWasm;
+        if (wasm == null) return;
+
         try
         {
-            // Non-null by CanExecuteCalculatorCode above; the compiler cannot see through a
-            // property, and spelling the condition twice is exactly what that property prevents.
-            mobiFlightWasm!.SendMFCommand($"MF.SimVars.Set.{rpnCode}", quiet);
+            wasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}", quiet);
         }
         catch (Exception ex)
         {

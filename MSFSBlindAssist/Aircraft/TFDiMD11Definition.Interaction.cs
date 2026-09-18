@@ -570,12 +570,13 @@ public partial class TFDiMD11Definition
             // arrowing through a multi-position combo runs ONE walk (to the final selection),
             // not one concurrent walk per intermediate value — see DebouncedWalk. The guarded
             // members here are the three engine fire handles; DebouncedWalk lifts their cover first.
-            case Md11Kinds.Switch:
-            case Md11Kinds.Knob:
-            case Md11Kinds.KnobPush:
-            case Md11Kinds.KnobPushPull:
-            case Md11Kinds.Lever:
-            case Md11Kinds.Handle:
+            // ONE spelling of "walkable", shared with BuildControlVariable's registration and with
+            // Md11ExportBacked.IsReadOnly. C# cannot build case labels from a list, but it can
+            // guard one — and the six kinds written out here three times could be edited in one
+            // place and still compile: dropping Md11Kinds.Handle from this group alone made the
+            // three engine fire handles silently unwalkable while the tripwire test, which only
+            // reflects over Md11Kinds membership, went on passing.
+            case string positional when Md11ExportBacked.IsPositional(positional):
                 _ = DebouncedWalk(control, value, varKey, simConnect, announcer);
                 return true;
 
@@ -622,7 +623,15 @@ public partial class TFDiMD11Definition
         // settles before we drive the wheel at all.
         var gen = ++_dialSetGen;
         int want = (int)Math.Round(_flaps.DegreesFor(targetRaw));
-        _dialSetCts?.Cancel();
+        // Cancel and DISPOSE the source this one supersedes. Replacing the field without disposing
+        // leaked one CancellationTokenSource per set — fifteen for a single arrow-through from 10°
+        // to 25°, since every intermediate entry fires one. Only the CURRENT source is left in the
+        // field; CancelWalks cancelling it after it has finished is harmless, and
+        // Md11WalkCancellation.CancelAll already tolerates a source someone else disposed (which is
+        // exactly what DebouncedWalk's own finally produces).
+        var superseded = _dialSetCts;
+        superseded?.Cancel();
+        superseded?.Dispose();
         var cts = new CancellationTokenSource();
         _dialSetCts = cts;
         try { await Task.Delay(350, cts.Token).ConfigureAwait(false); }

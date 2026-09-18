@@ -493,8 +493,11 @@ public partial class MainForm
                 }
                 else if (currentSimVarValues.ContainsKey(varKey))
                 {
+                    // Through the definition's value→key classifier (identity unless set), like the
+                    // two combo sites and the status refresh — a var keyed on positions over a
+                    // travel-valued reading must seed with its position, not the raw number.
                     double cur = currentSimVarValues[varKey];
-                    initial = varDef.ValueDescriptions.TryGetValue(cur, out string? desc)
+                    initial = varDef.ValueDescriptions.TryGetValue(varDef.DescriptionKeyFor(cur), out string? desc)
                         ? desc
                         : cur.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 }

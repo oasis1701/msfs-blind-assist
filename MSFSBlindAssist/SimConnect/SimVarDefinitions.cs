@@ -126,10 +126,14 @@ public class SimVarDefinition
     /// Maps a raw value onto the <see cref="ValueDescriptions"/> KEY that describes it, for a
     /// variable whose keys are positions but whose value is a continuous travel — the TFDi MD-11
     /// gear lever: keys {0 Up, 1 Down} from the control map, value 0-25 with Down at &gt;= 20. Null
-    /// (the default) means the raw value IS the key. Consulted by the panel COMBO renderer
-    /// (build-time seed and refresh) through <see cref="DescriptionKeyFor"/>, and nowhere else:
-    /// a pick still writes the KEY, and the raw value still reaches every other reader (the
-    /// SimConnect cache, hotkey read-outs, the MD-11 walker) untouched.
+    /// (the default) means the raw value IS the key. Consulted through
+    /// <see cref="DescriptionKeyFor"/> by EVERY panel path that turns a delivered value into a
+    /// description — the combo's build-time seed and its refresh, and the read-only status box's
+    /// build-time seed and its refresh. All four, deliberately: wiring only the two combo sites
+    /// left a var that is both classifier-backed and read-only rendering as a bare number on the
+    /// panel and keeping that number forever, because the status lookup never asked. A pick still
+    /// writes the KEY, and the raw value still reaches every other reader (the SimConnect cache,
+    /// hotkey read-outs, the MD-11 walker) untouched.
     ///
     /// Known limit: a combo pick caches its own KEY as the value until the next delivery, so a
     /// classifier whose key space overlaps its value space can mislabel a combo REBUILT inside

@@ -600,12 +600,7 @@ public partial class TFDiMD11Definition : BaseAircraftDefinition, IDisposable
 
             // Everything with an operable, readable position: switches, knobs, levers,
             // fire handles. OnRequest — read on demand when a panel opens, ~206 defs total.
-            case Md11Kinds.Switch:
-            case Md11Kinds.Knob:
-            case Md11Kinds.KnobPush:
-            case Md11Kinds.KnobPushPull:
-            case Md11Kinds.Lever:
-            case Md11Kinds.Handle:
+            case string positional when Md11ExportBacked.IsPositional(positional):
             {
                 // The flap handle and Dial-A-Flap thumbwheel MUST stream continuously, not
                 // OnRequest. A blind pilot moving the physical lever needs the new detent spoken

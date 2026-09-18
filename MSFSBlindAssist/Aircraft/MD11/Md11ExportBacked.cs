@@ -27,7 +27,15 @@ public static class Md11ExportBacked
         return exportVars.Contains(control.StateVar);
     }
 
-    /// <summary>The kinds <c>SetControl</c> walks (and <c>BuildControlVariable</c> registers OnRequest).</summary>
+    /// <summary>
+    /// The kinds with an operable, readable POSITION: the ones <c>SetControl</c> walks and
+    /// <c>BuildControlVariable</c> registers OnRequest. THE one spelling — both of those switches
+    /// guard a single case on this predicate (<c>case string positional when …</c>) rather than
+    /// writing the six labels out again, because C# will happily compile a group that has quietly
+    /// lost one: dropping <c>Md11Kinds.Handle</c> from SetControl's alone made the three engine
+    /// fire handles unwalkable with no error, and the tripwire test — which reflects over
+    /// <c>Md11Kinds</c> membership — only catches a kind being ADDED.
+    /// </summary>
     public static bool IsPositional(string kind) => kind is Md11Kinds.Switch or Md11Kinds.Knob
         or Md11Kinds.KnobPush or Md11Kinds.KnobPushPull or Md11Kinds.Lever or Md11Kinds.Handle;
 }

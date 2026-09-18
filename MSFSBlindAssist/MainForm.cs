@@ -1126,6 +1126,16 @@ public partial class MainForm : Form
             Log.Debug("MD11", "App exit: definition disposed.");
         }
 
+        // Stop listening BEFORE Disconnect(). Disconnect ends by raising ConnectionLost, whose
+        // handler calls currentAircraft.OnSimContextReset() — so on this path it re-entered the
+        // definition disposed six lines above and re-armed the seed gate Dispose had just
+        // disarmed, against its own stated invariant ("nor may a pending seed pass run for one").
+        // Nothing observable followed today, only because that method happens to be inert with a
+        // null _sim and no delivery can follow; the next tracker added to it that owns a timer or
+        // speaks would regress on exit with no warning. Unsubscribing is the fix that does not
+        // depend on the body staying inert.
+        if (simConnectManager != null) simConnectManager.ConnectionLost -= OnConnectionLost;
+
         // Clean up managers and resources
         hotkeyManager?.Cleanup();
         simConnectManager?.Disconnect();

@@ -31,9 +31,15 @@ public partial class MainForm
     /// </summary>
     public void ShowMd11MonitorManagerDialog()
     {
+        // The same aircraft guard its siblings carry. This one is public and its caller reaches it
+        // from the definition (`(parentForm as MainForm)?.ShowMd11MonitorManagerDialog()`), so a
+        // queued invocation that runs after SwitchAircraft has replaced the definition would build
+        // and CACHE an "MD-11 monitor manager" over whatever aircraft is loaded — listing the new
+        // aircraft's variables and writing their check state into Md11DisabledMonitorVariables.
+        if (currentAircraft is not TFDiMD11Definition md11) return;
         hotkeyManager.ExitOutputHotkeyMode();
         if (md11MonitorManagerForm == null || md11MonitorManagerForm.IsDisposed)
-            md11MonitorManagerForm = new Forms.MD11.Md11MonitorManagerForm(currentAircraft.GetVariables());
+            md11MonitorManagerForm = new Forms.MD11.Md11MonitorManagerForm(md11.GetVariables());
         md11MonitorManagerForm.ShowForm();
     }
 

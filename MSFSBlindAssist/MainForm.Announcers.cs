@@ -1254,7 +1254,13 @@ public partial class MainForm
                         newText = Utils.ReadoutFormat.WithUnit(
                             displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture), varDef.Units);
                     }
-                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    // Through the definition's value→key classifier, exactly as the combo branch
+                    // above does. Identity unless the definition sets one, so nothing else moves —
+                    // but a var whose delivered value is not itself a key (a travel-valued control
+                    // keyed on positions, the MD-11 gear lever's 0-25) would otherwise render as
+                    // the raw number here and keep rendering it, because this lookup never asked.
+                    else if (varDef.ValueDescriptions != null
+                             && varDef.ValueDescriptions.TryGetValue(varDef.DescriptionKeyFor(value), out string? desc))
                     {
                         newText = desc;
                     }

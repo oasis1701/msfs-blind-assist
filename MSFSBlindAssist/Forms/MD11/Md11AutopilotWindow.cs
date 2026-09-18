@@ -484,18 +484,31 @@ public class Md11AutopilotWindow : Form
         // at handle creation that fired phantom user-action writes during panel build. With the
         // handle alive an assignment is one immediate CB_SETCURSEL raised under _populating, and
         // there is nothing left for handle creation to replay.
+        // try/finally, not a bare pair of assignments: _populating is the ONLY thing both
+        // SelectedIndexChanged handlers test before writing to the aircraft, and the form is
+        // hide-on-close and reused for the life of the aircraft. Anything throwing between the two
+        // lines below would latch it true forever, and from then on every Bank Limiter and
+        // Dial-A-Flap pick would be a silent no-op — the screen reader still reading the selection,
+        // nothing sent, nothing announced. The peer site in FbwEfbForm.UpdateControlsInPlace wraps
+        // the identical pattern the same way.
         _populating = true;
-        // The knob's value is a map KEY: an empty cache, or a value that is no key, leaves the
-        // combo unselected rather than showing a position the knob is not in.
-        var bank = _sim.GetCachedVariableValue(BankLimitKnob);
-        _bankLimit.SelectedIndex = bank is double b ? IndexOfValue(_bankLimit, b) : -1;
-        // The wheel's var is CONTINUOUS (raw 33.0 for TFDi's shipped 14.95°) while the rows are keyed
-        // by whole degrees, so an exact-key match misses on every real value and the combo opened
-        // with NO selection — where the first Down-arrow selects row 0 and writes 10° to the
-        // take-off wheel. Seed the nearest listed degree; only an empty cache leaves it empty.
-        var dialRaw = _sim.GetCachedVariableValue(Md11FlapSystem.DialKey);
-        _dialAFlap.SelectedIndex = dialRaw is double raw ? IndexOfValue(_dialAFlap, _def.NearestDialAFlapChoice(raw)) : -1;
-        _populating = false;
+        try
+        {
+            // The knob's value is a map KEY: an empty cache, or a value that is no key, leaves the
+            // combo unselected rather than showing a position the knob is not in.
+            var bank = _sim.GetCachedVariableValue(BankLimitKnob);
+            _bankLimit.SelectedIndex = bank is double b ? IndexOfValue(_bankLimit, b) : -1;
+            // The wheel's var is CONTINUOUS (raw 33.0 for TFDi's shipped 14.95°) while the rows are keyed
+            // by whole degrees, so an exact-key match misses on every real value and the combo opened
+            // with NO selection — where the first Down-arrow selects row 0 and writes 10° to the
+            // take-off wheel. Seed the nearest listed degree; only an empty cache leaves it empty.
+            var dialRaw = _sim.GetCachedVariableValue(Md11FlapSystem.DialKey);
+            _dialAFlap.SelectedIndex = dialRaw is double raw ? IndexOfValue(_dialAFlap, _def.NearestDialAFlapChoice(raw)) : -1;
+        }
+        finally
+        {
+            _populating = false;
+        }
     }
 
     protected override void OnVisibleChanged(EventArgs e)
