@@ -1,1 +1,0 @@
-MD-11 MCDU window: closing it now really silences it — it used to keep reading page titles, the MSG lamp and scratchpad changes while closed. Reopening it picks up the current page quietly, with your cursor on the page title so you hear which page you are on, and whatever changed in the meantime waiting in the list rather than spoken over the window.

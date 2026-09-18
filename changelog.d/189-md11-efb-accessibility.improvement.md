@@ -1,1 +1,0 @@
-The MD-11's EFB now reads like the other tablets: settings and performance choices say their current value, and doors, ground equipment and results each read as one clear line. The EFB's own messages are spoken, and controls it locks in flight read as dimmed instead of silently doing nothing.

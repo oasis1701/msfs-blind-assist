@@ -1,5 +1,3 @@
-Added the TFDi Design MD-11, reachable from Aircraft → TFDi Design MD-11. Panels, the flight
-control panel, the flap and slat handle, all three MCDUs, the EFB and a Ctrl+M monitor manager
-are wired up. Note that the aircraft has not been flown yet: the pure logic is covered by tests,
-but every path that talks to the simulator is still unverified against a real MD-11, so treat
-this first release as something to try rather than to depend on.
+Added the TFDi Design MD-11, reachable from Aircraft → TFDi Design MD-11. The cockpit panels read and operate with spoken state ("Battery: On", "Pack 1: Off", "unpowered" when the annunciators have no power), ordered the way you prepare the aircraft; the Flight Control Panel, all three MCDUs and the EFB each have their own window; COM radios, the squawk, the altimeters and minimums are typed and read back; V1, Rotate and V2 are called on the take-off roll; and the PFD, ND, engine and alert display, system display and standby instrument can be read by AI vision, with the app switching the simulator to the right cockpit view for you. Ctrl+M mutes any of it.
+
+Note that the aircraft has not been flown yet: the pure logic is covered by tests, but every path that talks to the simulator is still unverified against a real MD-11, so treat this first release as something to try rather than to depend on.

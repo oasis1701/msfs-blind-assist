@@ -1,1 +1,0 @@
-MD-11 MCDU window: opened with the aircraft already flying, it now shows the current page at once instead of staying empty until your first key press. A unit that has delivered nothing says "no data received yet" rather than showing a blank list.

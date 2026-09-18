@@ -1,1 +1,0 @@
-MD-11: a Spoilers lever pick the wheel cannot reach no longer corrupts the Ground spoilers state — the row keeps its Not armed, Armed or Extended reading, and arming and disarming keep working. The Flaps lever and gear switch now simply report that they did not move rather than writing their travel var directly.

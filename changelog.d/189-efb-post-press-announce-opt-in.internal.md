@@ -1,1 +1,0 @@
-The EFB window no longer repeats a nav tab's or service tile's new state ("(current page)", "(called)") right after you press it; that echo was introduced within this PR and never shipped. The MD-11 Perf page's stepper arrows and its door, GPU and chocks tiles still speak the new state your press produced.

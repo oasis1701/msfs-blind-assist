@@ -1,1 +1,0 @@
-UserSettings.Clone now copies every setting, including the MD-11 monitor mutes and learned switch polarity, and stays complete as settings are added because it round-trips through the same serializer that saves them. No pilot-facing change: nothing in the app copies settings today.

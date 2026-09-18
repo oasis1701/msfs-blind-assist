@@ -1,1 +1,0 @@
-AI display reads and scene descriptions no longer come back saying nothing is visible when the simulator runs in a window. The new capture was checking the wrong part of the frame to decide whether it had a picture, so a failed capture was sent to the AI instead of being retaken. This affected every aircraft, not just the MD-11.

@@ -77,11 +77,26 @@ CI prints the exact `git mv` — that is the backstop, not the detection mechani
 Nothing user-facing? Add an `internal` fragment, or apply the `skip-changelog` label.
 Prefer the fragment — it needs no repository permissions.
 
-**Fragments are never deleted.** A release is defined by the fragments *added* between
-two tags (`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a permanent
-per-change archive. Two consequences that are easy to get wrong: never tidy old
-fragments away, and never add a fragment for something already released — it would
-appear in the next release's notes.
+**A RELEASED fragment is never deleted.** A release is defined by the fragments *added*
+between two tags (`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a
+permanent per-change archive of what has SHIPPED. Two consequences that are easy to get
+wrong: never tidy away a fragment that is already between two tags, and never add a
+fragment for something already released — it would appear in the next release's notes.
+
+**Before it merges, a long-running PR's own fragments may be CONDENSED, and a big one
+should be.** Nothing in an unmerged PR is between two tags, so nothing is lost from the
+archive. The rule for what survives: a release note describes what changed for a PILOT
+between the last release and this one, so a fragment that documents ITERATION ON CODE
+THIS SAME PR INTRODUCED has no reader — no version ever shipped without it, and the
+capability it repairs is simply part of the feature. What survives is the feature itself
+and anything the work changed OUTSIDE it. PR #189 (the TFDi MD-11) is the worked example:
+80 fragments became 8 — one `aircraft` entry naming what the MD-11 support provides, five
+fixes and an improvement that reach OTHER aircraft (the AI capture path, the calc-path
+verdict across an aircraft switch, the iFly's take-off callouts, the unit suffix, the
+MobiFlight log flood) and one `internal`. ⚠️ Judge "iteration" by what SHIPPED, not by the
+fragment's category: several of the deleted ones were written as `fix` but repaired the
+PrintWindow capture, the display-read latch and the EFB disabled-flip — all three added by
+that same PR, so a pilot upgrading never saw the defect.
 
 At tag time `.github/workflows/release.yml` renders the fragments with
 `tools/ChangelogBuilder` and passes them as `body_path`, which the release action

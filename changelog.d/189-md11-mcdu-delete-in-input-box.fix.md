@@ -1,1 +1,0 @@
-In the MD-11 MCDU window, pressing Delete while editing text in the MCDU Input box now deletes a character in the box, as in any text field — it used to clear the aircraft's scratchpad instead and announce that it had. Delete on the MCDU display still clears the whole scratchpad.

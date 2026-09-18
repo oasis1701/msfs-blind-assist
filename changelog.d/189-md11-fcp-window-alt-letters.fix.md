@@ -1,1 +1,0 @@
-MD-11 Flight Control Panel window (Ctrl+P): Approach / Land is now Alt+O and Wheel up is Alt+W, so Alt+P always presses PROF and Alt+U always presses Altitude Unit. Before, Alt+U could land on the vertical speed wheel instead, which engages V/S without a word.

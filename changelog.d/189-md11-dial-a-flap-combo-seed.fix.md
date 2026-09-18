@@ -1,1 +1,0 @@
-The MD-11 flap combos — the Dial-A-Flap wheel in the FCP window and both flap controls on the pedestal Flaps panel — now open on the position the aircraft is actually in instead of empty, so the first Down-arrow steps from there rather than dialling 10 degrees or retracting the flaps.

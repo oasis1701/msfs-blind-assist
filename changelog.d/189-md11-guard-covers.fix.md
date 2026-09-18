@@ -1,1 +1,0 @@
-On the TFDi MD-11, the Fuel Dump, Fuel Dump Emergency Stop, Center Gear Uplock and Main Cargo Door covers now report their own open or closed state instead of the switch under them. Pressing Fuel Dump, Fuel Dump Emergency Stop or Center Gear Uplock while its cover is already open no longer closes the cover first and loses the press.

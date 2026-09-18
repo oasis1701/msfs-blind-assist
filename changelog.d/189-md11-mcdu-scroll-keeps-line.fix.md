@@ -1,1 +1,0 @@
-MD-11 MCDU window: scrolling the flight plan with Alt+Up or Alt+Down keeps your cursor on the line you were reading, and only a genuinely different page moves it to line 1; the new page title is still announced.

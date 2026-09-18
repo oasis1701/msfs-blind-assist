@@ -1,1 +1,0 @@
-MD-11: COM frequency changes are announced ("COM 1 active 135.500", active and standby for COM 1, 2 and 3), so a tuner click and a frequency swap both read back; each radio has its own Ctrl+M line, and the current frequencies are listed in the Read-outs section under Radios.

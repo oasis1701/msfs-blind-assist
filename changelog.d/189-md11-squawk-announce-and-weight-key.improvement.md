@@ -1,1 +1,0 @@
-MD-11: the squawk is announced whenever it changes - from a hardware transponder, the sim's own keys or an ATC assignment - and can be muted under "Squawk code" in the monitor manager. W in output mode reads the gross weight in pounds, as on every other aircraft.

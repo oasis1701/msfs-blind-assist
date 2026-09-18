@@ -1,1 +1,0 @@
-On the MD-11, arming the ground spoilers, tuning a COM, typing minimums or an altimeter, and pressing a guarded button now read the aircraft back when it actually reports, so a selection that took is never announced as "did not arm" or "did not change".

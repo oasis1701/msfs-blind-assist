@@ -1,1 +1,0 @@
-Typing an entry with a character the MD-11 MCDU keyboard does not have (a comma, an asterisk) into the MCDU window is now refused and the missing key is named, with your text left in the box to fix. Before, the character was silently dropped and the rest was sent.

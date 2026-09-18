@@ -1,1 +1,0 @@
-MD-11: the Flight Control Panel window (Ctrl+P) now tells you what is engaged. The Autoflight button reads "AP 1, ATS on", NAV and FMS Speed read engaged or not engaged from the panel's own dashed windows, the mode selects read their current mode, and a status list carries the four windows with the autopilot and autothrottle.

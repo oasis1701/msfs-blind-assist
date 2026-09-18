@@ -1,1 +1,0 @@
-Loading the MD-11 a second time in one session — after switching to another aircraft profile, or picking it again from the Aircraft menu — no longer re-registers its MCDU feed with the simulator. The MCDU window repopulates with the current pages.

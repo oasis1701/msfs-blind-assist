@@ -1,1 +1,0 @@
-MD-11: in the FCP heading, speed and altitude boxes the knob's Push and Pull come right after the value (PROF first in the altitude box) and the unit toggles last. The altitude box no longer carries Feet / Metres; that lives on the Flight Control Panel in the Glareshield section.

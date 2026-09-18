@@ -1,1 +1,0 @@
-Drops the MD-11 MCDU blank/content transition logging added while diagnosing the CDU repaint, along with the per-unit state that fed it. It answered its question and would otherwise write two lines per page change into the pilot's log.

@@ -1,1 +1,0 @@
-MD-11 multi-position switches and knobs now settle in about half a second after you pick a position, and the combo no longer jumps through the intermediate positions while the aircraft catches up. A control that will not move still says so.

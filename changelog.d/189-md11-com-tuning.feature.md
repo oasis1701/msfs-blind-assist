@@ -1,1 +1,0 @@
-MD-11: COM 1, 2 and 3 can be tuned from the new Radios panel at the head of the Pedestal section: type a standby frequency and press Set, then press Transfer to make it active. Each change reads back through the frequency announcements, and a change the aircraft refuses is spoken as such.

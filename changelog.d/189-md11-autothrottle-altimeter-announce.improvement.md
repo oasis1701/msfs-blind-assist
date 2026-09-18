@@ -1,1 +1,0 @@
-MD-11: autothrottle engagement is announced ("Autothrottle: on" or "off"), and the captain's altimeter setting is announced once it stops changing ("Altimeter: 1020, 30.12" or "Altimeter standard"), so a wind of the knob speaks the final setting once. Both can be muted in Ctrl+M.

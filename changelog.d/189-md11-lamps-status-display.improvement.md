@@ -1,1 +1,0 @@
-MD-11: a panel's indicator lights are now one Status Display list (Ctrl+3) instead of a tab stop per light, as on the Airbus, and the Read-outs panels list their values the same way with units. The lights announce as before.

@@ -1,1 +1,0 @@
-MD-11: the speedbrake is readable and workable. Moving the lever announces its detent (Retracted, 1/3, 2/3, Fully extended), a new Ground spoilers row on the Speedbrake panel arms and disarms them and announces when they deploy on landing, and the Spoilers row itself now reaches the detent you choose instead of reporting that it did not move.

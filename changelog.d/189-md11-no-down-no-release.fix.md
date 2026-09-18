@@ -1,1 +1,0 @@
-MD-11: a hold-to-test button no longer releases in the aircraft when it was never actually pressed — closing a gap for any button wired without its own press event, though every test button on this aircraft has one today.

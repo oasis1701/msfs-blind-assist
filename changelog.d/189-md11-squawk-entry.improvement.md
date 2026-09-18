@@ -1,1 +1,0 @@
-MD-11: the Transponder panel has a Squawk field. Type the four digits and press Set; the app presses the aircraft's own keypad, reads the transponder back and says what it shows ("Squawk 1200", or that the entry did not take). The eight digit buttons are gone from the panel, and the current code is listed as the panel's first row.

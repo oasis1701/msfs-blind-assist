@@ -1,1 +1,0 @@
-MD-11: re-selecting the aircraft from the Aircraft menu while a test button is still held no longer leaves that button pressed with its lights on — the release is sent before the switch completes. Changing aircraft while a knob or selector is still moving no longer announces that it did not move.

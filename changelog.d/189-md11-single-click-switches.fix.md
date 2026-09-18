@@ -1,1 +1,0 @@
-MD-11 two-position switches that the cockpit flips with one click, such as the IRS selectors, fuel switches, starters, parking brake, gear lever, QNH/QFE and the transponder mode switches, now flip with that click and confirm in under half a second instead of waiting on a slower fallback write.

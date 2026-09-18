@@ -1,1 +1,0 @@
-MD-11 EFB: the Perf page's runway, thrust setting, anti-ice, runway condition, autobrake and reversers pickers can now be changed. They are up/down arrow buttons with no text, which the screen reader never saw; they now read as "Runway next (now 09L)" and "Runway previous", and after you press one the new choice is spoken.

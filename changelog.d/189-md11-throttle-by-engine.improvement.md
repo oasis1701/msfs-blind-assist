@@ -1,1 +1,0 @@
-MD-11: the Throttle Quadrant panel is grouped by engine - Engine 1 Starter, Engine 1 Fuel, Engine 2 Starter, Engine 2 Fuel, Engine 3 Starter, Engine 3 Fuel - followed by Go Around, the two autothrust disconnects, Parking Brake and Gear Horn Silence. The status lights follow the same order.
