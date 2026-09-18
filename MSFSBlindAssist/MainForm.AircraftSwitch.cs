@@ -1151,6 +1151,19 @@ public partial class MainForm
             taxiAssistForm = null;
         }
 
+        // And anything holding runway GEOMETRY from the old database. Both of these captured a
+        // whole runway list when the pilot set them up, and both now use it at touchdown to decide
+        // which runway the aircraft is on — the landing-exit plan to choose the rollout's
+        // measurement frame, the manual landing assist to aim its tones. The two databases really
+        // do differ: the same airport can carry different runway names (a renumbering for magnetic
+        // drift) and different geometry. Left standing, the check either fails to recognise the
+        // landing at all, or names a runway this database no longer has.
+        //
+        // Both tell the pilot, because both are things they deliberately set up and would
+        // otherwise expect to still be armed on the approach.
+        landingExitPlanner?.Clear();
+        flareAssistManager?.Disarm(announce: true);
+
         UpdateDatabaseStatusDisplay();
     }
 

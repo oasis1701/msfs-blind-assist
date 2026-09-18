@@ -80,6 +80,18 @@ public readonly struct RunwayFrame
         return _rwEast * pDy - _rwNorth * pDx;
     }
 
+    /// <summary>
+    /// How much runway is left (metres) ahead of a point, measured down the runway heading;
+    /// negative once the point is past the far end.
+    ///
+    /// <para>The ONE place that answers "how much pavement is left", so it cannot disagree with
+    /// <see cref="LengthM"/>'s fallback. A runway row whose <c>length</c> column is 0 — a state the
+    /// exit finders already guard for, and one that therefore always reaches the runway-end
+    /// countdown with no exits — used to make the countdown compute a negative distance from the
+    /// raw column, which told the pilot to stop at touchdown speed with the whole runway ahead.</para>
+    /// </summary>
+    public double DistanceToEnd(double lat, double lon) => LengthM - Along(lat, lon);
+
     /// <summary>Along-track distance (metres) of a point down the runway heading
     /// from the start threshold (negative = before the threshold).</summary>
     public double Along(double lat, double lon)

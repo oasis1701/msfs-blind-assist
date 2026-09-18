@@ -183,8 +183,8 @@ public class RunwayReachEndedShortTests
     //
     // The walk probe and the entrance picker are the two halves of ONE reach test, so they must
     // agree about where the runway is. The pavement fields carry the runway table's own geometry
-    // through to the walk; they are additive, so every existing consumer of Lat1/Lon1/HalfWidth
-    // is untouched, and they fall back to the start-row values when Build has no runway table.
+    // through to the walk (read through RunwayShape), and they fall back to the start-row values
+    // when Build has no runway table.
 
     [Fact]
     public void A_centerline_built_without_a_runway_table_falls_back_to_the_start_rows()
@@ -223,7 +223,7 @@ public class RunwayReachEndedShortTests
         var g = TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), starts, runways);
 
         var cl = Assert.Single(g.RunwayCenterlines);
-        // The start-row frame is unchanged — every existing consumer still sees what it saw.
+        // The start rows themselves are unchanged.
         Assert.Equal(DisplacedLon, cl.Lon1, 9);
         // The pavement frame reaches the real threshold and carries the real half-width.
         Assert.Equal(0.0, cl.PavementLon1, 9);
