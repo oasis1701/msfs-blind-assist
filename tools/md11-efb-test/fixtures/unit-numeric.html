@@ -1,0 +1,15 @@
+<!-- Synthetic: the text-only <div> right after a field, where the EFB puts a unit box ("°C", "lb"),
+     holding a short NUMBER instead. A number is a value, never a unit: the field keeps its own name
+     and the number reads as its own line. The °C row beside it is the control case. -->
+<div class="flex flex-col">
+  <div class="flex items-center justify-between">
+    <span>Gross Weight</span>
+    <input type="text" value="">
+    <div>507.9</div>
+  </div>
+  <div class="flex items-center justify-between">
+    <span>Temperature</span>
+    <input type="text" value="15">
+    <div>°C</div>
+  </div>
+</div>
