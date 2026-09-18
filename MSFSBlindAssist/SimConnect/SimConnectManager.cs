@@ -359,10 +359,20 @@ public partial class SimConnectManager
     /// <summary>Extracted ICAO type designator for the current aircraft (e.g. "B77W"). Empty if not yet known.</summary>
     public string CurrentAircraftIcaoType { get; private set; } = "";
 
+    /// <summary>TITLE simvar value for the current aircraft (aircraft.cfg [FLTSIM.N] title). Empty if not yet known.</summary>
+    public string CurrentAircraftTitle => currentAircraftTitle;
+
     // Universal aircraft.cfg ICAO catalog — the runtime fallback used ONLY when the ATC MODEL
     // simvar doesn't resolve to a clean ICAO. Pure/dependency-light; its scan runs on a
     // background thread and never blocks the SimConnect callback.
     private readonly Services.AircraftCfgCatalog aircraftCfgCatalog = new();
+
+    /// <summary>
+    /// The same catalog instance used for ICAO fallback resolution, exposed so callers that need
+    /// a TITLE->installed-package-folder lookup (e.g. the PMDG SDK broadcast config check) reuse
+    /// this one background scan instead of standing up a second one.
+    /// </summary>
+    public Services.AircraftCfgCatalog AircraftCfgCatalog => aircraftCfgCatalog;
 
     // Aircraft connection announcement - wait for both aircraft info and ATC data
     private AircraftInfo? pendingAircraftInfo = null;

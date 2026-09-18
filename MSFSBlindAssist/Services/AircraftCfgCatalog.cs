@@ -37,6 +37,9 @@ namespace MSFSBlindAssist.Services
 
         private readonly object _lock = new();
         private Dictionary<string, string>? _byTitle; // titleLower -> icaoUpper (null until built)
+        // titleLower -> the immediate Community/Official child folder name that contained the
+        // matching aircraft.cfg (e.g. "pmdg-aircraft-738"). Built in the same scan as _byTitle.
+        private Dictionary<string, string>? _byTitlePackageFolder;
         private volatile bool _buildStarted;
         private volatile bool _isReady;
         private Thread? _buildThread;
@@ -88,6 +91,33 @@ namespace MSFSBlindAssist.Services
         }
 
         /// <summary>
+        /// Looks up the installed Community/Official package folder name (e.g.
+        /// <c>pmdg-aircraft-738</c>) for a loaded aircraft TITLE — the immediate child of
+        /// Community/Official that contained the aircraft.cfg the title was parsed from. This is
+        /// the same folder name MSFS uses to key that package's per-package "work" storage
+        /// folder, which is how PMDG-variant SDK/options-file lookups resolve the right file
+        /// without guessing a title->folder mapping. Safe to call before the build completes
+        /// (returns false until ready). Never throws.
+        /// </summary>
+        public bool TryGetPackageFolderByTitle(string? title, out string packageFolder)
+        {
+            packageFolder = string.Empty;
+            if (string.IsNullOrWhiteSpace(title)) return false;
+            string key = title.Trim().ToLowerInvariant();
+
+            Dictionary<string, string>? map;
+            lock (_lock) { map = _byTitlePackageFolder; }
+            if (map == null) return false;
+
+            if (map.TryGetValue(key, out var hit))
+            {
+                packageFolder = hit;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Returns every (Title, Icao) pair discovered on this machine. Forces the build and
         /// WAITS for it to finish (for the probe / diagnostics). Returns empty on any failure.
         /// </summary>
@@ -115,11 +145,19 @@ namespace MSFSBlindAssist.Services
 
         private void BuildSafely()
         {
-            Dictionary<string, string> map;
-            try { map = BuildMap(); }
-            catch { map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); }
+            Dictionary<string, string> byTitle;
+            Dictionary<string, string> byTitlePackageFolder;
+            try
+            {
+                (byTitle, byTitlePackageFolder) = BuildMaps();
+            }
+            catch
+            {
+                byTitle = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                byTitlePackageFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
 
-            lock (_lock) { _byTitle = map; }
+            lock (_lock) { _byTitle = byTitle; _byTitlePackageFolder = byTitlePackageFolder; }
             _isReady = true;
         }
 
@@ -127,12 +165,20 @@ namespace MSFSBlindAssist.Services
         /// Scans all installed aircraft.cfg files and builds the title->ICAO map. Pure (no
         /// instance state) so the probe can also call it directly; never throws.
         /// </summary>
-        public static Dictionary<string, string> BuildMap()
+        public static Dictionary<string, string> BuildMap() => BuildMaps().ByTitleIcao;
+
+        /// <summary>
+        /// Scans all installed aircraft.cfg files ONCE and builds both the title->ICAO map and
+        /// the title->package-folder map from the same pass. Pure (no instance state); never
+        /// throws.
+        /// </summary>
+        private static (Dictionary<string, string> ByTitleIcao, Dictionary<string, string> ByTitlePackageFolder) BuildMaps()
         {
-            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var byTitle = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var byPackageFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                foreach (var cfg in EnumerateAircraftCfgFiles())
+                foreach (var (cfg, packageFolder) in EnumerateAircraftCfgFiles())
                 {
                     try
                     {
@@ -145,14 +191,15 @@ namespace MSFSBlindAssist.Services
                             string key = title.Trim().ToLowerInvariant();
                             if (key.Length == 0) continue;
                             // First found wins (stable across rebuilds; ties are extremely rare).
-                            if (!map.ContainsKey(key)) map[key] = icaoUpper;
+                            if (!byTitle.ContainsKey(key)) byTitle[key] = icaoUpper;
+                            if (!byPackageFolder.ContainsKey(key)) byPackageFolder[key] = packageFolder;
                         }
                     }
                     catch { /* skip unreadable / locked / malformed cfg */ }
                 }
             }
             catch { /* swallow — return whatever we gathered */ }
-            return map;
+            return (byTitle, byPackageFolder);
         }
 
         /// <summary>
@@ -199,7 +246,12 @@ namespace MSFSBlindAssist.Services
 
         // --- file discovery (mirrors EFBModPackageManager / GsxAirplaneProfile path logic) ----
 
-        private static IEnumerable<string> EnumerateAircraftCfgFiles()
+        /// <summary>
+        /// Yields every installed aircraft.cfg together with the immediate Community/Official
+        /// child folder name that contains it (e.g. <c>pmdg-aircraft-738</c>) — the same name
+        /// MSFS keys that package's per-package "work" storage folder by.
+        /// </summary>
+        private static IEnumerable<(string CfgPath, string PackageFolder)> EnumerateAircraftCfgFiles()
         {
             string? pkgRoot = FindInstalledPackagesPath();
             if (pkgRoot == null) yield break;
@@ -222,8 +274,9 @@ namespace MSFSBlindAssist.Services
                     string airplanes = Path.Combine(pkg, "SimObjects", "Airplanes");
                     if (!SafeDirExists(airplanes)) continue;
 
+                    string packageFolder = new DirectoryInfo(pkg).Name;
                     foreach (var cfg in EnumerateCfgBounded(airplanes, "aircraft.cfg", 0))
-                        yield return cfg;
+                        yield return (cfg, packageFolder);
                 }
             }
         }

@@ -208,6 +208,11 @@ public partial class MainForm : Form
     // session has the side ready. Thread-safe internally (single-flight Lazy build).
     private readonly MSFSBlindAssist.Services.Gsx.GsxAirplaneProfile _gsxAirplaneProfile = new();
 
+    // Checks a connected PMDG variant's options.ini for the SDK data-broadcast lines the CDU
+    // window needs, and offers to add them. One instance for the app's lifetime so its
+    // "already resolved this session" bookkeeping survives aircraft swaps/reconnects.
+    private readonly MSFSBlindAssist.Services.PMDG.PMDGSdkBroadcastConfigurator _pmdgSdkBroadcastConfigurator = new();
+
     // Tracks ICAOs that have already triggered a Refresh() so we only rebuild the map once
     // per distinct ICAO miss (a Refresh re-scans the package folders — seconds on a cold
     // disk). Mutated from concurrent Task.Run handlers — always lock(_refreshedIcaos).
