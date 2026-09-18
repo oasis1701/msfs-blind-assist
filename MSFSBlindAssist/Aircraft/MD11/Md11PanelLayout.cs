@@ -19,7 +19,8 @@ public sealed record Md11Placement(
 /// <summary>
 /// The MD-11 panel tree (spec §3.8): sections in the order a preparation flows, panels named as
 /// TFDi's Systems Guide names them, controls in the physical panel order the guide numbers, a
-/// guard cover immediately before the control it covers, standalone lamps as the panel's Status
+/// guard cover immediately before the control it covers WHERE it still has a row at all (most do
+/// not — the auto-open lifts them; see IsAutoOpenedGuard), standalone lamps as the panel's Status
 /// Display rows (never tab stops).
 ///
 /// The table is the ONLY source of panel order. A control it does not name is still appended
@@ -331,11 +332,40 @@ public static class Md11PanelLayout
         "MD11_PED_DU1_BRT_KB", "MD11_PED_DU2_BRT_KB", "MD11_PED_DU3_BRT_KB", "MD11_PED_DU4_BRT_KB", "MD11_PED_DU5_BRT_KB", "MD11_PED_DU6_BRT_KB",
     };
 
+    // The two frequency TUNER knobs are deliberately absent, for the reason the transponder's digit
+    // keys are: the Radios panel carries a typed standby-frequency field and a transfer button per
+    // radio (Md11Radios.PanelKeys), which is how a blind pilot tunes. They stay registered controls,
+    // just not rows — see RadioFrequencyTuners.
     private static string[] RadioPanel(string p) => new[]
     {
         $"MD11_PED_{p}_RADIO_PNL_VHF1_BT", $"MD11_PED_{p}_RADIO_PNL_VHF2_BT", $"MD11_PED_{p}_RADIO_PNL_VHF3_BT",
         $"MD11_PED_{p}_RADIO_PNL_HF1_BT", $"MD11_PED_{p}_RADIO_PNL_HF2_BT",
-        $"MD11_PED_{p}_OUTER_RADIO_FREQ_SEL_KB", $"MD11_PED_{p}_INNER_RADIO_FREQ_SEL_KB", $"MD11_PED_{p}_RADIO_PNL_XFER_BT",
+        $"MD11_PED_{p}_RADIO_PNL_XFER_BT",
+    };
+
+    /// <summary>
+    /// The six radio frequency tuner knobs — MHz (outer) and kHz (inner) for Captain, First Officer
+    /// and Observer. Never rows, for TWO independent reasons, either of which is sufficient.
+    ///
+    /// They are ROTARY ENCODERS: the only events they carry are WHEEL_UP and WHEEL_DOWN, so the map
+    /// gives them an empty value map, and a positional control with no positions renders as a
+    /// READ-ONLY STATUS row. The pilot could therefore never operate one from the panel.
+    ///
+    /// And what that row showed was meaningless. The knob's own L:var is not a position — it is a
+    /// SIGNED CUMULATIVE CLICK COUNTER. Measured live on a loaded MD-11 (2026-09-18): it read 0 with
+    /// COM1 standby already tuned to 135.100, went 0 → 1 → 2 → 3 on three WHEEL_UP events (the
+    /// standby stepping 135.100 → 138.100 alongside it) and back to 2 on a WHEEL_DOWN. It starts at
+    /// zero on every load whatever the radios are set to, so the row a pilot saw read "0" forever and
+    /// would have read an odometer if they ever had turned it in the cockpit.
+    ///
+    /// Tuning goes through <see cref="Md11Radios.PanelKeys"/> — the typed standby field and the
+    /// transfer button — exactly as the squawk goes through its typed field rather than the keypad.
+    /// </summary>
+    public static readonly string[] RadioFrequencyTuners =
+    {
+        "MD11_PED_CPT_OUTER_RADIO_FREQ_SEL_KB", "MD11_PED_CPT_INNER_RADIO_FREQ_SEL_KB",
+        "MD11_PED_FO_OUTER_RADIO_FREQ_SEL_KB", "MD11_PED_FO_INNER_RADIO_FREQ_SEL_KB",
+        "MD11_PED_OBS_OUTER_RADIO_FREQ_SEL_KB", "MD11_PED_OBS_INNER_RADIO_FREQ_SEL_KB",
     };
 
     // The eight digit keys are deliberately absent: the panel carries a typed squawk field
@@ -349,12 +379,13 @@ public static class Md11PanelLayout
     };
 
     /// <summary>
-    /// Controls a panel row supersedes: pressed by the app on the pilot's behalf, never listed,
-    /// and exempt from the safety net that appends every unlisted control. Today the transponder
-    /// keypad, driven by the typed squawk field.
+    /// Controls a panel row supersedes: driven by the app on the pilot's behalf, never listed, and
+    /// exempt from the safety net that appends every unlisted control. The transponder keypad,
+    /// driven by the typed squawk field, and the six radio frequency tuner knobs, driven by the
+    /// typed standby field and the transfer button (<see cref="RadioFrequencyTuners"/>).
     /// </summary>
     public static readonly HashSet<string> SupersededByEntryField =
-        new(Md11Squawk.DigitButtons, StringComparer.OrdinalIgnoreCase);
+        new(Md11Squawk.DigitButtons.Concat(RadioFrequencyTuners), StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Controls the MCDU window presses on the pilot's behalf: every key and the brightness knob
@@ -366,8 +397,46 @@ public static class Md11PanelLayout
         || nodeId.StartsWith("MD11_CMCDU_", StringComparison.OrdinalIgnoreCase)
         || nodeId.StartsWith("MD11_RMCDU_", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>A control the app's own UI supersedes — the squawk keypad, the MCDU window's keys — never a row, exempt from the safety net.</summary>
+    /// <summary>A control the app's own UI supersedes — the squawk keypad, the radio tuners, the MCDU window's keys — never a row, exempt from the safety net.</summary>
     public static bool IsSuperseded(string nodeId) => SupersededByEntryField.Contains(nodeId) || IsMcduControl(nodeId);
+
+    /// <summary>
+    /// True when the transparent auto-open will lift this guard's cover for the pilot, so the guard
+    /// needs no row of its own.
+    ///
+    /// <c>EnsureGuardOpenAsync</c> runs from the ACTUATION of the control underneath: a control that
+    /// names this guard in its <c>guard_id</c> has its cover read, lifted if closed and settled
+    /// before the press or walk goes out. Where that happens the guard row is pure noise — a second
+    /// control for something already done, and one a pilot can leave in the wrong position.
+    ///
+    /// It does NOT always happen, which is why this is derived per guard rather than assumed for all
+    /// of them. Two shapes keep their row, and both are read off the map so the rule stays true as
+    /// the map changes:
+    ///   • NO control names the guard at all. Three do this today — EVAC, GPWS and the Main Cargo
+    ///     Door Operation arm switch are guarded in the aircraft, but the generator never linked
+    ///     their covers, so nothing triggers an auto-open. Measured live (2026-09-18): both the EVAC
+    ///     and GPWS covers sit CLOSED on a loaded aircraft, and firing the GPWS guard's own event
+    ///     lifts it (0 → 1), so the row is the only way a pilot has to reach them.
+    ///   • Every control naming it is one <c>SetControl</c> REFUSES — a read-only export
+    ///     (<see cref="Md11ExportBacked.IsReadOnly"/>) or a composite. The three engine fire handles
+    ///     are this: their row is read-only, so no actuation ever reaches the guard chain.
+    /// Link a guard in the generator, or make a refused control operable, and its row disappears on
+    /// its own — nothing here needs editing.
+    /// </summary>
+    public static bool IsAutoOpenedGuard(Md11Control guard, Md11ControlMap map)
+    {
+        if (guard == null || map == null || guard.Kind != Md11Kinds.Guard) return false;
+        var exportVars = new HashSet<string>(map.ExportVars, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var covered in map.Controls)
+        {
+            if (!string.Equals(covered.GuardId, guard.NodeId, StringComparison.OrdinalIgnoreCase)) continue;
+            if (Md11ExportBacked.IsReadOnly(covered, exportVars)) continue;   // SetControl refuses it
+            if (covered.Composite != null) continue;                          // SetControl refuses it
+            return true;                                                      // this one actuates, so the cover gets lifted
+        }
+        return false;
+    }
 
     private static readonly string[] WeatherRadar =
     {
@@ -543,6 +612,9 @@ public static class Md11PanelLayout
                     if (!byId.TryGetValue(key, out var c)) { missing.Add(key); continue; }
                     if (c.Kind == Md11Kinds.Option) continue;
                     if (!placed.Add(c.NodeId)) continue;
+                    // Registered, never a row. Marked placed FIRST (above), so the safety net does
+                    // not turn round and append what this drops.
+                    if (IsSuperseded(c.NodeId) || IsAutoOpenedGuard(c, map)) continue;
                     // A lamp is a Status Display row, never a tab stop (the Airbus pattern);
                     // everything operable is a control row. The table's order survives in both.
                     if (c.Kind == Md11Kinds.Annunciator) lamps.Add(c.NodeId);
@@ -561,7 +633,7 @@ public static class Md11PanelLayout
         foreach (var c in map.Controls)
         {
             if (c.Kind is Md11Kinds.Annunciator or Md11Kinds.Option || placed.Contains(c.NodeId)) continue;
-            if (IsSuperseded(c.NodeId)) continue;
+            if (IsSuperseded(c.NodeId) || IsAutoOpenedGuard(c, map)) continue;
             unplaced.Add(c.NodeId);
             var sectionName = SectionForArea(c.Area);
             var panelName = $"{c.Area} (other)";

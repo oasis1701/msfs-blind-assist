@@ -20,15 +20,20 @@ public class Md11PanelLayoutTests
         Assert.Empty(P.MissingKeys);   // a typo in the table would land here
         var all = P.Controls.Values.SelectMany(k => k).ToList();
         Assert.Equal(all.Count, all.Distinct(StringComparer.OrdinalIgnoreCase).Count());
-        // Every operable control is a row exactly once — except one the app's own UI supersedes:
-        // the transponder keypad (pressed by the typed squawk entry) and the three MCDUs' keys
-        // and brightness knobs (pressed from the MCDU window). Those are registered, never
-        // listed, and must not surface through the safety net either.
+        // Every operable control is a row exactly once — except two kinds the pilot reaches another
+        // way. SUPERSEDED: the transponder keypad (pressed by the typed squawk entry), the six radio
+        // frequency tuners (the typed standby field and the transfer button) and the three MCDUs'
+        // keys and brightness knobs (pressed from the MCDU window). AUTO-OPENED GUARDS: a cover the
+        // press or walk underneath lifts on the pilot's behalf. Both are registered, never listed,
+        // and must not surface through the safety net either.
+        var byId = Map.Controls.ToDictionary(c => c.NodeId, StringComparer.OrdinalIgnoreCase);
         var operable = Map.Controls.Where(c => c.Kind != Md11Kinds.Annunciator && c.Kind != Md11Kinds.Option).Select(c => c.NodeId);
         foreach (var key in operable)
         {
-            if (Md11PanelLayout.IsSuperseded(key)) Assert.DoesNotContain(key, all);
-            else Assert.Contains(key, all);
+            if (Md11PanelLayout.IsSuperseded(key) || Md11PanelLayout.IsAutoOpenedGuard(byId[key], Map))
+                Assert.DoesNotContain(key, all);
+            else
+                Assert.Contains(key, all);
         }
         Assert.DoesNotContain(P.Structure.Values.SelectMany(n => n), n => n.EndsWith("(other)"));
     }
@@ -48,19 +53,75 @@ public class Md11PanelLayoutTests
                              "Engines and Ignition", "Flight Controls", "Lights and Signs", "Cockpit Lights",
                              "Windshield Wipers", "Miscellaneous" },
                      P.Structure["Overhead"].ToArray());
-        Assert.Equal("MD11_OVHD_ELEC_BATT_GRD", P.Controls["Electrical"][0]);
-        Assert.Equal("MD11_OVHD_ELEC_BATT_BT", P.Controls["Electrical"][1]);
+        // The battery's guard is NOT a row: pressing the battery lifts its cover first, so the row
+        // was a second control for something already done. The panel opens on the battery itself.
+        Assert.Equal("MD11_OVHD_ELEC_BATT_BT", P.Controls["Electrical"][0]);
+        Assert.DoesNotContain("MD11_OVHD_ELEC_BATT_GRD", P.Controls["Electrical"]);
     }
 
+    /// <summary>
+    /// A guard gets a row only where the transparent auto-open cannot lift it — and where it does,
+    /// it still sits immediately before the control it covers.
+    ///
+    /// EnsureGuardOpenAsync runs from the ACTUATION of the control underneath, so for a guard some
+    /// operable control names in its guard_id the cover is lifted, settled and actuated without the
+    /// pilot touching it; a row there is noise, and one a pilot can leave in the wrong position.
+    /// Two shapes keep theirs, both read off the map: a guard NO control names (EVAC, GPWS and the
+    /// Main Cargo Door arm — guarded in the aircraft, never linked by the generator, so nothing
+    /// triggers an auto-open), and a guard whose every namer SetControl refuses (the three engine
+    /// fire handles, whose rows are read-only composites).
+    /// </summary>
     [Fact]
-    public void GuardCovers_ImmediatelyPrecedeTheControlTheyCover()
+    public void AGuardIsARow_OnlyWhereTheAutoOpenCannotLiftIt()
     {
-        foreach (var c in Map.Controls.Where(c => !string.IsNullOrEmpty(c.GuardId)))
+        var byId = Map.Controls.ToDictionary(c => c.NodeId, StringComparer.OrdinalIgnoreCase);
+        var everyRow = P.Controls.Values.SelectMany(k => k).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var guard in Map.Controls.Where(c => c.Kind == Md11Kinds.Guard))
+        {
+            bool autoOpened = Md11PanelLayout.IsAutoOpenedGuard(guard, Map);
+            Assert.Equal(!autoOpened, everyRow.Contains(guard.NodeId));
+            Assert.DoesNotContain(guard.NodeId, P.Unplaced);   // dropped, never re-appended by the safety net
+        }
+
+        // Exactly the six the auto-open cannot reach, named so a change to either cause is visible.
+        var kept = Map.Controls.Where(c => c.Kind == Md11Kinds.Guard && everyRow.Contains(c.NodeId))
+            .Select(c => c.NodeId).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[]
+        {
+            "MD11_AOVHD_ENG1FIRE_GRD", "MD11_AOVHD_ENG2FIRE_GRD", "MD11_AOVHD_ENG3FIRE_GRD",
+            "MD11_AOVHD_EVAC_GRD", "MD11_AOVHD_GPWS_GRD", "MD11_EXT_DOOR_CRG_MAIN_ARM_GRD",
+        }, kept);
+
+        // A guard that IS a row still precedes the control it covers, where it covers one.
+        foreach (var c in Map.Controls.Where(c => !string.IsNullOrEmpty(c.GuardId) && everyRow.Contains(c.GuardId!)))
         {
             var panel = P.Controls.Single(kv => kv.Value.Contains(c.NodeId));
             int i = panel.Value.IndexOf(c.NodeId);
             Assert.True(i > 0 && panel.Value[i - 1] == c.GuardId, $"{c.GuardId} should sit right before {c.NodeId} in {panel.Key}");
         }
+    }
+
+    /// <summary>
+    /// Dropping a guard's ROW must never drop its VARIABLE. The whole point of removing the row is
+    /// that EnsureGuardOpenAsync lifts the cover instead — and to do that it first READS the guard
+    /// through SimConnectManager.ReadFreshAsync, which needs the var registered as a data
+    /// definition. Registration walks the control MAP, not the panels, so the two are independent;
+    /// this pins that they stay independent, because a change that coupled them would disarm every
+    /// auto-open on the aircraft while every test above still passed.
+    /// </summary>
+    [Fact]
+    public void AGuardDroppedFromThePanels_IsStillARegisteredVariable()
+    {
+        var variables = new TFDiMD11Definition().GetVariables();
+        var everyRow = P.Controls.Values.SelectMany(k => k).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var dropped = Map.Controls
+            .Where(c => c.Kind == Md11Kinds.Guard && !everyRow.Contains(c.NodeId))
+            .Select(c => c.NodeId).ToList();
+
+        Assert.Equal(26, dropped.Count);                                  // 32 guards, 6 the auto-open cannot reach
+        foreach (var guard in dropped) Assert.True(variables.ContainsKey(guard), guard);
     }
 
     /// <summary>

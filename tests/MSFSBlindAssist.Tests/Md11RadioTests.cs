@@ -108,9 +108,16 @@ public class Md11RadioTests
 
     /// <summary>
     /// The six COM rows OPEN the Radios panel, and the three crew positions' radio control panels
-    /// the layout table placed there follow them in the table's order — 24 controls (VHF 1-3,
-    /// HF 1-2, the MHz and kHz tuners and the transfer, per position) that the COM rows once
-    /// replaced, leaving them on no panel at all.
+    /// the layout table placed there follow them in the table's order — 18 controls (VHF 1-3,
+    /// HF 1-2 and the transfer, per position) that the COM rows once replaced, leaving them on no
+    /// panel at all.
+    ///
+    /// The six frequency TUNER knobs are deliberately not among them: they are rotary encoders with
+    /// no position, so they rendered as read-only rows a pilot could not operate, showing a signed
+    /// click counter that reads 0 on every load whatever the radios are tuned to. Tuning is the
+    /// typed standby field and the transfer button (Md11Radios.PanelKeys), the same way the squawk
+    /// is a typed field rather than the keypad. Pinned by
+    /// <see cref="TheFrequencyTuners_AreRegisteredButNeverRows"/>.
     /// </summary>
     [Fact]
     public void TheRadiosPanel_KeepsTheThreeCrewRadioPanels_AfterTheComRows()
@@ -118,14 +125,36 @@ public class Md11RadioTests
         static string[] Crew(string p) => new[]
         {
             $"MD11_PED_{p}_RADIO_PNL_VHF1_BT", $"MD11_PED_{p}_RADIO_PNL_VHF2_BT", $"MD11_PED_{p}_RADIO_PNL_VHF3_BT",
-            $"MD11_PED_{p}_RADIO_PNL_HF1_BT", $"MD11_PED_{p}_RADIO_PNL_HF2_BT",
-            $"MD11_PED_{p}_OUTER_RADIO_FREQ_SEL_KB", $"MD11_PED_{p}_INNER_RADIO_FREQ_SEL_KB", $"MD11_PED_{p}_RADIO_PNL_XFER_BT",
+            $"MD11_PED_{p}_RADIO_PNL_HF1_BT", $"MD11_PED_{p}_RADIO_PNL_HF2_BT", $"MD11_PED_{p}_RADIO_PNL_XFER_BT",
         };
         var hardware = Crew("CPT").Concat(Crew("FO")).Concat(Crew("OBS")).ToArray();
 
-        Assert.Equal(24, hardware.Length);
+        Assert.Equal(18, hardware.Length);
         Assert.Equal(hardware, Md11PanelLayout.Place(Md11ControlMap.Load()).Controls["Radios"]);   // what the table places
         Assert.Equal(Md11Radios.PanelKeys.Concat(hardware), Def.GetPanelControls()["Radios"]);    // what the pilot gets
+    }
+
+    /// <summary>
+    /// The tuners stay REGISTERED controls — nothing about them is deleted from the map — and are
+    /// simply never rows, on the Radios panel or anywhere else, including through the safety net
+    /// that appends every unlisted control.
+    /// </summary>
+    [Fact]
+    public void TheFrequencyTuners_AreRegisteredButNeverRows()
+    {
+        var map = Md11ControlMap.Load();
+        var placed = Md11PanelLayout.Place(map);
+        var everyRow = placed.Controls.Values.SelectMany(k => k)
+            .Concat(placed.Displays.Values.SelectMany(k => k)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        Assert.Equal(6, Md11PanelLayout.RadioFrequencyTuners.Length);
+        foreach (var tuner in Md11PanelLayout.RadioFrequencyTuners)
+        {
+            Assert.Contains(map.Controls, c => string.Equals(c.NodeId, tuner, StringComparison.OrdinalIgnoreCase));
+            Assert.True(Md11PanelLayout.IsSuperseded(tuner), tuner);
+            Assert.DoesNotContain(tuner, everyRow);
+            Assert.DoesNotContain(tuner, placed.Unplaced);
+        }
     }
 
     [Theory]
