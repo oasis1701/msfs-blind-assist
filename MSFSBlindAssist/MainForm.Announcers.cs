@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -20,7 +20,9 @@ namespace MSFSBlindAssist;
 public partial class MainForm
 {
     /// <summary>
-    /// A continuous batch has finished dispatching. If the current definition is holding an
+    /// A continuous batch has finished dispatching. Every definition hears about every delivery
+    /// (IAircraftDefinition.OnContinuousBatchDelivered — the MD-11 counts them as the evidence
+    /// its context-reset seed pass waits for); then, if the current definition is holding an
     /// announcement that was waiting on a variable in THIS batch, that variable is now current
     /// for this sample, so let the definition speak it.
     ///
@@ -39,7 +41,19 @@ public partial class MainForm
         if (InvokeRequired || Volatile.Read(ref queuedEventCount) > 0) return;
 
         var aircraft = currentAircraft;
-        if (aircraft?.DeferredFlushWatchVariable is not string watchVar) return;
+        if (aircraft == null) return;
+
+        try
+        {
+            aircraft.OnContinuousBatchDelivered(batchNum);      // every delivery; base no-op
+        }
+        catch (Exception ex)
+        {
+            // Its own catch, so a definition's counting can never cost the flush below its period.
+            Log.Debug("Announcements", $"OnContinuousBatchDelivered threw for batch {batchNum}: {ex.Message}");
+        }
+
+        if (aircraft.DeferredFlushWatchVariable is not string watchVar) return;
         if (simConnectManager == null) return;
 
         if (simConnectManager.TryGetContinuousBatch(watchVar, out int watchBatch))
@@ -92,6 +106,12 @@ public partial class MainForm
         currentSimVarValues[e.VarName] = e.Value;
 
         if (e.VarName == "FO_ALTITUDE_AGL") _universalLatestAgl = e.Value;
+
+        // Composed-state controls (MD-11): relabel every dependent of this key, on EVERY path
+        // below — initial snapshot, def-handled (ProcessSimVarUpdate returns true and exits
+        // early) and generic. The SimConnect cache already holds the new value here, which is
+        // what the definition's hook reads.
+        RelabelStateDependents(e.VarName);
 
         // Initial-snapshot fast path: populate caches and refresh UI controls
         // but skip all announcement paths. These events represent "what the
@@ -192,7 +212,12 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || uiEcho;
+        // Same pattern for the MD-11: it composes its flap read-out from INSIDE
+        // ProcessSimVarUpdate (two vars, one spoken fact) and returns true, so the generic
+        // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
+        bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
+            Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -305,6 +330,15 @@ public partial class MainForm
                 // sharing the same disabled-variables list.
                 if (currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
                     Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the MD-11 Monitor Manager. Carries the most weight of any
+                // of these: the MD-11 announces 532 annunciator lamps, because with no readable
+                // displays those lamps ARE its instrument panel.
+                if (currentAircraft.AircraftCode == "TFDI_MD11" &&
+                    Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -1185,13 +1219,16 @@ public partial class MainForm
                     varName.StartsWith("ND_FILTER_", StringComparison.Ordinal) ||
                     varName.EndsWith("_DETENT", StringComparison.Ordinal);
 
-                // Find the matching value in the combo box
+                // Find the matching value in the combo box — through the definition's value→key
+                // classifier (identity unless set), so a travel-valued var keyed on positions
+                // (the MD-11 gear lever) re-syncs like any other combo.
                 if (!isSyntheticSelector && currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
-                    if (varDef.ValueDescriptions.ContainsKey(value))
+                    double key = varDef.DescriptionKeyFor(value);
+                    if (varDef.ValueDescriptions.ContainsKey(key))
                     {
-                        string description = varDef.ValueDescriptions[value];
+                        string description = varDef.ValueDescriptions[key];
                         int index = combo.Items.IndexOf(description);
                         if (index >= 0 && combo.SelectedIndex != index)
                         {
@@ -1208,7 +1245,11 @@ public partial class MainForm
                 //  (b) Enum-style status field (door state, annunciator, etc.) —
                 //      mirror the value through ValueDescriptions; fall back to
                 //      raw numeric if the cached value isn't in the map.
-                if (currentAircraft.GetVariables().ContainsKey(varName))
+                if (currentAircraft.TryDescribeControlState(varName, out string describedStatus))
+                {
+                    if (textBox.Text != describedStatus) textBox.Text = describedStatus;
+                }
+                else if (currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
                     string newText;
@@ -1219,9 +1260,16 @@ public partial class MainForm
                     if (isContinuousReadout)
                     {
                         double displayValue = value * varDef.Scale + varDef.Offset;
-                        newText = $"{displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                        newText = Utils.ReadoutFormat.WithUnit(
+                            displayValue.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture), varDef.Units);
                     }
-                    else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.TryGetValue(value, out string? desc))
+                    // Through the definition's value→key classifier, exactly as the combo branch
+                    // above does. Identity unless the definition sets one, so nothing else moves —
+                    // but a var whose delivered value is not itself a key (a travel-valued control
+                    // keyed on positions, the MD-11 gear lever's 0-25) would otherwise render as
+                    // the raw number here and keep rendering it, because this lookup never asked.
+                    else if (varDef.ValueDescriptions != null
+                             && varDef.ValueDescriptions.TryGetValue(varDef.DescriptionKeyFor(value), out string? desc))
                     {
                         newText = desc;
                     }
@@ -1236,7 +1284,13 @@ public partial class MainForm
             else if (control is Button btn)
             {
                 // Update stateful button label from StateVariable or ValueDescriptions
-                if (currentAircraft.GetVariables().ContainsKey(varName))
+                if (currentAircraft.TryDescribeControlState(varName, out string describedState) &&
+                    currentAircraft.GetVariables().TryGetValue(varName, out var describedDef))
+                {
+                    string newLabel = $"{describedDef.DisplayName}: {describedState}";
+                    if (btn.Text != newLabel) { btn.Text = newLabel; btn.AccessibleName = newLabel; }
+                }
+                else if (currentAircraft.GetVariables().ContainsKey(varName))
                 {
                     var varDef = currentAircraft.GetVariables()[varName];
                     if (!string.IsNullOrEmpty(varDef.StateVariable))
@@ -2165,6 +2219,15 @@ public partial class MainForm
 
     private async void DescribeSceneAsync()
     {
+        // The same gate every display read takes. This path captures the simulator too, so run
+        // beside a display read it captured that read's INSTRUMENT VIEW — or a frame taken
+        // mid-switch — and described it as "the scene"; the two also announced over each other.
+        if (!DisplayReadGate.Shared.TryEnter())
+        {
+            announcer.AnnounceImmediate(DisplayReadGate.BusyMessage);
+            return;
+        }
+
         try
         {
             announcer.AnnounceImmediate("Capturing scene...");
@@ -2206,6 +2269,10 @@ public partial class MainForm
         {
             Log.Debug("MainForm", $"Error in DescribeSceneAsync: {ex.Message}");
             announcer.AnnounceImmediate($"Error describing scene: {ex.Message}");
+        }
+        finally
+        {
+            DisplayReadGate.Shared.Exit();
         }
     }
 

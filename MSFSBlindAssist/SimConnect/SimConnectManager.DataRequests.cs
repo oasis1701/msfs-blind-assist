@@ -82,17 +82,103 @@ public partial class SimConnectManager
         }
     }
 
+    // Awaitable fresh reads (see FreshReadWaiters). Completed from the two delivery paths in
+    // SimConnectManager.VarCache.cs — the individual-def response (by request id) and the
+    // continuous batch (a period sample) — and failed on disconnect / aircraft switch beside
+    // forceUpdateVariables.Clear().
+    //
+    // Every fresh read's PERIOD.ONCE goes out under its OWN request id from this range (the
+    // definition id is unchanged), so its answer can be told from an abandoned earlier read's.
+    // Dispatch routes any id >= INDIVIDUAL_VARIABLE_BASE to ProcessIndividualVariableResponse;
+    // data-definition ids start at 1000 and reset per aircraft switch, so a range starting at one
+    // million can never collide with them (pinned by FreshReadWaitersTests). _freshRequestIdToVarKey
+    // maps an issued id to its var key until the ONCE answers (consumed on delivery) or the
+    // connection/aircraft resets (cleared beside requestIdToVarKey) — it is deliberately NOT folded
+    // into requestIdToVarKey, whose contract is exact sync with variableDataDefinitions.
+    internal const int FreshRequestIdBase = 1_000_000;
+    private readonly FreshReadWaiters _freshReads = new(FreshRequestIdBase);
+    private readonly ConcurrentDictionary<int, string> _freshRequestIdToVarKey = new();
+
+    // SimConnect is not thread-safe. This gate covers the one off-thread path that issues a data
+    // REQUEST and touches the maps below; the client-data WRITES a pool thread already makes (the
+    // MD-11's CEVENT pump, the A380's seat-motion Task.Run, both through ExecuteCalculatorCode)
+    // are a separate, older exception it does not cover. The manager is built on the UI thread
+    // (MainForm's constructor, through
+    // InitializeManagers), so this initializer captures the UI thread's WinForms context and id at
+    // construction — as MobiFlightWasmModule captures its own for its heartbeat — and the core
+    // RequestVariable below moves an off-thread call onto it. Only a WinForms context: it runs
+    // every post on the thread that created it, which is what makes "posted" mean "on the UI
+    // thread"; anything else (a test runner's context) leaves the gate inert — today's behaviour.
+    private readonly UiThreadGate _uiGate = new(
+        SynchronizationContext.Current as System.Windows.Forms.WindowsFormsSynchronizationContext,
+        Environment.CurrentManagedThreadId);
+
+    /// <summary>
+    /// True when a <see cref="ReadFreshAsync"/> of <paramref name="varKey"/> reflects the aircraft
+    /// within about a frame — see <see cref="FreshReadPolicy.SupportsFreshReads"/>. The MD-11
+    /// walker picks its read protocol on this.
+    /// </summary>
+    public bool SupportsFreshReads(string varKey)
+        => FreshReadPolicy.SupportsFreshReads(variableDataDefinitions.ContainsKey(varKey), DefinitionOf(varKey));
+
+    /// <summary>
+    /// Force-reads <paramref name="varKey"/> and completes on the NEXT delivery of it: the
+    /// PERIOD.ONCE response of an individual-def var (a frame or two), or the next continuous batch
+    /// of a batch-covered one (up to one period; the force flag makes an unchanged value re-fire).
+    /// A var on its own SIM_FRAME + CHANGED subscription gets its CACHE back at once instead — that
+    /// cache is at most a frame old, no PERIOD.ONCE is ever issued for it, and an unchanged value
+    /// would never deliver (<see cref="FreshReadPolicy.CacheIsFresh"/>). Returns null when nothing
+    /// is delivered within <paramref name="timeoutMs"/>, when not connected, or when the key cannot
+    /// be delivered at all; throws <see cref="OperationCanceledException"/> on <paramref name="ct"/>.
+    /// The MD-11 walker reads through this instead of sleeping and polling the cache — the delivery
+    /// is the only fresh signal there is.
+    /// </summary>
+    public Task<double?> ReadFreshAsync(string varKey, int timeoutMs, CancellationToken ct = default)
+    {
+        if (!IsConnected || simConnect == null) return Task.FromResult<double?>(null);
+        bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey);
+        if (!deliverable) return Task.FromResult<double?>(null);
+        if (FreshReadPolicy.CacheIsFresh(DefinitionOf(varKey))) return Task.FromResult(GetCachedVariableValue(varKey));
+        return _freshReads.WaitAsync(varKey,
+            id => RequestVariable(varKey, forceUpdate: true, freshRequestId: id), timeoutMs, ct);
+    }
+
+    private SimVarDefinition? DefinitionOf(string varKey)
+    {
+        var defs = CurrentAircraft?.GetVariables();
+        return defs != null && defs.TryGetValue(varKey, out var def) ? def : null;
+    }
+
     /// <summary>
     /// Request a single variable by key
     /// </summary>
     /// <param name="varKey">The variable key to request</param>
     /// <param name="forceUpdate">If true, will always fire SimVarUpdated event even if value hasn't changed</param>
     public void RequestVariable(string varKey, bool forceUpdate = false)
+        => RequestVariable(varKey, forceUpdate, freshRequestId: null);
+
+    /// <summary>
+    /// <paramref name="freshRequestId"/>: a <see cref="ReadFreshAsync"/> issues its PERIOD.ONCE
+    /// under this id instead of the data-definition id, so its answer can be told from any other
+    /// delivery of the var (see <see cref="FreshReadWaiters"/>). The id is recorded in
+    /// <see cref="_freshRequestIdToVarKey"/> only once the request is actually issued — a var this
+    /// method issues no ONCE for (batch-covered, or on its own periodic subscription) is answered
+    /// by its next sample instead, exactly as before.
+    /// </summary>
+    private void RequestVariable(string varKey, bool forceUpdate, int? freshRequestId)
     {
         if (!IsConnected || simConnect == null)
         {
             return;
         }
+
+        // Off the UI thread — the MD-11's walks and read-backs call in from ConfigureAwait(false)
+        // pool-thread continuations — hand the whole request to the UI thread, where SimConnect and
+        // the maps below are otherwise only ever touched. The posted run re-enters here and
+        // re-checks the connection above. A ReadFreshAsync caller loses nothing: FreshReadWaiters
+        // registers its waiter before it calls in, and the id mapping below is written by the
+        // posted run itself, before the request it names can be answered.
+        if (_uiGate.PostIfOffThread(() => RequestVariable(varKey, forceUpdate, freshRequestId))) return;
 
         // Record the force flag BEFORE the individual-def check below. Batch-covered vars
         // (Continuous+IsAnnounced, no ExcludeFromBatch) have NO individual data def, so they take
@@ -141,12 +227,15 @@ public partial class SimConnectManager
         try
         {
             int dataDefId = variableDataDefinitions[varKey];
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
+            int requestId = freshRequestId ?? dataDefId;
+            if (freshRequestId is int freshId) _freshRequestIdToVarKey[freshId] = varKey;
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)requestId,
                 (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
         }
         catch (Exception ex)
         {
+            if (freshRequestId is int failedId) _freshRequestIdToVarKey.TryRemove(failedId, out _);
             Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
         }
     }

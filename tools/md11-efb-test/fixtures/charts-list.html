@@ -1,0 +1,40 @@
+<!-- Source-built from efb.js ChartsComponent: signed in, KLAX searched, STAR tab active.
+     The chart image (right pane, a canvas/blob) is out of scope and not represented.
+     Wrapped in the same plain <div> the real EFB always renders ChartsComponent inside (the
+     Router's "pt-4" page-content wrapper, visible in the charts-signedout.html capture) — the
+     harness's `nav:` option prepends the nav bar as a flat sibling of this fixture's own root,
+     one level shallower than the real DOM. Without this wrapper, labelInfo's outward caption
+     walk (4 hops, load-bearing for perf-stepper-fallback's "Runway" span) escapes past the
+     fixture root on its last hop and misreads the nav bar's own concatenated tab text as the
+     "Airport ICAO" input's label. -->
+<div>
+<div class="flex h-full w-full">
+  <div class="flex h-full w-1/4 flex-col bg-navigraph-sidebar">
+    <div class="flex w-full flex-row p-4">
+      <input placeholder="Airport ICAO" class="h-8 w-3/4 rounded-lg border border-white bg-gray-700 pl-1 text-xs" value="KLAX">
+      <div class="flex w-1/4 justify-end"><button class="h-8 rounded-lg bg-green-500 px-2 py-1"><svg class="lucide lucide-search"></svg></button></div>
+    </div>
+    <div class="mb-3 h-8 rounded-md bg-navigraph-background px-4">
+      <div class="flex h-full items-center">
+        <button class="mr-2 grow rounded-lg p-1 font-bold bg-green-500">STAR</button>
+        <button class="mr-2 grow rounded-lg p-1 font-bold bg-navigraph-background text-amber-500">APP</button>
+        <button class="mr-2 grow rounded-lg p-1 font-bold bg-navigraph-background text-blue-500">TAXI</button>
+        <button class="mr-2 grow rounded-lg p-1 font-bold bg-navigraph-background text-pink-500">SID</button>
+        <button class="grow rounded-lg p-1 font-bold bg-navigraph-background text-purple-500">REF</button>
+      </div>
+    </div>
+    <div class="grow">
+      <div class="overflow-y-auto" id="nav-sidebar">
+        <button class="w-full bg-navigraph-sidebar p-2 text-left"><p>ANJLL FOUR (RNAV)</p><p class="mb-2 text-xs"><b>10-2A</b></p><hr></button>
+        <button class="w-full bg-navigraph-sidebar p-2 text-left"><p>BASET ONE</p><p class="mb-2 text-xs"><b>10-2B</b></p><hr></button>
+      </div>
+    </div>
+  </div>
+  <div class="flex h-full w-3/4">
+    <div class="flex h-full flex-col place-content-center text-center">
+      <h1 class="mb-3 text-5xl font-bold">Select an airport</h1>
+      <p class="text-base">To get started, type an airport into the "Airport ICAO" box and press search!</p>
+    </div>
+  </div>
+</div>
+</div>

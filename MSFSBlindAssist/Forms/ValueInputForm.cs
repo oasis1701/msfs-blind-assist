@@ -19,6 +19,15 @@ public record ToggleButtonDef(
     /// its flip target from the current state, which is unreadable until then.
     /// </summary>
     public Func<bool>? IsEnabled { get; init; }
+
+    /// <summary>
+    /// Optional, asked just before the post-press state announce: true SUPPRESSES it. For a press
+    /// the aircraft REFUSED — the dialog's announce is an interrupting <c>AnnounceImmediate</c>
+    /// fired 1.2 s later, so it truncated the refusal the action itself had queued, and the label
+    /// is the redundant half (the screen reader already read the control when it was pressed).
+    /// Null, the default, announces exactly as before.
+    /// </summary>
+    public Func<bool>? SuppressStateAnnounce { get; init; }
 }
 
 public partial class ValueInputForm : Form
@@ -173,7 +182,12 @@ public partial class ValueInputForm : Form
                                     b.AccessibleName = lbl.Replace("&", "");
                                 }
                                 UpdateInputEnabled();
-                                // Announce the pressed button's new state
+                                // Announce the pressed button's new state — unless the action
+                                // refused. This is an INTERRUPTING announce 1.2 s after the press,
+                                // so on a refused press it cut off the refusal the action itself
+                                // had queued; the label is the redundant half, since the screen
+                                // reader already read the control when it was pressed.
+                                if (capturedDef.SuppressStateAnnounce?.Invoke() == true) return;
                                 string newState = capturedDef.GetCurrentState();
                                 string announceLabel = capturedDef.Label.Replace("&", "");
                                 if (string.IsNullOrEmpty(newState))
