@@ -23,23 +23,27 @@ public interface ICameraViewIo
 public sealed record InstrumentViewRequest(ICameraViewIo Camera, int ViewIndex);
 
 /// <summary>
-/// The result of <see cref="InstrumentViewSwitcher.EnterAsync"/>. Created by the switcher only.
-/// There is no way back on purpose — see <see cref="InstrumentViewPlan"/>: the sim will not
-/// accept a user-saved custom camera's own reading as a write, so the pilot returns to their
-/// view with their own view key.
+/// The result of <see cref="InstrumentViewSwitcher.EnterAsync"/>, and the way back:
+/// <see cref="Before"/> is the camera as it read before the switch, which
+/// <see cref="InstrumentViewSwitcher.RestoreAsync"/> writes again after the capture. Created by
+/// the switcher only.
 /// </summary>
 public sealed class InstrumentViewSession
 {
-    internal InstrumentViewSession(InstrumentViewOutcome outcome, bool verified)
+    internal InstrumentViewSession(InstrumentViewOutcome outcome, bool verified, CameraViewReading? before)
     {
         Outcome = outcome;
         Verified = verified;
+        Before = before;
     }
 
     public InstrumentViewOutcome Outcome { get; }
 
     /// <summary>True when the camera was seen on the wanted view — including when it was there already.</summary>
     public bool Verified { get; }
+
+    /// <summary>The camera as it read before the switch, or null when it could not be read.</summary>
+    public CameraViewReading? Before { get; }
 }
 
 /// <summary>
@@ -92,9 +96,10 @@ public sealed class InstrumentViewSwitcher
     /// </summary>
     public async Task<InstrumentViewSession> EnterAsync(int wantedIndex)
     {
-        var plan = InstrumentViewPlan.For(await TryReadAsync(), wantedIndex);
+        var before = await TryReadAsync();
+        var plan = InstrumentViewPlan.For(before, wantedIndex);
         if (plan.Writes is not { } writes)
-            return new InstrumentViewSession(plan.Outcome, plan.Outcome == InstrumentViewOutcome.AlreadyThere);
+            return new InstrumentViewSession(plan.Outcome, plan.Outcome == InstrumentViewOutcome.AlreadyThere, before);
 
         try
         {
@@ -124,7 +129,7 @@ public sealed class InstrumentViewSwitcher
         if (verified) await _delay(_settleMs);
         else Log.Debug("Camera", $"Instrument view {wantedIndex} did not verify within {_verifyCapMs} ms (outcome {plan.Outcome})");
 
-        return new InstrumentViewSession(plan.Outcome, verified);
+        return new InstrumentViewSession(plan.Outcome, verified, before);
     }
 
     /// <summary>A read that throws is a read that returned nothing: the caller must always get its session.</summary>
