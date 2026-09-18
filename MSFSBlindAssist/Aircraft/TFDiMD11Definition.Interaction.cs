@@ -1432,10 +1432,10 @@ public partial class TFDiMD11Definition
 
         // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode). The DUs have
         // no text behind them, so these are read from a capture of the sim, after the camera has
-        // been moved to the instrument view that frames the display. The camera STAYS there: the
-        // restore was removed on 2026-09-09 by the owner's ruling (a user-saved custom camera
-        // cannot be re-selected through the camera SimVar, so it silently failed for exactly the
-        // pilots who fly from one) and must not come back — see InstrumentViewPlan and ReadDisplay.
+        // been moved to the instrument view that frames the display — and the camera is put back
+        // afterwards. The restore was removed on 2026-09-09 and reinstated on 2026-09-18, when the
+        // reasoning behind that removal was disproven on another airframe; it is verified by
+        // read-back and says so when it fails. See InstrumentViewPlan and ReadDisplay.
         if (TryReadDisplayFor(action, Md11DisplayReads.All, simConnect, announcer, parentForm))
             return true;
 

@@ -47,8 +47,10 @@ public sealed class InstrumentViewSession
 }
 
 /// <summary>
-/// Moves the simulator camera to an instrument view for an AI display read: read, plan
-/// (<see cref="InstrumentViewPlan"/>), write, verify by read-back, settle for a rendered frame.
+/// Moves the simulator camera to an instrument view for an AI display read and puts it back
+/// afterwards: read, plan (<see cref="InstrumentViewPlan"/>), write, verify by read-back, settle
+/// for a rendered frame — then <see cref="RestoreAsync"/> writes the pilot's own view again and
+/// verifies that too.
 /// Live-measured on MSFS 2024 (2026-09-08): the cut is instantaneous, so the read-back normally
 /// matches on its first poll and the whole entry costs one settle. The verify cap is elapsed
 /// wall-clock time, including the read timeouts it spends polling — not a count of poll steps —
@@ -130,6 +132,51 @@ public sealed class InstrumentViewSwitcher
         else Log.Debug("Camera", $"Instrument view {wantedIndex} did not verify within {_verifyCapMs} ms (outcome {plan.Outcome})");
 
         return new InstrumentViewSession(plan.Outcome, verified, before);
+    }
+
+    /// <summary>
+    /// Puts the pilot's camera back where <see cref="EnterAsync"/> found it, verifying by
+    /// read-back. No settle: nothing is captured afterwards. Never throws.
+    ///
+    /// The write goes through <see cref="ICameraViewIo.Set"/>, which writes the TYPE register
+    /// before the INDEX — load-bearing here, not incidental. While the camera is still in the
+    /// instrument type an index write acts immediately, so writing the index first slides the
+    /// camera to THAT instrument view and leaves the pilot somewhere they never chose if the type
+    /// write is then refused (measured on the MD-11, 2026-09-09).
+    /// </summary>
+    /// <returns>
+    /// True when the camera is back, or when nothing needed putting back. False only when a
+    /// restore was attempted and the read-back never came back to it — which is detectable
+    /// because the sim CLAMPS an index it will not take rather than ignoring the write, and
+    /// reports the clamped value (measured 2026-09-18: a write of 20 landed on 8, read back as 8).
+    /// </returns>
+    public async Task<bool> RestoreAsync(InstrumentViewSession session)
+    {
+        if (InstrumentViewPlan.RestoreWrites(session.Outcome, session.Before) is not { } writes)
+            return true;
+
+        try
+        {
+            _io.Set(writes.Type, writes.Index);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Camera", $"Restoring camera view type {writes.Type} index {writes.Index} failed: {ex.Message}");
+        }
+
+        long started = _now();
+        while (true)
+        {
+            var now = await TryReadAsync();
+            if (now is { } reading && reading.ViewType == writes.Type && reading.ViewIndex == writes.Index)
+                return true;
+            // Elapsed time, not poll steps — the same rule EnterAsync verifies under.
+            if (_now() - started >= _verifyCapMs) break;
+            await _delay(_pollStepMs);
+        }
+
+        Log.Debug("Camera", $"Camera did not return to view type {writes.Type} index {writes.Index} within {_verifyCapMs} ms");
+        return false;
     }
 
     /// <summary>A read that throws is a read that returned nothing: the caller must always get its session.</summary>

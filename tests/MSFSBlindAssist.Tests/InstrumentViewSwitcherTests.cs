@@ -17,6 +17,7 @@ public class InstrumentViewSwitcherTests
         public bool ThrowOnRead;
         public long Clock;
         public int ReadCostMs;
+        public int? ClampIndexTo;
         public readonly List<(int Type, int Index)> Writes = new();
 
         public Task<CameraViewReading?> ReadAsync(int timeoutMs)
@@ -31,7 +32,7 @@ public class InstrumentViewSwitcherTests
             if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
             Writes.Add((viewType, viewIndex));
             if (HonoursWrites && Current is { } c)
-                Current = c with { ViewType = viewType, ViewIndex = viewIndex };
+                Current = c with { ViewType = viewType, ViewIndex = ClampIndexTo ?? viewIndex };
         }
     }
 
@@ -72,20 +73,6 @@ public class InstrumentViewSwitcherTests
         Assert.True(session.Verified);
         Assert.Equal(new[] { (2, 2) }, camera.Writes);
         Assert.Equal(new[] { 250 }, delays);
-    }
-
-    [Fact]
-    public async Task NothingIsWrittenAfterTheSwitch_ThePilotKeepsTheInstrumentView()
-    {
-        // A saved cabin view reads as a pilot-view index the sim would refuse on the way back
-        // (measured 2026-09-09), so the switcher never tries to put a previous view back.
-        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
-        var (switcher, _, _) = Make(camera);
-
-        await switcher.EnterAsync(0);
-
-        Assert.Equal(new[] { (2, 0) }, camera.Writes);
-        Assert.Equal(new CameraViewReading(2, 2, 0), camera.Current);
     }
 
     [Fact]
@@ -173,5 +160,118 @@ public class InstrumentViewSwitcherTests
         Assert.Equal(100, InstrumentViewSwitcher.DefaultPollStepMs);
         Assert.Equal(1000, InstrumentViewSwitcher.DefaultVerifyCapMs);
         Assert.Equal(250, InstrumentViewSwitcher.DefaultSettleMs);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_PutsACustomPilotViewBack()
+    {
+        // The wing/cabin views blind pilots sit in read as type 1 at an index past the advertised
+        // pilot-view count. Measured 2026-09-18 on the live iFly 737 MAX8: 1/7 writes back fine.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+
+        Assert.True(await switcher.RestoreAsync(session));
+
+        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
+        Assert.Equal(new CameraViewReading(2, 1, 7), camera.Current);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_PutsAQuickviewBack()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 3, 2) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(1);
+
+        Assert.True(await switcher.RestoreAsync(session));
+
+        Assert.Equal(new[] { (2, 1), (3, 2) }, camera.Writes);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_DoesNotSettle()
+    {
+        // Nothing is captured after the restore, so the 250 ms the entry spends waiting for a
+        // rendered frame is not owed here. A read-back that matches at once costs no delay at all.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, delays, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        delays.Clear();
+
+        await switcher.RestoreAsync(session);
+
+        Assert.Empty(delays);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheSimClampsToADifferentView_ReportsFailure()
+    {
+        // The sim CLAMPS an index it will not take rather than ignoring the write, and the
+        // read-back reports the clamped value — measured 2026-09-18: a write of 20 landed on 8.
+        // That is exactly what makes the read-back verification work.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        camera.ClampIndexTo = 5;
+
+        Assert.False(await switcher.RestoreAsync(session));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheSimIgnoresTheWrite_ReportsFailure()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        camera.HonoursWrites = false;
+
+        Assert.False(await switcher.RestoreAsync(session));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_AfterAlreadyThere_WritesNothing_AndReportsSuccess()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 2, 2) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(2);
+
+        Assert.True(await switcher.RestoreAsync(session));
+        Assert.Empty(camera.Writes);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_AfterAnExternalCamera_WritesNothing_AndReportsSuccess()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(3, 0, 0) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(2);
+
+        Assert.True(await switcher.RestoreAsync(session));
+        Assert.Empty(camera.Writes);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheCameraWasUnreadable_WritesNothing_AndReportsSuccess()
+    {
+        // Unknown never had a reading to remember, so there is nothing to claim failure about.
+        var camera = new FakeCamera { Current = null };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(3);
+        camera.Writes.Clear();
+
+        Assert.True(await switcher.RestoreAsync(session));
+        Assert.Empty(camera.Writes);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_AThrowingWrite_DoesNotEscape()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        camera.ThrowOnSet = true;
+
+        Assert.False(await switcher.RestoreAsync(session));
     }
 }

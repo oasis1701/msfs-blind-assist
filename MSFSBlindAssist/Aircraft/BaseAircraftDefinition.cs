@@ -779,10 +779,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     ///
     /// With <paramref name="instrumentView"/>, the simulator camera is first moved to that
     /// instrument view (0-based index into the aircraft's cameras.cfg instrument cameras) — the
-    /// pilot presses nothing in the sim to get the display on screen. The camera STAYS there: the
-    /// pilot's previous view is often a user-saved custom camera, which the sim reports as a
-    /// pilot-view index it refuses on the way back (measured 2026-09-09), so a restore was a silent
-    /// no-op for exactly the pilots who used one; they return with their own view key instead.
+    /// pilot presses nothing in the sim to get the display on screen.
+    /// The camera is put back after the capture and before the AI call — verified by read-back,
+    /// and a failure is spoken once rather than assumed. A restore was removed on 2026-09-09 and
+    /// reinstated on 2026-09-18; see <see cref="Services.InstrumentViewPlan"/> for what that
+    /// removal got wrong.
     /// Without it the flow is exactly what it always was: the current view is captured.
     /// </summary>
     protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
@@ -817,10 +818,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                     return;
                 }
 
+                Services.InstrumentViewSwitcher? switcher = null;
                 Services.InstrumentViewSession? view = null;
                 if (instrumentView != null)
                 {
-                    view = await new Services.InstrumentViewSwitcher(instrumentView.Camera).EnterAsync(instrumentView.ViewIndex);
+                    switcher = new Services.InstrumentViewSwitcher(instrumentView.Camera);
+                    view = await switcher.EnterAsync(instrumentView.ViewIndex);
                     if (view.Outcome == Services.InstrumentViewOutcome.NotInCockpit)
                     {
                         announcer.Announce("Switch to a cockpit view first.");
@@ -836,7 +839,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                     }
                 }
 
-                byte[]? screenshot = await screenshotService.CaptureAsync();
+                byte[]? screenshot = null;
+                try
+                {
+                    screenshot = await screenshotService.CaptureAsync();
+                }
+                finally
+                {
+                    // Put the camera back BEFORE the AI call, not after: that call is a network
+                    // round-trip of several seconds and the camera only has to be on the display
+                    // for the capture itself, so the pilot's own view is gone for well under a
+                    // second. In a finally so a capture that returned nothing — or threw —
+                    // restores too. RestoreAsync never throws, so it cannot swallow an exception
+                    // on its way out.
+                    if (switcher != null && view != null && !await switcher.RestoreAsync(view))
+                        announcer.Announce("Could not return to your previous view.");
+                }
 
                 if (screenshot == null || screenshot.Length == 0)
                 {
