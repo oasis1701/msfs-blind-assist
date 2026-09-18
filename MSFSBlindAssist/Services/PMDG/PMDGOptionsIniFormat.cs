@@ -52,14 +52,23 @@ public static class PMDGOptionsIniFormat
     /// count as "not configured".
     /// </summary>
     public static bool HasBroadcastEnabled(IReadOnlyList<string> lines, bool requireCenterCdu)
+        => MissingOrIncorrectKeys(lines, requireCenterCdu).Count == 0;
+
+    /// <summary>
+    /// The required keys (in <see cref="RequiredKeys"/> order) that are absent from the file's
+    /// <c>[SDK]</c> section or present with a value other than <c>1</c>. Empty when the file is
+    /// fully configured — the one judgement <see cref="HasBroadcastEnabled"/> and the
+    /// configurator's "what will change" logging both read, so they can never disagree.
+    /// </summary>
+    public static IReadOnlyList<string> MissingOrIncorrectKeys(IReadOnlyList<string> lines, bool requireCenterCdu)
     {
         var values = ReadSdkValues(lines);
+        var missing = new List<string>();
         foreach (var key in RequiredKeys(requireCenterCdu))
         {
-            if (!values.TryGetValue(key, out var value)) return false;
-            if (value.Trim() != EnabledValue) return false;
+            if (!values.TryGetValue(key, out var value) || value.Trim() != EnabledValue) missing.Add(key);
         }
-        return true;
+        return missing;
     }
 
     /// <summary>
@@ -111,6 +120,13 @@ public static class PMDGOptionsIniFormat
             foundAt[key] = i;
         }
 
+        // Append missing keys right after the section's last non-blank line, not at `end`
+        // (the next header's index): a section normally ends in a blank separator line, and
+        // inserting at `end` would land the new key on the far side of it, directly above the
+        // next header — exactly the no-blank-line shape PMDG's writer is reported to discard.
+        int insertAt = end;
+        while (insertAt > start && result[insertAt - 1].Trim().Length == 0) insertAt--;
+
         foreach (var key in required)
         {
             if (foundAt.TryGetValue(key, out var lineIndex))
@@ -119,8 +135,8 @@ public static class PMDGOptionsIniFormat
             }
             else
             {
-                result.Insert(end, $"{key}={EnabledValue}");
-                end++;
+                result.Insert(insertAt, $"{key}={EnabledValue}");
+                insertAt++;
             }
         }
         return result;

@@ -74,47 +74,53 @@ namespace MSFSBlindAssist.Services
         /// </summary>
         public bool TryGetIcaoByTitle(string? title, out string icao)
         {
-            icao = string.Empty;
-            if (string.IsNullOrWhiteSpace(title)) return false;
-            string key = title.Trim().ToLowerInvariant();
-
             Dictionary<string, string>? map;
             lock (_lock) { map = _byTitle; }
-            if (map == null) return false;
+            return TryLookupByTitle(map, title, out icao);
+        }
 
-            if (map.TryGetValue(key, out var hit))
+        /// <summary>
+        /// Looks up the installed Community/Official package folder name (e.g.
+        /// <c>pmdg-aircraft-738</c>) of the AIRFRAME a loaded aircraft TITLE belongs to — the
+        /// immediate child of Community/Official that contains the airframe's own aircraft.cfg.
+        /// A title that lives in a separate livery package (an aircraft.cfg carrying
+        /// <c>[VARIATION] base_container</c>) resolves to the airframe package it layers on, not
+        /// the livery's own folder — that airframe folder name is what MSFS keys the package's
+        /// per-package "work" storage by, which is how PMDG-variant SDK/options-file lookups
+        /// resolve the right file without guessing a title->folder mapping. Safe to call before
+        /// the build completes (returns false until ready). Never throws.
+        /// </summary>
+        public bool TryGetPackageFolderByTitle(string? title, out string packageFolder)
+        {
+            Dictionary<string, string>? map;
+            lock (_lock) { map = _byTitlePackageFolder; }
+            return TryLookupByTitle(map, title, out packageFolder);
+        }
+
+        private static bool TryLookupByTitle(Dictionary<string, string>? map, string? title, out string value)
+        {
+            value = string.Empty;
+            if (map == null || string.IsNullOrWhiteSpace(title)) return false;
+            if (map.TryGetValue(title.Trim().ToLowerInvariant(), out var hit))
             {
-                icao = hit;
+                value = hit;
                 return true;
             }
             return false;
         }
 
         /// <summary>
-        /// Looks up the installed Community/Official package folder name (e.g.
-        /// <c>pmdg-aircraft-738</c>) for a loaded aircraft TITLE — the immediate child of
-        /// Community/Official that contained the aircraft.cfg the title was parsed from. This is
-        /// the same folder name MSFS uses to key that package's per-package "work" storage
-        /// folder, which is how PMDG-variant SDK/options-file lookups resolve the right file
-        /// without guessing a title->folder mapping. Safe to call before the build completes
-        /// (returns false until ready). Never throws.
+        /// Blocks until the background scan has finished, or <paramref name="timeout"/> elapses.
+        /// Starts the scan if nothing has yet. Returns <see cref="IsReady"/>. Never throws.
         /// </summary>
-        public bool TryGetPackageFolderByTitle(string? title, out string packageFolder)
+        public bool WaitUntilReady(TimeSpan timeout)
         {
-            packageFolder = string.Empty;
-            if (string.IsNullOrWhiteSpace(title)) return false;
-            string key = title.Trim().ToLowerInvariant();
-
-            Dictionary<string, string>? map;
-            lock (_lock) { map = _byTitlePackageFolder; }
-            if (map == null) return false;
-
-            if (map.TryGetValue(key, out var hit))
-            {
-                packageFolder = hit;
-                return true;
-            }
-            return false;
+            BeginBuild();
+            Thread? t;
+            lock (_lock) { t = _buildThread; }
+            try { t?.Join(timeout); }
+            catch { /* never propagate */ }
+            return _isReady;
         }
 
         /// <summary>
@@ -123,14 +129,9 @@ namespace MSFSBlindAssist.Services
         /// </summary>
         public IReadOnlyList<(string Title, string Icao)> EnumerateInstalled()
         {
-            BeginBuild();
-
-            // Wait for the background build to complete. Bounded so a pathological scan can't
-            // hang the probe forever; in practice the scan completes in well under a second.
-            Thread? t;
-            lock (_lock) { t = _buildThread; }
-            try { t?.Join(TimeSpan.FromSeconds(60)); }
-            catch { /* never propagate */ }
+            // Bounded so a pathological scan can't hang the probe forever; in practice the scan
+            // completes in well under a second.
+            WaitUntilReady(TimeSpan.FromSeconds(60));
 
             Dictionary<string, string>? map;
             lock (_lock) { map = _byTitle; }
@@ -176,30 +177,92 @@ namespace MSFSBlindAssist.Services
         {
             var byTitle = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var byPackageFolder = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // Airframe SimObject folder name (e.g. "PMDG 737-800") -> the package that owns it,
+            // recorded only from aircraft.cfg files WITHOUT a base_container (i.e. the airframe
+            // itself, never a livery). A livery package's titles are attributed to the airframe
+            // package through this map in the second pass below — its own folder is not where
+            // MSFS keeps the airframe's per-package storage.
+            var airframePackageBySimObject = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var titlePackages = new List<(string TitleKey, string PackageFolder, string? BaseContainer)>();
             try
             {
-                foreach (var (cfg, packageFolder) in EnumerateAircraftCfgFiles())
+                foreach (var (cfg, packageFolder, simObjectFolder) in EnumerateAircraftCfgFiles())
                 {
                     try
                     {
                         string[] lines = File.ReadAllLines(cfg);
                         var (icao, titles) = Parse(lines);
-                        if (string.IsNullOrWhiteSpace(icao) || titles.Count == 0) continue;
-                        string icaoUpper = icao.Trim().ToUpperInvariant();
+                        string? baseContainer = ParseBaseContainer(lines);
+                        if (baseContainer == null && !airframePackageBySimObject.ContainsKey(simObjectFolder))
+                            airframePackageBySimObject[simObjectFolder] = packageFolder;
+                        if (titles.Count == 0) continue;
+
+                        // A livery cfg carries titles but usually no icao_type_designator of its
+                        // own — it still needs a package-folder entry, just not an ICAO one.
+                        string? icaoUpper = string.IsNullOrWhiteSpace(icao) ? null : icao.Trim().ToUpperInvariant();
                         foreach (var title in titles)
                         {
                             string key = title.Trim().ToLowerInvariant();
                             if (key.Length == 0) continue;
                             // First found wins (stable across rebuilds; ties are extremely rare).
-                            if (!byTitle.ContainsKey(key)) byTitle[key] = icaoUpper;
-                            if (!byPackageFolder.ContainsKey(key)) byPackageFolder[key] = packageFolder;
+                            if (icaoUpper != null && !byTitle.ContainsKey(key)) byTitle[key] = icaoUpper;
+                            titlePackages.Add((key, packageFolder, baseContainer));
                         }
                     }
                     catch { /* skip unreadable / locked / malformed cfg */ }
                 }
             }
             catch { /* swallow — return whatever we gathered */ }
+
+            foreach (var (key, packageFolder, baseContainer) in titlePackages)
+            {
+                if (byPackageFolder.ContainsKey(key)) continue;
+                byPackageFolder[key] = ResolveAirframePackageFolder(packageFolder, baseContainer, airframePackageBySimObject);
+            }
             return (byTitle, byPackageFolder);
+        }
+
+        /// <summary>
+        /// The package folder a title's airframe lives in: the cfg's own package when it has no
+        /// <c>base_container</c>, otherwise the package that owns the SimObject folder the
+        /// base_container names (its leaf segment — <c>"..\PMDG 737-800"</c> names
+        /// <c>PMDG 737-800</c>), falling back to the cfg's own package when that airframe was
+        /// not found. Pure; public so it can be characterization-tested without a disk.
+        /// </summary>
+        public static string ResolveAirframePackageFolder(
+            string ownPackageFolder, string? baseContainer, IReadOnlyDictionary<string, string> airframePackageBySimObject)
+        {
+            if (string.IsNullOrWhiteSpace(baseContainer)) return ownPackageFolder;
+            string leaf = baseContainer.Replace('/', '\\').TrimEnd('\\');
+            int slash = leaf.LastIndexOf('\\');
+            if (slash >= 0) leaf = leaf.Substring(slash + 1);
+            leaf = leaf.Trim();
+            if (leaf.Length == 0) return ownPackageFolder;
+            return airframePackageBySimObject.TryGetValue(leaf, out var airframePackage) ? airframePackage : ownPackageFolder;
+        }
+
+        /// <summary>
+        /// The <c>[VARIATION] base_container</c> value of a livery aircraft.cfg (quotes stripped,
+        /// as written — e.g. <c>..\PMDG 737-800</c>), or null when the cfg has none (an airframe
+        /// cfg). Public so the probe/tests can check it against literal text.
+        /// </summary>
+        public static string? ParseBaseContainer(IReadOnlyList<string> lines)
+        {
+            foreach (var raw in lines)
+            {
+                if (raw == null) continue;
+                string line = raw.Trim();
+                int eq = line.IndexOf('=');
+                if (eq <= 0) continue;
+                if (!string.Equals(line.Substring(0, eq).Trim(), "base_container", StringComparison.OrdinalIgnoreCase)) continue;
+                string val = line.Substring(eq + 1).Trim();
+                int semi = val.IndexOf(';');
+                if (semi >= 0) val = val.Substring(0, semi).Trim();
+                if (val.Length >= 2 && val[0] == '"' && val[val.Length - 1] == '"')
+                    val = val.Substring(1, val.Length - 2).Trim();
+                return val.Length == 0 ? null : val;
+            }
+            return null;
         }
 
         /// <summary>
@@ -249,9 +312,11 @@ namespace MSFSBlindAssist.Services
         /// <summary>
         /// Yields every installed aircraft.cfg together with the immediate Community/Official
         /// child folder name that contains it (e.g. <c>pmdg-aircraft-738</c>) — the same name
-        /// MSFS keys that package's per-package "work" storage folder by.
+        /// MSFS keys that package's per-package "work" storage folder by — and the SimObject
+        /// folder (the immediate child of <c>SimObjects\Airplanes</c>, e.g. <c>PMDG 737-800</c>)
+        /// the cfg sits under, which is what a livery's <c>base_container</c> names.
         /// </summary>
-        private static IEnumerable<(string CfgPath, string PackageFolder)> EnumerateAircraftCfgFiles()
+        private static IEnumerable<(string CfgPath, string PackageFolder, string SimObjectFolder)> EnumerateAircraftCfgFiles()
         {
             string? pkgRoot = FindInstalledPackagesPath();
             if (pkgRoot == null) yield break;
@@ -276,7 +341,17 @@ namespace MSFSBlindAssist.Services
 
                     string packageFolder = new DirectoryInfo(pkg).Name;
                     foreach (var cfg in EnumerateCfgBounded(airplanes, "aircraft.cfg", 0))
-                        yield return (cfg, packageFolder);
+                    {
+                        string simObjectFolder;
+                        try
+                        {
+                            string rel = Path.GetRelativePath(airplanes, cfg);
+                            int sep = rel.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+                            simObjectFolder = sep > 0 ? rel.Substring(0, sep) : string.Empty;
+                        }
+                        catch { simObjectFolder = string.Empty; }
+                        yield return (cfg, packageFolder, simObjectFolder);
+                    }
                 }
             }
         }

@@ -188,6 +188,29 @@ public class PMDGOptionsIniFormatTests
     }
 
     [Fact]
+    public void Applying_settings_keeps_the_blank_separator_between_the_SDK_section_and_the_next_header()
+    {
+        var original = new[]
+        {
+            "[SDK]",
+            "EnableDataBroadcast=1",
+            "",
+            "[IRS.1]",
+            "LastPosValid=0",
+        };
+
+        var patched = PMDGOptionsIniFormat.ApplyBroadcastSettings(original, requireCenterCdu: false);
+
+        // Missing keys go directly under the last key, and the blank line still sits right
+        // above the next header — PMDG's writer drops a block that isn't blank-line separated.
+        Assert.Equal("EnableDataBroadcast=1", patched[1]);
+        Assert.Equal("EnableCDUBroadcast.0=1", patched[2]);
+        Assert.Equal("EnableCDUBroadcast.1=1", patched[3]);
+        Assert.Equal(string.Empty, patched[4]);
+        Assert.Equal("[IRS.1]", patched[5]);
+    }
+
+    [Fact]
     public void Applying_settings_is_idempotent_on_an_already_configured_file()
     {
         var original = new[]

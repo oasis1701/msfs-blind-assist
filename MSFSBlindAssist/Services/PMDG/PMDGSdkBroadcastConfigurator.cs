@@ -71,11 +71,18 @@ public sealed class PMDGSdkBroadcastConfigurator
         }
         try
         {
-            await CheckCoreAsync(aircraftCode, title, catalog, uiContext).ConfigureAwait(false);
+            // Task.Run from the outset, not just around the individual file reads/writes: the
+            // callers fire this from the UI thread mid-connect/mid-aircraft-switch, and an async
+            // method runs synchronously up to its first real await. With the catalog already
+            // built, that synchronous prefix reached process enumeration, four File.Exists calls
+            // and — on the not-found branch — a MODAL MessageBox shown directly on the UI thread,
+            // pumping messages into a half-finished SwitchAircraft. Off-thread, every dialog goes
+            // through ShowOnUiThread's Invoke and the caller returns immediately as documented.
+            await Task.Run(() => CheckCore(aircraftCode, title, catalog, uiContext)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // CheckCoreAsync's own steps each have narrower try/catches that log and degrade
+            // CheckCore's own steps each have narrower try/catches that log and degrade
             // gracefully (a bad read, a failed write); reaching here means something outside
             // those — log the full exception, not just its message, since this is the one path
             // with no narrower log line already explaining what happened.
@@ -87,7 +94,7 @@ public sealed class PMDGSdkBroadcastConfigurator
         }
     }
 
-    private async Task CheckCoreAsync(string aircraftCode, string? title, AircraftCfgCatalog catalog, Control uiContext)
+    private void CheckCore(string aircraftCode, string? title, AircraftCfgCatalog catalog, Control uiContext)
     {
         // Verbose by design, at every step, not just on failure — this touches the pilot's own
         // PMDG configuration file, and debugging a bad edit to a file this app doesn't own is
@@ -110,14 +117,13 @@ public sealed class PMDGSdkBroadcastConfigurator
         Log.Debug("PMDG", $"SDK broadcast check: family=\"{familyPrefix}\" requireCenterCdu={requireCenterCdu} " +
             $"(required [SDK] keys: {string.Join(", ", PMDGOptionsIniFormat.RequiredKeys(requireCenterCdu))})");
 
-        catalog.BeginBuild();
         if (!catalog.IsReady)
         {
-            // Background scan not finished yet — wait for it off the UI thread. Bounded by
-            // EnumerateInstalled's own 60s join, so this can never hang the check indefinitely.
+            // Background scan not finished yet — wait for it (we're already off the UI thread).
+            // Bounded, so this can never hang the check indefinitely.
             Log.Debug("PMDG", "SDK broadcast check: aircraft.cfg catalog not ready yet — waiting for its background scan.");
-            await Task.Run(() => catalog.EnumerateInstalled()).ConfigureAwait(false);
-            Log.Debug("PMDG", "SDK broadcast check: aircraft.cfg catalog scan complete.");
+            bool ready = catalog.WaitUntilReady(TimeSpan.FromSeconds(60));
+            Log.Debug("PMDG", $"SDK broadcast check: aircraft.cfg catalog scan {(ready ? "complete" : "still not finished after 60s — proceeding with whatever it has")}.");
         }
         if (!catalog.TryGetPackageFolderByTitle(title, out var packageFolder))
         {
@@ -125,6 +131,19 @@ public sealed class PMDGSdkBroadcastConfigurator
             return;
         }
         Log.Debug("PMDG", $"SDK broadcast check: resolved installed package folder \"{packageFolder}\" for title \"{title}\"");
+
+        // The title is whatever the SIM has loaded, but aircraftCode is whatever PROFILE this
+        // app has selected — the SwitchAircraft hook lets a pilot pick the PMDG 737 profile
+        // while a Cessna (or a PMDG 777) is loaded. The options.ini lives only in the PMDG
+        // package's own work folder, so a non-PMDG or other-family package can never have it;
+        // probing it would raise the "configuration not found" warning for an aircraft this
+        // check doesn't apply to. PMDG's package folders are pmdg-aircraft-73x / -77x.
+        if (packageFolder.IndexOf("pmdg", StringComparison.OrdinalIgnoreCase) < 0 ||
+            packageFolder.IndexOf(familyPrefix.Substring(0, 2), StringComparison.Ordinal) < 0)
+        {
+            Log.Info("PMDG", $"SDK broadcast check: loaded package \"{packageFolder}\" (title \"{title}\") is not a PMDG {familyPrefix}-family package, so it has no {familyPrefix}_Options.ini to check — the selected profile does not match the loaded aircraft. Nothing was read or written.");
+            return;
+        }
 
         string runningSim = SimulatorDetector.DetectRunningSimulator();
         Log.Debug("PMDG", $"SDK broadcast check: detected running simulator = \"{runningSim}\"");
@@ -186,7 +205,7 @@ public sealed class PMDGSdkBroadcastConfigurator
         string[] lines;
         try
         {
-            lines = await Task.Run(() => File.ReadAllLines(iniPath)).ConfigureAwait(false);
+            lines = File.ReadAllLines(iniPath);
         }
         catch (Exception ex)
         {
@@ -213,7 +232,8 @@ public sealed class PMDGSdkBroadcastConfigurator
             Log.Debug("PMDG", $"SDK broadcast check: [SDK] \"{key}\" currently = {found}");
         }
 
-        if (PMDGOptionsIniFormat.HasBroadcastEnabled(lines, requireCenterCdu))
+        var missingOrWrong = PMDGOptionsIniFormat.MissingOrIncorrectKeys(lines, requireCenterCdu);
+        if (missingOrWrong.Count == 0)
         {
             Log.Info("PMDG", $"SDK broadcast check: {iniPath} already has every required [SDK] key set correctly " +
                 $"({string.Join(", ", requiredKeys)} all = 1) — no changes needed, nothing was written.");
@@ -221,9 +241,6 @@ public sealed class PMDGSdkBroadcastConfigurator
             return;
         }
 
-        var missingOrWrong = requiredKeys
-            .Where(key => !currentValues.TryGetValue(key, out var v) || v.Trim() != "1")
-            .ToList();
         Log.Info("PMDG", $"SDK broadcast check: {iniPath} is missing or has an incorrect value for: " +
             $"{string.Join(", ", missingOrWrong)}. Prompting the pilot before making any change.");
 
@@ -236,9 +253,10 @@ public sealed class PMDGSdkBroadcastConfigurator
             return;
         }
 
+        string? backupPath = null;
         try
         {
-            string backupPath = await Task.Run(() => BackupFile(iniPath)).ConfigureAwait(false);
+            backupPath = BackupFile(iniPath);
             Log.Debug("PMDG", $"SDK broadcast check: backed up {iniPath} to {backupPath} before making any change.");
 
             var patched = PMDGOptionsIniFormat.ApplyBroadcastSettings(lines, requireCenterCdu);
@@ -250,7 +268,7 @@ public sealed class PMDGSdkBroadcastConfigurator
             Log.Debug("PMDG", $"SDK broadcast check: patched file will have {patched.Count} line(s) (was {lines.Length}). Full new contents, before writing, follow:{Environment.NewLine}" +
                 string.Join(Environment.NewLine, patched));
 
-            await Task.Run(() => File.WriteAllLines(iniPath, patched)).ConfigureAwait(false);
+            WriteAtomically(iniPath, patched);
             Log.Info("PMDG", $"SDK broadcast check: wrote the updated [SDK] block to {iniPath} (backup at {backupPath}). Added/corrected: {string.Join(", ", missingOrWrong)}.");
 
             lock (_resolvedThisSession) { _resolvedThisSession.Add(iniPath); }
@@ -258,12 +276,36 @@ public sealed class PMDGSdkBroadcastConfigurator
         }
         catch (Exception ex)
         {
-            Log.Warn("PMDG", $"SDK broadcast check: failed to update {iniPath}: {ex.Message}");
+            Log.Warn("PMDG", $"SDK broadcast check: failed to update {iniPath} (backup: {backupPath ?? "none was made"}): {ex}");
+            string backupNote = backupPath == null
+                ? "The file was not changed."
+                : $"The original file is unchanged (the write goes to a temporary file first); a backup copy is also at:\n{backupPath}";
             ShowOnUiThread(uiContext, () => MessageBox.Show(
-                $"Could not update {Path.GetFileName(iniPath)}.\n\n{ex.Message}",
+                $"Could not update {Path.GetFileName(iniPath)}.\n\n{ex.Message}\n\n{backupNote}",
                 "PMDG SDK Configuration",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error));
+        }
+    }
+
+    /// <summary>
+    /// Writes the patched contents to a sibling temporary file and then moves it over the
+    /// original, so a failure part-way through a write (disk full, sharing violation) can never
+    /// leave the pilot's options.ini truncated — <c>File.WriteAllLines</c> truncates the target
+    /// before it writes a byte. UTF-8 without BOM, matching what PMDG's own writer produces.
+    /// </summary>
+    private static void WriteAtomically(string iniPath, IReadOnlyList<string> lines)
+    {
+        string tempPath = $"{iniPath}.msfsba-tmp";
+        File.WriteAllLines(tempPath, lines);
+        try
+        {
+            File.Move(tempPath, iniPath, overwrite: true);
+        }
+        catch
+        {
+            try { File.Delete(tempPath); } catch { /* best effort */ }
+            throw;
         }
     }
 
@@ -310,9 +352,18 @@ public sealed class PMDGSdkBroadcastConfigurator
     /// </summary>
     private static DialogResult ShowOnUiThread(Control uiContext, Func<DialogResult> showDialog)
     {
+        if (uiContext.IsDisposed || !uiContext.IsHandleCreated)
+        {
+            // The form is gone (app closing while the check was still running). InvokeRequired
+            // reads false here, so without this guard the dialog would open unowned on the pool
+            // thread after the main window has closed. Treat as "no answer" — for the fix
+            // prompt that means declined, so nothing is written.
+            Log.Debug("PMDG", "SDK broadcast check: UI context is disposed or has no handle — dialog not shown.");
+            return DialogResult.None;
+        }
         if (uiContext.InvokeRequired)
         {
-            return (DialogResult)uiContext.Invoke(showDialog);
+            return uiContext.Invoke(showDialog);
         }
         return showDialog();
     }
