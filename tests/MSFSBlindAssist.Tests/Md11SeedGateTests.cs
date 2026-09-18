@@ -238,7 +238,19 @@ public class Md11SeedGateTests
     public void TheSeedListIsTheEvidenceList_AndCoversEveryScalarTrackerAndEveryLamp()
     {
         var def = new TFDiMD11Definition();
-        var expected = new[] { Md11Squawk.CodeKey, Md11Fcp.ReadCaptainBaro, Md11SpeedbrakeSystem.ArmKey, Md11SpeedbrakeSystem.LeverKey }
+        var expected = new[]
+            {
+                Md11Squawk.CodeKey, Md11Fcp.ReadCaptainBaro, Md11SpeedbrakeSystem.ArmKey, Md11SpeedbrakeSystem.LeverKey,
+                // The flap pair used to sit outside this list, because the read-out dedups on its
+                // SPOKEN TEXT and that text survived a context reset. It no longer does: keeping
+                // _dialRaw across a flight load let the lever's delivery (SIM_FRAME + CHANGED, so
+                // it lands first) compose the PREVIOUS flight's take-off flap angle and speak it,
+                // with the wheel correcting it a frame later — two different angles back to back.
+                // Wiping the pair fixes that and makes the seed necessary: a load that leaves
+                // either var unchanged never re-delivers it, and an unseeded baseline would cost
+                // the first real flap selection its announcement.
+                Md11FlapSystem.LeverKey, Md11FlapSystem.DialKey,
+            }
             .Concat(Md11VSpeeds.Keys).Concat(Md11Radios.Keys).OrderBy(k => k);
         Assert.Equal(expected, TFDiMD11Definition.SeededScalarKeys.OrderBy(k => k));
         foreach (var key in TFDiMD11Definition.SeededScalarKeys) Assert.True(def.IsSeededFromCache(key), key);
@@ -248,7 +260,26 @@ public class Md11SeedGateTests
 
         Assert.False(def.IsSeededFromCache(Md11TakeoffCallouts.IasKey));
         Assert.False(def.IsSeededFromCache("SIM_ON_GROUND"));
-        Assert.False(def.IsSeededFromCache(Md11FlapSystem.LeverKey));       // the flap pair dedups on its spoken text instead
+    }
+
+    /// <summary>
+    /// A context reset wipes the flap read-out whole — both vars AND the spoken baseline. Keeping
+    /// the thumbwheel's sample was enough on its own to announce the previous flight's take-off
+    /// flap angle after a flight load, because MD11_FLAP_LATCH delivers first and AnnounceFlaps
+    /// judged the text complete on a dial raw that belonged to the flight before.
+    /// </summary>
+    [Fact]
+    public void AContextReset_WipesTheWholeFlapReadout()
+    {
+        var def = new TFDiMD11Definition();
+
+        def.SeedScalar(Md11FlapSystem.LeverKey, 46.91);   // a Dial-A-Flap detent
+        def.SeedScalar(Md11FlapSystem.DialKey, 33.0);     // flight 1's thumbwheel
+        Assert.False(def.FlapReadoutIsEmpty);
+
+        def.OnSimContextReset();
+
+        Assert.True(def.FlapReadoutIsEmpty);
     }
 
     // The calc-path probe target is an L:var in the dictionary, so IsAircraftOwned says yes — the

@@ -1,0 +1,12 @@
+<!-- Synthetic. The EFB's own Options toggles are BUTTON pairs, but A.controlFor reads a real
+     <input type="checkbox"> through its LIVE el.checked property, and A.setValue drives one by
+     clicking it (the checkbox/radio arm of setValue), so the shape is supported and needs pinning.
+     It is also the one shape the dirty gate is structurally blind to: flipping .checked writes NO
+     content attribute, so MutationObserver never fires for it — see the CHECKED-PROPERTY CAVEAT
+     above A._markDirty in the agent, and dirty-gate.test.js beside this file. -->
+<div class="flex flex-col">
+  <div class="flex items-center justify-between">
+    <span>Sync MSFS Time</span>
+    <input type="checkbox" checked>
+  </div>
+</div>

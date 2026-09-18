@@ -51,11 +51,12 @@ public class CalcPathProbeRearmTests
     }
 
     /// <summary>
-    /// The other direction matters too: a VERIFIED verdict earned on one aircraft must not be
-    /// inherited by the next, or a profile whose calc path is genuinely dead would look healthy.
+    /// The PRIMITIVE clears whatever is standing, including a positive verdict — that is what a
+    /// reconnect needs, and <c>Disconnect()</c> clears the verdict the same way. Whether an
+    /// aircraft SWITCH should call it is a separate decision, pinned below.
     /// </summary>
     [Fact]
-    public void AVerifiedVerdict_IsAlsoClearedByTheReArm()
+    public void TheReArmPrimitive_ClearsAVerifiedVerdictToo()
     {
         var sim = NewManager();
         sim.MarkCalcPathVerified();
@@ -67,6 +68,26 @@ public class CalcPathProbeRearmTests
 
         Assert.False(sim.CalcPathVerified);
         Assert.False(sim.CalcPathProbeConcluded);
+    }
+
+    /// <summary>
+    /// An aircraft switch re-arms a NEGATIVE verdict and KEEPS a positive one.
+    ///
+    /// The probe establishes that the MobiFlight WASM executes an RPN write and it lands — a
+    /// property of the module and the connection, which a switch does not touch. So only the
+    /// negative verdict can be wrong for the next aircraft (a profile registering no probe target
+    /// concludes UNVERIFIED, silently, and that standing refused every write on the aircraft
+    /// picked afterwards). Clearing a positive one as well re-opened a degraded window on EVERY
+    /// Aircraft-menu switch: at least two probe ticks in which FBW SetLVar falls back to the
+    /// data-def write that reverts silently, and up to ~60 s of queued dotted events replayed in a
+    /// burst on a machine with no WASM module.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true)]   // no verdict yet, or concluded UNVERIFIED → judge the new aircraft afresh
+    [InlineData(true, false)]   // already proven on this connection → leave it proven
+    public void AnAircraftSwitch_ReArmsOnlyWhatIsNotAlreadyProven(bool verified, bool expectedRearm)
+    {
+        Assert.Equal(expectedRearm, CalcPathVerdict.ShouldRearmOnAircraftSwitch(verified));
     }
 
     /// <summary>

@@ -2204,6 +2204,15 @@ public partial class MainForm
 
     private async void DescribeSceneAsync()
     {
+        // The same gate every display read takes. This path captures the simulator too, so run
+        // beside a display read it captured that read's INSTRUMENT VIEW — or a frame taken
+        // mid-switch — and described it as "the scene"; the two also announced over each other.
+        if (!DisplayReadGate.Shared.TryEnter())
+        {
+            announcer.AnnounceImmediate(DisplayReadGate.BusyMessage);
+            return;
+        }
+
         try
         {
             announcer.AnnounceImmediate("Capturing scene...");
@@ -2245,6 +2254,10 @@ public partial class MainForm
         {
             Log.Debug("MainForm", $"Error in DescribeSceneAsync: {ex.Message}");
             announcer.AnnounceImmediate($"Error describing scene: {ex.Message}");
+        }
+        finally
+        {
+            DisplayReadGate.Shared.Exit();
         }
     }
 

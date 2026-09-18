@@ -455,105 +455,244 @@ public class Md11McduForm : Form
         }
     }
 
+    /// <summary>
+    /// The window's form-wide keys. <c>KeyPreview</c> is on, so EVERY chord arrives here before the
+    /// focused control sees it — which is why the decision itself lives in <see cref="KeyRouting"/>,
+    /// where it can be read against the focused control and pinned by tests. This method only
+    /// carries it out.
+    /// </summary>
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
-        // Escape closes the window, as on the FCP window and the A380 MCDU / iFly CDU windows:
-        // Close() runs the hide-on-close handler, which also hands focus back to the window the
-        // pilot came from. The unit combo keeps Escape while its list is dropped.
-        if (e.KeyCode == Keys.Escape)
+        var combo = ActiveControl as ComboBox;
+        var focus = combo == null ? KeyRouting.ComboFocus.None
+                  : combo.DroppedDown ? KeyRouting.ComboFocus.Dropped
+                  : KeyRouting.ComboFocus.Closed;
+
+        // The LSK layout is read on every press so a change in FMC Settings takes effect live,
+        // matching every other CDU form in this app.
+        var action = KeyRouting.Resolve(e.KeyCode, e.Alt, e.Control, e.Shift, focus,
+            MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys);
+
+        // Pass means the window wants nothing: leave Handled alone so the chord reaches the
+        // focused control. Suppressing one here is what took Alt+Down away from the unit combo.
+        if (action.Kind == KeyRouting.ActionKind.Pass) return;
+
+        e.Handled = true; e.SuppressKeyPress = true;
+
+        switch (action.Kind)
         {
-            if (ActiveControl is ComboBox { DroppedDown: true }) return;
-            e.Handled = true; e.SuppressKeyPress = true;
-            Close();
-            return;
+            case KeyRouting.ActionKind.Press:
+                PressKey(action.Key);
+                break;
+
+            // Close() runs the hide-on-close handler, which also hands focus back to the window
+            // the pilot came from.
+            case KeyRouting.ActionKind.Close:
+                Close();
+                break;
+
+            // The unit is announced only when focus is elsewhere: on the unit combo itself the
+            // screen reader already reads the combo's new value, and speaking it again is the
+            // double announcement the panel rules forbid.
+            case KeyRouting.ActionKind.SelectUnit:
+                unitSelector.SelectedIndex = action.Unit;
+                if (!unitSelector.Focused)
+                    _announcer.Announce(unitSelector.SelectedItem?.ToString() ?? "");
+                break;
+
+            case KeyRouting.ActionKind.FocusScratchpad:
+                scratchpadInput.Focus();
+                break;
+
+            case KeyRouting.ActionKind.FocusDisplay:
+                mcduDisplay.Focus();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The whole form-wide binding table, as a pure function of the chord, what kind of control has
+    /// focus, and the LSK-layout setting.
+    ///
+    /// It is out of the handler because of the defect it exists to prevent. <c>KeyPreview</c> is on,
+    /// so every chord reaches the form BEFORE the focused control — and the slew bindings copied
+    /// from the FBW MCDU form (Alt+Up / Alt+Down, PageUp / PageDown) collide with a control no other
+    /// CDU window in this app has: a combo box. Alt+Down is THE gesture for opening one, and with no
+    /// guard the window answered it by slewing the aircraft's MCDU and suppressing the key, so a
+    /// pilot who cannot reach for the mouse could not open the unit selector at all and got an
+    /// aircraft command they never asked for. The form's own Escape branch had always guarded on
+    /// <c>ActiveControl is ComboBox { DroppedDown: true }</c> — a state Alt+Down could no longer
+    /// produce, which is the corroborating evidence.
+    ///
+    /// Two rules, and every binding below obeys both:
+    ///
+    ///   * A chord the FOCUSED control needs for itself is never taken (<see cref="ComboBoxNeedsKey"/>).
+    ///   * A binding matches its OWN chord and nothing more. Ctrl+PageDown used to slew, and on a
+    ///     layout where AltGr arrives as Ctrl+Alt every Alt binding was reachable from a character
+    ///     key. An unlisted modifier now falls through to <see cref="ActionKind.Pass"/>.
+    ///
+    /// Only the combo needs the first rule. The scratchpad is a single-line TextBox and uses none of
+    /// the chords bound here — Backspace and Delete are deliberately bound on the DISPLAY only (see
+    /// <see cref="McduDisplay_KeyDown"/>), and Shift+F10, the context menu a screen-reader user
+    /// opens its edit commands with, is excluded by the second rule. The display list keeps its own
+    /// arrows and type-ahead; PageUp / PageDown slewing the MCDU rather than paging that list is
+    /// this window's deliberate binding, unchanged here.
+    /// </summary>
+    public static class KeyRouting
+    {
+        /// <summary>Where the chord found the unit combo.</summary>
+        public enum ComboFocus
+        {
+            /// <summary>Focus is elsewhere — the display, the scratchpad, the status box, a button.</summary>
+            None,
+            /// <summary>The combo has focus, list closed.</summary>
+            Closed,
+            /// <summary>The combo has focus with its list dropped down.</summary>
+            Dropped,
         }
 
-        // Line-select keys — two layouts, switchable in FMC Settings. Read the setting on every
-        // press so a change takes effect live, matching every other CDU form in this app:
-        //   Default:   Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
-        //   Alternate: F1..F6    = L1..L6, F7..F12  = R1..R6
-        bool useAltKeys = MSFSBlindAssist.Settings.SettingsManager.Current.MCDUUseAlternateLSKKeys;
-
-        if (useAltKeys)
+        public enum ActionKind
         {
-            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F1 && e.KeyCode <= Keys.F6)
+            /// <summary>The window wants nothing: the chord reaches the focused control untouched.</summary>
+            Pass,
+            Press,
+            Close,
+            SelectUnit,
+            FocusScratchpad,
+            FocusDisplay,
+        }
+
+        /// <summary>
+        /// One decision. <see cref="Key"/> is an MCDU node-id SUFFIX ("UP", "LSK_3L") for
+        /// <see cref="ActionKind.Press"/>; <see cref="Unit"/> is the selector index for
+        /// <see cref="ActionKind.SelectUnit"/>. Both are unset otherwise.
+        /// </summary>
+        public readonly record struct Action(ActionKind Kind, string Key = "", int Unit = -1)
+        {
+            public static readonly Action Pass = new(ActionKind.Pass);
+            public static readonly Action Close = new(ActionKind.Close);
+            public static readonly Action FocusScratchpad = new(ActionKind.FocusScratchpad);
+            public static readonly Action FocusDisplay = new(ActionKind.FocusDisplay);
+            public static Action Press(string key) => new(ActionKind.Press, key);
+            public static Action SelectUnit(Md11McduUnit unit) => new(ActionKind.SelectUnit, Unit: (int)unit);
+        }
+
+        /// <summary>
+        /// What the window does with one chord. Order matters and is the order a pilot expects: what
+        /// the focused control needs first, then the window's own keys in the order they were bound.
+        /// </summary>
+        public static Action Resolve(Keys keyCode, bool alt, bool control, bool shift,
+                                     ComboFocus combo, bool useAlternateLskKeys)
+        {
+            // Rule one. This covers Escape on a dropped list too, which is what the old inline
+            // guard did on its own.
+            if (combo != ComboFocus.None
+                && ComboBoxNeedsKey(keyCode, alt, control, shift, droppedDown: combo == ComboFocus.Dropped))
+                return Action.Pass;
+
+            // Escape closes the window, as on the FCP window and the A380 MCDU / iFly CDU windows.
+            if (keyCode == Keys.Escape && NoModifier(alt, control, shift)) return Action.Close;
+
+            // Line-select keys — two layouts, switchable in FMC Settings:
+            //   Default:   Ctrl+1..6 = L1..L6, Alt+1..6 = R1..R6
+            //   Alternate: F1..F6    = L1..L6, F7..F12  = R1..R6
+            if (useAlternateLskKeys)
             {
-                PressKey(Md11McduKeys.Lsk(e.KeyCode - Keys.F1 + 1, right: false));
-                e.Handled = true; e.SuppressKeyPress = true; return;
+                if (NoModifier(alt, control, shift) && keyCode >= Keys.F1 && keyCode <= Keys.F6)
+                    return Action.Press(Md11McduKeys.Lsk(keyCode - Keys.F1 + 1, right: false));
+                if (NoModifier(alt, control, shift) && keyCode >= Keys.F7 && keyCode <= Keys.F12)
+                    return Action.Press(Md11McduKeys.Lsk(keyCode - Keys.F7 + 1, right: true));
             }
-            if (!e.Control && !e.Alt && e.KeyCode >= Keys.F7 && e.KeyCode <= Keys.F12)
+            else
             {
-                PressKey(Md11McduKeys.Lsk(e.KeyCode - Keys.F7 + 1, right: true));
-                e.Handled = true; e.SuppressKeyPress = true; return;
+                if (control && !alt && !shift && keyCode >= Keys.D1 && keyCode <= Keys.D6)
+                    return Action.Press(Md11McduKeys.Lsk(keyCode - Keys.D1 + 1, right: false));
+                if (alt && !control && !shift && keyCode >= Keys.D1 && keyCode <= Keys.D6)
+                    return Action.Press(Md11McduKeys.Lsk(keyCode - Keys.D1 + 1, right: true));
             }
-        }
-        else
-        {
-            if (e.Control && !e.Alt && !e.Shift && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+
+            // Slew. The MD-11 has UP/DOWN slew keys and a single NEXT PAGE key — there is no PREV
+            // PAGE on this aircraft, so Alt+Left is deliberately unbound rather than faked. Plain
+            // PageUp / PageDown stay the slew and must never move behind a modifier: every CDU
+            // window in this app binds the unmodified page keys to the content being read.
+            if (NoModifier(alt, control, shift))
             {
-                PressKey(Md11McduKeys.Lsk(e.KeyCode - Keys.D1 + 1, right: false));
-                e.Handled = true; e.SuppressKeyPress = true; return;
+                if (keyCode == Keys.PageUp) return Action.Press("UP");
+                if (keyCode == Keys.PageDown) return Action.Press("DOWN");
             }
-            if (e.Alt && !e.Control && e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D6)
+
+            if (AltOnly(alt, control, shift))
             {
-                PressKey(Md11McduKeys.Lsk(e.KeyCode - Keys.D1 + 1, right: true));
-                e.Handled = true; e.SuppressKeyPress = true; return;
+                switch (keyCode)
+                {
+                    case Keys.Up: return Action.Press("UP");
+                    case Keys.Down: return Action.Press("DOWN");
+                    case Keys.Right: return Action.Press("NEXTPAGE");
+                    // Alt+S = focus scratchpad, Alt+Home = focus display.
+                    case Keys.S: return Action.FocusScratchpad;
+                    case Keys.Home: return Action.FocusDisplay;
+                }
             }
+
+            // Alt+Shift+F = SEC FPLN (Alt+F is Fpln) — same chord as the Fenix/FBW forms.
+            if (alt && shift && !control && keyCode == Keys.F) return Action.Press("SEC_FPLN");
+
+            // Ctrl+Shift+L/C/R — switch unit without leaving the keyboard. Deliberately still live
+            // while the combo itself has focus: it is not one of the list's own gestures, and a
+            // pilot on the selector pressing it is asking for exactly what it does.
+            if (control && shift && !alt)
+            {
+                switch (keyCode)
+                {
+                    case Keys.L: return Action.SelectUnit(Md11McduUnit.Left);
+                    case Keys.C: return Action.SelectUnit(Md11McduUnit.Center);
+                    case Keys.R: return Action.SelectUnit(Md11McduUnit.Right);
+                }
+            }
+
+            return Action.Pass;
         }
 
-        // Slew. The MD-11 has UP/DOWN slew keys and a single NEXT PAGE key — there is no PREV
-        // PAGE on this aircraft, so Alt+Left is deliberately unbound rather than faked.
-        if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
+        /// <summary>
+        /// True when a focused combo box needs this chord for its own list, so the window must not
+        /// take it.
+        ///
+        /// This is the DropDownList keyboard interface in full, not only the chords bound today, so
+        /// that a binding added later is checked against it automatically. Alt+Down / Alt+Up open
+        /// and close the list and are what the defect above cost; F4 is the other open/close gesture
+        /// (and is L4 in the alternate LSK layout, the one F-key that must not press an LSK from
+        /// here); PageUp / PageDown, Home / End and the arrows move the selection; a character jumps
+        /// to a matching item; and Escape closes a DROPPED list — on a closed one it belongs to the
+        /// window, which is what the form's original inline guard said.
+        /// </summary>
+        public static bool ComboBoxNeedsKey(Keys keyCode, bool alt, bool control, bool shift, bool droppedDown)
         {
-            PressKey("UP");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
-        {
-            PressKey("DOWN");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.Alt && e.KeyCode == Keys.Right)
-        {
-            PressKey("NEXTPAGE");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
+            if (control) return false;                                  // no list gesture carries Ctrl
+            if (alt) return !shift && keyCode is Keys.Up or Keys.Down;  // open / close the list
+            if (IsTypeAhead(keyCode)) return true;                      // jumps to an item, shifted or not
+            if (shift) return false;
 
-        // Alt+Shift+F = SEC FPLN (Alt+F is Fpln) — same chord as the Fenix/FBW forms.
-        if (e.Alt && e.Shift && e.KeyCode == Keys.F)
-        {
-            PressKey("SEC_FPLN");
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-
-        // Ctrl+Shift+L/C/R — switch unit without leaving the keyboard. The unit is announced only
-        // when focus is elsewhere: on the unit combo itself the screen reader already reads the
-        // combo's new value, and speaking it again is the double announcement the panel rules
-        // forbid.
-        if (e.Control && e.Shift && (e.KeyCode == Keys.L || e.KeyCode == Keys.C || e.KeyCode == Keys.R))
-        {
-            unitSelector.SelectedIndex = e.KeyCode switch
+            return keyCode switch
             {
-                Keys.L => 0,
-                Keys.C => 1,
-                _ => 2,
+                Keys.F4 => true,
+                Keys.PageUp or Keys.PageDown => true,
+                Keys.Home or Keys.End => true,
+                Keys.Up or Keys.Down or Keys.Left or Keys.Right => true,
+                Keys.Space => true,
+                Keys.Return or Keys.Escape => droppedDown,
+                _ => false,
             };
-            if (!unitSelector.Focused)
-                _announcer.Announce(unitSelector.SelectedItem?.ToString() ?? "");
-            e.Handled = true; e.SuppressKeyPress = true; return;
         }
 
-        // Alt+S = focus scratchpad, Alt+Home = focus display.
-        if (e.Alt && !e.Shift && e.KeyCode == Keys.S)
-        {
-            scratchpadInput.Focus();
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
-        if (e.Alt && e.KeyCode == Keys.Home)
-        {
-            mcduDisplay.Focus();
-            e.Handled = true; e.SuppressKeyPress = true; return;
-        }
+        /// <summary>A key that types a character, which a combo box list uses to jump to an item.</summary>
+        private static bool IsTypeAhead(Keys keyCode) =>
+            (keyCode >= Keys.A && keyCode <= Keys.Z)
+            || (keyCode >= Keys.D0 && keyCode <= Keys.D9)
+            || (keyCode >= Keys.NumPad0 && keyCode <= Keys.NumPad9);
+
+        private static bool NoModifier(bool alt, bool control, bool shift) => !alt && !control && !shift;
+
+        private static bool AltOnly(bool alt, bool control, bool shift) => alt && !control && !shift;
     }
 
     private void ScratchpadInput_KeyDown(object? sender, KeyEventArgs e)

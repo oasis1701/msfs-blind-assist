@@ -105,6 +105,23 @@ test('"Set as default": the new default keeps its button\'s kind and key, and th
   assert.deepStrictEqual([c.kind, c.text], ['button', 'Cold and Dark: Set as default']);
 });
 
+// Because nothing is stamped for it, a press reaches A.find(idx) -> null and clickElement returns
+// false — which NOTHING surfaces. Reported enabled, the pilot heard the browser shell's "Activating
+// Cold and Dark is the default" (or, in the native list fallback, nothing at all) over a control
+// that did nothing and said nothing. Emitted DISABLED, both refusal paths answer "Unavailable": the
+// shell's data-disabled branch in onActivate, and FbwEfbForm.AnnounceUnavailable in list mode. The
+// key and text are unchanged, so the reconcile still holds the node the press landed on and
+// announceChange still speaks the outcome.
+test('"is the default" is emitted disabled, so both shells refuse it out loud', () => {
+  const els = scrape('state-ground');
+  const def = els.find(e => e.text === 'Cold and Dark is the default');
+  assert.deepStrictEqual([def.kind, def.clickable, def.disabled, def.key, def.announceChange],
+    ['button', true, true, 'tile-action:Cold and Dark', true]);
+  // It is the marker that is unpressable, not the page: every other button on it stays live.
+  assert.deepStrictEqual(els.filter(e => e.kind === 'button' && e.disabled).map(e => e.text),
+    ['Cold and Dark is the default']);
+});
+
 // Nothing here knows what the EFB does with a click on its check mark, so the marker is not stamped
 // on it: a press finds nothing to press, and says so.
 test('a press on "is the default" is refused and reaches no EFB button', () => {

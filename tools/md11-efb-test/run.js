@@ -103,6 +103,15 @@ function load(fixtureName, opts) {
   return { window, document: doc, A: window.__MSFSBA_MD11_EFB };
 }
 
+// Re-run the agent IIFE into a window that already carries one — what the client's EnsureConnected
+// does on a STILL-OPEN socket when an eval times out. `A` is replaced by a brand new object, so
+// whatever the previous injection left attached to the page (MutationObserver, document listeners)
+// must be torn down through the handles stashed on `window`. Returns the new agent.
+function reinject(window) {
+  window.eval(fs.readFileSync(AGENT, 'utf8'));
+  return window.__MSFSBA_MD11_EFB;
+}
+
 function scrape(fixtureName, opts) {
   const { A } = load(fixtureName, opts);
   const r = JSON.parse(A.scrape());
@@ -115,4 +124,4 @@ function lines(els) {
   return els.map(e => (e.kind || ('/' + e.controlType)) + '|' + e.text + (e.value ? '=' + e.value : ''));
 }
 
-module.exports = { load, scrape, lines, navBar, TABS };
+module.exports = { load, reinject, scrape, lines, navBar, TABS };

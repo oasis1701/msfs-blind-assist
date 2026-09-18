@@ -769,9 +769,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public virtual bool HasOwnIcingAnnouncer => false;
 
-    // One display read at a time: two overlapping reads would each move the camera and
-    // announce over each other, and the second capture could land mid-switch.
-    private static int _displayReadInFlight;
+    // One capture at a time, app-wide — the scene description takes the same gate, because the
+    // camera both of them capture is the SIMULATOR's, not this definition's. See
+    // Services/DisplayReadGate for why it is shared and why it must be released before any dialog.
 
     /// <summary>
     /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via the
@@ -791,11 +791,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                                       System.Windows.Forms.Form parentForm,
                                       Services.InstrumentViewRequest? instrumentView = null)
     {
-        if (Interlocked.CompareExchange(ref _displayReadInFlight, 1, 0) != 0)
+        if (!Services.DisplayReadGate.Shared.TryEnter())
         {
-            announcer.Announce("A display read is already in progress.");
+            announcer.Announce(Services.DisplayReadGate.BusyMessage);
             return;
         }
+
+        // Held until the gate is released BELOW. MessageBox.Show does not return until the pilot
+        // dismisses the dialog, so showing one inside the guarded region held the gate for as long
+        // as it stood — and every later display read, on every aircraft, then answered "already in
+        // progress" when nothing was.
+        (string Caption, string Body, System.Windows.Forms.MessageBoxIcon Icon)? dialog = null;
         try
         {
             try
@@ -848,29 +854,29 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
             {
                 announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
-                System.Windows.Forms.MessageBox.Show(
-                    parentForm,
+                dialog = ("API Key Required",
                     "AI provider API key is not configured.\n\n" +
                     "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
                     "File > Settings > AI tab",
-                    "API Key Required",
-                    System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
                 announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-                System.Windows.Forms.MessageBox.Show(
-                    parentForm,
+                dialog = ("Error",
                     $"Error analyzing {displayName}:\n\n{ex.Message}",
-                    "Error",
-                    System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Error);
             }
         }
         finally
         {
-            Interlocked.Exchange(ref _displayReadInFlight, 0);
+            Services.DisplayReadGate.Shared.Exit();
+        }
+
+        if (dialog is { } pending)
+        {
+            System.Windows.Forms.MessageBox.Show(parentForm, pending.Body, pending.Caption,
+                System.Windows.Forms.MessageBoxButtons.OK, pending.Icon);
         }
     }
 

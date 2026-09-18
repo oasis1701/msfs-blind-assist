@@ -164,6 +164,33 @@ test('an explicit key keeps a control on its node when its label changes shape',
   assert.strictEqual(b.textContent, 'Ready to Fly is the default', 'visible label did not update');
 });
 
+// The MD-11 State page once more, now for the control that REPLACES the one just pressed. The check
+// mark the EFB swaps in is stamped on no DOM node, so a press on it could only reach the reader's
+// A.find(idx) -> null and be dropped with nothing said; the reader emits it DISABLED instead. This
+// is what the shell then owes the pilot: the node survives (same key), the outcome of their press is
+// still spoken because the element is flagged, and a further press is refused out loud and posts
+// nothing — rather than the shell's cheerful "Activating Ready to Fly is the default" over a control
+// that does nothing.
+test('a flagged control that arrives disabled keeps its node, speaks its outcome, then refuses a press', async (t) => {
+  const s = loadShell(t);
+  s.render('State', [btn(12, 'Ready to Fly: Set as default', { announceChange: true, key: 'tile-action:Ready to Fly' })]);
+  assert.strictEqual(await s.spoken(), 'EFB page: State');
+  const b = s.buttonByLabel('Ready to Fly');
+  b.focus(); b.click();
+  assert.strictEqual(await s.spoken(), 'Activating Ready to Fly: Set as default');
+  assert.deepStrictEqual(s.posted, [JSON.stringify({ type: 'click', idx: '12' })]);
+
+  s.render('State', [btn(12, 'Ready to Fly is the default', { announceChange: true, disabled: true, key: 'tile-action:Ready to Fly' })]);
+  assert.strictEqual(s.buttonByLabel('Ready to Fly'), b, 'the keyed control was rebuilt instead of patched');
+  assert.strictEqual(b.textContent, 'Ready to Fly is the default, dimmed', 'visible label did not update');
+  assert.strictEqual(b.getAttribute('data-disabled'), 'true');
+  assert.strictEqual(await s.spoken(), 'Ready to Fly is the default, dimmed', 'the outcome of the press went unspoken');
+
+  b.click();
+  assert.strictEqual(await s.spoken(), 'Unavailable');
+  assert.deepStrictEqual(s.posted, [JSON.stringify({ type: 'click', idx: '12' })], 'the refused press posted a command');
+});
+
 test('the explicit key wins over the label: the same text under another key is another node', (t) => {
   const s = loadShell(t);
   s.render('Perf', [btn(5, 'Runway next', { key: 'step-next:Runway' })]);

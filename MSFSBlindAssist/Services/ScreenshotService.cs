@@ -17,6 +17,14 @@ public class ScreenshotService
     [DllImport("user32.dll")]
     private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    /// <summary>The window's client area, in client coordinates (so Left/Top are 0).</summary>
+    [DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+    /// <summary>Maps a client-coordinate point into screen coordinates, so it can be offset against the window rect.</summary>
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetDC(IntPtr hWnd);
 
@@ -56,6 +64,13 @@ public class ScreenshotService
     private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct POINT
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct RECT
     {
         public int Left;
@@ -90,16 +105,33 @@ public class ScreenshotService
     public Task<byte[]?> CaptureAsync() => CaptureWithinAsync(CaptureOnWorker, CaptureTimeout);
 
     /// <summary>
-    /// Runs <paramref name="capture"/> on a pool thread and gives up after <paramref name="timeout"/>:
+    /// Runs <paramref name="capture"/> on its own background thread and gives up after <paramref name="timeout"/>:
     /// null, and a warning in debug.log. The abandoned worker is left to finish (or not) on its own
     /// and its result is dropped. Only the timeout is swallowed — a capture that throws still throws
     /// to the caller, exactly as before. Internal for ScreenshotServiceTests.
     /// </summary>
     internal static async Task<byte[]?> CaptureWithinAsync(Func<byte[]?> capture, TimeSpan timeout)
     {
+        // A DEDICATED thread, never the pool. PrintWindow is a synchronous cross-process call into a
+        // simulator that may have stopped pumping messages, so the worker abandoned below is stuck
+        // for the life of the process — on a pool thread that permanently consumes a pool slot, and
+        // leaves the per-monitor DPI awareness this capture sets on that thread never restored
+        // (CaptureOnWorker's finally never runs). On its own background thread the cost of a hang is
+        // one parked thread that shares nothing.
+        var finished = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        new Thread(() =>
+        {
+            try { finished.TrySetResult(capture()); }
+            catch (Exception ex) { finished.TrySetException(ex); }
+        })
+        {
+            IsBackground = true,
+            Name = "MSFSBA screenshot capture",
+        }.Start();
+
         try
         {
-            return await Task.Run(capture).WaitAsync(timeout);
+            return await finished.Task.WaitAsync(timeout);
         }
         catch (TimeoutException)
         {
@@ -140,7 +172,8 @@ public class ScreenshotService
                 return null;
             }
 
-            return CaptureByPrintWindow(hwnd, width, height) ?? CaptureByScreenCopy(rect, width, height);
+            return CaptureByPrintWindow(hwnd, width, height, ClientRegionWithin(hwnd, rect))
+                   ?? CaptureByScreenCopy(rect, width, height);
         }
         finally
         {
@@ -169,8 +202,39 @@ public class ScreenshotService
         }
     }
 
+    /// <summary>
+    /// The window's CLIENT area as a rectangle inside a bitmap sized from <paramref name="windowRect"/>,
+    /// or null when Windows will not say. This is what the blank-frame test must look at: PrintWindow
+    /// draws the NON-CLIENT area as well, so on a windowed simulator the bitmap's first sample is the
+    /// title bar — never near black, so it ended that test on its own and let a black client area
+    /// through to the AI (see ScreenshotFrame.LooksBlank). Best effort by design: null degrades to
+    /// sampling the whole bitmap, exactly as this behaved before.
+    /// </summary>
+    private static Rectangle? ClientRegionWithin(IntPtr hwnd, RECT windowRect)
+    {
+        try
+        {
+            if (!GetClientRect(hwnd, out RECT client)) return null;
+            int clientWidth = client.Right - client.Left;
+            int clientHeight = client.Bottom - client.Top;
+            if (clientWidth <= 0 || clientHeight <= 0) return null;
+
+            // GetClientRect reports the size with the origin at 0,0; ClientToScreen turns that origin
+            // into screen coordinates, and the window rect is in screen coordinates too, so the
+            // difference is the client area's offset within the captured bitmap.
+            var origin = new POINT { X = client.Left, Y = client.Top };
+            if (!ClientToScreen(hwnd, ref origin)) return null;
+
+            return new Rectangle(origin.X - windowRect.Left, origin.Y - windowRect.Top, clientWidth, clientHeight);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>The window's composed content via PrintWindow; null when it fails or comes back blank.</summary>
-    private static byte[]? CaptureByPrintWindow(IntPtr hwnd, int width, int height)
+    private static byte[]? CaptureByPrintWindow(IntPtr hwnd, int width, int height, Rectangle? clientRegion)
     {
         try
         {
@@ -198,7 +262,7 @@ public class ScreenshotService
                 }
             }
 
-            if (ScreenshotFrame.LooksBlank(bitmap))
+            if (ScreenshotFrame.LooksBlank(bitmap, clientRegion))
             {
                 Log.Debug("Services", "PrintWindow frame is blank; falling back to the screen copy");
                 return null;

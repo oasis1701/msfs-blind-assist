@@ -33,9 +33,36 @@ public partial class MainForm
     /// conclusion had been reached on the previous profile. It also closes the older, quieter half
     /// of the same bug: a PMDG → FBW switch left a stale conclusion that dropped SetLVar to the
     /// unreliable data-def write and dotted events to the legacy transport, with nothing said.
+    ///
+    /// ⚠️ A verdict of VERIFIED is KEPT, and only a negative one is cleared. What the probe
+    /// establishes is that the MobiFlight WASM executes an RPN write and it lands
+    /// (<c>L:MSFSBA_BRIDGE_PROBE</c> through <c>MF.SimVars.Set</c>) — a property of the MODULE and
+    /// the connection, which an aircraft switch does not touch; the aircraft supplies only the
+    /// data-def registration the read-back uses, which matters for REACHING a verdict, not for
+    /// whether writes land once one is reached. Clearing a positive verdict as well cost a
+    /// guaranteed degraded window on every Aircraft-menu switch and bought nothing: for at least
+    /// two probe ticks (the timer is 1500 ms and the read-back lags its write by one round)
+    /// <c>CalcPathVerified</c> was false, so every FBW <c>SetLVar</c> fell back to the data-def
+    /// write CLAUDE.md calls unreliable for FBW L:vars — overhead switches revert silently — and
+    /// every dotted A32NX FCU event was queued instead of sent. With no WASM module installed the
+    /// window is the probe's full 40 × 1500 ms ≈ 60 s, after which <c>FlushPendingCalcEvents</c>
+    /// replays a minute of queued heading/altitude/speed sets at once and drops anything past the
+    /// 64-entry cap. Nothing names a failure the positive clear prevents: a calc path that died
+    /// mid-connection fails its writes whether or not the flag says so, and the probe does not
+    /// re-run once it has concluded anyway.
+    ///
+    /// The reconnect caller is unaffected: <c>Disconnect()</c> already clears the verdict itself,
+    /// so the guard below is a no-op there and a new connection is always judged afresh.
     /// </summary>
     private void ArmBridgeProbe()
     {
+        // Already proven on this connection: leave it proven. Anything else — no verdict yet, or
+        // concluded UNVERIFIED (which is what a profile registering no probe target reaches, and
+        // silently) — is re-armed so the next aircraft is judged on its own evidence. The rule is
+        // pure and pinned (CalcPathVerdict.ShouldRearmOnAircraftSwitch) so it can be reasoned about
+        // without a manager.
+        if (!CalcPathVerdict.ShouldRearmOnAircraftSwitch(simConnectManager?.CalcPathVerified == true)) return;
+
         _bridgeProbeAttempts = 0;
         _bridgeProbeAwaitingRead = false;
         _bridgeProbeRebound = false;

@@ -752,7 +752,16 @@
     // different node, destroyed under their focus. It is deliberately NOT stamped on the EFB's
     // check-mark button (A.el(null, ...)): nothing here knows what the EFB does with a click on its
     // check mark, so a press on this element finds no node and clickElement refuses it.
-    else if (A.iconName(b) === 'check') els.push(A.el(null, { kind: 'button', clickable: true, disabled: !!b.disabled, text: name + ' is the default', key: actionKey, announceChange: true }));
+    //
+    // disabled is forced TRUE, never read off the check-mark button: with nothing stamped, a press
+    // reaches A.find(idx) -> null and clickElement returns false, which NOTHING surfaces. Reported
+    // enabled, the pilot heard the shell's "Activating Cold and Dark is the default" (or, in the
+    // native list fallback, nothing at all) over a control that did nothing and said nothing. Marked
+    // disabled, BOTH refusal paths answer "Unavailable" — the shell's data-disabled branch in
+    // onActivate, and FbwEfbForm.AnnounceUnavailable in list mode. The key and text are unchanged, so
+    // the reconcile key still holds the node the press landed on and announceChange still speaks the
+    // outcome.
+    else if (A.iconName(b) === 'check') els.push(A.el(null, { kind: 'button', clickable: true, disabled: true, text: name + ' is the default', key: actionKey, announceChange: true }));
     else els.push(A.el(b, { kind: 'button', clickable: true, disabled: !!b.disabled, text: name + ': ' + A.iconButtonName(b), key: actionKey, announceChange: true }));
   });
 
@@ -890,6 +899,20 @@
   // Safety net for a change the observer cannot see (a property flipped with neither a DOM mutation
   // nor a re-render). At the window's ~400-600 ms poll this bounds staleness to a few seconds.
   A.FORCE_FULL_EVERY = 10;
+  A._markDirty = function () { A._dirty = true; };
+
+  // CHECKED-PROPERTY CAVEAT. A.controlFor reads a toggle's LIVE `el.checked` IDL property, and setValue
+  // drives real <input type="checkbox"|"radio"> by clicking them. `.checked` is DECOUPLED from the
+  // `checked` CONTENT ATTRIBUTE the moment it is flipped by a tap or by script — neither path writes
+  // the attribute — so MutationObserver's attributes:true NEVER fires for a toggle flip and the gate
+  // above cannot see it. Without the listeners installed at the bottom of this file, a box the EFB's
+  // own UI flipped left the reader reporting the OLD state until the next FORCE_FULL_EVERY poll: ~6 s
+  // at the client's 600 ms cadence. A native click DOES fire bubbling 'change'/'input' as part of its
+  // default action, so a CAPTURE-phase listener on document closes the gap for every realistic path
+  // (a real tablet tap, and our own clickElement/setValue), leaving FORCE_FULL_EVERY as the
+  // last-resort net for a property written with neither a mutation nor an event. collect() dispatches
+  // no events of its own, so unlike the observer these listeners cannot self-trigger and stay
+  // attached across the scrape.
 
 
   A.collect = function () {
@@ -1152,9 +1175,12 @@
   // install
   // ---------------------------------------------------------------------------------
 
-  // Re-injection must not leave the previous observer running: the client re-installs on a live
-  // socket whenever an eval times out, and a leaked observer per install would mark the page dirty
-  // forever, defeating the gate.
+  // Re-injection must not leave the previous observer or listeners running: the client re-installs
+  // on a live socket whenever an eval times out, and a leaked observer per install would mark the
+  // page dirty forever, defeating the gate. Re-running this IIFE replaces `A` with a fresh object,
+  // so each live handle is stashed on `window` (which survives an injection) for its successor to
+  // tear down — the previous `A._markDirty` is a different function object, so the listeners can
+  // only be removed through the stashed reference.
   try {
     if (window.__MSFSBA_MD11_EFB_OBS && typeof window.__MSFSBA_MD11_EFB_OBS.disconnect === 'function') {
       window.__MSFSBA_MD11_EFB_OBS.disconnect();
@@ -1162,7 +1188,15 @@
   } catch (e) {}
 
   try {
-    var obs = new MutationObserver(function () { A._dirty = true; });
+    var oldH = window.__MSFSBA_MD11_EFB_HANDLERS;
+    if (oldH) {
+      try { document.removeEventListener('change', oldH.change, true); } catch (eh1) {}
+      try { document.removeEventListener('input', oldH.input, true); } catch (eh2) {}
+    }
+  } catch (e) {}
+
+  try {
+    var obs = new MutationObserver(A._markDirty);
     obs.observe(A.root(), A.OBSERVER_OPTS);
     // Held on A as well as window: scrape() disconnects and re-observes it around collect() (see
     // the SELF-TRIGGER TRAP note), while the window handle is what a re-injection tears down.
@@ -1175,6 +1209,16 @@
       return function () { A._dirty = true; return inner.apply(A, arguments); };
     })(A.scrape);
   }
+
+  // Installed in their OWN try, outside the observer's: they are the only signal for a toggle flip
+  // (see the CHECKED-PROPERTY CAVEAT above), so an observer that failed to construct must not take
+  // them down with it. They go on `document`, not A.root(): capture phase reaches document first
+  // whatever the observer watches.
+  try {
+    document.addEventListener('change', A._markDirty, true);
+    document.addEventListener('input', A._markDirty, true);
+    window.__MSFSBA_MD11_EFB_HANDLERS = { change: A._markDirty, input: A._markDirty };
+  } catch (e) {}
 
   window.__MSFSBA_MD11_EFB = A;
   return A.INSTALLED;

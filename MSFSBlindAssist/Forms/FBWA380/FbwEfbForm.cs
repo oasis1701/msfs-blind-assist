@@ -528,13 +528,83 @@ public class FbwEfbForm : Form
 
     // ---- list-mode rendering (fallback) ----------------------------------
 
-    // Disabled is part of the structure. CreateControlFor builds a control's ", dimmed" label and its
-    // "Unavailable" refusal into it, so a greyed-out flip must rebuild the control;
-    // UpdateControlsInPlace patches values only.
+    // STRUCTURE = which kind of control each element renders as, and its label — the things that
+    // decide what CreateControlFor builds and how tall it is. Disabled is deliberately NOT here: it
+    // is per-control STATE, applied to the control already on screen by ApplyDisabledInPlace.
+    // Including it made every greyed-out flip whose label did not change (a SimBrief fetch disabling
+    // Import, "Save Preferences" becoming enabled) take the RebuildControls arm on the ~600 ms poll,
+    // which does Controls.Clear() and recreates everything — throwing the screen reader's focus off
+    // the control the pilot was on, mid-interaction. That is the same failure the browser shell's
+    // keyed in-place reconcile exists to prevent, one layer down; the shell already patches disabled
+    // in place (patchEl), and this is the fallback catching up with it.
     private string StructureSignature()
     {
         return _currentPage + "" + string.Join("",
-            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text + "|" + e.Disabled));
+            _elements.Select(e => e.Index + "|" + (e.ControlType ?? "") + "|" + e.Clickable + "|" + e.Tag + "|" + e.Text));
+    }
+
+    // The base (un-dimmed) label each control type shows, derived in ONE place so the build path and
+    // the in-place disabled patch can never drift on what the label without ", dimmed" is.
+    private static string CheckBoxLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed checkbox)" : el.Text;
+    private static string FieldLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed field)" : el.Text;
+    private static string FieldCaption(EFBElement el) => FieldLabel(el) + (el.ControlType == "select" ? " (choice — type a value)" : "");
+    private static string ButtonLabel(EFBElement el) => string.IsNullOrEmpty(el.Text) ? "(unnamed button)" : el.Text;
+
+    private int InnerWidth()
+    {
+        int w = _contentPanel.ClientSize.Width - 24;
+        return w < 200 ? 200 : w;
+    }
+
+    // Apply a greyed-out flip to the control that is ALREADY there — never by recreating it.
+    // Everything CreateControlFor bakes in from el.Disabled is re-derived here: the ", dimmed" label
+    // and AccessibleName, the field's ReadOnly/description, the checkbox's AutoCheck, and the button's
+    // measured width. Enabled is never touched on either path: a WinForms Enabled = false drops the
+    // control from the tab order, so the pilot would never learn it exists. The activation refusal
+    // needs no patching — the handlers read r.Disabled live (see CreateControlFor).
+    private void ApplyDisabledInPlace(EFBElement el, RenderedControl r)
+    {
+        if (r.Disabled == el.Disabled) return;
+        r.Disabled = el.Disabled;
+        bool dim = el.Disabled;
+
+        if (r.Control is CheckBox cb)
+        {
+            string b = CheckBoxLabel(el);
+            cb.Text = dim ? b + DimmedSuffix : b;
+            cb.AccessibleName = dim ? b + DimmedSuffix : el.Text;
+            // With AutoCheck off, Space raises Click without flipping the box, which is what lets the
+            // dimmed refusal answer instead of the control silently changing state.
+            cb.AutoCheck = !dim;
+            return;
+        }
+
+        if (r.Control is Button btn)
+        {
+            string text = dim ? ButtonLabel(el) + DimmedSuffix : ButtonLabel(el);
+            btn.Text = text;
+            btn.AccessibleName = text;
+            // Width only — the height stays 30 either way, so the absolute y positions
+            // RebuildControls laid out do not move.
+            btn.Width = Math.Min(InnerWidth(), Math.Max(120, TextRenderer.MeasureText(text, Font).Width + 32));
+            return;
+        }
+
+        if (r.Control is Panel panel)
+        {
+            foreach (Control child in panel.Controls)
+            {
+                if (child is Label cap)
+                    cap.Text = dim ? FieldCaption(el) + DimmedSuffix : FieldCaption(el);
+                else if (child is TextBox f)
+                {
+                    f.AccessibleName = dim ? FieldLabel(el) + DimmedSuffix : el.Text;
+                    f.AccessibleDescription = dim ? "" : "Type a value and press Enter to set it.";
+                    // Read-only, never Enabled = false — same tab-order reason as above.
+                    f.ReadOnly = dim;
+                }
+            }
+        }
     }
 
     private void UpdateControlsInPlace()
@@ -545,6 +615,7 @@ public class FbwEfbForm : Form
             foreach (var el in _elements)
             {
                 if (!_rendered.TryGetValue(el.Index, out var r)) continue;
+                ApplyDisabledInPlace(el, r);
                 if (r.Control is CheckBox cb)
                 {
                     bool want = el.Value == "true";
@@ -581,16 +652,21 @@ public class FbwEfbForm : Form
 
         int y = 8;
         int tabIndex = 0;
-        int innerWidth = _contentPanel.ClientSize.Width - 24;
-        if (innerWidth < 200) innerWidth = 200;
+        int innerWidth = InnerWidth();
 
         foreach (var el in _elements)
         {
-            Control c = CreateControlFor(el, innerWidth);
+            // The record is created FIRST so the control's own event handlers can close over it and
+            // read r.Disabled LIVE — ApplyDisabledInPlace flips that flag without recreating the
+            // control, and a handler that captured the build-time bool would keep answering for a
+            // state the control left polls ago.
+            var r = new RenderedControl { Disabled = el.Disabled };
+            Control c = CreateControlFor(el, innerWidth, r);
+            r.Control = c;
             c.Location = new Point(8, y);
             c.TabIndex = tabIndex++;
             _contentPanel.Controls.Add(c);
-            _rendered[el.Index] = new RenderedControl { Control = c };
+            _rendered[el.Index] = r;
             y += c.Height + 6;
         }
 
@@ -603,11 +679,11 @@ public class FbwEfbForm : Form
     // itself is never announced.
     private void AnnounceUnavailable() => _announcer.Announce("Unavailable");
 
-    private Control CreateControlFor(EFBElement el, int width)
+    private Control CreateControlFor(EFBElement el, int width, RenderedControl r)
     {
         if (el.ControlType is "checkbox" or "radio")
         {
-            string cbText = string.IsNullOrEmpty(el.Text) ? "(unnamed checkbox)" : el.Text;
+            string cbText = CheckBoxLabel(el);
             bool cbDisabled = el.Disabled;
             var cb = new CheckBox
             {
@@ -623,10 +699,12 @@ public class FbwEfbForm : Form
                 AutoCheck = !cbDisabled
             };
             int idx = el.AgentIdx;   // stamped agent idx — what click/set look up
-            if (cbDisabled) cb.Click += (_, _) => AnnounceUnavailable();
+            // Attached unconditionally and gated on the LIVE flag: the control survives a disabled
+            // flip now, so whether it refuses cannot be decided once at build time.
+            cb.Click += (_, _) => { if (r.Disabled) AnnounceUnavailable(); };
             cb.CheckedChanged += (_, _) =>
             {
-                if (_suppressControlEvents || cbDisabled) return;
+                if (_suppressControlEvents || r.Disabled) return;
                 _bridgeServer.EnqueueCommand("set_element_value", new Dictionary<string, string>
                 {
                     ["index"] = idx.ToString(),
@@ -640,13 +718,11 @@ public class FbwEfbForm : Form
         if (el.ControlType is "text" or "select")
         {
             var container = new Panel { Size = new Size(width, 46), AccessibleRole = AccessibleRole.Grouping };
-            string fieldText = string.IsNullOrEmpty(el.Text) ? "(unnamed field)" : el.Text;
+            string fieldText = FieldLabel(el);
             bool fieldDisabled = el.Disabled;
             var label = new Label
             {
-                Text = fieldText
-                       + (el.ControlType == "select" ? " (choice — type a value)" : "")
-                       + (fieldDisabled ? DimmedSuffix : ""),
+                Text = FieldCaption(el) + (fieldDisabled ? DimmedSuffix : ""),
                 Location = new Point(0, 0),
                 AutoSize = true
             };
@@ -668,7 +744,7 @@ public class FbwEfbForm : Form
             {
                 if (e.KeyCode == Keys.Return)
                 {
-                    if (fieldDisabled)
+                    if (r.Disabled)   // live flag — see the checkbox note above
                     {
                         AnnounceUnavailable();
                         e.Handled = true; e.SuppressKeyPress = true;
@@ -704,7 +780,7 @@ public class FbwEfbForm : Form
 
         if (el.Clickable || el.Tag == "button" || el.Role == "button" || el.Tag == "a")
         {
-            string text = string.IsNullOrEmpty(el.Text) ? "(unnamed button)" : el.Text;
+            string text = ButtonLabel(el);
             bool btnDisabled = el.Disabled;
             if (btnDisabled) text += DimmedSuffix;
             var btn = new Button
@@ -721,7 +797,7 @@ public class FbwEfbForm : Form
                 // The browser shell's onActivate rule: a dimmed control answers "Unavailable" and posts
                 // nothing. This fallback used to press straight through it, and the MD-11 reader's own
                 // refusal was then the only thing between the pilot and a locked EFB page.
-                if (btnDisabled) { AnnounceUnavailable(); return; }
+                if (r.Disabled) { AnnounceUnavailable(); return; }   // live flag — see the checkbox note
                 _bridgeServer.EnqueueCommand("click_display_element",
                     new Dictionary<string, string> { ["index"] = idx.ToString() });
                 var t = new System.Windows.Forms.Timer { Interval = 450 };
@@ -775,6 +851,9 @@ public class FbwEfbForm : Form
     private class RenderedControl
     {
         public Control Control = null!;
+        // The disabled state this control is CURRENTLY rendering, and the live flag its own event
+        // handlers read. Mutated by ApplyDisabledInPlace, never by a rebuild.
+        public bool Disabled;
     }
 
     private class EFBElement

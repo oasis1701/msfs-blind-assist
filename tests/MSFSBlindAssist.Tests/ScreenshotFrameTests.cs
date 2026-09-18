@@ -93,6 +93,50 @@ public class ScreenshotFrameTests
         Assert.False(ScreenshotFrame.LooksBlank(bitmap));
     }
 
+    // PrintWindow with PW_RENDERFULLCONTENT draws the NON-CLIENT area and the bitmap is sized from
+    // GetWindowRect, so on a windowed simulator the top strip is the title bar. A Windows dark-theme
+    // caption is about RGB 32,32,32 — sum 96, far over the 30 threshold — so sampling it ended the
+    // test on its very first sample and a black client area was reported as a picture and sent to
+    // the AI. Bounding the samples to the client area is what makes the verdict mean anything here.
+    [Fact]
+    public void ABlackClientAreaUnderALitTitleBar_LooksBlankWithinTheClientRegion()
+    {
+        using var bitmap = Filled(640, 390, Color.Black);
+        using (var graphics = Graphics.FromImage(bitmap))
+        using (var caption = new SolidBrush(Color.FromArgb(32, 32, 32)))
+            graphics.FillRectangle(caption, 0, 0, 640, 30);
+
+        Assert.False(ScreenshotFrame.LooksBlank(bitmap));                                       // the whole window: the caption alone clears it
+        Assert.True(ScreenshotFrame.LooksBlank(bitmap, new Rectangle(0, 30, 640, 360)));        // the client area: still a failed capture
+    }
+
+    // The region is a bound on the samples, not a claim that everything outside it is blank: a real
+    // picture inside the client area must still be reported as a picture.
+    [Fact]
+    public void ALitClientAreaUnderALitTitleBar_DoesNotLookBlank()
+    {
+        using var bitmap = Filled(640, 390, Color.FromArgb(32, 32, 32));
+        using (var graphics = Graphics.FromImage(bitmap))
+        using (var lit = new SolidBrush(Color.White))
+            graphics.FillRectangle(lit, 0, 30, 640, 360);
+
+        Assert.False(ScreenshotFrame.LooksBlank(bitmap, new Rectangle(0, 30, 640, 360)));
+    }
+
+    // A borderless or fullscreen window has no caption to exclude, and a window whose client area
+    // Windows will not report hands back null — both must sample the whole bitmap, as before.
+    [Theory]
+    [InlineData(null)]
+    [InlineData(new[] { 900, 900, 40, 40 })]   // entirely outside the bitmap
+    public void ARegionThatCannotBeUsed_FallsBackToTheWholeBitmap(int[]? bounds)
+    {
+        Rectangle? region = bounds == null ? null : new Rectangle(bounds[0], bounds[1], bounds[2], bounds[3]);
+        using var black = Filled(640, 360, Color.Black);
+        using var white = Filled(640, 360, Color.White);
+        Assert.True(ScreenshotFrame.LooksBlank(black, region));
+        Assert.False(ScreenshotFrame.LooksBlank(white, region));
+    }
+
     /// <summary>A left-to-right ramp in the blue channel only, 0 at the left edge up to <paramref name="topBlue"/> at the right, so each pixel's R+G+B is its blue value.</summary>
     private static Bitmap DarkRamp(int width, int height, int topBlue)
     {

@@ -299,10 +299,22 @@ public partial class TFDiMD11Definition
     private async Task PressFeedbackAsync(Md11Control c, SimConnectManager sim, ScreenReaderAnnouncer announcer,
         Task<int> queued, long pressedAtMs)
     {
+        // The generation this press belongs to. Dispose and every context reset bump it, so a
+        // feedback still in flight when the pilot switches aircraft — or the connection drops —
+        // must not speak for the definition it was started on. Without this the tail resumed
+        // against a disposed definition where ReadStateVar returns null for every var and
+        // IsDcPowered() is false, so Compose fell to its unpowered arm and announced e.g.
+        // "APU Generator (APU Panel): unpowered" over the NEW aircraft's own startup — and wrote
+        // that text into the dead gate's baseline. Its sibling DeferDarkTransitionAsync has
+        // guarded this since it shipped (DeferToUiThreadAsync's guardGeneration); this one, the
+        // only deferred announcement on the aircraft that did not, is the press chain — up to
+        // EchoWindowMs plus a guarded press's ~550 ms cover lift, so the window is seconds wide.
+        int generation = _announceGeneration;
         try
         {
             int backlogMs = await queued.ConfigureAwait(false);
             await Task.Delay(FeedbackDelayMs(backlogMs, Environment.TickCount64 - pressedAtMs)).ConfigureAwait(false);
+            if (generation != _announceGeneration) return;   // cheap pre-check; the UI-thread tail re-checks under the one that matters
             // A latched button's own var has its own data definition: the read completes on the
             // PERIOD.ONCE delivery, which lands in the cache Compose reads below (the old fixed
             // 300 ms sleep read whatever the cache held). Nothing delivered leaves the cache as it
@@ -319,6 +331,9 @@ public partial class TFDiMD11Definition
             {
                 try
                 {
+                    // The generation is read and bumped on the UI thread, so this is the check that
+                    // decides. The pre-check above only saves the work when the switch already happened.
+                    if (generation != _announceGeneration) return;
                     var text = Md11ControlState.Compose(c.State, ReadStateVar, IsDcPowered());
                     if (text == null) return;
                     announcer.Announce($"{c.DisplayLabel}: {_gate.Feedback(c.NodeId, text)}");
@@ -409,6 +424,17 @@ public partial class TFDiMD11Definition
         _takeoffCallouts.Reset();               // same: drops the arm, the last sample and the fired flags, keeps the speeds — a parked arm called V1/Rotate/V2 on the cruise IAS a load delivers ahead of SIM_ON_GROUND
         _spdbrkHandle = double.NaN;
         _lastSpoilerSpoken = string.Empty;
+        // The flap read-out is two vars and a baseline, and all three must go. Keeping _dialRaw was
+        // enough on its own to speak the PREVIOUS flight's take-off flap angle: MD11_FLAP_LATCH is
+        // SIM_FRAME + CHANGED, so on a load it delivers first, AnnounceFlaps found a non-NaN dial
+        // from the flight before, judged the text COMPLETE and spoke that angle — the wheel's own
+        // delivery then corrected it a frame or two later, so a blind pilot heard two different
+        // take-off flap settings back to back with nothing to say which was current. Both keys are
+        // in SeededScalarKeys, so a load that leaves either unchanged still gets its baseline back
+        // from the cache instead of going dead for the session.
+        _flapRng = double.NaN;
+        _dialRaw = double.NaN;
+        _lastFlapSpoken = string.Empty;
         _announceGeneration++;                  // nothing scheduled before the drop may speak after it
         _seedGate.Arm(KnownSeedValues());       // SeedFromCache runs when the deliveries say the cache is current and settled
     }
@@ -479,6 +505,7 @@ public partial class TFDiMD11Definition
         var keys = new List<string>
         {
             Md11Squawk.CodeKey, Md11Fcp.ReadCaptainBaro, Md11SpeedbrakeSystem.ArmKey, Md11SpeedbrakeSystem.LeverKey,
+            Md11FlapSystem.LeverKey, Md11FlapSystem.DialKey,
         };
         keys.AddRange(Md11VSpeeds.Keys);
         keys.AddRange(Md11Radios.Keys);
@@ -521,9 +548,28 @@ public partial class TFDiMD11Definition
             if (SeedScalar(key, value)) seeded++;
         }
 
+        // The flap read-out's baseline needs BOTH flap vars, so it is recorded here rather than in
+        // either key's case above — whichever of them the loop seeded, the text is composed once
+        // from what is known. Same silence rule ReadoutDecision applies to a first delivery: record
+        // only a COMPLETE text (a Dial-A-Flap detent is incomplete until the thumbwheel is known),
+        // never speak, so the next genuine change is the first thing the pilot hears.
+        if (_lastFlapSpoken.Length == 0 && !double.IsNaN(_flapRng))
+        {
+            var dial = SampledDialRaw;
+            if (dial != null || _flaps.DetentFor(_flapRng)?.Dial != true)
+            {
+                _lastFlapSpoken = _flaps.DescribePosition(_flapRng, dial);
+                seeded++;
+            }
+        }
+
         Log.Debug("MD11", $"Context reset: {seeded} baselines seeded from the cache after {_seedGate.Deliveries} batch deliveries "
             + $"({trigger}: {_seedGate.QuietDeliveries} quiet; the aircraft's own change seen: {_seedGate.SawChange}).");
     }
+
+    /// <summary>The flap read-out holds no sample and no spoken baseline (tests).</summary>
+    internal bool FlapReadoutIsEmpty =>
+        double.IsNaN(_flapRng) && double.IsNaN(_dialRaw) && _lastFlapSpoken.Length == 0;
 
     /// <summary>Seeds one listed scalar into its tracker when that tracker is still empty; true when it did.</summary>
     internal bool SeedScalar(string key, double value)
@@ -542,6 +588,16 @@ public partial class TFDiMD11Definition
                 if (_lastSpoilerSpoken.Length != 0 || Md11SpeedbrakeSystem.DescribeTravel(value) is not string detent) return false;
                 _spdbrkRng = value;
                 _lastSpoilerSpoken = $"Spoilers {detent.ToLowerInvariant()}";
+                return true;
+            // The two flap vars restore their own samples; the read-out's baseline needs BOTH and is
+            // recorded after the loop (SeedFromCache), so it is never composed from half of them.
+            case Md11FlapSystem.LeverKey:
+                if (!double.IsNaN(_flapRng)) return false;
+                _flapRng = value;
+                return true;
+            case Md11FlapSystem.DialKey:
+                if (!double.IsNaN(_dialRaw)) return false;
+                _dialRaw = value;
                 return true;
             default:
                 if (Md11VSpeeds.IsKey(key)) return _vSpeeds.SeedIfEmpty(key, value);
