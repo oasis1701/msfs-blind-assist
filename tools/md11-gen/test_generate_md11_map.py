@@ -150,6 +150,51 @@ class CompanionVarTests(unittest.TestCase):
         self.assertEqual({}, value_map)
 
 
+class CuratedGuardTests(unittest.TestCase):
+    """
+    A guard cover TFDi's XML does not link to the control it covers. The generator never infers a
+    link -- it reads GUARD_ID off the exported field -- so an undeclared cover leaves its control
+    with guard_id None, MSFSBA's auto-open never runs, and the walk goes out against a closed cover
+    and reports "did not move". CURATED_GUARDS supplies the three measured links.
+    """
+
+    def test_a_declared_guard_id_is_left_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, wasm = write_package(tmp, {"FlightDeck/Overhead.xml": use_template(
+                "TFDi_Design_MD11_Switch_Template", NODE_ID="MD11_OVHD_X_SW", TOOLTIPID="X",
+                LEFT_BUTTON_DOWN="1", GUARD_ID="MD11_OVHD_X_GRD")})
+            data, _ = run_main(pkg, wasm, os.path.join(tmp, "map.json"))
+        self.assertEqual("MD11_OVHD_X_GRD", data["controls"][0]["guard_id"])
+
+    def test_an_undeclared_cover_gets_its_curated_link(self):
+        # The real GPWS switch: measured live, its cover blocks it and the guard's own event lifts
+        # the cover, but TFDi's XML declares no GUARD_ID for it.
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, wasm = write_package(tmp, {"FlightDeck/Overhead.xml": use_template(
+                "TFDi_Design_MD11_Switch_Template", NODE_ID="MD11_AOVHD_GPWS_SW", TOOLTIPID="GPWS",
+                LEFT_BUTTON_DOWN="73769")})
+            data, _ = run_main(pkg, wasm, os.path.join(tmp, "map.json"))
+        self.assertEqual("MD11_AOVHD_GPWS_GRD", data["controls"][0]["guard_id"])
+
+    def test_a_control_with_neither_keeps_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, wasm = write_package(tmp, {"FlightDeck/Overhead.xml": use_template(
+                "TFDi_Design_MD11_Switch_Template", NODE_ID="MD11_OVHD_Y_SW", TOOLTIPID="Y",
+                LEFT_BUTTON_DOWN="1")})
+            data, _ = run_main(pkg, wasm, os.path.join(tmp, "map.json"))
+        self.assertIsNone(data["controls"][0]["guard_id"])
+
+    def test_the_curated_set_is_the_three_measured_pairs(self):
+        self.assertEqual(
+            {
+                "MD11_AOVHD_EVAC_SW": "MD11_AOVHD_EVAC_GRD",
+                "MD11_AOVHD_GPWS_SW": "MD11_AOVHD_GPWS_GRD",
+                "MD11_EXT_DOOR_CRG_MAIN_ARM_SW": "MD11_EXT_DOOR_CRG_MAIN_ARM_GRD",
+            },
+            g.CURATED_GUARDS,
+        )
+
+
 class ComputedHeadTests(unittest.TestCase):
     """D16: a block's words describe the value of the RPN in front of it, so they are the
     VARIABLE's positions only when that RPN is a BARE READ -- '(L:NAME)' and nothing else.
@@ -312,9 +357,16 @@ class ComputedHeadTests(unittest.TestCase):
         self.assertEqual(0, data["counts"]["unkeyed_words"])
         self.assertIn("MD11_MIP_GEAR_SW -- (L:MD11_MIP_GEAR_SW) >= 20", err)
         gear = data["controls"][0]
-        self.assertEqual({}, gear["value_map"])
         self.assertEqual({"var": "MD11_MIP_GEAR_SW", "op": ">=", "value": 20,
                           "when_true": "Down", "when_false": "Up"}, gear["threshold"])
+        # The PARSE refuses to key a map on the comparison's variable, which is the fix — but the
+        # gear's two POSITIONS are still what its combo offers and what a pick writes, so CURATED
+        # pins them back. Without that the empty map makes the row read-only (values.Count == 0)
+        # and leaves the walker nothing to walk. What the parse no longer does is CLASSIFY a
+        # reading onto one of those keys; that is Md11GearLever's job until a reader consumes
+        # `threshold` generically.
+        self.assertEqual({"0": "Up", "1": "Down"}, gear["value_map"])
+        self.assertEqual({"0": "Up", "1": "Down"}, g.CURATED["MD11_MIP_GEAR_SW"]["value_map"])
 
     def test_main_counts_and_prints_a_block_it_could_not_key(self):
         tooltip = ("Test Lever (%((L:MD11_OVHD_X_RNG) 25 - abs 0.1 &lt;)"

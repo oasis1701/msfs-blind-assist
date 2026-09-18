@@ -66,10 +66,14 @@ public class Md11PanelLayoutTests
     /// EnsureGuardOpenAsync runs from the ACTUATION of the control underneath, so for a guard some
     /// operable control names in its guard_id the cover is lifted, settled and actuated without the
     /// pilot touching it; a row there is noise, and one a pilot can leave in the wrong position.
-    /// Two shapes keep theirs, both read off the map: a guard NO control names (EVAC, GPWS and the
-    /// Main Cargo Door arm — guarded in the aircraft, never linked by the generator, so nothing
-    /// triggers an auto-open), and a guard whose every namer SetControl refuses (the three engine
-    /// fire handles, whose rows are read-only composites).
+    /// Two shapes would keep theirs, both read off the map: a guard NO control names, and a guard
+    /// whose every namer SetControl refuses. Only the second occurs today — the three engine fire
+    /// handles, whose rows are read-only composites. The first did until the generator gained
+    /// CURATED_GUARDS: EVAC, GPWS and the Main Cargo Door arm are guarded in the aircraft but TFDi's
+    /// XML declares no GUARD_ID for them, so nothing triggered an auto-open and a walk went out
+    /// against a closed cover. Measured live before curating them (2026-09-18): the GPWS cover reads
+    /// closed on a loaded aircraft, the switch does not move with it closed, the guard's own event
+    /// lifts it, and the switch then steps normally.
     /// </summary>
     [Fact]
     public void AGuardIsARow_OnlyWhereTheAutoOpenCannotLiftIt()
@@ -84,14 +88,19 @@ public class Md11PanelLayoutTests
             Assert.DoesNotContain(guard.NodeId, P.Unplaced);   // dropped, never re-appended by the safety net
         }
 
-        // Exactly the six the auto-open cannot reach, named so a change to either cause is visible.
+        // Exactly the three the auto-open cannot reach, named so a change to either cause is
+        // visible: make the fire handles operable and this list empties, and a guard that ever
+        // loses its link reappears here rather than going quietly unreachable.
         var kept = Map.Controls.Where(c => c.Kind == Md11Kinds.Guard && everyRow.Contains(c.NodeId))
             .Select(c => c.NodeId).OrderBy(n => n, StringComparer.Ordinal).ToArray();
         Assert.Equal(new[]
         {
             "MD11_AOVHD_ENG1FIRE_GRD", "MD11_AOVHD_ENG2FIRE_GRD", "MD11_AOVHD_ENG3FIRE_GRD",
-            "MD11_AOVHD_EVAC_GRD", "MD11_AOVHD_GPWS_GRD", "MD11_EXT_DOOR_CRG_MAIN_ARM_GRD",
         }, kept);
+
+        // Every guard is now linked to something — the shape that has no namer at all is gone.
+        foreach (var guard in Map.Controls.Where(c => c.Kind == Md11Kinds.Guard))
+            Assert.Contains(Map.Controls, c => string.Equals(c.GuardId, guard.NodeId, StringComparison.OrdinalIgnoreCase));
 
         // A guard that IS a row still precedes the control it covers, where it covers one.
         foreach (var c in Map.Controls.Where(c => !string.IsNullOrEmpty(c.GuardId) && everyRow.Contains(c.GuardId!)))
@@ -120,7 +129,7 @@ public class Md11PanelLayoutTests
             .Where(c => c.Kind == Md11Kinds.Guard && !everyRow.Contains(c.NodeId))
             .Select(c => c.NodeId).ToList();
 
-        Assert.Equal(26, dropped.Count);                                  // 32 guards, 6 the auto-open cannot reach
+        Assert.Equal(29, dropped.Count);                                  // 32 guards, 3 the auto-open cannot reach
         foreach (var guard in dropped) Assert.True(variables.ContainsKey(guard), guard);
     }
 

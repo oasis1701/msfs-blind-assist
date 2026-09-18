@@ -1,0 +1,1 @@
+The EVAC, GPWS and main cargo door arm switches now lift their own guard covers before operating, like every other guarded control. TFDi's data never linked those three covers to their switches, so the app was operating them through a closed cover: nothing moved, and you were told the control may be guarded, unpowered or inhibited with no way to tell which.

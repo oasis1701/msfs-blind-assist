@@ -240,6 +240,35 @@ CURATED = {
     "MD11_OVHD_PNEU_AFT_CAB_TEMP": {"value_map": temperature_positions(8)},
     "MD11_OVHD_PNEU_FWD_CARGO_TEMP": {"value_map": temperature_positions(3)},
     "MD11_OVHD_PNEU_AFT_CARGO_TEMP": {"value_map": temperature_positions(7)},
+    # The gear lever, the one control whose words a COMPARISON chooses (D16): its tooltip tests
+    # '(L:MD11_MIP_GEAR_SW) 20 >=' for Down, so the generator refuses to key a value_map on that
+    # variable -- it is the lever's 0-25 TRAVEL, not a 0/1 position -- and records the rule in a
+    # `threshold` block instead. These two POSITIONS are still what the combo offers and what a
+    # pick writes, so they are pinned here rather than left empty: an empty value_map would make
+    # RenderAsReadOnlyStatus true and turn the Landing Gear row read-only, and the walker's
+    # OrderedValues would have nothing to walk. The classification of a READING back onto one of
+    # these keys is Md11GearLever's job (SimVarDefinition.ValueToDescriptionKey), and it stays so
+    # until a reader consumes `threshold` generically -- at which point this entry and that class
+    # go together.
+    "MD11_MIP_GEAR_SW": {"value_map": {"0": "Up", "1": "Down"}},
+}
+
+# Guard covers TFDi's own XML does not link to the control they cover. The generator never infers
+# a link -- it reads GUARD_ID off the exported field -- so a cover the aircraft models but does not
+# declare leaves its control with no guard_id, and MSFSBA's transparent auto-open
+# (EnsureGuardOpenAsync) therefore never runs for it: the walk goes out against a closed cover,
+# nothing moves, and the pilot is told the control "did not move. It may be guarded, unpowered, or
+# inhibited" with no way to know which.
+#
+# MEASURED on a live MD-11 (2026-09-18), not inferred: the GPWS cover reads 0 (closed) on a loaded
+# aircraft; firing the switch's own LEFT_BUTTON_DOWN with it closed moves nothing; firing the
+# guard's LEFT_BUTTON_DOWN lifts it (0 -> 1); and the same switch event then steps the switch
+# normally (Normal -> Flap Override and back, all three positions latching). The EVAC cover reads
+# closed the same way. Keyed control -> guard, the direction GUARD_ID itself uses.
+CURATED_GUARDS = {
+    "MD11_AOVHD_EVAC_SW": "MD11_AOVHD_EVAC_GRD",
+    "MD11_AOVHD_GPWS_SW": "MD11_AOVHD_GPWS_GRD",
+    "MD11_EXT_DOOR_CRG_MAIN_ARM_SW": "MD11_EXT_DOOR_CRG_MAIN_ARM_GRD",
 }
 
 # Controls whose exported tooltip is missing or garbage. TFDi's wording where it exists,
@@ -1839,7 +1868,11 @@ def collect(pkg_dir):
                         if num_states and num_states.isdigit()
                         else None,
                         "events": events,
-                        "guard_id": fields.get("GUARD_ID"),
+                        # TFDi's own link where it declares one; otherwise a measured link from
+                        # CURATED_GUARDS, which behaves identically everywhere downstream — the
+                        # guard's label, MSFSBA's panel placement and the auto-open all read this
+                        # one field and cannot tell a curated link from a declared one.
+                        "guard_id": fields.get("GUARD_ID") or CURATED_GUARDS.get(node_id),
                         "source": source,
                     }
                 )

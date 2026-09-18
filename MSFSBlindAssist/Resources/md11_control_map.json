@@ -7,6 +7,8 @@
   "export_vars": 58,
   "state_only_vars": 238,
   "empty_case_labels": 0,
+  "rpn_thresholds": 1,
+  "unkeyed_words": 0,
   "by_kind": {
    "annun": 488,
    "button": 660,
@@ -1482,7 +1484,7 @@
     "LEFT_BUTTON_DOWN": 73773,
     "RIGHT_BUTTON_DOWN": 73774
    },
-   "guard_id": null,
+   "guard_id": "MD11_AOVHD_EVAC_GRD",
    "source": "FlightDeck/AftOverhead.xml"
   },
   {
@@ -1544,7 +1546,7 @@
     "LEFT_BUTTON_DOWN": 73769,
     "RIGHT_BUTTON_DOWN": 73770
    },
-   "guard_id": null,
+   "guard_id": "MD11_AOVHD_GPWS_GRD",
    "source": "FlightDeck/AftOverhead.xml"
   },
   {
@@ -8194,7 +8196,7 @@
    "events": {
     "LEFT_BUTTON_DOWN": 102441
    },
-   "guard_id": null,
+   "guard_id": "MD11_EXT_DOOR_CRG_MAIN_ARM_GRD",
    "source": "Cabin/FreightCabinFrame.xml"
   },
   {
@@ -14872,10 +14874,17 @@
    "area": "Main Instrument Panel",
    "label": "Gear Lever",
    "label_source": "tooltip",
-   "state_var": "MD11_MIP_GEAR_SW",
    "value_map": {
-    "1": "Down",
-    "0": "Up"
+    "0": "Up",
+    "1": "Down"
+   },
+   "state_var": "MD11_MIP_GEAR_SW",
+   "threshold": {
+    "var": "MD11_MIP_GEAR_SW",
+    "op": ">=",
+    "value": 20,
+    "when_true": "Down",
+    "when_false": "Up"
    },
    "num_states": 1,
    "events": {
