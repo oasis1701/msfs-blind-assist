@@ -1436,12 +1436,8 @@ public partial class TFDiMD11Definition
         // restore was removed on 2026-09-09 by the owner's ruling (a user-saved custom camera
         // cannot be re-selected through the camera SimVar, so it silently failed for exactly the
         // pilots who fly from one) and must not come back — see InstrumentViewPlan and ReadDisplay.
-        if (Md11DisplayReads.TryGet(action, out var displayRead))
-        {
-            ReadDisplay(displayRead.DisplayType, displayRead.SpokenName, announcer, parentForm,
-                new Services.InstrumentViewRequest(simConnect, displayRead.InstrumentViewIndex));
+        if (TryReadDisplayFor(action, Md11DisplayReads.All, simConnect, announcer, parentForm))
             return true;
-        }
 
         switch (action)
         {

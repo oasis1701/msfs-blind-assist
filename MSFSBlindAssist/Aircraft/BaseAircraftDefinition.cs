@@ -880,6 +880,28 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
     }
 
+    /// <summary>
+    /// Dispatches <paramref name="action"/> when it is one of <paramref name="reads"/>: captures
+    /// that display and reads it back, first moving the simulator camera to the instrument view
+    /// that frames it. Returns false when the action is not a display read, so a definition calls
+    /// this ahead of its own hotkey switch and falls through untouched otherwise.
+    ///
+    /// An aircraft gains AI display reads by supplying a measured table — there is no per-aircraft
+    /// dispatch to copy. See <see cref="AiDisplayRead"/> for how a view index is established.
+    /// </summary>
+    protected bool TryReadDisplayFor(HotkeyAction action,
+                                     IReadOnlyList<AiDisplayRead> reads,
+                                     SimConnect.SimConnectManager simConnect,
+                                     ScreenReaderAnnouncer announcer,
+                                     System.Windows.Forms.Form parentForm)
+    {
+        if (!AiDisplayRead.TryGet(reads, action, out var read)) return false;
+
+        ReadDisplay(read.DisplayType, read.SpokenName, announcer, parentForm,
+            new Services.InstrumentViewRequest(simConnect, read.InstrumentViewIndex));
+        return true;
+    }
+
     // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
     // ---- the PMDG Ctrl+P autopilot window). ----
     // Reuse-if-open: a second press of the hotkey focuses the existing window instead of
