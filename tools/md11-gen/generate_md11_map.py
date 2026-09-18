@@ -1068,6 +1068,128 @@ INLINE_IF_RE = re.compile(r"%\([^)]*(?:\)[^)%]*)*?\)\s*%\{if\}([^%]*)%\{else\}([
 # Stands in for a literal '%%' while a case label or an if/else word is cut at its first directive.
 _LITERAL_PERCENT = "\0"
 
+# The HEAD of any %{if} or %{case} block: the '%(<rpn>)' whose VALUE the block's words describe.
+# Group 1 is the RPN, group 2 the block kind. CASE_HEAD_RE matches only the bare-read shape and
+# is used where that shape is already required; this one matches EVERY shape, which is what makes
+# a computed head visible instead of silently read as the var's own value (D16, below).
+BLOCK_HEAD_RE = re.compile(r"%\(([^)]*(?:\)[^)%]*)*?)\)\s*%\{(if|case)\}")
+# A BARE VAR READ: '(L:NAME)' and nothing else, whitespace aside.
+BARE_VAR_READ_RE = re.compile(r"\s*\(L:([A-Za-z0-9_]+)\)\s*")
+# A single-var THRESHOLD: '(L:NAME) <number> <op>' -- the one computed head shape whose meaning is
+# recoverable, so the words it chooses between can be recorded rather than merely refused.
+THRESHOLD_RE = re.compile(r"\s*\(L:([A-Za-z0-9_]+)\)\s+(-?\d+(?:\.\d+)?)\s*(>=|<=|==|!=|>|<)\s*")
+# Block kinds, for finding the head that governs a block found at a known offset.
+_BLOCK_TOKEN = {"if": "%{if}", "case": "%{case}"}
+
+
+def _bare_var_read(rpn):
+    """The L:var `rpn` reads when it is a BARE READ -- '(L:NAME)' and nothing else -- else None.
+
+    D16. A block's words describe the value of the RPN in front of it, and only a bare read hands
+    that block the VARIABLE's own value: every other shape -- a comparison, arithmetic, a test
+    across two vars -- yields something computed, so words keyed on it are not the var's positions.
+    The gear lever is the casualty that named this rule: CenterInstrument.xml tests
+    '(L:MD11_MIP_GEAR_SW) 20 >=' for Down, and the flat lift wrote {1 Down, 0 Up} over a variable
+    that is really the lever's 0-25 TRAVEL. Nothing could detect it -- the generator keeps no raw
+    tooltip and a two-entry map looks perfectly ordinary -- so it was found by a blind pilot
+    hearing the wrong position and patched, one control at a time, in C#.
+    """
+    m = BARE_VAR_READ_RE.fullmatch(rpn)
+    return m.group(1) if m else None
+
+
+def _threshold(rpn):
+    """`rpn` as a threshold block -- {var, op, value} -- when it is '(L:NAME) <number> <op>', else None.
+
+    The one computed shape that can be recorded instead of merely refused: a later pass can key a
+    control's positions off the COMPARISON the aircraft itself makes, which is the general form of
+    what Md11GearLever.cs does by hand. The entities matter -- the XML is read without unescaping
+    (read_xml), so TFDi's '>=' arrives as '&gt;=' and a raw match would see no operator at all.
+
+    Every other computed shape stays a refusal, because none of them has a clean reading here:
+    '38 65 (L:MD11_FLAP_RNG) rng' is a RANGE (curated, see CURATED), '(L:X) 25 - abs 0.1 <' is a
+    distance from centre, and '(L:A) 1 == (L:B) 0 == and' is two vars at once. Teach this rule the
+    next shape only when a real tooltip pairs it with plain words -- today none does.
+    """
+    m = THRESHOLD_RE.fullmatch(html.unescape(rpn))
+    if not m:
+        return None
+    value = float(m.group(2))
+    return {"var": m.group(1), "op": m.group(3),
+            "value": int(value) if value == int(value) else value}
+
+
+def _rpn_note(what, rpn):
+    """A short note naming a refused block and the RPN that governs it, for the run's report.
+
+    Unescaped, because the XML is read raw (read_xml): '&gt;=' in a line a human is meant to read
+    as an operator is the difference between a report and a puzzle.
+    """
+    return f"{what} on {html.unescape(rpn or '').strip() or '(no head)'}"
+
+
+def _head_rpn(block):
+    """The RPN of the head a WHOLE block starts with ('%(<rpn>)%{if}...'), or None.
+
+    The inline-label form of _governing_rpn: there the block is handed over already matched, so
+    its head is simply its first token.
+    """
+    m = BLOCK_HEAD_RE.match(block)
+    return m.group(1) if m else None
+
+
+def _governing_rpn(text, block_start):
+    """The RPN of the head whose %{if}/%{case} token starts at `block_start` in `text`, or None.
+
+    A block with no head at all is not a shape this aircraft ships (all 310 %{if}/%{case} blocks
+    in the package carry one), so None means "cannot say what these words key on" and the caller
+    refuses -- a counted refusal is visible, a wrong value_map is not.
+    """
+    for h in BLOCK_HEAD_RE.finditer(text):
+        if h.end() - len(_BLOCK_TOKEN[h.group(2)]) == block_start:
+            return h.group(1)
+    return None
+
+
+def _var_keyed_blocks(expr, withheld=None):
+    """`expr` reduced to the blocks whose words key on a BARE VAR READ (D16).
+
+    A %{case} position marker belongs to the head in front of it, but _case_labels scans markers
+    FLAT -- by design, so a nested case can overwrite an outer one's words. Flat, a case under a
+    computed head hands its 0/1 words to the control's variable exactly as the gear lever's
+    %{if} did. So the markers are filtered by their own head here, before the flat scan, and each
+    accepted region is terminated with an '%{end}' so its last position cannot run into the next.
+
+    `withheld`, when given, collects a short note for every region refused while carrying words --
+    the ones a reader would otherwise have heard. A region with no words is not reported: the
+    altimeter and trim tooltips compute their whole readout ('%(...)%!1.2f!') and have no
+    positions to lose, so counting them would bury the ones that do.
+
+    The PLAIN inline if/else words are read by their resting word first (_collapse_inline_ifs), as
+    every other scan over a block's body does -- here because such a word carries a HEAD of its
+    own, which would split the position it names away from the case it belongs to. The APU fire
+    handle is the shape that proves it: its centre position is
+    '%{:1}%((L:MD11_AOVHD_APUFIRE_SW))%{if}Shutoff%{else}Normal%{end}', and split there the centre
+    lost its word and 'Bottle 2' was attributed to the nested head. The collapse is deliberately
+    NOT applied to the if/else fallback in parse_tooltip: there the top-level block IS the words,
+    and collapsing it would leave nothing to read (or to record as a threshold).
+    """
+    expr = _collapse_inline_ifs(expr)
+    heads = list(BLOCK_HEAD_RE.finditer(expr))
+    if not heads:
+        return expr
+    # Anything before the first head carries no marker in any shape this aircraft ships; kept
+    # whole so a malformed tooltip reads exactly as it did before this rule existed.
+    kept = [expr[:heads[0].start()]]
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(expr)
+        region = expr[head.end():end]
+        if _bare_var_read(head.group(1)):
+            kept.append(region + "%{end}")
+        elif withheld is not None and _case_labels(region):
+            withheld.append(_rpn_note("%%{%s}" % head.group(2), head.group(1)))
+    return "".join(kept)
+
 
 def _lvars(text):
     """Every L:var `text` names, in order, repeats included."""
@@ -1283,7 +1405,8 @@ def _if_composite_block(outer_var, body, node_id, found):
     }
 
 
-def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, source=None):
+def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, source=None,
+                  threshold=None, withheld=None):
     """Split a TOOLTIPID into (label, state_var, value_map).
 
     TFDi tooltips come in two shapes.
@@ -1314,6 +1437,13 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     `composite`, when given (a dict), receives the block. Without a node id nothing is a composite.
     An expression the rule cannot split raises a ValueError naming `source` (the file the tooltip
     came from, when given) and the node.
+
+    D16: words are lifted only from a block whose HEAD is a bare var read (_bare_var_read), because
+    only then is the value they are keyed on the variable's own. `threshold`, when given (a dict),
+    receives {var, op, value, when_true, when_false} for the one computed head that can still be
+    read -- a single-var comparison choosing between two plain words -- and `withheld`, when given
+    (a list), collects a note for every other refused block that carried words. Both are how a
+    regeneration REPORTS this class; it used to ship a plausible-looking two-entry map instead.
     """
     if not tooltip:
         return None, None, {}
@@ -1372,13 +1502,15 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
     # A variant flag's words are never positions: nothing is lifted from an expression that
     # reads one (LABEL_ONLY_VARS).
     elif expr and not LABEL_ONLY_VARS.intersection(_lvars(expr)):
-        value_map = _cases(expr)
+        # D16: only the blocks keyed on a bare var read; a case under a computed head describes
+        # what that head COMPUTED, not the variable (_var_keyed_blocks).
+        value_map = _cases(_var_keyed_blocks(expr, withheld))
         if not value_map:
             # '%%' is a literal percent sign in these words too, exactly as in a case label (D11):
             # the oxygen flow regulators read '%{if}100%%%{else}Normal%{end}' on their OWN var, and
             # cut at the '%' they had no words -- so no latch, and no spoken state at all.
-            m = re.search(r"%\{if\}([^%]*)%\{else\}([^%]*)%\{end\}",
-                          expr.replace("%%", _LITERAL_PERCENT))
+            marked = expr.replace("%%", _LITERAL_PERCENT)
+            m = re.search(r"%\{if\}([^%]*)%\{else\}([^%]*)%\{end\}", marked)
             # The if/else words are THIS control's positions only when the expression reads ONE
             # L:var -- the state var. The EFIS minimums caps read two: their own value first
             # ('%((L:MD11_CAP_MINIMUMS))%!d!'), then the mode SWITCH's var for the Baro/Radio
@@ -1392,8 +1524,20 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
             # the `state` block that composes its spoken position is generated separately).
             if m and _reads_one_state_var(expr):
                 on, off = (word.replace(_LITERAL_PERCENT, "%").strip() for word in m.groups())
-                if on and off:
+                rpn = _governing_rpn(marked, m.start())
+                if on and off and rpn is not None and _bare_var_read(rpn):
                     value_map = {"1": on, "0": off}
+                elif on and off:
+                    # D16: the words are real, the KEY is not -- the head computed the boolean the
+                    # %{if} tested, so {1: on, 0: off} would be a map over a variable that never
+                    # holds 1 or 0. The gear lever: '(L:MD11_MIP_GEAR_SW) 20 >=' over a 0-25 travel.
+                    # Record the comparison where it can be read, and refuse (visibly) where not.
+                    block = _threshold(rpn) if rpn else None
+                    if block is not None and threshold is not None:
+                        block.update(when_true=speakable(on), when_false=speakable(off))
+                        threshold.update(block)
+                    elif withheld is not None:
+                        withheld.append(_rpn_note("%{if}", rpn))
 
     # --- (b) collapse inline dynamic blocks left in the label -------------------
     # A label that reads an airframe variant flag has one wording per variant, and nothing here
@@ -1420,7 +1564,15 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
             return ""
         a, b = m.group(1).strip(), m.group(2).strip()
         if not value_map and label_reads_one_var and block is None:
-            value_map.update({"1": a, "0": b})
+            # D16 here too: the label still reads 'Heading/Track' whatever the head computes --
+            # the collapsed wording is the best spoken name either way -- but only a bare var read
+            # makes those words the variable's POSITIONS. No tooltip in the package pairs a
+            # computed head with an inline label block today; the gate is what keeps the next one
+            # from shipping a boolean map the way the gear lever's trailing block did.
+            if _bare_var_read(_head_rpn(m.group(0)) or ""):
+                value_map.update({"1": a, "0": b})
+            elif withheld is not None:
+                withheld.append(_rpn_note("inline %{if}", _head_rpn(m.group(0))))
         return f"{b}/{a}" if a and b else (a or b)
 
     label = INLINE_IF_RE.sub(_inline_if, label)
@@ -1431,7 +1583,10 @@ def parse_tooltip(tooltip, node_id=None, empty_cases=None, composite=None, sourc
             return ""
         cases = _cases(m.group(0))
         if cases and not value_map and label_reads_one_var and block is None:
-            value_map.update(cases)
+            if _bare_var_read(_head_rpn(m.group(0)) or ""):
+                value_map.update(cases)
+            elif withheld is not None:
+                withheld.append(_rpn_note("inline %{case}", _head_rpn(m.group(0))))
         return "/".join(cases.values()) if cases else ""
 
     label = re.sub(
@@ -1616,9 +1771,11 @@ def collect(pkg_dir):
                 # L:var itself (VIS_VAR overrides which var drives visibility).
                 empty_cases = []
                 composite = {}
+                threshold = {}
+                withheld = []
                 label, state_var, value_map = parse_tooltip(
                     fields.get("TOOLTIPID"), node_id=node_id, empty_cases=empty_cases,
-                    composite=composite, source=source)
+                    composite=composite, source=source, threshold=threshold, withheld=withheld)
 
                 key = (node_id, kind, tuple(sorted(events.items())))
                 if key in seen:
@@ -1629,6 +1786,15 @@ def collect(pkg_dir):
                 # curation, so it never leaves the map unseen.
                 for case_value in empty_cases:
                     stats[f"empty_case_label:{source} {node_id} %{{:{case_value}}}"] += 1
+                # D16. Words the flat lift would have keyed on a COMPUTED head: recorded as a
+                # threshold where the comparison can be read, counted as a refusal where not.
+                # Neither used to leave a trace of any kind -- that is what let a boolean map over
+                # the gear lever's 0-25 travel ship and stay invisible until a pilot heard it.
+                if threshold:
+                    stats[f"rpn_threshold:{source} {node_id} -- "
+                          f"(L:{threshold['var']}) {threshold['op']} {threshold['value']}"] += 1
+                for what in withheld:
+                    stats[f"unkeyed_words:{source} {node_id} {what}"] += 1
 
                 # Prefer TFDi's own wording; fall back to the node id only when the
                 # exporter emitted no tooltip (every annunciator, ~a third of buttons).
@@ -1665,6 +1831,10 @@ def collect(pkg_dir):
                         "value_map": value_map,
                         # Only on a composite (D10, D13): every other control's JSON is unchanged.
                         **({"composite": composite} if composite else {}),
+                        # Only where TFDi's own words are chosen by a COMPARISON rather than by the
+                        # variable's value (D16): the rule the aircraft applies, so one reader can
+                        # serve every such control instead of a hand-written class per casualty.
+                        **({"threshold": threshold} if threshold else {}),
                         "num_states": int(num_states)
                         if num_states and num_states.isdigit()
                         else None,
@@ -1905,6 +2075,11 @@ def main():
     # %{case} positions with no words (collect() records them): counted in the map, printed below.
     empty_case_labels = sorted(k[len("empty_case_label:"):] for k in stats
                                if k.startswith("empty_case_label:"))
+    # D16, both halves: state words whose head COMPUTES its value rather than reading a variable.
+    rpn_thresholds = sorted(k[len("rpn_threshold:"):] for k in stats
+                            if k.startswith("rpn_threshold:"))
+    unkeyed_words = sorted(k[len("unkeyed_words:"):] for k in stats
+                           if k.startswith("unkeyed_words:"))
 
     out = {
         "_generated_by": "tools/md11-gen/generate_md11_map.py",
@@ -1915,6 +2090,8 @@ def main():
             "export_vars": len(export_vars),
             "state_only_vars": len(orphan_vars),
             "empty_case_labels": len(empty_case_labels),
+            "rpn_thresholds": len(rpn_thresholds),
+            "unkeyed_words": len(unkeyed_words),
             "by_kind": dict(sorted(by_kind.items())),
             "by_area": {a: len(v) for a, v in sorted(by_area.items())},
         },
@@ -1935,6 +2112,8 @@ def main():
     print(f"  export vars     : {len(export_vars)}")
     print(f"  state-only vars : {len(orphan_vars)}")
     print(f"  empty case lbls : {len(empty_case_labels)}")
+    print(f"  rpn thresholds  : {len(rpn_thresholds)}")
+    print(f"  unkeyed words   : {len(unkeyed_words)}")
     print(f"  curated lamps   : {stats['curated_lamp']}")   # lamps TFDi defines only inside a comment
     print("  by kind         :")
     for k, v in sorted(by_kind.items()):
@@ -1952,6 +2131,12 @@ def main():
             print(f"    {v:5d}  {k}")
     for where in empty_case_labels:
         print(f"empty case label (a position with no name; curate it): {where}", file=sys.stderr)
+    for where in rpn_thresholds:
+        print(f"rpn threshold (words chosen by a comparison, recorded as one): {where}",
+              file=sys.stderr)
+    for where in unkeyed_words:
+        print(f"unkeyed words (a computed head, so no value_map; curate it if a pilot needs the "
+              f"positions): {where}", file=sys.stderr)
 
 
 if __name__ == "__main__":

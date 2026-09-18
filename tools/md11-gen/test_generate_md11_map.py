@@ -150,6 +150,187 @@ class CompanionVarTests(unittest.TestCase):
         self.assertEqual({}, value_map)
 
 
+class ComputedHeadTests(unittest.TestCase):
+    """D16: a block's words describe the value of the RPN in front of it, so they are the
+    VARIABLE's positions only when that RPN is a BARE READ -- '(L:NAME)' and nothing else.
+
+    The gear lever is the casualty that named the rule. CenterInstrument.xml tests
+    '(L:MD11_MIP_GEAR_SW) 20 >=' for Down, and the flat lift wrote {1 Down, 0 Up} over a variable
+    that is really the lever's 0-25 TRAVEL. Nothing in the repo could detect it: the generator
+    keeps no raw tooltip, emits no statistic for a computed head, and a two-entry map looks
+    entirely ordinary -- so it was found by a blind pilot hearing the wrong position, and patched
+    one control at a time in C# (Md11GearLever).
+
+    It sits BESIDE the companion-var rule rather than replacing it (CompanionVarTests): that one
+    refuses an expression naming a SECOND var, this one refuses a head that COMPUTES. The EFIS
+    minimums caps are refused by the first with a head that would pass the second.
+
+    The nested-inline shape is pinned next door: the APU fire handle's centre position is a whole
+    %{if} block, and it carries a head of its own that must not split the case it names
+    (CaseLabelTests / CompositeTests both assert its three positions)."""
+
+    # Verbatim from the package; '&gt;' because read_xml does not unescape.
+    GEAR = "Gear Lever (%((L:MD11_MIP_GEAR_SW) 20 &gt;=)%{if}Down%{else}Up%{end})"
+    FLAP = ("Flaps/Slats (%(38 65 (L:MD11_FLAP_RNG) rng)%{if}Dial-A-Flap "
+            "%(10 (L:MD11_DIALAFLAP_IND_RNG) 6.6667 / +)%!d!/Extended%{else}"
+            "%((L:MD11_FLAP_RNG))%{case}%{:0}Up/Retracted%{:20}Up/Extended%{:70}28/Extended"
+            "%{:82}35/Extended%{:100}50/Extended%{end}%{end})")
+    WXR_GAIN = ("Weather Radar Gain (%(1 7 (L:MD11_PED_WXR_GAIN_KB) rng)%{if}"
+                "%((L:MD11_PED_WXR_GAIN_KB) 8 -)%!d!%{else}%((L:MD11_PED_WXR_GAIN_KB))%{case}"
+                "%{:0}Minimum%{:8}Maximum%{:9}Calibration%{end}%{end})")
+
+    def test_the_gear_levers_comparison_is_no_boolean_map_over_its_travel(self):
+        threshold, withheld = {}, []
+        label, var, value_map = g.parse_tooltip(self.GEAR, node_id="MD11_MIP_GEAR_SW",
+                                                threshold=threshold, withheld=withheld)
+        self.assertEqual("Gear Lever", label)
+        self.assertEqual("MD11_MIP_GEAR_SW", var)
+        self.assertEqual({}, value_map)
+        # The comparison is recorded instead: the rule the AIRCRAFT applies, so one reader can
+        # serve every such control rather than a hand-written class per casualty.
+        self.assertEqual({"var": "MD11_MIP_GEAR_SW", "op": ">=", "value": 20,
+                          "when_true": "Down", "when_false": "Up"}, threshold)
+        self.assertEqual([], withheld)   # recorded, so not also reported as lost
+
+    def test_the_same_comparison_written_without_entities_reads_the_same(self):
+        # parse_tooltip is called directly (here and by curation work) as well as on read_xml's
+        # output, so both spellings of the operator must reach the same threshold.
+        threshold = {}
+        g.parse_tooltip("Gear Lever (%((L:MD11_MIP_GEAR_SW) 20 >=)%{if}Down%{else}Up%{end})",
+                        node_id="MD11_MIP_GEAR_SW", threshold=threshold)
+        self.assertEqual({"var": "MD11_MIP_GEAR_SW", "op": ">=", "value": 20,
+                          "when_true": "Down", "when_false": "Up"}, threshold)
+
+    def test_a_bare_var_read_still_gives_the_control_its_positions(self):
+        threshold, withheld = {}, []
+        label, var, value_map = g.parse_tooltip(
+            "Nosewheel Steering (%((L:MD11_PED_NWS_SW))%{if}On%{else}Off%{end})",
+            node_id="MD11_PED_NWS_SW", threshold=threshold, withheld=withheld)
+        self.assertEqual("Nosewheel Steering", label)
+        self.assertEqual("MD11_PED_NWS_SW", var)
+        self.assertEqual({"1": "On", "0": "Off"}, value_map)
+        self.assertEqual(({}, []), (threshold, withheld))
+
+    def test_a_bare_case_head_still_gives_the_control_its_positions(self):
+        withheld = []
+        _, var, value_map = g.parse_tooltip(
+            "Test Selector (%((L:MD11_OVHD_X_SEL_SW))%{case}%{:0}Off%{:1}Auto%{:2}On%{end})",
+            node_id="MD11_OVHD_X_SEL_SW", withheld=withheld)
+        self.assertEqual("MD11_OVHD_X_SEL_SW", var)
+        self.assertEqual({"0": "Off", "1": "Auto", "2": "On"}, value_map)
+        self.assertEqual([], withheld)
+
+    def test_the_companion_var_rule_keeps_its_own_refusal(self):
+        # The EFIS minimums cap: its %{if} head IS a bare read, so D16 would lift the mode
+        # switch's words onto a 0-15000 ft value knob. The second var in the expression is what
+        # refuses it, exactly as before -- the two rules catch different things.
+        threshold, withheld = {}, []
+        _, var, value_map = g.parse_tooltip(
+            "Captain Minimums Setting (%((L:MD11_CAP_MINIMUMS))%!d! "
+            "%((L:MD11_LECP_MINIMUMS_KB))%{if}Baro%{else}Radio%{end})",
+            node_id="MD11_LECP_MINIMUMS_CAP", threshold=threshold, withheld=withheld)
+        self.assertEqual("MD11_CAP_MINIMUMS", var)
+        self.assertEqual({}, value_map)
+        self.assertEqual(({}, []), (threshold, withheld))
+
+    def test_a_case_under_a_computed_head_is_refused_and_reported(self):
+        # The %{case} half of the same defect. No tooltip in the package is shaped this way today;
+        # flat, one would ship a two-entry map over a variable that holds neither value, and in
+        # silence -- which is the whole reason the gear lever survived review.
+        withheld = []
+        _, _, value_map = g.parse_tooltip(
+            "Test Lever (%((L:MD11_X_RNG) 20 &gt;=)%{case}%{:0}Up%{:1}Down%{end})",
+            node_id="MD11_X_RNG", withheld=withheld)
+        self.assertEqual({}, value_map)
+        self.assertEqual(["%{case} on (L:MD11_X_RNG) 20 >="], withheld)
+
+    def test_a_computed_head_that_is_no_threshold_is_refused_never_guessed(self):
+        # TFDi's rudder-trim shape: a distance from centre, not a threshold. Refusing is the point
+        # -- a counted refusal is visible, a wrong value_map is not.
+        threshold, withheld = {}, []
+        _, _, value_map = g.parse_tooltip(
+            "Rudder Trim (%((L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 &lt;)"
+            "%{if}Neutral%{else}Offset%{end})",
+            node_id="MD11_PED_RUD_TRIM_SW", threshold=threshold, withheld=withheld)
+        self.assertEqual({}, value_map)
+        self.assertEqual({}, threshold)
+        self.assertEqual(["%{if} on (L:MD11_PED_RUD_TRIM_IND) 25 - abs 0.1 <"], withheld)
+
+    def test_a_bare_headed_case_under_a_computed_if_keeps_its_positions(self):
+        # The two levers the rule must NOT touch: a block is judged by its OWN head, not by the
+        # outermost one. The flap lever's positions hang off '%((L:MD11_FLAP_RNG))%{case}' nested
+        # inside a range test, and the weather-radar gain's off its own var inside another.
+        for tooltip, node, var, positions in (
+            (self.FLAP, "MD11_FLAP_LATCH", "MD11_FLAP_RNG",
+             {"0": "Up/Retracted", "20": "Up/Extended", "70": "28/Extended",
+              "82": "35/Extended", "100": "50/Extended"}),
+            (self.WXR_GAIN, "MD11_PED_WXR_GAIN_KB", "MD11_PED_WXR_GAIN_KB",
+             {"0": "Minimum", "8": "Maximum", "9": "Calibration"}),
+        ):
+            with self.subTest(node):
+                withheld = []
+                _, got_var, value_map = g.parse_tooltip(tooltip, node_id=node, withheld=withheld)
+                self.assertEqual(var, got_var)
+                self.assertEqual(positions, value_map)
+                # The computed outer block carries no positions of its own, so nothing was lost:
+                # reporting it would bury the controls that really did lose words.
+                self.assertEqual([], withheld)
+
+    def test_an_inline_label_block_under_a_computed_head_lifts_no_positions(self):
+        # Shape (b), where the label itself changes with state. The collapsed wording is still the
+        # best spoken name -- the label is unchanged -- but the words are not the variable's
+        # positions, for exactly the reason the trailing block's are not.
+        withheld = []
+        label, _, value_map = g.parse_tooltip(
+            "Gear %((L:MD11_MIP_GEAR_SW) 20 &gt;=)%{if}Down%{else}Up%{end} Lever",
+            node_id="MD11_MIP_GEAR_SW", withheld=withheld)
+        self.assertEqual("Gear Up/Down Lever", label)
+        self.assertEqual({}, value_map)
+        self.assertEqual(["inline %{if} on (L:MD11_MIP_GEAR_SW) 20 >="], withheld)
+
+    def test_only_a_single_var_comparison_reads_as_a_threshold(self):
+        self.assertEqual({"var": "MD11_X", "op": ">=", "value": 20},
+                         g._threshold("(L:MD11_X) 20 &gt;="))
+        self.assertEqual({"var": "MD11_X", "op": "<", "value": 2.5},
+                         g._threshold("(L:MD11_X) 2.5 &lt;"))
+        self.assertEqual({"var": "MD11_X", "op": "==", "value": -1},
+                         g._threshold(" (L:MD11_X) -1 == "))
+        # A range, a distance from centre and a two-var test are not thresholds, and guessing at
+        # one would be worse than the refusal it replaced.
+        self.assertIsNone(g._threshold("38 65 (L:MD11_FLAP_RNG) rng"))
+        self.assertIsNone(g._threshold("(L:MD11_X) 25 - abs 0.1 &lt;"))
+        self.assertIsNone(g._threshold("(L:MD11_A) 1 == (L:MD11_B) 0 == and"))
+        self.assertIsNone(g._threshold("(L:MD11_X)"))
+
+    def test_main_counts_and_prints_the_threshold(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, wasm = write_package(tmp, {"FlightDeck/CenterInstrument.xml": use_template(
+                "TFDi_Design_MD11_Switch_SingleEvent_Template", NODE_ID="MD11_MIP_GEAR_SW",
+                TOOLTIPID=self.GEAR, LEFT_BUTTON_DOWN="94976")})
+            data, err = run_main(pkg, wasm, os.path.join(tmp, "map.json"))
+        self.assertEqual(1, data["counts"]["rpn_thresholds"])
+        self.assertEqual(0, data["counts"]["unkeyed_words"])
+        self.assertIn("MD11_MIP_GEAR_SW -- (L:MD11_MIP_GEAR_SW) >= 20", err)
+        gear = data["controls"][0]
+        self.assertEqual({}, gear["value_map"])
+        self.assertEqual({"var": "MD11_MIP_GEAR_SW", "op": ">=", "value": 20,
+                          "when_true": "Down", "when_false": "Up"}, gear["threshold"])
+
+    def test_main_counts_and_prints_a_block_it_could_not_key(self):
+        tooltip = ("Test Lever (%((L:MD11_OVHD_X_RNG) 25 - abs 0.1 &lt;)"
+                   "%{if}Neutral%{else}Offset%{end})")
+        with tempfile.TemporaryDirectory() as tmp:
+            pkg, wasm = write_package(tmp, {"FlightDeck/Overhead.xml": use_template(
+                "TFDi_Design_MD11_Switch_Template", NODE_ID="MD11_OVHD_X_SW", TOOLTIPID=tooltip,
+                LEFT_BUTTON_DOWN="1")})
+            data, err = run_main(pkg, wasm, os.path.join(tmp, "map.json"))
+        self.assertEqual(0, data["counts"]["rpn_thresholds"])
+        self.assertEqual(1, data["counts"]["unkeyed_words"])
+        self.assertIn("MD11_OVHD_X_SW %{if} on (L:MD11_OVHD_X_RNG) 25 - abs 0.1 <", err)
+        self.assertEqual({}, data["controls"][0]["value_map"])
+        self.assertNotIn("threshold", data["controls"][0])
+
+
 class FinalizeTests(unittest.TestCase):
     def test_guard_is_named_after_the_control_it_covers(self):
         out = g.finalize_controls([

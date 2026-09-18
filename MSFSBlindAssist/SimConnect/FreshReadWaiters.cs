@@ -27,6 +27,20 @@ namespace MSFSBlindAssist.SimConnect;
 /// to any sharer's request that is still being waited on. Continuations run asynchronously so
 /// the SimConnect dispatch that completes a waiter never runs walker code inline. Completion
 /// happens on the dispatch (UI) thread; waits come from pool threads.
+///
+/// ⚠️ THE SHARING NARROWS THE GUARANTEE ABOVE, and the limit is structural rather than a bug to
+/// fix here. "Never a value SimConnect sampled before it asked" holds for a caller whose request
+/// is the one that answers. A SECOND caller that joins an entry already registered for the same
+/// key is completed by the FIRST caller's answer — a sample that may predate the second caller's
+/// own request, whose later answer then finds the entry gone and is dropped as late. That is the
+/// very staleness this class exists to prevent, one caller along.
+///
+/// It is unreachable today and nothing here defends against it: every same-key caller is
+/// serialised by the layer above (<c>DebouncedWalk</c> cancels the prior walk per node, a guard is
+/// 1:1 with its control in the map, and the batched read-backs use distinct keys). Making each
+/// caller its own waiter is the real fix and costs a list per key on a hot path, so it is not worth
+/// paying for a case no caller can currently produce — but a future second concurrent reader of one
+/// key inherits a pre-request value SILENTLY, so add the per-caller entry BEFORE introducing one.
 /// </summary>
 internal sealed class FreshReadWaiters
 {

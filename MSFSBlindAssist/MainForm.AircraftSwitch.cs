@@ -1033,7 +1033,10 @@ public partial class MainForm
         // The MD-11 rides the same hook (InitializePMDG registers its MD11MCDU client-data
         // manager) even though it is not an IPMDGAircraft — otherwise a switch INTO the MD-11
         // lands in the else branch and disposes the manager, leaving all three CDUs blank.
-        if ((newAircraft is IPMDGAircraft || newAircraft?.AircraftCode == "TFDI_MD11")
+        // Not `newAircraft?.` — every caller passes a freshly constructed definition and this method
+        // dereferences the parameter unconditionally hundreds of lines earlier. The null-conditional
+        // told the compiler otherwise, which is what put a CS8602 on the plain dereference below it.
+        if ((newAircraft is IPMDGAircraft || newAircraft.AircraftCode == "TFDI_MD11")
             && simConnectManager.IsConnected)
         {
             simConnectManager.InitializePMDG(newAircraft);
