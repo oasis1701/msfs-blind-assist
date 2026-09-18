@@ -14,7 +14,11 @@ namespace MSFSBlindAssist.Services;
 /// does NOT bound what the write path accepts and must never gate a restore — see
 /// <see cref="InstrumentViewPlan.RestoreWrites"/>.
 /// </summary>
-public readonly record struct CameraViewReading(int State, int ViewType, int ViewIndex);
+public readonly record struct CameraViewReading(int State, int ViewType, int ViewIndex)
+{
+    /// <summary>True when this reading is at the given view (type and index; the state is not consulted).</summary>
+    public bool IsAt(int viewType, int viewIndex) => ViewType == viewType && ViewIndex == viewIndex;
+}
 
 /// <summary>What <see cref="InstrumentViewPlan.For"/> decided about the camera.</summary>
 public enum InstrumentViewOutcome
@@ -69,7 +73,7 @@ public sealed record InstrumentViewPlan(
 
     /// <summary>True when the reading is the wanted instrument view (type and index; the state is not consulted).</summary>
     public static bool IsOn(CameraViewReading reading, int wantedIndex)
-        => reading.ViewType == InstrumentViewType && reading.ViewIndex == wantedIndex;
+        => reading.IsAt(InstrumentViewType, wantedIndex);
 
     /// <summary>
     /// What to write to put the pilot's camera back after the capture, or null when there is
@@ -85,4 +89,24 @@ public sealed record InstrumentViewPlan(
         => outcome == InstrumentViewOutcome.Switch && before is { } camera
             ? (camera.ViewType, camera.ViewIndex)
             : null;
+
+    /// <summary>
+    /// True when the entry write moved the camera off wherever the pilot had it, yet
+    /// <see cref="RestoreWrites"/> has no reading to send it back to. Only
+    /// <see cref="InstrumentViewOutcome.Unknown"/> can be in this position: <see cref="For"/>
+    /// still writes the instrument view for it despite the failed read (see the class comment
+    /// above), while <see cref="InstrumentViewOutcome.AlreadyThere"/> never moved the camera and
+    /// <see cref="InstrumentViewOutcome.NotInCockpit"/> wrote nothing either — both keep
+    /// <see cref="RestoreWrites"/> null for a reason that has nothing to do with this one.
+    ///
+    /// Gated on <paramref name="verified"/>: an UNVERIFIED Unknown is most likely a write that
+    /// never reached the sim at all — SimConnect down or disconnected, so <c>Set</c> no-ops — and
+    /// the caller has already spoken "Could not confirm the cockpit view switch" for that case, so
+    /// a second warning here would be a false alarm over nothing that moved. A VERIFIED Unknown
+    /// means the write is CONFIRMED to have landed: the camera really did leave wherever the pilot
+    /// had it, for a view this app never got to remember, so the caller must say the restore
+    /// failed rather than silently report success.
+    /// </summary>
+    public static bool MovedWithNoWayBack(InstrumentViewOutcome outcome, bool verified)
+        => outcome == InstrumentViewOutcome.Unknown && verified;
 }

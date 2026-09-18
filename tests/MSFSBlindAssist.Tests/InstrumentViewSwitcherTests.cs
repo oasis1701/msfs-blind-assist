@@ -20,6 +20,16 @@ public class InstrumentViewSwitcherTests
         public int? ClampIndexTo;
         public readonly List<(int Type, int Index)> Writes = new();
 
+        /// <summary>
+        /// Fires after a successful <see cref="Set"/>, before this method returns — the only point
+        /// in the switcher's synchronous await-chain that sits between a write and the poll read
+        /// that follows it. Lets a test simulate a write reaching the sim on a camera <see
+        /// cref="Current"/> could not previously read (the entry-read-timed-out-once scenario):
+        /// <c>Current is {} c</c> below only updates an ALREADY-readable camera, by design, so a
+        /// null <see cref="Current"/> needs this hook instead.
+        /// </summary>
+        public Action? AfterSet;
+
         public Task<CameraViewReading?> ReadAsync(int timeoutMs)
         {
             if (ThrowOnRead) throw new InvalidOperationException("SimConnect down");
@@ -33,6 +43,7 @@ public class InstrumentViewSwitcherTests
             Writes.Add((viewType, viewIndex));
             if (HonoursWrites && Current is { } c)
                 Current = c with { ViewType = viewType, ViewIndex = ClampIndexTo ?? viewIndex };
+            AfterSet?.Invoke();
         }
     }
 
@@ -215,7 +226,10 @@ public class InstrumentViewSwitcherTests
         var session = await switcher.EnterAsync(0);
         camera.ClampIndexTo = 5;
 
+        // False alone would also pass an implementation that returned false WITHOUT attempting
+        // the restore write — that distinction is the whole point of the feature.
         Assert.False(await switcher.RestoreAsync(session));
+        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
     }
 
     [Fact]
@@ -265,6 +279,43 @@ public class InstrumentViewSwitcherTests
     }
 
     [Fact]
+    public async Task RestoreAsync_WhenTheEntryWasAVerifiedUnknown_ReportsFailure_AndWritesNothingFurther()
+    {
+        // The failure this pins: SimConnect is connected, the entry read times out once (Unknown,
+        // nothing to remember), the write lands, and the NEXT poll read succeeds — so the entry
+        // reports Verified even though InstrumentViewPlan.RestoreWrites has nothing to go back to.
+        // Before the fix RestoreAsync returned true here and the pilot's replaced view — a custom
+        // cabin/wing camera this app cannot recall — was never reported as un-restorable.
+        var camera = new FakeCamera { Current = null };
+        camera.AfterSet = () => camera.Current = new CameraViewReading(2, 2, 3);
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(3);
+        Assert.Equal(InstrumentViewOutcome.Unknown, session.Outcome);
+        Assert.True(session.Verified);
+        camera.Writes.Clear();
+
+        Assert.False(await switcher.RestoreAsync(session));
+        Assert.Empty(camera.Writes);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheEntryWasAnUnverifiedUnknown_ReportsSuccess()
+    {
+        // The companion case: the camera never became readable at all, so EnterAsync's own
+        // "Could not confirm the cockpit view switch" already covered it for the pilot —
+        // RestoreAsync must stay silent rather than raise a second, false alarm.
+        var camera = new FakeCamera { Current = null };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(3);
+        Assert.Equal(InstrumentViewOutcome.Unknown, session.Outcome);
+        Assert.False(session.Verified);
+        camera.Writes.Clear();
+
+        Assert.True(await switcher.RestoreAsync(session));
+        Assert.Empty(camera.Writes);
+    }
+
+    [Fact]
     public async Task RestoreAsync_AThrowingWrite_DoesNotEscape()
     {
         var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
@@ -273,5 +324,19 @@ public class InstrumentViewSwitcherTests
         camera.ThrowOnSet = true;
 
         Assert.False(await switcher.RestoreAsync(session));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_AThrowingRead_DoesNotEscape()
+    {
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        camera.ThrowOnRead = true;
+
+        // A throwing read-back must not stop the restore WRITE from being attempted — only the
+        // verification poll that follows it fails, over and over, until the cap gives up on it.
+        Assert.False(await switcher.RestoreAsync(session));
+        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
     }
 }

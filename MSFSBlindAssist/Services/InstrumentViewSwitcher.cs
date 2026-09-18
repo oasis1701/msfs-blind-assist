@@ -112,21 +112,7 @@ public sealed class InstrumentViewSwitcher
             Log.Debug("Camera", $"Setting camera view type {writes.Type} index {writes.Index} failed: {ex.Message}");
         }
 
-        bool verified = false;
-        long started = _now();
-        while (true)
-        {
-            var now = await TryReadAsync();
-            if (now is { } reading && InstrumentViewPlan.IsOn(reading, wantedIndex))
-            {
-                verified = true;
-                break;
-            }
-            // Elapsed time, not poll steps: a read that waits out its own timeout counts against
-            // the budget too, so a sim that never answers costs about a second, not seven.
-            if (_now() - started >= _verifyCapMs) break;
-            await _delay(_pollStepMs);
-        }
+        bool verified = await PollUntilAsync(reading => InstrumentViewPlan.IsOn(reading, wantedIndex));
 
         if (verified) await _delay(_settleMs);
         else Log.Debug("Camera", $"Instrument view {wantedIndex} did not verify within {_verifyCapMs} ms (outcome {plan.Outcome})");
@@ -145,15 +131,18 @@ public sealed class InstrumentViewSwitcher
     /// write is then refused (measured on the MD-11, 2026-09-09).
     /// </summary>
     /// <returns>
-    /// True when the camera is back, or when nothing needed putting back. False only when a
-    /// restore was attempted and the read-back never came back to it — which is detectable
-    /// because the sim CLAMPS an index it will not take rather than ignoring the write, and
-    /// reports the clamped value (measured 2026-09-18: a write of 20 landed on 8, read back as 8).
+    /// True when the camera is where the pilot left it, or was never moved. False when it is
+    /// somewhere they did not choose: either a restore was attempted and the read-back never came
+    /// back to it — detectable because the sim CLAMPS an index it will not take rather than
+    /// ignoring the write, and reports the clamped value (measured 2026-09-18: a write of 20
+    /// landed on 8, read back as 8) — or the entry wrote the instrument view with no reading to
+    /// remember and that write is confirmed to have landed
+    /// (<see cref="InstrumentViewPlan.MovedWithNoWayBack"/>).
     /// </returns>
     public async Task<bool> RestoreAsync(InstrumentViewSession session)
     {
         if (InstrumentViewPlan.RestoreWrites(session.Outcome, session.Before) is not { } writes)
-            return true;
+            return !InstrumentViewPlan.MovedWithNoWayBack(session.Outcome, session.Verified);
 
         try
         {
@@ -164,18 +153,31 @@ public sealed class InstrumentViewSwitcher
             Log.Debug("Camera", $"Restoring camera view type {writes.Type} index {writes.Index} failed: {ex.Message}");
         }
 
+        if (await PollUntilAsync(reading => reading.IsAt(writes.Type, writes.Index)))
+            return true;
+
+        Log.Debug("Camera", $"Camera did not return to view type {writes.Type} index {writes.Index} within {_verifyCapMs} ms");
+        return false;
+    }
+
+    /// <summary>
+    /// Polls the camera until <paramref name="isThere"/> matches a reading or the verify cap is
+    /// spent, whichever comes first. Elapsed time, not poll steps: a read that waits out its own
+    /// timeout counts against the budget too, so a sim that never answers costs about a second,
+    /// not seven. Shared by <see cref="EnterAsync"/> and <see cref="RestoreAsync"/> so this rule
+    /// can only be stated once — and can only drift once.
+    /// </summary>
+    private async Task<bool> PollUntilAsync(Func<CameraViewReading, bool> isThere)
+    {
         long started = _now();
         while (true)
         {
             var now = await TryReadAsync();
-            if (now is { } reading && reading.ViewType == writes.Type && reading.ViewIndex == writes.Index)
+            if (now is { } reading && isThere(reading))
                 return true;
-            // Elapsed time, not poll steps — the same rule EnterAsync verifies under.
             if (_now() - started >= _verifyCapMs) break;
             await _delay(_pollStepMs);
         }
-
-        Log.Debug("Camera", $"Camera did not return to view type {writes.Type} index {writes.Index} within {_verifyCapMs} ms");
         return false;
     }
 

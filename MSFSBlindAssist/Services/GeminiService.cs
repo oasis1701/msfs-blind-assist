@@ -528,7 +528,7 @@ VOR/ADF pointers and tuned stations if shown.
 RNP/ANP figures and any navigation flags or messages.
 Skip normal colors; only call out amber and red. Put each item on its own line. Do not use markdown. Do not explain. Just state the data.",
 
-            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument on the right side of the main panel, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
+            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument in the centre of the main panel, between the two pilots' display units, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
 Report: airspeed; attitude (pitch and bank only if unusual); altitude; barometric setting (e.g. 1013 HPA, 29.71 IN, or STD); and any mode annunciations (e.g. APP, ILS) or flags.
 Skip normal colors; only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain. Just state the data.",
 

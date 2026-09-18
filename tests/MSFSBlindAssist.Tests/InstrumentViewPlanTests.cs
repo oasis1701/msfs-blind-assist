@@ -119,4 +119,24 @@ public class InstrumentViewPlanTests
     {
         Assert.Null(InstrumentViewPlan.RestoreWrites(InstrumentViewOutcome.Unknown, null));
     }
+
+    // MovedWithNoWayBack is what tells RestoreAsync a verified Unknown entry moved the camera
+    // with nothing to send it back to — true only for that one combination. An unverified Unknown
+    // is most likely a write that never reached the sim at all, already covered by EnterAsync's
+    // own "Could not confirm" message; the other three outcomes either never moved the camera
+    // (AlreadyThere), wrote nothing (NotInCockpit), or have a reading to restore from (Switch), so
+    // RestoreWrites already handles them and this predicate must never fire for them.
+    [Theory]
+    [InlineData(InstrumentViewOutcome.Unknown, true, true)]
+    [InlineData(InstrumentViewOutcome.Unknown, false, false)]
+    [InlineData(InstrumentViewOutcome.Switch, true, false)]
+    [InlineData(InstrumentViewOutcome.Switch, false, false)]
+    [InlineData(InstrumentViewOutcome.AlreadyThere, true, false)]
+    [InlineData(InstrumentViewOutcome.AlreadyThere, false, false)]
+    [InlineData(InstrumentViewOutcome.NotInCockpit, true, false)]
+    [InlineData(InstrumentViewOutcome.NotInCockpit, false, false)]
+    public void MovedWithNoWayBack_IsTrueOnlyForAVerifiedUnknown(InstrumentViewOutcome outcome, bool verified, bool expected)
+    {
+        Assert.Equal(expected, InstrumentViewPlan.MovedWithNoWayBack(outcome, verified));
+    }
 }
