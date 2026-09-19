@@ -46,8 +46,8 @@ public partial class CowsDA40Definition
         AddReadout(v, "DA40_ANN_ESS_BUS_VOLTS", "ELEC_BUS_BATT_VOLT", "Essential Bus Lamp Supply", "volts", "F1");
 
         // The breakers that can extinguish a flap light while everything else is healthy.
-        AddFlag(v, "DA40_ANN_CB_FLAP", "STATE_CB_FLP", "Flap Breaker", "In", "Out");
-        AddFlag(v, "DA40_ANN_CB_INT", "STATE_CB_INT", "Instrument Breaker", "In", "Out");
+        AddFlag(v, "DA40_ANN_CB_FLAP", "STATE_CB_FLP", DA40BreakerPlacards.For("CB_FLP") + " Breaker", "In", "Out");
+        AddFlag(v, "DA40_ANN_CB_INT", "STATE_CB_INT", DA40BreakerPlacards.For("CB_INT") + " Breaker", "In", "Out");
 
         // The flap position the lights are reporting on, so a dark panel can be read as
         // "flaps are in transit" rather than "a lamp has failed".

@@ -205,37 +205,41 @@ public partial class CowsDA40Definition
         // reads can.
 
         // ---------- Breaker trips ----------
-        // Thirty of them, all read by the aeroplane, none previously offered.
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ADC", "FAILURES_CB_ADC", "ADC");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_AFCS", "FAILURES_CB_AFCS", "Autopilot Computer");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_AHRS", "FAILURES_CB_AHRS", "AHRS");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ALT", "FAILURES_CB_ALT", "Alternator");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_AP", "FAILURES_CB_AP", "Autopilot");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_AUD", "FAILURES_CB_AUD", "Audio Panel");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_AV_FAN", "FAILURES_CB_AV_FAN", "Avionics Fan");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_CDU_FAN", "FAILURES_CB_CDU_FAN", "CDU Fan");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_COM1", "FAILURES_CB_COM1", "COM 1");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_COM2", "FAILURES_CB_COM2", "COM 2");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ECA", "FAILURES_CB_ECA", "ECU A");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ECB", "FAILURES_CB_ECB", "ECU B");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ENGINST", "FAILURES_CB_ENGINST", "Engine Instruments");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_ESS_TIE", "FAILURES_CB_ESS_TIE", "Essential Bus Tie");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAP", "FAILURES_CB_FLAP", "Flap");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAPS", "FAILURES_CB_FLAPS", "Flaps");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_FPA", "FAILURES_CB_FPA", "Fuel Pump A");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_FPB", "FAILURES_CB_FPB", "Fuel Pump B");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_HORIZON", "FAILURES_CB_HORIZON", "Standby Horizon");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_MAIN_TIE", "FAILURES_CB_MAIN_TIE", "Main Bus Tie");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_MAST", "FAILURES_CB_MAST", "Master Control");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_MFD", "FAILURES_CB_MFD", "MFD");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV1", "FAILURES_CB_NAV1", "NAV 1");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV2", "FAILURES_CB_NAV2", "NAV 2");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_PFD", "FAILURES_CB_PFD", "PFD");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_PITOT", "FAILURES_CB_PITOT", "Pitot Heat");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_START", "FAILURES_CB_START", "Starter");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_TAS", "FAILURES_CB_TAS", "Traffic");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_XFR", "FAILURES_CB_XFR", "Transfer Pump");
-        AddBreakerTrip(v, "DA40_FAIL_CBT_XPDR", "FAILURES_CB_XPDR", "Transponder");
+        // Each named after the placard of the breaker it pops (DA40BreakerPlacards). ⚠️ Not
+        // every one does something on both airframes: on the NG, ALT, ESS TIE and MAIN TIE
+        // are set by the random-failure picker and read by NOTHING else — no breaker pops, no
+        // circuit changes, a sighted pilot sees nothing — so they are XLS-only rows
+        // (CowsDA40Definition.VariantScope), where each does pop its breaker.
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ADC", "FAILURES_CB_ADC", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AFCS", "FAILURES_CB_AFCS", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AHRS", "FAILURES_CB_AHRS", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ALT", "FAILURES_CB_ALT", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AP", "FAILURES_CB_AP", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AUD", "FAILURES_CB_AUD", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_AV_FAN", "FAILURES_CB_AV_FAN", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_CDU_FAN", "FAILURES_CB_CDU_FAN", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_COM1", "FAILURES_CB_COM1", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_COM2", "FAILURES_CB_COM2", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ECA", "FAILURES_CB_ECA", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ECB", "FAILURES_CB_ECB", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ENGINST", "FAILURES_CB_ENGINST", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_ESS_TIE", "FAILURES_CB_ESS_TIE", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAP", "FAILURES_CB_FLAP", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FLAPS", "FAILURES_CB_FLAPS", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FPA", "FAILURES_CB_FPA", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_FPB", "FAILURES_CB_FPB", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_HORIZON", "FAILURES_CB_HORIZON", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MAIN_TIE", "FAILURES_CB_MAIN_TIE", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MAST", "FAILURES_CB_MAST", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_MFD", "FAILURES_CB_MFD", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV1", "FAILURES_CB_NAV1", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_NAV2", "FAILURES_CB_NAV2", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_PFD", "FAILURES_CB_PFD", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_PITOT", "FAILURES_CB_PITOT", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_START", "FAILURES_CB_START", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_TAS", "FAILURES_CB_TAS", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_XFR", "FAILURES_CB_XFR", isNg);
+        AddBreakerTrip(v, "DA40_FAIL_CBT_XPDR", "FAILURES_CB_XPDR", isNg);
 
         // ---------- Reset ----------
 
@@ -306,13 +310,18 @@ public partial class CowsDA40Definition
     /// No " Failure" suffix here: "Starter Breaker Trip" already says what it is, and
     /// "Starter Breaker Trip Failure" says it twice.
     /// </summary>
-    private static void AddBreakerTrip(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label)
+    /// <summary>
+    /// A breaker trip, named after the PLACARD of the breaker it pops — or, for an overload
+    /// that pops none, the vendor's designation (DA40BreakerPlacards.TripLabel). Internal so
+    /// the XLS's own trips go through the same naming.
+    /// </summary>
+    internal static void AddBreakerTrip(Dictionary<string, SimVarDefinition> v, string key,
+        string lvar, bool isNg)
     {
         v[key] = new SimVarDefinition
         {
             Name = lvar,
-            DisplayName = label + " Breaker Trip",
+            DisplayName = DA40BreakerPlacards.TripLabel(lvar, isNg) + " Breaker Trip",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,

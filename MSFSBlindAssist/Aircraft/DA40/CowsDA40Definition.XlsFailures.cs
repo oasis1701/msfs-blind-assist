@@ -98,18 +98,18 @@ public partial class CowsDA40Definition
         XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_R", "FAILURES_FUEL_LEAK_R", "Right Tank Leak");
 
         // ---------- Breaker trips ----------
-        // The six the XLS carries that had no row. Its trip list is longer than this; the
-        // rest already have one.
-        XlsFail(v, "DA40_XLS_TRIP_ADF", "FAILURES_CB_ADF", "ADF Breaker Trip");
-        XlsFail(v, "DA40_XLS_TRIP_ALT_CONT", "FAILURES_CB_ALT_CONT",
-            "Alternator Control Breaker Trip");
-        XlsFail(v, "DA40_XLS_TRIP_ALT_PROT", "FAILURES_CB_ALT_PROT",
-            "Alternator Protection Breaker Trip");
-        XlsFail(v, "DA40_XLS_TRIP_AV_BUS", "FAILURES_CB_AV_BUS",
-            "Avionics Bus Breaker Trip");
-        XlsFail(v, "DA40_XLS_TRIP_BATT", "FAILURES_CB_BATT", "Battery Breaker Trip");
-        XlsFail(v, "DA40_XLS_TRIP_FUEL_PUMP", "FAILURES_CB_FUEL_PUMP",
-            "Fuel Pump Breaker Trip");
+        // The XLS's own four, named after the placard of the breaker each pops and built by
+        // the same helper as the shared trips, so one breaker is never named two ways.
+        //
+        // ⚠️ FAILURES_CB_ADF and FAILURES_CB_AV_BUS used to have rows here and are GONE on
+        // purpose: in the XLS model the random-failure picker sets them and nothing else ever
+        // reads them — no breaker pops (the XLS has no ADF breaker, and its AVBUS breaker is
+        // not wired to that failure), no circuit changes. A row would announce a failure the
+        // aeroplane does not have.
+        AddBreakerTrip(v, "DA40_XLS_TRIP_ALT_CONT", "FAILURES_CB_ALT_CONT", isNg: false);
+        AddBreakerTrip(v, "DA40_XLS_TRIP_ALT_PROT", "FAILURES_CB_ALT_PROT", isNg: false);
+        AddBreakerTrip(v, "DA40_XLS_TRIP_BATT", "FAILURES_CB_BATT", isNg: false);
+        AddBreakerTrip(v, "DA40_XLS_TRIP_FUEL_PUMP", "FAILURES_CB_FUEL_PUMP", isNg: false);
 
         return v;
     }
@@ -227,10 +227,8 @@ public partial class CowsDA40Definition
 
     private static List<string> XlsBreakerTripControls() => new()
     {
-        "DA40_XLS_TRIP_ADF",
         "DA40_XLS_TRIP_ALT_CONT",
         "DA40_XLS_TRIP_ALT_PROT",
-        "DA40_XLS_TRIP_AV_BUS",
         "DA40_XLS_TRIP_BATT",
         "DA40_XLS_TRIP_FUEL_PUMP"
     };

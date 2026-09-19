@@ -266,7 +266,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) controls[EngineStartPanel] = new List<string>(XlsStartControls);
         if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
 
-        RemoveNgOnlyRows(controls);
+        RemoveForeignRows(controls);
 
         return controls;
     }
@@ -487,9 +487,9 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             foreach (var kv in BuildXlsEngineDetailVariables()) vars[kv.Key] = kv.Value;
         }
 
-        // Last, after every shared builder has run: the NG's Austro variables do not exist on
-        // the XLS. See CowsDA40Definition.VariantScope.
-        RemoveNgOnlyVariables(vars);
+        // Last, after every shared builder has run: each airframe drops the other's
+        // variables. See CowsDA40Definition.VariantScope.
+        RemoveForeignVariables(vars);
 
         return vars;
     }
@@ -745,7 +745,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
         }
 
-        RemoveNgOnlyRows(d);
+        RemoveForeignRows(d);
 
         return d;
     }

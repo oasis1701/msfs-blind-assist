@@ -45,16 +45,9 @@ public partial class CowsDA40Definition
     /// of them an Austro/NG item - while MISSING six it does, including the ALTERNATOR and
     /// the FUEL PUMP, both of which the AFM's emergency procedures tell a pilot to pull.
     ///
-    /// The six XLS names are expanded from the aeroplane's OWN AFM, section 1.5.6
-    /// "Designation of the circuit breakers on the instrument panel", shipped inside the
-    /// package - not guessed from the abbreviation:
-    ///
-    ///     CB_ACN  ANNUN.      Annunciator Panel
-    ///     CB_ALT  ALT.        Alternator
-    ///     CB_APT  AUTOPILOT   Autopilot
-    ///     CB_FAN  FAN/OAT     Fan and Outside Air Temperature
-    ///     CB_FUP  FUEL PUMP   Fuel Pump
-    ///     CB_TAS  T&amp;B         Turn and Bank Indicator
+    /// Every breaker is named by its PLACARD, verbatim, from DA40BreakerPlacards — which also
+    /// records why the six XLS names once taken from the real Diamond AFM were WRONG for this
+    /// model (the row called "Autopilot Breaker" cut alternator protection).
     /// </summary>
     private Dictionary<string, SimVarDefinition> BuildBreakerVariables()
     {
@@ -63,69 +56,69 @@ public partial class CowsDA40Definition
         // ---------- Engine and Fuel ----------
         if (IsNG)
         {
-            AddBreaker(v, "DA40_CB_ECU_A", "CB_ECA", "ECU A");
-            AddBreaker(v, "DA40_CB_ECU_B", "CB_ECB", "ECU B");
-            AddBreaker(v, "DA40_CB_FUEL_A", "CB_FPA", "Fuel Pump A");
-            AddBreaker(v, "DA40_CB_FUEL_B", "CB_FPB", "Fuel Pump B");
-            AddBreaker(v, "DA40_CB_XFR", "CB_XFR", "Fuel Transfer");
+            AddBreaker(v, "DA40_CB_ECU_A", "CB_ECA");
+            AddBreaker(v, "DA40_CB_ECU_B", "CB_ECB");
+            AddBreaker(v, "DA40_CB_FUEL_A", "CB_FPA");
+            AddBreaker(v, "DA40_CB_FUEL_B", "CB_FPB");
+            AddBreaker(v, "DA40_CB_XFR", "CB_XFR");
         }
         else
         {
             // The Lycoming has ONE electric pump, so one breaker rather than the NG's pair.
-            AddBreaker(v, "DA40_CB_FUEL_PUMP", "CB_FUP", "Fuel Pump");
+            AddBreaker(v, "DA40_CB_FUEL_PUMP", "CB_FUP");
         }
 
-        AddBreaker(v, "DA40_CB_ENG_INST", "CB_ENG", "Engine Instruments");
-        AddBreaker(v, "DA40_CB_START", "CB_STR", "Start");
+        AddBreaker(v, "DA40_CB_ENG_INST", "CB_ENG");
+        AddBreaker(v, "DA40_CB_START", "CB_STR");
         AddBreakerCount(v, "DA40_CB_CBENGINEFUEL_OUT", "CB_ENG");
 
         // ---------- Flight Instruments ----------
-        AddBreaker(v, "DA40_CB_ADC", "CB_ADC", "Air Data Computer");
-        AddBreaker(v, "DA40_CB_AHRS", "CB_AHR", "Attitude and Heading Reference");
-        AddBreaker(v, "DA40_CB_HORIZON", "CB_HOR", "Standby Horizon");
-        AddBreaker(v, "DA40_CB_PITOT", "CB_PIT", "Pitot Heat");
-        if (!IsNG) AddBreaker(v, "DA40_CB_TURN_BANK", "CB_TAS", "Turn and Bank Indicator");
+        AddBreaker(v, "DA40_CB_ADC", "CB_ADC");
+        AddBreaker(v, "DA40_CB_AHRS", "CB_AHR");
+        AddBreaker(v, "DA40_CB_HORIZON", "CB_HOR");
+        AddBreaker(v, "DA40_CB_PITOT", "CB_PIT");
+        if (!IsNG) AddBreaker(v, "DA40_CB_TURN_BANK", "CB_TAS");
         AddBreakerCount(v, "DA40_CB_CBFLIGHTINSTRUMENTS_OUT", "CB_ADC");
 
         // ---------- Avionics ----------
-        AddBreaker(v, "DA40_CB_PFD", "CB_PFD", "Primary Flight Display");
-        AddBreaker(v, "DA40_CB_MFD", "CB_MFD", "Multi Function Display");
-        AddBreaker(v, "DA40_CB_COM1", "CB_CM1", "COM 1");
-        AddBreaker(v, "DA40_CB_COM2", "CB_CM2", "COM 2");
-        AddBreaker(v, "DA40_CB_GPSNAV1", "CB_GP1", "GPS and NAV 1");
-        AddBreaker(v, "DA40_CB_GPSNAV2", "CB_GP2", "GPS and NAV 2");
-        AddBreaker(v, "DA40_CB_XPDR", "CB_XPR", "Transponder");
-        AddBreaker(v, "DA40_CB_AUDIO", "CB_AUD", "Audio Panel");
-        if (!IsNG) AddBreaker(v, "DA40_CB_AUTOPILOT", "CB_APT", "Autopilot");
+        AddBreaker(v, "DA40_CB_PFD", "CB_PFD");
+        AddBreaker(v, "DA40_CB_MFD", "CB_MFD");
+        AddBreaker(v, "DA40_CB_COM1", "CB_CM1");
+        AddBreaker(v, "DA40_CB_COM2", "CB_CM2");
+        AddBreaker(v, "DA40_CB_GPSNAV1", "CB_GP1");
+        AddBreaker(v, "DA40_CB_GPSNAV2", "CB_GP2");
+        AddBreaker(v, "DA40_CB_XPDR", "CB_XPR");
+        AddBreaker(v, "DA40_CB_AUDIO", "CB_AUD");
+        if (!IsNG) AddBreaker(v, "DA40_CB_AUTOPILOT", "CB_APT");
         AddBreakerCount(v, "DA40_CB_CBAVIONICS_OUT", "CB_PFD");
 
         // ---------- Bus and Power ----------
-        AddBreaker(v, "DA40_CB_BATT", "CB_BAT", "Battery");
-        if (IsNG) AddBreaker(v, "DA40_CB_PWR", "CB_PWR", "Power");
-        else AddBreaker(v, "DA40_CB_ALTERNATOR", "CB_ALT", "Alternator");
-        AddBreaker(v, "DA40_CB_ESS_TIE", "CB_ESS", "Essential Bus Tie");
-        AddBreaker(v, "DA40_CB_MAIN_TIE", "CB_MAN", "Main Bus Tie");
-        AddBreaker(v, "DA40_CB_MASTER", "CB_MTC", "Master Control");
-        AddBreaker(v, "DA40_CB_AV_BUS", "CB_AVN", "Avionics Bus");
-        AddBreaker(v, "DA40_CB_AV_FAN", "CB_AVF", "Avionics Fan");
+        AddBreaker(v, "DA40_CB_BATT", "CB_BAT");
+        if (IsNG) AddBreaker(v, "DA40_CB_PWR", "CB_PWR");
+        else AddBreaker(v, "DA40_CB_ALTERNATOR", "CB_ALT");
+        AddBreaker(v, "DA40_CB_ESS_TIE", "CB_ESS");
+        AddBreaker(v, "DA40_CB_MAIN_TIE", "CB_MAN");
+        AddBreaker(v, "DA40_CB_MASTER", "CB_MTC");
+        AddBreaker(v, "DA40_CB_AV_BUS", "CB_AVN");
+        AddBreaker(v, "DA40_CB_AV_FAN", "CB_AVF");
         AddBreakerCount(v, "DA40_CB_CBBUSPOWER_OUT", "CB_BAT");
 
         // ---------- Lighting ----------
-        AddBreaker(v, "DA40_CB_LANDING", "CB_LDL", "Landing Light");
-        AddBreaker(v, "DA40_CB_TAXI", "CB_TXM", "Taxi and Map Light");
-        AddBreaker(v, "DA40_CB_STROBE", "CB_STB", "Strobe Lights");
-        AddBreaker(v, "DA40_CB_POSITION", "CB_POS", "Position Lights");
-        AddBreaker(v, "DA40_CB_FLOOD", "CB_FLD", "Flood Light");
-        AddBreaker(v, "DA40_CB_INST_LT", "CB_INT", "Instrument Lights");
+        AddBreaker(v, "DA40_CB_LANDING", "CB_LDL");
+        AddBreaker(v, "DA40_CB_TAXI", "CB_TXM");
+        AddBreaker(v, "DA40_CB_STROBE", "CB_STB");
+        AddBreaker(v, "DA40_CB_POSITION", "CB_POS");
+        AddBreaker(v, "DA40_CB_FLOOD", "CB_FLD");
+        AddBreaker(v, "DA40_CB_INST_LT", "CB_INT");
         AddBreakerCount(v, "DA40_CB_CBLIGHTING_OUT", "CB_LDL");
 
         // ---------- Airframe Systems ----------
-        AddBreaker(v, "DA40_CB_FLAPS", "CB_FLP", "Flaps");
-        AddBreaker(v, "DA40_CB_AFCS", "CB_AFC", "Autopilot");
+        AddBreaker(v, "DA40_CB_FLAPS", "CB_FLP");
+        AddBreaker(v, "DA40_CB_AFCS", "CB_AFC");
         if (!IsNG)
         {
-            AddBreaker(v, "DA40_CB_ANNUNCIATOR", "CB_ACN", "Annunciator Panel");
-            AddBreaker(v, "DA40_CB_FAN_OAT", "CB_FAN", "Fan and Outside Air Temperature");
+            AddBreaker(v, "DA40_CB_ANNUNCIATOR", "CB_ACN");
+            AddBreaker(v, "DA40_CB_FAN_OAT", "CB_FAN");
         }
         AddBreakerCount(v, "DA40_CB_CBAIRFRAMESYSTEMS_OUT", "CB_FLP");
 
@@ -133,8 +126,7 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>0 is IN, 1 is PULLED — the model's own click code toggles the L:var.</summary>
-    private static void AddBreaker(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label)
+    private static void AddBreaker(Dictionary<string, SimVarDefinition> v, string key, string lvar)
     {
         v[key] = new SimVarDefinition
         {
@@ -143,7 +135,8 @@ public partial class CowsDA40Definition
             // of the thing it feeds, so in the Monitor Manager - which is one flat list
             // with no panel around it - "Landing Light" appeared three times over: the
             // switch, this breaker, and the failure, with nothing to tell them apart.
-            DisplayName = label + " Breaker",
+            // The placard, verbatim (DA40BreakerPlacards), then " Breaker".
+            DisplayName = DA40BreakerPlacards.For(lvar) + " Breaker",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,

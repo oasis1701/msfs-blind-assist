@@ -80,19 +80,34 @@ public partial class CowsDA40Definition
         "DA40_ICE_ALT_AIR_FACTOR",
     };
 
-    internal static IReadOnlyCollection<string> NgOnlyVariableKeys => NgOnlyKeys;
-
-    /// <summary>On the XLS, drops the NG-only variables. The NG keeps every one.</summary>
-    private void RemoveNgOnlyVariables(Dictionary<string, SimConnect.SimVarDefinition> vars)
+    /// <summary>
+    /// The other direction: shared rows that DO NOTHING on the NG. The variable exists there,
+    /// so the package-presence test cannot see it — but only the random-failure picker writes
+    /// it and nothing reads it, so no breaker pops and no circuit changes. On the XLS each
+    /// pops its breaker (ALT, ESS Tie, MAIN TIE).
+    /// </summary>
+    private static readonly HashSet<string> XlsOnlyKeys = new(StringComparer.Ordinal)
     {
-        if (IsNG) return;
-        foreach (string key in NgOnlyKeys) vars.Remove(key);
+        "DA40_FAIL_CBT_ALT",
+        "DA40_FAIL_CBT_ESS_TIE",
+        "DA40_FAIL_CBT_MAIN_TIE",
+    };
+
+    internal static IReadOnlyCollection<string> NgOnlyVariableKeys => NgOnlyKeys;
+    internal static IReadOnlyCollection<string> XlsOnlyVariableKeys => XlsOnlyKeys;
+
+    private HashSet<string> ForeignKeys => IsNG ? XlsOnlyKeys : NgOnlyKeys;
+
+    /// <summary>Drops the other airframe's variables.</summary>
+    private void RemoveForeignVariables(Dictionary<string, SimConnect.SimVarDefinition> vars)
+    {
+        foreach (string key in ForeignKeys) vars.Remove(key);
     }
 
-    /// <summary>On the XLS, drops the NG-only rows from every panel list.</summary>
-    private void RemoveNgOnlyRows(Dictionary<string, List<string>> panels)
+    /// <summary>Drops the other airframe's rows from every panel list.</summary>
+    private void RemoveForeignRows(Dictionary<string, List<string>> panels)
     {
-        if (IsNG) return;
-        foreach (var rows in panels.Values) rows.RemoveAll(NgOnlyKeys.Contains);
+        var foreign = ForeignKeys;
+        foreach (var rows in panels.Values) rows.RemoveAll(foreign.Contains);
     }
 }
