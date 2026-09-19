@@ -215,7 +215,13 @@ public partial class MainForm
         // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
         bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
             Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
+        // And the DA40, which speaks a great deal from INSIDE ProcessSimVarUpdate (automixture,
+        // doors, magnetos, lamps, the fuel valve...) and returns true. Each of those checks its own
+        // mute locally; the wrap is what makes one that forgets to still obey the pilot's Ctrl+M.
+        // Timer-fired call-outs (settles) run OUTSIDE this wrap and keep their own checks.
+        bool da40Muted = currentAircraft.AircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) &&
+            Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains(e.VarName);
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || da40Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
