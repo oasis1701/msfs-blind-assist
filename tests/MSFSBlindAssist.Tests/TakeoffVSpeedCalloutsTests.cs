@@ -1,6 +1,7 @@
-// Characterization tests for the iFly 737 MAX8 takeoff V-speed callout state
-// machine (Aircraft/IFly737TakeoffCallouts.cs) — the spoken "V1" / "Rotate" /
-// "V2" calls fed from the high-frequency AIRSPEED INDICATED subscription.
+// Characterization tests for the takeoff V-speed callout state machine
+// (Aircraft/TakeoffVSpeedCallouts.cs, shared by the iFly 737 MAX8 and the TFDi
+// MD-11) — the spoken "V1" / "Rotate" / "V2" calls fed from a high-frequency
+// AIRSPEED INDICATED subscription.
 //
 // The safety-shaped contracts pinned here:
 // - arming requires ground + slow (< 40 kt) + V1 and VR set, so a mid-roll or
@@ -13,11 +14,11 @@ using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
 
-public class IFly737TakeoffCalloutsTests
+public class TakeoffVSpeedCalloutsTests
 {
-    private static IFly737TakeoffCallouts NewArmed(double v1 = 140, double vr = 144, double v2 = 150)
+    private static TakeoffVSpeedCallouts NewArmed(double v1 = 140, double vr = 144, double v2 = 150)
     {
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         t.SetV1(v1);
         t.SetVR(vr);
         t.SetV2(v2);
@@ -25,7 +26,7 @@ public class IFly737TakeoffCalloutsTests
         return t;
     }
 
-    private static List<string> Roll(IFly737TakeoffCallouts t, bool onGround, params double[] samples)
+    private static List<string> Roll(TakeoffVSpeedCallouts t, bool onGround, params double[] samples)
     {
         var all = new List<string>();
         foreach (double ias in samples)
@@ -71,7 +72,7 @@ public class IFly737TakeoffCalloutsTests
     [Fact]
     public void Never_armed_at_speed_so_landing_rollout_stays_silent()
     {
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         t.SetV1(140);
         t.SetVR(144);
         t.SetV2(150);
@@ -88,7 +89,7 @@ public class IFly737TakeoffCalloutsTests
     [Fact]
     public void Connect_mid_roll_stays_silent_for_that_departure()
     {
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         t.SetV1(140);
         t.SetVR(144);
         t.SetV2(150);
@@ -135,7 +136,7 @@ public class IFly737TakeoffCalloutsTests
     [Fact]
     public void Unset_speeds_never_arm_and_clearing_speeds_mid_roll_disarms()
     {
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         Assert.Empty(Roll(t, onGround: true, 0, 100, 150, 200));
 
         var u = NewArmed(v1: 140, vr: 144, v2: 150);
@@ -158,7 +159,7 @@ public class IFly737TakeoffCalloutsTests
     [Fact]
     public void Speeds_below_the_arm_threshold_are_treated_as_unset()
     {
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         t.SetV1(20);   // garbage — below the 40 kt arm band
         t.SetVR(25);
         t.SetV2(30);
@@ -170,7 +171,7 @@ public class IFly737TakeoffCalloutsTests
     {
         // The iFly WASM publishes -1 (not 0) for a V-speed the FMC hasn't
         // computed — live-verified 2026-07-24 on a loaded MAX8.
-        var t = new IFly737TakeoffCallouts();
+        var t = new TakeoffVSpeedCallouts();
         t.SetV1(-1);
         t.SetVR(-1);
         t.SetV2(-1);
@@ -185,5 +186,83 @@ public class IFly737TakeoffCalloutsTests
         Assert.Empty(t.ProcessSample(-5, onGround: true));
         // The NaN/negative samples must not have corrupted the last-sample edge.
         Assert.Equal(new[] { "V1" }, Roll(t, onGround: true, 120, 141));
+    }
+    /// <summary>
+    /// A SimConnect reconnect resets the machine's ROLL but keeps its SPEEDS. An arm from before
+    /// the drop must not survive into a later landing: after Reset nothing fires until a fresh arm
+    /// on the ground below 40 kt — a landing's decelerating rollout never fires, a roll straight
+    /// from the drop without that arming sample stays silent, and the next take-off then speaks
+    /// without the speeds having to be fed again (a reconnect does not reliably redeliver them;
+    /// a machine that forgot them was silent for the rest of the session).
+    /// </summary>
+    [Fact]
+    public void Reset_DisarmsButKeepsTheSpeeds_UntilAFreshArm()
+    {
+        var t = NewArmed();
+        t.Reset();
+        Assert.Empty(Roll(t, onGround: true, 100, 141, 145, 151));   // not armed: nothing fires, speeds or no speeds
+        Assert.Empty(t.ProcessSample(160, onGround: false));         // a landing: airborne and fast…
+        Assert.Empty(Roll(t, onGround: true, 152, 146, 141, 100));   // …then decelerating through every speed
+        Assert.Empty(t.ProcessSample(5, onGround: true));            // the fresh arm, with the kept speeds
+        Assert.Equal(new[] { "V1", "Rotate", "V2" }, Roll(t, onGround: true, 100, 141, 145, 151));
+    }
+
+    // ---- One utterance per sample (Compose) ---------------------------------------------
+    // Both definitions speak the roll calls with AnnounceImmediate, which INTERRUPTS: spoken one
+    // by one, the second call of a sample cut the first off — "V1" by "Rotate" on every take-off
+    // with V1 = VR, routine on a limiting runway.
+
+    [Fact]
+    public void V1_equal_to_VR_crosses_both_on_one_sample_and_composes_one_sentence()
+    {
+        var t = NewArmed(v1: 144, vr: 144, v2: 150);
+        Assert.Empty(t.ProcessSample(120, onGround: true));
+        var crossed = t.ProcessSample(144.5, onGround: true);
+        Assert.Equal(new[] { "V1", "Rotate" }, crossed);
+        Assert.Equal("V1, Rotate", TakeoffVSpeedCallouts.Compose(crossed, _ => false));
+    }
+
+    [Fact]
+    public void A_sample_gap_across_all_three_thresholds_composes_all_three_in_order()
+    {
+        var t = NewArmed(v1: 140, vr: 144, v2: 150);
+        Assert.Empty(t.ProcessSample(120, onGround: true));
+        var crossed = t.ProcessSample(152, onGround: true);
+        Assert.Equal(new[] { "V1", "Rotate", "V2" }, crossed);
+        Assert.Equal("V1, Rotate, V2", TakeoffVSpeedCallouts.Compose(crossed, _ => false));
+    }
+
+    [Theory]
+    [InlineData("V1", "Rotate, V2")]
+    [InlineData("Rotate", "V1, V2")]
+    [InlineData("V2", "V1, Rotate")]
+    public void Compose_leaves_out_only_the_muted_call(string mutedCall, string expected)
+        => Assert.Equal(expected, TakeoffVSpeedCallouts.Compose(new[] { "V1", "Rotate", "V2" }, c => c == mutedCall));
+
+    [Fact]
+    public void Compose_says_nothing_when_every_call_is_muted_or_none_was_crossed()
+    {
+        Assert.Null(TakeoffVSpeedCallouts.Compose(new[] { "V1", "Rotate", "V2" }, _ => true));
+        Assert.Null(TakeoffVSpeedCallouts.Compose(Array.Empty<string>(), _ => false));
+        Assert.Equal("V2", TakeoffVSpeedCallouts.Compose(new[] { "V2" }, _ => false));   // a single call is just itself
+    }
+
+    /// <summary>
+    /// A flight loaded into the cruise from a parked, armed aircraft: the per-frame airspeed lands
+    /// before the 1 Hz SIM_ON_GROUND, so the first cruise sample still carries the parked ground
+    /// flag. Still armed, that one sample crosses every speed on the "ground"; reset (the MD-11's
+    /// context reset now does it), it is silent — and so is the flight that follows.
+    /// </summary>
+    [Fact]
+    public void A_cruise_sample_with_a_stale_ground_flag_fires_everything_while_armed_and_nothing_after_a_reset()
+    {
+        var armed = NewArmed(v1: 150, vr: 155, v2: 162);
+        Assert.Equal(new[] { "V1", "Rotate", "V2" }, armed.ProcessSample(280, onGround: true));   // why the reset must happen
+
+        var reset = NewArmed(v1: 150, vr: 155, v2: 162);
+        reset.Reset();
+        Assert.Empty(reset.ProcessSample(280, onGround: true));    // the stale ground flag
+        Assert.Empty(reset.ProcessSample(281, onGround: false));   // SIM_ON_GROUND catches up
+        Assert.Empty(reset.ProcessSample(240, onGround: false));   // the rest of the flight
     }
 }

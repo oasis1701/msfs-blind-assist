@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -19,6 +19,56 @@ namespace MSFSBlindAssist;
 
 public partial class MainForm
 {
+    /// <summary>
+    /// Re-arms the calc-path bridge probe: this timer's own attempt state AND the manager's latched
+    /// verdict, which is per CONNECTION and therefore outlives an aircraft.
+    ///
+    /// ONE owner, called from both places a fresh verdict is owed — this timer (reconnect, first
+    /// detection) and <see cref="SwitchAircraft"/> (a mid-session profile change from the Aircraft
+    /// menu, which never disconnects). Split across the two, they drifted: only the timer path
+    /// existed, so a session that began on a profile registering no probe target — the PMDG 737/777,
+    /// HS787, iFly or Fenix — concluded UNVERIFIED and silently, and that verdict then stood for an
+    /// MD-11 selected afterwards. Every MD-11 write was refused "unavailable" for the rest of the
+    /// connection with a perfectly healthy calc path, and no warning was ever spoken because the
+    /// conclusion had been reached on the previous profile. It also closes the older, quieter half
+    /// of the same bug: a PMDG → FBW switch left a stale conclusion that dropped SetLVar to the
+    /// unreliable data-def write and dotted events to the legacy transport, with nothing said.
+    ///
+    /// ⚠️ A verdict of VERIFIED is KEPT, and only a negative one is cleared. What the probe
+    /// establishes is that the MobiFlight WASM executes an RPN write and it lands
+    /// (<c>L:MSFSBA_BRIDGE_PROBE</c> through <c>MF.SimVars.Set</c>) — a property of the MODULE and
+    /// the connection, which an aircraft switch does not touch; the aircraft supplies only the
+    /// data-def registration the read-back uses, which matters for REACHING a verdict, not for
+    /// whether writes land once one is reached. Clearing a positive verdict as well cost a
+    /// guaranteed degraded window on every Aircraft-menu switch and bought nothing: for at least
+    /// two probe ticks (the timer is 1500 ms and the read-back lags its write by one round)
+    /// <c>CalcPathVerified</c> was false, so every FBW <c>SetLVar</c> fell back to the data-def
+    /// write CLAUDE.md calls unreliable for FBW L:vars — overhead switches revert silently — and
+    /// every dotted A32NX FCU event was queued instead of sent. With no WASM module installed the
+    /// window is the probe's full 40 × 1500 ms ≈ 60 s, after which <c>FlushPendingCalcEvents</c>
+    /// replays a minute of queued heading/altitude/speed sets at once and drops anything past the
+    /// 64-entry cap. Nothing names a failure the positive clear prevents: a calc path that died
+    /// mid-connection fails its writes whether or not the flag says so, and the probe does not
+    /// re-run once it has concluded anyway.
+    ///
+    /// The reconnect caller is unaffected: <c>Disconnect()</c> already clears the verdict itself,
+    /// so the guard below is a no-op there and a new connection is always judged afresh.
+    /// </summary>
+    private void ArmBridgeProbe()
+    {
+        // Already proven on this connection: leave it proven. Anything else — no verdict yet, or
+        // concluded UNVERIFIED (which is what a profile registering no probe target reaches, and
+        // silently) — is re-armed so the next aircraft is judged on its own evidence. The rule is
+        // pure and pinned (CalcPathVerdict.ShouldRearmOnAircraftSwitch) so it can be reasoned about
+        // without a manager.
+        if (!CalcPathVerdict.ShouldRearmOnAircraftSwitch(simConnectManager?.CalcPathVerified == true)) return;
+
+        _bridgeProbeAttempts = 0;
+        _bridgeProbeAwaitingRead = false;
+        _bridgeProbeRebound = false;
+        simConnectManager?.ResetCalcPathProbe();
+    }
+
     private void BridgeProbeTimer_Tick(object? sender, EventArgs e)
     {
         try
@@ -27,8 +77,12 @@ public partial class MainForm
             // sim is still in the menu burns its attempts against an empty world
             // (calc writes no-op without an aircraft) and falsely logs "gave up" —
             // observed live 2026-06-12 (all 40 attempts spent before the A320 loaded).
-            // Treating not-fully-connected like disconnected also re-arms the probe
-            // on every aircraft detection / swap.
+            // Treating not-fully-connected like disconnected re-arms the probe on a reconnect and
+            // on the first detection of a session. It does NOT cover a mid-session profile switch
+            // from the Aircraft menu — IsFullyConnected only drops in Disconnect(), and a switch
+            // never disconnects — so SwitchAircraft calls ArmBridgeProbe itself. It must: the
+            // verdict is per CONNECTION, and a profile that does not register the probe concludes
+            // UNVERIFIED (silently), which would otherwise stand for the aircraft switched to.
             if (simConnectManager == null || !simConnectManager.IsConnected || !simConnectManager.IsFullyConnected)
             {
                 _bridgeProbeWasDisconnected = true;
@@ -36,17 +90,16 @@ public partial class MainForm
             }
             if (_bridgeProbeWasDisconnected)
             {
-                // Fresh connection/aircraft: re-arm the probe (CalcPathVerified resets on teardown).
                 _bridgeProbeWasDisconnected = false;
-                _bridgeProbeAttempts = 0;
-                _bridgeProbeAwaitingRead = false;
-                _bridgeProbeRebound = false;
-                simConnectManager.ResetCalcPathProbe();
+                ArmBridgeProbe();   // fresh connection/aircraft (CalcPathVerified resets on teardown)
             }
             if (simConnectManager.CalcPathVerified || simConnectManager.CalcPathProbeConcluded) return;
-            // Only the FBW defs register the probe var; other aircraft can never verify —
-            // conclude immediately so dotted events route via the legacy transport.
-            if (currentAircraft is not (Aircraft.FlyByWireA320Definition or Aircraft.FlyByWireA380Definition))
+            // Only an aircraft whose definition registers the probe target can ever verify —
+            // the registration is the opt-in (the FBW defs, the Headwind A330 through the A320's
+            // set, and the TFDi MD-11, whose every control write is a calculator-path CEVENT).
+            // Anything else concludes immediately and silently so dotted events route via the
+            // legacy transport. GetVariables() is cached, so this is a dictionary lookup.
+            if (currentAircraft?.GetVariables().ContainsKey("MSFSBA_BRIDGE_PROBE") != true)
             {
                 simConnectManager.MarkCalcPathProbeConcluded();
                 return;
@@ -105,6 +158,7 @@ public partial class MainForm
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "COWS_DA40NG" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG),
             "COWS_DA40XLS" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS),
+            "TFDI_MD11" => new TFDiMD11Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -120,6 +174,38 @@ public partial class MainForm
 
         // Announce the detected simulator version
         announcer.Announce(version);
+    }
+
+    /// <summary>
+    /// A flight or aircraft was loaded on a live connection. The definition's baseline-first
+    /// announcers re-seed from the new situation rather than narrate it — the second job the
+    /// old Connected-branch wipe used to do (an app connected at the menu, then a flight load),
+    /// now on the earliest signal there is. SimConnect dispatches on the UI thread; the marshal
+    /// is belt-and-braces.
+    /// </summary>
+    private void OnAircraftLoaded(object? sender, string file)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnAircraftLoaded(sender, file)));
+            return;
+        }
+        currentAircraft?.OnSimContextReset();
+    }
+
+    /// <summary>
+    /// The connection is going down — every drop, not only one after a completed detection (the
+    /// Disconnected status below is gated on that). The definition's baseline-first announcers
+    /// are wiped on the way down so the reconnect's re-fire re-seeds them silently.
+    /// </summary>
+    private void OnConnectionLost(object? sender, EventArgs e)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnConnectionLost(sender, e)));
+            return;
+        }
+        currentAircraft?.OnSimContextReset();
     }
 
     private void OnConnectionStatusChanged(object? sender, string status)
@@ -169,6 +255,16 @@ public partial class MainForm
                     pmdgProgPageMonitor = null;
                 }
                 EnsurePMDGProgPageMonitor();
+            }
+
+            else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+            {
+                // The MD-11 is NOT an IPMDGAircraft, but it still reads a SimConnect client data
+                // area — its MCDU text export. InitializePMDG is the shared client-data hook (it
+                // registers the MD11MCDU manager); without this call the manager is never created
+                // and all three CDUs stay blank. No PMDGDataManager/PROG-monitor wiring here —
+                // those are PMDG-only and InitializePMDG leaves PMDGDataManager null for the MD-11.
+                simConnectManager.InitializePMDG(currentAircraft);
             }
 
             // Automatically switch database if simulator version doesn't match
@@ -234,6 +330,12 @@ public partial class MainForm
             // stopped, so nothing would consume the hold until the sim came back — and a
             // "Altitude armed" arriving after "Disconnected" describes an aircraft that is gone.
             currentAircraft?.CancelDeferredFlush();
+
+            // Baseline-first trackers were wiped on the way down by OnConnectionLost (raised on
+            // every drop, where this status is gated on a completed detection) — never on the
+            // Connected branch above, which runs after the reconnect's first batch has already
+            // re-fired every variable into the definition (IAircraftDefinition.OnSimContextReset;
+            // the AircraftLoaded system event is its other caller).
 
             // Stop event batching timer and clear queue
             eventBatchTimer?.Stop();
@@ -624,6 +726,17 @@ public partial class MainForm
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
 
+        // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
+        // into L:CEVENT. Left running it would keep actuating controls on whatever aircraft is
+        // loaded NEXT (the sim stays connected across a switch), which is the same failure the
+        // A380 motion-timer teardown above exists to prevent — except CEVENT ids are meaningless
+        // on another airframe, so the writes would be arbitrary. Dispose writes what is already
+        // queued (bounded), releases any test button still held, cancels every walk in flight,
+        // and only then stops the pump — so re-selecting the MD-11 mid-hold never leaves a button
+        // held, and no walk speaks "did not move" against the aircraft that follows.
+        if (oldAircraft is TFDiMD11Definition oldMd11 && !ReferenceEquals(oldAircraft, newAircraft))
+            oldMd11.Dispose();
+
         // An armed liftoff → Hand Fly handoff must not survive the switch — its
         // confirm could otherwise fire against the new aircraft in the middle of
         // the re-registration churn below (same hygiene as the disconnect path
@@ -634,6 +747,12 @@ public partial class MainForm
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // The MD-11's composed-state hook reads the SimConnect cache through the handle Attach
+        // captures. Without this the first panel opens before any control has been pressed and
+        // every button shows a bare label (Attach used to run only from a press or a hotkey).
+        if (newAircraft is TFDiMD11Definition newMd11)
+            newMd11.Attach(simConnectManager);
 
         taxiGuidanceManager.TurnLeadSeconds = newAircraft.TaxiTurnLeadSeconds;
 
@@ -657,6 +776,17 @@ public partial class MainForm
 
         // Update SimConnectManager
         simConnectManager.CurrentAircraft = currentAircraft;
+
+        // Re-arm the calc-path probe for the aircraft now loaded. The verdict is per CONNECTION and
+        // a switch never disconnects, so without this the PREVIOUS profile's conclusion stands: a
+        // session begun on any aircraft that registers no probe target (PMDG, HS787, iFly, Fenix)
+        // concludes unverified and silently, and an MD-11 picked afterwards then refused every
+        // write as "unavailable" with the module installed and the path healthy. Placed with the
+        // re-registration below, beside the CurrentAircraft assignment the probe's own
+        // "does this aircraft register MSFSBA_BRIDGE_PROBE?" test reads — so the next tick judges
+        // the NEW aircraft. Cheap and unconditional: an aircraft that cannot verify simply
+        // concludes again on the next tick, exactly as it did on the first.
+        ArmBridgeProbe();
 
         // Reset monitor to clear cache and disable announcements during transition
         // This prevents flooding TTS with hundreds of "initial" values when switching aircraft
@@ -788,6 +918,40 @@ public partial class MainForm
             pmdgCDUForm = null;
         }
 
+        // Dispose the MD-11 MCDU form on swap. It holds a poll timer and the outgoing definition
+        // (its key-press target), so leaving it alive would tick against a disposed aircraft.
+        if (md11McduForm != null && !md11McduForm.IsDisposed)
+        {
+            md11McduForm.Dispose();
+            md11McduForm = null;
+        }
+
+        // The MD-11 monitor manager (Ctrl+M), for the stale-snapshot reason its A380/Fenix/A32NX/
+        // HS787/iFly siblings are disposed on swap: its rows are built from the definition's
+        // variables when it is constructed, so a surviving instance — left open, or re-shown after
+        // the MD-11 is loaded again — lists the OUTGOING definition. The next Ctrl+M rebuilds it
+        // from the live one (ShowMd11MonitorManagerDialog's null/IsDisposed check).
+        if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed)
+        {
+            md11MonitorManagerForm.Dispose();
+            md11MonitorManagerForm = null;
+        }
+
+        // The MD-11 EFB client holds the ONE inspector socket Coherent allows for that view —
+        // leaving it open would block the page for the rest of the process, so the next aircraft
+        // (or a re-loaded MD-11) could never connect to its EFB again.
+        if (md11EfbForm != null && !md11EfbForm.IsDisposed)
+        {
+            md11EfbForm.Dispose();
+            md11EfbForm = null;
+        }
+        if (coherentMd11Efb != null)
+        {
+            coherentMd11Efb.Stop();
+            coherentMd11Efb.Dispose();
+            coherentMd11Efb = null;
+        }
+
         // Dispose FBW A380 MCDU + EFB forms on swap; disposing the forms clears
         // their state-update wiring so the next aircraft doesn't get cross-talk.
         if (fbwA380MCDUForm != null && !fbwA380MCDUForm.IsDisposed)
@@ -881,7 +1045,14 @@ public partial class MainForm
         }
 
         // PMDG data manager lifecycle
-        if (newAircraft is IPMDGAircraft && simConnectManager.IsConnected)
+        // The MD-11 rides the same hook (InitializePMDG registers its MD11MCDU client-data
+        // manager) even though it is not an IPMDGAircraft — otherwise a switch INTO the MD-11
+        // lands in the else branch and disposes the manager, leaving all three CDUs blank.
+        // Not `newAircraft?.` — every caller passes a freshly constructed definition and this method
+        // dereferences the parameter unconditionally hundreds of lines earlier. The null-conditional
+        // told the compiler otherwise, which is what put a CS8602 on the plain dereference below it.
+        if ((newAircraft is IPMDGAircraft || newAircraft.AircraftCode == "TFDI_MD11")
+            && simConnectManager.IsConnected)
         {
             simConnectManager.InitializePMDG(newAircraft);
             if (simConnectManager.PMDGDataManager != null)
@@ -1012,11 +1183,16 @@ public partial class MainForm
         horizonSim787MenuItem.Checked = false;
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
+        tfdiMd11MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
         // be tested BEFORE the A320 (a derived instance also matches the base type).
-        if (currentAircraft is HeadwindA330Definition)
+        if (currentAircraft is TFDiMD11Definition)
+        {
+            tfdiMd11MenuItem.Checked = true;
+        }
+        else if (currentAircraft is HeadwindA330Definition)
         {
             headwindA330MenuItem.Checked = true;
         }

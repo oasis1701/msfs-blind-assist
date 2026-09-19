@@ -1,0 +1,18 @@
+<!-- Synthetic: the three shapes A.readoutRow / A.readoutInput can meet, laid out identically.
+     Only the first is a read-out. A disabled checkbox or range is a STATE the shell renders as
+     its own kind of control; folding one into a "Label: value" line would hide the control
+     behind a static sentence and leave the pilot no way to see what it holds. -->
+<div class="flex flex-col">
+  <div class="flex items-center justify-between">
+    <span>Landing Weight</span>
+    <input type="text" disabled value="507900">
+  </div>
+  <div class="flex items-center justify-between">
+    <span>Deflected Ailerons</span>
+    <input type="checkbox" disabled checked>
+  </div>
+  <div class="flex items-center justify-between">
+    <span>Screen Brightness</span>
+    <div class="w-1/2"><input type="range" disabled min="10" max="100" value="80"></div>
+  </div>
+</div>

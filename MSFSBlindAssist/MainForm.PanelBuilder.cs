@@ -137,6 +137,101 @@ public partial class MainForm
     }
 
     /// <summary>
+    /// Reverse index for composed-state controls: dependency key → control keys whose label
+    /// must be recomputed through IAircraftDefinition.TryDescribeControlState when it updates.
+    /// Rebuilt once per panel build from each control's SimVarDefinition.StateVariables; a control
+    /// that lists any dependency is also a dependent of its own key.
+    /// </summary>
+    private readonly Dictionary<string, List<string>> stateDependents = new(StringComparer.Ordinal);
+
+    /// <summary>Sentinel dependent standing for the current panel's Status Display list as a whole.</summary>
+    private const string DisplayDependent = "_DISPLAY_";
+
+    private void RebuildStateDependents()
+    {
+        stateDependents.Clear();
+        var vars = currentAircraft.GetVariables();
+        foreach (var key in currentControls.Keys)
+        {
+            if (!vars.TryGetValue(key, out var def) || def.StateVariables == null) continue;
+            AddStateDependent(key, key);
+            foreach (var dep in def.StateVariables) AddStateDependent(dep, key);
+        }
+        // Status Display rows have dependencies too — the MD-11's lamp rows read the DC-power
+        // gate, which is not a row itself — and the list is one control: any dependency change
+        // schedules ONE coalesced repaint, which re-reads every row from the cache.
+        // The MD-11's lamps also list their OWN key here, and that self-entry is load-bearing:
+        // the definition consumes every lamp update in ProcessSimVarUpdate, so OnSimVarUpdated
+        // never reaches the ordinary display-var repaint — without the self-entry a lamp row
+        // would lag by up to the 1 s tick.
+        if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var displayVars))
+        {
+            foreach (var key in displayVars)
+            {
+                if (!vars.TryGetValue(key, out var def) || def.StateVariables == null) continue;
+                foreach (var dep in def.StateVariables) AddStateDependent(dep, DisplayDependent);
+            }
+        }
+    }
+
+    private void AddStateDependent(string source, string dependent)
+    {
+        if (!stateDependents.TryGetValue(source, out var list))
+            stateDependents[source] = list = new List<string>();
+        if (!list.Contains(dependent)) list.Add(dependent);
+    }
+
+    /// <summary>Relabels every control whose composed state depends on <paramref name="varKey"/>.</summary>
+    private void RelabelStateDependents(string varKey)
+    {
+        if (!stateDependents.TryGetValue(varKey, out var dependents)) return;
+        foreach (var key in dependents) RefreshDescribedState(key);
+    }
+
+    /// <summary>
+    /// Pure label refresh — no user-action handler can fire from a Button.Text or a read-only
+    /// TextBox.Text assignment, so this is safe on the def-handled path too.
+    /// </summary>
+    private void RefreshDescribedState(string key)
+    {
+        if (key == DisplayDependent)
+        {
+            // The list repaint re-reads every row from the cache (UpdateDisplayText), so a
+            // dependency change needs nothing more than the repaint it already coalesces.
+            ScheduleDisplayRepaint();
+            return;
+        }
+        if (!currentControls.TryGetValue(key, out var control)) return;
+        // The type BEFORE composing: composing is not free (the MD-11 composes a control's legend
+        // lamps, its latch and the DC gate), and this runs for EVERY dependent of an update — on the
+        // MD-11 every stateful row of the open panel whenever the DC gate moves. A control that
+        // cannot show a composed state must not pay for one.
+        if (!ShowsDescribedState(control)) return;
+        if (!currentAircraft.GetVariables().TryGetValue(key, out var def)) return;
+        if (!currentAircraft.TryDescribeControlState(key, out var state)) return;
+
+        switch (control)
+        {
+            case Button btn:
+            {
+                string label = $"{def.DisplayName}: {state}";
+                if (btn.Text != label) { btn.Text = label; btn.AccessibleName = label; }
+                break;
+            }
+            case TextBox tb:                  // read-only: ShowsDescribedState admitted no other TextBox
+                if (tb.Text != state) tb.Text = state;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The controls a composed state can be shown on: a Button (its label) or a read-only TextBox
+    /// (its text). Anything else — an entry box, a combo, a slider — shows its own value, so
+    /// <see cref="RefreshDescribedState"/> composes nothing for it. Pinned by DescribedStateTargetTests.
+    /// </summary>
+    internal static bool ShowsDescribedState(Control control) => control is Button or TextBox { ReadOnly: true };
+
+    /// <summary>
     /// Timer callback: Load panel controls after debounce delay.
     /// Only called when user stops arrowing through panels.
     /// </summary>
@@ -175,9 +270,16 @@ public partial class MainForm
                 {
                     foreach (string varKey in panelControls[panelToLoad])
                     {
-                        if (variables.ContainsKey(varKey) && !string.IsNullOrEmpty(variables[varKey].StateVariable))
+                        if (!variables.ContainsKey(varKey)) continue;
+                        if (!string.IsNullOrEmpty(variables[varKey].StateVariable))
                         {
                             simConnectManager.RequestVariable(variables[varKey].StateVariable!);
+                        }
+                        // Composed-state dependencies (MD-11 latch vars, lamps, DC gate). Batch-covered
+                        // keys no-op inside RequestVariable; OnRequest keys get a fresh read.
+                        if (variables[varKey].StateVariables is { } deps)
+                        {
+                            foreach (var dep in deps) simConnectManager.RequestVariable(dep);
                         }
                     }
                 }
@@ -186,6 +288,7 @@ public partial class MainForm
             // Clear and reload controls
             controlsContainer.Controls.Clear();
             currentControls.Clear();
+            stateDependents.Clear();
 
             if (!currentAircraft.GetPanelControls().ContainsKey(currentPanel))
                 return;
@@ -284,7 +387,12 @@ public partial class MainForm
                 // Render as button (momentary pushbutton, action button, etc.)
                 // If StateVariable is set, show on/off state from the indicator LVar
                 string buttonText = varDef.DisplayName;
-                if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
+                if (currentAircraft.TryDescribeControlState(varKey, out string describedState))
+                {
+                    // Definition-composed state (MD-11 legend lamps + latch + DC gate).
+                    buttonText = $"{varDef.DisplayName}: {describedState}";
+                }
+                else if (!string.IsNullOrEmpty(varDef.StateVariable) && currentSimVarValues.ContainsKey(varDef.StateVariable))
                 {
                     double stateVal = currentSimVarValues[varDef.StateVariable];
                     buttonText = $"{varDef.DisplayName}: {(stateVal != 0 ? "On" : "Off")}";
@@ -338,14 +446,17 @@ public partial class MainForm
             }
             else if (varDef.RenderAsReadOnlyStatus &&
                      (varDef.ValueDescriptions == null || varDef.ValueDescriptions.Count == 0) &&
-                     !string.IsNullOrEmpty(varDef.Units))
+                     !string.IsNullOrEmpty(varDef.Units) &&
+                     !Utils.PanelRowRules.IsReadOnlyStatusRow(varDef))
             {
                 // Continuous-numeric read-only TextBox. Used for cockpit gauges
                 // exposed by the PMDG NG3 SDK as float fields (cabin altitude,
                 // DP, duct pressure, APU EGT, fuel temp, etc.). Text is
                 // "{value:Format} {Units}" and is silently refreshed on each
                 // continuous broadcast via UpdateControlFromSimVar — the user
-                // reads the current value by Tab-focusing the field.
+                // reads the current value by Tab-focusing the field. A row whose
+                // state the definition composes is never one, whatever its count:
+                // it is the status box below (Utils.PanelRowRules).
                 TextBox readoutBox = new TextBox();
                 readoutBox.ReadOnly = true;
                 readoutBox.TabStop = true;
@@ -357,19 +468,27 @@ public partial class MainForm
                 if (currentSimVarValues.ContainsKey(varKey))
                 {
                     double cur = currentSimVarValues[varKey] * varDef.Scale + varDef.Offset;
-                    initial = $"{cur.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture)} {varDef.Units}";
+                    // The placeholder unit "number" is never spoken — see Utils.ReadoutFormat.
+                    initial = Utils.ReadoutFormat.WithUnit(
+                        cur.ToString(varDef.Format, System.Globalization.CultureInfo.InvariantCulture), varDef.Units);
                 }
                 readoutBox.Text = initial;
 
                 layout.Controls.Add(readoutBox, 1, rowIndex);
                 currentControls[varKey] = readoutBox;
             }
-            else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.Count > 1 &&
-                     (varDef.RenderAsReadOnlyStatus || varDef.OnlyAnnounceValueDescriptionMatches))
+            else if (varDef.ValueDescriptions != null && Utils.PanelRowRules.IsReadOnlyStatusRow(varDef))
             {
                 // Read-only status field (annunciators, door state, etc.).
                 // ValueDescriptions still drive the text; the user can focus the
                 // field for the screen reader to read it, but cannot change it.
+                // A row whose state the definition composes (StateVariables) is one
+                // whatever its description count, and its text is
+                // TryDescribeControlState's: the MD-11's Elevator Feel knob has ONE
+                // description, and by count alone it fell to the plain Button at the
+                // end of this chain, whose click writes 1 into the row's var. Every
+                // other row keeps the old rule (Utils.PanelRowRules); the null check
+                // is the old condition's own, kept because the body reads the map.
                 TextBox statusBox = new TextBox();
                 statusBox.ReadOnly = true;
                 statusBox.TabStop = true;
@@ -380,10 +499,17 @@ public partial class MainForm
                 // Seed initial text from cached value, falling back to numeric string
                 // and finally to "—" if no value is known yet.
                 string initial = "—";
-                if (currentSimVarValues.ContainsKey(varKey))
+                if (currentAircraft.TryDescribeControlState(varKey, out string describedStatus))
                 {
+                    initial = describedStatus;
+                }
+                else if (currentSimVarValues.ContainsKey(varKey))
+                {
+                    // Through the definition's value→key classifier (identity unless set), like the
+                    // two combo sites and the status refresh — a var keyed on positions over a
+                    // travel-valued reading must seed with its position, not the raw number.
                     double cur = currentSimVarValues[varKey];
-                    initial = varDef.ValueDescriptions.TryGetValue(cur, out string? desc)
+                    initial = varDef.ValueDescriptions.TryGetValue(varDef.DescriptionKeyFor(cur), out string? desc)
                         ? desc
                         : cur.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 }
@@ -521,9 +647,12 @@ public partial class MainForm
                             Log.Debug("MainForm", $"{varKey} received value: {currentValue}");
                         }
 
-                        if (varDef.ValueDescriptions.ContainsKey(currentValue))
+                        // One classifier call, as at the sibling site below: DescriptionKeyFor is a
+                        // definition-supplied delegate, and this runs per combo row per panel build.
+                        double descriptionKey = varDef.DescriptionKeyFor(currentValue);
+                        if (varDef.ValueDescriptions.ContainsKey(descriptionKey))
                         {
-                            string description = varDef.ValueDescriptions[currentValue];
+                            string description = varDef.ValueDescriptions[descriptionKey];
                             combo.SelectedItem = description;
 
                             // Additional debug for landing lights
@@ -710,10 +839,13 @@ public partial class MainForm
                             combo.Items.Add(kvp.Value);
                     }
                     
-                    // Set initial value from sim if we have it
+                    // Set initial value from sim if we have it. The lookup goes through the
+                    // definition's value→key classifier (identity unless set): a var whose value
+                    // is a travel but whose keys are positions (the MD-11 gear lever, 0-25 against
+                    // {0 Up, 1 Down}) would otherwise never match and the combo would open blank.
                     if (currentSimVarValues.ContainsKey(varKey))
                     {
-                        double currentValue = currentSimVarValues[varKey];
+                        double currentValue = varDef.DescriptionKeyFor(currentSimVarValues[varKey]);
                         if (varDef.ValueDescriptions.ContainsKey(currentValue))
                         {
                             string description = varDef.ValueDescriptions[currentValue];
@@ -836,7 +968,20 @@ public partial class MainForm
                 button.Location = new Point(110, 0);
                 button.Size = new Size(60, 23);
                 button.AccessibleName = $"Set {varDef.DisplayName}";
-                
+
+                // Enter in the box presses Set, as the guides say ("press Set or Enter") and as
+                // every dedicated dialog already does through AcceptButton. A bare TextBox swallows
+                // Enter, so a blind pilot who typed a squawk and pressed Enter heard nothing at all
+                // and flew on the old code (found in review 2026-09-07). SuppressKeyPress stops the
+                // WinForms ding; the click path is the same one the button takes.
+                textBox.KeyDown += (s4, e4) =>
+                {
+                    if (e4.KeyCode != Keys.Enter) return;
+                    e4.SuppressKeyPress = true;
+                    e4.Handled = true;
+                    button.PerformClick();
+                };
+
                 button.Click += (s2, e2) =>
                 {
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
@@ -1232,6 +1377,8 @@ public partial class MainForm
             currentControls["_DISPLAY_"] = displayList;
             currentControls["_REFRESH_"] = refreshButton;
         }
+
+            RebuildStateDependents();
 
             // Resume + lay out ONCE now that every row exists, then attach.
             layout.ResumeLayout(true);

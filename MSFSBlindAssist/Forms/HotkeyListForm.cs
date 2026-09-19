@@ -1,4 +1,4 @@
-
+﻿
 namespace MSFSBlindAssist.Forms;
 public partial class HotkeyListForm : Form
 {
@@ -141,7 +141,8 @@ public partial class HotkeyListForm : Form
             { "HS_787", "HS787_Hotkeys.txt" },
             { "IFLY_737MAX8", "iFly_737MAX8_Hotkeys.txt" },
             { "COWS_DA40NG", "COWS_DA40_Hotkeys.txt" },
-            { "COWS_DA40XLS", "COWS_DA40_Hotkeys.txt" }
+            { "COWS_DA40XLS", "COWS_DA40_Hotkeys.txt" },
+            { "TFDI_MD11", "TFDi_MD11_Hotkeys.txt" }
         };
 
         // Determine which file to load

@@ -394,6 +394,11 @@ public partial class SimConnectManager
         // registration failure must not take the bulk registration below down with it.
         RegisterGsxCouatlStartedDefinition();
 
+        // The simulator camera — one fixed def, read one-shot by AI display reads that move the
+        // camera to an instrument view (SimConnectManager.Camera.cs). Universal, so it registers
+        // here with the fixed defs, in its own try/catch like the GSX one above.
+        RegisterCameraViewDefinition();
+
         RegisterGpsWaypointDefinition();
 
         RegisterFlightAttitudeDefinition();
@@ -732,7 +737,7 @@ public partial class SimConnectManager
                 // read from a batch that won't fire — better to have the var be silently
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
-                    continuousVariableIndexMap.Remove(key);
+                    continuousVariableIndexMap.TryRemove(key, out _);
                 // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
                 // (the assignment above only runs after a successful try), so it's still whatever
                 // the top-of-method reset left it at (empty) — no separate rollback needed here.
@@ -841,8 +846,11 @@ public partial class SimConnectManager
         // Clear existing registrations
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
+        _freshRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        _freshReads.FailAll();
+        FailCameraViewRead();
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;

@@ -176,3 +176,8 @@ ifly-aircraft-737max8/
 .superpowers/
 da40-checklists-dump.md
 da40-reference/
+
+# Python bytecode cache. The MD-11 generator and its unittest suite are run from
+# the repo (locally and in CI), so these appear on every run.
+__pycache__/
+*.py[cod]
