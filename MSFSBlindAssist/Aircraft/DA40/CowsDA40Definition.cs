@@ -266,12 +266,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (!IsNG) controls[EngineStartPanel] = new List<string>(XlsStartControls);
         if (!IsNG) controls[MixturePanel] = new List<string>(XlsMixtureControls);
 
-        // The aeroplane's four resets. Buttons: actions with no state to read back, and
-
-        // NG-only because the XLS has its own reset set.
-
-
-
+        RemoveNgOnlyRows(controls);
 
         return controls;
     }
@@ -491,6 +486,10 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             foreach (var kv in BuildXlsPrimingDetailVariables()) vars[kv.Key] = kv.Value;
             foreach (var kv in BuildXlsEngineDetailVariables()) vars[kv.Key] = kv.Value;
         }
+
+        // Last, after every shared builder has run: the NG's Austro variables do not exist on
+        // the XLS. See CowsDA40Definition.VariantScope.
+        RemoveNgOnlyVariables(vars);
 
         return vars;
     }
@@ -745,6 +744,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             AddRows(d, PowerPanel, new List<string> { "DA40_XLS_CRUISE_TABLE", "DA40_PERF_OAT" });
             AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
         }
+
+        RemoveNgOnlyRows(d);
 
         return d;
     }

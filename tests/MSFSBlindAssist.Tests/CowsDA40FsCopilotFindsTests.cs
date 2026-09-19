@@ -88,9 +88,15 @@ public class CowsDA40FsCopilotFindsTests
         Assert.DoesNotContain("DA40_FUEL_TOTALISER_REM", all);
         Assert.DoesNotContain("DA40_PITOT_TEMP", all);
 
-        // The shared halves DO appear: same battery model, same GFC 700.
-        Assert.Contains("DA40_ELEC_BATT_ECU_CAPACITY", all);
+        // The shared halves DO appear: the main battery's surface charge, the GFC 700.
+        Assert.Contains("DA40_ELEC_BATT_SURF", all);
         Assert.Contains("DA40_AP_POWERED", all);
+
+        // ⚠️ And the ECU battery does NOT. This test used to assert it as a shared reading on
+        // "the same battery model" — but the XLS has no ECU, so no ECU battery, and the
+        // variable is absent from its package: the row read 0 for ever. Whole-name search of
+        // each variant's own package is the evidence (CowsDA40PackagePresenceTests).
+        Assert.DoesNotContain("DA40_ELEC_BATT_ECU_CAPACITY", all);
     }
 
     [Theory]
