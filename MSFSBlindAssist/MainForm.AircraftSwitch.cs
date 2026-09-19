@@ -191,6 +191,22 @@ public partial class MainForm
             return;
         }
         currentAircraft?.OnSimContextReset();
+        SwapDA40ProfileToMatch(file);
+    }
+
+    /// <summary>
+    /// A DA40 profile follows the DA40 airframe the sim has loaded — see
+    /// <see cref="Aircraft.DA40.DA40Airframe"/>. Called with the AircraftLoaded file path on an
+    /// in-session change, and with the connect's title on the first connect (the connect
+    /// pipeline runs once per connection, so it never reports a later change).
+    /// </summary>
+    private void SwapDA40ProfileToMatch(string? titleOrFile)
+    {
+        if (currentAircraft == null) return;
+        string? target = Aircraft.DA40.DA40Airframe.SwapTarget(currentAircraft.AircraftCode, titleOrFile);
+        if (target == null) return;
+        Log.Debug("MainForm", $"DA40 profile {currentAircraft.AircraftCode} does not match '{titleOrFile}' - switching to {target}");
+        SwitchAircraft(LoadAircraftFromCode(target));
     }
 
     /// <summary>
@@ -220,6 +236,10 @@ public partial class MainForm
 
         if (status.StartsWith("Connected to"))
         {
+            // Before anything announces the profile: a DA40 profile on the other DA40 airframe
+            // swaps to the right one here, so the pilot hears the profile that is flying.
+            SwapDA40ProfileToMatch(status.Substring("Connected to".Length));
+
             // Start event batching timer for high-volume variable updates
             eventBatchTimer?.Start();
             Log.Debug("MainForm", "Event batching timer started");
