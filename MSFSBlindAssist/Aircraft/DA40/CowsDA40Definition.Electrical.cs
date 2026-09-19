@@ -300,24 +300,34 @@ public partial class CowsDA40Definition
         => $"(A:ELECTRICAL MASTER BATTERY:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_MASTER_BATTERY) }}";
 
     /// <summary>
-    /// The XLS battery half of the split master, replaying the cockpit switch's own click code
-    /// (COWS_DA40_IN.xml, Bat_Master) behind the same read-compare guard: switching the battery
-    /// OFF with the alternator ON takes the alternator off with it — the rocker's interlock.
+    /// ⚠️ THE ROCKER'S INTERLOCK IS DECIDED FROM THE STATE READ BEFORE ANY TOGGLE — NOT the way
+    /// the cockpit switch's own click code does it. COWS_DA40_IN.xml's Bat_Master / ALT_Master
+    /// toggle first and THEN re-read the SimVar to decide the interlock, but a K: event does not
+    /// change its SimVar within the same execution: measured live on the XLS (2026-09-19),
+    /// replaying ALT_Master's code from both-off left the alternator ON and the battery OFF, and
+    /// nothing in the aircraft corrected it afterwards. The real split rocker is mechanically
+    /// interlocked and COWS plainly intended it, so this reads first and toggles second.
+    /// Measured live, every combination: from both off, ALT on → both on; with both on, BAT off →
+    /// both off; BAT on alone → battery only; ALT on with the battery on → both on, no extra
+    /// battery toggle; ALT off with the battery on → battery stays on.
+    ///
+    /// Battery half: switching it OFF takes the alternator off with it.
     /// </summary>
     internal static string XlsBatteryMasterCode(bool on)
-        => $"(A:ELECTRICAL MASTER BATTERY:1, Bool) {(on ? 0 : 1)} == if{{ " +
-           "1 (>K:TOGGLE_MASTER_BATTERY) " +
-           "(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) (A:ELECTRICAL MASTER BATTERY:1, Bool) ! and " +
-           "if{ (>K:TOGGLE_ALTERNATOR1) } }";
+        => on
+            ? "(A:ELECTRICAL MASTER BATTERY:1, Bool) 0 == if{ 1 (>K:TOGGLE_MASTER_BATTERY) }"
+            : "(A:ELECTRICAL MASTER BATTERY:1, Bool) 1 == if{ " +
+              "(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) if{ 1 (>K:TOGGLE_ALTERNATOR1) } " +
+              "1 (>K:TOGGLE_MASTER_BATTERY) }";
 
     /// <summary>
-    /// The XLS alternator half, replaying ALT_Master's click code: switching the alternator ON
-    /// with the battery OFF brings the battery on with it. Only <c>TOGGLE_ALTERNATOR1</c> moves
-    /// it — <c>ALTERNATOR1_SET</c> was measured inert on this aircraft.
+    /// Alternator half: switching it ON brings the battery on with it. Only
+    /// <c>TOGGLE_ALTERNATOR1</c> moves it — <c>ALTERNATOR1_SET</c> was measured inert.
     /// </summary>
     internal static string XlsAlternatorMasterCode(bool on)
-        => $"(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) {(on ? 0 : 1)} == if{{ " +
-           "(>K:TOGGLE_ALTERNATOR1) " +
-           "(A:ELECTRICAL MASTER BATTERY:1, Bool) ! (A:GENERAL ENG MASTER ALTERNATOR:1, Bool) and " +
-           "if{ 1 (>K:TOGGLE_MASTER_BATTERY) } }";
+        => on
+            ? "(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) 0 == if{ " +
+              "(A:ELECTRICAL MASTER BATTERY:1, Bool) ! if{ 1 (>K:TOGGLE_MASTER_BATTERY) } " +
+              "1 (>K:TOGGLE_ALTERNATOR1) }"
+            : "(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) 1 == if{ 1 (>K:TOGGLE_ALTERNATOR1) }";
 }

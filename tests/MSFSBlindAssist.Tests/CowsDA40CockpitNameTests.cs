@@ -36,16 +36,23 @@ public class CowsDA40CockpitNameTests
     }
 
     [Fact]
-    public void TheXlsMastersReplayTheRockersInterlock()
+    public void TheXlsMastersInterlockFromTheStateReadBeforeToggling()
     {
-        // Battery OFF takes the alternator with it; alternator ON brings the battery with it.
+        // Battery OFF takes the alternator with it, and the alternator's state is READ before
+        // either toggle — a read after the toggle sees the old value (measured live), which is
+        // why the cockpit click code's own interlock never fires.
         string batOff = CowsDA40Definition.XlsBatteryMasterCode(false);
-        Assert.Contains("(>K:TOGGLE_MASTER_BATTERY)", batOff);
-        Assert.Contains("(>K:TOGGLE_ALTERNATOR1)", batOff);
+        Assert.True(batOff.IndexOf("(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) if{", System.StringComparison.Ordinal)
+                    < batOff.IndexOf("(>K:TOGGLE_MASTER_BATTERY)", System.StringComparison.Ordinal));
 
+        // Alternator ON brings the battery with it, the battery read before any toggle.
         string altOn = CowsDA40Definition.XlsAlternatorMasterCode(true);
-        Assert.Contains("(>K:TOGGLE_ALTERNATOR1)", altOn);
-        Assert.Contains("(>K:TOGGLE_MASTER_BATTERY)", altOn);
+        Assert.True(altOn.IndexOf("(A:ELECTRICAL MASTER BATTERY:1, Bool) !", System.StringComparison.Ordinal)
+                    < altOn.IndexOf("(>K:TOGGLE_ALTERNATOR1)", System.StringComparison.Ordinal));
+
+        // The other two directions touch only their own half.
+        Assert.DoesNotContain("TOGGLE_ALTERNATOR1", CowsDA40Definition.XlsBatteryMasterCode(true));
+        Assert.DoesNotContain("TOGGLE_MASTER_BATTERY", CowsDA40Definition.XlsAlternatorMasterCode(false));
 
         // ALTERNATOR1_SET was measured inert on this aircraft.
         Assert.DoesNotContain("ALTERNATOR1_SET", altOn);
