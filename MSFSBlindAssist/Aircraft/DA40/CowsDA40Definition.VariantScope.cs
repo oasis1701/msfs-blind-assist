@@ -91,6 +91,10 @@ public partial class CowsDA40Definition
         "DA40_FAIL_CBT_ALT",
         "DA40_FAIL_CBT_ESS_TIE",
         "DA40_FAIL_CBT_MAIN_TIE",
+
+        // The XLS's split-master alternator half. The NG has no such switch; the same SimVar
+        // is its engine master, on the Engine Start panel.
+        "DA40_ELEC_ALT_MASTER",
     };
 
     internal static IReadOnlyCollection<string> NgOnlyVariableKeys => NgOnlyKeys;

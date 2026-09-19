@@ -110,10 +110,10 @@ public class CowsDA40InteractionSurfaceTests
 
         // ---------------- cabin ----------------
         ["DOORS"] = "Doors and Windows: the group",
-        ["CanopyC"] = "Doors and Windows: front canopy",
-        ["CanopyRC"] = "Doors and Windows: rear door",
-        ["stormLC"] = "Doors and Windows: left storm window",
-        ["stormRC"] = "Doors and Windows: right storm window",
+        ["CanopyC"] = "Doors and Windows: Canopy",
+        ["CanopyRC"] = "Doors and Windows: Rear Canopy",
+        ["stormLC"] = "Doors and Windows: Left Window",
+        ["stormRC"] = "Doors and Windows: Right Window",
         ["PASSENGER"] = "Cabin Heat and Vent",
         ["PILOT"] = "Seating and Payload: pilot figure",
         ["CO_PILOT"] = "Seating and Payload: copilot figure",
@@ -124,10 +124,8 @@ public class CowsDA40InteractionSurfaceTests
         // ---------------- XLS only, and deliberately not built yet ----------------
         ["ENGINE_Lever_Propeller_1"] = "Power and Levers: propeller lever (XLS)",
         ["ENGINE_Lever_Mixture_1"] = "Power and Levers: mixture (XLS)",
-        ["ALT_Master"] =
-            "- XLS alternator master. On NotBuiltYetOnXls, same reason.",
-        ["Bat_Master"] =
-            "- XLS battery master. On NotBuiltYetOnXls, same reason."
+        ["ALT_Master"] = "Electrical: Alternator Master (XLS)",
+        ["Bat_Master"] = "Electrical: Battery Master (XLS)"
     };
 
     private static string? PackageRoot()

@@ -117,7 +117,7 @@ public partial class CowsDA40Definition
         v["DA40_TRIM_AP_DISC"] = new SimVarDefinition
         {
             Name = "DA40_TRIM_AP_DISC",
-            DisplayName = "AP Disconnect and Trim Interrupt",
+            DisplayName = "AP DISC",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Never,
             RenderAsButton = true,

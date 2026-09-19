@@ -66,7 +66,7 @@ public partial class CowsDA40Definition
         v["DA40_XLS_PROP_SET"] = new SimVarDefinition
         {
             Name = "INPUT_PROPELLER",
-            DisplayName = "Propeller Lever",
+            DisplayName = "Propeller",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,

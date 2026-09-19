@@ -43,7 +43,7 @@ public partial class CowsDA40Definition
     // Variables
     // ==================================================================================
 
-    private static Dictionary<string, SimVarDefinition> BuildElectricalVariables()
+    private static Dictionary<string, SimVarDefinition> BuildElectricalVariables(bool isNg)
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
@@ -55,13 +55,33 @@ public partial class CowsDA40Definition
         v["DA40_ELEC_MASTER_BATTERY"] = new SimVarDefinition
         {
             Name = "ELECTRICAL MASTER BATTERY:1",
-            DisplayName = "Electric Master",
+            // The placard: the NG's key calls this position ELECTRIC MASTER; the XLS has a
+            // split rocker whose halves read Battery Master and Alternator Master.
+            DisplayName = isNg ? "Electric Master" : "Battery Master",
             Type = SimVarType.SimVar,
             Units = "bool",
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
+
+        // ⚠️ THE XLS's ALTERNATOR MASTER, which MSFSBA did not have: the other half of the
+        // split master rocker (COWS_DA40_IN.xml, ELECTRICAL_Switch_Alternator, placard
+        // "Alternator Master"), and an item on the XLS's own checklist. The same SimVar is the
+        // NG's ENGINE master, which is why this key is XLS-only (VariantScope).
+        if (!isNg)
+        {
+            v["DA40_ELEC_ALT_MASTER"] = new SimVarDefinition
+            {
+                Name = "GENERAL ENG MASTER ALTERNATOR:1",
+                DisplayName = "Alternator Master",
+                Type = SimVarType.SimVar,
+                Units = "bool",
+                UpdateFrequency = UpdateFrequency.Continuous,
+                IsAnnounced = true,
+                ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            };
+        }
 
         v["DA40_ELEC_AVIONICS_MASTER"] = new SimVarDefinition
         {
@@ -79,11 +99,12 @@ public partial class CowsDA40Definition
         v["DA40_ELEC_ESS_BUS"] = new SimVarDefinition
         {
             Name = "ESS_BUS_SWITCH",
-            DisplayName = "Essential Bus",
+            DisplayName = "ESS BUS",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Normal", [1] = "Essential bus only" }
+            // The switch's own positions, ESS BUS OFF / ESS BUS ON.
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
         };
 
         v["DA40_ELEC_EMER_BATT_COVER"] = new SimVarDefinition
@@ -184,6 +205,7 @@ public partial class CowsDA40Definition
     private static readonly List<string> ElectricalControls = new()
     {
         "DA40_ELEC_MASTER_BATTERY",
+        "DA40_ELEC_ALT_MASTER",
         "DA40_ELEC_AVIONICS_MASTER",
         "DA40_ELEC_ESS_BUS",
         "DA40_ELEC_EMER_BATT_COVER",
@@ -239,10 +261,15 @@ public partial class CowsDA40Definition
 
         switch (varKey)
         {
+            // ⚠️ Unique, not plain: the XLS's interlock can move a master without the pilot, so
+            // the SAME pick can be the next write in a row, and MobiFlight drops a byte-identical
+            // repeat — the pick would silently do nothing.
             case "DA40_ELEC_MASTER_BATTERY":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:ELECTRICAL MASTER BATTERY:1, Bool) {(on ? 0 : 1)} == " +
-                    "if{ 1 (>K:TOGGLE_MASTER_BATTERY) }");
+                simConnect.ExecuteCalculatorCodeUnique(IsNG ? NgMasterCode(on) : XlsBatteryMasterCode(on));
+                return true;
+
+            case "DA40_ELEC_ALT_MASTER" when !IsNG:
+                simConnect.ExecuteCalculatorCodeUnique(XlsAlternatorMasterCode(on));
                 return true;
 
             case "DA40_ELEC_AVIONICS_MASTER":
@@ -267,4 +294,30 @@ public partial class CowsDA40Definition
 
         return false;
     }
+
+    /// <summary>The NG's electric master: a conditional toggle — read, compare, toggle.</summary>
+    internal static string NgMasterCode(bool on)
+        => $"(A:ELECTRICAL MASTER BATTERY:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_MASTER_BATTERY) }}";
+
+    /// <summary>
+    /// The XLS battery half of the split master, replaying the cockpit switch's own click code
+    /// (COWS_DA40_IN.xml, Bat_Master) behind the same read-compare guard: switching the battery
+    /// OFF with the alternator ON takes the alternator off with it — the rocker's interlock.
+    /// </summary>
+    internal static string XlsBatteryMasterCode(bool on)
+        => $"(A:ELECTRICAL MASTER BATTERY:1, Bool) {(on ? 0 : 1)} == if{{ " +
+           "1 (>K:TOGGLE_MASTER_BATTERY) " +
+           "(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) (A:ELECTRICAL MASTER BATTERY:1, Bool) ! and " +
+           "if{ (>K:TOGGLE_ALTERNATOR1) } }";
+
+    /// <summary>
+    /// The XLS alternator half, replaying ALT_Master's click code: switching the alternator ON
+    /// with the battery OFF brings the battery on with it. Only <c>TOGGLE_ALTERNATOR1</c> moves
+    /// it — <c>ALTERNATOR1_SET</c> was measured inert on this aircraft.
+    /// </summary>
+    internal static string XlsAlternatorMasterCode(bool on)
+        => $"(A:GENERAL ENG MASTER ALTERNATOR:1, Bool) {(on ? 0 : 1)} == if{{ " +
+           "(>K:TOGGLE_ALTERNATOR1) " +
+           "(A:ELECTRICAL MASTER BATTERY:1, Bool) ! (A:GENERAL ENG MASTER ALTERNATOR:1, Bool) and " +
+           "if{ 1 (>K:TOGGLE_MASTER_BATTERY) } }";
 }

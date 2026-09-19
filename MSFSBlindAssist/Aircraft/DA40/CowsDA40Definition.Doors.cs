@@ -48,10 +48,10 @@ public partial class CowsDA40Definition
     {
         var v = new Dictionary<string, SimVarDefinition>();
 
-        AddDoor(v, "DA40_DOOR_CANOPY", 2, "Front Canopy");
-        AddDoor(v, "DA40_DOOR_REAR", 3, "Rear Door");
-        AddDoor(v, "DA40_DOOR_STORM_L", 6, "Storm Window Left");
-        AddDoor(v, "DA40_DOOR_STORM_R", 7, "Storm Window Right");
+        AddDoor(v, "DA40_DOOR_CANOPY", 2, "Canopy");
+        AddDoor(v, "DA40_DOOR_REAR", 3, "Rear Canopy");
+        AddDoor(v, "DA40_DOOR_STORM_L", 6, "Left Window");
+        AddDoor(v, "DA40_DOOR_STORM_R", 7, "Right Window");
 
         // ---------- Status ----------
 
@@ -60,10 +60,10 @@ public partial class CowsDA40Definition
         // to an end would be a lie at exactly the moment the pilot is listening. These are
         // OnRequest deliberately: two CONTINUOUS variables sharing one SimVar name would
         // collide in the continuous batch and shift every later variable's slot.
-        AddDoorPosition(v, "DA40_DOOR_CANOPY_POS", 2, "Front Canopy");
-        AddDoorPosition(v, "DA40_DOOR_REAR_POS", 3, "Rear Door");
-        AddDoorPosition(v, "DA40_DOOR_STORM_L_POS", 6, "Storm Window Left");
-        AddDoorPosition(v, "DA40_DOOR_STORM_R_POS", 7, "Storm Window Right");
+        AddDoorPosition(v, "DA40_DOOR_CANOPY_POS", 2, "Canopy");
+        AddDoorPosition(v, "DA40_DOOR_REAR_POS", 3, "Rear Canopy");
+        AddDoorPosition(v, "DA40_DOOR_STORM_L_POS", 6, "Left Window");
+        AddDoorPosition(v, "DA40_DOOR_STORM_R_POS", 7, "Right Window");
 
         // Why a door will not open, and why an open one just shut itself.
         v["DA40_DOOR_WIND"] = new SimVarDefinition

@@ -56,7 +56,7 @@ public partial class CowsDA40Definition
         v["DA40_ICE_ALTERNATE_AIR"] = new SimVarDefinition
         {
             Name = "ENGINE_ALTERNATE_AIR",
-            DisplayName = "Alternate Air",
+            DisplayName = "Engine Alternate Air",
             Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,

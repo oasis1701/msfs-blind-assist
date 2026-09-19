@@ -32,10 +32,11 @@ public partial class CowsDA40Definition
 
     private static readonly Dictionary<string, string> DoorNames = new(StringComparer.Ordinal)
     {
-        ["DA40_DOOR_CANOPY"] = "Front canopy",
-        ["DA40_DOOR_REAR"] = "Rear door",
-        ["DA40_DOOR_STORM_L"] = "Left storm window",
-        ["DA40_DOOR_STORM_R"] = "Right storm window"
+        // The cockpit's own names (the model's tooltips: Canopy, Rear Canopy, Window).
+        ["DA40_DOOR_CANOPY"] = "Canopy",
+        ["DA40_DOOR_REAR"] = "Rear canopy",
+        ["DA40_DOOR_STORM_L"] = "Left window",
+        ["DA40_DOOR_STORM_R"] = "Right window"
     };
 
     /// <summary>Exposed for the tests, which check every name matches a real control.</summary>

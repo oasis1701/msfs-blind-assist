@@ -63,7 +63,8 @@ public partial class CowsDA40Definition
         string label;
         switch (varKey)
         {
-            case "DA40_ELEC_MASTER_BATTERY": label = "Electric master"; break;
+            case "DA40_ELEC_MASTER_BATTERY": label = IsNG ? "Electric master" : "Battery master"; break;
+            case "DA40_ELEC_ALT_MASTER": label = "Alternator master"; break;
             default: return false;
         }
 

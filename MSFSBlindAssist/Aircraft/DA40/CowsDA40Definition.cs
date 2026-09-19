@@ -275,7 +275,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     {
         var vars = GetBaseVariables();
 
-        foreach (var kv in BuildElectricalVariables())
+        foreach (var kv in BuildElectricalVariables(IsNG))
         {
             vars[kv.Key] = kv.Value;
         }
