@@ -1,0 +1,1 @@
+The Landing Exit Planner fills in the runway from your loaded flight plan when no ILS destination is set, instead of showing the airport's first runway. If the runway it was given is not in the list — a closed runway, or one your database spells differently — it now tells you which runway is showing instead and to check it before planning an exit.

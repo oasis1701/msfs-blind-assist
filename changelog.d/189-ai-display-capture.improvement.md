@@ -1,0 +1,1 @@
+Screenshots for AI display reads and scene descriptions now capture the simulator's own window rather than whatever is on screen, so an app window sitting on top of the simulator no longer ends up in the picture. This applies to every aircraft.

@@ -1,0 +1,1 @@
+If guidance cannot work out which runway you touched down on, your exit plan is kept rather than cancelled. A bounce, a touch-and-go or a go-around used to fly the next approach with no exit guidance at all and no explanation; now the plan is still there and you are told once that this landing had none.

@@ -68,6 +68,25 @@ public static class RolloutExitGate
     /// <summary>Above this ground speed a heading deviation is touchdown yaw, not a turn.</summary>
     public const double TurnMaxGroundSpeedKts = 90.0;
 
+    /// <summary>Below this ground speed the runway-end countdown treats the aircraft as stopped.
+    /// Shared by <c>TaxiGuidanceManager</c> and <see cref="RunwayEndCountdownGate"/>.</summary>
+    public const double NoExitStoppedGroundSpeedKts = 3.0;
+
+    /// <summary>
+    /// How close to the far end of the runway counts as "at the end" for
+    /// <see cref="RunwayEndCountdownGate"/> — the distance at which a stop means the pavement has
+    /// run out and the pilot must turn around, rather than that they have simply stopped.
+    ///
+    /// <para>A GUIDANCE threshold, deliberately its own constant rather than the 500 ft / 150 m
+    /// runway-end SPOKEN milestone it happens to coincide with. That table is built from the
+    /// pilot's distance-unit setting (<c>DistanceMilestones</c> → <c>DistanceFormatter.IsMetres</c>),
+    /// so reading it here moved this decision by ~8 ft when the pilot switched between feet and
+    /// metres, and by whatever a future extra milestone would shift the positional index to.
+    /// CLAUDE.md: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
+    /// thresholds; those must stay unit-native internally."</para>
+    /// </summary>
+    public const double NearRunwayEndFeet = 500.0;
+
     /// <summary>
     /// How close to the exit a turn must begin to count as taking it.
     ///
@@ -523,6 +542,87 @@ public static class RolloutExitGate
     /// genuinely obtuse turnoff and a stub aimed back at the approach end.
     /// </summary>
     public const double MaxUsableExitTurnDeg = 90.0;
+
+    /// <summary>
+    /// Floor of how far ahead of the aircraft an exit must be to count as takeable at the current
+    /// speed. Shared by the rollout's undershoot retarget scan and the touchdown re-plan
+    /// (<see cref="LandingExitReplan"/>), so the two can never disagree about reachability. The
+    /// values were tuned on the undershoot scan (YSSY 16R: an exit 79 ft ahead at 52 kt was picked
+    /// and could not be made), which runs only below 50 kt. At touchdown speed this floor asks for
+    /// 4-6 m/s² of braking, so the re-plan tries <see cref="ComfortableExitLeadFeet"/> first and
+    /// uses this only in its fallback pass.
+    /// </summary>
+    public const double ExitLeadMinFeet = 200.0;
+
+    /// <summary>Speed-proportional part of <see cref="ExitLeadFeet"/>, feet per knot.</summary>
+    public const double ExitLeadFeetPerKnot = 11.0;
+
+    /// <summary>The lead an exit needs ahead of the aircraft at <paramref name="groundSpeedKts"/>.</summary>
+    public static double ExitLeadFeet(double groundSpeedKts)
+        => Math.Max(ExitLeadMinFeet, groundSpeedKts * ExitLeadFeetPerKnot);
+
+    /// <summary>
+    /// Turn-off speed for a rapid exit, below <see cref="SteepExitAngleDeg"/>. The three turn-off values
+    /// are shared with the rollout's undershoot retarget scan, whose ROLLOUT_UNDERSHOOT_* constants alias
+    /// them.
+    /// </summary>
+    public const double ShallowExitTurnOffSpeedKts = 50.0;
+
+    /// <summary>At or above this turn an exit is steep and taken at <see cref="SteepExitTurnOffSpeedKts"/>.</summary>
+    public const double SteepExitAngleDeg = 45.0;
+
+    /// <summary>Turn-off speed for a steep exit: the tighter turn demands more braking margin.</summary>
+    public const double SteepExitTurnOffSpeedKts = 20.0;
+
+    /// <summary>
+    /// Braking the touchdown re-plan assumes a pilot is comfortable with, after
+    /// <see cref="BrakingTransitionSeconds"/> at touchdown speed. A stated assumption, not aircraft
+    /// performance (repo owner, 2026-09-15). 1.5 and 2.5 m/s² were measured as the bounds: 1.5 lengthened
+    /// the median re-planned rollout by another ~600 ft, and 2.5 left a pilot braking at 2 m/s² hearing a
+    /// retarget in about a quarter of re-planned landings.
+    /// </summary>
+    public const double ComfortableDecelerationMps2 = 2.0;
+
+    /// <summary>Seconds at touchdown speed before braking builds (spoilers, brake onset).</summary>
+    public const double BrakingTransitionSeconds = 2.0;
+
+    /// <summary>
+    /// The speed a landing rollout is braking TOWARD, not through: below it the aircraft is at
+    /// normal taxi speed and is no longer shedding energy hard. Mirrors
+    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the same 30 kt at which the rollout hands
+    /// over to ordinary taxi guidance and stops appending "Slow down."
+    ///
+    /// <para>Used by <see cref="RolloutCalloutSupersession.ReachFeet"/> so that assuming braking
+    /// does not run away at the slow end: at 22 kt an aircraft is not decelerating at
+    /// <see cref="ComfortableDecelerationMps2"/>, it is taxiing.</para>
+    /// </summary>
+    public const double TaxiGroundSpeedKts = 30.0;
+
+    private const double FeetPerSecondPerKnot = 1.6878;
+    private const double FeetPerMetre = 1.0 / 0.3048;
+
+    /// <summary>
+    /// Turn-off speed for an exit of <paramref name="exitAngleDeg"/>. The unmeasured angle 0 counts as
+    /// steep: the re-plan must not assume a rapid exit it cannot see.
+    /// </summary>
+    public static double ExitTurnOffSpeedKts(double exitAngleDeg)
+        => exitAngleDeg > 0.0 && exitAngleDeg < SteepExitAngleDeg ? ShallowExitTurnOffSpeedKts : SteepExitTurnOffSpeedKts;
+
+    /// <summary>
+    /// How far ahead an exit must be for the aircraft to reach its turn-off speed with comfortable braking:
+    /// <see cref="BrakingTransitionSeconds"/> at <paramref name="groundSpeedKts"/>, then
+    /// <see cref="ComfortableDecelerationMps2"/> down to <see cref="ExitTurnOffSpeedKts"/>, and never less
+    /// than <see cref="ExitLeadFeet"/>. At 140 kt: about 4,640 ft for a 90° exit and 4,184 ft for a 30°
+    /// rapid exit, where <see cref="ExitLeadFeet"/> gives 1,540 ft.
+    /// </summary>
+    public static double ComfortableExitLeadFeet(double groundSpeedKts, double exitAngleDeg)
+    {
+        double v = groundSpeedKts * FeetPerSecondPerKnot;
+        double vTurnOff = Math.Min(ExitTurnOffSpeedKts(exitAngleDeg), groundSpeedKts) * FeetPerSecondPerKnot;
+        double deceleration = ComfortableDecelerationMps2 * FeetPerMetre;
+        double kinematic = v * BrakingTransitionSeconds + (v * v - vTurnOff * vTurnOff) / (2.0 * deceleration);
+        return Math.Max(ExitLeadFeet(groundSpeedKts), kinematic);
+    }
 
     /// <summary>
     /// Where "downfield" starts when looking for the exit to retarget to after an overshoot.
