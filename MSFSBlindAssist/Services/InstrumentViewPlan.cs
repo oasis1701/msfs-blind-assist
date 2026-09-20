@@ -13,10 +13,21 @@ namespace MSFSBlindAssist.Services;
 /// 1/7 back restores the pilot's own view (measured 2026-09-18, MSFS 2024 1.8.16.0). So MAX
 /// does NOT bound what the write path accepts and must never gate a restore — see
 /// <see cref="InstrumentViewPlan.RestoreWrites"/>.
+///
+/// A NON-COCKPIT camera reads view type 0, index 0 — measured on the live PMDG 737-800
+/// (2026-09-20, MSFS 2024) at <c>CAMERA STATE</c> 3 (external) and 6 (environment) — and a write
+/// to the view TYPE register while non-cockpit is REFUSED (sent, register unchanged). Both
+/// matter for <see cref="IsAt"/> below: a cockpit reading is type 1, 2 or 3, so a non-cockpit
+/// reading can never satisfy a restore's test, and a restore cannot drag a pilot who deliberately
+/// took an external view back into the cockpit — it fails and says so, which is correct. That is
+/// why <see cref="IsAt"/> not consulting the state is safe rather than a gap.
 /// </summary>
 public readonly record struct CameraViewReading(int State, int ViewType, int ViewIndex)
 {
-    /// <summary>True when this reading is at the given view (type and index; the state is not consulted).</summary>
+    /// <summary>
+    /// True when this reading is at the given view (type and index; the state is not consulted —
+    /// see the measurement above for why that cannot let a non-cockpit camera pass).
+    /// </summary>
     public bool IsAt(int viewType, int viewIndex) => ViewType == viewType && ViewIndex == viewIndex;
 }
 
@@ -42,10 +53,15 @@ public enum InstrumentViewOutcome
 /// The camera IS put back after the capture, by <see cref="RestoreWrites"/> — written, then
 /// verified by read-back, never assumed. A restore was removed on 2026-09-09 on the reasoning
 /// that a custom camera's index is one the write path refuses; that reasoning is DISPROVEN (see
-/// <see cref="CameraViewReading"/>), and why the MD-11 restore failed that day is unknown. The
-/// verification is what makes reinstating it safe: an out-of-range index is CLAMPED rather than
-/// ignored and the read-back reports the clamped value (a write of 20 landed on 8, read back as
-/// 8), so a restore that did not take is detectable, and the caller says so out loud.
+/// <see cref="CameraViewReading"/>). Why the MD-11 restore failed that day was ANSWERED on
+/// 2026-09-20 and was never MD-11-specific: the removed code wrote both camera registers on ONE
+/// frame, so the TYPE write was refused while the INDEX write applied. Spaced across frames the
+/// same pair restores correctly — see <c>InstrumentViewSwitcher.RestoreAsync</c>, which carries
+/// the measurement.
+///
+/// The verification is what makes reinstating it safe: an out-of-range index is CLAMPED rather
+/// than ignored and the read-back reports the clamped value (a write of 20 landed on 8, read back
+/// as 8), so a restore that did not take is detectable, and the caller says so out loud.
 /// </summary>
 public sealed record InstrumentViewPlan(
     InstrumentViewOutcome Outcome,
@@ -77,36 +93,61 @@ public sealed record InstrumentViewPlan(
 
     /// <summary>
     /// What to write to put the pilot's camera back after the capture, or null when there is
-    /// nothing to put back. Only a <see cref="InstrumentViewOutcome.Switch"/> moved the camera
-    /// away from a reading we hold: <see cref="InstrumentViewOutcome.AlreadyThere"/> never moved
-    /// it, <see cref="InstrumentViewOutcome.NotInCockpit"/> wrote nothing, and
-    /// <see cref="InstrumentViewOutcome.Unknown"/> could not read a camera to remember.
+    /// nothing to put back.
     ///
-    /// The entry's own verification is deliberately NOT consulted: Switch always attempted the
-    /// write, so the camera may have moved whether or not the read-back confirmed it.
+    /// <para>
+    /// The aim is a TARGET, not "the reading this read happened to take". Usually they are the
+    /// same thing, but a home owed by an earlier FAILED restore outlives the read that recorded
+    /// it (<see cref="CameraHomePlan"/>) — so a read that moved nothing at all can still be the
+    /// one that gets the pilot home. Keying this on <see cref="InstrumentViewOutcome.Switch"/>,
+    /// as it once did, is what made a failed restore permanent: the next read saw the instrument
+    /// view it had been stranded on, called it AlreadyThere, wrote nothing and reported success.
+    /// </para>
+    ///
+    /// <para>
+    /// Two cases write nothing. <see cref="InstrumentViewOutcome.NotInCockpit"/> wrote nothing on
+    /// the way in and the read is refused, so there is nothing to undo. And a target that IS the
+    /// instrument view this read wanted is already where it belongs — writing it back would be a
+    /// no-op the restore then has to spend a poll and a confirm verifying.
+    /// </para>
     /// </summary>
-    public static (int Type, int Index)? RestoreWrites(InstrumentViewOutcome outcome, CameraViewReading? before)
-        => outcome == InstrumentViewOutcome.Switch && before is { } camera
-            ? (camera.ViewType, camera.ViewIndex)
-            : null;
+    public static (int Type, int Index)? RestoreWrites(
+        CameraViewReading? target, int wantedIndex, InstrumentViewOutcome outcome)
+        => outcome == InstrumentViewOutcome.NotInCockpit || target is not { } home || IsOn(home, wantedIndex)
+            ? null
+            : (home.ViewType, home.ViewIndex);
 
     /// <summary>
-    /// True when the entry write moved the camera off wherever the pilot had it, yet
-    /// <see cref="RestoreWrites"/> has no reading to send it back to. Only
-    /// <see cref="InstrumentViewOutcome.Unknown"/> can be in this position: <see cref="For"/>
-    /// still writes the instrument view for it despite the failed read (see the class comment
-    /// above), while <see cref="InstrumentViewOutcome.AlreadyThere"/> never moved the camera and
-    /// <see cref="InstrumentViewOutcome.NotInCockpit"/> wrote nothing either — both keep
-    /// <see cref="RestoreWrites"/> null for a reason that has nothing to do with this one.
+    /// True when the app moved the camera off wherever the pilot had it and has nothing to send
+    /// it back to — the one case where a display read must confess rather than report success.
     ///
-    /// Gated on <paramref name="verified"/>: an UNVERIFIED Unknown is most likely a write that
-    /// never reached the sim at all — SimConnect down or disconnected, so <c>Set</c> no-ops — and
-    /// the caller has already spoken "Could not confirm the cockpit view switch" for that case, so
-    /// a second warning here would be a false alarm over nothing that moved. A VERIFIED Unknown
-    /// means the write is CONFIRMED to have landed: the camera really did leave wherever the pilot
-    /// had it, for a view this app never got to remember, so the caller must say the restore
-    /// failed rather than silently report success.
+    /// <para>
+    /// Both halves are load-bearing. <paramref name="target"/> null means no reading to aim at:
+    /// the camera could not be read on the way in and no earlier read left a home owed. And
+    /// <paramref name="moved"/> is a FACT — a write that would move the camera was dispatched to
+    /// the simulator — not an inference.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ This used to read the entry's own <c>Verified</c> flag as a proxy for "the write
+    /// landed", and it was wrong in BOTH directions. Verified is FALSE for a write that landed
+    /// while every read-back timed out — the camera registration can fail on its own
+    /// (<c>SimConnectManager.RegisterCameraViewDefinition</c> has its own catch) while writes keep
+    /// landing, because <c>SetSimVar</c> builds its own temporary data definition and never
+    /// touches the camera one. That combination moved the camera on every display read of the
+    /// session and never restored it, in silence, which is the exact failure this feature exists
+    /// to prevent. And Verified is TRUE for a camera that was already on the wanted view, where
+    /// nothing moved at all. Dispatch is the fact both of those need; never go back to the proxy.
+    /// </para>
+    ///
+    /// <para>
+    /// Residual, stated rather than hidden: when the camera cannot be read AND it happened to be
+    /// on the wanted view already, a dispatched write moved nothing and this still returns true.
+    /// <see cref="InstrumentViewSwitcher"/> retries the entry read once, which turns almost every
+    /// such case into a real outcome; what is left needs the pilot to be sitting on the very
+    /// instrument view the read wants while two reads in a row time out.
+    /// </para>
     /// </summary>
-    public static bool MovedWithNoWayBack(InstrumentViewOutcome outcome, bool verified)
-        => outcome == InstrumentViewOutcome.Unknown && verified;
+    public static bool MovedWithNoWayBack(CameraViewReading? target, bool moved)
+        => target is null && moved;
 }

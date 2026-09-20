@@ -82,61 +82,84 @@ public class InstrumentViewPlanTests
         Assert.Equal(2, InstrumentViewPlan.InstrumentViewType);
     }
 
+    // ---- The way back ----
+    //
+    // The restore aims at a TARGET rather than at the reading this read happened to take, so a
+    // home owed by an earlier failed restore can outlive the read that recorded it
+    // (CameraHomePlan). And whether the app must confess to having moved the camera with no way
+    // back is decided by whether a move-write was DISPATCHED, never by whether the entry
+    // verified: a verified entry can be a camera that was already there, and an unverified one
+    // can be a write that landed while every read timed out.
+
+    private static readonly CameraViewReading CabinView = new(2, 1, 7);
+
     [Fact]
     public void AfterASwitch_TheCameraGoesBackToWhereItWas()
     {
-        var before = new CameraViewReading(2, 1, 7);
-
-        Assert.Equal((1, 7), InstrumentViewPlan.RestoreWrites(InstrumentViewOutcome.Switch, before));
+        Assert.Equal((1, 7), InstrumentViewPlan.RestoreWrites(CabinView, wantedIndex: 0, InstrumentViewOutcome.Switch));
     }
 
     [Fact]
-    public void AnUnverifiedSwitch_StillGoesBack()
+    public void AQuickviewGoesBackToo()
     {
-        // Switch always ATTEMPTED the write, so the camera may have moved whether or not the
-        // read-back confirmed it. The entry's verification is deliberately not consulted here.
-        var before = new CameraViewReading(2, 3, 2);
-
-        Assert.Equal((3, 2), InstrumentViewPlan.RestoreWrites(InstrumentViewOutcome.Switch, before));
-    }
-
-    [Fact]
-    public void AlreadyOnTheView_HasNothingToGoBackTo()
-    {
-        Assert.Null(InstrumentViewPlan.RestoreWrites(
-            InstrumentViewOutcome.AlreadyThere, new CameraViewReading(2, 2, 0)));
+        Assert.Equal((3, 2), InstrumentViewPlan.RestoreWrites(
+            new CameraViewReading(2, 3, 2), wantedIndex: 1, InstrumentViewOutcome.Switch));
     }
 
     [Fact]
     public void AnExternalCamera_WroteNothing_SoNothingGoesBack()
     {
         Assert.Null(InstrumentViewPlan.RestoreWrites(
-            InstrumentViewOutcome.NotInCockpit, new CameraViewReading(3, 0, 0)));
+            new CameraViewReading(3, 0, 0), wantedIndex: 2, InstrumentViewOutcome.NotInCockpit));
     }
 
     [Fact]
-    public void AnUnreadableCamera_LeftNoReadingToGoBackTo()
+    public void NoTarget_MeansNothingToGoBackTo()
     {
-        Assert.Null(InstrumentViewPlan.RestoreWrites(InstrumentViewOutcome.Unknown, null));
+        Assert.Null(InstrumentViewPlan.RestoreWrites(null, wantedIndex: 2, InstrumentViewOutcome.Unknown));
     }
 
-    // MovedWithNoWayBack is what tells RestoreAsync a verified Unknown entry moved the camera
-    // with nothing to send it back to — true only for that one combination. An unverified Unknown
-    // is most likely a write that never reached the sim at all, already covered by EnterAsync's
-    // own "Could not confirm" message; the other three outcomes either never moved the camera
-    // (AlreadyThere), wrote nothing (NotInCockpit), or have a reading to restore from (Switch), so
-    // RestoreWrites already handles them and this predicate must never fire for them.
-    [Theory]
-    [InlineData(InstrumentViewOutcome.Unknown, true, true)]
-    [InlineData(InstrumentViewOutcome.Unknown, false, false)]
-    [InlineData(InstrumentViewOutcome.Switch, true, false)]
-    [InlineData(InstrumentViewOutcome.Switch, false, false)]
-    [InlineData(InstrumentViewOutcome.AlreadyThere, true, false)]
-    [InlineData(InstrumentViewOutcome.AlreadyThere, false, false)]
-    [InlineData(InstrumentViewOutcome.NotInCockpit, true, false)]
-    [InlineData(InstrumentViewOutcome.NotInCockpit, false, false)]
-    public void MovedWithNoWayBack_IsTrueOnlyForAVerifiedUnknown(InstrumentViewOutcome outcome, bool verified, bool expected)
+    [Fact]
+    public void ATargetThatIsTheViewWeRead_NeedsNoWriteBack()
     {
-        Assert.Equal(expected, InstrumentViewPlan.MovedWithNoWayBack(outcome, verified));
+        // AlreadyThere with nothing owed: the pilot was sitting on the very view the read wanted,
+        // so there is nothing to put back and a write would be a no-op the restore then has to
+        // verify.
+        Assert.Null(InstrumentViewPlan.RestoreWrites(
+            new CameraViewReading(2, 2, 2), wantedIndex: 2, InstrumentViewOutcome.AlreadyThere));
+    }
+
+    [Fact]
+    public void AnOwedHome_GoesBackEvenWhenThisReadMovedNothing()
+    {
+        // The strand, one read later: the camera already sat on the wanted instrument view, so
+        // this read wrote nothing — but a previous restore still owes the pilot their cabin view.
+        Assert.Equal((1, 7), InstrumentViewPlan.RestoreWrites(CabinView, wantedIndex: 2, InstrumentViewOutcome.AlreadyThere));
+    }
+
+    [Fact]
+    public void AnOwedHome_GoesBackEvenWhenTheCameraCouldNotBeRead()
+    {
+        Assert.Equal((1, 7), InstrumentViewPlan.RestoreWrites(CabinView, wantedIndex: 0, InstrumentViewOutcome.Unknown));
+    }
+
+    // MovedWithNoWayBack is the app's confession that it moved the camera off wherever the pilot
+    // had it and cannot put it back. It needs BOTH halves: no target to aim at, and a write that
+    // actually went out. A write that was never dispatched (SimConnect down) moved nothing, so
+    // warning about it would be a false alarm over nothing.
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public void WithNoTarget_ItDependsOnWhetherAWriteWasDispatched(bool moved, bool expected)
+    {
+        Assert.Equal(expected, InstrumentViewPlan.MovedWithNoWayBack(target: null, moved));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void WithATargetToGoBackTo_ThereIsAlwaysAWayBack(bool moved)
+    {
+        Assert.False(InstrumentViewPlan.MovedWithNoWayBack(CabinView, moved));
     }
 }

@@ -11,14 +11,20 @@ public interface ICameraViewIo
     /// <summary>One-shot read of the camera; null when nothing arrives within <paramref name="timeoutMs"/> or the sim is not connected.</summary>
     Task<CameraViewReading?> ReadAsync(int timeoutMs);
 
-    /// <summary>Writes <c>CAMERA VIEW TYPE AND INDEX:0</c> (the type) then <c>:1</c> (the index), back to back.</summary>
-    void Set(int viewType, int viewIndex);
+    /// <summary>
+    /// Writes <c>CAMERA VIEW TYPE AND INDEX:0</c> (the type) then <c>:1</c> (the index), back to
+    /// back. True when the write was DISPATCHED to the simulator — not that the camera moved,
+    /// which only a read-back can say. False means nothing was sent at all (not connected, or the
+    /// call threw), which is what lets the caller tell "the camera may have moved" from "nothing
+    /// happened"; see <see cref="InstrumentViewPlan.MovedWithNoWayBack"/>.
+    /// </summary>
+    bool Set(int viewType, int viewIndex);
 
-    /// <summary>Writes <c>CAMERA VIEW TYPE AND INDEX:0</c> (the type) alone, so the caller can space the pair.</summary>
-    void SetViewType(int viewType);
+    /// <summary>Writes <c>CAMERA VIEW TYPE AND INDEX:0</c> (the type) alone, so the caller can space the pair. True when dispatched.</summary>
+    bool SetViewType(int viewType);
 
-    /// <summary>Writes <c>CAMERA VIEW TYPE AND INDEX:1</c> (the index) alone, so the caller can space the pair.</summary>
-    void SetViewIndex(int viewIndex);
+    /// <summary>Writes <c>CAMERA VIEW TYPE AND INDEX:1</c> (the index) alone, so the caller can space the pair. True when dispatched.</summary>
+    bool SetViewIndex(int viewIndex);
 }
 
 /// <summary>
@@ -30,17 +36,23 @@ public sealed record InstrumentViewRequest(ICameraViewIo Camera, int ViewIndex);
 
 /// <summary>
 /// The result of <see cref="InstrumentViewSwitcher.EnterAsync"/>, and the way back:
-/// <see cref="Before"/> is the camera as it read before the switch, which
-/// <see cref="InstrumentViewSwitcher.RestoreAsync"/> writes again after the capture. Created by
-/// the switcher only.
+/// <see cref="RestoreTarget"/> is the view <see cref="InstrumentViewSwitcher.RestoreAsync"/>
+/// writes again after the capture. Created by the switcher only.
 /// </summary>
 public sealed class InstrumentViewSession
 {
-    internal InstrumentViewSession(InstrumentViewOutcome outcome, bool verified, CameraViewReading? before)
+    internal InstrumentViewSession(
+        InstrumentViewOutcome outcome,
+        bool verified,
+        CameraViewReading? restoreTarget,
+        int wantedIndex,
+        bool moved)
     {
         Outcome = outcome;
         Verified = verified;
-        Before = before;
+        RestoreTarget = restoreTarget;
+        WantedIndex = wantedIndex;
+        Moved = moved;
     }
 
     public InstrumentViewOutcome Outcome { get; }
@@ -48,8 +60,23 @@ public sealed class InstrumentViewSession
     /// <summary>True when the camera was seen on the wanted view — including when it was there already.</summary>
     public bool Verified { get; }
 
-    /// <summary>The camera as it read before the switch, or null when it could not be read.</summary>
-    public CameraViewReading? Before { get; }
+    /// <summary>
+    /// The view the restore should aim at: the camera as it read before the switch, or a home
+    /// owed by an earlier FAILED restore that this read has not settled
+    /// (<see cref="CameraHomePlan"/>). Null when the camera could not be read and nothing is owed.
+    /// </summary>
+    public CameraViewReading? RestoreTarget { get; }
+
+    /// <summary>The instrument view index this read asked for — what a restore must NOT leave the camera on.</summary>
+    public int WantedIndex { get; }
+
+    /// <summary>
+    /// True when a write that would move the camera was DISPATCHED to the simulator. A fact about
+    /// what was sent, never about what the camera did — that is <see cref="Verified"/>'s job, and
+    /// conflating the two is what let a landed write with unreadable read-backs strand the pilot
+    /// in silence.
+    /// </summary>
+    public bool Moved { get; }
 }
 
 /// <summary>
@@ -77,7 +104,9 @@ public sealed class InstrumentViewSwitcher
     /// milliseconds) is measured to WORK, so the smallest gap that suffices is somewhere between
     /// and was never narrowed. It is deliberately its own constant rather than a second use of
     /// <see cref="DefaultSettleMs"/>, which measures a rendered frame before a screenshot — a
-    /// different quantity that happens to share a number today.
+    /// different quantity that happens to share a number today. The restore no longer touches
+    /// <see cref="DefaultSettleMs"/> at all: it used to spend one before its verify poll, which
+    /// was that very conflation, and the confirm after the poll made it redundant anyway.
     /// </summary>
     public const int DefaultWriteGapMs = 250;
 
@@ -85,8 +114,44 @@ public sealed class InstrumentViewSwitcher
     /// How long after a matching read-back the restore waits before re-reading to confirm the
     /// camera HELD. A refused write reads back as success for under ~150 ms (measured: one round
     /// trip already returns the settled wrong state), so this sits past that transient.
+    ///
+    /// The ENTRY path confirms with <see cref="DefaultSettleMs"/> instead, because it is already
+    /// spending that wait on a rendered frame before the capture and the confirm rides along for
+    /// the price of one read. Two constants for one rule because the two paths pay for the wait
+    /// differently — not because the rule differs.
     /// </summary>
     public const int DefaultHoldConfirmMs = 250;
+
+    /// <summary>
+    /// The index the restore drops to before it writes the view TYPE. Index 0 exists in every
+    /// view type that has any camera at all, which is what makes it safe as a waypoint.
+    ///
+    /// <para>
+    /// ⚠️ The sim validates the (type, index) PAIR when the TYPE register is written, and REFUSES
+    /// a type write whose CURRENT index is out of range for the type being written. Measured on
+    /// the live PMDG 737-800 (2026-09-20, MSFS 2024): sitting on instrument view index 7 with
+    /// <c>CAMERA VIEW TYPE AND INDEX MAX:1</c> advertising 6 pilot views, writing type 1 was
+    /// refused — repeatedly, with a 3 s settle and nothing else touching the camera, so it is
+    /// neither the ~150 ms transient nor a timing confound. Dropping the index to 3 first made the
+    /// identical type write succeed, and the index could then be written back to 7.
+    /// </para>
+    ///
+    /// <para>
+    /// That is a defect this aircraft hit on EVERY Alt+P and Alt+N read, because its captain-panel
+    /// view is index 7: the type write was refused, the camera stayed in the instrument type, and
+    /// the pilot's index was then written INTO it — sliding them to an instrument view they never
+    /// chose. This also explains the observation <c>docs/md11.md</c> recorded as unreconciled (a
+    /// spaced type-only write coming back unverified); it was never unexplained, just unmeasured.
+    /// </para>
+    ///
+    /// <para>
+    /// Note the index ceiling does NOT bound what the index register itself accepts: the pilot's
+    /// own camera sits at 1/7 and writing 7 once the type is already 1 works. Only the pair check
+    /// on the TYPE write consults it, which is why one extra write fixes this and why the earlier
+    /// conclusion that <c>MAX</c> is irrelevant to a restore was half right.
+    /// </para>
+    /// </summary>
+    public const int NeutralViewIndex = 0;
 
     private readonly ICameraViewIo _io;
     private readonly Func<int, Task> _delay;
@@ -97,6 +162,7 @@ public sealed class InstrumentViewSwitcher
     private readonly int _settleMs;
     private readonly int _writeGapMs;
     private readonly int _holdConfirmMs;
+    private readonly CameraHome _home;
 
     /// <param name="delay">Task.Delay in production; tests pass a recorder that completes at once.</param>
     /// <param name="now">Monotonic milliseconds — Environment.TickCount64 in production; tests pass a virtual clock the delay advances.</param>
@@ -109,7 +175,8 @@ public sealed class InstrumentViewSwitcher
         int verifyCapMs = DefaultVerifyCapMs,
         int settleMs = DefaultSettleMs,
         int writeGapMs = DefaultWriteGapMs,
-        int holdConfirmMs = DefaultHoldConfirmMs)
+        int holdConfirmMs = DefaultHoldConfirmMs,
+        CameraHome? home = null)
     {
         _io = io;
         _delay = delay ?? (ms => Task.Delay(ms));
@@ -120,41 +187,67 @@ public sealed class InstrumentViewSwitcher
         _settleMs = settleMs;
         _writeGapMs = writeGapMs;
         _holdConfirmMs = holdConfirmMs;
+        _home = home ?? CameraHome.Shared;
     }
 
     /// <summary>
     /// Reads the camera, writes the wanted instrument view when a write is called for, polls the
-    /// read-back until it matches (giving up after the cap), then waits one settle so the sim has
-    /// rendered a frame of the new view. Never throws; the session says what happened.
+    /// read-back until it matches, then settles and CONFIRMS the camera is still there before the
+    /// capture. Never throws; the session says what happened.
+    ///
+    /// <para>
+    /// The confirm is the same <see cref="ConfirmHeldAsync"/> the restore uses, and on this path
+    /// it is FREE: the settle it spends is the one this method already spent waiting for the sim
+    /// to render a frame of the new view, so the only added cost is one read. That matters
+    /// because a refused write reads back as success for a moment first (see
+    /// <see cref="RestoreAsync"/>), and without the confirm this path could match that transient,
+    /// report Verified, and hand the AI a frame of a view the camera had already left — a
+    /// confident wrong reading with nothing spoken.
+    /// </para>
     /// </summary>
     public async Task<InstrumentViewSession> EnterAsync(int wantedIndex)
     {
-        var before = await TryReadAsync();
+        // Retried once: a single timed-out read makes the outcome Unknown, which costs the pilot
+        // the way back and can make the app confess to a move that never happened. A second
+        // attempt turns almost every transient miss into a real outcome.
+        var before = await TryReadAsync() ?? await TryReadAsync();
+
+        var home = CameraHomePlan.For(_home.Owed, before);
+        if (home.ClearOwedHome) _home.Clear();
+
         var plan = InstrumentViewPlan.For(before, wantedIndex);
         if (plan.Writes is not { } writes)
-            return new InstrumentViewSession(plan.Outcome, plan.Outcome == InstrumentViewOutcome.AlreadyThere, before);
+            return new InstrumentViewSession(
+                plan.Outcome,
+                plan.Outcome == InstrumentViewOutcome.AlreadyThere,
+                home.RestoreTarget,
+                wantedIndex,
+                moved: false);
 
+        bool moved;
         try
         {
-            _io.Set(writes.Type, writes.Index);
+            moved = _io.Set(writes.Type, writes.Index);
         }
         catch (Exception ex)
         {
+            moved = false;
             Log.Debug("Camera", $"Setting camera view type {writes.Type} index {writes.Index} failed: {ex.Message}");
         }
 
-        bool verified = await PollUntilAsync(reading => InstrumentViewPlan.IsOn(reading, wantedIndex));
+        bool verified = await PollUntilAsync(reading => InstrumentViewPlan.IsOn(reading, wantedIndex))
+                        && await ConfirmHeldAsync(_settleMs, reading => InstrumentViewPlan.IsOn(reading, wantedIndex));
 
-        if (verified) await _delay(_settleMs);
-        else Log.Debug("Camera", $"Instrument view {wantedIndex} did not verify within {_verifyCapMs} ms (outcome {plan.Outcome})");
+        if (!verified)
+            Log.Debug("Camera", $"Instrument view {wantedIndex} did not verify within {_verifyCapMs} ms (outcome {plan.Outcome})");
 
-        return new InstrumentViewSession(plan.Outcome, verified, before);
+        return new InstrumentViewSession(plan.Outcome, verified, home.RestoreTarget, wantedIndex, moved);
     }
 
     /// <summary>
-    /// Puts the pilot's camera back where <see cref="EnterAsync"/> found it: write the TYPE, let
-    /// the sim take it, write the INDEX, let it settle, then read back and CONFIRM IT HELD.
-    /// Never throws.
+    /// Puts the pilot's camera back where <see cref="EnterAsync"/> found it: drop the INDEX to
+    /// <see cref="NeutralViewIndex"/>, write the TYPE, write the pilot's INDEX — each on its own
+    /// frame — then poll and CONFIRM IT HELD. Never throws.
     ///
     /// <para>
     /// ⚠️ The two registers must be written on SEPARATE frames, and the read-back must be
@@ -173,9 +266,9 @@ public sealed class InstrumentViewSwitcher
     ///   <item><description>
     ///     The refused write is READABLE AS SUCCESS for a moment first. The shipped code polled
     ///     immediately, matched that transient, and reported success — so a pilot left on the
-    ///     instrument view heard nothing at all. The bogus value lives under ~150 ms (one MCP
-    ///     round-trip already reads the settled wrong state), which is why the confirm waits a
-    ///     settle and then re-reads rather than trusting the first matching poll.
+    ///     instrument view heard nothing at all. The bogus value lives under ~150 ms, which is
+    ///     why <see cref="ConfirmHeldAsync"/> settles and re-reads rather than trusting the first
+    ///     matching poll.
     ///   </description></item>
     /// </list>
     ///
@@ -183,54 +276,114 @@ public sealed class InstrumentViewSwitcher
     /// TYPE before INDEX is load-bearing independently of the spacing: while the camera is still
     /// in the instrument type an index write acts immediately, so writing the index first slides
     /// the camera to THAT instrument view and strands the pilot there if the type write is then
-    /// refused (measured on the MD-11, 2026-09-09; reproduced on the iFly above).
+    /// refused (measured on the MD-11, 2026-09-09; reproduced on the iFly above). For the same
+    /// reason a type write that was never DISPATCHED skips the index write entirely — sending the
+    /// index alone is that failure done deliberately.
     /// </para>
     ///
     /// <para>
     /// The ENTRY path deliberately keeps its single back-to-back <see cref="ICameraViewIo.Set"/>:
     /// it is measured working on two aircraft, and it moves INTO the instrument type, where both
     /// registers are in range. Do not "harmonise" the two — the failure is specific to leaving it.
+    /// The two paths DO share one settle-then-confirm rule; it is only the write that differs.
     /// </para>
     /// </summary>
     /// <returns>
     /// True when the camera is where the pilot left it, or was never moved. False when it is
     /// somewhere they did not choose: a restore was attempted and the read-back either never
-    /// reached the wanted view or did not HOLD it; or the entry wrote the instrument view with no
-    /// reading to remember and that write is confirmed to have landed
-    /// (<see cref="InstrumentViewPlan.MovedWithNoWayBack"/>).
+    /// reached the wanted view or did not HOLD it; or the entry dispatched a move with no view to
+    /// go back to (<see cref="InstrumentViewPlan.MovedWithNoWayBack"/>). A false return publishes
+    /// the view still owed to the pilot, so the NEXT read can finish the job.
+    ///
+    /// Where a FAILED restore leaves the camera is not promised: the neutral-index write lands
+    /// first, so a failure after it leaves the pilot on instrument view
+    /// <see cref="NeutralViewIndex"/> rather than on the view the read used. Neither is a view
+    /// they chose, the pilot is told either way, and the owed home is what actually gets them
+    /// back — so do not write code that assumes the camera sits on the read's own view afterwards.
     /// </returns>
     public async Task<bool> RestoreAsync(InstrumentViewSession session)
     {
-        if (InstrumentViewPlan.RestoreWrites(session.Outcome, session.Before) is not { } writes)
-            return !InstrumentViewPlan.MovedWithNoWayBack(session.Outcome, session.Verified);
+        if (InstrumentViewPlan.RestoreWrites(session.RestoreTarget, session.WantedIndex, session.Outcome)
+            is not { } writes)
+        {
+            bool stranded = InstrumentViewPlan.MovedWithNoWayBack(session.RestoreTarget, session.Moved);
+            if (!stranded) _home.Clear();
+            return !stranded;
+        }
 
         try
         {
-            _io.SetViewType(writes.Type);
+            // Drop the index to a value every view type has before touching the TYPE register.
+            // The sim validates the PAIR on a type write and refuses one whose CURRENT index is
+            // out of range for the type being written — see NeutralViewIndex.
+            _io.SetViewIndex(NeutralViewIndex);
             await _delay(_writeGapMs);
-            _io.SetViewIndex(writes.Index);
+
+            if (_io.SetViewType(writes.Type))
+            {
+                await _delay(_writeGapMs);
+                _io.SetViewIndex(writes.Index);
+            }
+            else
+            {
+                Log.Debug("Camera", $"Camera view type {writes.Type} was not dispatched; not sending the index alone");
+            }
         }
         catch (Exception ex)
         {
             Log.Debug("Camera", $"Restoring camera view type {writes.Type} index {writes.Index} failed: {ex.Message}");
         }
 
-        await _delay(_settleMs);
+        bool held = await PollUntilAsync(reading => reading.IsAt(writes.Type, writes.Index))
+                    && await ConfirmHeldAsync(_holdConfirmMs, reading => reading.IsAt(writes.Type, writes.Index));
 
-        if (!await PollUntilAsync(reading => reading.IsAt(writes.Type, writes.Index)))
+        if (held)
         {
-            Log.Debug("Camera", $"Camera did not return to view type {writes.Type} index {writes.Index} within {_verifyCapMs} ms");
-            return false;
+            _home.Clear();
+            return true;
         }
 
-        // The match above is not proof: a refused write reads back correct for a moment and then
-        // reverts. Only a reading that still agrees after a second settle says the camera stayed.
-        await _delay(_holdConfirmMs);
-        var held = await TryReadAsync();
-        if (held is { } reading && reading.IsAt(writes.Type, writes.Index))
-            return true;
+        // The pilot is not home. Remember where home was, so the next display read aims there
+        // instead of at the instrument view this one left them on — without this a failed restore
+        // is permanent AND silent after its one warning.
+        _home.Owe(session.RestoreTarget);
+        Log.Debug("Camera", $"Camera did not return to view type {writes.Type} index {writes.Index}; home is owed");
+        return false;
+    }
 
-        Log.Debug("Camera", $"Camera reached view type {writes.Type} index {writes.Index} but did not hold it after {_holdConfirmMs} ms (read back {Describe(held)})");
+    /// <summary>
+    /// Settles, then re-reads and requires the camera to STILL satisfy <paramref name="isThere"/>.
+    /// The one rule both <see cref="EnterAsync"/> and <see cref="RestoreAsync"/> use to turn a
+    /// matching poll into a verdict, so it can only be stated once — and can only drift once.
+    ///
+    /// <para>
+    /// A poll match is not proof: a refused camera write reads back correct for under ~150 ms and
+    /// then reverts. The settle outlasts that, and the read after it is what separates a write
+    /// that took from one that only looked like it did.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ A read that returns NOTHING is not evidence of reversion. It is a 500 ms SimConnect
+    /// timeout, a disconnect, or an aircraft switch — none of which say anything about the
+    /// camera. One retry, and then the poll's own verdict stands. Treating an unreadable camera
+    /// as a failure is how a correct restore came to announce "Could not return to your previous
+    /// view", which is the false alarm that teaches a pilot to ignore the real one.
+    /// </para>
+    /// </summary>
+    private async Task<bool> ConfirmHeldAsync(int settleMs, Func<CameraViewReading, bool> isThere)
+    {
+        await _delay(settleMs);
+
+        var held = await TryReadAsync() ?? await TryReadAsync();
+        if (held is not { } reading)
+        {
+            Log.Debug("Camera", "Could not re-read the camera to confirm; keeping the verdict the poll reached");
+            return true;
+        }
+
+        if (isThere(reading)) return true;
+
+        Log.Debug("Camera", $"Camera did not hold after {settleMs} ms (read back {Describe(held)})");
         return false;
     }
 

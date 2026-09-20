@@ -13,6 +13,33 @@ public class InstrumentViewSwitcherTests
     {
         public CameraViewReading? Current;
         public bool HonoursWrites = true;
+
+        /// <summary>
+        /// False models a sim nothing reaches: SimConnect down, so the write never leaves the
+        /// process. Distinct from <see cref="HonoursWrites"/>, which models a write that WAS sent
+        /// and the sim declined — the distinction the restore's "did we move the pilot" decision
+        /// now rests on.
+        /// </summary>
+        public bool DispatchesWrites = true;
+
+        /// <summary>False models only the TYPE register refusing dispatch, so the index must not follow it.</summary>
+        public bool DispatchesViewType = true;
+
+        /// <summary>
+        /// Per-view-type index ceiling, modelling the sim's PAIR validation: a TYPE write is
+        /// refused when the index register currently holds a value out of range for the type
+        /// being written. Measured on the live PMDG 737-800 (2026-09-20): sitting on instrument
+        /// view index 7 with CAMERA VIEW TYPE AND INDEX MAX:1 = 6, writing type 1 was refused
+        /// every time, with a 3 s settle and no other traffic; dropping the index to 3 first made
+        /// the identical type write succeed. Null = this fake does not model the ceiling.
+        /// </summary>
+        public Dictionary<int, int>? MaxIndexByType;
+
+        /// <summary>Reads that return nothing, counted down — a timed-out camera read, not a reverted camera.</summary>
+        public int NullReads;
+
+        /// <summary>After this many further reads, every read returns nothing. int.MaxValue = never.</summary>
+        public int GoodReadsBeforeNull = int.MaxValue;
         public bool ThrowOnSet;
         public bool ThrowOnRead;
         public long Clock;
@@ -45,6 +72,13 @@ public class InstrumentViewSwitcherTests
         {
             if (ThrowOnRead) throw new InvalidOperationException("SimConnect down");
             Clock += ReadCostMs;
+            if (NullReads > 0)
+            {
+                NullReads--;
+                return Task.FromResult<CameraViewReading?>(null);
+            }
+            if (GoodReadsBeforeNull <= 0) return Task.FromResult<CameraViewReading?>(null);
+            if (GoodReadsBeforeNull != int.MaxValue) GoodReadsBeforeNull--;
             if (RevertArmed && _readsSinceArmed++ >= RevertAfterReads)
             {
                 Current = RevertTo;
@@ -53,42 +87,59 @@ public class InstrumentViewSwitcherTests
             return Task.FromResult(Current);
         }
 
-        public void Set(int viewType, int viewIndex)
+        public bool Set(int viewType, int viewIndex)
         {
             if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
+            if (!DispatchesWrites) return false;
             Writes.Add((viewType, viewIndex));
             if (HonoursWrites && Current is { } c)
                 Current = c with { ViewType = viewType, ViewIndex = ClampIndexTo ?? viewIndex };
             AfterSet?.Invoke();
+            return true;
         }
 
-        public void SetViewType(int viewType)
+        public bool SetViewType(int viewType)
         {
             if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
+            if (!DispatchesWrites || !DispatchesViewType) return false;
             RegisterWrites.Add(("type", viewType));
-            if (HonoursWrites && Current is { } c)
+            // The write is DISPATCHED either way -- the sim simply declines to act on a pair it
+            // considers out of range, exactly as it does for a clamped index.
+            if (HonoursWrites && Current is { } c && PairIsInRange(viewType, c.ViewIndex))
                 Current = c with { ViewType = viewType };
             AfterSet?.Invoke();
+            return true;
         }
 
-        public void SetViewIndex(int viewIndex)
+        private bool PairIsInRange(int viewType, int viewIndex)
+            => MaxIndexByType is not { } ceilings
+               || !ceilings.TryGetValue(viewType, out int max)
+               || viewIndex <= max;
+
+        public bool SetViewIndex(int viewIndex)
         {
             if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
+            if (!DispatchesWrites) return false;
             RegisterWrites.Add(("index", viewIndex));
             if (HonoursWrites && Current is { } c)
                 Current = c with { ViewIndex = ClampIndexTo ?? viewIndex };
             AfterSet?.Invoke();
+            return true;
         }
     }
 
-    private static (InstrumentViewSwitcher Switcher, List<int> Delays, FakeCamera Camera) Make(FakeCamera camera)
+    private static (InstrumentViewSwitcher Switcher, List<int> Delays, FakeCamera Camera) Make(
+        FakeCamera camera, CameraHome? home = null)
     {
         var delays = new List<int>();
         camera.Clock = 0;
         var switcher = new InstrumentViewSwitcher(
             camera,
             delay: ms => { delays.Add(ms); camera.Clock += ms; return Task.CompletedTask; },
-            now: () => camera.Clock);
+            now: () => camera.Clock,
+            // Its own memory, never the app-wide one: a test that owed a home would otherwise
+            // leak it into every later test in the class.
+            home: home ?? new CameraHome());
         return (switcher, delays, camera);
     }
 
@@ -218,9 +269,10 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
 
-        // The entry is one back-to-back Set; the restore is the SPACED pair, type before index.
+        // The entry is one back-to-back Set; the restore is the SPACED sequence, and it drops the
+        // index to a universally valid one first -- see NeutralViewIndex.
         Assert.Equal(new[] { (2, 0) }, camera.Writes);
-        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
+        Assert.Equal(new[] { ("index", 0), ("type", 1), ("index", 7) }, camera.RegisterWrites);
         Assert.Equal(new CameraViewReading(2, 1, 7), camera.Current);
     }
 
@@ -234,7 +286,7 @@ public class InstrumentViewSwitcherTests
         Assert.True(await switcher.RestoreAsync(session));
 
         Assert.Equal(new[] { (2, 1) }, camera.Writes);
-        Assert.Equal(new[] { ("type", 3), ("index", 2) }, camera.RegisterWrites);
+        Assert.Equal(new[] { ("index", 0), ("type", 3), ("index", 2) }, camera.RegisterWrites);
     }
 
     [Fact]
@@ -250,7 +302,11 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
 
-        // gap between type and index, settle before judging, then the hold confirm.
+        // A gap after the neutral index, a gap after the type, then the confirm settle. There is
+        // no FOURTH delay: the
+        // restore used to settle before its poll AND again before the confirm, outlasting the same
+        // ~150 ms transient twice -- and the first of those reused DefaultSettleMs, the "render a
+        // frame before a screenshot" constant, four lines below the doc saying not to.
         Assert.Equal(new[] { 250, 250, 250 }, delays);
     }
 
@@ -269,7 +325,7 @@ public class InstrumentViewSwitcherTests
         camera.RevertTo = new CameraViewReading(2, 2, 0);
 
         Assert.False(await switcher.RestoreAsync(session));
-        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
+        Assert.Equal(new[] { ("index", 0), ("type", 1), ("index", 7) }, camera.RegisterWrites);
     }
 
     [Fact]
@@ -286,7 +342,7 @@ public class InstrumentViewSwitcherTests
         // False alone would also pass an implementation that returned false WITHOUT attempting
         // the restore write — that distinction is the whole point of the feature.
         Assert.False(await switcher.RestoreAsync(session));
-        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
+        Assert.Equal(new[] { ("index", 0), ("type", 1), ("index", 7) }, camera.RegisterWrites);
     }
 
     [Fact]
@@ -325,56 +381,170 @@ public class InstrumentViewSwitcherTests
     }
 
     [Fact]
-    public async Task RestoreAsync_WhenTheCameraWasUnreadable_WritesNothing_AndReportsSuccess()
+    public async Task RestoreAsync_WhenTheWriteLandedButNothingCouldBeRead_ReportsFailure()
     {
-        // Unknown never had a reading to remember, so there is nothing to claim failure about.
+        // THE silent strand, and why the restore no longer reads Verified as a proxy for "the
+        // write landed". The camera definition can fail to register on its own -- it has its own
+        // catch -- while writes keep landing, because SetSimVar builds its own temporary data
+        // definition and never touches the camera one. Every read then returns nothing, so the
+        // outcome is Unknown and unverified, yet the camera really did move. The old rule called
+        // that "nothing moved" and returned true, leaving the pilot on the instrument view on
+        // every read of the session, in silence.
         var camera = new FakeCamera { Current = null };
         var (switcher, _, _) = Make(camera);
+
         var session = await switcher.EnterAsync(3);
-        camera.Writes.Clear();
 
-        Assert.True(await switcher.RestoreAsync(session));
-        Assert.Empty(camera.Writes);
-        Assert.Empty(camera.RegisterWrites);
-    }
-
-    [Fact]
-    public async Task RestoreAsync_WhenTheEntryWasAVerifiedUnknown_ReportsFailure_AndWritesNothingFurther()
-    {
-        // The failure this pins: SimConnect is connected, the entry read times out once (Unknown,
-        // nothing to remember), the write lands, and the NEXT poll read succeeds — so the entry
-        // reports Verified even though InstrumentViewPlan.RestoreWrites has nothing to go back to.
-        // Before the fix RestoreAsync returned true here and the pilot's replaced view — a custom
-        // cabin/wing camera this app cannot recall — was never reported as un-restorable.
-        var camera = new FakeCamera { Current = null };
-        camera.AfterSet = () => camera.Current = new CameraViewReading(2, 2, 3);
-        var (switcher, _, _) = Make(camera);
-        var session = await switcher.EnterAsync(3);
-        Assert.Equal(InstrumentViewOutcome.Unknown, session.Outcome);
-        Assert.True(session.Verified);
-        camera.Writes.Clear();
-
-        Assert.False(await switcher.RestoreAsync(session));
-        Assert.Empty(camera.Writes);
-        Assert.Empty(camera.RegisterWrites);
-    }
-
-    [Fact]
-    public async Task RestoreAsync_WhenTheEntryWasAnUnverifiedUnknown_ReportsSuccess()
-    {
-        // The companion case: the camera never became readable at all, so EnterAsync's own
-        // "Could not confirm the cockpit view switch" already covered it for the pilot —
-        // RestoreAsync must stay silent rather than raise a second, false alarm.
-        var camera = new FakeCamera { Current = null };
-        var (switcher, _, _) = Make(camera);
-        var session = await switcher.EnterAsync(3);
         Assert.Equal(InstrumentViewOutcome.Unknown, session.Outcome);
         Assert.False(session.Verified);
-        camera.Writes.Clear();
+        Assert.True(session.Moved);
+        Assert.False(await switcher.RestoreAsync(session));
+    }
 
+    [Fact]
+    public async Task RestoreAsync_WhenNoWriteWasEverDispatched_ReportsSuccess()
+    {
+        // The companion, and why the fix is the DISPATCH fact rather than "always warn on
+        // Unknown": with SimConnect down nothing left the process, so the camera is exactly where
+        // the pilot put it. Warning here would be a false alarm over nothing that moved.
+        var camera = new FakeCamera { Current = null, DispatchesWrites = false };
+        var (switcher, _, _) = Make(camera);
+
+        var session = await switcher.EnterAsync(3);
+
+        Assert.Equal(InstrumentViewOutcome.Unknown, session.Outcome);
+        Assert.False(session.Moved);
         Assert.True(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
         Assert.Empty(camera.RegisterWrites);
+    }
+
+    [Fact]
+    public async Task EnterAsync_RetriesTheFirstReadOnce_SoOneTimeoutIsNotAnUnknown()
+    {
+        // A single timed-out read used to cost the pilot the way back for the whole read, and
+        // could make the app confess to a move that never happened. The retry turns it into an
+        // ordinary Switch with a reading to restore to.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7), NullReads = 1 };
+        var (switcher, _, _) = Make(camera);
+
+        var session = await switcher.EnterAsync(0);
+
+        Assert.Equal(InstrumentViewOutcome.Switch, session.Outcome);
+        Assert.Equal(new CameraViewReading(2, 1, 7), session.RestoreTarget);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheConfirmingReadTimesOut_DoesNotReportFailure()
+    {
+        // A read that returns nothing is a SimConnect timeout, a disconnect or an aircraft
+        // switch -- none of which say anything about the camera. The poll has already seen it
+        // home. Scoring the unreadable confirm as a failure is how a CORRECT restore came to
+        // announce "Could not return to your previous view.", the false alarm that teaches a
+        // pilot to ignore the real one.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+
+        // One good read for the restore's poll to match on, then nothing for both confirm reads.
+        camera.GoodReadsBeforeNull = 1;
+
+        Assert.True(await switcher.RestoreAsync(session));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheTypeWriteIsNotDispatched_DoesNotSendTheIndexAlone()
+    {
+        // Writing the index alone slides the camera to THAT instrument view -- the documented
+        // worse case. If the type write never went out, the index must not follow it.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+        camera.DispatchesViewType = false;
+
+        Assert.False(await switcher.RestoreAsync(session));
+
+        // The neutral index goes out -- it is what makes the type write legal -- and then nothing
+        // else: an undispatched write is not recorded, and the pilot's OWN index must not follow
+        // a type write that never left the process, or it lands in the instrument type and slides
+        // them to an instrument view they never chose.
+        Assert.Equal(new[] { ("index", 0) }, camera.RegisterWrites);
+    }
+
+    [Fact]
+    public async Task AFailedRestore_LeavesTheNextReadAimingAtTheOwedHome()
+    {
+        // The strand made permanent, which a per-read memory structurally cannot see: the failed
+        // restore leaves the camera on the instrument view, so the NEXT read reads THAT as "where
+        // the pilot was", puts them back on it and reports success. The pilot is never told again
+        // and the app can never get them home. With the home owed, the next read aims at the
+        // cabin view and finishes the job.
+        var home = new CameraHome();
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera, home);
+        var first = await switcher.EnterAsync(0);
+        camera.HonoursWrites = false;                        // the restore will not take
+
+        Assert.False(await switcher.RestoreAsync(first));
+        Assert.Equal(new CameraViewReading(2, 1, 7), home.Owed);
+
+        camera.HonoursWrites = true;
+        camera.Current = new CameraViewReading(2, 2, 0);     // stranded on the instrument view
+        var second = await switcher.EnterAsync(0);
+
+        Assert.Equal(new CameraViewReading(2, 1, 7), second.RestoreTarget);
+        Assert.True(await switcher.RestoreAsync(second));
+        Assert.Null(home.Owed);
+    }
+
+    [Fact]
+    public async Task ThePilotTakingTheirOwnView_SettlesTheOwedHome()
+    {
+        // The other way a debt ends: the pilot got themselves out. Dragging them back to a stale
+        // home would be the same defect pointed the other way.
+        var home = new CameraHome();
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera, home);
+        var first = await switcher.EnterAsync(0);
+        camera.HonoursWrites = false;
+        Assert.False(await switcher.RestoreAsync(first));
+
+        camera.HonoursWrites = true;
+        camera.Current = new CameraViewReading(2, 3, 2);     // the pilot picked a quickview
+        var second = await switcher.EnterAsync(0);
+
+        Assert.Equal(new CameraViewReading(2, 3, 2), second.RestoreTarget);
+        Assert.Null(home.Owed);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_GetsHomeWhenTheInstrumentIndexIsOutOfRangeForThePilotType()
+    {
+        // THE PMDG 737 case, measured live 2026-09-20. Its PFD/ND read uses instrument view index
+        // 7, and CAMERA VIEW TYPE AND INDEX MAX:1 advertises 6 pilot views -- so at the moment the
+        // restore writes the TYPE, the index register holds 7, which is out of range for type 1.
+        // The sim validates the PAIR and refuses the type write. Confirmed with a 3 s settle and
+        // no other traffic, so it is not the ~150 ms transient and not a timing confound.
+        //
+        // The old two-write restore therefore left the camera in the instrument TYPE and then
+        // wrote the pilot's index into it -- sliding the pilot to an instrument view they never
+        // chose, on every single Alt+P and Alt+N read of that aircraft. Dropping the index to a
+        // value valid for both types first is what makes the pair legal for the type write.
+        var camera = new FakeCamera
+        {
+            Current = new CameraViewReading(2, 1, 7),
+            MaxIndexByType = new Dictionary<int, int> { [1] = 6, [2] = 15 },
+        };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(7);
+        Assert.Equal(new CameraViewReading(2, 2, 7), camera.Current);   // on the instrument view
+
+        Assert.True(await switcher.RestoreAsync(session));
+
+        Assert.Equal(new CameraViewReading(2, 1, 7), camera.Current);   // and home again
+        Assert.Equal(
+            new[] { ("index", 0), ("type", 1), ("index", 7) },
+            camera.RegisterWrites);
     }
 
     [Fact]
@@ -399,7 +569,7 @@ public class InstrumentViewSwitcherTests
         // A throwing read-back must not stop the restore WRITE from being attempted — only the
         // verification poll that follows it fails, over and over, until the cap gives up on it.
         Assert.False(await switcher.RestoreAsync(session));
-        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
+        Assert.Equal(new[] { ("index", 0), ("type", 1), ("index", 7) }, camera.RegisterWrites);
     }
 
     [Fact]
