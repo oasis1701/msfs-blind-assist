@@ -23,6 +23,9 @@ public sealed class OnlineFeatureStore
     private readonly Dictionary<string, IReadOnlyList<AirportFeature>> _byIcao = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Task<IReadOnlyList<AirportFeature>?>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _failedAt = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Bumped by <see cref="Clear"/>. A fetch carries the epoch it started under and
+    /// writes nothing back once that has moved on — see the note there.</summary>
+    private int _epoch;
 
     public OnlineFeatureStore(Fetcher fetch, Func<DateTime>? utcNow = null) { _fetch = fetch; _utcNow = utcNow ?? (() => DateTime.UtcNow); }
 
@@ -39,19 +42,31 @@ public sealed class OnlineFeatureStore
             if (_byIcao.TryGetValue(key, out var cached)) return cached;
             if (_failedAt.TryGetValue(key, out var when) && _utcNow() - when < FailureMemory) return None;
             if (!_inFlight.TryGetValue(key, out task!))
+            {
+                // The epoch is read HERE, under the lock, not inside the lambda: the lambda runs
+                // once the pool picks the work up, by which time a Clear could have moved _epoch
+                // on — the fetch would then carry the NEW epoch and its stale answer would be
+                // accepted, which is the one thing the epoch exists to prevent.
+                int epoch = _epoch;
                 // Task.Run, never a bare call: RunAsync's completion bookkeeping takes _lock —
                 // which we are holding, and Monitor grants re-entrantly to the SAME thread — so a
                 // fetch that finished inline would remove an _inFlight entry this line has not
                 // written yet, parking a completed task there that nothing can ever clear. Past
                 // the failure window the airport would then answer from it forever and never
                 // fetch again. Off on the pool, that bookkeeping simply waits for this lock.
-                _inFlight[key] = task = Task.Run(() => RunAsync(key, lat, lon, box));
+                _inFlight[key] = task = Task.Run(() => RunAsync(key, lat, lon, box, epoch));
+            }
         }
 
-        var winner = await Task.WhenAny(task, Task.Delay(maxWait)).ConfigureAwait(false);
-        if (winner != task)
+        try
         {
-            // We are leaving without the result: whoever built on "nothing" must hear when it lands.
+            return (await task.WaitAsync(maxWait).ConfigureAwait(false)) ?? None;
+        }
+        catch (TimeoutException)
+        {
+            // We are leaving without the result — the fetch itself runs on. WaitAsync rather than
+            // WhenAny(task, Task.Delay(…)), which arms a timer nothing cancels when the fetch wins.
+            // Whoever built on "nothing" must hear when it lands.
             _ = task.ContinueWith(t =>
             {
                 if (t.Status == TaskStatus.RanToCompletion && t.Result is { Count: > 0 })
@@ -59,12 +74,11 @@ public sealed class OnlineFeatureStore
             }, TaskScheduler.Default);
             return None;
         }
-        return (await task.ConfigureAwait(false)) ?? None;
     }
 
     /// <summary>Always started through Task.Run (see GetAsync) — so it owns a pool thread, and a
     /// fetcher that blocks or throws before its first await costs the caller nothing.</summary>
-    private async Task<IReadOnlyList<AirportFeature>?> RunAsync(string key, double lat, double lon, AirportFacilities? box)
+    private async Task<IReadOnlyList<AirportFeature>?> RunAsync(string key, double lat, double lon, AirportFacilities? box, int epoch)
     {
         IReadOnlyList<AirportFeature>? result = null;
         try
@@ -75,6 +89,13 @@ public sealed class OnlineFeatureStore
         catch (Exception ex) { Log.Warn("Surroundings", $"online feature fetch failed for {key}: {ex.Message}"); }
         lock (_lock)
         {
+            // Cleared while we were out (a database switch): this answer was filtered against the
+            // OLD database's airport box, Clear has already dropped our _inFlight entry, and a
+            // newer fetch may hold the key — so touch nothing, and report nothing, which is also
+            // what keeps FeaturesUpdated from asking anyone to rebuild on it.
+            if (epoch != _epoch) return null;
+            // Unchanged epoch means no Clear since we started, and a second fetch for this key can
+            // only begin once the entry is gone — so whatever is here is ours.
             _inFlight.Remove(key);
             if (result != null) { _byIcao[key] = result; _failedAt.Remove(key); }
             else _failedAt[key] = _utcNow();
@@ -82,5 +103,9 @@ public sealed class OnlineFeatureStore
         return result;
     }
 
-    public void Clear() { lock (_lock) { _byIcao.Clear(); _failedAt.Clear(); } }
+    /// <summary>Forgets every airport, including a fetch already in flight: the caller (a database
+    /// switch) has changed what a result would have been filtered against. Dropping the in-flight
+    /// entries too is what lets the next GetAsync start a fresh fetch under the new epoch rather
+    /// than wait on one whose answer is about to be discarded.</summary>
+    public void Clear() { lock (_lock) { _epoch++; _byIcao.Clear(); _failedAt.Clear(); _inFlight.Clear(); } }
 }

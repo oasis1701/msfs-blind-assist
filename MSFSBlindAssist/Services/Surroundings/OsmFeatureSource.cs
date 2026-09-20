@@ -79,7 +79,12 @@ public sealed class OsmFeatureSource
         var features = Parse(body);
         if (features.Count > 0) return features;
 
+        // A fallback that never reached a mirror is a FAILURE, not an airport without buildings:
+        // returning the empty list would have the store cache "nothing here" for the session,
+        // where null is remembered for OnlineFeatureStore.FailureMemory and then retried. An
+        // aerodrome OSM has not tagged with icao= takes this path every time, so the difference
+        // is the whole feature for those airports.
         string? fallback = await _client.PostAsync(BuildFallbackQuery(lat, lon), ct).ConfigureAwait(false);
-        return fallback == null ? features : KeepInsideBox(Parse(fallback), box);
+        return fallback == null ? null : KeepInsideBox(Parse(fallback), box);
     }
 }

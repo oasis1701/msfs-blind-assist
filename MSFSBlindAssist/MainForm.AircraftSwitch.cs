@@ -1303,6 +1303,10 @@ public partial class MainForm
         // database's stands and buildings for the rest of the session.
         surroundingsCache.Clear();
 
+        // And the stored OSM buildings with it: a radius-sourced result is kept only inside the
+        // navdata airport box, which this switch has just changed.
+        onlineFeatures?.Clear();
+
         // And anything holding runway GEOMETRY from the old database. Both of these captured a
         // whole runway list when the pilot set them up, and both now use it at touchdown to decide
         // which runway the aircraft is on — the landing-exit plan to choose the rollout's

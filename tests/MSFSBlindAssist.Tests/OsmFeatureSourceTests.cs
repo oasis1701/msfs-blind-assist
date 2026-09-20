@@ -1,6 +1,8 @@
+using System.Net;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services.Surroundings;
+using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -51,5 +53,44 @@ public class OsmFeatureSourceTests
         var kept = OsmFeatureSource.KeepInsideBox(new[] { inside, chevron }, box);
         Assert.Same(inside, Assert.Single(kept));
         Assert.Empty(OsmFeatureSource.KeepInsideBox(new[] { inside, chevron }, null));   // fail closed
+    }
+
+    // ---- The two-request sequence ---------------------------------------------------------
+    //
+    // Driven through a fake HttpMessageHandler rather than a network: the area query and the
+    // fallback are told apart by the posted `data` (only the area query names an aerodrome).
+    // Nothing here depends on WHICH mirror answers, so OverpassClient's process-wide cooldown
+    // map cannot make these order-dependent — the cooldown only ever reorders the attempts.
+
+    private sealed class ScriptedMirror : HttpMessageHandler
+    {
+        private readonly Func<string, HttpResponseMessage> _reply;
+        public ScriptedMirror(Func<string, HttpResponseMessage> reply) { _reply = reply; }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => _reply(await request.Content!.ReadAsStringAsync(ct));
+    }
+
+    private static OsmFeatureSource SourceOver(Func<bool, HttpResponseMessage> reply)
+        => new(new OverpassClient(new HttpClient(new ScriptedMirror(
+            posted => reply(posted.Contains("aerodrome", StringComparison.Ordinal))))));
+
+    private static HttpResponseMessage NoElements() => new(HttpStatusCode.OK) { Content = new StringContent("{\"elements\":[]}") };
+
+    [Fact]
+    public async Task A_fallback_that_never_reached_a_mirror_is_a_failure_not_an_airport_without_buildings()
+    {
+        // Every mirror down for the SECOND request: null, so the store remembers a failure and
+        // retries — an empty list would cache "no buildings here" for the whole session.
+        var source = SourceOver(isAreaQuery => isAreaQuery ? NoElements() : new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_fallback_that_answers_with_nothing_really_is_an_airport_without_buildings()
+    {
+        var source = SourceOver(_ => NoElements());
+        var features = await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None);
+        Assert.NotNull(features);
+        Assert.Empty(features);
     }
 }

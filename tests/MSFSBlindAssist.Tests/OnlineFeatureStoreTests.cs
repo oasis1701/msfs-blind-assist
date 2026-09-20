@@ -74,4 +74,50 @@ public class OnlineFeatureStoreTests
         var store = new OnlineFeatureStore((_, _, _, _, _) => throw new InvalidOperationException("boom")) { Enabled = true };
         Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Long));
     }
+
+    [Fact]
+    public async Task Clear_empties_a_served_airport_so_the_next_call_fetches_again()
+    {
+        int fetches = 0;
+        var store = new OnlineFeatureStore((_, _, _, _, _) =>
+        {
+            Interlocked.Increment(ref fetches);
+            return Task.FromResult<IReadOnlyList<AirportFeature>?>(OneHangar);
+        })
+        { Enabled = true };
+
+        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Equal(1, fetches);                                          // served from the cache
+
+        store.Clear();
+        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Equal(2, fetches);
+    }
+
+    [Fact]
+    public async Task A_fetch_still_running_across_a_Clear_is_discarded_and_the_next_call_refetches()
+    {
+        // A database switch clears the store: the box that filtered the fallback came from the OLD
+        // database, so a fetch that started under it must not land afterwards.
+        int fetches = 0, events = 0;
+        var first = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
+        var store = new OnlineFeatureStore((_, _, _, _, _) =>
+            Interlocked.Increment(ref fetches) == 1 ? first.Task : Task.FromResult<IReadOnlyList<AirportFeature>?>(OneHangar))
+        { Enabled = true };
+        store.FeaturesUpdated += _ => Interlocked.Increment(ref events);
+
+        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Short));     // gives up: the event is armed
+        var sharing = store.GetAsync("KTIW", 0, 0, null, Long);            // shares that same fetch
+
+        store.Clear();
+        first.SetResult(OneHangar);
+
+        Assert.Empty(await sharing);          // completing the awaited fetch is the barrier: it has landed
+        Assert.Equal(0, events);              // …and landed on nothing, so nobody is told to rebuild
+        Assert.Equal(1, fetches);
+
+        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));     // a fresh fetch, not the discarded one
+        Assert.Equal(2, fetches);
+    }
 }
