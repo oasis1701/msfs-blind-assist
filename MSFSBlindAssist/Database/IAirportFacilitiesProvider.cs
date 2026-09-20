@@ -10,4 +10,13 @@ namespace MSFSBlindAssist.Database;
 public interface IAirportFacilitiesProvider
 {
     AirportFacilities? GetAirportFacilities(string icao);
+
+    /// <summary>
+    /// Airports within <paramref name="radiusNm"/> of a position, as bounding-box + reference-point
+    /// candidates for deciding which one the aircraft is actually AT (heliports and short idents
+    /// included — see <c>CurrentAirportResolver</c>). Default-implemented so no existing provider
+    /// or test double has to grow this method.
+    /// </summary>
+    IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double latitude, double longitude, double radiusNm)
+        => Array.Empty<AirportCandidate>();
 }

@@ -121,6 +121,8 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider, IAirpo
     public List<StartPosition> GetRunwayStarts(string icao)                       => _base.GetRunwayStarts(icao);
     public AirportFacilities? GetAirportFacilities(string icao)
         => (_base as IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
+    public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double lat, double lon, double nm)
+        => (_base as IAirportFacilitiesProvider)?.GetNearbyAirportCandidates(lat, lon, nm) ?? Array.Empty<AirportCandidate>();
 
     /// <summary>
     /// Returns parking spots for the airport, filling in EMPTY navdata gate/stand names from the

@@ -503,35 +503,47 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         connection.Open();
 
         long airportId; bool avgas, jet; double left, right, top, bottom; string sceneryPath;
+        double refLat, refLon; int helipads; double? towerLat = null, towerLon = null;
+        // Bare indexed columns compared to an upper-cased PARAMETER, not UPPER(col) on both sides:
+        // UPPER(ident)/UPPER(icao) can't use idx_airport_ident/idx_airport_icao (measured 15 ms
+        // SCAN vs 0.09 ms for the equivalent OR-of-equalities plan).
         using (var cmd = new SqliteCommand(@"
-            SELECT airport_id, has_avgas, has_jetfuel, left_lonx, right_lonx, top_laty, bottom_laty, scenery_local_path
-            FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1", connection))
+            SELECT airport_id, has_avgas, has_jetfuel, left_lonx, right_lonx, top_laty, bottom_laty,
+                   scenery_local_path, tower_laty, tower_lonx, laty, lonx, num_helipad
+            FROM airport WHERE ident = @U OR icao = @U LIMIT 1", connection))
         {
-            cmd.Parameters.AddWithValue("@ICAO", icao);
+            cmd.Parameters.AddWithValue("@U", icao.ToUpperInvariant());
             using var r = cmd.ExecuteReader();
             if (!r.Read()) return null;
             airportId = Convert.ToInt64(r["airport_id"]);
-            avgas = Convert.ToInt32(r["has_avgas"] ?? 0) == 1;
-            jet = Convert.ToInt32(r["has_jetfuel"] ?? 0) == 1;
-            left = Convert.ToDouble(r["left_lonx"] ?? 0.0);
-            right = Convert.ToDouble(r["right_lonx"] ?? 0.0);
-            top = Convert.ToDouble(r["top_laty"] ?? 0.0);
-            bottom = Convert.ToDouble(r["bottom_laty"] ?? 0.0);
-            sceneryPath = r["scenery_local_path"]?.ToString() ?? "";
+            avgas = SafeReadInt(r, "has_avgas", 0) == 1;
+            jet = SafeReadInt(r, "has_jetfuel", 0) == 1;
+            left = SafeReadDouble(r, "left_lonx", 0.0);   right = SafeReadDouble(r, "right_lonx", 0.0);
+            top = SafeReadDouble(r, "top_laty", 0.0);     bottom = SafeReadDouble(r, "bottom_laty", 0.0);
+            sceneryPath = r["scenery_local_path"] is string s ? s : "";
+            refLat = SafeReadDouble(r, "laty", 0.0);      refLon = SafeReadDouble(r, "lonx", 0.0);
+            helipads = SafeReadInt(r, "num_helipad", 0);
+            int tLat = r.GetOrdinal("tower_laty"), tLon = r.GetOrdinal("tower_lonx");
+            if (!r.IsDBNull(tLat) && !r.IsDBNull(tLon)) { towerLat = r.GetDouble(tLat); towerLon = r.GetDouble(tLon); }
         }
 
         var fac = new AirportFacilities
         {
             Icao = icao.ToUpperInvariant(), HasAvgas = avgas, HasJetFuel = jet,
             LeftLon = left, RightLon = right, TopLat = top, BottomLat = bottom, SceneryLocalPath = sceneryPath,
+            TowerLat = towerLat, TowerLon = towerLon, RefLat = refLat, RefLon = refLon,
         };
 
-        using (var cmd = new SqliteCommand("SELECT laty, lonx FROM helipad WHERE airport_id = @Id AND is_closed = 0", connection))
+        // helipad has no airport_id index — a 64,265-row scan for the (common) airport with none.
+        if (helipads > 0)
         {
-            cmd.Parameters.AddWithValue("@Id", airportId);
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-                fac.Helipads.Add(new Navigation.Surroundings.LatLon(Convert.ToDouble(r["laty"]), Convert.ToDouble(r["lonx"])));
+            using (var cmd = new SqliteCommand("SELECT laty, lonx FROM helipad WHERE airport_id = @Id AND is_closed = 0", connection))
+            {
+                cmd.Parameters.AddWithValue("@Id", airportId);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    fac.Helipads.Add(new Navigation.Surroundings.LatLon(Convert.ToDouble(r["laty"]), Convert.ToDouble(r["lonx"])));
+            }
         }
 
         using (var cmd = new SqliteCommand("SELECT type, frequency, name FROM com WHERE airport_id = @Id ORDER BY com_id", connection))
@@ -539,7 +551,7 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             cmd.Parameters.AddWithValue("@Id", airportId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                fac.Coms.Add(new ComFrequency(r["type"]?.ToString() ?? "", Convert.ToInt32(r["frequency"] ?? 0), r["name"]?.ToString() ?? ""));
+                fac.Coms.Add(new ComFrequency(r["type"]?.ToString() ?? "", SafeReadInt(r, "frequency", 0), r["name"]?.ToString() ?? ""));
         }
         return fac;
     }
@@ -613,6 +625,42 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             }
         }
 
+        return results;
+    }
+
+    /// <summary>
+    /// Airports within <paramref name="radiusNm"/> of a position, as bounding-box + reference-point
+    /// + taxi-path-count candidates for <c>CurrentAirportResolver</c> to decide which one the
+    /// aircraft is actually at. Unlike <see cref="GetNearbyAirportICAOs"/>, this is not filtered to
+    /// airports carrying a usable code — the resolver needs the box/count of everything nearby,
+    /// heliports included, to tell a real airport apart from one.
+    /// </summary>
+    public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double latitude, double longitude, double radiusNm)
+    {
+        var results = new List<AirportCandidate>();
+        if (!DatabaseExists) return results;
+        double latDelta = radiusNm / 60.0;
+        double lonDelta = radiusNm / (60.0 * Math.Max(0.05, Math.Cos(latitude * Math.PI / 180.0)));
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var cmd = new SqliteCommand(@"
+            SELECT ident, laty, lonx, left_lonx, right_lonx, top_laty, bottom_laty, num_taxi_path
+            FROM airport
+            WHERE laty BETWEEN @MinLat AND @MaxLat AND lonx BETWEEN @MinLon AND @MaxLon
+              AND ident IS NOT NULL AND ident != ''", connection);
+        cmd.Parameters.AddWithValue("@MinLat", latitude - latDelta);
+        cmd.Parameters.AddWithValue("@MaxLat", latitude + latDelta);
+        cmd.Parameters.AddWithValue("@MinLon", longitude - lonDelta);
+        cmd.Parameters.AddWithValue("@MaxLon", longitude + lonDelta);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            results.Add(new AirportCandidate(
+                r["ident"]?.ToString() ?? "",
+                SafeReadDouble(r, "laty", 0.0), SafeReadDouble(r, "lonx", 0.0),
+                SafeReadDouble(r, "left_lonx", 0.0), SafeReadDouble(r, "right_lonx", 0.0),
+                SafeReadDouble(r, "top_laty", 0.0), SafeReadDouble(r, "bottom_laty", 0.0),
+                SafeReadInt(r, "num_taxi_path", 0)));
         return results;
     }
 
