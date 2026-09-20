@@ -48,6 +48,11 @@ public partial class MainForm : Form
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
 
+    // The shared Overpass mirror client: OsmTaxiSource's taxiway/parking fetch and the
+    // surroundings feature fetch both post through this one instance, so a mirror cooldown
+    // recorded by either fetch is honoured by the other instead of each keeping its own.
+    private MSFSBlindAssist.Services.TaxiAugment.OverpassClient? _overpassClient;
+
     // Tier 3 of the surroundings feature: reads the installed scenery package's placement
     // BGLs for named buildings, cached on disk per package under %APPDATA%.
     private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageIndexer sceneryIndexer =
@@ -809,9 +814,10 @@ public partial class MainForm : Form
         if (airportDataProvider != null)
         {
             var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
+            _overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
-                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(http),
+                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(_overpassClient),
                 new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
             };
             var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
