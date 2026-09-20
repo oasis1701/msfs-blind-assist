@@ -66,8 +66,7 @@ public class Pmdg737DisplayReadsTests
     [Fact]
     public void TheLowerDisplayPrompt_SeparatesItFromTheUpperOne()
     {
-        // The two displays are in one frame, so each prompt has to exclude the other's numbers by
-        // name — N1/EGT/fuel flow are the upper unit's, N2/oil/vibration the lower one's.
+        // The two units share one frame, so each prompt excludes the other's numbers by name.
         string lower = GeminiService.GetPromptForDisplay(GeminiService.DisplayType.LowerDU737);
 
         Assert.Contains("N2", lower);
@@ -75,6 +74,19 @@ public class Pmdg737DisplayReadsTests
         Assert.Contains("Upper Engine Display", lower);
         // The lower unit is selectable, so the prompt must say which of the two it found.
         Assert.Contains("Navigation display", lower);
+    }
+
+    [Fact]
+    public void TheLowerDisplayPrompt_AsksForFuelFlow()
+    {
+        // Measured in the simulator 2026-09-20: the lower unit shows FF (2.17 / 2.16) alongside
+        // N2, oil and vibration, and the upper unit shows its own FF at the same time. The first
+        // draft of this prompt told the model that fuel flow "belongs to the Upper Engine Display,
+        // not this one" and to skip it here, which would have dropped a value that is on screen.
+        string lower = GeminiService.GetPromptForDisplay(GeminiService.DisplayType.LowerDU737);
+
+        Assert.Contains("fuel flow", lower, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("N1, EGT and fuel flow belong to the Upper Engine Display", lower);
     }
 
     [Fact]

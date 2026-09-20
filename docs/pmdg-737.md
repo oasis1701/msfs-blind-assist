@@ -321,8 +321,20 @@ It shares the EICAS view, because that one frame holds both display units, so Al
 never move the camera between them. The unit is selectable (the LOWER DU knob switches it between
 engine data and a navigation display), so `DisplayType.LowerDU737`'s prompt names which of the two
 it found before reporting it, the way the MD-11's SD prompt handles its pages. The two prompts
-exclude each other's numbers BY NAME — N1/EGT/fuel flow belong to the upper unit, N2/oil/vibration
-to the lower — because both are in the picture either way.
+exclude each other's numbers BY NAME, because both units are in the picture either way.
+
+⚠️ **FUEL FLOW IS ON BOTH UNITS** — measured in the simulator 2026-09-20 in one frame: the upper
+showed N1 88.4/88.4, EGT 790/771, FF 2.16/2.19; the lower showed N2 86.4/86.2, **FF 2.17/2.16**,
+oil press 43/44, oil temp 77/77, oil qty 68/75, vib 0.5/0.6. The first draft of the lower prompt
+said fuel flow "belongs to the Upper Engine Display, not this one" and told the model to skip it,
+which would have dropped a value that is on screen. Only N1 and EGT are upper-unit-only.
+
+**The lower unit's NAVIGATION DISPLAY branch is UNVERIFIED**, and so is the middle detent's label.
+`MAIN_LowerDUSel` could not be moved from outside: absolute-position dispatch (parameter 0 and 2),
+a MobiFlight `#69968` key event, and the `MOUSE_FLAG_LEFTSINGLE` click code were all sent through
+simconnect-mcp and the selector stayed on position 1 every time, screen unchanged. The app's own
+dispatch for this family is a different path and is not implicated. So the ND branch of the prompt
+and the "NORM" label on position 1 both still want a pilot to flick the real knob.
 
 It was added on 2026-09-20, after the camera work. It had been skipped on the stated grounds that
 the PMDG 777 does not have it either — precedent rather than a reason. The 777 still has the same

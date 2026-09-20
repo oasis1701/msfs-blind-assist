@@ -507,11 +507,11 @@ The image may contain multiple displays. ONLY describe the lower centre display,
 
 This display unit shows one of two things, selected by the pilot on the LOWER DU selector. Identify which is present from its content and say so on the first line, then report it:
 
-If it shows SECONDARY ENGINE INDICATIONS — first line ""Secondary engine"" — report for each engine (ENG 1 / ENG 2 or Left / Right), each on its own line: N2 percentage, oil pressure, oil temperature, oil quantity, and engine vibration. Then any other values present, such as hydraulic quantity and pressure, flap or control surface positions, and any crew alert text.
+If it shows SECONDARY ENGINE INDICATIONS — first line ""Secondary engine"" — report for each engine (ENG 1 / ENG 2 or Left / Right), each on its own line: N2 percentage, fuel flow (FF), oil pressure, oil temperature, oil quantity percentage, and engine vibration. Then any other values or crew alert text present.
 
 If it shows a NAVIGATION DISPLAY — first line ""Navigation display"" — report it as a navigation display: mode and range, heading or track, active waypoint with distance and time, wind, and any weather-radar or terrain indications.
 
-Important: N1, EGT and fuel flow belong to the Upper Engine Display, not this one. Do not report them here.
+Important: N1 and EGT belong to the Upper Engine Display, not this one — do not report them here. Fuel flow appears on BOTH displays (verified in the simulator, 2026-09-20); report the value shown on THIS one.
 If the display is blank or off, say so in one line and stop.
 Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
 Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
