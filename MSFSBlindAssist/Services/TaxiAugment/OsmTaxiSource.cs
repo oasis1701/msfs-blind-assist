@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using MSFSBlindAssist.Services.Surroundings;
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
 public sealed class OsmTaxiSource : ITaxiDataSource

@@ -1,60 +1,97 @@
 using System.Text.Json;
 using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.Surroundings;
 using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
 public class OsmFeatureClassifierTests
 {
-    private static readonly Lazy<List<(long Id, AirportFeature? Feature)>> Parsed = new(() =>
+    private static AirportFeature? One(string elementJson)
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-kjac.json");
-        using var doc = JsonDocument.Parse(File.ReadAllText(path));
-        return doc.RootElement.GetProperty("elements").EnumerateArray()
-            .Select(e => (e.GetProperty("id").GetInt64(), OsmFeatureClassifier.Classify(e))).ToList();
-    });
-
-    private static AirportFeature? Get(long id) => Parsed.Value.Single(p => p.Id == id).Feature;
+        using var doc = JsonDocument.Parse(elementJson);
+        return OsmFeatureClassifier.Classify(doc.RootElement);
+    }
+    // Minimal elements: tag sets are REAL (copied from live EGLL/EDDF/KJAC responses); only the
+    // position is reduced to a node, because these tests pin TAG rules, not geometry.
+    private static string Node(string tags) => "{\"type\":\"node\",\"id\":1,\"lat\":51.47,\"lon\":-0.45,\"tags\":{" + tags + "}}";
 
     [Theory]
-    [InlineData(1, FeatureKind.Fbo, "General Aviation Terminal")]
-    [InlineData(2, FeatureKind.Terminal, "Baggage Claim")]
-    [InlineData(3, FeatureKind.Apron, "Commercial Ramp")]
-    [InlineData(4, FeatureKind.DeicePad, "De-icing pad")]
-    [InlineData(5, FeatureKind.Hangar, "")]
-    [InlineData(6, FeatureKind.Tower, "Control Tower")]
-    [InlineData(7, FeatureKind.Fuel, "Chevron")]
-    [InlineData(8, FeatureKind.FireStation, "Atlanta Fire Rescue Station 35")]
-    [InlineData(9, FeatureKind.Concourse, "Concourse B")]
-    [InlineData(10, FeatureKind.Cargo, "FedEx")]
-    [InlineData(11, FeatureKind.Hangar, "Delta TechOps Hangar 2")]
-    [InlineData(12, FeatureKind.Fbo, "Signature Flight Support")]
-    [InlineData(13, FeatureKind.Office, "Hapeville City Hall")]
-    [InlineData(14, FeatureKind.Helipad, "")]
-    public void Classifies_kind_and_name(long id, FeatureKind kind, string name)
+    [InlineData("\"building\":\"yes\",\"name\":\"Genesis Car Park\"")]
+    [InlineData("\"building\":\"yes\",\"name\":\"Heathrow Terminal 5 short stay car park\"")]
+    [InlineData("\"building\":\"yes\",\"name\":\"Heathrow Central Bus station\"")]
+    [InlineData("\"building\":\"yes\",\"name\":\"North Escape Shaft\"")]
+    [InlineData("\"building\":\"yes\",\"name\":\"Hapeville City Hall\"")]
+    [InlineData("\"building\":\"yes\",\"name\":\"Executive Car Park\"")]
+    [InlineData("\"office\":\"company\",\"name\":\"Premia\"")]
+    public void A_named_building_that_is_not_aviation_is_not_a_feature(string tags) => Assert.Null(One(Node(tags)));
+
+    [Fact]
+    public void Road_fuel_is_not_aircraft_fuel_but_aeroway_fuel_is()
     {
-        var f = Get(id);
-        Assert.NotNull(f);
-        Assert.Equal(kind, f!.Kind);
-        Assert.Equal(name, f.Name);
-        Assert.Equal(FeatureSource.Osm, f.Source);
+        Assert.Null(One(Node("\"amenity\":\"fuel\",\"name\":\"Chevron\",\"brand\":\"Chevron\"")));
+        Assert.Null(One(Node("\"amenity\":\"fuel\",\"building\":\"roof\",\"name\":\"120 Betriebstankstelle\"")));
+        Assert.Equal(FeatureKind.Fuel, One(Node("\"aeroway\":\"fuel\""))!.Kind);
     }
 
     [Fact]
-    public void Taxiways_and_nameless_buildings_are_not_features()
+    public void A_named_building_matching_the_fbo_or_cargo_lexicon_is_kept()
     {
-        Assert.Null(Get(15));
-        Assert.Null(Get(16));
+        var fbo = One(Node("\"building\":\"yes\",\"name\":\"Signature Flight Support\""))!;
+        Assert.Equal(FeatureKind.Fbo, fbo.Kind);
+        Assert.Equal("Signature Flight Support", fbo.Name);
+        Assert.Equal(FeatureKind.Cargo, One(Node("\"office\":\"company\",\"name\":\"IAG Cargo Head Office\""))!.Kind);
     }
 
     [Fact]
-    public void Operator_becomes_detail_and_apron_ways_keep_their_footprint()
+    public void A_bare_reference_number_is_never_a_name()
     {
-        Assert.Equal("operator Jackson Hole Aviation LLC", Get(1)!.Detail);
-        var deice = Get(4)!;
-        Assert.NotNull(deice.Footprint);
-        Assert.Equal(4, deice.Footprint!.Count);          // closing duplicate vertex dropped
-        Assert.InRange(deice.Lat, 43.6050, 43.6056);       // representative point inside
+        var hangar = One(Node("\"building\":\"hangar\",\"ref\":\"117\""))!;
+        Assert.Equal(FeatureKind.Hangar, hangar.Kind);
+        Assert.False(hangar.HasName);
+        Assert.False(One(Node("\"aeroway\":\"terminal\",\"ref\":\"222;223\""))!.HasName);   // a list is not a name either
+        Assert.Equal("T2", One(Node("\"aeroway\":\"terminal\",\"ref\":\"T2\""))!.Name);
+    }
+
+    [Fact]
+    public void Concourse_wording_is_not_english_only()
+    {
+        Assert.Equal(FeatureKind.Concourse, One(Node("\"aeroway\":\"terminal\",\"name\":\"Terminal 1 Flugsteig A\""))!.Kind);
+        Assert.Equal(FeatureKind.Concourse, One(Node("\"aeroway\":\"terminal\",\"name\":\"Concourse B\""))!.Kind);
+        Assert.Equal(FeatureKind.Terminal, One(Node("\"aeroway\":\"terminal\",\"name\":\"Baggage Claim\""))!.Kind);
+        Assert.Equal(FeatureKind.Fbo, One(Node("\"aeroway\":\"terminal\",\"name\":\"General Aviation Terminal\",\"operator\":\"Jackson Hole Aviation LLC\""))!.Kind);
+        Assert.Equal(FeatureKind.Cargo, One(Node("\"aeroway\":\"terminal\",\"name\":\"FedEx\""))!.Kind);
+    }
+
+    [Fact]
+    public void An_apron_named_only_by_ref_can_be_a_deice_pad()
+    {
+        var pad = One(Node("\"aeroway\":\"apron\",\"ref\":\"De-icing pad\""))!;
+        Assert.Equal(FeatureKind.DeicePad, pad.Kind);
+        Assert.Equal("De-icing pad", pad.Name);
+    }
+
+    [Theory]
+    [InlineData("taxiway")] [InlineData("parking_position")] [InlineData("gate")] [InlineData("holding_position")] [InlineData("runway")]
+    public void Pavement_elements_are_never_features(string aeroway)
+        => Assert.Null(One(Node("\"aeroway\":\"" + aeroway + "\",\"ref\":\"A\",\"building\":\"yes\",\"name\":\"Signature Flight Support\"")));
+
+    [Fact]
+    public void A_real_overpass_response_classifies_with_footprints_and_no_center_member()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-area-ktiw.json");
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var features = doc.RootElement.GetProperty("elements").EnumerateArray()
+            .Select(OsmFeatureClassifier.Classify).Where(f => f != null).Select(f => f!).ToList();
+
+        Assert.Equal(25, features.Count);
+        Assert.Equal(20, features.Count(f => f.Kind == FeatureKind.Hangar));
+        Assert.Equal(1, features.Count(f => f.Kind == FeatureKind.Tower));
+        var aprons = features.Where(f => f.Kind == FeatureKind.Apron).ToList();
+        Assert.Equal(4, aprons.Count);
+        Assert.All(aprons, a => Assert.True(a.Footprint != null && a.Footprint.Count >= 3));   // `out tags geom;` really carries geometry
+        Assert.All(features, f => { Assert.InRange(f.Lat, 47.25, 47.29); Assert.InRange(f.Lon, -122.60, -122.55); });
+        Assert.All(features, f => Assert.Equal(FeatureSource.Osm, f.Source));
     }
 
     [Fact]
@@ -76,7 +113,11 @@ public class OsmFeatureClassifierTests
     {
         string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-kjac.json");
         var data = OsmTaxiSource.Parse(File.ReadAllText(path));
-        Assert.Equal(14, data.Features.Count);
+        // 14 elements used to classify; the tightened lexicon now excludes two landside names
+        // that were never aviation features (id 7 "Chevron" is amenity=fuel road fuel, id 13
+        // "Hapeville City Hall" matches the NotAirside lexicon) — see OsmFeatureClassifierTests
+        // above, which pin that exclusion directly.
+        Assert.Equal(12, data.Features.Count);
         Assert.Single(data.Taxiways);
     }
 }
