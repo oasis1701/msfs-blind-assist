@@ -283,3 +283,38 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   failed; the app's state-change announcement is the confirmation channel.
 - Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
   visibility selectors, not positions. Headrests are the only adjustable seat part.
+
+## AI display reads (Alt+P / Alt+N / Alt+E / Alt+I)
+
+Four reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/Pmdg737DisplayReads.cs`,
+dispatched by `BaseAircraftDefinition.TryReadDisplayFor`. The app moves the simulator camera to
+the instrument view that frames the display, captures with `PrintWindow`, puts the camera back,
+and only then makes the AI call.
+
+| Key | Display | Instrument view |
+|---|---|---|
+| Alt+P | PFD | view 8 (index 7) |
+| Alt+N | ND | view 8 (index 7) |
+| Alt+E | EICAS (upper engine display) | view 2 (index 1) |
+| Alt+I | ISFD (standby) | view 2 (index 1) |
+
+**The indices are MEASURED on the live aircraft (2026-09-20, MSFS 2024 1.8.16.0), never read off
+`cameras.cfg`.** Two of this aircraft's camera titles actively mislead: the camera titled "PFD"
+(index 7) frames the captain's PFD *and* ND, and the one titled "EICAS" (index 1) frames the
+ISFD, both engine display units and the first officer's ND besides. PFD and ND share a view, so
+alternating Alt+P and Alt+N costs no camera move; the same is true of Alt+E and Alt+I.
+
+⚠️ **This aircraft's cameras are not where the others keep theirs.** `common/config/cameras.cfg`
+is a stub holding only the eyepoint; the real camera list is per livery preset, e.g.
+`presets/pmdg/PMDG 737-800 BW HD/config/cameras.cfg`. Read that one when re-measuring.
+
+**Why the ISFD does not use the captain-panel view.** It is in that frame, but hard against the
+right edge and clipped. In the EICAS view it sits well inside the frame and crops legibly — and
+that is where `DisplayType.ISFD737`'s prompt already says it is, "between the captain's displays
+and the Engine Display", so no prompt change was needed.
+
+**There is no Alt+S read.** `ReadDisplayLowerECAM` stays out of scope, matching the PMDG 777, and
+`PMDG737Definition` answers it with a bare `false` rather than deferring to the base definition —
+a deliberate difference from the iFly that the pre-switch dispatch must not swallow. The lower
+system display IS in frame in the EICAS view and the engine-display prompt tells the model to
+ignore it, so adding that read later is a table row and a prompt, not a camera measurement.

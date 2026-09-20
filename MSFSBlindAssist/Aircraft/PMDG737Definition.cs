@@ -5325,6 +5325,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+I in output mode). The camera is moved to
+        // the instrument view that frames the display, the capture is taken, and the camera is put
+        // back where the pilot had it — see Services/InstrumentViewSwitcher. Alt+S is deliberately
+        // absent and is handled in the switch below, which refuses it rather than deferring to base.
+        if (TryReadDisplayFor(action, Pmdg737DisplayReads.All, simConnect, announcer, parentForm))
+            return true;
+
         switch (action)
         {
             // ------------------------------------------------------------------
@@ -5619,27 +5626,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 return true;
 
-            // ------------------------------------------------------------------
-            // Gemini display capture — Alt+P / Shift+N / Alt+I / Alt+E
-            // ------------------------------------------------------------------
+            // Alt+P / Alt+N / Alt+I / Alt+E are dispatched from Pmdg737DisplayReads above the
+            // switch, which also moves the camera to the view that frames each display.
 
-            case HotkeyAction.ReadDisplayPFD:
-                ReadDisplay(Services.GeminiService.DisplayType.PFD737, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayND:
-                ReadDisplay(Services.GeminiService.DisplayType.ND737, "ND", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:
-                ReadDisplay(Services.GeminiService.DisplayType.ISFD737, "ISFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.EICAS737, "EICAS", announcer, parentForm);
-                return true;
-
-            // Lower System Display (DU4) — out of scope for now (matches 777, which doesn't handle this either)
+            // Lower System Display (DU4) — out of scope for now (matches 777, which doesn't handle this either).
+            // Deliberately returns false rather than falling through to base, unlike the iFly.
             case HotkeyAction.ReadDisplayLowerECAM:
                 return false;
 
