@@ -503,7 +503,7 @@ Use line breaks to separate parameters. Put thrust mode on the first line, TAT/S
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.LowerDU737 => @"You are reading the Lower Display Unit (DU4, the lower centre display) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
-The image may contain multiple displays. ONLY describe the lower centre display, below the Upper Engine Display. Ignore the PFD, the navigation displays, the ISFD, the Upper Engine Display (N1, EGT, fuel flow) and the CDU.
+The image may contain multiple displays. ONLY describe the lower centre display, below the Upper Engine Display. Ignore the PFD, the navigation displays, the ISFD, the Upper Engine Display (N1, EGT) and the CDU.
 
 This display unit shows one of two things, selected by the pilot on the LOWER DU selector. Identify which is present from its content and say so on the first line, then report it:
 

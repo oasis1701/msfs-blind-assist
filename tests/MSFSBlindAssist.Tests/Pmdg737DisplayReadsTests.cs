@@ -55,7 +55,12 @@ public class Pmdg737DisplayReadsTests
     [Fact]
     public void BothEngineDisplays_ShareTheOneCameraView()
     {
-        // They are two halves of one frame, so Alt+E and Alt+S never move the camera between them.
+        // They are two halves of one frame, so one camera view serves both reads.
+        //
+        // ⚠️ This does NOT mean pressing Alt+E then Alt+S leaves the camera alone. The restore
+        // puts the pilot's own view back after every read, so the next read always starts from
+        // their view and plans a fresh Switch. The "costs no camera move" saving only ever
+        // existed under the no-restore design, where the camera stayed on the instrument view.
         Assert.True(AiDisplayRead.TryGet(Pmdg737DisplayReads.All, HotkeyAction.ReadDisplayUpperECAM, out var upper));
         Assert.True(AiDisplayRead.TryGet(Pmdg737DisplayReads.All, HotkeyAction.ReadDisplayLowerECAM, out var lower));
 
@@ -87,6 +92,13 @@ public class Pmdg737DisplayReadsTests
 
         Assert.Contains("fuel flow", lower, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("N1, EGT and fuel flow belong to the Upper Engine Display", lower);
+
+        // Asking for a value in one sentence and listing it among the things to IGNORE in another
+        // lets the model legitimately drop it. The ignore-list names the upper unit's contents, so
+        // fuel flow must not appear inside that parenthetical -- it is on BOTH units.
+        var ignoreClause = lower.Split('\n').Single(line => line.Contains("Ignore the PFD"));
+        Assert.Contains("Upper Engine Display", ignoreClause);
+        Assert.DoesNotContain("fuel flow", ignoreClause, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
