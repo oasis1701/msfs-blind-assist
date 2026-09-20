@@ -12,6 +12,20 @@ public class TaxiRoute
     public string DestinationName { get; set; } = "";
     /// <summary>If the constrained route fell back to shortest path, explains why.</summary>
     public string? ConstrainedFallbackReason { get; set; }
+
+    /// <summary>
+    /// Every runway this route enters or crosses, in route order, held or not — recorded by the
+    /// automatic hold-short pass when the route is adopted. The route's own arrival at a
+    /// destination runway is not one. The summary and the "Route changed" clause are built from it.
+    /// </summary>
+    public List<TaxiRouteRunwayEvent> RunwayEvents { get; set; } = new();
+
+    /// <summary>
+    /// The hold label ("runway 12R") when the route's first stop point is its START node — it
+    /// begins at a runway hold line with nowhere earlier to stop — so guidance starts held and
+    /// waits for Continue. Null otherwise, and never set on a recalculated route.
+    /// </summary>
+    public string? StartHoldRunway { get; set; }
 }
 
 /// <summary>
@@ -41,4 +55,24 @@ public class TaxiHoldShort
     public int SegmentIndex { get; set; }
     public string RunwayOrTaxiway { get; set; } = "";
     public bool IsRunway { get; set; }
+}
+
+/// <summary>
+/// How a route meets a runway it does not start on: it goes onto the pavement and back off the
+/// SAME side (an entry — also a route that ends on the runway), or off the OTHER side (a crossing).
+/// </summary>
+public enum RunwayEventKind
+{
+    Entry,
+    Crossing,
+}
+
+/// <summary>One runway a route enters or crosses, as the pilot is told about it.</summary>
+public sealed class TaxiRouteRunwayEvent
+{
+    public RunwayEventKind Kind { get; init; }
+    /// <summary>The designator announced for it (the pilot's own on the destination strip).</summary>
+    public string Designator { get; init; } = "";
+    /// <summary>Whether a stop was placed for it (false: passed already, no stop point, or cleared).</summary>
+    public bool Held { get; set; }
 }

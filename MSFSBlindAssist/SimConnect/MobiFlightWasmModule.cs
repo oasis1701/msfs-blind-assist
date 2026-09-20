@@ -228,12 +228,18 @@ public class MobiFlightWasmModule : IDisposable
                 DATA_DEFINITION_ID.MF_RESPONSE_STRING, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
 
-            // Subscribe to MobiFlight LVars channel for default L-variable monitoring
-            simConnect.RequestClientData(CLIENT_DATA_AREA_ID.MF_LVARS, DATA_REQUEST_ID.MF_LVAR_REQUEST,
-                DATA_DEFINITION_ID.MF_LVAR_DATA, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
-                SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            // The MobiFlight.LVars area is deliberately NOT requested. Nothing in this app registers
+            // an L:var on the module's default client (L:vars are read over SimConnect data
+            // definitions), and LVarData was never RegisterStruct'd, so every delivery threw a caught
+            // InvalidCastException on the UI thread — at frame rate whenever ANY default-client
+            // MobiFlight tool (a MobiFlight Connector cockpit, a probing MCP server) had a live var
+            // registered: 87–108 debug.log lines per second, a 5 MB rotation every ~7 minutes,
+            // measured 2026-09-06. ResponseData has the same missing RegisterStruct — that is why the
+            // module looks "response silent" and client registration always times out; making that
+            // channel live would move H: events onto the never-exercised FBWBA client channel, so it
+            // is documented here rather than changed.
 
-            Log.Debug("SimConnect", "Subscribed to response and LVar channels");
+            Log.Debug("SimConnect", "Subscribed to the response channel");
         }
 
         private void SendDummyCommand()
@@ -504,14 +510,12 @@ public class MobiFlightWasmModule : IDisposable
 
         private void SubscribeToCustomChannels()
         {
-            // Subscribe to our custom response and LVar channels
+            // Subscribe to our custom response channel
             simConnect.RequestClientData(CLIENT_DATA_AREA_ID.FBWBA_RESPONSE, DATA_REQUEST_ID.FBWBA_RESPONSE_REQUEST,
                 DATA_DEFINITION_ID.FBWBA_RESPONSE_STRING, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
                 SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
 
-            simConnect.RequestClientData(CLIENT_DATA_AREA_ID.FBWBA_LVARS, DATA_REQUEST_ID.FBWBA_LVAR_REQUEST,
-                DATA_DEFINITION_ID.FBWBA_LVAR_DATA, SIMCONNECT_CLIENT_DATA_PERIOD.ON_SET,
-                SIMCONNECT_CLIENT_DATA_REQUEST_FLAG.CHANGED, 0, 0, 0);
+            // FBWBA.LVars is not requested either — same reason as MobiFlight.LVars above.
 
             Log.Debug("SimConnect", "Subscribed to custom channels");
         }

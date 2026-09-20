@@ -30,8 +30,19 @@ namespace MSFSBlindAssist.Services;
 ///    timbre thins at touchdown, which marks the boundary audibly.
 ///  • HANDOFF: tone stops below taxi-ish speed (earlier when landing-exit
 ///    guidance is running, so its exit-steering tone never overlaps ours) or
-///    when the pilot deliberately turns off the runway; landing-exit guidance /
-///    taxi guidance then own the arrival exactly as today.
+///    when the pilot deliberately turns off the runway — "Rollout guidance
+///    complete", QUEUED when taxi guidance ran during the rollout so it never
+///    cuts taxi guidance off. On the frame taxi guidance TAKES OVER from a
+///    landing rollout (exit handover, backtrack, runway vacated, closure) the
+///    tone stops SILENTLY instead: taxi guidance's own sentence is the one
+///    utterance and its tone the only one (StepTaxiHandover). Taxi guidance
+///    then owns the arrival.
+///
+/// Runway check: at flare engage and again at touchdown the assist identifies the runway the
+/// aircraft is actually over (Navigation.LandingRunwayMatch). When that is not the armed runway —
+/// typically a runway change after arming — the tones steer at the actual runway for that
+/// engagement and the switch is spoken once ("Flare guidance, runway 12R, not 12L."). The armed
+/// runway stays the pilot's choice and is restored when the engagement ends.
 ///
 /// There is deliberately NO spoken approach phase. Rate-limited intercept
 /// headings from 1000 ft were tried and rejected by the pilot as too much
@@ -68,8 +79,16 @@ public class LandingFlareAssistManager : IDisposable
     // is panning. That handoff (turnBegun at up to 90 kt, exitedLaterally with no speed
     // cap at all) can fire well above the raised threshold above, so speed alone cannot
     // keep the two tones apart — and they steer opposite ways, ours back to the runway
-    // centreline while the taxi tone leads onto the exit.
+    // centreline while the taxi tone leads onto the exit. The takeover itself is caught on
+    // the state change (StepTaxiHandover); this is the backstop for a rollout entered while
+    // taxi guidance already steers (a bounce).
     private readonly Func<bool> isLandingExitTaxiSteering;
+
+    // True while the landing-exit planner holds a plan, so it will lead its own touchdown sentence
+    // with the runway correction. Both features notice a runway change and both say so, a few
+    // hundredths of a second apart at touchdown, and the planner interrupts 2014 so this assist leaves
+    // the telling to it (LandingAssistRunwaySwitch.AtTouchdown) and only re-points its tones.
+    private readonly Func<bool> hasLandingExitPlan;
 
     // LATERAL / pan tone — the user's chosen waveform. Runs from flare engage all the way to
     // the landing-exit handoff; only the law feeding it changes at touchdown.
@@ -82,8 +101,16 @@ public class LandingFlareAssistManager : IDisposable
     // Monotonic clock for the cross-track rate differentiator.
     private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
 
-    // Armed reference (destination runway)
+    // The runway the pilot armed the assist for — their choice, never changed by a runway switch.
+    private Runway? armedRunway;
+    private Airport? armedAirport;
+    // Every runway end at the armed airport, loaded at arming time, for the runway check.
+    private IReadOnlyList<Runway> airportRunways = Array.Empty<Runway>();
+    // The ACTIVE runway every measurement below uses: the armed runway, or for one engagement the
+    // runway the aircraft is actually landing on. StopEngagement restores the armed runway.
     private Runway? runway;
+    // The "…runway 12R, not 12L." correction has been spoken this engagement.
+    private bool runwayCorrectionSpoken;
     // The PAINTED LANDING THRESHOLD — every distance and centerline measurement in this class
     // anchors here. NOT runway.StartLat/StartLon, which is the physical pavement EDGE: at a
     // displaced-threshold runway the two are hundreds of feet apart (LGKR 16: 1341 ft, KJFK 22R:
@@ -104,6 +131,11 @@ public class LandingFlareAssistManager : IDisposable
     private bool verticalCueLostAnnounced; // "sink rate cue unavailable" spoken this engagement
     private bool silentFlare;            // flare engaged while visual guidance owns approach audio
     private bool rolloutAnnounced;       // announce "Rollout guidance." once per approach (not per bounce)
+    // Taxi guidance as MainForm forwards it from TaxiGuidanceManager.StateChanged (StepTaxiHandover).
+    private bool taxiInLandingRollout;        // taxi guidance is in, or momentarily reloading, a landing rollout
+    private bool taxiGuidanceActive;          // its last observed state is not Inactive
+    private bool taxiGuidanceSeenThisRollout; // it ran during this rollout: the end callout is queued
+    private bool taxiHandoverPending;         // it took over this rollout: yield on the next hook or frame
     private double vsSmoothed;
     private bool vsSmootherInitialized;
 
@@ -186,46 +218,65 @@ public class LandingFlareAssistManager : IDisposable
         Func<double> flareAglBiasFtProvider,
         Func<bool> visualGuidanceActiveCheck,
         Func<bool> landingExitGuidanceActiveCheck,
-        Func<bool> landingExitTaxiSteeringCheck)
+        Func<bool> landingExitTaxiSteeringCheck,
+        Func<bool> landingExitPlanPendingCheck)
     {
         announcer = screenReaderAnnouncer;
         getFlareAglBiasFt = flareAglBiasFtProvider;
         isVisualGuidanceActive = visualGuidanceActiveCheck;
         isLandingExitGuidanceActive = landingExitGuidanceActiveCheck;
         isLandingExitTaxiSteering = landingExitTaxiSteeringCheck;
+        hasLandingExitPlan = landingExitPlanPendingCheck;
     }
 
     /// <summary>
     /// Arms the assist for the given destination runway. Silent — the caller composes
     /// the "destination set" announcement. Re-arming (new destination) resets any
-    /// in-progress state first.
+    /// in-progress state first. <paramref name="airportRunways"/> is every runway end at the
+    /// destination, used to tell which runway the aircraft is actually landing on.
     /// </summary>
-    public void Arm(Runway destinationRunway, Airport destinationAirport)
+    public void Arm(Runway destinationRunway, Airport destinationAirport, IReadOnlyList<Runway> airportRunways)
     {
         // A destination change mid-approach must not leave a tone running against
         // the old runway's geometry.
         StopEngagement(raiseEvents: true);
 
-        runway = destinationRunway;
-
-        // Project the anchor from the pavement edge down the runway to the PAINTED threshold. A
-        // zero offset (94 % of runway ends, including every EGLL and KJFK end) is an exact no-op,
-        // so this costs nothing where it doesn't apply.
-        (thresholdLat, thresholdLon) = NavigationCalculator.CalculateTouchdownAimPoint(
-            destinationRunway.StartLat, destinationRunway.StartLon,
-            destinationRunway.Heading, destinationRunway.ThresholdOffset);
-
-        thresholdElevationFt = destinationRunway.ThresholdElevation != 0
-            ? destinationRunway.ThresholdElevation
-            : destinationAirport.Altitude;
-        runwayLabel = destinationRunway.RunwayID;
+        armedRunway = destinationRunway;
+        armedAirport = destinationAirport;
+        this.airportRunways = airportRunways ?? Array.Empty<Runway>();
+        ApplyActiveRunway(destinationRunway);
         armed = true;
         phase = Phase.Armed;
         wasAboveFlareBand = false;
 
         Log.Debug("LandingFlareAssist",
             $"Armed: {destinationAirport.ICAO} rwy {runwayLabel}, " +
-            $"thrElev={thresholdElevationFt:F0} ft, displaced={destinationRunway.ThresholdOffset:F0} ft");
+            $"thrElev={thresholdElevationFt:F0} ft, displaced={destinationRunway.ThresholdOffset:F0} ft, " +
+            $"runways={this.airportRunways.Count}");
+    }
+
+    /// <summary>
+    /// Points every measurement at <paramref name="r"/>: the aim point projected from the pavement
+    /// edge down the runway to the PAINTED threshold (a zero offset — 94 % of runway ends,
+    /// including every EGLL and KJFK end — is an exact no-op), the threshold elevation, and the
+    /// spoken label.
+    /// </summary>
+    private void ApplyActiveRunway(Runway r)
+    {
+        runway = r;
+        (thresholdLat, thresholdLon) = NavigationCalculator.CalculateTouchdownAimPoint(
+            r.StartLat, r.StartLon, r.Heading, r.ThresholdOffset);
+        thresholdElevationFt = r.ThresholdElevation != 0
+            ? r.ThresholdElevation
+            : armedAirport?.Altitude ?? 0.0;
+        runwayLabel = r.RunwayID;
+        // A new centerline makes the previous cross-track sample meaningless to the rate
+        // differentiator — without this, a touchdown switch followed by a bounce back into
+        // Flare (Phase.Rollout's inline path, which does not call EnterFlare) computes a rate
+        // across the jump and spikes the lateral tone to full pan for many frames, not one —
+        // the rate is EMA-smoothed (alpha 0.2), so a ~49 m switch holds the spike roughly
+        // 8-25 frames at 30 Hz.
+        crossTrackRateInitialized = false;
     }
 
     /// <summary>Disarms completely (destination re-selected without the checkbox, or reset).</summary>
@@ -235,6 +286,9 @@ public class LandingFlareAssistManager : IDisposable
         StopEngagement(raiseEvents: true);
         armed = false;
         runway = null;
+        armedRunway = null;
+        armedAirport = null;
+        airportRunways = Array.Empty<Runway>();
         SetMonitoringRequested(false);
 
         if (announce && wasArmed)
@@ -314,14 +368,14 @@ public class LandingFlareAssistManager : IDisposable
                         d.Latitude, d.Longitude,
                         thresholdLat, thresholdLon) <= FLARE_ENGAGE_MAX_DIST_NM)
                 {
-                    EnterFlare();
+                    EnterFlare(d);
                 }
                 break;
 
             case Phase.Flare:
                 if (onGround)
                 {
-                    EnterRollout();
+                    EnterRollout(d);
                     UpdateRolloutTone(d);
                 }
                 else if (gearAgl > GO_AROUND_GEAR_AGL_FT)
@@ -348,6 +402,9 @@ public class LandingFlareAssistManager : IDisposable
                 break;
 
             case Phase.Rollout:
+                // MainForm yields on the taxi position frame; this catches a takeover it did not see first.
+                YieldIfTaxiGuidanceTookOver();
+                if (phase != Phase.Rollout) return;
                 if (!onGround && gearAgl > BOUNCE_AIRBORNE_GEAR_AGL_FT)
                 {
                     // Bounce — back into the air below go-around height. Resume flare
@@ -367,7 +424,40 @@ public class LandingFlareAssistManager : IDisposable
         }
     }
 
-    private void EnterFlare()
+    /// <summary>
+    /// Forwarded by MainForm from <see cref="TaxiGuidanceManager.StateChanged"/>. Runs INSIDE
+    /// TaxiGuidanceManager.SetState, usually under its state lock, so it only RECORDS: no tone, speech,
+    /// logging or events. <see cref="YieldIfTaxiGuidanceTookOver"/> acts on what it records.
+    /// </summary>
+    public void ObserveTaxiGuidanceState(TaxiGuidanceState newState)
+    {
+        var step = StepTaxiHandover(taxiInLandingRollout, newState);
+        taxiInLandingRollout = step.InLandingRollout;
+        taxiGuidanceActive = newState != TaxiGuidanceState.Inactive;
+        if (phase != Phase.Rollout) return;
+        if (taxiGuidanceActive) taxiGuidanceSeenThisRollout = true;
+        if (step.TookOver) taxiHandoverPending = true;
+    }
+
+    /// <summary>
+    /// Ends the rollout SILENTLY once taxi guidance has taken over from a landing rollout
+    /// (<see cref="StepTaxiHandover"/>): taxi guidance's own sentence is the one utterance, and its tone
+    /// first sounds on the next position frame, so two pan tones never play together. MainForm calls this
+    /// after the taxi position update, on the frame of the transition; the rollout frame calls it too.
+    /// </summary>
+    public void YieldIfTaxiGuidanceTookOver()
+    {
+        if (!taxiHandoverPending) return;
+        taxiHandoverPending = false;
+        // A real takeover always leaves the landing rollout. Taxi guidance already back in one means the
+        // pending flag was a misread: a new landing's planner activation passes through Taxiing on its way in.
+        if (taxiInLandingRollout) return;
+        if (phase != Phase.Rollout) return;
+        StopEngagement(raiseEvents: true);
+        Log.Debug("LandingFlareAssist", "Rollout handed over to taxi guidance");
+    }
+
+    private void EnterFlare(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         phase = Phase.Flare;
         rolloutAnnounced = false;
@@ -377,11 +467,32 @@ public class LandingFlareAssistManager : IDisposable
         // because VG auto-deactivates on the touchdown edge.
         silentFlare = isVisualGuidanceActive();
 
+        // Lined up with a different runway from the armed one (a runway change after arming)? The
+        // tones must steer at the runway actually being landed on, or they pan hard toward the armed
+        // one in the last 50 ft. Approach mode: the aircraft can still be short of the pavement.
+        bool speakCorrection = false;
+        if (armedRunway != null)
+        {
+            var verdict = LandingRunwayMatch.Evaluate(
+                d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation,
+                armedRunway, airportRunways, LandingRunwayMatch.ApproachBeforeThresholdMarginM);
+            var decision = LandingAssistRunwaySwitch.AtFlareEngage(verdict, silentFlare);
+            if (decision.SwitchTo != null)
+            {
+                ApplyActiveRunway(decision.SwitchTo);
+                Log.Debug("LandingFlareAssist",
+                    $"Flare engage: armed rwy {armedRunway.RunwayID}, {verdict.Verdict} {decision.SwitchTo.RunwayID} — switched");
+            }
+            speakCorrection = decision.SpeakCorrection;
+        }
+
         if (!silentFlare)
         {
             StartVerticalToneIfNeeded();
             StartLateralToneIfNeeded();
-            announcer.AnnounceImmediate("Flare guidance");
+            announcer.AnnounceImmediate(LandingAssistRunwaySwitch.FlareGuidancePhrase(
+                runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+            if (speakCorrection) runwayCorrectionSpoken = true;
         }
 
         EngagedChanged?.Invoke(this, true);
@@ -472,19 +583,42 @@ public class LandingFlareAssistManager : IDisposable
         lastCrossTrackSec = now;
     }
 
-    private void EnterRollout()
+    private void EnterRollout(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         phase = Phase.Rollout;
+        // A takeover belongs to THIS rollout; taxi guidance already running counts as seen.
+        taxiHandoverPending = false;
+        taxiGuidanceSeenThisRollout = taxiGuidanceActive;
         StopVerticalTone();            // flare sink-rate cue is done at touchdown
         // The lateral tone carries straight through from the flare — only the law feeding it
         // changes. (StartLateralToneIfNeeded is a no-op unless the flare was silent under VG.)
         StartLateralToneIfNeeded();
         tone.UpdatePitch(0);           // pan mode: park the frequency at centre, meaning is the pan
 
+        // Confirm the runway on the ground: switch if the aircraft touched down on a different runway
+        // from the active one, and say so once when that is not the armed runway.
+        bool speakCorrection = false;
+        if (armedRunway != null && runway != null)
+        {
+            var verdict = LandingRunwayMatch.Evaluate(
+                d.Latitude, d.Longitude, d.HeadingMagnetic + d.MagneticVariation, runway, airportRunways);
+            var decision = LandingAssistRunwaySwitch.AtTouchdown(verdict, runway, armedRunway, runwayCorrectionSpoken,
+                exitPlanWillSayIt: hasLandingExitPlan());
+            if (decision.SwitchTo != null)
+            {
+                ApplyActiveRunway(decision.SwitchTo);
+                Log.Debug("LandingFlareAssist",
+                    $"Touchdown: {verdict.Verdict} {decision.SwitchTo.RunwayID} — switched (armed {armedRunway.RunwayID})");
+            }
+            speakCorrection = decision.SpeakCorrection;
+        }
+
         if (!rolloutAnnounced)
         {
             rolloutAnnounced = true;
-            announcer.AnnounceImmediate("Rollout guidance");
+            announcer.AnnounceImmediate(LandingAssistRunwaySwitch.RolloutGuidancePhrase(
+                runwayLabel, armedRunway?.RunwayID ?? runwayLabel, speakCorrection));
+            if (speakCorrection) runwayCorrectionSpoken = true;
         }
         Log.Debug("LandingFlareAssist", "Rollout engaged");
     }
@@ -523,7 +657,7 @@ public class LandingFlareAssistManager : IDisposable
 
     /// <summary>
     /// Drives the lateral generator from a steer command in degrees (+ = steer RIGHT), honoring
-    /// the shared TakeoffAssist pan settings (waveform/volume/invert/hard-pan) so the flare, the
+    /// the shared TakeoffAssist pan settings (waveform/volume/steer-toward/hard-pan) so the flare, the
     /// rollout, takeoff assist and taxi guidance all behave identically for a given configuration.
     /// </summary>
     /// <param name="silenceBelowDeg">
@@ -535,50 +669,112 @@ public class LandingFlareAssistManager : IDisposable
     {
         var settings = SettingsManager.Current;
 
-        float pan = settings.TakeoffAssistHardPanTone
-            ? Math.Sign(steerCommandDeg)
-            : (float)Math.Clamp(steerCommandDeg / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
-        if (settings.TakeoffAssistInvertPanning) pan = -pan;
-        tone.SetPan(pan);
+        tone.SetPan(PanFor(steerCommandDeg, settings));
 
         double threshold = silenceBelowDeg ?? settings.TakeoffAssistHeadingToneThreshold;
         bool shouldPlay = threshold <= 0 || Math.Abs(steerCommandDeg) >= threshold;
         tone.UpdateVolume(shouldPlay ? settings.TakeoffAssistToneVolume : 0);
     }
 
+    /// <summary>
+    /// Pan for a steer command (+ = steer RIGHT) under the shared takeoff-assist tone settings: hard
+    /// pan or proportional over PAN_FULL_RANGE_DEGREES, on the steer side when the pilot steers toward
+    /// the tone. Reads TakeoffAssistSteerTowardTone, the setting takeoff assist reads — never the
+    /// retired TakeoffAssistInvertPanning, whose value after the July tone migration means the
+    /// opposite of how this assist once used it. Pure — <c>LandingFlareAssistPanTests</c>.
+    /// </summary>
+    internal static float PanFor(double steerCommandDeg, UserSettings settings)
+    {
+        float pan = settings.TakeoffAssistHardPanTone
+            ? Math.Sign(steerCommandDeg)
+            : (float)Math.Clamp(steerCommandDeg / PAN_FULL_RANGE_DEGREES, -1.0, 1.0);
+        return settings.TakeoffAssistSteerTowardTone ? pan : -pan;
+    }
+
     private void CheckRolloutHandoff(MSFSBlindAssist.SimConnect.SimConnectManager.FlareAssistData d)
     {
         if (runway == null) return;
 
-        double gs = d.GroundSpeedKnots;
-
         double headingDiff = (d.HeadingMagnetic + d.MagneticVariation) - runway.Heading;
         while (headingDiff > 180.0) headingDiff -= 360.0;
         while (headingDiff < -180.0) headingDiff += 360.0;
-        bool turnedOff = Math.Abs(headingDiff) > ROLLOUT_TURNOFF_HDG_DEG &&
-                         gs < ROLLOUT_TURNOFF_MAX_GS_KTS;
 
-        // Hand off earlier when the landing-exit planner's rollout guidance is running,
-        // so its exit-steering tone (which activates below ~50 kt near the exit) never
-        // plays on top of ours.
-        double endGs = isLandingExitGuidanceActive()
-            ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS
-            : ROLLOUT_END_GS_KTS;
+        var end = DecideRolloutEnd(d.GroundSpeedKnots, headingDiff,
+            exitGuidanceActive: isLandingExitGuidanceActive(),
+            taxiGuidanceSteering: isLandingExitTaxiSteering(),
+            taxiGuidanceSeen: taxiGuidanceSeenThisRollout);
+        if (end == RolloutEnd.Continue) return;
 
-        // ...but a rapid exit can take the handoff ABOVE that speed, and the moment it
-        // does, the taxi steering tone is already panning toward the exit. Speed is the
-        // wrong question then: end here whatever the groundspeed, or two pan tones give
-        // the pilot opposite steering (worst on a shallow exit, where the heading never
-        // swings the 20 degrees `turnedOff` needs).
-        if (gs < endGs || turnedOff || isLandingExitTaxiSteering())
-        {
-            StopEngagement(raiseEvents: true);
+        StopEngagement(raiseEvents: true);
+        if (end == RolloutEnd.Interrupting)
             announcer.AnnounceImmediate("Rollout guidance complete");
-            // Stay ARMED: circuits / touch-and-go get flare guidance again on the next
-            // approach without re-opening the destination dialog. The feed gate drops
-            // the SIM_FRAME request within a second (on ground, not engaged).
-        }
+        else if (end == RolloutEnd.Queued)
+            announcer.Announce("Rollout guidance complete");
+        else
+            Log.Debug("LandingFlareAssist", "Rollout ended silently: taxi guidance already steering");
+        // Stay ARMED: circuits / touch-and-go get flare guidance again on the next
+        // approach without re-opening the destination dialog. The feed gate drops
+        // the SIM_FRAME request within a second (on ground, not engaged).
     }
+
+    /// <summary>What <see cref="CheckRolloutHandoff"/> does on a rollout frame.</summary>
+    internal enum RolloutEnd
+    {
+        /// <summary>Keep guiding.</summary>
+        Continue,
+        /// <summary>Stop with no speech: taxi guidance already steers, and its words and tone are the handover.</summary>
+        Silent,
+        /// <summary>Stop and interrupt with "Rollout guidance complete": no taxi guidance ran this rollout.</summary>
+        Interrupting,
+        /// <summary>Stop and QUEUE "Rollout guidance complete", so it cannot cut off taxi guidance's speech.</summary>
+        Queued,
+    }
+
+    /// <summary>
+    /// When the rollout ends and what it says. Pure — <c>LandingFlareRolloutEndTests</c>.
+    ///
+    /// Ends below ROLLOUT_END_GS_KTS; below ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS while the landing-exit
+    /// planner's rollout guidance runs, so our pan tone is gone before its exit-steering tone (active below
+    /// ~50 kt near the exit) starts; or once the pilot turns off the runway below ROLLOUT_TURNOFF_MAX_GS_KTS.
+    /// Taxi guidance ALREADY steering ends it at any speed, silently: a rapid exit can take the handoff far
+    /// above either speed, and two pan tones would steer the pilot opposite ways (worst on a shallow exit,
+    /// where the heading never swings the turn-off angle). When taxi guidance ran during the rollout the
+    /// callout is QUEUED, never interrupting, so it cannot cut off a countdown milestone, "Runway vacated…"
+    /// or "Exit reached…".
+    /// </summary>
+    internal static RolloutEnd DecideRolloutEnd(double groundSpeedKts, double headingOffRunwayDeg,
+        bool exitGuidanceActive, bool taxiGuidanceSteering, bool taxiGuidanceSeen)
+    {
+        if (taxiGuidanceSteering) return RolloutEnd.Silent;
+
+        double endGs = exitGuidanceActive ? ROLLOUT_END_GS_WITH_EXIT_GUIDANCE_KTS : ROLLOUT_END_GS_KTS;
+        bool turnedOff = Math.Abs(headingOffRunwayDeg) > ROLLOUT_TURNOFF_HDG_DEG &&
+                         groundSpeedKts < ROLLOUT_TURNOFF_MAX_GS_KTS;
+        if (groundSpeedKts >= endGs && !turnedOff) return RolloutEnd.Continue;
+
+        return taxiGuidanceSeen ? RolloutEnd.Queued : RolloutEnd.Interrupting;
+    }
+
+    /// <summary>
+    /// One taxi-guidance state change, classified for the manual landing assist. Pure —
+    /// <c>LandingFlareTaxiHandoverTests</c>.
+    ///
+    /// Taxi guidance TAKES OVER when it leaves a landing rollout for anything but a momentary route reload
+    /// (retargets and declines pass through RouteLoaded) or a full stop (a Taxi Stop must not end the
+    /// independent assist). That covers the exit handover, backtracking, the countdown's "Runway vacated"
+    /// and every landing-exit closure without a call at any of their sites. Touchdown passes through
+    /// Taxiing before the rollout starts and a departure never enters one, so neither counts. Counting
+    /// backtracking in IsLandingExitTaxiSteering instead let the assist's interrupting "Rollout guidance
+    /// complete" cut off "End of runway … Turn around" within a frame.
+    /// </summary>
+    internal static (bool InLandingRollout, bool TookOver) StepTaxiHandover(bool inLandingRollout, TaxiGuidanceState newState) =>
+        newState switch
+        {
+            TaxiGuidanceState.LandingRollout => (true, false),
+            TaxiGuidanceState.RouteLoaded => (inLandingRollout, false),
+            TaxiGuidanceState.Inactive => (false, false),
+            _ => (false, inLandingRollout),
+        };
 
     /// <summary>
     /// What to do about a tone that came back from a routing sweep with no device.
@@ -761,6 +957,12 @@ public class LandingFlareAssistManager : IDisposable
         vsSmootherInitialized = false;
         crossTrackRateInitialized = false;
         crossTrackRateFps = 0.0;
+        taxiHandoverPending = false;
+
+        // A runway switch lasts one engagement: circuits keep the pilot's armed choice.
+        runwayCorrectionSpoken = false;
+        if (armedRunway != null && !ReferenceEquals(runway, armedRunway))
+            ApplyActiveRunway(armedRunway);
 
         if (raiseEvents && wasEngaged)
             EngagedChanged?.Invoke(this, false);

@@ -84,13 +84,61 @@ public partial class SimConnectManager
     /// seat-motor/slider-ramp ticks -- to skip the per-command debug log line. Default false
     /// preserves existing logging for every other caller.
     /// </param>
+    /// <summary>
+    /// True when <see cref="ExecuteCalculatorCode"/> would actually send — connected, with the
+    /// MobiFlight module object present. This IS the condition that method guards itself with
+    /// (not a copy of it), so a caller that must know in advance whether a write will land cannot
+    /// drift from it. During a SimConnect outage the call returns having done nothing and says so
+    /// to nobody, which for a queued transport like the MD-11's CEVENT bus means the id is
+    /// consumed and the keystroke is lost; the MCDU window asks here first and refuses the press
+    /// aloud instead.
+    /// </summary>
+    public bool CanExecuteCalculatorCode => IsConnected && mobiFlightWasm != null;
+
+    /// <summary>
+    /// True when a calc write can be expected to LAND in the aircraft — what a caller that must
+    /// refuse aloud should ask, rather than <see cref="CanExecuteCalculatorCode"/>.
+    ///
+    /// The difference is the no-module configuration. `mobiFlightWasm` is constructed
+    /// unconditionally in <c>Connect()</c> and its initialize is purely local client-data setup, so
+    /// <see cref="CanExecuteCalculatorCode"/> is TRUE with no WASM module installed (the same trap
+    /// <see cref="IsMobiFlightConnected"/> carries, and why <see cref="SetLVar"/>'s routing gates on
+    /// <see cref="CalcPathVerified"/>). The only end-to-end evidence is the bridge probe, so this
+    /// refuses exactly when the probe has CONCLUDED and did not verify.
+    ///
+    /// While the probe is still PENDING this stays permissive, deliberately: refusing a write that
+    /// would have succeeded is worse than the gap it closes. That window is NOT short — the probe
+    /// runs 40 attempts at 1.5 s, so the no-module case (the only one this predicate adds) concludes
+    /// about a MINUTE after detection, and writes made in that minute are still discarded silently.
+    /// That is the accepted trade, not an oversight: the alternative refuses writes that would have
+    /// landed. The verdict is per CONNECTION, so MainForm re-arms it on every aircraft switch
+    /// (<c>ArmBridgeProbe</c>) — without that, a profile registering no probe target concludes
+    /// unverified and its verdict refuses every write on the aircraft switched to next.
+    /// Note this is NOT what <see cref="ExecuteCalculatorCode"/> guards itself
+    /// with, and must not become it — the FBW defs' per-prefix catch-alls write through the
+    /// calculator UNCONDITIONALLY by design (CLAUDE.md), and gating them on the probe is what kept
+    /// the A380/A32NX overhead panels alive through the ten-week probe outage.
+    /// </summary>
+    public bool CalcWriteCanLand => CanExecuteCalculatorCode && !(CalcPathProbeConcluded && !CalcPathVerified);
+
     public void ExecuteCalculatorCode(string rpnCode, bool quiet = false)
     {
-        if (!IsConnected || mobiFlightWasm == null) return;
+        if (!CanExecuteCalculatorCode) return;
+
+        // Read the module ONCE for the call itself. The gate above stays the shared condition (it
+        // is what CalcWriteCanLand and every "will this land?" caller ask), but it re-reads the
+        // field, so checking and then dereferencing read it twice — and the MD-11's CEVENT pump
+        // calls in from a POOL THREAD roughly sixteen times a second for the whole session while
+        // Disconnect() nulls this field on the UI thread partway through its teardown, so a null
+        // could land between the two reads. SendMFCommand swallows its own exceptions and the
+        // catch below takes the rest, so the race cost a silently dropped write rather than a
+        // crash; the local makes it impossible instead of merely survivable.
+        var wasm = mobiFlightWasm;
+        if (wasm == null) return;
 
         try
         {
-            mobiFlightWasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}", quiet);
+            wasm.SendMFCommand($"MF.SimVars.Set.{rpnCode}", quiet);
         }
         catch (Exception ex)
         {
@@ -127,9 +175,19 @@ public partial class SimConnectManager
         }
     }   
 
+    /// <summary>
+    /// True when <see cref="SendEvent"/> would actually send. The STOCK-event twin of
+    /// <see cref="CanExecuteCalculatorCode"/>, and a DIFFERENT condition: a stock event needs no
+    /// MobiFlight module, so a caller must ask the one that matches its own transport. Same
+    /// reason for existing — <see cref="SendEvent"/> returns having done nothing during an outage
+    /// and tells nobody, so a caller that must refuse aloud (the MD-11's COM tuning and squawk)
+    /// asks here rather than spelling the condition a second time.
+    /// </summary>
+    public bool CanSendEvent => IsConnected && simConnect != null;
+
     public void SendEvent(string eventName, uint data = 0)
     {
-        if (!IsConnected || simConnect == null) return;
+        if (!CanSendEvent) return;
 
         Log.Debug("SimConnect", $"Sending event: {eventName} with data: {data}");
 
@@ -188,12 +246,15 @@ public partial class SimConnectManager
         {
             uint eventId = nextEventId++;
             eventIds[eventName] = eventId;
-            simConnect.MapClientEventToSimEvent((EVENTS)eventId, eventName);
+            // Non-null by CanSendEvent at the top of this method (here and at the transmit below);
+            // the compiler cannot see through a property, and spelling that condition a second time
+            // is exactly what the property exists to prevent.
+            simConnect!.MapClientEventToSimEvent((EVENTS)eventId, eventName);
             Log.Debug("SimConnect", $"Registered new event: {eventName} with ID: {eventId}");
         }
         
         // Send the event with the data parameter
-        simConnect.TransmitClientEvent(SIMCONNECT_OBJECT_ID_USER,
+        simConnect!.TransmitClientEvent(SIMCONNECT_OBJECT_ID_USER,
             (EVENTS)eventIds[eventName], data, GROUP_PRIORITY.HIGHEST,
             SIMCONNECT_EVENT_FLAG.GROUPID_IS_PRIORITY);
     }

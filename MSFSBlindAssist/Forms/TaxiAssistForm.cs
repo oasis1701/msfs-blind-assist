@@ -1860,12 +1860,45 @@ public class TaxiAssistForm : Form
     /// than an empty box: nothing distinguishes last route's summary from one that was
     /// actually just built. Every exit that leaves the pilot with no route comes
     /// through here, so the box holds either a real route or the reason there isn't
-    /// one — never a route that was not built.</summary>
-    public void ShowRouteFailure(string reason)
+    /// one — never a route that was not built.
+    ///
+    /// <para><paramref name="keepSummary"/> is the exception PR #238's review found (Task 7
+    /// Defect B): a reachability refusal from <c>TaxiGuidanceManager.LoadRoute</c> now rolls
+    /// back and leaves the PREVIOUS route still live (see <c>RestoreLoadRouteRollback</c>),
+    /// so the pilot IS still flying a route even though this Calculate attempt failed. Wiping
+    /// the box in that case destroys the only re-readable record of that live route's
+    /// clearance, hold-shorts and length advisory — worse than the staleness this method
+    /// exists to prevent, because the route it would be discarding isn't stale, it's the one
+    /// currently being flown. The caller decides this from the manager
+    /// (<c>TaxiGuidanceManager.HasLiveRoute</c>), never by pattern-matching the error
+    /// string — a guess here is exactly the kind of silent mismatch this whole box exists to
+    /// rule out. Default <c>false</c> keeps every other caller's behaviour unchanged: the
+    /// reason still replaces the box for every failure that leaves no route behind.
+    ///
+    /// <para>PR #238 review, Important 3: <c>HasLiveRoute</c> replaced a plain
+    /// <c>CurrentRoute != null</c> check here -- <c>HandleArrival</c> sets the manager's
+    /// state to <c>Arrived</c> without ever nulling its route, so <c>CurrentRoute</c> stayed
+    /// non-null for the rest of the session after a completed, docking-off arrival with no
+    /// Stop pressed, and a stale COMPLETED flight's summary wrongly survived the next leg's
+    /// failed Calculate. <c>HasLiveRoute</c> reads the guidance STATE instead (see <see
+    /// cref="MSFSBlindAssist.Services.LiveRouteStates"/>), which does not carry that
+    /// staleness.</para>
+    ///
+    /// <para>PR #238 review, Important 4: every caller in this file is reachable while a
+    /// PREVIOUS Calculate's route is still live in the manager -- this dialog is hide-on-close
+    /// and cached, so a pilot can reopen it mid-taxi to plan the next leg and abort on ANY of
+    /// this method's callers (a failed airport reload, a gate list that changed under them, no
+    /// destination picked yet, an unreachable stand, or a refused <c>LoadRoute</c>) before ever
+    /// building a new route. "Does this fire after a <c>LoadRoute</c> call" is not the right
+    /// test — "is a route still live" is, and it is the same answer for every one of them, so
+    /// all of this file's callers pass <c>keepSummary: _guidanceManager.HasLiveRoute</c>.</para>
+    /// </summary>
+    public void ShowRouteFailure(string reason, bool keepSummary = false)
     {
         if (string.IsNullOrWhiteSpace(reason)) return;
         lblStatus.Text = reason;
-        txtRouteSummary.Text = reason;
+        if (!keepSummary)
+            txtRouteSummary.Text = reason;
     }
 
     /// <summary>Puts every route-shaping control an import does not itself set back to
@@ -4216,7 +4249,14 @@ public class TaxiAssistForm : Form
         {
             const string noAirport = "No airport loaded. Enter an ICAO code first.";
             AnnounceCalculateAbort(noAirport);
-            ShowRouteFailure(noAirport);
+            // PR #238 review, Important 4: this dialog is hide-on-close and cached, and
+            // LoadAirportDataAsync drops _graph before its awaits and only reassigns it on
+            // success -- so this form-level field can be null mid-taxi with the MANAGER
+            // still flying a route from an earlier, successful Calculate (a different
+            // dialog session, or an earlier airport load in this one). Reopen Taxi Assist,
+            // have the reload fail, press Calculate: without keepSummary the live route's
+            // summary box was wiped for a reason that has nothing to do with that route.
+            ShowRouteFailure(noAirport, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4232,7 +4272,9 @@ public class TaxiAssistForm : Form
         if (RefreshDestinationsIfGateSourceChanged())
         {
             AnnounceCalculateAbort(GateListUpdatedMessage);
-            ShowRouteFailure(GateListUpdatedMessage);
+            // Important 4, same class as the _graph == null guard above: a rebuilt gate
+            // list can abort Calculate while an EARLIER Calculate's route is still live.
+            ShowRouteFailure(GateListUpdatedMessage, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4290,8 +4332,10 @@ public class TaxiAssistForm : Form
 
             // Component + start node for the graph-distance terminator helpers,
             // mirroring FindFarSideRunwayNode's aircraft-component restriction so
-            // the resolved node is actually reachable from the aircraft.
-            var startNode = _graph.FindNearestNode(_aircraftLat, _aircraftLon);
+            // the resolved node is actually reachable from the aircraft. Task 6 Defect A:
+            // startNode.NodeId feeds FindTaxiwayEndNode below as a real route start, so a
+            // bridge-only stand stub must be excluded here too.
+            var startNode = _graph.FindNearestNode(_aircraftLat, _aircraftLon, excludeBridgeOnlyStandStubs: true);
             if (startNode == null)
             {
                 _announcer.AnnounceImmediate("Could not find your position on the taxi network.");
@@ -4452,7 +4496,13 @@ public class TaxiAssistForm : Form
             if (progError != null)
             {
                 _announcer.AnnounceImmediate(progError);
-                ShowRouteFailure(progError);
+                // Same LoadRoute call, same reachability rollback as the main Calculate path
+                // below -- a refused progressive leg can leave the PREVIOUS route still live
+                // (RestoreLoadRouteRollback), so the summary box must not be overwritten with
+                // the failure reason in that case (see ShowRouteFailure's own doc). Decided
+                // from the manager's live guidance STATE (HasLiveRoute), not CurrentRoute !=
+                // null, which stays true well past arrival (PR #238 review, Important 3).
+                ShowRouteFailure(progError, keepSummary: _guidanceManager.HasLiveRoute);
                 return;
             }
 
@@ -4463,6 +4513,13 @@ public class TaxiAssistForm : Form
             txtRouteSummary.Text = _guidanceManager.LastRouteSummary;
             lblStatus.Text = "Route loaded. Guidance active.";
             _guidanceManager.StartGuidance(progSettings);
+            // A leg that begins at a runway hold line started HELD, with no opening callout. Its hold
+            // sentence is this leg's one opening instruction, spoken here and consumed: MainForm feeds
+            // no position frames while guidance holds, so nothing later would say it. Immediate, like
+            // the unheld leg's opening callout.
+            string? progStartHold = _guidanceManager.ConsumeStartHoldCue();
+            if (!string.IsNullOrEmpty(progStartHold))
+                _announcer.AnnounceImmediate(progStartHold);
             return;
         }
 
@@ -4472,7 +4529,9 @@ public class TaxiAssistForm : Form
         {
             const string noDestination = "Please select a destination.";
             AnnounceCalculateAbort(noDestination);
-            ShowRouteFailure(noDestination);
+            // Important 4: reachable with a route already live too -- the dialog is
+            // reopened mid-taxi to plan the next leg before a destination is picked yet.
+            ShowRouteFailure(noDestination, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4483,8 +4542,9 @@ public class TaxiAssistForm : Form
             AnnounceCalculateAbort(unreachable);
             // The spoken sentence, not the old terse status line ("Selected stand has no
             // taxi route."): the box is where the pilot goes to re-read what they heard,
-            // so it must carry the same words, including WHICH stand.
-            ShowRouteFailure(unreachable);
+            // so it must carry the same words, including WHICH stand. Important 4: same
+            // live-route protection as every other early return in this method.
+            ShowRouteFailure(unreachable, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4622,7 +4682,14 @@ public class TaxiAssistForm : Form
             // and did not get, and the abort's own reason follows it.
             AnnounceCalculateAbort(
                 backtrackFallbackNote == null ? error : backtrackFallbackNote + " " + error);
-            ShowRouteFailure(error);
+            // A reachability refusal rolls back and leaves the PREVIOUS route still live
+            // (TaxiGuidanceManager.RestoreLoadRouteRollback) -- the pilot IS still flying a
+            // route even though this Calculate failed, so the summary box must keep showing
+            // it rather than being overwritten with the failure reason (PR #238 review, Task
+            // 7 Defect B). Decided from the manager's own guidance STATE (HasLiveRoute),
+            // never guessed from the error string, and never from CurrentRoute != null,
+            // which stays true well past arrival (PR #238 review, Important 3).
+            ShowRouteFailure(error, keepSummary: _guidanceManager.HasLiveRoute);
             return;
         }
 
@@ -4658,12 +4725,14 @@ public class TaxiAssistForm : Form
         // Calculate, in-sim 2026-06-13, when spoken before StartGuidance), and
         // it must be a SINGLE AnnounceImmediate: consecutive calls stomp each
         // other, so the intersection confirmation and the reach warning are
-        // joined, warning last so the safety-relevant text ends the utterance.
+        // joined, warning last so the safety-relevant text ends the utterance (only a
+        // start-hold sentence, the instruction to act on, follows it).
         // (No-op for Progressive Taxi: LastRouteReachWarning is only set for
         // runway destinations, and progressive legs never set a lineup target.)
         //
         // An imported (SayIntentions) route's summary rides at the FRONT of that same
-        // utterance — see StartImportedRoute. Front, because the reach warning stays the
+        // utterance — see StartImportedRoute. Front, because the reach warning (or a
+        // start-hold sentence after it) stays the
         // last thing said, per the ordering above; the import summary leads with its own
         // warnings for the same reason.
         var standstillParts = new List<string>();
@@ -4695,13 +4764,21 @@ public class TaxiAssistForm : Form
                 $"Holding point {holdingPointEntry.TaxiwayName}, {rwyLabel}. " +
                 $"About {DistanceFormatter.FromMetres(holdingPointEntry.RemainingMeters)} of runway ahead.");
         }
+        // The unmapped-start warning -- "Your position isn't connected ..." when the aircraft
+        // leaves a disconnected position, or "{name} isn't connected ..." when the destination
+        // itself is on a piece of network the aircraft is not on -- rides in this same
+        // utterance, ahead of the turn-cue / reach-warning slot below, so that slot stays last.
+        // Consumed unconditionally, so the per-frame one-shot can never repeat it.
+        string? unmappedStart = _guidanceManager.ConsumeUnmappedStartWarning();
+        if (!string.IsNullOrEmpty(unmappedStart))
+            standstillParts.Add(unmappedStart);
         // The route-start turn cue rides INSIDE this one utterance rather than interrupting
         // it. Live KATL 2026-08-27: it fired as its own AnnounceImmediate 50 ms after this
         // block spoke, and cut the SayIntentions import summary off mid-word -- the fifth
         // time two announcements at Calculate have stomped each other here.
         //
         // The two are MUTUALLY EXCLUSIVE, and that is the design, not an accident of this
-        // if/else: whichever applies is the LAST thing said. A reach warning means the route
+        // if/else: whichever applies is said last, before only a start-hold sentence. A reach warning means the route
         // never gets to the runway, so the pilot will reprogram and a turn cue is both moot
         // and extra words in front of the warning -- exactly the suppression the per-frame
         // one-shot has always applied. Never "fix" this into two Add calls: that reinstates
@@ -4718,6 +4795,12 @@ public class TaxiAssistForm : Form
         {
             standstillParts.Add(turnCue);
         }
+        // A route that begins at a runway hold line started HELD. Its hold sentence is the LAST part of
+        // this one utterance — it is what the pilot must act on — and is consumed here, because
+        // MainForm feeds guidance no frames while it holds and nothing else would say it.
+        string? startHoldCue = _guidanceManager.ConsumeStartHoldCue();
+        if (!string.IsNullOrEmpty(startHoldCue))
+            standstillParts.Add(startHoldCue);
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
@@ -4895,8 +4978,8 @@ public class TaxiAssistForm : Form
     /// Finds the nearest graph node on the opposite side of <paramref name="runway"/>
     /// from the aircraft's current position. Used by the Progressive Taxi "After
     /// crossing runway" terminator to produce a routing target that forces A*
-    /// across the runway; the InsertRunwayCrossingHoldShorts pass then auto-tags
-    /// the hold-short point (which LoadRoute strips for the cleared crossing).
+    /// across the runway; the automatic runway hold pass then places the hold
+    /// (which LoadRoute strips for the cleared crossing).
     ///
     /// If the aircraft is ON the runway (within half-width of the centerline), the
     /// aircraft's heading is used to determine the intended exit side.
