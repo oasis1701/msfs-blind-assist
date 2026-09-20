@@ -117,10 +117,12 @@ AI Display Reading (requires an AI API key — Gemini or Claude — in File > Se
   Alt+D      Describe outside scene
 
   You no longer need to select a cockpit view first: the app moves the
-  simulator camera to the display it is reading and puts it back afterwards.
+  simulator camera to the display it is reading and puts it back afterwards —
+  including a saved custom camera such as a cabin or wing view.
   From an outside view it says "Switch to a cockpit view first" and does
   nothing. If it cannot put your view back it says so rather than leaving
-  you somewhere you did not choose.
+  you somewhere you did not choose, and the next display read you take will
+  try again to return you there.
 
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
