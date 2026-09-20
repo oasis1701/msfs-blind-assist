@@ -129,15 +129,31 @@ public partial class SimConnectManager : ICameraViewIo
 
     /// <summary>
     /// Moves the camera: the view type first, then the index within it (the order verified live —
-    /// index alone only works within the current type).
+    /// index alone only works within the current type). Both writes land on the SAME frame.
+    ///
+    /// That is correct for ENTERING an instrument view and measured working there, but it does
+    /// NOT work for leaving one: written together, the type write is refused while the index
+    /// write applies. Anything restoring a previous view must space the pair with
+    /// <see cref="SetCameraViewType"/> and <see cref="SetCameraViewIndex"/> — see
+    /// <c>InstrumentViewSwitcher.RestoreAsync</c>, which carries the measurement.
     /// </summary>
     public void SetCameraView(int viewType, int viewIndex)
     {
-        SetSimVar("CAMERA VIEW TYPE AND INDEX:0", viewType);
-        SetSimVar("CAMERA VIEW TYPE AND INDEX:1", viewIndex);
+        SetCameraViewType(viewType);
+        SetCameraViewIndex(viewIndex);
     }
+
+    /// <summary>Writes the view type register alone, so a caller can put a frame between it and the index.</summary>
+    public void SetCameraViewType(int viewType) => SetSimVar("CAMERA VIEW TYPE AND INDEX:0", viewType);
+
+    /// <summary>Writes the view index register alone. Only meaningful once the type register holds the wanted type.</summary>
+    public void SetCameraViewIndex(int viewIndex) => SetSimVar("CAMERA VIEW TYPE AND INDEX:1", viewIndex);
 
     Task<CameraViewReading?> ICameraViewIo.ReadAsync(int timeoutMs) => ReadCameraViewAsync(timeoutMs);
 
     void ICameraViewIo.Set(int viewType, int viewIndex) => SetCameraView(viewType, viewIndex);
+
+    void ICameraViewIo.SetViewType(int viewType) => SetCameraViewType(viewType);
+
+    void ICameraViewIo.SetViewIndex(int viewIndex) => SetCameraViewIndex(viewIndex);
 }

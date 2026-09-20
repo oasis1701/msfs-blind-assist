@@ -30,10 +30,26 @@ public class InstrumentViewSwitcherTests
         /// </summary>
         public Action? AfterSet;
 
+        /// <summary>Every register write in order, so a test can pin that the restore SPACED the pair.</summary>
+        public readonly List<(string Register, int Value)> RegisterWrites = new();
+
+        // Models the sim accepting a write, reading back correct, and only then reverting — the
+        // live failure the first restore shipped with (iFly 737 MAX8, 2026-09-20). Arm it AFTER
+        // the entry so only the restore meets it.
+        public bool RevertArmed;
+        public int RevertAfterReads;
+        public CameraViewReading? RevertTo;
+        private int _readsSinceArmed;
+
         public Task<CameraViewReading?> ReadAsync(int timeoutMs)
         {
             if (ThrowOnRead) throw new InvalidOperationException("SimConnect down");
             Clock += ReadCostMs;
+            if (RevertArmed && _readsSinceArmed++ >= RevertAfterReads)
+            {
+                Current = RevertTo;
+                RevertArmed = false;
+            }
             return Task.FromResult(Current);
         }
 
@@ -43,6 +59,24 @@ public class InstrumentViewSwitcherTests
             Writes.Add((viewType, viewIndex));
             if (HonoursWrites && Current is { } c)
                 Current = c with { ViewType = viewType, ViewIndex = ClampIndexTo ?? viewIndex };
+            AfterSet?.Invoke();
+        }
+
+        public void SetViewType(int viewType)
+        {
+            if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
+            RegisterWrites.Add(("type", viewType));
+            if (HonoursWrites && Current is { } c)
+                Current = c with { ViewType = viewType };
+            AfterSet?.Invoke();
+        }
+
+        public void SetViewIndex(int viewIndex)
+        {
+            if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
+            RegisterWrites.Add(("index", viewIndex));
+            if (HonoursWrites && Current is { } c)
+                Current = c with { ViewIndex = ClampIndexTo ?? viewIndex };
             AfterSet?.Invoke();
         }
     }
@@ -184,7 +218,9 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
 
-        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
+        // The entry is one back-to-back Set; the restore is the SPACED pair, type before index.
+        Assert.Equal(new[] { (2, 0) }, camera.Writes);
+        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
         Assert.Equal(new CameraViewReading(2, 1, 7), camera.Current);
     }
 
@@ -197,22 +233,43 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
 
-        Assert.Equal(new[] { (2, 1), (3, 2) }, camera.Writes);
+        Assert.Equal(new[] { (2, 1) }, camera.Writes);
+        Assert.Equal(new[] { ("type", 3), ("index", 2) }, camera.RegisterWrites);
     }
 
     [Fact]
-    public async Task RestoreAsync_DoesNotSettle()
+    public async Task RestoreAsync_SpacesTheTwoWrites_AndConfirmsTheViewHeld()
     {
-        // Nothing is captured after the restore, so the 250 ms the entry spends waiting for a
-        // rendered frame is not owed here. A read-back that matches at once costs no delay at all.
+        // Both delays are the fix for a live failure (iFly 737 MAX8, 2026-09-20): written on one
+        // frame the type write is refused, and the refused write reads back as success for a
+        // moment, so an immediate poll reported a restore that had not happened.
         var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
         var (switcher, delays, _) = Make(camera);
         var session = await switcher.EnterAsync(0);
         delays.Clear();
 
-        await switcher.RestoreAsync(session);
+        Assert.True(await switcher.RestoreAsync(session));
 
-        Assert.Empty(delays);
+        // gap between type and index, settle before judging, then the hold confirm.
+        Assert.Equal(new[] { 250, 250, 250 }, delays);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_WhenTheWriteVerifiesThenReverts_ReportsFailure()
+    {
+        // THE live defect. The sim took the write, read back correct, then snapped the camera
+        // back to the instrument view; the shipped code matched that transient and announced
+        // nothing, so the pilot was left on the instrument view in silence.
+        var camera = new FakeCamera { Current = new CameraViewReading(2, 1, 7) };
+        var (switcher, _, _) = Make(camera);
+        var session = await switcher.EnterAsync(0);
+
+        camera.RevertArmed = true;
+        camera.RevertAfterReads = 1;                                // first read agrees, then it reverts
+        camera.RevertTo = new CameraViewReading(2, 2, 0);
+
+        Assert.False(await switcher.RestoreAsync(session));
+        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
     }
 
     [Fact]
@@ -229,7 +286,7 @@ public class InstrumentViewSwitcherTests
         // False alone would also pass an implementation that returned false WITHOUT attempting
         // the restore write — that distinction is the whole point of the feature.
         Assert.False(await switcher.RestoreAsync(session));
-        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
+        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
     }
 
     [Fact]
@@ -252,6 +309,7 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
+        Assert.Empty(camera.RegisterWrites);
     }
 
     [Fact]
@@ -263,6 +321,7 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
+        Assert.Empty(camera.RegisterWrites);
     }
 
     [Fact]
@@ -276,6 +335,7 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
+        Assert.Empty(camera.RegisterWrites);
     }
 
     [Fact]
@@ -296,6 +356,7 @@ public class InstrumentViewSwitcherTests
 
         Assert.False(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
+        Assert.Empty(camera.RegisterWrites);
     }
 
     [Fact]
@@ -313,6 +374,7 @@ public class InstrumentViewSwitcherTests
 
         Assert.True(await switcher.RestoreAsync(session));
         Assert.Empty(camera.Writes);
+        Assert.Empty(camera.RegisterWrites);
     }
 
     [Fact]
@@ -337,6 +399,13 @@ public class InstrumentViewSwitcherTests
         // A throwing read-back must not stop the restore WRITE from being attempted — only the
         // verification poll that follows it fails, over and over, until the cap gives up on it.
         Assert.False(await switcher.RestoreAsync(session));
-        Assert.Equal(new[] { (2, 0), (1, 7) }, camera.Writes);
+        Assert.Equal(new[] { ("type", 1), ("index", 7) }, camera.RegisterWrites);
+    }
+
+    [Fact]
+    public void TheRestoreTimings_AreTheMeasuredNumbers()
+    {
+        Assert.Equal(250, InstrumentViewSwitcher.DefaultWriteGapMs);
+        Assert.Equal(250, InstrumentViewSwitcher.DefaultHoldConfirmMs);
     }
 }
