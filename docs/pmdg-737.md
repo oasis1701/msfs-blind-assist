@@ -284,9 +284,9 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
 - Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
   visibility selectors, not positions. Headrests are the only adjustable seat part.
 
-## AI display reads (Alt+P / Alt+N / Alt+E / Alt+I)
+## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)
 
-Four reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/Pmdg737DisplayReads.cs`,
+Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/Pmdg737DisplayReads.cs`,
 dispatched by `BaseAircraftDefinition.TryReadDisplayFor`. The app moves the simulator camera to
 the instrument view that frames the display, captures with `PrintWindow`, puts the camera back,
 and only then makes the AI call.
@@ -302,21 +302,42 @@ and only then makes the AI call.
 **The indices are MEASURED on the live aircraft (2026-09-20, MSFS 2024 1.8.16.0), never read off
 `cameras.cfg`.** Two of this aircraft's camera titles actively mislead: the camera titled "PFD"
 (index 7) frames the captain's PFD *and* ND, and the one titled "EICAS" (index 1) frames the
-ISFD, both engine display units and the first officer's ND besides. PFD and ND share a view, so
-alternating Alt+P and Alt+N costs no camera move; the same is true of Alt+E and Alt+I.
+ISFD, both engine display units and the first officer's ND besides. PFD and ND share a view, as
+do Alt+E, Alt+S and Alt+I.
 
-⚠️ **This aircraft's cameras are not where the others keep theirs.** `common/config/cameras.cfg`
-is a stub holding only the eyepoint; the real camera list is per livery preset, e.g.
-`presets/pmdg/PMDG 737-800 BW HD/config/cameras.cfg`. Read that one when re-measuring.
+⚠️ Sharing a view does NOT mean consecutive reads leave the camera alone — an earlier draft of
+this section said it did. The restore puts the pilot's own view back after EVERY read, so the
+next read always starts from their view and plans a fresh switch. The saving existed only under
+the no-restore design, where the camera stayed on the instrument view and the next read hit
+`AlreadyThere`.
+
+⚠️ **This aircraft's cameras are not where the others keep theirs, and where they ARE differs by
+variant.** On the -600/-700/-800 `common/config/cameras.cfg` is a ~300-byte stub holding only the
+eyepoint and the real list is per livery preset, e.g.
+`presets/pmdg/PMDG 737-800 BW HD/config/cameras.cfg`. On the **-900 it is the other way round**:
+the preset files are 48-byte `[MODULAR_MERGE] auto = true` stubs and the full list lives in
+`common/config/cameras.cfg`. Read whichever of the two is not a stub. (Across the 21 -600/-700/-800
+presets checked, the instrument order is identical — `0 MCP, 1 EICAS, … 7 PFD` — so the indices
+below hold for every livery of those three.)
 
 **Why the ISFD does not use the captain-panel view.** It is in that frame, but hard against the
 right edge and clipped. In the EICAS view it sits well inside the frame and crops legibly — and
 that is where `DisplayType.ISFD737`'s prompt already says it is, "between the captain's displays
 and the Engine Display", so no prompt change was needed.
 
-**Alt+S reads the lower display unit**, and it is the only way a blind pilot reaches N2, oil
-pressure, temperature and quantity, and engine vibration on this aircraft — the Engines panel
-carries the EEC, ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all.
+**Alt+S reads the lower display unit**, and it is the only route THIS APP offers to N2, oil
+pressure, temperature and quantity, and engine vibration — the Engines panel carries the EEC,
+ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all.
+
+⚠️ **That is a claim about the app, not about the simulator**, and the first draft got it wrong by
+saying "the only way a blind pilot reaches" them. Measured on the live aircraft 2026-09-20: the
+STOCK SimVars carry `TURB ENG N2` (87.22 %), `GENERAL ENG OIL PRESSURE` (62.84 psi),
+`GENERAL ENG OIL TEMPERATURE` (76.59 °C) and `ENG FUEL FLOW PPH` (2347) with real per-engine
+values. `ENG OIL QUANTITY` reads a flat 100 % and `ENG VIBRATION` 1.99 identically on both
+engines — the stock engine model's defaults, not PMDG's (the frame measured for this feature had
+oil quantity 68/75 and vibration 0.5/0.6). So three of the five could be ordinary always-live
+panel rows on the Engines panel; that is a separate capability with its own in-sim test plan and
+is deliberately NOT part of this change. Recorded so the next person does not re-measure it.
 It shares the EICAS view, because that one frame holds both display units, so Alt+E and Alt+S
 never move the camera between them. The unit is selectable (the LOWER DU knob switches it between
 engine data and a navigation display), so `DisplayType.LowerDU737`'s prompt names which of the two
