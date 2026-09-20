@@ -5325,10 +5325,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
-        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+I in output mode). The camera is moved to
-        // the instrument view that frames the display, the capture is taken, and the camera is put
-        // back where the pilot had it — see Services/InstrumentViewSwitcher. Alt+S is deliberately
-        // absent and is handled in the switch below, which refuses it rather than deferring to base.
+        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode). The camera is
+        // moved to the instrument view that frames the display, the capture is taken, and the
+        // camera is put back where the pilot had it — see Services/InstrumentViewSwitcher.
         if (TryReadDisplayFor(action, Pmdg737DisplayReads.All, simConnect, announcer, parentForm))
             return true;
 
@@ -5626,13 +5625,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 }
                 return true;
 
-            // Alt+P / Alt+N / Alt+I / Alt+E are dispatched from Pmdg737DisplayReads above the
-            // switch, which also moves the camera to the view that frames each display.
-
-            // Lower System Display (DU4) — out of scope for now (matches 777, which doesn't handle this either).
-            // Deliberately returns false rather than falling through to base, unlike the iFly.
-            case HotkeyAction.ReadDisplayLowerECAM:
-                return false;
+            // Alt+P / Alt+N / Alt+I / Alt+E / Alt+S are dispatched from Pmdg737DisplayReads above
+            // the switch, which also moves the camera to the view that frames each display.
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);

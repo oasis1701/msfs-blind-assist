@@ -1,0 +1,1 @@
+Alt+S now reads the PMDG 737's lower display unit, which is the only way to get N2, oil pressure, oil temperature, oil quantity and engine vibration on that aircraft. It tells you whether the display is showing engine data or the navigation display, since the LOWER DU selector can put either there.

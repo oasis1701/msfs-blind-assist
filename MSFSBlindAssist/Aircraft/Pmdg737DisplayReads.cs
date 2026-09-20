@@ -17,10 +17,13 @@ namespace MSFSBlindAssist.Aircraft;
 /// cameras.cfg` is a stub carrying only the eyepoint; the real list is per livery-preset, e.g.
 /// `presets/pmdg/PMDG 737-800 BW HD/config/cameras.cfg`. Read that one when re-measuring.
 ///
-/// There is no Alt+S read: <c>ReadDisplayLowerECAM</c> stays deliberately unhandled, matching the
-/// PMDG 777. The lower display unit IS in frame in the EICAS view and the engine-display prompt
-/// explicitly tells the model to ignore it, so adding that read later is a table row and a
-/// prompt — not a camera measurement.
+/// Alt+S reads the LOWER display unit (DU4), which shares the EICAS view — the same frame carries
+/// both engine display units. It is the only way a blind pilot reaches N2, oil pressure,
+/// temperature and quantity, and engine vibration on this aircraft: the Engines panel exposes the
+/// EEC, ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all. The
+/// display is selectable (the LOWER DU knob switches it between engine data and a navigation
+/// display), so its prompt identifies which is present before reporting it, the way the MD-11's
+/// SD prompt handles its pages.
 /// </summary>
 internal static class Pmdg737DisplayReads
 {
@@ -32,10 +35,10 @@ internal static class Pmdg737DisplayReads
     public const int CaptainPanelView = 7;
 
     /// <summary>
-    /// Instrument view 2 (index 1), titled "EICAS": the captain's ND, the ISFD, the upper engine
-    /// display, the lower system display and the first officer's ND. The ISFD sits well inside
-    /// this frame and crops legibly, and it is where the ISFD prompt already says it is — between
-    /// the captain's displays and the engine display.
+    /// Instrument view 2 (index 1), titled "EICAS": the captain's ND, the ISFD, BOTH engine
+    /// display units and the first officer's ND. The ISFD sits well inside this frame and crops
+    /// legibly, and it is where the ISFD prompt already says it is — between the captain's
+    /// displays and the engine display.
     /// </summary>
     public const int CenterPanelView = 1;
 
@@ -44,6 +47,7 @@ internal static class Pmdg737DisplayReads
         new AiDisplayRead(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD737, "PFD", CaptainPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.ND737, "ND", CaptainPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.EICAS737, "EICAS", CenterPanelView),
+        new AiDisplayRead(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerDU737, "Lower display", CenterPanelView),
         new AiDisplayRead(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.ISFD737, "ISFD", CenterPanelView),
     };
 }

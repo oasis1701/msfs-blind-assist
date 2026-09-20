@@ -216,6 +216,7 @@ public class GeminiService : IAiProvider
         ND737,         // Navigation Display (Boeing 737 NG3)
         ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
         EICAS737,      // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        LowerDU737,    // Lower Display Unit / DU4 — secondary engine data, or the ND when selected (Boeing 737 NG3)
         PFDiFly,       // Primary Flight Display (iFly 737 MAX 8)
         NDiFly,        // Navigation Display (iFly 737 MAX 8)
         ISFDiFly,      // Integrated Standby Flight Display (iFly 737 MAX 8)
@@ -500,6 +501,20 @@ Any crew alert messages in the lower portion of the display (caution/warning tex
 Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
 Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.LowerDU737 => @"You are reading the Lower Display Unit (DU4, the lower centre display) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the lower centre display, below the Upper Engine Display. Ignore the PFD, the navigation displays, the ISFD, the Upper Engine Display (N1, EGT, fuel flow) and the CDU.
+
+This display unit shows one of two things, selected by the pilot on the LOWER DU selector. Identify which is present from its content and say so on the first line, then report it:
+
+If it shows SECONDARY ENGINE INDICATIONS — first line ""Secondary engine"" — report for each engine (ENG 1 / ENG 2 or Left / Right), each on its own line: N2 percentage, oil pressure, oil temperature, oil quantity, and engine vibration. Then any other values present, such as hydraulic quantity and pressure, flap or control surface positions, and any crew alert text.
+
+If it shows a NAVIGATION DISPLAY — first line ""Navigation display"" — report it as a navigation display: mode and range, heading or track, active waypoint with distance and time, wind, and any weather-radar or terrain indications.
+
+Important: N1, EGT and fuel flow belong to the Upper Engine Display, not this one. Do not report them here.
+If the display is blank or off, say so in one line and stop.
+Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.PFDiFly => @"You are reading the Primary Flight Display (PFD) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the display showing the artificial-horizon attitude indicator with a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine indications, the ISFD standby, the flight-information/data page, and the CDU.
 Report in this order:

@@ -296,6 +296,7 @@ and only then makes the AI call.
 | Alt+P | PFD | view 8 (index 7) |
 | Alt+N | ND | view 8 (index 7) |
 | Alt+E | EICAS (upper engine display) | view 2 (index 1) |
+| Alt+S | Lower display unit (DU4) | view 2 (index 1) |
 | Alt+I | ISFD (standby) | view 2 (index 1) |
 
 **The indices are MEASURED on the live aircraft (2026-09-20, MSFS 2024 1.8.16.0), never read off
@@ -313,8 +314,17 @@ right edge and clipped. In the EICAS view it sits well inside the frame and crop
 that is where `DisplayType.ISFD737`'s prompt already says it is, "between the captain's displays
 and the Engine Display", so no prompt change was needed.
 
-**There is no Alt+S read.** `ReadDisplayLowerECAM` stays out of scope, matching the PMDG 777, and
-`PMDG737Definition` answers it with a bare `false` rather than deferring to the base definition —
-a deliberate difference from the iFly that the pre-switch dispatch must not swallow. The lower
-system display IS in frame in the EICAS view and the engine-display prompt tells the model to
-ignore it, so adding that read later is a table row and a prompt, not a camera measurement.
+**Alt+S reads the lower display unit**, and it is the only way a blind pilot reaches N2, oil
+pressure, temperature and quantity, and engine vibration on this aircraft — the Engines panel
+carries the EEC, ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all.
+It shares the EICAS view, because that one frame holds both display units, so Alt+E and Alt+S
+never move the camera between them. The unit is selectable (the LOWER DU knob switches it between
+engine data and a navigation display), so `DisplayType.LowerDU737`'s prompt names which of the two
+it found before reporting it, the way the MD-11's SD prompt handles its pages. The two prompts
+exclude each other's numbers BY NAME — N1/EGT/fuel flow belong to the upper unit, N2/oil/vibration
+to the lower — because both are in the picture either way.
+
+It was added on 2026-09-20, after the camera work. It had been skipped on the stated grounds that
+the PMDG 777 does not have it either — precedent rather than a reason. The 777 still has the same
+gap, and its lower display is a genuinely different surface (a selectable synoptic), so it needs
+its own measurement rather than a copy of this table.

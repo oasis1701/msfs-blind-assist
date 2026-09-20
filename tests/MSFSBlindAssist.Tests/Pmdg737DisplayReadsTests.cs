@@ -18,15 +18,16 @@ namespace MSFSBlindAssist.Tests;
 public class Pmdg737DisplayReadsTests
 {
     [Fact]
-    public void FourReads_OnePerDisplayKey()
+    public void FiveReads_OnePerDisplayKey()
     {
         var actions = Pmdg737DisplayReads.All.Select(r => r.Action).ToArray();
 
-        Assert.Equal(4, actions.Length);
+        Assert.Equal(5, actions.Length);
         Assert.Equal(actions.Length, actions.Distinct().Count());
         Assert.Contains(HotkeyAction.ReadDisplayPFD, actions);
         Assert.Contains(HotkeyAction.ReadDisplayND, actions);
         Assert.Contains(HotkeyAction.ReadDisplayUpperECAM, actions);
+        Assert.Contains(HotkeyAction.ReadDisplayLowerECAM, actions);
         Assert.Contains(HotkeyAction.ReadDisplayISIS, actions);
     }
 
@@ -34,6 +35,7 @@ public class Pmdg737DisplayReadsTests
     [InlineData(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD737, "PFD", 7)]
     [InlineData(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.ND737, "ND", 7)]
     [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.EICAS737, "EICAS", 1)]
+    [InlineData(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerDU737, "Lower display", 1)]
     [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.ISFD737, "ISFD", 1)]
     public void EachRead_HasItsPromptNameAndView(HotkeyAction action, GeminiService.DisplayType type, string name, int view)
     {
@@ -51,12 +53,28 @@ public class Pmdg737DisplayReadsTests
     }
 
     [Fact]
-    public void ThereIsNoLowerSystemDisplayRead()
+    public void BothEngineDisplays_ShareTheOneCameraView()
     {
-        // Alt+S stays out of scope, matching the PMDG 777. PMDG737Definition answers it with a
-        // bare false rather than deferring to the base definition — a deliberate difference from
-        // the iFly, and one the dispatch above the switch must not swallow.
-        Assert.False(AiDisplayRead.TryGet(Pmdg737DisplayReads.All, HotkeyAction.ReadDisplayLowerECAM, out _));
+        // They are two halves of one frame, so Alt+E and Alt+S never move the camera between them.
+        Assert.True(AiDisplayRead.TryGet(Pmdg737DisplayReads.All, HotkeyAction.ReadDisplayUpperECAM, out var upper));
+        Assert.True(AiDisplayRead.TryGet(Pmdg737DisplayReads.All, HotkeyAction.ReadDisplayLowerECAM, out var lower));
+
+        Assert.Equal(upper.InstrumentViewIndex, lower.InstrumentViewIndex);
+        Assert.NotEqual(upper.DisplayType, lower.DisplayType);
+    }
+
+    [Fact]
+    public void TheLowerDisplayPrompt_SeparatesItFromTheUpperOne()
+    {
+        // The two displays are in one frame, so each prompt has to exclude the other's numbers by
+        // name — N1/EGT/fuel flow are the upper unit's, N2/oil/vibration the lower one's.
+        string lower = GeminiService.GetPromptForDisplay(GeminiService.DisplayType.LowerDU737);
+
+        Assert.Contains("N2", lower);
+        Assert.Contains("vibration", lower, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Upper Engine Display", lower);
+        // The lower unit is selectable, so the prompt must say which of the two it found.
+        Assert.Contains("Navigation display", lower);
     }
 
     [Fact]
