@@ -208,43 +208,6 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider, IAirpo
         return result;
     }
 
-    /// <summary>
-    /// OSM-classified airport features (terminals, hangars, tower, aprons…) from the cached online
-    /// sources. Rides the per-ICAO cache GetTaxiPaths populates; never fetches. Empty when disabled
-    /// or uncached. READOUT ONLY: the surroundings catalog is the sole consumer. A fallback (radius)
-    /// fetch is bbox-filtered against the navdata airport extent so a gas station on the road
-    /// outside the field never becomes "Fuel, ahead, 800 metres".
-    /// </summary>
-    public List<Navigation.Surroundings.AirportFeature> GetOnlineFeatures(string icao, AirportFacilities? bbox)
-    {
-        if (!Enabled) return new();
-        if (!_cache.TryLoad(icao, out var sources) || sources == null) return new();
-        return FilterFeatures(sources, bbox);
-    }
-
-    internal static List<Navigation.Surroundings.AirportFeature> FilterFeatures(IReadOnlyList<AirportTaxiData> sources, AirportFacilities? bbox)
-    {
-        var result = new List<Navigation.Surroundings.AirportFeature>();
-        foreach (var src in sources)
-        {
-            // A fallback (radius) source has no navdata bbox to bound it BY DESIGN — it exists
-            // for the airports the navdata query can't scope. Without a bbox to test against,
-            // "unfiltered" is fail-OPEN: every fallback feature, including one genuinely miles
-            // outside the field, would pass straight through. Fail closed instead and drop the
-            // whole source's features — an area-sourced (non-fallback) source has no such gap,
-            // since its own OSM query is already airport-scoped, so it is never dropped here
-            // regardless of whether a bbox is available.
-            if (src.FeaturesFromFallback && bbox == null)
-                continue;
-
-            bool filter = src.FeaturesFromFallback;
-            foreach (var f in src.Features)
-                if (!filter || bbox!.ContainsPoint(f.Lat, f.Lon))
-                    result.Add(f);
-        }
-        return result;
-    }
-
     // ── The enriching member ────────────────────────────────────────────────
     /// <summary>
     /// Returns taxi paths for the given airport, enriching unnamed segments with

@@ -36,21 +36,6 @@ public sealed class AirportTaxiData
     /// never itself a route target (the augmentation anti-geometry rule).
     /// </summary>
     public List<(string Name, double Lat, double Lon, string Kind)> HoldingPoints { get; } = new();
-
-    /// <summary>
-    /// Airport FEATURES (terminals, concourses, FBOs, hangars, tower, fuel, cargo, fire
-    /// station, helipads, named aprons/de-ice pads) classified by OsmFeatureClassifier.
-    /// READOUT ONLY — consumed by the surroundings catalog, never by routing (spec invariant).
-    /// In-memory like everything else on this object.
-    /// </summary>
-    public List<MSFSBlindAssist.Navigation.Surroundings.AirportFeature> Features { get; } = new();
-
-    /// <summary>
-    /// True when <see cref="Features"/> was filled by the unscoped 3 km fallback query (the
-    /// aerodrome polygon lacks an icao= tag, or there is none) rather than the area-scoped
-    /// query. The decorator applies a navdata-extent bbox filter only in that case.
-    /// </summary>
-    public bool FeaturesFromFallback { get; set; }
 }
 
 public sealed class CoverageReport

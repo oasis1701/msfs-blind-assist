@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using MSFSBlindAssist.Services.Surroundings;
 namespace MSFSBlindAssist.Services.TaxiAugment;
 
 public sealed class OsmTaxiSource : ITaxiDataSource
@@ -32,78 +31,25 @@ public sealed class OsmTaxiSource : ITaxiDataSource
     /// ("Terminal 3"), which StandId would parse as stand number 3 and alias onto an
     /// unrelated gate.</para>
     /// </summary>
-    internal static string BuildQuery(double lat, double lon, string icao)
+    internal static string BuildQuery(double lat, double lon)
     {
-        string around = string.Format(CultureInfo.InvariantCulture, "(around:5000,{0:0.######},{1:0.######});", lat, lon);
-        string safeIcao = new string((icao ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        string around = string.Format(
+            CultureInfo.InvariantCulture, "(around:5000,{0:0.######},{1:0.######});", lat, lon);
 
-        return "[out:json][timeout:50];" +
-               $"area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"{safeIcao}\"]->.ad;" +
-               "(" +
+        return "[out:json][timeout:50];(" +
                $"way[\"aeroway\"=\"taxiway\"]{around}" +
                $"node[\"aeroway\"=\"parking_position\"]{around}" +
                $"way[\"aeroway\"=\"parking_position\"]{around}" +
                $"node[\"aeroway\"=\"gate\"]{around}" +
                $"way[\"aeroway\"=\"gate\"]{around}" +
                $"node[\"aeroway\"=\"holding_position\"]{around}" +
-               FeatureClauses("(area.ad)", includeNamedBuildings: true) +
-               ");out tags geom center;";
-    }
-
-    /// <summary>Feature-only query for an aerodrome OSM has not tagged with an icao= area; the
-    /// caller bbox-filters the result against the navdata airport extent (AirportFacilities).
-    /// Omits the two generic named-office/named-building clauses — unlike the aerodrome-scoped
-    /// query above, this one is scoped only by an "around" radius with no area to bound it, so
-    /// those two clauses would return every named office and building within 3 km of the point,
-    /// most of them nothing to do with the airport, for a query that already has to run without
-    /// the free area-membership filter Overpass provides for a tagged aerodrome.</summary>
-    internal static string BuildFeatureFallbackQuery(double lat, double lon)
-    {
-        string around = string.Format(CultureInfo.InvariantCulture, "(around:3000,{0:0.######},{1:0.######})", lat, lon);
-        return "[out:json][timeout:30];(" + FeatureClauses(around, includeNamedBuildings: false) + ");out tags geom center;";
-    }
-
-    private static string FeatureClauses(string scope, bool includeNamedBuildings)
-    {
-        string clauses =
-            $"nwr[\"aeroway\"~\"^(terminal|hangar|apron|tower|control_tower|fuel|helipad)$\"]{scope};" +
-            $"nwr[\"building\"~\"^(hangar|terminal)$\"]{scope};" +
-            $"nwr[\"man_made\"=\"tower\"][\"tower:type\"=\"aircraft_control\"]{scope};" +
-            $"nwr[\"amenity\"~\"^(fuel|fire_station)$\"]{scope};";
-        if (includeNamedBuildings)
-            clauses +=
-                $"nwr[\"office\"][\"name\"]{scope};" +
-                $"nwr[\"building\"][\"name\"]{scope};";
-        return clauses;
+               ");out tags geom;";
     }
 
     public async Task<AirportTaxiData?> FetchAsync(string icao, double lat, double lon, CancellationToken ct)
     {
-        string q = BuildQuery(lat, lon, icao);
-        string? body = await _client.PostAsync(q, ct).ConfigureAwait(false);
-        if (body == null) return null;
-
-        var parsed = Parse(body);
-        if (parsed.Features.Count == 0)
-            await TryFallbackFeaturesAsync(lat, lon, parsed, ct).ConfigureAwait(false);
-        return parsed;
-    }
-
-    /// <summary>One extra request when the area-scoped feature clauses returned nothing (the
-    /// aerodrome polygon lacks an icao tag, or there is none). Fills parsed.Features from a 3 km
-    /// radius; the decorator bbox-filters it. Failure is silent — the taxiway half is already in
-    /// hand and must not be lost to a feature-only miss.</summary>
-    private async Task TryFallbackFeaturesAsync(double lat, double lon, AirportTaxiData parsed, CancellationToken ct)
-    {
-        try
-        {
-            string? body = await _client.PostAsync(BuildFeatureFallbackQuery(lat, lon), ct).ConfigureAwait(false);
-            if (body == null) return;
-            var extra = Parse(body);
-            parsed.Features.AddRange(extra.Features);
-            parsed.FeaturesFromFallback = extra.Features.Count > 0;
-        }
-        catch { /* feature-only miss; taxiways already parsed */ }
+        string? body = await _client.PostAsync(BuildQuery(lat, lon), ct).ConfigureAwait(false);
+        return body == null ? null : Parse(body);
     }
 
     public static AirportTaxiData Parse(string json)
@@ -113,9 +59,6 @@ public sealed class OsmTaxiSource : ITaxiDataSource
         if (!doc.RootElement.TryGetProperty("elements", out var els)) return data;
         foreach (var el in els.EnumerateArray())
         {
-            var feature = OsmFeatureClassifier.Classify(el);
-            if (feature != null) { data.Features.Add(feature); continue; }
-
             var tags = el.TryGetProperty("tags", out var t) ? t : default;
             string aeroway = tags.ValueKind == JsonValueKind.Object && tags.TryGetProperty("aeroway", out var aw)
                 ? (aw.GetString() ?? "") : "";

@@ -93,31 +93,4 @@ public class OsmFeatureClassifierTests
         Assert.All(features, f => { Assert.InRange(f.Lat, 47.25, 47.29); Assert.InRange(f.Lon, -122.60, -122.55); });
         Assert.All(features, f => Assert.Equal(FeatureSource.Osm, f.Source));
     }
-
-    [Fact]
-    public void Query_scopes_new_tags_to_the_aerodrome_area_and_keeps_the_old_four()
-    {
-        string q = OsmTaxiSource.BuildQuery(47.27, -122.56, "KTIW");
-        Assert.Contains("area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"KTIW\"]->.ad;", q);
-        Assert.Contains("way[\"aeroway\"=\"taxiway\"](around:5000,47.27,-122.56);", q);
-        Assert.Contains("nwr[\"aeroway\"~\"^(terminal|hangar|apron|tower|control_tower|fuel|helipad)$\"](area.ad);", q);
-        Assert.Contains("nwr[\"amenity\"~\"^(fuel|fire_station)$\"](area.ad);", q);
-        Assert.EndsWith("out tags geom center;", q);
-        string fb = OsmTaxiSource.BuildFeatureFallbackQuery(47.27, -122.56);
-        Assert.Contains("(around:3000,47.27,-122.56)", fb);
-        Assert.DoesNotContain("taxiway", fb);
-    }
-
-    [Fact]
-    public void Parse_fills_features_and_still_fills_taxiways()
-    {
-        string path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-kjac.json");
-        var data = OsmTaxiSource.Parse(File.ReadAllText(path));
-        // 14 elements used to classify; the tightened lexicon now excludes two landside names
-        // that were never aviation features (id 7 "Chevron" is amenity=fuel road fuel, id 13
-        // "Hapeville City Hall" matches the NotAirside lexicon) — see OsmFeatureClassifierTests
-        // above, which pin that exclusion directly.
-        Assert.Equal(12, data.Features.Count);
-        Assert.Single(data.Taxiways);
-    }
 }

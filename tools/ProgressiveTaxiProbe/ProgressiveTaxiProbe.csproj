@@ -19,6 +19,10 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RouteRunwayCrossings.cs"  Link="Linked\RouteRunwayCrossings.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayFrame.cs"           Link="Linked\RunwayFrame.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayShape.cs"           Link="Linked\RunwayShape.cs" />
+    <!-- TaxiGraph's stand-bridge pass (BridgeOrphanParkingIslands / IsEligibleMainEndpoint /
+         ChooseBridgePair, PR #235) calls RunwayPavement — three call sites this probe's older
+         link list predates, and the same file tools/StandBridgeSweep already had to add. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayPavement.cs"        Link="Linked\RunwayPavement.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
     <!-- TaxiGraph.ResolveHoldingPointEntries calls NamedHoldingPointResolver.SnapOrInsert (added
@@ -30,6 +34,7 @@
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs"      Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingTypes.cs"     Link="Linked\ParkingTypes.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />

@@ -1874,8 +1874,12 @@ public partial class MainForm
         features.AddRange(MSFSBlindAssist.Navigation.Surroundings.NavdataFeatureSource.Read(named, facilities));
         var selectable = MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao);
         features.AddRange(MSFSBlindAssist.Navigation.Surroundings.GsxTerminalFeatureSource.Read(selectable));
-        if (_augmentingProvider != null)
-            features.AddRange(_augmentingProvider.GetOnlineFeatures(icao, facilities));
+        // Bounded wait ON A POOL THREAD (this method never runs on the UI thread): include the
+        // buildings when the mirror answers within 3 s; otherwise build without them and let
+        // FeaturesUpdated invalidate this catalog when the fetch lands.
+        if (onlineFeatures != null && facilities != null)
+            features.AddRange(onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
+                                            .GetAwaiter().GetResult());
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
         {
             var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);

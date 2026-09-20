@@ -258,7 +258,7 @@ public class OsmTaxiSourceParseTests
             System.Globalization.CultureInfo.CurrentCulture =
                 new System.Globalization.CultureInfo("de-DE");
 
-            string q = OsmTaxiSource.BuildQuery(51.4706, -0.4614, "KTIW");
+            string q = OsmTaxiSource.BuildQuery(51.4706, -0.4614);
 
             Assert.Contains("51.4706", q);
             Assert.Contains("-0.4614", q);
@@ -269,12 +269,21 @@ public class OsmTaxiSourceParseTests
     }
 
     [Fact]
+    public void The_taxiway_query_asks_for_full_geometry_and_nothing_else()
+    {
+        string q = OsmTaxiSource.BuildQuery(47.2679, -122.5781);
+        Assert.EndsWith(");out tags geom;", q);
+        Assert.DoesNotContain("center", q);   // `geom center` = ways with NO geometry: every taxiway name lost
+        Assert.DoesNotContain("area[", q);    // a mirror without an area database fails the WHOLE query
+    }
+
+    [Fact]
     public void The_overpass_query_asks_for_stands_and_gates_as_node_and_way()
     {
         // At hubs a stand is mapped as the painted guidance LINE, not a point (KDTW: zero
         // stand nodes against 176 ways), so dropping either spelling silently empties the
         // gate-alias layer at exactly the airports that need it.
-        string q = OsmTaxiSource.BuildQuery(42.2124, -83.3534, "KTIW");
+        string q = OsmTaxiSource.BuildQuery(42.2124, -83.3534);
 
         Assert.Contains("node[\"aeroway\"=\"parking_position\"]", q);
         Assert.Contains("way[\"aeroway\"=\"parking_position\"]", q);

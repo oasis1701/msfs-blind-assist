@@ -53,6 +53,11 @@ public partial class MainForm : Form
     // recorded by either fetch is honoured by the other instead of each keeping its own.
     private MSFSBlindAssist.Services.TaxiAugment.OverpassClient? _overpassClient;
 
+    // The surroundings feature's OSM building tier: its OWN Overpass request, cached per ICAO in
+    // memory. Separate from the taxiway fetch above so a mirror miss on the buildings can never
+    // cost the taxiway names (it once did — the two rode one query).
+    private MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore? onlineFeatures;
+
     // Tier 3 of the surroundings feature: reads the installed scenery package's placement
     // BGLs for named buildings, cached on disk per package under %APPDATA%.
     private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageIndexer sceneryIndexer =
@@ -815,6 +820,15 @@ public partial class MainForm : Form
         {
             var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
             _overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
+
+            // The surroundings buildings ride the same mirror client (so one cooldown map serves
+            // both) but their OWN query, store and event. A catalog built before the fetch landed
+            // is invalidated here, so the next Alt+L includes the buildings.
+            var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(_overpassClient);
+            onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
+            { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
+            onlineFeatures.FeaturesUpdated += icao => surroundingsCache.Invalidate(icao);
+
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
                 new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(_overpassClient),
@@ -838,7 +852,6 @@ public partial class MainForm : Form
                 // Real-time: drop any cached graph built from the older (pre-augmentation) data so
                 // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
                 taxiGuidanceManager?.OnAirportDataUpdated(icao);
-                surroundingsCache.Invalidate(icao);
 
                 try { _taxiAugmentLog.Info($"taxi-augment: data updated for {icao}"); }
                 catch { /* log failure must never surface */ }

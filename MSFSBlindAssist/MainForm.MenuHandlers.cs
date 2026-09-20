@@ -218,6 +218,8 @@ public partial class MainForm
         // to push into; apply it here so it takes effect immediately (next route build).
         if (_augmentingProvider != null)
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
+        if (onlineFeatures != null)
+            onlineFeatures.Enabled = settings.TaxiAugmentEnabled;
 
         // Opt-in passing-building callouts — applies immediately, no restart needed.
         if (surroundingsMonitor != null)
