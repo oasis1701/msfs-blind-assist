@@ -20,15 +20,27 @@ namespace MSFSBlindAssist.Aircraft;
 /// view 1" is index 0. Several reads may share one view — the AI prompts already say which
 /// display to describe when a frame holds more than one.
 /// </para>
+///
+/// <para>
+/// A NULL index means "capture whatever is on screen" — no camera move, which is exactly what an
+/// aircraft whose camera views have never been measured does today. That is not a degenerate
+/// case to design around: <c>BaseAircraftDefinition.ReadDisplay</c> has always supported it, so a
+/// non-nullable index made this record strictly LESS expressive than the method it dispatches to,
+/// and the aircraft that need it could not use the table at all. They kept hand-rolling the
+/// switch arm this type exists to delete. Adding a measured index later is a one-word change.
+/// </para>
 /// </summary>
 public sealed record AiDisplayRead(
     HotkeyAction Action,
     GeminiService.DisplayType DisplayType,
     string SpokenName,
-    int InstrumentViewIndex)
+    int? InstrumentViewIndex)
 {
     /// <summary>The read <paramref name="action"/> triggers, or false when it triggers none.</summary>
-    public static bool TryGet(IReadOnlyList<AiDisplayRead> reads, HotkeyAction action, out AiDisplayRead read)
+    public static bool TryGet(
+        IReadOnlyList<AiDisplayRead> reads,
+        HotkeyAction action,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out AiDisplayRead? read)
     {
         foreach (var candidate in reads)
         {
@@ -39,7 +51,7 @@ public sealed record AiDisplayRead(
             }
         }
 
-        read = null!;
+        read = null;
         return false;
     }
 }

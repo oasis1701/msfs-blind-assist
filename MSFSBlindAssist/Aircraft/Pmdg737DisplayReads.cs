@@ -4,7 +4,9 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// The PMDG 737-800's four AI display reads and the instrument camera view each one needs.
+/// The PMDG 737-800's AI display reads and the instrument camera view each one needs. The count
+/// lives in Pmdg737DisplayReadsTests, not in this sentence: it was written as "four", Alt+S was
+/// added below it, and the file introducing that capability then said it did not exist.
 ///
 /// The indices are 0-based into the aircraft's instrument cameras and were MEASURED on the live
 /// aircraft (2026-09-20, MSFS 2024 1.8.16.0) — never read off cameras.cfg, whose camera titles
@@ -18,9 +20,19 @@ namespace MSFSBlindAssist.Aircraft;
 /// `presets/pmdg/PMDG 737-800 BW HD/config/cameras.cfg`. Read that one when re-measuring.
 ///
 /// Alt+S reads the LOWER display unit (DU4), which shares the EICAS view — the same frame carries
-/// both engine display units. It is the only way a blind pilot reaches N2, oil pressure,
-/// temperature and quantity, and engine vibration on this aircraft: the Engines panel exposes the
-/// EEC, ignition, start and fuel-lever SWITCHES and no secondary engine readouts at all. The
+/// both engine display units. It is the only route THIS APP offers to N2, oil pressure,
+/// temperature and quantity, and engine vibration: the Engines panel exposes the EEC, ignition,
+/// start and fuel-lever SWITCHES and no secondary engine readouts at all.
+///
+/// ⚠️ That is a statement about the app, not about what the simulator exposes — the first draft
+/// said "the only way a blind pilot reaches" them, which is measurably false. On the live PMDG
+/// 737-800 (2026-09-20) the STOCK SimVars carry N2 (TURB ENG N2, 87.22 %), oil pressure
+/// (GENERAL ENG OIL PRESSURE, 62.84 psi), oil temperature (GENERAL ENG OIL TEMPERATURE,
+/// 76.59 °C) and fuel flow. ENG OIL QUANTITY reads a flat 100 % and ENG VIBRATION 1.99
+/// identically on both engines, so those two are the stock engine model's defaults rather than
+/// PMDG's values (the frame measured for this feature had oil quantity 68/75 and vibration
+/// 0.5/0.6). Panel rows for the three that ARE real would be a separate capability with its own
+/// in-sim test; recorded here so the next person does not have to re-measure it. The
 /// display is selectable (the LOWER DU knob switches it between engine data and a navigation
 /// display), so its prompt identifies which is present before reporting it, the way the MD-11's
 /// SD prompt handles its pages.

@@ -5317,6 +5317,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         if ((bits & 0x2000) != 0) labels.Add("SPKR");
         return labels.Count == 0 ? "none" : string.Join(", ", labels);
     }
+    /// <summary>
+    /// The camera is moved to the instrument view that frames the display, the capture is taken,
+    /// and the camera is put back where the pilot had it (Services/InstrumentViewSwitcher).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg737DisplayReads.All;
+
 
     public override bool HandleHotkeyAction(
         HotkeyAction action,
@@ -5325,12 +5331,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
-        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode). The camera is
-        // moved to the instrument view that frames the display, the capture is taken, and the
-        // camera is put back where the pilot had it — see Services/InstrumentViewSwitcher.
-        if (TryReadDisplayFor(action, Pmdg737DisplayReads.All, simConnect, announcer, parentForm))
-            return true;
-
         switch (action)
         {
             // ------------------------------------------------------------------

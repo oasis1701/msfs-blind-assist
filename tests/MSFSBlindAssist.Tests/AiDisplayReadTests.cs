@@ -37,4 +37,18 @@ public class AiDisplayReadTests
     {
         Assert.False(AiDisplayRead.TryGet(Array.Empty<AiDisplayRead>(), HotkeyAction.ReadDisplayPFD, out _));
     }
+
+    [Fact]
+    public void AReadWithNoViewIndex_CapturesWhateverIsOnScreen()
+    {
+        // The aircraft whose camera views have never been measured still read displays — they
+        // just capture the current view, which is what ReadDisplay does with no
+        // InstrumentViewRequest. Without a null here the shared record was strictly LESS
+        // expressive than the method it dispatches to, so those aircraft could not use the table
+        // at all and kept hand-rolling the switch arm this type exists to delete.
+        var read = new AiDisplayRead(
+            HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD777, "PFD", InstrumentViewIndex: null);
+
+        Assert.Null(read.InstrumentViewIndex);
+    }
 }

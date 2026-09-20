@@ -313,6 +313,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode), from the
+        // aircraft's own DisplayReads table. A derived switch has already had its say by the time
+        // we get here, so an aircraft that means something else by one of these keys keeps it.
+        if (TryReadDisplayFor(action, simConnect, announcer, parentForm)) return true;
+
         // Try simple variable mapping first
         var variableMap = GetHotkeyVariableMap();
         if (variableMap.TryGetValue(action, out string? eventName))
@@ -899,24 +904,41 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
-    /// Dispatches <paramref name="action"/> when it is one of <paramref name="reads"/>: captures
-    /// that display and reads it back, first moving the simulator camera to the instrument view
-    /// that frames it. Returns false when the action is not a display read, so a definition calls
-    /// this ahead of its own hotkey switch and falls through untouched otherwise.
+    /// This aircraft's AI display reads — the hotkey, the prompt, the spoken name and the
+    /// instrument camera view each one needs. Empty means the aircraft has none.
     ///
-    /// An aircraft gains AI display reads by supplying a measured table — there is no per-aircraft
-    /// dispatch to copy. See <see cref="AiDisplayRead"/> for how a view index is established.
+    /// <para>
+    /// An aircraft gains display reads by supplying a measured table and NOTHING else: the base
+    /// dispatches it from <see cref="HandleHotkeyAction"/>, so there is no per-aircraft dispatch
+    /// line to copy and no second way to wire a display read. A derived override's own switch
+    /// still runs first, so an aircraft that means something different by one of these hotkeys —
+    /// the FlyByWire A320/A380 open their E/WD window on Alt+E, the HorizonSim 787 announces CAS
+    /// alerts on Alt+E and opens a Coherent synoptic on Alt+S — keeps its own arm untouched.
+    /// </para>
+    ///
+    /// <para>
+    /// A row with a null <see cref="AiDisplayRead.InstrumentViewIndex"/> captures whatever is on
+    /// screen, which is what an aircraft whose camera views have never been measured wants.
+    /// </para>
     /// </summary>
-    protected bool TryReadDisplayFor(HotkeyAction action,
-                                     IReadOnlyList<AiDisplayRead> reads,
-                                     SimConnect.SimConnectManager simConnect,
-                                     ScreenReaderAnnouncer announcer,
-                                     System.Windows.Forms.Form parentForm)
+    protected virtual IReadOnlyList<AiDisplayRead> DisplayReads => Array.Empty<AiDisplayRead>();
+
+    /// <summary>
+    /// Dispatches <paramref name="action"/> when it is one of <see cref="DisplayReads"/>: captures
+    /// that display and reads it back, first moving the simulator camera to the instrument view
+    /// that frames it when the row names one.
+    /// </summary>
+    private bool TryReadDisplayFor(HotkeyAction action,
+                                   SimConnect.SimConnectManager simConnect,
+                                   ScreenReaderAnnouncer announcer,
+                                   System.Windows.Forms.Form parentForm)
     {
-        if (!AiDisplayRead.TryGet(reads, action, out var read)) return false;
+        if (!AiDisplayRead.TryGet(DisplayReads, action, out var read)) return false;
 
         ReadDisplay(read.DisplayType, read.SpokenName, announcer, parentForm,
-            new Services.InstrumentViewRequest(simConnect, read.InstrumentViewIndex));
+            read.InstrumentViewIndex is { } view
+                ? new Services.InstrumentViewRequest(simConnect, view)
+                : null);
         return true;
     }
 

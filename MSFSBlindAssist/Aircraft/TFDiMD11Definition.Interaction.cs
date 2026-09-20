@@ -1421,6 +1421,15 @@ public partial class TFDiMD11Definition
         }, "Gear read-out threw", "Gear read-out (UI-thread tail) threw");
 
     /// <summary>
+    /// The DUs have no text behind them, so these are read from a capture of the sim after the
+    /// camera has been moved to the instrument view that frames the display — and the camera is
+    /// put back afterwards. The restore was removed on 2026-09-09 and reinstated on 2026-09-18,
+    /// when the reasoning behind that removal was disproven on another airframe; it is verified by
+    /// read-back and says so when it fails. See InstrumentViewPlan and ReadDisplay.
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => Md11DisplayReads.All;
+
+    /// <summary>
     /// On this aircraft the read-outs are not a convenience — the DUs are WASM-rendered, so the
     /// exported L:vars are the only way a blind pilot gets the numbers a sighted one reads off the
     /// glass, and the five AI display reads are the only way to read the glass itself.
@@ -1429,15 +1438,6 @@ public partial class TFDiMD11Definition
         ScreenReaderAnnouncer announcer, System.Windows.Forms.Form parentForm, HotkeyManager hotkeyManager)
     {
         Attach(simConnect);
-
-        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode). The DUs have
-        // no text behind them, so these are read from a capture of the sim, after the camera has
-        // been moved to the instrument view that frames the display — and the camera is put back
-        // afterwards. The restore was removed on 2026-09-09 and reinstated on 2026-09-18, when the
-        // reasoning behind that removal was disproven on another airframe; it is verified by
-        // read-back and says so when it fails. See InstrumentViewPlan and ReadDisplay.
-        if (TryReadDisplayFor(action, Md11DisplayReads.All, simConnect, announcer, parentForm))
-            return true;
 
         switch (action)
         {

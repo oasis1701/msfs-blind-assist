@@ -2369,6 +2369,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
+    /// <summary>
+    /// The camera is moved to the instrument view that frames the display, the capture is taken,
+    /// and the camera is put back where the pilot had it (Services/InstrumentViewSwitcher). Alt+S
+    /// is deliberately absent: the MAX has no lower system display (IFly737DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => IFly737DisplayReads.All;
+
 
     // =========================================================================
     // Hotkeys + MCP dialogs
@@ -2377,13 +2384,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     public override bool HandleHotkeyAction(HotkeyAction action, SimConnect.SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer, Form parentForm, HotkeyManager hotkeyManager)
     {
-        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+I in output mode). The camera is moved to
-        // the instrument view that frames the display, the capture is taken, and the camera is put
-        // back where the pilot had it — see Services/InstrumentViewSwitcher. Alt+S is deliberately
-        // absent: the MAX has no lower system display (IFly737DisplayReads).
-        if (TryReadDisplayFor(action, IFly737DisplayReads.All, simConnect, announcer, parentForm))
-            return true;
-
         switch (action)
         {
             case HotkeyAction.FCUSetSpeed:
