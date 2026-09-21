@@ -751,3 +751,95 @@ public class StartHoldWithoutTheFlagTests
         Assert.False(ev.Held);
     }
 }
+
+// PR #238 deferred finding §3: the LIMBO BAND past a runway end.
+//
+// RunwayShape.Contains requires `along` INSIDE the extent; RunwayShape.IsClearOf tested |lateral|
+// ONLY. A node beyond the runway's along-track extent but near its axis was therefore neither "on
+// the runway" nor "clear of" it: walk 2 stepped over it — and over every node behind it — and fell
+// through to HoldStop(0), a START hold. The pilot was told "Stop. Hold short of runway 09" before
+// moving, hundreds of metres from the real hold line, while no hold was placed where the route
+// actually meets the pavement.
+//
+// Trigger shape: a taxiway running off the end of a runway on or near its extended centreline — a
+// turnpad lead-in, or any approach to a crossing from beyond the end.
+//
+// Walk 1 had the mirror asymmetry: it tested a bare |lateral| > HalfWidthMeters with NO extent term,
+// so an on-axis scenery hold line beyond the end read as being "on the pavement" and was rejected.
+// Both walks now ask RunwayShape.IsClearOfAt, which is extent-aware — but they keep their DIFFERENT
+// lateral margins, deliberately (owner ruling): walk 1 stays on the bare half-width so a scenery
+// hold line hugging the pavement edge is still usable (measured: SC99's line is 7.2 m out on a
+// 4.0 m half-width), walk 2 keeps half-width + RunwayClearMarginM.
+public class HoldStopPastTheRunwayEndTests
+{
+    private static TaxiRoute RouteOf(params TaxiNode[] nodes) => new() { Segments = Route(nodes) };
+
+    private static IReadOnlyList<TaxiRouteRunwayEvent> Pass(
+        TaxiRoute route, TaxiGraph.RunwayCenterline[] runways)
+        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, "");
+
+    // 09/27 runs east 0..3000, half-width 30. The route comes in from beyond the 09 threshold, on
+    // the extended centreline, and enters the runway. The node 50 m off the end is where the hold
+    // belongs; before the fix the whole walk fell through to a start hold.
+    [Fact]
+    public void A_route_approaching_from_beyond_the_runway_end_holds_at_the_real_node()
+    {
+        var route = RouteOf(
+            Node(1, -300, 20), Node(2, -50, 5), Node(3, 200, 0), Node(4, 400, 20));
+
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }));
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 09", route.Segments[0].HoldShortRunway);
+        Assert.Null(route.StartHoldRunway);
+        Assert.True(ev.Held);
+    }
+
+    // Walk 1, same limbo band: an on-axis scenery hold line BEYOND the end is a real hold line, not
+    // a node on the pavement.
+    [Fact]
+    public void A_scenery_hold_line_beyond_the_runway_end_is_usable_as_the_stop()
+    {
+        var route = RouteOf(
+            Node(1, -300, 20),
+            Node(2, -50, 2, TaxiNodeType.HoldShort, "runway 09"),
+            Node(3, 200, 0), Node(4, 400, 20));
+
+        Pass(route, new[] { EastWest() });
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 09", route.Segments[0].HoldShortRunway);
+        Assert.Null(route.StartHoldRunway);
+    }
+
+    // The deliberate asymmetry, pinned: walk 1 keeps the BARE half-width, so a painted hold line
+    // inside the 10 m clear margin is still the stop. SC99's line is 7.2 m out on a 4.0 m
+    // half-width; tightening walk 1 to IsClearOf would reject real hold lines.
+    [Fact]
+    public void A_scenery_hold_line_inside_the_ten_metre_margin_is_still_the_stop()
+    {
+        var route = RouteOf(
+            Node(1, 1000, 250),
+            Node(2, 1000, 35, TaxiNodeType.HoldShort, "runway 09"),   // 5 m outside a 30 m half-width
+            Node(3, 1000, -60));
+
+        Pass(route, new[] { EastWest() });
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.Equal("runway 09", route.Segments[0].HoldShortRunway);
+    }
+
+    // ... and a hold NODE on the pavement is still never the stop, at either end of the band.
+    [Fact]
+    public void A_hold_node_on_the_pavement_is_still_never_the_stop()
+    {
+        var route = RouteOf(
+            Node(1, 1000, 250), Node(2, 1000, 60),
+            Node(3, 1000, 20, TaxiNodeType.HoldShort, "runway 09"), Node(4, 1000, -60));
+
+        Pass(route, new[] { EastWest() });
+
+        Assert.True(route.Segments[0].IsHoldShortPoint);
+        Assert.False(route.Segments[1].IsHoldShortPoint);
+    }
+}

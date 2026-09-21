@@ -610,10 +610,11 @@ public static class RouteRunwayCrossings
             if (walked > CrossingHoldLookbackMetres) break;
 
             var node = NodeAt(segments, k);
+            var projected = node == null ? (0.0, 0.0) : shape.Project(node.Latitude, node.Longitude);
             if (node != null && k < walkStart)
             {
-                var (onAlong, onLateral) = shape.Project(node.Latitude, node.Longitude);
-                if (shape.ContainsAlongLateral(onAlong, onLateral, 0.0) || IsOnAnyRunway(others, node)) break;
+                if (shape.ContainsAlongLateral(projected.Item1, projected.Item2, 0.0)
+                    || IsOnAnyRunway(others, node)) break;
             }
             if (node != null && (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort))
             {
@@ -621,8 +622,12 @@ public static class RouteRunwayCrossings
                 if (guards.Count > 0 && !guards.Any(d => CenterlineHasDesignator(passage.Runway, d)))
                     break;
                 // Never a hold line on another runway's pavement — also at the walk's own starting node, which
-                // the pavement break above does not test.
-                if (Math.Abs(shape.Project(node.Latitude, node.Longitude).Lateral) > shape.HalfWidthMeters
+                // the pavement break above does not test. The BARE half-width (margin 0) is deliberate and
+                // is an owner ruling: a painted line hugging the pavement edge must stay usable (SC99's is
+                // 7.2 m out on a 4.0 m half-width), where walk 2 below, which invents a stop of its own,
+                // demands the full clear margin. Extent-aware since PR #238 §3 — an on-axis scenery hold
+                // line BEYOND the runway end used to read as a node on the pavement and be rejected.
+                if (shape.IsClearOfAt(projected.Item1, projected.Item2, 0.0)
                     && !IsOnAnyRunway(others, node))
                     return new HoldStop(k, IsExistingStop(segments, k));
             }
@@ -644,7 +649,15 @@ public static class RouteRunwayCrossings
                     crossedOther = true;   // never a stop; behind it only an existing stop may be shared
                     continue;
                 }
-                if (!crossedOther && shape.IsClearOf(lateral)) return new HoldStop(k, existing);
+                // Extent-aware (PR #238 §3): a node beyond the runway's along-track extent but near
+                // its axis used to be neither "on the runway" (Contains bounds the extent) nor
+                // "clear of" it (IsClearOf tested |lateral| only), so this walk stepped over it and
+                // every node behind it and fell through to a START hold — "Stop. Hold short of
+                // runway 09" before moving, hundreds of metres from the real hold line, with no hold
+                // where the route actually meets the pavement.
+                if (!crossedOther
+                    && shape.IsClearOfAt(along, lateral, RolloutExitGate.RunwayClearMarginM))
+                    return new HoldStop(k, existing);
             }
             if (existing) return new HoldStop(k, true);
         }

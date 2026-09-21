@@ -248,9 +248,40 @@ public sealed class RunwayShape
     /// <summary>
     /// Far enough off the pavement for a stop point: the codebase's one definition of "off the
     /// runway" (half-width + <see cref="RolloutExitGate.RunwayClearMarginM"/>).
+    ///
+    /// <para>LATERAL ONLY, so a point beyond the runway's along-track extent is not clear of it by
+    /// this test however far off the end it sits. Hold placement asks
+    /// <see cref="IsClearOfAt"/> instead; this overload is kept for callers that have no
+    /// along-track value and mean the lateral question alone.</para>
     /// </summary>
     public bool IsClearOf(double lateral)
         => Math.Abs(lateral) > HalfWidthMeters + RolloutExitGate.RunwayClearMarginM;
+
+    /// <summary>
+    /// Off the runway at a point: OUTSIDE the extent, or beyond half-width +
+    /// <paramref name="lateralMarginMeters"/>. The exact complement of
+    /// <see cref="ContainsAlongLateral"/>, which is what <see cref="IsClearOf"/> was not.
+    ///
+    /// <para>PR #238 deferred finding §3. <see cref="Contains"/> requires <c>along</c> inside the
+    /// extent while <see cref="IsClearOf"/> tested <c>|lateral|</c> only, so a node BEYOND the
+    /// runway's along-track extent but near its axis was neither "on the runway" nor "clear of" it.
+    /// Hold placement's second walk stepped over it — and over every node behind it — and fell
+    /// through to a START hold, telling the pilot to stop before moving, hundreds of metres from the
+    /// real hold line, while no hold was placed where the route actually meets the pavement. The
+    /// trigger shape is a taxiway running off the end of a runway on or near its extended
+    /// centreline: a turnpad lead-in, or any approach to a crossing from beyond the end.</para>
+    ///
+    /// <para>⚠ <paramref name="lateralMarginMeters"/> is a parameter because the two walks
+    /// deliberately differ and that is an owner ruling, not an oversight. The scenery-hold-line walk
+    /// passes 0 — the bare half-width — so a painted line hugging the pavement edge is still usable
+    /// (measured: SC99's line is 7.2 m out on a 4.0 m half-width, and tightening it to the clear
+    /// margin would reject real hold lines). The fallback clear-node walk passes
+    /// <see cref="RolloutExitGate.RunwayClearMarginM"/>, the codebase's definition of "off the
+    /// runway" for a stop it invents itself. Do not collapse them.</para>
+    /// </summary>
+    public bool IsClearOfAt(double along, double lateral, double lateralMarginMeters)
+        => along < ExtentMinMeters || along > ExtentMaxMeters
+           || Math.Abs(lateral) > HalfWidthMeters + lateralMarginMeters;
 
     /// <summary>
     /// The designator of the end nearer <paramref name="along"/> (in a plane, exactly the
