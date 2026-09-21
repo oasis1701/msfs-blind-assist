@@ -171,6 +171,61 @@ public class SceneryPackageIndexerTests : IDisposable
     }
 
     [Fact]
+    public void A_terminal_modelled_as_dozens_of_parts_in_one_place_is_one_building()
+    {
+        // EDDB: "Terminal A" is 46 separate models, one cluster, 350 m across. The classifier
+        // deliberately collapses the parts onto one name; counting them dropped the whole terminal.
+        var parts = Enumerable.Range(1, 46).Select(i => ($"EDDB_Terminal_A_{i:00}", 52.3600 + i * 0.00007, 13.5000)).ToArray();
+        string pkg = MakePackage("eddb", parts);
+        var only = Assert.Single(new SceneryPackageIndexer(Path.Combine(_root, "c10")).GetFeatures("EDDB", new[] { pkg }, null));
+        Assert.Equal(FeatureKind.Terminal, only.Kind);
+        Assert.Equal("Terminal A", only.Name);
+        Assert.Equal(46, only.Members!.Count);
+    }
+
+    [Fact]
+    public void A_terminals_parts_stacked_on_one_coordinate_are_one_building()
+    {
+        // KPHX "Terminal L": 21 parts at literally the same point, so the cluster has zero extent.
+        var parts = Enumerable.Range(1, 21).Select(i => ($"KPHX_Terminal_L_{i:00}", 33.43420, -112.01160)).ToArray();
+        var only = Assert.Single(new SceneryPackageIndexer(Path.Combine(_root, "c11")).GetFeatures("KPHX", new[] { MakePackage("kphx", parts) }, null));
+        Assert.Equal("Terminal L", only.Name);
+        Assert.Equal(21, only.Members!.Count);
+        Assert.InRange(only.Lat, 33.4341, 33.4343);
+    }
+
+    [Fact]
+    public void A_terminal_with_no_name_of_its_own_is_one_building_however_many_parts_it_has()
+    {
+        // EDDB's unlettered terminal: 175 parts in one 764 m cluster, named only by its kind.
+        var parts = Enumerable.Range(1, 175).Select(i => ($"EDDB_Terminal_Part_{i:000}", 52.3600 + i * 0.0000392, 13.5000)).ToArray();
+        var only = Assert.Single(new SceneryPackageIndexer(Path.Combine(_root, "c12")).GetFeatures("EDDB", new[] { MakePackage("eddb-generic", parts) }, null));
+        Assert.Equal("Terminal", only.Name);
+        Assert.True(only.NameIsGeneric);
+        Assert.Equal(175, only.Members!.Count);
+    }
+
+    [Fact]
+    public void A_fuel_truck_fleet_on_one_apron_is_still_dropped_by_the_placement_cap()
+    {
+        // ENGM ships five "Ground Fuel N" fleets, 33 to 451 trucks each. Only terminals and
+        // concourses are exempt from the placement cap; a fuel fleet is what it exists for.
+        var fleet = Enumerable.Range(0, 60).Select(i => ("KXYZ_Ground_Fuel_2", 40.0 + i * 0.00002, -75.0)).ToArray();
+        string pkg = MakePackage("fuelfleet", fleet.Append(("KXYZ_Fire_Station", 40.0005, -75.0005)).ToArray());
+        var features = new SceneryPackageIndexer(Path.Combine(_root, "c13")).GetFeatures("KXYZ", new[] { pkg }, null);
+        Assert.Equal("Fire Station", Assert.Single(features).Name);
+    }
+
+    [Fact]
+    public void A_terminal_name_standing_in_more_places_than_the_cluster_cap_allows_is_still_dropped()
+    {
+        // The exemption is from the PLACEMENT cap only: four "Terminal B" buildings a kilometre
+        // apart are not one building an author split up.
+        var spread = Enumerable.Range(0, 4).Select(i => ($"KXYZ_Terminal_B_{i}", 40.0 + i * 0.01, -75.0)).ToArray();
+        Assert.Empty(new SceneryPackageIndexer(Path.Combine(_root, "c14")).GetFeatures("KXYZ", new[] { MakePackage("spread", spread) }, null));
+    }
+
+    [Fact]
     public void One_building_placed_twice_within_a_stones_throw_is_one_feature_with_two_members()
     {
         string pkg = MakePackage("twice", ("KXYZ_Fire_Station", 40.0000, -75.0000), ("KXYZ_Fire_Station", 40.00027, -75.0000));   // ~30 m apart

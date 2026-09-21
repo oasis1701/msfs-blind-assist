@@ -29,6 +29,7 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// The cluster/placement caps are the SECOND clutter net, after the classifier's word lists:
 /// no word list can tell a baggage dolly named after the cargo ramp it serves from a building,
 /// but a building stands in one place or a few while ground equipment is scattered over dozens.
+/// Terminals and concourses answer to the cluster half only — see <see cref="PlacementCapApplies"/>.
 ///
 /// Call from a background thread: the first index of a large package reads its model library once
 /// (ten Community libraries exceed 600 MB); every later call is a memo hit. Safe to call from two
@@ -56,8 +57,29 @@ public sealed class SceneryPackageIndexer
     // A named building stands in one place, or a few (an author splits it into parts, or a second
     // one really exists). A generic name is this app's own label ("Terminal", "Fuel"), shared by
     // unrelated models, so it is allowed more of both. Hangars are the exception a real field needs.
+    // Accepted residual on the cluster cap: EGSS's real "Inflite Jet Centre" stands in 4 places and
+    // is dropped by it — a name standing in more than three separate places is not somewhere a pilot
+    // can be sent (YSSY's six "Ils Tower" masts are the shape it exists for), and OSM carries an FBO
+    // like that one anyway. Measured once, recorded so it is not re-derived.
     private const int MaxClustersProper = 3, MaxPlacementsProper = 12, MaxClustersGeneric = 8, MaxPlacementsGeneric = 40,
                       MaxClustersHangar = 40, MaxPlacementsHangar = 200;
+
+    /// <summary>
+    /// Whether the PLACEMENT cap applies to this kind at all — the cluster cap always does.
+    /// Terminals and concourses are EXEMPT: an author routinely models one of them as dozens of
+    /// separate parts standing in ONE place, and <see cref="SceneryModelNameClassifier"/>
+    /// deliberately collapses those parts onto one name, so counting them as "too many placements"
+    /// threw away the building a pilot most wants named. Measured across 34 Community packages:
+    /// EDDB's "Terminal A"/"B"/"C" are 46/49/49 parts, one cluster each, 350–714 m across, and its
+    /// generic "Terminal" is 175 parts in one 764 m cluster; KPHX "Terminal L" is 21 parts at a
+    /// single coordinate; KATL "Terminal E" is 14 parts in 2 clusters — all dropped by the cap,
+    /// while NO terminal or concourse group in those packages was clutter. Every group the cap
+    /// legitimately removed was ground equipment: EIDW's 41 containers in one 252 m blob, KPDX's
+    /// 130 "Ramp Cargo Fedex", KMEM's 40 "Trailer UPS", ENGM's five "Ground Fuel N" fleets.
+    /// The exemption is by KIND and must stay so: a 46-part terminal and a 41-container blob are
+    /// both ONE dense cluster, so no cluster-count rule can tell them apart.
+    /// </summary>
+    private static bool PlacementCapApplies(FeatureKind kind) => kind is not (FeatureKind.Terminal or FeatureKind.Concourse);
 
     private const int CurrentSchemaVersion = 2;
     // Schema 2 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
@@ -133,7 +155,7 @@ public sealed class SceneryPackageIndexer
             // ground equipment is scattered. Hangars are the exception — a field can have dozens.
             int maxClusters = kind == FeatureKind.Hangar ? MaxClustersHangar : g.Generic ? MaxClustersGeneric : MaxClustersProper;
             int maxPlacements = kind == FeatureKind.Hangar ? MaxPlacementsHangar : g.Generic ? MaxPlacementsGeneric : MaxPlacementsProper;
-            if (g.Points.Count > maxPlacements) continue;
+            if (PlacementCapApplies(kind) && g.Points.Count > maxPlacements) continue;
             var clusters = SurroundingsGeometry.SingleLinkage(g.Points, p => p, AirportFeatureCatalog.SameNameRadiusMetres(kind));
             if (clusters.Count > maxClusters) continue;
             foreach (var cluster in clusters)
