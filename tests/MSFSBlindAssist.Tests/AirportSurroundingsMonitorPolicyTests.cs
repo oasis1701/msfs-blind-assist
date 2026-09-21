@@ -4,10 +4,11 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The monitor's two pure rules: whether a BACKGROUND JOB may start on this tick (one policy, both
-/// jobs — the first-time catalog build and the runway probe's graph warm-up), and what counts as a
-/// teleport rather than a taxi. Everything else in the monitor is the WinForms timer, the announcer
-/// and the cache, none of which belongs in a unit test.
+/// The monitor's pure rules: whether a BACKGROUND JOB may start on this tick (one policy, both
+/// jobs — the first-time catalog build and the runway probe's graph warm-up), whether the warm-up
+/// is the job that needs starting, and what counts as a teleport rather than a taxi. Everything
+/// else in the monitor is the WinForms timer, the announcer and the cache, none of which belongs
+/// in a unit test.
 /// </summary>
 public class AirportSurroundingsMonitorPolicyTests
 {
@@ -28,6 +29,44 @@ public class AirportSurroundingsMonitorPolicyTests
         Assert.True(AirportSurroundingsMonitor.MayStartBuild(false, PassingCalloutGate.MaxSpeedKts));
         Assert.False(AirportSurroundingsMonitor.MayStartBuild(false, PassingCalloutGate.MaxSpeedKts + 0.1));
     }
+
+    private static readonly TimeSpan Retry = AirportSurroundingsMonitor.ProbeWarmRetry;
+
+    /// <summary>The regression pin. A probe that ANSWERS needs nothing prepared, at any age of the
+    /// last warm-up — the earlier retry asked the probe itself and never restamped when it
+    /// answered, so past the retry interval it re-read the probe (and its lock) on every 2 s tick
+    /// for the rest of the taxi instead of once a minute.</summary>
+    [Theory]
+    [InlineData(0.0)]     // the tick right after the warm
+    [InlineData(0.98)]    // just inside the retry interval
+    [InlineData(1.0)]     // exactly at it — where the old code started re-reading every tick
+    [InlineData(10.0)]    // and ten intervals later
+    public void A_probe_that_answers_never_needs_another_warm_up(double retryIntervals)
+        => Assert.False(AirportSurroundingsMonitor.ShouldWarmProbe(
+            probeAnswered: true, sameAirportAsLastWarm: true, Retry * retryIntervals, warmInFlight: false));
+
+    [Fact]
+    public void A_probe_that_still_cannot_answer_is_warmed_again_no_sooner_than_the_retry_interval()
+    {
+        Assert.False(AirportSurroundingsMonitor.ShouldWarmProbe(false, true, Retry - TimeSpan.FromSeconds(1), false));
+        Assert.True(AirportSurroundingsMonitor.ShouldWarmProbe(false, true, Retry, false));
+    }
+
+    [Fact]
+    public void An_airport_that_has_never_been_warmed_is_warmed_at_once()
+        => Assert.True(AirportSurroundingsMonitor.ShouldWarmProbe(
+            probeAnswered: false, sameAirportAsLastWarm: false, TimeSpan.Zero, warmInFlight: false));
+
+    /// <summary>A build slow enough to still be running at the retry mark is left to finish: a
+    /// second caller would only queue behind the same lock for a graph the first is already
+    /// building.</summary>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(1.0)]
+    [InlineData(10.0)]
+    public void A_warm_up_still_running_is_never_joined_by_a_second(double retryIntervals)
+        => Assert.False(AirportSurroundingsMonitor.ShouldWarmProbe(
+            probeAnswered: false, sameAirportAsLastWarm: true, Retry * retryIntervals, warmInFlight: true));
 
     // KATL for the north-south cases; ENAT (69.98 N) for the east-west ones, where one degree of
     // longitude is barely a third of one of latitude — an implementation that dropped the
