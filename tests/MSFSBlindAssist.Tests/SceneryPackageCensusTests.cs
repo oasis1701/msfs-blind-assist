@@ -179,6 +179,29 @@ public class SceneryPackageCensusTests : IDisposable
     }
 
     [Fact]
+    public void A_short_scan_reports_itself_so_the_catalog_built_on_it_expires()
+    {
+        // Same reason as the indexer's: not caching the short count is only half of it, because
+        // the CATALOG built on this locate is cached and nothing rebuilds it on its own. Saying
+        // the scan was short is what gives that catalog a lifetime (BuildSurroundings ORs it into
+        // degraded), so the package is looked for again once the lock is gone.
+        Package("good", 30, 33.6400, -84.4300);
+        string partial = Package("partial", 30, 33.6410, -84.4300);
+        string locked = Path.Combine(partial, "scenery", "locked.bgl");
+        File.WriteAllBytes(locked, BglPlacementReaderTests.BuildBgl((33.6420, -84.4300, 0.0, Guid.NewGuid())));
+        string cache = Path.Combine(_root, "cacheShort");
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            new SceneryPackageCensus(cache).Locate(Community, Katl, out bool incomplete);
+            Assert.True(incomplete);
+        }
+
+        new SceneryPackageCensus(cache).Locate(Community, Katl, out bool after);
+        Assert.False(after);
+    }
+
+    [Fact]
     public void A_package_that_was_uninstalled_leaves_the_cache()
     {
         Package("stays", 30, 33.6400, -84.4300);

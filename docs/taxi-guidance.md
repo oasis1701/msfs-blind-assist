@@ -1310,7 +1310,26 @@ build gave up on the 3 s OSM fetch, the answer landed at 3.2 s and invalidated
 the airport, so the finished build was discarded rather than cached — and a
 build that genuinely failed is not retried at all (the cache's own failure
 memory owns that). Only the warm-up that still OWNS the form's Place state may
-touch it; a superseded one logs a line and changes nothing.
+touch it — by a TICKET minted per warm-up, not by its Task, because
+`SurroundingsCatalogCache.GetAsync` is single-flight and hands two warm-ups for
+one airport the SAME Task, which a reference test on it let both settle from;
+a superseded one logs a line and changes nothing.
+
+**The list follows buildings that arrive LATE.** That one retry fires only when
+the OSM answer lands DURING the build — with a warm scenery cache, a window of
+tens of milliseconds — so the ordinary slow-mirror case is an answer that lands
+after the list was already built and settled. `OnlineFeatureStore.FeaturesUpdated`
+then invalidates the catalog, and MainForm marshals that onto the UI thread as
+`TaxiAssistForm.OnSurroundingsInvalidated(icao)`, which re-runs the warm-up when
+the form is still in Place mode at that airport with none already in flight. The
+same forward covers a DEGRADED catalog expiring. It is silent at the start — the
+pilot asked for nothing — and silent at the end unless the list really changed,
+in which case the new count is spoken, queued, only while the dialog is open; the
+pilot's own selection is preserved by the settle's existing "live pick wins"
+rule. A refresh that arrives while the destination dropdown is OPEN waits for it
+to close rather than rebuilding the list under the reading cursor. FBOs and
+hangars come mainly from OSM, so without this the pilot's FBO could be missing
+from the list with no hint that it exists.
 
 **A pending selection the rebuilt list no longer carries leaves NOTHING
 selected, never item 0** — item 0 plus Calculate would route to, and
@@ -1318,11 +1337,28 @@ selected, never item 0** — item 0 plus Calculate would route to, and
 "Please select a destination." instead. The pilot's own later pick always wins
 over an armed pending, and `PopulateDestinations` does not auto-seat item 0
 while a Place pending is armed, so a live selection found at the settle can
-only be the pilot's. A loss caused by the gate-source refresh speaks the shared
+only be the pilot's. **A pending that NAMES a destination is never replaced by
+one that names none** (`MergePendingPlaceSelection`), and the origin flag
+follows the label that survives: a second gate-source refresh during the same
+warm-up passes the token check again with the list still empty, so its own
+`previous` is null, and unguarded it wiped the label the first one had armed —
+the pilot's place was never re-seated and nothing was said about it. Where a
+silent restore's label outlives such a request the surviving origin is the
+restore's, so the loss stays silent: the restore is a probe undoing itself and
+the pilot performed no action there.
+
+A loss caused by the gate-source refresh speaks the shared
 `GateListUpdatedMessage`, queued, while the form is visible; a loss inside a
 silent destination restore says nothing; and when nothing is listed at all only
-the none-found line is spoken, because "choose again" would be an instruction
-to choose from an empty list.
+the list's own line is spoken, because "choose again" would be an instruction
+to choose from an empty list. That line says which KIND of empty it is
+(`DescribePlaceList`): "No places to route to at {icao}." for a catalog that
+exists and yields nothing routable, **"Places could not be loaded for {icao}."**
+when no catalog came back at all — a build that failed, or one discarded twice,
+where the airport having no places was never actually learned. With no airport
+loaded it says nothing rather than "No places to route to at ." (reachable by
+selecting Place while pre-planning in the air) or naming the previous airport
+during a load.
 
 SayIntentions "taxi to the FBO" as a clearance candidate is deferred until a
 live capture shows SI phrasing a place rather than a stand.

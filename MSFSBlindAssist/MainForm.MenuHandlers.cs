@@ -93,9 +93,12 @@ public partial class MainForm
     }
 
     /// <summary>What the last <see cref="ApplyRuntimeSettings"/> saw for the two settings that
-    /// feed the surroundings catalog. Null until the first OK, so that one clears — the honest
-    /// answer when nothing is known about what the cached catalogs were built under.</summary>
-    private bool? _appliedSceneryIndexEnabled, _appliedTaxiAugmentEnabled;
+    /// feed the surroundings catalog. SEEDED at construction from the same
+    /// <c>SettingsManager.Current</c> the services themselves read (MainForm.cs, beside the
+    /// <c>OnlineFeatureStore</c>), because that IS what the cached catalogs are built under — as
+    /// nullable they were null until the first OK, so the session's first Settings visit cleared
+    /// the catalog cache and the OSM store for ANY change and forced a fresh network fetch.</summary>
+    private bool _appliedSceneryIndexEnabled, _appliedTaxiAugmentEnabled;
 
     /// <summary>Re-applies saved UserSettings to the live runtime managers after the Settings
     /// dialog is accepted, so changes take effect without restarting. Each settings section that

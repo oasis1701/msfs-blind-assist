@@ -467,6 +467,11 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Multiline = true,
             AccessibleName = "Scenery index status"
         };
+        // The box follows the CHECKBOX, not the saved setting: OK has not been pressed yet, so
+        // while the dialog is open the checkbox is what the pilot has chosen and the box must
+        // describe that. (Setting a TextBox's Text announces nothing on its own — the screen
+        // reader reads it when focus arrives — so this is not a UI-interaction echo.)
+        sceneryIndexEnabledCheckBox.CheckedChanged += (_, _) => RefreshSceneryIndexStatusText();
 
         // Opt-in "Passing Concourse B, on the left." callouts while taxiing, fed by the
         // same surroundings catalog the Look Around hotkey and the Surroundings window
@@ -715,10 +720,30 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
         taxiAugmentEnabledCheckBox.Checked = settings.TaxiAugmentEnabled;
         sceneryIndexEnabledCheckBox.Checked = settings.SceneryIndexEnabled;
-        sceneryIndexStatusTextBox.Text = _sceneryIndexStatus?.Invoke() ?? "";
+        RefreshSceneryIndexStatusText();
         surroundingsCalloutsCheckBox.Checked = settings.SurroundingsCalloutsEnabled;
         sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
+
+    private void RefreshSceneryIndexStatusText()
+        => sceneryIndexStatusTextBox.Text =
+            DescribeSceneryIndexStatus(sceneryIndexEnabledCheckBox.Checked, _sceneryIndexStatus?.Invoke());
+
+    /// <summary>
+    /// What the read-only scenery-index status box holds. Never an empty string: it is a TextBox
+    /// precisely so a screen-reader user can TAB to it, and an empty edit field reads exactly like
+    /// a control that is broken. The indexer only writes its sentence when a catalog build has
+    /// actually read a package, so before the session's first Alt+L there is nothing to show, and
+    /// once the index is switched off the last run's sentence is no longer what the app will do.
+    /// </summary>
+    /// <param name="enabled">The CHECKBOX's state while the dialog is open, not the saved
+    /// setting — OK has not been pressed, so the checkbox is the pilot's current choice.</param>
+    /// <param name="lastStatus"><c>SceneryPackageIndexer.LastStatus</c>: the last build's whole
+    /// sentence, or empty when none has run this session.</param>
+    internal static string DescribeSceneryIndexStatus(bool enabled, string? lastStatus)
+        => !enabled ? "Scenery index is off."
+         : string.IsNullOrWhiteSpace(lastStatus) ? "No airport scanned yet this session."
+         : lastStatus;
 
     public bool Validate(out string error, out Control? focus)
     {

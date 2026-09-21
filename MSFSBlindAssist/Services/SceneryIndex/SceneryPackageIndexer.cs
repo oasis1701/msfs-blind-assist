@@ -159,8 +159,21 @@ public sealed class SceneryPackageIndexer
     /// found by scanning Community rather than named by navdata.
     /// </summary>
     public IReadOnlyList<AirportFeature> GetFeatures(string icao, IEnumerable<string> packageDirs, AirportFacilities? box, bool locatedByCensus = false)
+        => GetFeatures(icao, packageDirs, box, locatedByCensus, out _);
+
+    /// <summary>
+    /// As above, and says whether this answer was SHORT: a package whose scan could not read every
+    /// file (<see cref="IncompleteMemoLifetime"/>), or one the catch below reported unreadable.
+    /// <para>The caller needs it because <see cref="IncompleteMemoLifetime"/> only bounds the
+    /// MEMO. The surroundings catalog built on a short answer is cached too, and nothing rebuilds
+    /// it on its own — so the flag is ORed into that build's degraded bit, which the catalog cache
+    /// does give a lifetime, and the package is read again once the lock or the sweep has gone.</para>
+    /// </summary>
+    public IReadOnlyList<AirportFeature> GetFeatures(string icao, IEnumerable<string> packageDirs, AirportFacilities? box,
+                                                     bool locatedByCensus, out bool incomplete)
     {
         var all = new List<AirportFeature>(); var status = new List<string>();
+        incomplete = false;
         foreach (var dir in packageDirs)
         {
             string leaf = Path.GetFileName(dir.TrimEnd('\\', '/'));
@@ -169,6 +182,7 @@ public sealed class SceneryPackageIndexer
                 var cf = LoadOrBuild(dir);
                 var features = FeaturesOf(cf, icao, box);
                 all.AddRange(features);
+                incomplete |= cf.Unreadable > 0;
                 // The unreadable count is part of the sentence because it is the ONLY sign a pilot
                 // gets that this package's answer is short: every placement in a file that could
                 // not be read resolves to "without a model name", so the two figures alone read
@@ -180,6 +194,7 @@ public sealed class SceneryPackageIndexer
             {
                 Log.Warn("SceneryIndex", $"{icao}: {leaf}: {ex.Message}");
                 status.Add($"{leaf}: unreadable");
+                incomplete = true;
             }
         }
         string text = status.Count == 0 ? $"{icao}: no installed scenery package found" : $"{icao}: " + string.Join("; ", status);

@@ -98,8 +98,17 @@ public sealed class SceneryPackageCensus
     /// with the most first, at most <see cref="MaxPackages"/>. Empty when nothing reaches
     /// <see cref="MinPlacementsInBox"/> — including when there is no Community folder at all.
     /// </summary>
-    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box)
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(communityDir, box, out _);
+
+    /// <summary>
+    /// As above, and says whether any package's scan came back SHORT — a file it could not read.
+    /// Such a scan is deliberately not cached (see below), but the surroundings CATALOG built on
+    /// this locate is, and nothing rebuilds that on its own, so the flag is ORed into the build's
+    /// degraded bit to give it a lifetime. A cache hit is complete by construction.
+    /// </summary>
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
     {
+        incomplete = false;
         lock (_lock)
         {
             if (string.IsNullOrWhiteSpace(communityDir) || !Directory.Exists(communityDir)) return Array.Empty<string>();
@@ -123,6 +132,7 @@ public sealed class SceneryPackageCensus
                     continue;
                 }
                 var (cells, complete) = Scan(dir);
+                incomplete |= !complete;
                 var fresh = new PackageCells { Path = dir, LayoutLength = len, LayoutTicks = ticks, Cells = cells };
                 seen.Add(fresh);                                // what WAS read still counts for this call
                 rescanned++;

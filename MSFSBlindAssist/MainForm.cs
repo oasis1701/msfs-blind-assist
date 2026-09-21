@@ -822,23 +822,47 @@ public partial class MainForm : Form
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
 
+        // The Overpass mirror client and the OSM BUILDINGS store, UNCONDITIONALLY — unlike the
+        // taxi-name decorator below, the buildings tier needs no base provider, and built inside
+        // that guard a pilot who BUILDS the navdata database during the session had surroundings
+        // with no OSM tier until they restarted the app. RefreshDatabaseProvider Clear()s this
+        // store rather than rebuilding it, so nothing here is built twice on a database switch.
+        var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
+        _overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
+
+        // The surroundings buildings ride the same mirror client (so one cooldown map serves
+        // both) but their OWN query, store and event. A catalog built before the fetch landed
+        // is invalidated here, so the next Alt+L includes the buildings.
+        var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(_overpassClient);
+        onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
+        { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
+        onlineFeatures.FeaturesUpdated += icao =>
+        {
+            surroundingsCache.Invalidate(icao);
+            // …and tell the taxi dialog, whose Place list has no other way to learn of it: only a
+            // type switch, a filter toggle, an airport reload or a gate-token move rebuilds it,
+            // and none of those happens because a mirror finally answered. FBOs and hangars come
+            // mainly from OSM, so the pilot's FBO could be missing with no hint. Raised on a POOL
+            // thread, so it is marshalled; the form's own method re-checks every guard on arrival
+            // and is silent unless the list really changes.
+            SafeBeginInvoke(() => taxiAssistForm?.OnSurroundingsInvalidated(icao));
+        };
+
+        // What ApplyRuntimeSettings will compare the first Settings OK against. Seeded HERE, from
+        // the same SettingsManager.Current the two services above and BuildSurroundings read, so
+        // that first OK clears the catalog cache and the OSM store only when one of them really
+        // changed. Left unseeded they were null until the first OK, which therefore threw away
+        // every airport's catalog — including a slow first-time scenery scan — and forced a fresh
+        // network fetch, for a dialog visit that may have touched neither setting.
+        _appliedSceneryIndexEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled;
+        _appliedTaxiAugmentEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
+
         // Wrap with the taxi-data augmentation decorator (Phase 5).
         // The decorator is transparent: all IAirportDataProvider calls delegate to the base
         // except GetTaxiPaths, which enriches unnamed segments from OSM / X-Plane apt.dat.
         // Only wrap when a base provider is available — no DB means no decoration needed.
         if (airportDataProvider != null)
         {
-            var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
-            _overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
-
-            // The surroundings buildings ride the same mirror client (so one cooldown map serves
-            // both) but their OWN query, store and event. A catalog built before the fetch landed
-            // is invalidated here, so the next Alt+L includes the buildings.
-            var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(_overpassClient);
-            onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
-            { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
-            onlineFeatures.FeaturesUpdated += icao => surroundingsCache.Invalidate(icao);
-
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
                 new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(_overpassClient),

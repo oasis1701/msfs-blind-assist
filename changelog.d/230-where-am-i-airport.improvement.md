@@ -1,0 +1,1 @@
+Where Am I now names the airport you are standing at rather than the nearest reference point, and it works at small fields whose identifier is only three characters — those used to be thrown away, so the answer came from an airport further off, or from nothing at all.

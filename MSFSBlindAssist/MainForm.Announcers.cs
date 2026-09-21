@@ -1916,6 +1916,11 @@ public partial class MainForm
 
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
         {
+            // A SHORT answer is degraded too, not just a thrown one. Both readers refuse to cache
+            // a scan they could not finish and re-read the package after a few minutes — but the
+            // CATALOG built on that short answer is cached, and nothing rebuilds it on its own,
+            // so their memo expiring bought nothing. Degraded gives this build a lifetime.
+            bool sceneryShort = false;
             var scenery = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
             {
                 var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
@@ -1926,17 +1931,30 @@ public partial class MainForm
                     // objects stand. Header-only and disk-cached; this method is already on a pool thread.
                     string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
                     string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion);
-                    if (community != null) { dirs = sceneryCensus.Locate(community, facilities).ToList(); byCensus = dirs.Count > 0; }
+                    if (community != null)
+                    {
+                        dirs = sceneryCensus.Locate(community, facilities, out bool censusShort).ToList();
+                        byCensus = dirs.Count > 0;
+                        sceneryShort |= censusShort;
+                    }
                 }
-                return sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus);
+                var read = sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus, out bool indexShort);
+                sceneryShort |= indexShort;
+                return read;
             });
             features.AddRange(scenery.Features);
-            degraded |= scenery.Failed;
+            degraded |= scenery.Failed || sceneryShort;
         }
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.
         return new(features, facilities?.DescribeFacts() ?? "", degraded);
     }
+
+    /// <summary>Whatever had the foreground when the pilot pressed the key — the handle Escape
+    /// hands back to. Declared here rather than taken from a form, because the surroundings
+    /// window is created some seconds after the press and must not capture it then.</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 
     /// <summary>Newest request wins: a slow first lookup must not speak (or open a window) after
     /// the pilot has already pressed again.</summary>
@@ -1993,7 +2011,15 @@ public partial class MainForm
                     else
                     {
                         string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude) : "";
-                        var catalog = await surroundingsCache.GetAsync(icao).ConfigureAwait(false);
+                        // A cold first press waits seconds with nothing said, and a blind pilot
+                        // cannot tell that from "the key did nothing". Say so ONCE, and only when
+                        // the answer really is slow — see SurroundingsLookupNotice. QUEUED, and
+                        // dropped if the pilot has pressed again since, exactly like the answer.
+                        var pending = surroundingsCache.GetAsync(icao);
+                        if (await MSFSBlindAssist.Services.SurroundingsLookupNotice
+                                .IsSlowAsync(pending, MSFSBlindAssist.Services.SurroundingsLookupNotice.Delay).ConfigureAwait(false))
+                            SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) announcer.Announce("Looking around."); });
+                        var catalog = await pending.ConfigureAwait(false);
                         // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
                         double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
                         ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where));
@@ -2026,24 +2052,43 @@ public partial class MainForm
     /// on open — the screen reader speaks the window and its first item (CLAUDE.md rule). Reuses
     /// the SayIntentions sectioned list window; a fresh press replaces the previous window.
     /// </summary>
-    private void ShowSurroundingsWindow() => RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
+    private void ShowSurroundingsWindow()
     {
-        string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
-        if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
-            return () => announcer.AnnounceImmediate($"No surroundings data for {l.Icao}.");
-        var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
-            l.Icao, l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
-        // Nothing to list → SPEAK it; never open a window onto an empty list.
-        if (sections.Count == 0)
-            return () => announcer.AnnounceImmediate($"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
-        return () =>
+        // WHERE ESCAPE HANDS THE FOREGROUND BACK TO, captured HERE, at the press, on the UI
+        // thread. SayIntentionsInfoForm captures GetForegroundWindow() itself when given null,
+        // which is right for the SayIntentions site because its window opens on the press's own
+        // stack — this one opens SECONDS later (the OSM wait plus a possible first scenery scan),
+        // by which time the foreground may be something else entirely.
+        IntPtr atPress = GetForegroundWindow();
+        RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
         {
-            try { surroundingsForm?.Close(); } catch { }
-            surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(sections, null, $"Surroundings at {l.Icao}", "Close the surroundings window");
-            surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;
-            surroundingsForm.Show();
-        };
-    });
+            string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
+            if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
+                return () => announcer.AnnounceImmediate($"No surroundings data for {l.Icao}.");
+            var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
+                l.Icao, l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
+            // Nothing to list → SPEAK it; never open a window onto an empty list.
+            if (sections.Count == 0)
+                return () => announcer.AnnounceImmediate($"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
+            return () =>
+            {
+                // One window at a time, and the replacement INHERITS the old window's handle —
+                // the same rule MainForm.SayIntentions.cs follows: on a re-press the old window
+                // may itself hold the foreground, so anything captured relative to it names a
+                // window about to be destroyed and Escape would hand focus to a dead one.
+                IntPtr focusReturn = atPress;
+                if (surroundingsForm is { IsDisposed: false })
+                {
+                    focusReturn = surroundingsForm.PreviousWindow;
+                    try { surroundingsForm.Close(); } catch { }
+                }
+                surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(
+                    sections, focusReturn, $"Surroundings at {l.Icao}", "Close the surroundings window");
+                surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;
+                surroundingsForm.Show();
+            };
+        });
+    }
 
     /// <summary>
     /// Marshal to the UI thread, tolerating the form being torn down between the

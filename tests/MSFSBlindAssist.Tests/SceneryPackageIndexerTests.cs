@@ -392,6 +392,41 @@ public class SceneryPackageIndexerTests : IDisposable
         Assert.Single(CacheFiles(cache));
     }
 
+    [Fact]
+    public void A_short_scan_reports_itself_so_the_catalog_built_on_it_expires()
+    {
+        // The 5-minute memo is only half the answer: the catalog built on a short scan is cached
+        // too, and nothing rebuilds it on its own — so the indexer must SAY the answer was short,
+        // and BuildSurroundings ORs that into the catalog's degraded flag, which does have a
+        // lifetime. Without it the short answer outlived the condition for the whole session.
+        string pkg = MakePackage("shortscan", ("KXYZ_Fire_Station", 40.0005, -75.0005));
+        string locked = Path.Combine(pkg, "scenery", "locked.bgl");
+        File.WriteAllBytes(locked, BglPlacementReaderTests.BuildBgl((40.0006, -75.0005, 0.0, Guid.NewGuid())));
+        string cache = Path.Combine(_root, "cShort");
+        var now = DateTime.UtcNow;
+        var indexer = new SceneryPackageIndexer(cache, () => now);
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            indexer.GetFeatures("KXYZ", new[] { pkg }, null, locatedByCensus: false, out bool incomplete);
+            Assert.True(incomplete);
+        }
+
+        // Released and past the memo: a whole scan reports itself whole.
+        now += SceneryPackageIndexer.IncompleteMemoLifetime + TimeSpan.FromSeconds(1);
+        indexer.GetFeatures("KXYZ", new[] { pkg }, null, locatedByCensus: false, out bool after);
+        Assert.False(after);
+    }
+
+    [Fact]
+    public void A_package_folder_that_is_not_there_counts_as_a_short_scan()
+    {
+        // The catch's "unreadable" arm: nothing was read, so the answer is as short as it gets.
+        new SceneryPackageIndexer(Path.Combine(_root, "cGone"))
+            .GetFeatures("KXYZ", new[] { Path.Combine(_root, "no-such-package") }, null, false, out bool incomplete);
+        Assert.True(incomplete);
+    }
+
     private static string[] CacheFiles(string cache)
         => Directory.Exists(cache) ? Directory.GetFiles(cache, "*.json") : Array.Empty<string>();
 
