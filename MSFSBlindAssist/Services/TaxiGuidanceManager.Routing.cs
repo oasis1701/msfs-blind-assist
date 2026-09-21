@@ -489,10 +489,14 @@ public partial class TaxiGuidanceManager
             // we collect a warning to announce alongside the route summary so the
             // pilot knows their explicit pick was a clearance/route mismatch.
             string? runwayHoldShortWarning = null;
+            // Each honoured pick's own recorded event, merged back in by AdoptRoute after the
+            // automatic pass has reset the list (PR #238 deferred finding §7).
+            var userPickEvents = new List<TaxiRouteRunwayEvent>();
             if (userRunwayHoldShorts != null && userRunwayHoldShorts.Count > 0 && taxiwaySequence != null)
             {
                 runwayHoldShortWarning = ApplyUserRunwayHoldShorts(
-                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, _lastGroundSpeedKts);
+                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon,
+                    _lastGroundSpeedKts, userPickEvents);
             }
 
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
@@ -619,7 +623,8 @@ public partial class TaxiGuidanceManager
 
             AdoptRoute(
                 route, isRunwayDestination, destinationName,
-                aircraftLat, aircraftLon, phase: landingRolloutRoute ? "touchdown" : "load");
+                aircraftLat, aircraftLon, phase: landingRolloutRoute ? "touchdown" : "load",
+                userPickEvents: userPickEvents);
             _currentSegmentIndex = 0;
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
@@ -1875,7 +1880,8 @@ public partial class TaxiGuidanceManager
     /// holds with no compile error.</param>
     private void ApplyAutoHoldShortPasses(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
-        double aircraftLat, double aircraftLon, string phase)
+        double aircraftLat, double aircraftLon, string phase,
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null)
     {
         // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
         // The aircraft's position is the route's first point, decides which stops it has already
@@ -1889,6 +1895,12 @@ public partial class TaxiGuidanceManager
                 route, _graph.RunwayCenterlines,
                 isRunwayDestination ? destinationName : "",
                 new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon, _lastGroundSpeedKts));
+
+            // The pilot's own picks, merged back in: this pass OWNS the event list and resets it, so
+            // a pick it skips — the destination-strip arrival — would otherwise be named nowhere and
+            // stop the pilot at a hold they were never told about (PR #238 §7). De-duplicated by
+            // runway and kind, so a passage the pass did record is not counted twice.
+            RouteRunwayCrossings.MergeUserPickEvents(route, userPickEvents);
         }
 
         // One line per route ADOPTED. Answering "did that route really drive across 08L?" for the
@@ -1931,10 +1943,11 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private void AdoptRoute(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
-        double aircraftLat, double aircraftLon, string phase)
+        double aircraftLat, double aircraftLon, string phase,
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null)
     {
         ApplyAutoHoldShortPasses(
-            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase);
+            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase, userPickEvents);
         LogStandBridgeSegments(route, phase);
         // A start-hold sentence belongs to the route it was composed for; a new route composes its own.
         LastRouteStartHoldCue = null;
@@ -1979,7 +1992,8 @@ public partial class TaxiGuidanceManager
         Dictionary<int, string> userRunwayHoldShorts,
         double aircraftLat,
         double aircraftLon,
-        double groundSpeedKts)
+        double groundSpeedKts,
+        List<TaxiRouteRunwayEvent> placedEvents)
     {
         if (_graph == null) return null;
 
@@ -2062,9 +2076,16 @@ public partial class TaxiGuidanceManager
 
             switch (RouteRunwayCrossings.ApplyUserRunwayHold(
                         route, targetRwy, _graph.RunwayCenterlines, runwayId, runStart,
+                        placed: out var placedEvent,
                         aircraft: new RouteRunwayCrossings.AircraftPosition(
                             aircraftLat, aircraftLon, groundSpeedKts)))
             {
+                // The pick's own event, merged back in after the automatic pass RESETS the list —
+                // without it a pick on the destination strip, whose arrival that pass skips, was
+                // named nowhere at all (PR #238 deferred finding §7).
+                case RouteRunwayCrossings.UserRunwayHoldResult.Held when placedEvent != null:
+                    placedEvents.Add(placedEvent);
+                    break;
                 case RouteRunwayCrossings.UserRunwayHoldResult.NotOnRoute:
                     unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
                     break;

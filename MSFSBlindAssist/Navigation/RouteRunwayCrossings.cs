@@ -783,11 +783,35 @@ public static class RouteRunwayCrossings
         string runwayId,
         int runStartSegmentIndex,
         AircraftPosition? aircraft = null)
+        => ApplyUserRunwayHold(route, runway, runways, runwayId, runStartSegmentIndex, out _, aircraft);
+
+    /// <summary>
+    /// As above, reporting the passage the pick bound to so the caller can MERGE it into the route's
+    /// recorded events (<see cref="MergeUserPickEvents"/>).
+    /// </summary>
+    /// <param name="placed">
+    /// The event for an honoured pick, else null. PR #238 deferred finding §7: this pass recorded no
+    /// event at all and <see cref="InsertRunwayHoldShorts"/> then RESETS
+    /// <see cref="TaxiRoute.RunwayEvents"/>, so when the automatic pass skips the same passage — the
+    /// destination-strip arrival skip — the pick was named NOWHERE. <see cref="DescribeRunwayEvents"/>
+    /// said nothing and <see cref="CountNonRunwayHoldShorts"/> skipped it too, because its label DOES
+    /// name a runway: the pilot picked "hold short of runway 04R" on a route to 04R, heard no mention
+    /// of it in the summary, and was then stopped by a hold they were never told about.
+    /// </param>
+    public static UserRunwayHoldResult ApplyUserRunwayHold(
+        TaxiRoute route,
+        TaxiGraph.RunwayCenterline runway,
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
+        string runwayId,
+        int runStartSegmentIndex,
+        out TaxiRouteRunwayEvent? placed,
+        AircraftPosition? aircraft = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(runway);
         ArgumentNullException.ThrowIfNull(runways);
 
+        placed = null;
         var nodes = ClassificationNodes(route, aircraft, out bool aircraftPrepended);
         var passage = RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway))
             .Select(p => ToRouteIndices(p, aircraftPrepended))
@@ -795,10 +819,47 @@ public static class RouteRunwayCrossings
         if (passage is null) return UserRunwayHoldResult.NotOnRoute;
 
         string pick = runwayId.Trim();
-        return PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
-                runways, aircraft, out _)
-            ? UserRunwayHoldResult.Held
-            : UserRunwayHoldResult.NotHeld;
+        if (!PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
+                runways, aircraft, out string announcedDesignator))
+            return UserRunwayHoldResult.NotHeld;
+
+        placed = new TaxiRouteRunwayEvent
+        {
+            Kind = passage.Kind,
+            Designator = announcedDesignator,
+            Held = true,
+        };
+        return UserRunwayHoldResult.Held;
+    }
+
+    /// <summary>
+    /// Adds each honoured explicit pick's event to <paramref name="route"/>'s recorded events unless
+    /// the automatic pass already recorded that passage — the same runway (either end) met the same
+    /// way.
+    ///
+    /// <para>PR #238 deferred finding §7. The automatic pass owns the events and RESETS them, so a
+    /// pick it skips has to be merged back in afterwards. The destination-strip arrival skip itself
+    /// is deliberately untouched: it has its own incident history (a blanket same-runway skip once
+    /// dropped genuine mid-route crossings of the active runway, 2026-08-24) and must keep skipping
+    /// ONLY the route's own final arrival.</para>
+    ///
+    /// <para>The de-duplication is by runway AND kind, not by runway alone: the same pavement met
+    /// twice, once crossed and once entered, is two passages and the pilot needs to hear both.</para>
+    /// </summary>
+    public static void MergeUserPickEvents(TaxiRoute? route, IReadOnlyList<TaxiRouteRunwayEvent>? userEvents)
+    {
+        if (route?.RunwayEvents is null || userEvents is null) return;
+        foreach (var ev in userEvents)
+        {
+            if (ev is null) continue;
+            string want = NormalizeDesignator(ev.Designator);
+            string recip = Reciprocal(want);
+            bool already = route.RunwayEvents.Any(e =>
+                e.Kind == ev.Kind &&
+                (NormalizeDesignator(e.Designator).Equals(want, StringComparison.OrdinalIgnoreCase) ||
+                 NormalizeDesignator(e.Designator).Equals(recip, StringComparison.OrdinalIgnoreCase)));
+            if (!already) route.RunwayEvents.Add(ev);
+        }
     }
 
     /// <summary>

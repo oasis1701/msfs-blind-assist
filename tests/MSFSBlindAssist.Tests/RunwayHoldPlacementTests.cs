@@ -843,3 +843,124 @@ public class HoldStopPastTheRunwayEndTests
         Assert.False(route.Segments[1].IsHoldShortPoint);
     }
 }
+
+// PR #238 deferred finding §7: an explicit pilot hold-short pick could vanish from the route
+// summary.
+//
+// ApplyUserRunwayHold placed the stop but recorded NO TaxiRouteRunwayEvent, and
+// InsertRunwayHoldShorts then RESETS route.RunwayEvents. When the automatic pass skips that same
+// passage — the destination-strip arrival skip — the pick is named NOWHERE: DescribeRunwayEvents
+// says nothing, and CountNonRunwayHoldShorts also skips it because its label DOES name a runway.
+// The pilot picks "hold short of runway 04R" on a route to 04R, hears no mention of it in the
+// summary, and is then stopped by a hold they were never told about.
+//
+// The pick now carries its own event, merged in after the automatic pass. The destination-strip
+// skip itself is untouched — it has its own incident history (a blanket same-runway skip once
+// dropped genuine mid-route crossings of the active runway, 2026-08-24) and still skips ONLY the
+// route's own final arrival.
+public class UserPickEventTests
+{
+    private static TaxiRoute RouteOf(params TaxiNode[] nodes) => new() { Segments = Route(nodes) };
+
+    private static TaxiRouteRunwayEvent Event(RunwayEventKind kind, string designator, bool held = true)
+        => new() { Kind = kind, Designator = designator, Held = held };
+
+    [Fact]
+    public void A_pick_the_automatic_pass_never_recorded_is_added()
+    {
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100));
+        route.RunwayEvents = new List<TaxiRouteRunwayEvent>();
+
+        RouteRunwayCrossings.MergeUserPickEvents(route, new[] { Event(RunwayEventKind.Entry, "04R") });
+
+        var ev = Assert.Single(route.RunwayEvents);
+        Assert.Equal("04R", ev.Designator);
+        Assert.Equal(RunwayEventKind.Entry, ev.Kind);
+        Assert.True(ev.Held);
+    }
+
+    [Fact]
+    public void A_pick_the_automatic_pass_already_recorded_is_not_counted_twice()
+    {
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100));
+        route.RunwayEvents = new List<TaxiRouteRunwayEvent> { Event(RunwayEventKind.Crossing, "09") };
+
+        RouteRunwayCrossings.MergeUserPickEvents(route, new[] { Event(RunwayEventKind.Crossing, "09") });
+
+        Assert.Single(route.RunwayEvents);
+    }
+
+    // 26R and 08L are one piece of pavement, so a pick spelled as the other end is the same passage.
+    [Fact]
+    public void A_pick_spelled_as_the_reciprocal_end_is_not_counted_twice()
+    {
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100));
+        route.RunwayEvents = new List<TaxiRouteRunwayEvent> { Event(RunwayEventKind.Crossing, "26R") };
+
+        RouteRunwayCrossings.MergeUserPickEvents(route, new[] { Event(RunwayEventKind.Crossing, "08L") });
+
+        Assert.Single(route.RunwayEvents);
+    }
+
+    // ... but the same runway met a DIFFERENT way is a different passage and keeps its own event.
+    [Fact]
+    public void The_same_runway_recorded_with_a_different_kind_still_gets_its_event()
+    {
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100));
+        route.RunwayEvents = new List<TaxiRouteRunwayEvent> { Event(RunwayEventKind.Crossing, "09") };
+
+        RouteRunwayCrossings.MergeUserPickEvents(route, new[] { Event(RunwayEventKind.Entry, "09") });
+
+        Assert.Equal(2, route.RunwayEvents.Count);
+    }
+
+    // The pick reports the passage it bound to, so the manager has something to merge.
+    [Fact]
+    public void An_honoured_pick_reports_its_own_event()
+    {
+        var runway = EastWest();
+        var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
+
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0, placed: out var placed));
+
+        Assert.NotNull(placed);
+        Assert.Equal("27", placed!.Designator);
+        Assert.Equal(RunwayEventKind.Crossing, placed.Kind);
+        Assert.True(placed.Held);
+    }
+
+    [Fact]
+    public void A_pick_that_could_not_be_placed_reports_nothing_to_merge()
+    {
+        var runway14 = NorthSouth("14", "32", eastM: 1100, fromNorthM: -1500, toNorthM: 1500);
+        var runways = new[] { EastWest("11", "29"), runway14 };
+        var route = RouteOf(Node(1, 900, 0), Node(2, 1000, 0), Node(3, 1060, 0), Node(4, 1100, 0),
+            Node(5, 1140, 0), Node(6, 1300, 0));
+
+        Assert.Equal(UserRunwayHoldResult.NotHeld, RouteRunwayCrossings.ApplyUserRunwayHold(
+            route, runway14, runways, "14", runStartSegmentIndex: 0, placed: out var placed));
+
+        Assert.Null(placed);
+    }
+
+    // The whole point, end to end: a route TO runway 04R whose pilot asked to hold short of 04R.
+    // The automatic pass skips the arrival, so without the merge the summary says nothing at all.
+    [Fact]
+    public void A_pick_on_the_destination_strip_is_named_in_the_summary()
+    {
+        var runway = EastWest("04R", "22L");
+        var route = RouteOf(Node(1, 1000, -300), Node(2, 1000, -100), Node(3, 1000, 0));
+
+        Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
+            route, runway, new[] { runway }, "04R", runStartSegmentIndex: 0, placed: out var placed));
+
+        var auto = RouteRunwayCrossings.InsertRunwayHoldShorts(route, new[] { runway }, "Runway 04R");
+        Assert.Empty(auto);                                    // the arrival is skipped, as it must be
+        Assert.Equal("", RouteRunwayCrossings.DescribeRunwayEvents(route.RunwayEvents));
+
+        RouteRunwayCrossings.MergeUserPickEvents(route, new[] { placed! });
+
+        Assert.Contains("04R", RouteRunwayCrossings.DescribeRunwayEvents(route.RunwayEvents));
+    }
+}
