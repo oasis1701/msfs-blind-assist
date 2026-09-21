@@ -52,9 +52,14 @@ public static class NavdataFeatureSource
             foreach (var cluster in SurroundingsGeometry.SingleLinkage(dir.ToList(), At, GateLinkMetres))
                 result.Add(Make(FeatureKind.Apron, $"{Capitalize(dir.Key)} ramp", true, cluster));
 
+        // BOTH flags say only that there is fuel, which the feature's own name already says — on an
+        // MSFS 2024 database they are ALL-OR-NOTHING (see AirportFacilities.DescribeFacts for the
+        // measurement), so naming the two grades claimed jet fuel at fields that have neither a
+        // hard runway nor 2,500 ft of it. A disk-built MSFS 2020 database sets them independently,
+        // so one flag alone still names its grade.
         string? fuelDetail = facilities == null ? null : (facilities.HasAvgas, facilities.HasJetFuel) switch
         {
-            (true, true) => "avgas and jet fuel", (true, false) => "avgas", (false, true) => "jet fuel", _ => null,
+            (true, false) => "avgas", (false, true) => "jet fuel", _ => null,
         };
         foreach (var c in SurroundingsGeometry.SingleLinkage(spots.Where(s => ParkingTypes.IsFuel(s.Type)).ToList(), At, RampLinkMetres))
             result.Add(Make(FeatureKind.Fuel, "Fuel", true, c, fuelDetail));

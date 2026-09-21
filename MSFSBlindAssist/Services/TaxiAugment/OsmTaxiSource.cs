@@ -46,10 +46,26 @@ public sealed class OsmTaxiSource : ITaxiDataSource
                ");out tags geom;";
     }
 
+    /// <summary>
+    /// Null on failure, NEVER an exception. A body can pass
+    /// <see cref="OverpassClient.IsFailedResponse"/> — an object with an `elements` array and no
+    /// "runtime error" remark — and still be shapeless enough to throw inside <see cref="Parse"/>
+    /// (an element with no `type`, a non-array `geometry`). Before <see cref="OverpassClient"/> was
+    /// extracted, Parse ran inside the per-mirror try, so such a body simply failed that mirror.
+    /// It matters because the only caller awaits Task.WhenAll over this source AND the apt.dat one:
+    /// a throw here discards a SUCCESSFUL apt.dat result together with the cache write, the name
+    /// merge and the AirportDataUpdated event — for pilots who never use the surroundings feature.
+    /// </summary>
     public async Task<AirportTaxiData?> FetchAsync(string icao, double lat, double lon, CancellationToken ct)
     {
         string? body = await _client.PostAsync(BuildQuery(lat, lon), ct).ConfigureAwait(false);
-        return body == null ? null : Parse(body);
+        if (body == null) return null;
+        try { return Parse(body); }
+        catch (Exception ex)
+        {
+            Utils.Logging.Log.Warn("TaxiAugment", $"{icao}: unreadable OSM taxiway response: {ex.Message}");
+            return null;                            // this source failed; apt.dat's result still counts
+        }
     }
 
     public static AirportTaxiData Parse(string json)

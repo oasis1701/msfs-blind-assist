@@ -140,7 +140,19 @@ public static class MsfsPackagesLocator
                 return null;
             }
 
-            foreach (string path in ParseInstalledPackagesPaths(File.ReadLines(configPath)))
+            // Shared for write and delete, and released before the first Directory.Exists: this is
+            // the SIMULATOR's own config, and since the scenery census it is read while the
+            // simulator is running (on the navdata-build path it never was). A reader that permits
+            // no writer can make the simulator's own write to it fail.
+            var lines = new List<string>();
+            using (var reader = new StreamReader(new FileStream(configPath, FileMode.Open, FileAccess.Read,
+                                                                FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan)))
+            {
+                string? line;
+                while ((line = reader.ReadLine()) != null) lines.Add(line);
+            }
+
+            foreach (string path in ParseInstalledPackagesPaths(lines))
             {
                 if (Directory.Exists(path)) return path;
                 Log.Debug("Database", $"InstalledPackagesPath found but directory doesn't exist: {path}");

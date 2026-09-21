@@ -24,6 +24,14 @@
     <Compile Include="..\..\MSFSBlindAssist\Services\StandId.cs" Link="Linked\%(Filename)%(Extension)" />
     <!-- Gate search filter (alias-aware matching test). Depends only on ParkingSpot (linked above). -->
     <Compile Include="..\..\MSFSBlindAssist\Services\GateSearchFilter.cs" Link="Linked\%(Filename)%(Extension)" />
+    <!-- The app's logger. OsmTaxiSource.FetchAsync warns when an Overpass body passes the failed-
+         response check and still breaks Parse, so the wildcard above is no longer log-free (until
+         now AugmentingAirportDataProvider.cs, the one file it excludes, was the folder's only
+         logger). Self-contained — these eight files reference nothing but the BCL — and inert
+         here: Log.Init() is never called, so LogWriter's drain thread never starts and Enqueue
+         is a bounded, non-blocking TryAdd that touches no file. -->
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs" Link="Linked\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />

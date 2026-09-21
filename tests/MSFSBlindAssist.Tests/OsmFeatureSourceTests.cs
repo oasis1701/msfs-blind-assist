@@ -93,4 +93,17 @@ public class OsmFeatureSourceTests
         Assert.NotNull(features);
         Assert.Empty(features);
     }
+
+    [Theory]
+    // Both pass OverpassClient.IsFailedResponse (an object with an `elements` array and no
+    // "runtime error" remark) and still throw inside Parse. A throw here would escape
+    // SurroundingsTier.Read's caller as a faulted task rather than a source that failed, so the
+    // store must be told "failed" — which it remembers for FailureMemory and then retries.
+    [InlineData("{\"elements\":[42]}")]                                        // an element that is not an object
+    [InlineData("{\"elements\":[{\"type\":\"node\",\"lat\":\"x\",\"lon\":\"y\",\"tags\":{\"aeroway\":\"hangar\"}}]}")]   // a coordinate that is not a number
+    public async Task A_body_that_is_shapeless_enough_to_break_the_parser_is_a_failed_fetch_not_a_throw(string body)
+    {
+        var source = SourceOver(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
+        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None));
+    }
 }

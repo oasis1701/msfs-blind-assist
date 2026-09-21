@@ -114,6 +114,23 @@ public class SceneryModelNameClassifierTests
         Assert.Equal(name, c.Name);
     }
 
+    // NOT measured model names: rows that pin the kind ORDER against the other two tiers. The
+    // catalog never merges across kinds, so one building classified Terminal from scenery and
+    // Cargo from OSM is listed twice under two names. OsmFeatureClassifier.TerminalKind and
+    // GsxTerminalFeatureSource.KindOf both decide Fbo and Cargo before Terminal; "flugsteig" is
+    // OSM's own word for a concourse at EDDF and belongs to the shared FeatureLexicon.
+    [Theory]
+    [InlineData("KXYZ_Cargo_Terminal_01", "KXYZ", FeatureKind.Cargo, "Cargo Terminal")]
+    [InlineData("KXYZ_Executive_Terminal", "KXYZ", FeatureKind.Fbo, "Executive Terminal")]
+    [InlineData("EDDF_Flugsteig_A_01", "EDDF", FeatureKind.Concourse, "Flugsteig A")]
+    public void A_kind_word_decides_the_same_way_here_as_in_the_osm_and_gsx_tiers(string model, string icao, FeatureKind kind, string name)
+    {
+        var c = SceneryModelNameClassifier.Classify(model, icao);
+        Assert.NotNull(c);
+        Assert.Equal(kind, c!.Kind);
+        Assert.Equal(name, c.Name);
+    }
+
     [Fact]
     public void A_bare_kind_word_is_a_generic_name_and_a_proper_name_is_not()
     {

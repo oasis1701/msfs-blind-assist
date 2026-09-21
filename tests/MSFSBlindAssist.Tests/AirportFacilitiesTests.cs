@@ -31,7 +31,31 @@ public class AirportFacilitiesTests
         var f = new AirportFacilities { Icao = "KTIW", HasAvgas = true, HasJetFuel = true };
         f.Coms.AddRange(new[] { new ComFrequency("ATIS", 124050000, "KTIW"), new ComFrequency("G", 121800000, "TACOMA"),
                                 new ComFrequency("T", 118500000, "TACOMA"), new ComFrequency("UC", 122950000, "TACOMA") });
-        Assert.Equal("Avgas and jet fuel. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95.", f.DescribeFacts());
+        Assert.Equal("Fuel available. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95.", f.DescribeFacts());
+    }
+
+    [Fact]
+    public void Both_fuel_flags_together_say_only_that_there_is_fuel()
+    {
+        // Measured on fs2024 (2026-09-21): the two flags are ALL-OR-NOTHING there — 17,079 airports
+        // carry both, 67,199 neither, not one carries a single flag — so "both" grades nothing, and
+        // "Avgas and jet fuel." was spoken at 1,147 fields with no hard runway and a longest runway
+        // under 2,500 ft (4II2 "Hangar Fly Ultralight Fly Club", 965 ft). A disk-built MSFS 2020
+        // database sets the two independently, so one flag on its own still names its grade.
+        Assert.Equal("Fuel available.", new AirportFacilities { HasAvgas = true, HasJetFuel = true }.DescribeFacts());
+        Assert.Equal("Avgas.", new AirportFacilities { HasAvgas = true }.DescribeFacts());
+        Assert.Equal("Jet fuel.", new AirportFacilities { HasJetFuel = true }.DescribeFacts());
+        Assert.Equal("", new AirportFacilities().DescribeFacts());
+    }
+
+    [Fact]
+    public void A_gates_frequency_is_not_read_out_as_Ground_when_a_plain_ground_row_exists()
+    {
+        // KMIA, replayed on the real data: its nine G rows begin with "MIAMI GATES" at 120.35, so
+        // the readout named the ramp-gates frequency as the ground controller's.
+        var f = With(new ComFrequency("G", 120350000, "MIAMI GATES"), new ComFrequency("G", 121800000, "MIAMI"),
+                     new ComFrequency("G", 128025000, "MIAMI GATES"), new ComFrequency("G", 132375000, "MIAMI GATES"));
+        Assert.Equal("Ground 121.8 (4 listed).", f.DescribeFacts());
     }
 
     [Fact]

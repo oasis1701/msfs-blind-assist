@@ -5,9 +5,10 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// <summary>
 /// The ONE name lexicon all three naming tiers share: OsmFeatureClassifier uses every pattern
 /// here, GsxTerminalFeatureSource.KindOf reads a section header with Cargo/Fbo/Concourse, and
-/// SceneryModelNameClassifier's kind table takes Fbo and Cargo. Three private copies had already
-/// drifted (the scenery FBO list lacked half the OSM one), so one building classified by two
-/// sources came out as two kinds — and AirportFeatureCatalog never merges across kinds.
+/// SceneryModelNameClassifier's kind table takes Concourse, Fbo and Cargo. Three private copies
+/// had already drifted (the scenery FBO list lacked half the OSM one, and its concourse list had
+/// no "flugsteig"), so one building classified by two sources came out as two kinds — and
+/// AirportFeatureCatalog never merges across kinds.
 /// </summary>
 public static class FeatureLexicon
 {

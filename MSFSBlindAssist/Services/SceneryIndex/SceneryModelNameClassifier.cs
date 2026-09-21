@@ -18,9 +18,9 @@ public sealed record ClassifiedModel(FeatureKind Kind, string Name, bool NameIsG
 /// the dolly word, and a real building is sometimes placed twice.
 ///
 /// Every rule here is pinned by a measured name in SceneryModelNameClassifierTests; extend the
-/// tables there first. The FBO and cargo vocabularies come from FeatureLexicon, the ONE lexicon
-/// the OSM, scenery and GSX tiers share — the private copies that used to sit here had already
-/// drifted from it, so one building classified by two tiers came out as two kinds.
+/// tables there first. The concourse, FBO and cargo vocabularies come from FeatureLexicon, the ONE
+/// lexicon the OSM, scenery and GSX tiers share — the private copies that used to sit here had
+/// already drifted from it, so one building classified by two tiers came out as two kinds.
 /// </summary>
 public static class SceneryModelNameClassifier
 {
@@ -43,24 +43,29 @@ public static class SceneryModelNameClassifier
     private static readonly HashSet<string> VendorTokens = new(StringComparer.OrdinalIgnoreCase)
     { "iniscene", "inibuilds", "ini", "lib", "iby", "mk", "fb", "ft", "ftlib", "ene", "nxt", "gse" };
 
-    // Order matters: first match wins.
+    // Order matters: first match wins — and Fbo and Cargo come BEFORE Terminal, as they do in
+    // OsmFeatureClassifier.TerminalKind and GsxTerminalFeatureSource.KindOf. A "Cargo Terminal"
+    // that reads Terminal here and Cargo there is listed TWICE, because AirportFeatureCatalog
+    // never merges across kinds. Hangar stays first: "Narrows Aviation Hangar" is a hangar.
     private static readonly (Regex Rx, FeatureKind Kind)[] Kinds =
     {
         (new Regex(@"\b(hangars?|hangers?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Hangar),
-        (new Regex(@"\b(concourse|pier|satellite)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Concourse),
+        (FeatureLexicon.Concourse, FeatureKind.Concourse),
+        (FeatureLexicon.Fbo, FeatureKind.Fbo),
+        (FeatureLexicon.Cargo, FeatureKind.Cargo),
         (new Regex(@"\bterminal\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Terminal),
         (new Regex(@"\b(tower|atc)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Tower),
-        (FeatureLexicon.Fbo, FeatureKind.Fbo),
         (new Regex(@"\b(fire|arff|rescue)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.FireStation),
-        (FeatureLexicon.Cargo, FeatureKind.Cargo),
         (new Regex(@"\b(deice|de ?ice)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.DeicePad),
         (new Regex(@"\b(fuel|fueltank|avgas|tank)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Fuel),
         (new Regex(@"\b(office|admin|cafe|restaurant)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Office),
     };
 
-    // Classify inline regexes hoisted to static readonly (tr-TR IgnoreCase trap fix)
+    // Classify inline regexes hoisted to static readonly (tr-TR IgnoreCase trap fix). This must
+    // list FeatureLexicon.Concourse's words plus "terminal": it finds the KEYWORD TOKEN the name is
+    // built from, so a word the kind table matches and this does not is classified and then dropped.
     private static readonly Regex ConcoursePierSatelliteTerminal = new(
-        @"^(concourse|pier|satellite|terminal)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        @"^(concourse|pier|satellite|flugsteig|terminal)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex TrailingDigits = new(@"^\d{1,2}$", RegexOptions.CultureInvariant);
     private static readonly Regex SingleLetter = new(@"^[A-Za-z]$", RegexOptions.CultureInvariant);
 

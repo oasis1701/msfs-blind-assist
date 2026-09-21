@@ -21,6 +21,9 @@ public readonly record struct ScenePlacement(double Lat, double Lon, double Head
 /// additionally bounds the CUMULATIVE bytes read/scanned across one call; once spent, the read
 /// ends and returns whatever was parsed so far, same as any other hostile-input exit, rather
 /// than keep allocating and re-scanning for as long as the file keeps declaring more entries.
+/// Never throwing is not the same as always finishing, so <see cref="Read(Stream, out bool)"/>
+/// reports whether a TRANSIENT failure cut the read short — what the two disk caches need in
+/// order not to freeze a short answer. ONE parser: the span overloads delegate here.
 /// </summary>
 public static class BglPlacementReader
 {
@@ -33,57 +36,46 @@ public static class BglPlacementReader
     private const double LatScale = 180.0 / (2.0 * (1 << 28));
     private const int MaxSubsectionBytes = 64 * 1024 * 1024;
 
-    // Real placement files are tiny (the largest measured, iniBuilds LMML, carries 5,841
-    // 92-byte records ≈ 0.5 MB; a header-only scan of 2,451 real BGLs read 21.3 MB in total) —
-    // 128 MB leaves over 200x headroom for one file while still ending a pathological read in a
-    // bounded, small amount of work instead of hours.
+    // Real placement files are tiny (the largest measured, flytampa CYYZ's cyyz_objects.bgl, is
+    // 1.27 MB; a header-only scan of 2,443 real BGLs read 21.3 MB in total) — 128 MB leaves about
+    // 100x headroom for one file while still ending a pathological read in a bounded, small amount
+    // of work instead of hours.
     private const long DefaultMaxTotalBytes = 128L * 1024 * 1024;
 
+    /// <summary>Tests only, and it DELEGATES to the stream overload so this class holds exactly ONE
+    /// parser. The span version used to be its own: it clamped a truncated entry to the file where
+    /// the stream one rejects the entry, and it had no per-subsection cap — so the tests written
+    /// against it were pinning a parser no production caller ever runs.</summary>
     public static List<ScenePlacement> Read(ReadOnlySpan<byte> b) => Read(b, DefaultMaxTotalBytes);
 
-    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> (see the class summary). The span
-    /// overload allocates nothing on a slice, so the only cost a pathological subsection table
-    /// buys here is CPU time re-scanning the same bytes and repeatedly re-adding the same
-    /// placements to the result — <paramref name="maxTotalBytes"/> bounds that too, counted as
-    /// bytes scanned rather than bytes read off a stream.</summary>
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> (see the class summary).</summary>
     internal static List<ScenePlacement> Read(ReadOnlySpan<byte> b, long maxTotalBytes)
-    {
-        var result = new List<ScenePlacement>();
-        if (b.Length < HeaderSize || U32(b, 0) != Magic) return result;
-        uint sections = U32(b, 0x14);
-        long totalRead = 0;
-        for (uint s = 0; s < sections; s++)
-        {
-            int e = HeaderSize + (int)s * SectionEntrySize;
-            if (e + SectionEntrySize > b.Length) break;
-            if (U32(b, e) != SceneryObjectSection) continue;
-            uint subCount = U32(b, e + 8), subOff = U32(b, e + 12), subSize = U32(b, e + 16);
-            if (subCount == 0 || subSize < 16 || subOff > int.MaxValue || subOff >= b.Length || (long)subOff + subSize > b.Length) continue;
-            int subEntry = (int)(subSize / subCount);
-            if (subEntry < 16) continue;
-            for (uint i = 0; i < subCount; i++)
-            {
-                int so = (int)subOff + (int)i * subEntry;
-                if ((long)so + subEntry > b.Length) continue;
-                uint dataOff = U32(b, so + subEntry - 8), dataSize = U32(b, so + subEntry - 4);
-                if (dataOff > int.MaxValue || dataOff >= b.Length) continue;
-                long end = Math.Min((long)dataOff + dataSize, b.Length);
-                long sliceLen = end - dataOff;
-                if (totalRead + sliceLen > maxTotalBytes) return result;    // cumulative budget spent: end the whole read
-                totalRead += sliceLen;
-                ReadRecords(b.Slice((int)dataOff, (int)sliceLen), result);
-            }
-        }
-        return result;
-    }
+        => Read(new MemoryStream(b.ToArray()), maxTotalBytes);
 
     /// <summary>Header, section table and the SceneryObject (0x25) subsections only, by seeking —
-    /// never the whole file. Same result as the span overload; never throws.</summary>
-    public static List<ScenePlacement> Read(Stream bgl) => Read(bgl, DefaultMaxTotalBytes);
+    /// never the whole file. Never throws.</summary>
+    public static List<ScenePlacement> Read(Stream bgl) => Read(bgl, DefaultMaxTotalBytes, out _);
+
+    /// <summary>
+    /// As <see cref="Read(Stream)"/>, and <paramref name="complete"/> says whether the read
+    /// FINISHED. It is false only when a TRANSIENT failure cut it short — an
+    /// <see cref="IOException"/> or a stream disposed under it, i.e. a network drive that went
+    /// away or a package replaced mid-scan — because the callers that keep a disk cache
+    /// (<see cref="SceneryPackageCensus"/>, <see cref="SceneryPackageIndexer"/>) refuse to cache
+    /// a scan that did not finish. A MALFORMED file (bad magic, an out-of-bounds entry, a
+    /// truncated record) and a spent <see cref="DefaultMaxTotalBytes"/> budget are DETERMINISTIC —
+    /// a re-read answers exactly the same — so they leave it true and ARE cached; calling them
+    /// incomplete would re-read that package for the life of the install.
+    /// </summary>
+    public static List<ScenePlacement> Read(Stream bgl, out bool complete) => Read(bgl, DefaultMaxTotalBytes, out complete);
 
     /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> — see the class summary.</summary>
-    internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes)
+    internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes) => Read(bgl, maxTotalBytes, out _);
+
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> — see the class summary.</summary>
+    internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes, out bool complete)
     {
+        complete = true;
         var result = new List<ScenePlacement>();
         try
         {
@@ -126,7 +118,10 @@ public static class BglPlacementReader
                 }
             }
         }
-        catch (Exception ex) when (ex is IOException or ObjectDisposedException or NotSupportedException or ArgumentException) { }
+        // The file is still READABLE in principle, so the read did not finish: say so.
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException) { complete = false; }
+        // A stream that cannot do what this reader needs answers the same way every time.
+        catch (Exception ex) when (ex is NotSupportedException or ArgumentException) { }
         return result;
     }
 

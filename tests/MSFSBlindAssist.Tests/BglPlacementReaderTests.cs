@@ -110,9 +110,13 @@ public class BglPlacementReaderTests
     {
         Assert.Empty(BglPlacementReader.Read(new byte[] { 1, 2, 3 }));
         Assert.Empty(BglPlacementReader.Read(Array.Empty<byte>()));
+        // The subsection entry declares 128 bytes of records and the file holds 88, so the ENTRY
+        // is rejected whole — the one parser's answer, the same one the stream overload has always
+        // given (see A_truncated_or_foreign_stream_yields_what_parsed_and_never_throws). The span
+        // overload used to CLAMP the entry to the file and return the first record instead.
         var bgl = BuildBgl((1, 1, 0, Guid.NewGuid()), (2, 2, 0, Guid.NewGuid()));
         var cut = bgl.AsSpan(0, bgl.Length - 40).ToArray();          // second record truncated
-        Assert.Single(BglPlacementReader.Read(cut));
+        Assert.Empty(BglPlacementReader.Read(cut));
     }
 
     [Fact]
@@ -201,6 +205,55 @@ public class BglPlacementReaderTests
         var placed = BglPlacementReader.Read(new MemoryStream(bgl));    // default (128 MB) budget — this ~1 KB file is nowhere near it
         Assert.Equal(guids.Length, placed.Count);
         for (int i = 0; i < guids.Length; i++) Assert.Equal(guids[i], placed[i].ModelGuid);
+    }
+
+    // ---- "did the read finish?" -----------------------------------------------------------
+    //
+    // Only a TRANSIENT failure may say "incomplete": the census and the indexer refuse to CACHE
+    // an incomplete scan, so calling a deterministic answer incomplete would re-read that package
+    // for the life of the install.
+
+    [Fact]
+    public void A_transient_io_error_partway_through_a_read_says_the_read_did_not_finish()
+    {
+        // A network drive that went away, or a package replaced mid-scan.
+        var guids = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        using var dying = new ThrowsOnNthRead(new MemoryStream(BuildManyEntriesDistinctData(guids)), 5);   // header, table, subs, entry 0, boom
+
+        var placed = BglPlacementReader.Read(dying, out bool complete);
+
+        Assert.Single(placed);                                       // what parsed before the failure still counts
+        Assert.False(complete);                                      // …but the caller must not cache it
+    }
+
+    [Fact]
+    public void A_malformed_file_or_a_spent_budget_finished_because_a_re_read_answers_the_same()
+    {
+        byte[] bgl = BuildBgl((1.0, 2.0, 0.0, Guid.NewGuid()));
+        BglPlacementReader.Read(new MemoryStream(bgl.Take(bgl.Length - 30).ToArray()), out bool truncated);
+        Assert.True(truncated);
+        BglPlacementReader.Read(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(new string('x', 4096))), out bool foreign);
+        Assert.True(foreign);
+
+        var placed = BglPlacementReader.Read(new MemoryStream(BuildManyEntriesSameData(5000, Guid.NewGuid())), 100_000L, out bool budget);
+        Assert.NotEmpty(placed);
+        Assert.True(budget);                                         // the budget is this reader's own rule, not a failure of the file
+    }
+
+    private sealed class ThrowsOnNthRead(Stream inner, int n) : Stream
+    {
+        private int _reads;
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (++_reads == n) throw new IOException("the drive went away");
+            return inner.Read(buffer, offset, count);
+        }
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+        public override bool CanRead => true; public override bool CanSeek => true; public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => inner.Position = value; }
+        public override void Flush() { } public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     private sealed class CountingStream(Stream inner) : Stream

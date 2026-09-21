@@ -312,19 +312,81 @@ public class SceneryPackageIndexerTests : IDisposable
     }
 
     [Fact]
-    public void One_unreadable_file_does_not_cost_the_package_and_the_status_is_honest()
+    public void One_unparseable_file_does_not_cost_the_package_and_the_status_is_honest()
     {
+        // MALFORMED, which is not the same as UNREADABLE: a re-read answers the same, so it never
+        // says "N files unreadable" and never stops the package being cached — see
+        // A_scan_that_could_not_read_every_file_is_used_but_never_cached for the other case.
         string pkg = MakePackage("honest", ("KXYZ_Fire_Station", 40.0005, -75.0005));
         File.WriteAllBytes(Path.Combine(pkg, "scenery", "broken.bgl"), new byte[] { 1, 2, 3 });
-        var indexer = new SceneryPackageIndexer(Path.Combine(_root, "c5"));
+        string cache = Path.Combine(_root, "c5");
+        var indexer = new SceneryPackageIndexer(cache);
         Assert.Single(indexer.GetFeatures("KXYZ", new[] { pkg }, null));
         Assert.Contains("1 features from honest", indexer.LastStatus);
+        Assert.DoesNotContain("unreadable", indexer.LastStatus);
+        Assert.Single(Directory.GetFiles(cache, "*.json"));
         Assert.DoesNotContain("base-library", indexer.LastStatus);
         indexer.GetFeatures("KABC", Array.Empty<string>(), null);
         Assert.Equal("KABC: no installed scenery package found", indexer.LastStatus);
         indexer.GetFeatures("KXYZ", new[] { pkg }, null, locatedByCensus: true);
         Assert.EndsWith("(located by Community scan)", indexer.LastStatus);
     }
+
+    [Fact]
+    public void A_cache_carrying_a_model_that_names_nothing_drops_the_row_and_the_rest_still_serve()
+    {
+        // A hand-edited or half-corrupted document can be valid JSON and still carry a model that
+        // names nothing. It threw on EVERY call, because the document is memoised — the same
+        // failure the census's own null-row filter at load exists for.
+        string pkg = MakePackage();
+        string cache = Path.Combine(_root, "cNull");
+        Assert.Single(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null));
+
+        string cachePath = Assert.Single(Directory.GetFiles(cache, "*.json"));
+        File.WriteAllText(cachePath, File.ReadAllText(cachePath)
+            .Replace("\"Models\":[", "\"Models\":[null,{\"Name\":null},{\"Name\":\"\"},", StringComparison.Ordinal));
+
+        var indexer = new SceneryPackageIndexer(cache);
+        Assert.Equal("Concourse A", Assert.Single(indexer.GetFeatures("KATL", new[] { pkg }, null)).Name);
+        Assert.DoesNotContain("unreadable", indexer.LastStatus);
+    }
+
+    [Fact]
+    public void A_scan_that_could_not_read_every_file_is_used_but_never_cached()
+    {
+        // A BGL held open exclusively — by the simulator, an antivirus sweep, a package being
+        // updated — is a MOMENT, not a property of the package. Persisted, its short answer would
+        // be frozen under layout.json's stamp: every placement resolves to "without a model name",
+        // the package yields nothing, and it stays that way until the package is next updated.
+        string pkg = MakePackage("locked", ("KXYZ_Fire_Station", 40.0005, -75.0005));
+        string locked = Path.Combine(pkg, "scenery", "locked.bgl");
+        File.WriteAllBytes(locked, BglPlacementReaderTests.BuildBgl((40.0006, -75.0005, 0.0, Guid.NewGuid())));
+        string cache = Path.Combine(_root, "cLock");
+        var now = DateTime.UtcNow;
+        var indexer = new SceneryPackageIndexer(cache, () => now);
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            Assert.Single(indexer.GetFeatures("KXYZ", new[] { pkg }, null));   // what WAS read still counts
+            Assert.Contains("1 file unreadable", indexer.LastStatus);          // …and the status says so
+            Assert.Empty(CacheFiles(cache));                                   // …and nothing is written
+        }
+
+        // Released — but the short answer is still memoised, so a 600 MB library is not re-read on
+        // the next call. The status proves it: a re-read would have found the file this time.
+        Assert.Single(indexer.GetFeatures("KXYZ", new[] { pkg }, null));
+        Assert.Contains("1 file unreadable", indexer.LastStatus);
+        Assert.Empty(CacheFiles(cache));
+
+        // The memo is given up on after the interval, so the condition is not frozen forever.
+        now += SceneryPackageIndexer.IncompleteMemoLifetime + TimeSpan.FromSeconds(1);
+        Assert.Single(indexer.GetFeatures("KXYZ", new[] { pkg }, null));
+        Assert.DoesNotContain("unreadable", indexer.LastStatus);
+        Assert.Single(CacheFiles(cache));
+    }
+
+    private static string[] CacheFiles(string cache)
+        => Directory.Exists(cache) ? Directory.GetFiles(cache, "*.json") : Array.Empty<string>();
 
     [Fact]
     public void A_missing_package_folder_is_reported_unreadable_and_costs_no_other_package()

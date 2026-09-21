@@ -277,6 +277,34 @@ public class OsmTaxiSourceParseTests
         Assert.DoesNotContain("area[", q);    // a mirror without an area database fails the WHOLE query
     }
 
+    // ---- The fetch's "null on failure" contract -----------------------------------
+    //
+    // Its only caller awaits Task.WhenAll over this source AND the apt.dat one, so an
+    // exception out of here discards a SUCCESSFUL apt.dat result together with the cache
+    // write, the name merge and the AirportDataUpdated event — for pilots who never touch
+    // the surroundings feature. Before OverpassClient was extracted, Parse ran inside the
+    // per-mirror try, so a shapeless body simply failed that mirror.
+
+    private sealed class EveryMirrorAnswers : HttpMessageHandler
+    {
+        private readonly string _body;
+        public EveryMirrorAnswers(string body) { _body = body; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_body) });
+    }
+
+    [Theory]
+    // Each passes OverpassClient.IsFailedResponse (an object with an `elements` array and no
+    // "runtime error" remark) and still throws inside Parse.
+    [InlineData("{\"elements\":[{\"id\":1}]}")]                                                        // no `type`
+    [InlineData("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"ref\":\"A\"},\"geometry\":7}]}")]   // `geometry` not an array
+    [InlineData("{\"elements\":[42]}")]                                                                // not even an object
+    public async Task A_body_that_is_shapeless_enough_to_break_the_parser_is_a_failed_fetch_not_a_throw(string body)
+    {
+        var source = new OsmTaxiSource(new OverpassClient(new HttpClient(new EveryMirrorAnswers(body))));
+        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, CancellationToken.None));
+    }
+
     [Fact]
     public void The_overpass_query_asks_for_stands_and_gates_as_node_and_way()
     {

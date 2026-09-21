@@ -45,20 +45,24 @@ public sealed class SceneryPackageCensus
     private readonly object _lock = new();
     private CacheFile? _cache;
 
+    /// <summary>How deep a package's own folders are walked, shared with
+    /// <see cref="SceneryPackageIndexer"/>: this walks whatever is in Community and the indexer is
+    /// then handed one of the packages it found, so a junction cycle bounded here and unbounded
+    /// there would simply move. Reparse points must be FOLLOWED — an add-on linker puts every
+    /// package behind one, and a census that skipped them would find nothing for exactly the
+    /// pilots with the most scenery — so the depth bound is what ends a link cycle. Packages are
+    /// shallow (the deepest real BGL measured sits 4 levels down), so 12 loses nothing.</summary>
+    internal const int MaxBglRecursionDepth = 12;
+
     /// <summary>Every *.bgl under one package. Same options as
-    /// <see cref="SceneryPackageIndexer"/>'s (IgnoreInaccessible because the enumerator itself
+    /// <see cref="SceneryPackageIndexer"/>'s: IgnoreInaccessible because the enumerator itself
     /// throws on a folder the user cannot read, CaseInsensitive because packages ship both
-    /// "modelLib.BGL" and "objects.bgl", AttributesToSkip 0 so hidden and system files are read)
-    /// plus a depth bound this one needs and that one does not: the indexer opens the ONE package
-    /// navdata named, while this walks whatever is in Community, where a package is routinely a
-    /// junction to a library on another drive. Reparse points must be followed — an add-on linker
-    /// puts every package behind one, and a census that skipped them would find nothing for
-    /// exactly the pilots with the most scenery — so the depth bound is what ends a link cycle.
-    /// Packages are shallow (the deepest real BGL here sits 4 levels down), so 12 loses nothing.</summary>
+    /// "modelLib.BGL" and "objects.bgl", AttributesToSkip 0 so hidden and system files are read,
+    /// and <see cref="MaxBglRecursionDepth"/>.</summary>
     private static readonly EnumerationOptions BglFiles = new()
     {
         RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive,
-        AttributesToSkip = 0, MaxRecursionDepth = 12,
+        AttributesToSkip = 0, MaxRecursionDepth = MaxBglRecursionDepth,
     };
 
     /// <summary>The immediate children of Community. Same reasons for IgnoreInaccessible and
@@ -198,7 +202,8 @@ public sealed class SceneryPackageCensus
     /// — but it does cost the scan its COMPLETE flag, and only a complete scan is cached. A BGL
     /// that cannot be OPENED is a lock or a permission, both of which pass; a BGL whose contents
     /// are rubbish does not reach here at all, because <see cref="BglPlacementReader"/> answers
-    /// with what parsed rather than throwing.
+    /// with what parsed rather than throwing — but a read an I/O error cut HALFWAY is short for
+    /// the same transient reason as a lock, so the reader reports that separately and it counts.
     /// </summary>
     private static (List<int[]> Cells, bool Complete) Scan(string dir)
     {
@@ -214,7 +219,13 @@ public sealed class SceneryPackageCensus
                     // Shared for write and delete: the simulator may hold this very file open.
                     using var stream = new FileStream(bgl, FileMode.Open, FileAccess.Read,
                                                       FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
-                    foreach (var p in BglPlacementReader.Read(stream))
+                    var placements = BglPlacementReader.Read(stream, out bool readToTheEnd);
+                    if (!readToTheEnd)
+                    {
+                        complete = false;
+                        Log.Warn("SceneryIndex", $"census: {leaf}: {Path.GetFileName(bgl)}: read did not finish");
+                    }
+                    foreach (var p in placements)
                     {
                         var key = ((int)Math.Floor(p.Lat / CellDegrees), (int)Math.Floor(p.Lon / CellDegrees));
                         cells[key] = cells.GetValueOrDefault(key) + 1;

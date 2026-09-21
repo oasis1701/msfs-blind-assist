@@ -134,6 +134,21 @@ public class MsfsPackagesLocatorTests : IDisposable
     }
 
     [Fact]
+    public void A_config_the_simulator_has_open_for_writing_is_still_read()
+    {
+        // This read now runs on every FS2024 surroundings catalog build, i.e. while the simulator
+        // is running, where on main it ran only during a navdata build. It must not deny the
+        // simulator its own config — which is the same share mode, seen from the other side: a
+        // reader that permits no writer cannot open a file a writer already holds.
+        string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+
+        using var simulator = new FileStream(Path.Combine(roaming, "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                                             FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        Assert.Equal(packages, MsfsPackagesLocator.TryGetInstalledPackagesPath("FS2024", roaming, local));
+    }
+
+    [Fact]
     public void The_community_folder_is_returned_only_when_it_is_really_there()
     {
         string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));

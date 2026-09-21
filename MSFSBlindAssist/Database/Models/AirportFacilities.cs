@@ -45,17 +45,28 @@ public sealed class AirportFacilities
         return lat <= TopLat + dLat && lat >= BottomLat - dLat && lon >= LeftLon - dLon && lon <= RightLon + dLon;
     }
 
+    /// <summary>A row whose name says it belongs to a ramp position rather than to the controller
+    /// the label names. "gates" is one: KMIA lists nine G rows and the first is "MIAMI GATES" at
+    /// 120.35, which read out as the ground controller's frequency.</summary>
     private static readonly System.Text.RegularExpressions.Regex NotThePrimaryFrequency = new(
-        @"\b(apron|ramp|delivery|clearance)\b",
+        @"\b(apron|ramp|gates?|delivery|clearance)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    /// <summary>"Avgas and jet fuel. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95." or "".</summary>
+    /// <summary>"Fuel available. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95." or "".
+    ///
+    /// <para>BOTH flags together say only that there is fuel. On an MSFS 2024 database they are
+    /// ALL-OR-NOTHING — measured 2026-09-21: 17,079 airports carry both, 67,199 neither, not one
+    /// carries a single flag — so "both" is the database saying nothing about grade, and reading
+    /// it as "Avgas and jet fuel." claimed jet fuel at 1,147 fields with no hard runway and a
+    /// longest runway under 2,500 ft (4II2 "Hangar Fly Ultralight Fly Club", 965 ft). A disk-built
+    /// MSFS 2020 database sets the two independently, which is why one flag alone still names its
+    /// grade.</para></summary>
     public string DescribeFacts()
     {
         var parts = new List<string>();
         string fuel = (HasAvgas, HasJetFuel) switch
         {
-            (true, true) => "Avgas and jet fuel",
+            (true, true) => "Fuel available",
             (true, false) => "Avgas",
             (false, true) => "Jet fuel",
             _ => "",

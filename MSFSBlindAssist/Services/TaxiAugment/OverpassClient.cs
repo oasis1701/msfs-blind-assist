@@ -5,7 +5,8 @@ namespace MSFSBlindAssist.Services.TaxiAugment;
 /// <summary>
 /// Posts an Overpass QL query to a public Overpass mirror, rotating past mirrors that are
 /// cooling down from a recent failure. Extracted out of <see cref="OsmTaxiSource"/> so every
-/// OSM-backed <see cref="ITaxiDataSource"/> shares the SAME mirror list and cooldown map instead
+/// OSM-backed reader — that source and the surroundings feature's OsmFeatureSource, which is not
+/// an <see cref="ITaxiDataSource"/> at all — shares the SAME mirror list and cooldown map instead
 /// of each maintaining (and blacklisting) its own.
 /// </summary>
 public sealed class OverpassClient

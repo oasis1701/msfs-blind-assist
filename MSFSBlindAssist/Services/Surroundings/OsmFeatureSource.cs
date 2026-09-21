@@ -3,6 +3,7 @@ using System.Text.Json;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services.TaxiAugment;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.Surroundings;
 
@@ -72,11 +73,27 @@ public sealed class OsmFeatureSource
         => box == null ? new List<AirportFeature>()
                        : features.Where(f => box.ContainsPoint(f.Lat, f.Lon, FallbackBoxMarginMetres)).ToList();
 
+    /// <summary>A body that passed <see cref="OverpassClient.IsFailedResponse"/> can still be
+    /// shapeless enough to throw inside <see cref="Parse"/> (an element that is not an object, a
+    /// coordinate that is not a number). Null then means what it always means here — this source
+    /// failed — which the store remembers for its failure memory and retries, where a throw would
+    /// leave the caller a faulted task instead.</summary>
+    private static List<AirportFeature>? TryParse(string icao, string body)
+    {
+        try { return Parse(body); }
+        catch (Exception ex)
+        {
+            Log.Warn("Surroundings", $"{icao}: unreadable OSM feature response: {ex.Message}");
+            return null;
+        }
+    }
+
     public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct)
     {
         string? body = await _client.PostAsync(BuildAreaQuery(icao), ct).ConfigureAwait(false);
         if (body == null) return null;
-        var features = Parse(body);
+        var features = TryParse(icao, body);
+        if (features == null) return null;
         if (features.Count > 0) return features;
 
         // A fallback that never reached a mirror is a FAILURE, not an airport without buildings:
@@ -85,6 +102,8 @@ public sealed class OsmFeatureSource
         // aerodrome OSM has not tagged with icao= takes this path every time, so the difference
         // is the whole feature for those airports.
         string? fallback = await _client.PostAsync(BuildFallbackQuery(lat, lon), ct).ConfigureAwait(false);
-        return fallback == null ? null : KeepInsideBox(Parse(fallback), box);
+        if (fallback == null) return null;
+        var parsed = TryParse(icao, fallback);
+        return parsed == null ? null : KeepInsideBox(parsed, box);
     }
 }

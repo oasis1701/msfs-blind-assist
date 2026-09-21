@@ -53,7 +53,7 @@ public class NavdataFeatureSourceTests
     }
 
     [Fact]
-    public void Fuel_stands_cluster_into_one_fuel_feature_with_the_fuel_types()
+    public void Fuel_stands_cluster_into_one_fuel_feature_and_only_a_single_flag_names_a_grade()
     {
         var spots = new List<ParkingSpot>
         {
@@ -65,7 +65,15 @@ public class NavdataFeatureSourceTests
         var fuel = NavdataFeatureSource.Read(spots, fac).Where(f => f.Kind == FeatureKind.Fuel).ToList();
         Assert.Equal(2, fuel.Count);
         Assert.All(fuel, f => Assert.Equal("Fuel", f.Name));
-        Assert.All(fuel, f => Assert.Equal("avgas and jet fuel", f.Detail));
+        // Both flags together grade nothing on an MSFS 2024 database (they are all-or-nothing
+        // there — see AirportFacilities.DescribeFacts), and the feature is already called "Fuel",
+        // so there is nothing left to add. One flag alone still names its grade.
+        Assert.All(fuel, f => Assert.Null(f.Detail));
+
+        var avgasOnly = new AirportFacilities { Icao = "KTIW", HasAvgas = true };
+        Assert.Equal("avgas", NavdataFeatureSource.Read(spots, avgasOnly).First(f => f.Kind == FeatureKind.Fuel).Detail);
+        var jetOnly = new AirportFacilities { Icao = "KTIW", HasJetFuel = true };
+        Assert.Equal("jet fuel", NavdataFeatureSource.Read(spots, jetOnly).First(f => f.Kind == FeatureKind.Fuel).Detail);
     }
 
     [Fact]

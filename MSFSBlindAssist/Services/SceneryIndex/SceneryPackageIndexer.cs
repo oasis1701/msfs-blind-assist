@@ -21,6 +21,9 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// disk cache is fine (unlike OSM data) — keyed on the full package path and stamped with
 /// layout.json's length + mtime; written to a .tmp and moved into place, so a crash never leaves
 /// a truncated cache for a later run to read, and a cache of another schema is rebuilt, not read.
+/// Only a scan that read EVERY file is written, as the census does (see
+/// <see cref="IncompleteMemoLifetime"/>), and a document that carries a model naming nothing has
+/// that row dropped on LOAD rather than throwing out of every call it is memoised for.
 ///
 /// <see cref="GetFeatures"/> then, for the asking airport: classifies each model name, drops every
 /// placement outside that airport's own box grown by <see cref="BoxMarginMetres"/> (one package
@@ -60,10 +63,15 @@ public sealed class SceneryPackageIndexer
     /// throws from the ENUMERATOR — outside the per-file catch below — so one folder the user
     /// cannot read cost the whole package; CaseInsensitive because packages ship both "modelLib.BGL"
     /// and "objects.bgl"; AttributesToSkip 0 to keep the SearchOption overload's behaviour, which
-    /// reads hidden and system files (EnumerationOptions would skip them by default).</summary>
+    /// reads hidden and system files (EnumerationOptions would skip them by default); and the same
+    /// depth bound as <see cref="SceneryPackageCensus"/>'s — reparse points must be FOLLOWED (an
+    /// add-on linker puts every package behind one), so the bound is what ends a link cycle, and a
+    /// package the census handed over is exactly a package out of Community that may be one.
+    /// Packages are shallow (the deepest real BGL measured sits 4 levels down), so 12 loses nothing.</summary>
     private static readonly EnumerationOptions BglFiles = new()
     {
-        RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive, AttributesToSkip = 0,
+        RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive,
+        AttributesToSkip = 0, MaxRecursionDepth = SceneryPackageCensus.MaxBglRecursionDepth,
     };
 
     // A named building stands in one place, or a few (an author splits it into parts, or a second
@@ -117,10 +125,29 @@ public sealed class SceneryPackageIndexer
         /// back as an empty list, indistinguishable from a package that really models nothing —
         /// the guard below read as a check and was inert.</summary>
         public List<Model>? Models { get; set; }
+
+        /// <summary>How many of the package's BGLs this scan could not read to the end. Session
+        /// only, never written, because only a scan with NONE is ever persisted — see
+        /// <see cref="IncompleteMemoLifetime"/>.</summary>
+        [JsonIgnore] public int Unreadable { get; set; }
+        /// <summary>When this scan ran, for <see cref="IncompleteMemoLifetime"/>. Session only;
+        /// a document read back from disk is complete by construction, so it never uses this.</summary>
+        [JsonIgnore] public DateTime ScannedUtc { get; set; }
     }
     private sealed class Model { public string Name { get; set; } = ""; public List<double[]> Points { get; set; } = new(); }   // [lat, lon]
 
-    public SceneryPackageIndexer(string cacheDir) { _cacheDir = cacheDir; }
+    /// <summary>How long a scan that could not read every file is served from the memo before the
+    /// package is read again. A 600 MB model library must not be re-read on every call while the
+    /// lock, the antivirus sweep or the package update lasts — but the condition is a moment, so
+    /// the memo must not outlive it for the session either.</summary>
+    internal static readonly TimeSpan IncompleteMemoLifetime = TimeSpan.FromMinutes(5);
+
+    private readonly Func<DateTime> _utcNow;
+
+    public SceneryPackageIndexer(string cacheDir) : this(cacheDir, () => DateTime.UtcNow) { }
+
+    /// <summary>Test seam: the clock <see cref="IncompleteMemoLifetime"/> is measured against.</summary>
+    internal SceneryPackageIndexer(string cacheDir, Func<DateTime> utcNow) { _cacheDir = cacheDir; _utcNow = utcNow; }
 
     /// <summary>
     /// Every feature the given packages model at <paramref name="icao"/>. <paramref name="box"/> is
@@ -139,7 +166,12 @@ public sealed class SceneryPackageIndexer
                 var cf = LoadOrBuild(dir);
                 var features = FeaturesOf(cf, icao, box);
                 all.AddRange(features);
-                status.Add($"{features.Count} features from {leaf} ({cf.Placements} placements, {cf.Unresolved} without a model name)");
+                // The unreadable count is part of the sentence because it is the ONLY sign a pilot
+                // gets that this package's answer is short: every placement in a file that could
+                // not be read resolves to "without a model name", so the two figures alone read
+                // exactly like a package that models nothing.
+                string unread = cf.Unreadable == 0 ? "" : $", {cf.Unreadable} file{(cf.Unreadable == 1 ? "" : "s")} unreadable";
+                status.Add($"{features.Count} features from {leaf} ({cf.Placements} placements, {cf.Unresolved} without a model name{unread})");
             }
             catch (Exception ex)
             {
@@ -207,7 +239,11 @@ public sealed class SceneryPackageIndexer
 
         lock (_locks.GetOrAdd(cachePath, _ => new object()))
         {
-            if (_memo.TryGetValue(cachePath, out var memo) && memo.LayoutLength == len && memo.LayoutTicks == ticks) return memo;
+            // An INCOMPLETE memo is served for a while and then given up on: re-reading a 600 MB
+            // model library on every call would be unusable, and keeping it for the session would
+            // freeze the short answer for as long as the app runs.
+            if (_memo.TryGetValue(cachePath, out var memo) && memo.LayoutLength == len && memo.LayoutTicks == ticks
+                && (memo.Unreadable == 0 || _utcNow() - memo.ScannedUtc < IncompleteMemoLifetime)) return memo;
 
             if (File.Exists(cachePath))
             {
@@ -219,6 +255,13 @@ public sealed class SceneryPackageIndexer
                     if (cached is { Models: not null } && cached.SchemaVersion == CurrentSchemaVersion
                         && cached.LayoutLength == len && cached.LayoutTicks == ticks)
                     {
+                        // A hand-edited or half-corrupted document can be valid JSON and still
+                        // carry a model that names nothing. Drop the ROW, not the file — the rest
+                        // still spares a rescan — and drop it HERE, at the trust boundary, so
+                        // nothing downstream has to keep asking: a null row threw out of
+                        // FeaturesOf on EVERY call, because the document is memoised, and the
+                        // package was reported unreadable when it had been read fine.
+                        cached.Models.RemoveAll(m => m is null || string.IsNullOrWhiteSpace(m.Name));
                         _memo[cachePath] = cached;
                         return cached;
                     }
@@ -228,11 +271,16 @@ public sealed class SceneryPackageIndexer
 
             var names = new Dictionary<Guid, string>();
             var placements = new List<ScenePlacement>();
+            int unreadable = 0;
+            // A failure of the ENUMERATOR itself throws out of here to GetFeatures, which reports
+            // the package unreadable and caches nothing — so whole files never looked at can no
+            // more freeze a short answer than a file that could not be opened.
             foreach (var bgl in Directory.EnumerateFiles(dir, "*.bgl", BglFiles))
             {
-                // One bad file costs its own names and placements, never the package's. No size cap:
-                // both readers are streamed/seeking, and the 600 MB one used to drop the model
-                // library — every name — of ten real airport packages.
+                // One bad file costs its own names and placements, never the package's — but it
+                // does cost the scan its right to be CACHED (see IncompleteMemoLifetime). No size
+                // cap: both readers are streamed/seeking, and the 600 MB one used to drop the
+                // model library — every name — of ten real airport packages.
                 try
                 {
                     // Shared for write and delete: the simulator may hold this very file open.
@@ -240,9 +288,16 @@ public sealed class SceneryPackageIndexer
                                                       FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
                     foreach (var kv in ModelLibNameReader.Read(stream)) names[kv.Key] = kv.Value;
                     stream.Position = 0;
-                    placements.AddRange(BglPlacementReader.Read(stream));
+                    // A read that DIED halfway (a network drive, a package being replaced) answers
+                    // with what parsed rather than throwing, so only it can say it did not finish.
+                    placements.AddRange(BglPlacementReader.Read(stream, out bool readToTheEnd));
+                    if (!readToTheEnd)
+                    {
+                        unreadable++;
+                        Log.Warn("SceneryIndex", $"{leafName}: {Path.GetFileName(bgl)}: read did not finish");
+                    }
                 }
-                catch (Exception ex) { Log.Warn("SceneryIndex", $"{leafName}: {Path.GetFileName(bgl)}: {ex.Message}"); }
+                catch (Exception ex) { unreadable++; Log.Warn("SceneryIndex", $"{leafName}: {Path.GetFileName(bgl)}: {ex.Message}"); }
             }
 
             // Names are resolved only once every file has been read: a package is free to define a
@@ -260,10 +315,19 @@ public sealed class SceneryPackageIndexer
             var models = new List<Model>(byName.Count);
             foreach (var (model, pts) in byName) models.Add(new Model { Name = model, Points = pts });
             var cf = new CacheFile { SchemaVersion = CurrentSchemaVersion, LayoutLength = len, LayoutTicks = ticks,
-                                     Placements = placements.Count, Unresolved = unresolved, Models = models };
-            Persist(cachePath, cf);
+                                     Placements = placements.Count, Unresolved = unresolved, Models = models,
+                                     Unreadable = unreadable, ScannedUtc = _utcNow() };
+            // Only a scan that read every file is worth keeping. A file held open exclusively, or a
+            // read an I/O error cut short, is a MOMENT rather than a property of the package —
+            // persisted, its short answer would be frozen under layout.json's stamp until the
+            // package is next updated, with every placement in the unread file resolving to
+            // "without a model name" and the package yielding nothing. The census refuses the same
+            // thing for the same reason, so without this it could hand over the right package and
+            // the indexer would then freeze a wrong answer for it.
+            if (unreadable == 0) Persist(cachePath, cf);
             _memo[cachePath] = cf;
-            Log.Info("SceneryIndex", $"indexed {leafName}: {models.Count} models, {placements.Count} placements, {unresolved} without a model name");
+            Log.Info("SceneryIndex", $"indexed {leafName}: {models.Count} models, {placements.Count} placements, " +
+                                     $"{unresolved} without a model name, {unreadable} unreadable{(unreadable == 0 ? "" : " (not cached)")}");
             return cf;
         }
     }

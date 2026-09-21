@@ -1082,10 +1082,20 @@ title parameter set to "Surroundings at {icao}") rather than a new form — the
 same reasoning as the flight-information window: a list item brailles as a
 discrete unit and announces its position, and item 0 is pre-selected so
 tabbing in speaks the section and first row in one utterance. First row is
-"Airport" facts (avgas/jet fuel flags + Tower/Ground/ATIS/CTAF/UNICOM/AWOS/ASOS
+"Airport" facts (the fuel flags + Tower/Ground/ATIS/CTAF/UNICOM/AWOS/ASOS
 frequencies from `com`, Hz converted to MHz) when the catalog carries a facts
-line, then "Nearby, N items" — everything within 1 km, nearest first. With
-neither, nothing is opened: the caller SPEAKS "Nothing within …" instead of
+line, then "Nearby, N items" — everything within 1 km, nearest first. BOTH fuel
+flags together read "Fuel available.", never "Avgas and jet fuel.": on an MSFS
+2024 database the two are all-or-nothing (measured 2026-09-21: 17,079 airports
+carry both, 67,199 neither, not one carries a single flag), so "both" grades
+nothing and the old wording claimed jet fuel at 1,147 fields with no hard runway
+and under 2,500 ft of runway — 4II2 "Hangar Fly Ultralight Fly Club" is 965 ft.
+One flag alone still names its grade, because a disk-built MSFS 2020 database
+sets the two independently. A frequency row whose name says apron, ramp, GATES,
+delivery or clearance is not the one the label names: at KMIA the first of nine
+`G` rows is "MIAMI GATES", which read out as "Ground 120.35". With neither
+facts nor features, nothing is opened: the caller SPEAKS "Nothing within …"
+instead of
 putting an empty window in front of the pilot, the same rule the flight-info
 window follows. Not live-updating; reopen the chord for a fresh snapshot.
 
@@ -1334,6 +1344,18 @@ three ways, all measured:
   FAILED mirror and rotates on.
 - Taxiway names waited on a second round-trip before being returned.
 
+**Neither `FetchAsync` may throw on a bad body.** `IsFailedResponse` accepts
+anything that is an object with an `elements` array and no "runtime error"
+remark, which is not the same as being parseable: an element with no `type`, a
+non-array `geometry`, a coordinate that is not a number. Before `OverpassClient`
+was extracted, `Parse` ran inside `OsmTaxiSource`'s per-mirror try, so such a
+body simply failed that mirror; extracted, it threw out of `FetchAsync` into
+`Task.WhenAll` in `AugmentingAirportDataProvider.FetchCoreAsync` and discarded
+the SUCCESSFUL apt.dat result together with the cache write, the name merge and
+`AirportDataUpdated` — for pilots who never use the surroundings feature at all.
+Both sources now catch, `Log.Warn` once with the ICAO, and return null, which is
+what "this source failed" has always meant on both paths.
+
 `OsmFeatureSource.BuildAreaQuery` asks the `aeroway=aerodrome` area carrying the
 airport's `icao=` tag. When OSM has not tagged that area — which is common at
 smaller fields — `BuildFallbackQuery` reruns without the generic named-building
@@ -1413,6 +1435,14 @@ buffer — a corrupt or hostile file can declare millions of small, individually
 in-bounds entries that all point at one region, which would otherwise refill a
 64 MB buffer millions of times.
 
+**One parser.** `BglPlacementReader`'s `ReadOnlySpan<byte>` overloads DELEGATE
+to the stream ones and exist for the tests. As a second implementation they had
+already drifted: they clamped a truncated entry to the file where the stream
+reader rejects that entry whole, and they had no per-subsection cap — so tests
+written against them were pinning a parser no production caller runs. Never
+throwing is not the same as always finishing, either, which is why
+`Read(stream, out bool complete)` exists; see the persist rule below.
+
 **Two clutter nets, and both are needed.** No word list can tell a baggage
 dolly named after the cargo ramp it serves from a building; no structural rule
 can tell a 46-part terminal from a 41-container blob, because both are one dense
@@ -1423,7 +1453,16 @@ cluster.
   jetways…), or no kind word at all condemns the model. Every rule is pinned by
   a measured package name in `SceneryModelNameClassifierTests` — **extend that
   table first**. Every regex is `static readonly` + `CultureInvariant` (the
-  tr-TR dotless-i trap) and none is built per call.
+  tr-TR dotless-i trap) and none is built per call. The kind table takes its
+  concourse, FBO and cargo words from the shared `FeatureLexicon` and tests
+  **Fbo and Cargo BEFORE Terminal**, exactly as `OsmFeatureClassifier.TerminalKind`
+  and `GsxTerminalFeatureSource.KindOf` do: the catalog never merges across
+  kinds, so a "Cargo Terminal" read as Terminal here and Cargo from OSM is one
+  building listed twice under two kinds. Hangar stays first — "Narrows Aviation
+  Hangar" is a hangar, not an FBO. `ConcoursePierSatelliteTerminal`, which finds
+  the keyword TOKEN the spoken name is built from, must carry every word
+  `FeatureLexicon.Concourse` matches plus "terminal": a name the kind table
+  accepts and that regex does not is classified and then dropped.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
   clusters is ground equipment. The cap is picked by kind first —
   `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
@@ -1477,38 +1516,68 @@ only**; Official/OneStore is never scanned. Measured on a real Community folder:
 all), 2,443 BGLs, 21.3 MB read, 2.58 s cold and 16 ms warm, and it
 found the right package at KATL, EGLL, KJFK, LMML, EDDF, KSEA, EHAM
 (`flytampa-amsterdam` — no ICAO in its folder name), OMDB, OMDU, EGSS and KMEM,
-and correctly NONE at KTIW and KSNA. A cache row naming nothing is dropped at
-load; a `Scan` that could not read every file serves that call but is not
-cached, or one moment's exclusive lock would freeze a short count until
-`layout.json` next changes. The census also runs on an MSFS 2020 database
-whenever navdata names no package for the airport.
+and correctly NONE at KTIW and KSNA. The census also runs on an MSFS 2020
+database whenever navdata names no package for the airport.
 
-Both enumerations use
+**A row that names nothing is dropped at LOAD, and an incomplete scan is NEVER
+PERSISTED — by the census AND by the indexer.** The two caches carry the same
+two rules for the same two reasons. A hand-edited or half-corrupted document can
+be valid JSON and still hold a census row with no `Path`, or an indexer
+`"Models":[null]`; indexed straight it threw out of the build and cost the pilot
+the whole catalog, on EVERY call, because the document is memoised. And a file
+that could not be read is a MOMENT — an exclusive lock, an antivirus sweep, a
+package being updated — not a property of the package: cached, its short answer
+is frozen under `layout.json`'s stamp until the package is next updated. For the
+census that hides the package; for the indexer it is worse, because every
+placement in the unread file resolves to "without a model name", so the package
+yields no features at all and reads exactly like an airport with no buildings.
+Both serve what they DID read for that call, and the indexer's status line now
+carries `, N files unreadable` — the only sign a pilot gets. Two causes count:
+a file that could not be OPENED, and a read a TRANSIENT I/O error cut halfway,
+which `BglPlacementReader.Read(stream, out bool complete)` reports (it never
+throws, so nothing else could see it). It reports `IOException` and
+`ObjectDisposedException` ONLY: a malformed file, an out-of-bounds entry and a
+spent cumulative byte budget are DETERMINISTIC, so they stay cacheable — calling
+them incomplete would re-scan that package for the life of the install. The
+indexer additionally MEMOISES an incomplete scan for
+`SceneryPackageIndexer.IncompleteMemoLifetime` (5 minutes), so a 600 MB model
+library is not re-read on every call, and gives the memo up afterwards so the
+condition cannot outlive itself.
+
+Both enumerations use the SAME
 `EnumerationOptions { RecurseSubdirectories, IgnoreInaccessible,
-MatchCasing.CaseInsensitive, AttributesToSkip = 0 }`. `IgnoreInaccessible`
+MatchCasing.CaseInsensitive, AttributesToSkip = 0, MaxRecursionDepth =
+SceneryPackageCensus.MaxBglRecursionDepth }`. `IgnoreInaccessible`
 because the `SearchOption` overload throws from the ENUMERATOR, outside the
 per-file catch; `CaseInsensitive` because packages ship both `modelLib.BGL` and
-`objects.bgl`; and **`AttributesToSkip = 0` deliberately** — the default skips
+`objects.bgl`; **`AttributesToSkip = 0` deliberately** — the default skips
 Hidden and System files, and reparse points must be FOLLOWED, because add-on
 linker tools put whole Community packages behind junctions and a census that
-skipped them would find nothing for exactly the pilots with the most scenery.
-The census adds `MaxRecursionDepth = 12`, which is what ends a junction cycle;
-the indexer does not need it, because it opens only the one package navdata
-named.
+skipped them would find nothing for exactly the pilots with the most scenery —
+and the depth bound (12; the deepest real BGL measured sits 4 levels down) is
+therefore what ends a junction cycle. It must be on BOTH: the indexer is handed
+a package the census found in Community, so bounding the walk in one and not the
+other simply moves the cycle.
 
-`MsfsPackagesLocator` is the ONE resolver of `InstalledPackagesPath` (four
-locations, two per simulator; `NavdataReaderBuilder` delegates to it). Its
-`IndexOf` match also matches `InstalledPackagesPathNextBoot`, and that is
-PRESERVED deliberately rather than fixed: the navdata database build has always
-resolved its base path this way, and changing it is a behaviour change that
-belongs in its own commit.
+`MsfsPackagesLocator` is the one resolver of `InstalledPackagesPath` FOR THE
+NAVDATA BUILD AND THE CENSUS (four locations, two per simulator;
+`NavdataReaderBuilder` delegates to it) — `EFBModPackageManager`,
+`AircraftCfgCatalog` and `GsxAirplaneProfile` each still parse `UserCfg.opt`
+themselves. It opens the file `FileShare.ReadWrite | FileShare.Delete` and
+closes it before its first `Directory.Exists`: it is the SIMULATOR's own config,
+and since the census it is read while the simulator is running, where a reader
+that permits no writer can make the simulator's own write fail. Its `IndexOf`
+match also matches `InstalledPackagesPathNextBoot`, and that is PRESERVED
+deliberately rather than fixed: the navdata database build has always resolved
+its base path this way, and changing it is a behaviour change that belongs in
+its own commit.
 
 ### Settings & caching
 
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus " (located by Community scan)" when the census found the package |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", {n} files unreadable"` when the scan was short (that scan is not cached) and `" (located by Community scan)"` when the census found the package |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under
