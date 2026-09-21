@@ -932,10 +932,11 @@ below); distances from `DistanceFormatter` on the pilot's `GroundDistanceUnit`.
 "No surroundings data for {icao}." when the catalog itself is empty; "Nothing
 within 600 metres." when it has features but none in range.
 
-`RelativeDirection` (`Services/RelativeDirection.cs`) is
-`GroundTrafficMonitor.DescribeDirection` lifted out to a shared helper — one
-phrasing app-wide, same thresholds (20/70/110/160), pinned by a test so the
-ground-traffic phrasing cannot drift out from under this feature.
+`RelativeDirection` (`Services/RelativeDirection.cs`) is what used to be
+`GroundTrafficMonitor`'s own `DescribeDirection`, lifted out into a shared
+helper — so that name no longer exists to grep — giving one phrasing app-wide
+on the same thresholds (20/70/110/160), pinned by a test so the ground-traffic
+phrasing cannot drift out from under this feature.
 
 ### Surroundings window — output `]` then `Ctrl+Shift+L`
 
@@ -1037,15 +1038,19 @@ The phrase is "Passing {Name}, {left|right}." — side only, no distance, no
 advice — always queued (`Announce`), never `AnnounceImmediate`.
 
 The gate forgets every track and every recent fire when MainForm calls
-`AirportSurroundingsMonitor.Reset()` — an aircraft switch, a sim reconnect, a
-database switch — and the monitor resets it itself on an airport change, once
-per airborne episode (a building still closing at rotation would read as
-"opening" on the rollout), and on a position JUMP of more than `JumpMetres`
-(250 m — six times the 41 m a 40 kt aircraft covers in one poll, so only a
-teleport, slew or flight reload trips it, and the only cost of tripping it
-anyway is a forgotten track, never a wrong callout). It needs no
-turnaround-liftoff reset the way a baseline-first monitor does: the airborne
-episode already covers it, and there is no baseline to re-take.
+`AirportSurroundingsMonitor.Reset()`, which it does from **four** places — a
+sim reconnect and an aircraft switch (`MainForm.AircraftSwitch.cs`), a database
+switch (`RefreshDatabaseProvider`), and a **turnaround liftoff**, inside the
+`_turnaroundDetector.ObserveEdge(…)` branch in `MainForm.Announcers.cs` beside
+`_routeAdvisoryProximity.Reset()`. `Reset()`'s own XML doc lists all four; keep
+the two in step.
+
+The monitor also resets the gate itself, on an airport change, once per airborne
+episode (a building still closing at rotation would otherwise read as "opening"
+on the rollout), and on a position JUMP of more than `JumpMetres` (250 m — six
+times the 41 m a 40 kt aircraft covers in one poll, so only a teleport, slew or
+flight reload trips it, and the only cost of tripping it anyway is a forgotten
+track, never a wrong callout).
 
 ### Taxi to a place
 
@@ -1229,9 +1234,11 @@ cluster.
   table first**. Every regex is `static readonly` + `CultureInvariant` (the
   tr-TR dotless-i trap) and none is built per call.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
-  clusters is ground equipment. `MaxClusters` is 40 for hangars whatever their
-  name (a real field has dozens), else 8 for a generic label and 3 for a proper
-  one; `MaxPlacements` 200 / 40 / 12 the same way. A real building becomes one
+  clusters is ground equipment. The cap is picked by kind first —
+  `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
+  name (a real field has dozens), else `MaxClustersGeneric` 8 /
+  `MaxPlacementsGeneric` 40 for a generic label and `MaxClustersProper` 3 /
+  `MaxPlacementsProper` 12 for a proper one. A real building becomes one
   feature **per spatial cluster**, never a package-wide average — that put MK
   Studios BIKF's seven "DS Hangar" buildings, 2.3 km apart, at a single phantom
   point between them.
