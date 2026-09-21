@@ -206,3 +206,48 @@ public class RunwayShapeTests
         Assert.False(shape.Contains(BaseLat, BaseLon, 0.0));
     }
 }
+
+// PR #238 deferred finding §8b: RunwayShape.For allocated TWICE per call — PavementIsUsable built a
+// throwaway shape purely to reuse Project, then For discarded it and built a second — and it is
+// called per runway per classification, per passage for otherRunways, per NODE per runway in
+// IsOnAnyRunway, per runway per Where-Am-I keypress, and once per hold node per candidate runway
+// inside TaxiGraph.Build's naming pass. Hundreds of nodes at a large airport, on a path that runs
+// synchronously on the UI thread for a Where-Am-I cache miss.
+//
+// A centreline is immutable once Build has applied its pavement (nothing writes those fields
+// outside ApplyPavement), so one shape per centreline is memoised and every call site is O(1) after
+// the first. The projection math is NOT copied anywhere — that is this area's own standing rule.
+public class RunwayShapeMemoisationTests
+{
+    [Fact]
+    public void The_same_centerline_yields_the_same_shape()
+    {
+        var cl = RunwayFixture.EastWest();
+
+        var first = RunwayShape.For(cl);
+        var second = RunwayShape.For(cl);
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void A_different_centerline_yields_its_own_shape()
+    {
+        var a = RunwayFixture.EastWest("09", "27");
+        var b = RunwayFixture.EastWest("04", "22", northM: 500.0);
+
+        Assert.NotSame(RunwayShape.For(a), RunwayShape.For(b));
+    }
+
+    [Fact]
+    public void A_memoised_shape_still_answers_from_the_pavement()
+    {
+        var cl = RunwayFixture.EastWest(halfWidthM: 30.0);
+
+        var shape = RunwayShape.For(cl);
+        Assert.True(shape.UsesPavement);
+        Assert.Equal(30.0, shape.HalfWidthMeters, 6);
+        Assert.True(RunwayShape.For(cl).Contains(RunwayFixture.Lat(29), RunwayFixture.Lon(1500), 0.0));
+        Assert.False(RunwayShape.For(cl).Contains(RunwayFixture.Lat(31), RunwayFixture.Lon(1500), 0.0));
+    }
+}

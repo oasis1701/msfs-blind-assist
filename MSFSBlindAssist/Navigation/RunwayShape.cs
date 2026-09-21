@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace MSFSBlindAssist.Navigation;
 
 /// <summary>
@@ -64,10 +66,10 @@ public sealed class RunwayShape
     public string Name2 => Centerline.Name2 ?? "";
     public double HalfWidthMeters { get; }
     /// <summary>True when the ends are the runway-table pavement, false when they are the start rows.</summary>
-    public bool UsesPavement { get; }
+    public bool UsesPavement { get; private set; }
     public double LengthMeters { get; }
-    public double ExtentMinMeters { get; }
-    public double ExtentMaxMeters { get; }
+    public double ExtentMinMeters { get; private set; }
+    public double ExtentMaxMeters { get; private set; }
     /// <summary>Ends less than a metre apart: no axis, so nothing is on this runway.</summary>
     public bool IsDegenerate => LengthMeters < 1.0;
 
@@ -174,18 +176,48 @@ public sealed class RunwayShape
         return d > 180.0 ? 360.0 - d : d;
     }
 
+    /// <summary>
+    /// ONE shape per centerline, memoised. A centerline is immutable once <c>TaxiGraph.Build</c> has
+    /// applied its pavement — nothing writes those fields outside <c>ApplyPavement</c>, which runs
+    /// before the graph is published — so the shape derived from it never changes either.
+    ///
+    /// <para>PR #238 deferred finding §8b. <see cref="For"/> is called per runway per
+    /// classification, per passage for <c>otherRunways</c>, per NODE per runway in
+    /// <c>IsOnAnyRunway</c>, per runway per Where-Am-I keypress, and once per hold node per
+    /// candidate runway inside <c>TaxiGraph.Build</c>'s naming pass — hundreds of nodes at a large
+    /// airport, on a path that runs synchronously on the UI thread for a Where-Am-I cache miss. It
+    /// also ALLOCATED TWICE per call: the pavement-usable test built a throwaway shape purely to
+    /// reuse <see cref="Project"/>, and the verdict then threw it away and built a second. Now the
+    /// pavement candidate is built ONCE and widened after the verdict, and every later call for the
+    /// same centerline is O(1).</para>
+    ///
+    /// <para>A weak-keyed table, so a graph that goes away takes its shapes with it — no per-airport
+    /// cache to invalidate on a database switch — and so concurrent callers (the UI thread and the
+    /// position thread both ask) need no lock. Do NOT inline a second copy of the projection math
+    /// instead; this area already has four copies and that is its own finding.</para>
+    /// </summary>
+    private static readonly ConditionalWeakTable<TaxiGraph.RunwayCenterline, RunwayShape> Shapes = new();
+
     public static RunwayShape For(TaxiGraph.RunwayCenterline centerline)
     {
         ArgumentNullException.ThrowIfNull(centerline);
+        return Shapes.GetValue(centerline, Create);
+    }
 
+    private static RunwayShape Create(TaxiGraph.RunwayCenterline centerline)
+    {
         double pavementHalf = centerline.PavementHalfWidthMeters > 0.0
             ? Math.Min(centerline.PavementHalfWidthMeters, MaxPlausibleHalfWidthMeters)
             : DefaultHalfWidthMeters;
-        if (PavementIsUsable(centerline, pavementHalf))
-            return new RunwayShape(centerline,
-                centerline.PavementLat1, centerline.PavementLon1,
-                centerline.PavementLat2, centerline.PavementLon2,
-                pavementHalf, usesPavement: true);
+
+        var pavement = PavementCandidate(centerline, pavementHalf);
+        if (pavement != null)
+        {
+            // The verdict is in, so widen the SAME instance's extent to envelope the start rows
+            // rather than constructing a second shape over identical geometry.
+            pavement.AdoptAsPavement();
+            return pavement;
+        }
 
         double startHalf = centerline.HalfWidthMeters > 0.0
             ? centerline.HalfWidthMeters : DefaultHalfWidthMeters;
@@ -194,25 +226,45 @@ public sealed class RunwayShape
             startHalf, usesPavement: false);
     }
 
-    private static bool PavementIsUsable(TaxiGraph.RunwayCenterline cl, double pavementHalf)
+    /// <summary>
+    /// The pavement line as a shape when it is a sound line for this centerline, else null. Returned
+    /// rather than discarded so <see cref="Create"/> can keep it — see the allocation note above.
+    /// </summary>
+    private static RunwayShape? PavementCandidate(TaxiGraph.RunwayCenterline cl, double pavementHalf)
     {
         if (!double.IsFinite(cl.PavementLat1) || !double.IsFinite(cl.PavementLon1) ||
             !double.IsFinite(cl.PavementLat2) || !double.IsFinite(cl.PavementLon2))
-            return false;
+            return null;
         if ((cl.PavementLat1 == 0.0 && cl.PavementLon1 == 0.0) ||
             (cl.PavementLat2 == 0.0 && cl.PavementLon2 == 0.0))
-            return false;
+            return null;
 
         var pavement = new RunwayShape(cl,
             cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2,
             pavementHalf, usesPavement: false);
-        if (pavement.IsDegenerate) return false;
+        if (pavement.IsDegenerate) return null;
 
         // The centerline's own start rows must lie on this pavement's axis, or the runway table
         // row belongs to a different runway (EDVQ heading-pass mis-pair).
         double limit = pavementHalf + RolloutExitGate.RunwayClearMarginM;
         return Math.Abs(pavement.Project(cl.Lat1, cl.Lon1).Lateral) <= limit
-            && Math.Abs(pavement.Project(cl.Lat2, cl.Lon2).Lateral) <= limit;
+            && Math.Abs(pavement.Project(cl.Lat2, cl.Lon2).Lateral) <= limit
+            ? pavement
+            : null;
+    }
+
+    /// <summary>
+    /// Marks this candidate as THE pavement and widens its extent to envelope the centerline's start
+    /// rows — the one thing the constructor's <c>usesPavement</c> branch does. Private and called
+    /// exactly once, by <see cref="Create"/>, before the shape is visible to anyone.
+    /// </summary>
+    private void AdoptAsPavement()
+    {
+        UsesPavement = true;
+        double a1 = Project(Centerline.Lat1, Centerline.Lon1).Along;
+        double a2 = Project(Centerline.Lat2, Centerline.Lon2).Along;
+        ExtentMinMeters = Math.Min(ExtentMinMeters, Math.Min(a1, a2));
+        ExtentMaxMeters = Math.Max(ExtentMaxMeters, Math.Max(a1, a2));
     }
 
     /// <summary>
