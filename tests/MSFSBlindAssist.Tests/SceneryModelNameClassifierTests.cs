@@ -131,6 +131,30 @@ public class SceneryModelNameClassifierTests
         Assert.Equal(name, c.Name);
     }
 
+    // The kind table matches FeatureLexicon.Concourse, but the spoken name is built from the
+    // KEYWORD TOKEN a SEPARATE regex finds, so a lexicon word that regex does not know is
+    // classified as a Concourse and then dropped for having no name to build — silently, and only
+    // for the one vocabulary the two share. Read off the LIVE pattern, so a word added to the
+    // lexicon tomorrow is covered without anyone remembering this test exists.
+    [Fact]
+    public void Every_concourse_word_the_shared_lexicon_knows_can_still_be_named()
+    {
+        string[] words = System.Text.RegularExpressions.Regex
+            .Match(FeatureLexicon.Concourse.ToString(), @"\(([^)]*)\)").Groups[1].Value.Split('|');
+
+        Assert.Contains("flugsteig", words);                    // the pattern really was read
+        Assert.All(words, w => Assert.True(w.Length > 0 && w.All(char.IsLetter),
+            $"'{w}' is not a plain word — the lexicon grew a nested group, so extend the extraction above"));
+
+        foreach (string w in words)
+        {
+            var c = SceneryModelNameClassifier.Classify($"KXYZ_{w}_A_01", "KXYZ");
+            Assert.True(c != null, w);
+            Assert.Equal(FeatureKind.Concourse, c!.Kind);
+            Assert.False(string.IsNullOrWhiteSpace(c.Name), w);
+        }
+    }
+
     [Fact]
     public void A_bare_kind_word_is_a_generic_name_and_a_proper_name_is_not()
     {

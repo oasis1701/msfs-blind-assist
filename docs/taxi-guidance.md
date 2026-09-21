@@ -1354,7 +1354,13 @@ body simply failed that mirror; extracted, it threw out of `FetchAsync` into
 the SUCCESSFUL apt.dat result together with the cache write, the name merge and
 `AirportDataUpdated` — for pilots who never use the surroundings feature at all.
 Both sources now catch, `Log.Warn` once with the ICAO, and return null, which is
-what "this source failed" has always meant on both paths.
+what "this source failed" has always meant on both paths. **That is true of the
+RETURN VALUE, not of the mirror rotation**, and the difference is deliberate: on
+`main` an unparseable body marked THAT MIRROR failed and the next one was tried,
+whereas the catch is now outside the mirror loop, so the source gives up with no
+retry and no cooldown mark. Rotating would buy nothing — a body shape that
+breaks `Parse` is a protocol-level change every mirror shares, not one mirror
+being ill — and the apt.dat result surviving is the whole point of the fix.
 
 `OsmFeatureSource.BuildAreaQuery` asks the `aeroway=aerodrome` area carrying the
 airport's `icao=` tag. When OSM has not tagged that area — which is common at
@@ -1462,7 +1468,11 @@ cluster.
   Hangar" is a hangar, not an FBO. `ConcoursePierSatelliteTerminal`, which finds
   the keyword TOKEN the spoken name is built from, must carry every word
   `FeatureLexicon.Concourse` matches plus "terminal": a name the kind table
-  accepts and that regex does not is classified and then dropped.
+  accepts and that regex does not is classified and then dropped. That pairing
+  is pinned by `Every_concourse_word_the_shared_lexicon_knows_can_still_be_named`,
+  which reads the LIVE lexicon pattern and runs each word through `Classify`, so
+  a word added to the lexicon tomorrow is covered without anyone remembering the
+  test exists.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
   clusters is ground equipment. The cap is picked by kind first —
   `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
@@ -1489,17 +1499,22 @@ applies to every kind, and EGSS's real 4-cluster "Inflite Jet Centre" is an
 accepted, recorded residual. Same measurement, end to end: 308,833 placements →
 837 features before the clutter rule → 533 after.
 
-**The cache stores RAW placements (schema 2).** Each model name that could name
+**The cache stores RAW placements (schema 3).** Each model name that could name
 a feature, with every point it was placed at — nothing in the cache is
 classified. So the airport that ASKS decides the names ("KPWT_Hangar_07" is
 Hangar 7 at KPWT and somebody else's building at KTIW), and a change to HOW a
 name classifies reaches a pilot whose cache is already warm. One axis is not
 free that way: which names are cached is `MightBeFeature`'s verdict at BUILD
 time, so **widening the classifier's kind keywords needs a
-`CurrentSchemaVersion` bump**. A schema-2 document with no `Models` key at all
-deserialises to null and is rebuilt; `"Models":[]` is a real answer and is
-believed. Written to a `.tmp` and moved into place, so a crash never leaves a
-truncated cache to be read as a package with fewer buildings.
+`CurrentSchemaVersion` bump**. **2 → 3 is that rule firing for the first time:**
+moving the classifier's Concourse leg onto the shared `FeatureLexicon.Concourse`
+taught it "flugsteig", which the private copy it replaced did not know — so
+every schema-2 cache was built with each Flugsteig model already filtered out,
+and only a bump can get it back. A document of the CURRENT schema with no
+`Models` key at all deserialises to null and is rebuilt; `"Models":[]` is a real
+answer and is believed; a document of ANY older schema is rebuilt whole, never
+partly believed. Written to a `.tmp` and moved into place, so a crash never
+leaves a truncated cache to be read as a package with fewer buildings.
 
 **Which package.** `SceneryPackageLocator` returns the folders
 `airport.scenery_local_path` names — never the whole Community tree. An MSFS
@@ -1532,7 +1547,8 @@ census that hides the package; for the indexer it is worse, because every
 placement in the unread file resolves to "without a model name", so the package
 yields no features at all and reads exactly like an airport with no buildings.
 Both serve what they DID read for that call, and the indexer's status line now
-carries `, N files unreadable` — the only sign a pilot gets. Two causes count:
+carries `, 1 file unreadable` / `, 3 files unreadable` (pluralised, because a
+screen reader speaks it) — the only sign a pilot gets. Two causes count:
 a file that could not be OPENED, and a read a TRANSIENT I/O error cut halfway,
 which `BglPlacementReader.Read(stream, out bool complete)` reports (it never
 throws, so nothing else could see it). It reports `IOException` and
@@ -1577,7 +1593,7 @@ its own commit.
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", {n} files unreadable"` when the scan was short (that scan is not cached) and `" (located by Community scan)"` when the census found the package |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when the scan was short (that scan is not cached) and `" (located by Community scan)"` when the census found the package |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under

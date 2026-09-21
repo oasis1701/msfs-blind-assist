@@ -109,8 +109,11 @@ public sealed class SceneryPackageIndexer
     // CLASSIFIES needs no bump (the cache holds raw names), but WIDENING the classifier's kind
     // keywords does: the names that reach the cache are the ones MightBeFeature accepted at build
     // time, so a name a new keyword would now recognise was filtered out and is not in there.
-    private const int CurrentSchemaVersion = 2;
-    // Schema 2 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
+    // 2 → 3 is that rule firing for the first time: the classifier's Concourse leg moved to the
+    // shared FeatureLexicon.Concourse, which knows "flugsteig" and the private copy did not, so a
+    // schema-2 cache was built with every Flugsteig model already filtered out.
+    private const int CurrentSchemaVersion = 3;
+    // Schema 3 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
 
     private sealed class CacheFile

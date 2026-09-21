@@ -51,7 +51,10 @@ public sealed class OsmTaxiSource : ITaxiDataSource
     /// <see cref="OverpassClient.IsFailedResponse"/> — an object with an `elements` array and no
     /// "runtime error" remark — and still be shapeless enough to throw inside <see cref="Parse"/>
     /// (an element with no `type`, a non-array `geometry`). Before <see cref="OverpassClient"/> was
-    /// extracted, Parse ran inside the per-mirror try, so such a body simply failed that mirror.
+    /// extracted, Parse ran inside the per-mirror try, so such a body simply failed that mirror and
+    /// the next was tried; this catch is OUTSIDE the mirror loop, so the source now gives up with
+    /// no retry and no cooldown mark — deliberately, because a body shape that breaks Parse is a
+    /// protocol-level change every mirror shares rather than one mirror being ill.
     /// It matters because the only caller awaits Task.WhenAll over this source AND the apt.dat one:
     /// a throw here discards a SUCCESSFUL apt.dat result together with the cache write, the name
     /// merge and the AirportDataUpdated event — for pilots who never use the surroundings feature.
