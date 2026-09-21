@@ -213,4 +213,156 @@ public class PassingCalloutGateTests
         var hitLeft = gate.Evaluate(new[] { new NearbyFeature(left, 90, -150) }, 10, T0.AddSeconds(16));  // gap has cleared
         Assert.Equal("Concourse D", hitLeft?.Feature.SpokenName);
     }
+
+    // ---- Fix round 1: the returned record describes the pass, not the release tick ----
+
+    [Fact]
+    public void A_pass_held_back_by_the_global_gap_names_the_side_it_was_on_at_the_closest_point_not_the_side_at_release()
+    {
+        // A pass can fire up to ~10-25 s after its true closest point once something else's fire
+        // has started the global gap clock; by release the bearing can have swung through a turn.
+        // The announced side and range must be the ones AT THE CLOSEST POINT, never release's.
+        var gate = new PassingCalloutGate();
+        var first = Feat(FeatureKind.Concourse, "First Building");
+        var second = Feat(FeatureKind.Concourse, "Second Building");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 140, 90), new NearbyFeature(second, 140, 95) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 85, 90), new NearbyFeature(second, 110, 95) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 60, 90), new NearbyFeature(second, 90, 95) }, 10, T0.AddSeconds(4)));
+        Assert.NotNull(gate.Evaluate(new[] { new NearbyFeature(first, 70, 90), new NearbyFeature(second, 70, 95) }, 10, T0.AddSeconds(6)));   // first fires, starting the global gap clock
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 55, 95) }, 10, T0.AddSeconds(8)));     // second's own closest point: 55 m at +95 degrees
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 58, 95) }, 10, T0.AddSeconds(10)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 65, 95) }, 10, T0.AddSeconds(12)));    // opens -- arms, but still inside the 10 s gap
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 80, -150) }, 10, T0.AddSeconds(14)));  // turning; still inside the gap
+        var hit = gate.Evaluate(new[] { new NearbyFeature(second, 90, -150) }, 10, T0.AddSeconds(16));     // gap clears; current bearing now reads -150
+        Assert.NotNull(hit);
+        Assert.Equal(55, hit!.DistanceMetres);
+        Assert.Equal(95, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void The_mirror_case_on_the_left_also_names_the_closest_point_side()
+    {
+        var gate = new PassingCalloutGate();
+        var first = Feat(FeatureKind.Concourse, "First Building");
+        var second = Feat(FeatureKind.Concourse, "Second Building");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 140, 90), new NearbyFeature(second, 140, -95) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 85, 90), new NearbyFeature(second, 110, -95) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 60, 90), new NearbyFeature(second, 90, -95) }, 10, T0.AddSeconds(4)));
+        Assert.NotNull(gate.Evaluate(new[] { new NearbyFeature(first, 70, 90), new NearbyFeature(second, 70, -95) }, 10, T0.AddSeconds(6)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 55, -95) }, 10, T0.AddSeconds(8)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 58, -95) }, 10, T0.AddSeconds(10)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 65, -95) }, 10, T0.AddSeconds(12)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 80, 150) }, 10, T0.AddSeconds(14)));
+        var hit = gate.Evaluate(new[] { new NearbyFeature(second, 90, 150) }, 10, T0.AddSeconds(16));
+        Assert.NotNull(hit);
+        Assert.Equal(55, hit!.DistanceMetres);
+        Assert.Equal(-95, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void An_undelayed_pass_also_returns_the_minimum_sample_not_the_detection_tick()
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 90) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 100) }, 10, T0.AddSeconds(4)));    // closest point: 60 m at 100 degrees
+        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 75, 130) }, 10, T0.AddSeconds(6));        // detection tick: 75 m at 130 degrees
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);
+        Assert.Equal(100, hit.RelativeBearingDeg);
+    }
+
+    // ---- Fix round 1: MinSpeedKts pinned (a pass can also be held back by being too slow) ----
+
+    [Fact]
+    public void A_pass_that_arms_below_minimum_speed_stays_pending_and_fires_once_speed_comes_back_into_band()
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 90) }, 1.5, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 1.5, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 90) }, 1.5, T0.AddSeconds(4)));    // closest point, at 1.5 kt -- below MinSpeedKts
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 75, 90) }, 1.5, T0.AddSeconds(6)));    // opens (arms), but still under 2 kt: held, not fired
+        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 5, T0.AddSeconds(8));          // speeds up to 5 kt, still in range: fires
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);   // still the closest-point values, however late it fires
+        Assert.Equal(90, hit.RelativeBearingDeg);
+    }
+
+    // ---- Fix round 1: SameFeatureMetres boundary, offsets computed from the constant itself ----
+
+    /// <summary>The point exactly `metres` due north of `baseLat`, computed the same way
+    /// TaxiGeo.HaversineMeters treats a pure north-south offset (a meridian is a great circle, so
+    /// the relationship is exact, not an approximation) -- so a boundary test's offset can never
+    /// accidentally straddle the real constant the way a hand-picked degree delta once did.</summary>
+    private static double NorthOf(double baseLat, double metres)
+    {
+        const double R = 6371000.0;
+        return baseLat + (metres / R) * (180.0 / Math.PI);
+    }
+
+    [Fact]
+    public void A_catalog_rebuild_that_moves_the_feature_just_beyond_SameFeatureMetres_orphans_the_pass_and_stays_silent()
+    {
+        var gate = new PassingCalloutGate();
+        const double baseLat = 33.6400;
+        var original = Feat(FeatureKind.Concourse, "Concourse B", baseLat);
+        Assert.Null(gate.Evaluate(At(original, 140), 10, T0));
+        Assert.Null(gate.Evaluate(At(original, 80), 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(original, 60), 10, T0.AddSeconds(4)));   // closest point recorded on the ORIGINAL track
+        // a rebuild moves the feature just beyond SameFeatureMetres: the original track is
+        // orphaned (it never sees the rest of the approach) and the new one starts fresh, with no
+        // prior closing recorded -- silence, never a second or false callout.
+        double outsideLat = NorthOf(baseLat, PassingCalloutGate.SameFeatureMetres + 0.1);
+        var moved = Feat(FeatureKind.Concourse, "Concourse B", outsideLat);
+        Assert.Null(gate.Evaluate(At(moved, 70), 10, T0.AddSeconds(6)));      // would "open" the ORIGINAL track's minimum, but the original never sees this reading
+        Assert.Null(gate.Evaluate(At(moved, 90), 10, T0.AddSeconds(8)));
+        Assert.Null(gate.Evaluate(At(moved, 130), 10, T0.AddSeconds(10)));
+        Assert.Equal(2, gate.TrackCount);   // the orphaned original AND the fresh one, both silent -- not merged, not double-counted
+    }
+
+    [Fact]
+    public void A_catalog_rebuild_that_moves_the_feature_just_within_SameFeatureMetres_keeps_the_same_track()
+    {
+        var gate = new PassingCalloutGate();
+        const double baseLat = 33.6400;
+        var original = Feat(FeatureKind.Concourse, "Concourse B", baseLat);
+        Assert.Null(gate.Evaluate(At(original, 140), 10, T0));
+        Assert.Null(gate.Evaluate(At(original, 80), 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(original, 60), 10, T0.AddSeconds(4)));
+        double insideLat = NorthOf(baseLat, PassingCalloutGate.SameFeatureMetres - 0.1);
+        var moved = Feat(FeatureKind.Concourse, "Concourse B", insideLat);
+        var hit = gate.Evaluate(At(moved, 70), 10, T0.AddSeconds(6));   // same track continues -- opens, fires
+        Assert.NotNull(hit);
+        Assert.Equal(1, gate.TrackCount);
+    }
+
+    // ---- Fix round 1: AbeamMinDeg/AbeamMaxDeg boundary, offsets computed from the constants ----
+
+    private static bool FiresAtMinBearing(double minRel)
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Boundary Test");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, minRel) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, minRel) }, 10, T0.AddSeconds(2)));   // closest point, at the bearing under test
+        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 70, minRel) }, 10, T0.AddSeconds(4));      // opens
+        return hit != null;
+    }
+
+    // Degrees need no unit conversion (unlike SameFeatureMetres's metres-to-lat/lon case above), so
+    // these are literal numbers, not derived from AbeamMinDeg/AbeamMaxDeg -- deriving them would
+    // make the test self-referential (it would still pass after a change to either constant's
+    // VALUE, since the offsets would silently follow it) and defeat the point of pinning 45/135.
+    [Theory]
+    [InlineData(44.0, false)]      // just outside the lower bound
+    [InlineData(46.0, true)]       // just inside
+    [InlineData(134.0, true)]      // just inside the upper bound
+    [InlineData(136.0, false)]     // just outside
+    [InlineData(-44.0, false)]     // mirrored on the left
+    [InlineData(-46.0, true)]      // mirrored on the left
+    public void The_abeam_window_boundary_is_exact_on_both_sides(double minRel, bool shouldFire)
+    {
+        Assert.Equal(shouldFire, FiresAtMinBearing(minRel));
+    }
 }

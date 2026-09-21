@@ -14,9 +14,11 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// buildings can legitimately share a name (a navdata per-cluster generic "Fuel"/"Cargo", two
 /// same-named piers, several same-named scenery clutter clusters), and a name-only key let the
 /// nearer one's minimum make the farther one's still-closing range instantly read as "opening" —
-/// a false pass. Once per BUILDING per five minutes, once globally per ten seconds; a pass held
-/// back only by the global gap stays pending while the building is still in range. No clock
-/// inside: the caller passes `now`.
+/// a false pass. Once per BUILDING per five minutes, once globally per ten seconds, and only
+/// while ground speed is within the taxi speed band; a pass held back by the global gap OR by
+/// ground speed outside that band stays PENDING while the building is still in range, and fires
+/// — still describing the side and range it had at its OWN closest point, never the tick that
+/// finally releases it — once every condition allows. No clock inside: the caller passes `now`.
 /// </summary>
 public sealed class PassingCalloutGate
 {
@@ -37,10 +39,14 @@ public sealed class PassingCalloutGate
     /// generic "Fuel"/"Cargo", two same-named piers at one airport, several same-named scenery
     /// clutter clusters) — a track's identity is its key AND position: an incoming feature only
     /// continues an existing track when it lies within this many metres of that track's last-seen
-    /// position. The catalog merges same-named features within at least 80 m
-    /// (AirportFeatureCatalog.SameNameRadiusMetres — the smallest of any kind, Hangar's), so two
-    /// DIFFERENT same-named features that survive the merge are never this close together, while a
-    /// catalog rebuild nudging a merged centroid moves it by metres, not tens of metres.</summary>
+    /// position. Safety comes from AirportFeatureCatalog.MergeRadiusMetres, NOT SameNameRadiusMetres:
+    /// that wider floor (at least 80 m) applies only when BOTH features carry a proper name, but the
+    /// motivating case here — a navdata per-cluster generic label — is the one where NEITHER does,
+    /// AirportFeatureCatalog.SameFeature's third branch, which merges two such features only when
+    /// they are within MergeRadiusMetres for their kind. The smallest of those is Hangar's 40 m —
+    /// exactly this constant, so the margin is ZERO for a generic hangar pair, not "half" of
+    /// anything. NEVER widen this constant on the strength of a margin that, for that pair, does
+    /// not exist.</summary>
     public const double SameFeatureMetres = 40.0;
 
     public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5), GlobalGap = TimeSpan.FromSeconds(10),
@@ -90,8 +96,9 @@ public sealed class PassingCalloutGate
     }
 
     /// <summary>Nearest track sharing this key within SameFeatureMetres of the given position, or
-    /// null to start a new one. Several same-key tracks within range "should not happen" (a catalog
-    /// keeps same-named features apart by at least 80 m), but take the nearest if it does.</summary>
+    /// null to start a new one. Several same-key tracks within range "should not happen" (see
+    /// SameFeatureMetres's own doc comment for exactly how close a catalog can leave two of them),
+    /// but take the nearest if it does.</summary>
     private Track? FindTrack(string key, double lat, double lon)
     {
         Track? best = null; double bestD = SameFeatureMetres;
@@ -123,6 +130,15 @@ public sealed class PassingCalloutGate
         else _lastFired.Add(new FiredRecord { Key = key, Lat = lat, Lon = lon, FiredAt = now });
     }
 
+    /// <summary>
+    /// Returns the pass AS IT WAS AT ITS OWN CLOSEST POINT — the record's distance and bearing are
+    /// the minimum sample's, never the tick that happens to release it. A pass held back by the
+    /// global gap or by ground speed outside the taxi band can fire 10-25+ s after the closest
+    /// point, by which time the bearing may have swung through a turn; announcing the CURRENT
+    /// tick's bearing could then name the wrong side, or a direction that isn't a side at all
+    /// ("behind"/"ahead"). Because Pending only ever arms when the minimum sample was abeam (45-135
+    /// degrees either side), the returned bearing is always a genuine side — never behind or ahead.
+    /// </summary>
     public NearbyFeature? Evaluate(IReadOnlyList<NearbyFeature> nearby, double groundSpeedKts, DateTime now)
     {
         Prune(now);
@@ -156,7 +172,7 @@ public sealed class PassingCalloutGate
         fireTrack!.Pending = false;
         RecordFired(fireTrack.Key, fireTrack.AnchorLat, fireTrack.AnchorLon, now);
         _lastAny = now;
-        return fire;
+        return new NearbyFeature(fire.Feature, fireTrack.Min, fireTrack.MinRel);
     }
 
     private void Prune(DateTime now)
