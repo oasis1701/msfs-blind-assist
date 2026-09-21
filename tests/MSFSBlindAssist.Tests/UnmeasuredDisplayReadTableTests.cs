@@ -5,8 +5,8 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The three display-read tables whose camera views have never been measured: the PMDG 777, the
-/// Fenix A320 and the HorizonSim 787. Every row carries a NULL instrument view index, which means
+/// The display-read tables whose camera views have never been measured: the PMDG 777 and the
+/// HorizonSim 787. Every row carries a NULL instrument view index, which means
 /// "capture whatever is on screen" — byte-for-byte what these reads did as hand-written switch
 /// arms before they moved onto the shared table.
 ///
@@ -19,7 +19,6 @@ public class UnmeasuredDisplayReadTableTests
     public static TheoryData<string, IReadOnlyList<AiDisplayRead>> Tables => new()
     {
         { "PMDG 777", Pmdg777DisplayReads.All },
-        { "Fenix A320", FenixA320DisplayReads.All },
         { "HorizonSim 787", HS787DisplayReads.All },
     };
 
@@ -71,21 +70,6 @@ public class UnmeasuredDisplayReadTableTests
         // Its lower display is a selectable synoptic — a different surface from the 737's lower
         // DU — so it needs its own measurement rather than a copy of that table.
         Assert.False(AiDisplayRead.TryGet(Pmdg777DisplayReads.All, HotkeyAction.ReadDisplayLowerECAM, out _));
-    }
-
-    [Theory]
-    [InlineData(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD, "PFD")]
-    [InlineData(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.ND, "ND")]
-    [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.UpperECAM, "E/WD")]
-    [InlineData(HotkeyAction.ReadDisplayLowerECAM, GeminiService.DisplayType.LowerECAM, "SD")]
-    [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.ISIS, "ISIS")]
-    public void TheFenix_KeepsItsAirbusNames(
-        HotkeyAction action, GeminiService.DisplayType type, string name)
-    {
-        // "E/WD" and "SD", not the Boeing wording the hotkey action names carry.
-        Assert.True(AiDisplayRead.TryGet(FenixA320DisplayReads.All, action, out var read));
-        Assert.Equal(type, read.DisplayType);
-        Assert.Equal(name, read.SpokenName);
     }
 
     [Theory]

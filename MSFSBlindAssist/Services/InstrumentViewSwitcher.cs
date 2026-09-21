@@ -127,28 +127,43 @@ public sealed class InstrumentViewSwitcher
     /// view type that has any camera at all, which is what makes it safe as a waypoint.
     ///
     /// <para>
-    /// ⚠️ The sim validates the (type, index) PAIR when the TYPE register is written, and REFUSES
-    /// a type write whose CURRENT index is out of range for the type being written. Measured on
-    /// the live PMDG 737-800 (2026-09-20, MSFS 2024): sitting on instrument view index 7 with
-    /// <c>CAMERA VIEW TYPE AND INDEX MAX:1</c> advertising 6 pilot views, writing type 1 was
-    /// refused — repeatedly, with a 3 s settle and nothing else touching the camera, so it is
-    /// neither the ~150 ms transient nor a timing confound. Dropping the index to 3 first made the
-    /// identical type write succeed, and the index could then be written back to 7.
+    /// ⚠️ On SOME aircraft the sim REFUSES a write to the view TYPE register while the index
+    /// register holds a high value, and dropping the index first is what makes the identical
+    /// write succeed. Measured on the live PMDG 737-800 (2026-09-20, MSFS 2024): sitting on
+    /// instrument view index 7, writing type 1 was refused — repeatedly, with a 3 s settle and
+    /// nothing else touching the camera, so it is neither the ~150 ms transient nor a timing
+    /// confound. Dropping the index to 3 first made the identical type write succeed, and the
+    /// index could then be written back to 7.
     /// </para>
     ///
     /// <para>
-    /// That is a defect this aircraft hit on EVERY Alt+P and Alt+N read, because its captain-panel
-    /// view is index 7: the type write was refused, the camera stayed in the instrument type, and
-    /// the pilot's index was then written INTO it — sliding them to an instrument view they never
-    /// chose. This also explains the observation <c>docs/md11.md</c> recorded as unreconciled (a
-    /// spaced type-only write coming back unverified); it was never unexplained, just unmeasured.
+    /// That was a defect the PMDG 737 hit on EVERY Alt+P and Alt+N read, because its
+    /// captain-panel view is index 7: the type write was refused, the camera stayed in the
+    /// instrument type, and the pilot's index was then written INTO it — sliding them to an
+    /// instrument view they never chose. It is also what <c>docs/md11.md</c> had recorded as an
+    /// unreconciled observation (a spaced type-only write coming back unverified).
     /// </para>
     ///
     /// <para>
-    /// Note the index ceiling does NOT bound what the index register itself accepts: the pilot's
-    /// own camera sits at 1/7 and writing 7 once the type is already 1 works. Only the pair check
-    /// on the TYPE write consults it, which is why one extra write fixes this and why the earlier
-    /// conclusion that <c>MAX</c> is irrelevant to a restore was half right.
+    /// ⚠️⚠️ WHY it refuses is NOT known, and the obvious explanation is DISPROVEN. The first
+    /// version of this comment said the sim validates the (type, index) pair and refuses one whose
+    /// current index is out of range for the target type, since
+    /// <c>CAMERA VIEW TYPE AND INDEX MAX:1</c> reads 6 on that aircraft. The Fenix A320 refutes it
+    /// (measured 2026-09-21, same sim build, also MAX:1 = 6, also a custom pilot camera at index
+    /// 7): from instrument index 7 the identical type write is ACCEPTED and lands on 1/7, and from
+    /// instrument index 8 it is accepted and lands on 1/8 — an index beyond that same ceiling. So
+    /// the refusal is aircraft-specific and index-versus-MAX does not predict it. Do not restate
+    /// the pair-check theory as fact; this is the second time an inviting explanation of a camera
+    /// refusal has turned out wrong, the first being the MAX theory in
+    /// <see cref="CameraViewReading"/>.
+    /// </para>
+    ///
+    /// <para>
+    /// The write is kept anyway because what it BUYS is measured on both aircraft: it rescues the
+    /// PMDG, where the direct write cannot work, and on the Fenix, where the direct write already
+    /// works, it costs one extra register write and one frame gap and changes nothing else. A
+    /// workaround with a known cost and an unknown trigger is worth more than a tidy model that
+    /// predicts the wrong thing.
     /// </para>
     /// </summary>
     public const int NeutralViewIndex = 0;

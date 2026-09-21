@@ -26,12 +26,17 @@ public class InstrumentViewSwitcherTests
         public bool DispatchesViewType = true;
 
         /// <summary>
-        /// Per-view-type index ceiling, modelling the sim's PAIR validation: a TYPE write is
-        /// refused when the index register currently holds a value out of range for the type
-        /// being written. Measured on the live PMDG 737-800 (2026-09-20): sitting on instrument
-        /// view index 7 with CAMERA VIEW TYPE AND INDEX MAX:1 = 6, writing type 1 was refused
-        /// every time, with a 3 s settle and no other traffic; dropping the index to 3 first made
-        /// the identical type write succeed. Null = this fake does not model the ceiling.
+        /// Per-view-type index ceiling, modelling the TYPE-write refusal measured on the live
+        /// PMDG 737-800 (2026-09-20): sitting on instrument view index 7, writing type 1 was
+        /// refused every time, with a 3 s settle and no other traffic, and dropping the index to 3
+        /// first made the identical write succeed.
+        ///
+        /// ⚠️ A ceiling is how this fake REPRODUCES that refusal, not a claim about why the sim
+        /// refuses. The Fenix A320 accepts the identical write from index 7 AND from index 8 with
+        /// the same MAX:1 = 6 (measured 2026-09-21), so index-versus-MAX does not predict it and
+        /// the real trigger is unknown — see InstrumentViewSwitcher.NeutralViewIndex. What the
+        /// test below pins is that the restore gets the pilot home on an aircraft that refuses,
+        /// however it is that aircraft decides to. Null = this fake never refuses.
         /// </summary>
         public Dictionary<int, int>? MaxIndexByType;
 
@@ -103,8 +108,8 @@ public class InstrumentViewSwitcherTests
             if (ThrowOnSet) throw new InvalidOperationException("SimConnect down");
             if (!DispatchesWrites || !DispatchesViewType) return false;
             RegisterWrites.Add(("type", viewType));
-            // The write is DISPATCHED either way -- the sim simply declines to act on a pair it
-            // considers out of range, exactly as it does for a clamped index.
+            // The write is DISPATCHED either way -- a refusing aircraft simply declines to act on
+            // it, exactly as the sim does for a clamped index.
             if (HonoursWrites && Current is { } c && PairIsInRange(viewType, c.ViewIndex))
                 Current = c with { ViewType = viewType };
             AfterSet?.Invoke();
@@ -521,10 +526,11 @@ public class InstrumentViewSwitcherTests
     public async Task RestoreAsync_GetsHomeWhenTheInstrumentIndexIsOutOfRangeForThePilotType()
     {
         // THE PMDG 737 case, measured live 2026-09-20. Its PFD/ND read uses instrument view index
-        // 7, and CAMERA VIEW TYPE AND INDEX MAX:1 advertises 6 pilot views -- so at the moment the
-        // restore writes the TYPE, the index register holds 7, which is out of range for type 1.
-        // The sim validates the PAIR and refuses the type write. Confirmed with a 3 s settle and
-        // no other traffic, so it is not the ~150 ms transient and not a timing confound.
+        // 7, and at the moment the restore writes the TYPE the index register still holds 7 --
+        // which that aircraft refuses. Confirmed with a 3 s settle and no other traffic, so it is
+        // not the ~150 ms transient and not a timing confound. (WHY it refuses is unknown and the
+        // index-versus-MAX explanation is disproven by the Fenix -- see NeutralViewIndex. The
+        // ceiling here is only how this fake reproduces a refusing aircraft.)
         //
         // The old two-write restore therefore left the camera in the instrument TYPE and then
         // wrote the pilot's index into it -- sliding the pilot to an instrument view they never
