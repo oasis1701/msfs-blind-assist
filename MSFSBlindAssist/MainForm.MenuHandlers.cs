@@ -92,6 +92,11 @@ public partial class MainForm
         }
     }
 
+    /// <summary>What the last <see cref="ApplyRuntimeSettings"/> saw for the two settings that
+    /// feed the surroundings catalog. Null until the first OK, so that one clears — the honest
+    /// answer when nothing is known about what the cached catalogs were built under.</summary>
+    private bool? _appliedSceneryIndexEnabled, _appliedTaxiAugmentEnabled;
+
     /// <summary>Re-applies saved UserSettings to the live runtime managers after the Settings
     /// dialog is accepted, so changes take effect without restarting. Each settings section that
     /// has a live effect adds its re-apply here (populated as panels are migrated).</summary>
@@ -229,7 +234,16 @@ public partial class MainForm
         // AirportFeatureCatalog was built from, but flipping either doesn't move the
         // gate-list version token the cache keys on — clear it so the very next Alt+L
         // reflects the new setting instead of serving a catalog built under the old one.
-        surroundingsCache.Clear();
+        // Both flags feed that list and nothing else in this dialog does, so only a real
+        // CHANGE clears: on every OK it threw away every airport's catalog — including the
+        // slow first-time scenery scan — for a dialog visit that touched neither.
+        if (_appliedSceneryIndexEnabled != settings.SceneryIndexEnabled || _appliedTaxiAugmentEnabled != settings.TaxiAugmentEnabled)
+        {
+            surroundingsCache.Clear();
+            if (_appliedTaxiAugmentEnabled != settings.TaxiAugmentEnabled) onlineFeatures?.Clear();
+        }
+        _appliedSceneryIndexEnabled = settings.SceneryIndexEnabled;
+        _appliedTaxiAugmentEnabled = settings.TaxiAugmentEnabled;
 
         // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
         var vatsimInstall = vatsimService?.ApplySettings(settings);

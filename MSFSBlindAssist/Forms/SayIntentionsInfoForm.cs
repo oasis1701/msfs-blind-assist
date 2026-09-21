@@ -58,11 +58,17 @@ public class SayIntentionsInfoForm : Form
     private Panel _sectionPanel = null!;
     private Button _closeButton = null!;
 
-    public SayIntentionsInfoForm(IReadOnlyList<InfoSection> sections, IntPtr? previousWindow = null, string? title = null)
+    /// <summary><paramref name="closeDescription"/> replaces the Close button's accessible
+    /// description for a REUSING caller: the surroundings window is this same form with a
+    /// different report in it, and "Close the SayIntentions flight information window" names a
+    /// feature its pilot may not even have.</summary>
+    public SayIntentionsInfoForm(IReadOnlyList<InfoSection> sections, IntPtr? previousWindow = null, string? title = null,
+        string? closeDescription = null)
     {
         _previousWindow = previousWindow ?? GetForegroundWindow();
         InitializeComponent(sections);
         if (!string.IsNullOrWhiteSpace(title)) Text = title;
+        if (!string.IsNullOrWhiteSpace(closeDescription)) _closeButton.AccessibleDescription = closeDescription;
     }
 
     private void InitializeComponent(IReadOnlyList<InfoSection> sections)

@@ -1303,6 +1303,10 @@ public partial class MainForm
         // database's stands and buildings for the rest of the session.
         surroundingsCache.Clear();
 
+        // And the passing-callout monitor, which holds the airport it resolved and what it has
+        // already announced there — both read off the provider this switch replaced.
+        surroundingsMonitor?.Reset();
+
         // And the stored OSM buildings with it: a radius-sourced result is kept only inside the
         // navdata airport box, which this switch has just changed.
         onlineFeatures?.Clear();

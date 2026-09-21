@@ -63,8 +63,10 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             if (now - _icaoAt > IcaoRefresh)
             {
                 _icaoAt = now;
-                var nearby = provider.GetNearbyAirportICAOs(p.Latitude, p.Longitude, 5.0).Where(c => c != null && c.Length == 4).ToList();
-                string next = nearby.Count > 0 ? nearby[0] : "";
+                // The same resolver both hotkeys use — the airport whose box the aircraft is in,
+                // never the nearest reference point (which is a heliport at a third of the
+                // stands at some hubs), and short idents included.
+                string next = CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) ?? "";
                 if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); _baselined = false; }
             }
             if (_icao.Length == 0) return;

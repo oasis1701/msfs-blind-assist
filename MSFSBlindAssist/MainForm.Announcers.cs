@@ -1816,14 +1816,14 @@ public partial class MainForm
             string announcement;
             try
             {
-                // GetNearbyAirportICAOs may return 3-char idents for small fields with
-                // no canonical ICAO (kept for the GateResolver TCAS-gate use case). The
-                // taxi-graph lookup needs canonical 4-char ICAOs, so filter here at the
-                // call site — do NOT add the filter to the SQL or it breaks GateResolver.
-                var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-                    .Where(c => c != null && c.Length == 4)
-                    .ToList();
-                if (nearby == null || nearby.Count == 0)
+                // Which airport the aircraft is AT, not the nearest reference point — the same
+                // resolver Alt+L uses, because Alt+L speaks this very line and the two must
+                // agree. A 3-character ident is a perfectly good answer here: every airport
+                // lookup in the provider matches `icao` OR `ident`, so the old 4-character
+                // filter only ever threw small fields away.
+                string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                    airportDataProvider, position.Latitude, position.Longitude);
+                if (icao == null)
                 {
                     announcement = "No airport nearby.";
                 }
@@ -1831,7 +1831,7 @@ public partial class MainForm
                 {
                     announcement = taxiGuidanceManager.DescribeCurrentLocation(
                         airportDataProvider,
-                        nearby[0],
+                        icao,
                         position.Latitude,
                         position.Longitude);
                 }
@@ -1889,121 +1889,100 @@ public partial class MainForm
         return new(features, facilities?.DescribeFacts() ?? "");
     }
 
-    /// <summary>
-    /// Alt+L (output mode): "Look around." One utterance — the Where-Am-I line, the zone, the
-    /// nearest features with direction and distance. Ground-only like Where Am I.
-    /// </summary>
-    private void AnnounceLookAround()
+    /// <summary>Newest request wins: a slow first lookup must not speak (or open a window) after
+    /// the pilot has already pressed again.</summary>
+    private sealed class LatestRequest
     {
-        if (airportDataProvider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
+        private int _seq;
+        public int Next() => Interlocked.Increment(ref _seq);
+        public bool IsLatest(int ticket) => Volatile.Read(ref _seq) == ticket;
+    }
+    private readonly LatestRequest _lookAroundRequests = new(), _surroundingsWindowRequests = new();
+
+    private sealed record SurroundingsLookup(string Icao, MSFSBlindAssist.Navigation.Surroundings.AirportFeatureCatalog? Catalog,
+        SimConnectManager.AircraftPosition Position, double HeadingTrue, string WhereAmI);
+
+    /// <summary>
+    /// The ONE path both surroundings hotkeys take: guards → position → pool hop → which airport →
+    /// catalog → UI marshal. The provider is captured in a LOCAL on the UI thread: the field can be
+    /// swapped by a database switch while the pool thread is still working. `compose` runs on the
+    /// pool thread and returns the action to run on the UI thread.
+    /// </summary>
+    private void RunSurroundingsLookup(LatestRequest requests, bool needWhereAmI, Func<SurroundingsLookup, Action> compose)
+    {
+        var provider = airportDataProvider;
+        if (provider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
         if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
+        int ticket = requests.Next();
 
         simConnectManager.RequestAircraftPositionAsync(position =>
         {
-            // position is a struct copy handed to us by the SimConnect callback (dispatched on
-            // the UI thread via WndProc). Capture it and run the whole lookup — nearby-ICAO,
-            // DescribeCurrentLocation, and the surroundings catalog (a first-time scenery scan/DB
-            // read) — on a thread-pool thread, or a first uncached scan stalls the WinForms
-            // message pump: every hotkey, taxi-guidance tone update and queued announcement.
-            // Marshal only the final announcement back to the UI thread.
-            Task.Run(() =>
+            // position is a struct copy handed to us by the SimConnect callback (dispatched on the
+            // UI thread via WndProc). Everything below it — the airport resolution, DescribeCurrentLocation
+            // and the catalog build's possible first-time scenery scan/DB read — runs on a thread-pool
+            // thread, or a first uncached scan stalls the WinForms message pump: every hotkey,
+            // taxi-guidance tone update and queued announcement.
+            Task.Run(async () =>
             {
-                string announcement;
+                Action ui;
                 try
                 {
-                    var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-                        .Where(c => c != null && c.Length == 4).ToList();
-                    if (nearby.Count == 0)
-                    {
-                        announcement = "No airport nearby.";
-                    }
+                    string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, position.Latitude, position.Longitude);
+                    if (icao == null) ui = () => announcer.AnnounceImmediate("No airport nearby.");
                     else
                     {
-                        string icao = nearby[0];
-                        string whereAmI = taxiGuidanceManager.DescribeCurrentLocation(airportDataProvider, icao, position.Latitude, position.Longitude);
+                        string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude) : "";
+                        var catalog = await surroundingsCache.GetAsync(icao).ConfigureAwait(false);
                         // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
                         double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
-                        // This whole body is a Task.Run, so there is no captured
-                        // SynchronizationContext to deadlock against: blocking here parks a pool
-                        // thread while the cache's own build thread works, and JOINS a build
-                        // another caller already started instead of duplicating it.
-                        var catalog = surroundingsCache.GetAsync(icao).GetAwaiter().GetResult();
-                        announcement = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.Compose(
-                            whereAmI, icao, catalog, position.Latitude, position.Longitude, hdgTrue,
-                            m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
+                        ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where));
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Warn("Surroundings", $"look-around failed: {ex.Message}");
-                    announcement = "Surroundings lookup failed.";
+                    Log.Warn("Surroundings", $"lookup failed: {ex.Message}");
+                    ui = () => announcer.AnnounceImmediate("Surroundings lookup failed.");
                 }
-
-                SafeBeginInvoke(() => announcer.AnnounceImmediate(announcement));
+                SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) ui(); });
             });
         });
     }
+
+    /// <summary>
+    /// Alt+L (output mode): "Look around." One utterance — the Where-Am-I line, the zone, the
+    /// nearest features with direction and distance. Ground-only like Where Am I.
+    /// </summary>
+    private void AnnounceLookAround() => RunSurroundingsLookup(_lookAroundRequests, needWhereAmI: true, l =>
+    {
+        string text = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.Compose(
+            l.WhereAmI, l.Icao, l.Catalog, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue,
+            m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
+        return () => announcer.AnnounceImmediate(text);
+    });
 
     /// <summary>
     /// Ctrl+Shift+L (output mode): everything within 1 km as a browsable list. No spoken summary
     /// on open — the screen reader speaks the window and its first item (CLAUDE.md rule). Reuses
     /// the SayIntentions sectioned list window; a fresh press replaces the previous window.
     /// </summary>
-    private void ShowSurroundingsWindow()
+    private void ShowSurroundingsWindow() => RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
     {
-        if (airportDataProvider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
-        if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
-
-        simConnectManager.RequestAircraftPositionAsync(position =>
+        string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
+        if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
+            return () => announcer.AnnounceImmediate($"No surroundings data for {l.Icao}.");
+        var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
+            l.Icao, l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
+        // Nothing to list → SPEAK it; never open a window onto an empty list.
+        if (sections.Count == 0)
+            return () => announcer.AnnounceImmediate($"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
+        return () =>
         {
-            // Same reasoning as AnnounceLookAround: capture the position (a struct copy handed
-            // to us on the UI thread) and run the whole lookup, including the catalog build's
-            // possible first-time scenery scan/DB read, off the UI thread. Only the window Show()
-            // is marshalled back.
-            Task.Run(() =>
-            {
-                IReadOnlyList<MSFSBlindAssist.Services.SayIntentions.InfoSection>? sections = null;
-                string? failure = null;
-                string icao = "";
-                try
-                {
-                    var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-                        .Where(c => c != null && c.Length == 4).ToList();
-                    if (nearby.Count == 0) failure = "No airport nearby.";
-                    else
-                    {
-                        icao = nearby[0];
-                        // On a pool thread with no captured context, joining any build already
-                        // running for this airport — see AnnounceLookAround.
-                        var catalog = surroundingsCache.GetAsync(icao).GetAwaiter().GetResult();
-                        if (catalog == null || catalog.Features.Count == 0) failure = $"No surroundings data for {icao}.";
-                        else
-                        {
-                            double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
-                            sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
-                                icao, catalog, catalog.Facts, position.Latitude, position.Longitude, hdgTrue,
-                                m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn("Surroundings", $"surroundings window build failed: {ex.Message}");
-                    failure = "Surroundings lookup failed.";
-                }
-
-                void Show()
-                {
-                    if (failure != null) { announcer.AnnounceImmediate(failure); return; }
-                    try { surroundingsForm?.Close(); } catch { }
-                    surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(sections!, null, $"Surroundings at {icao}");
-                    surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;
-                    surroundingsForm.Show();
-                }
-                SafeBeginInvoke(Show);
-            });
-        });
-    }
+            try { surroundingsForm?.Close(); } catch { }
+            surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(sections, null, $"Surroundings at {l.Icao}", "Close the surroundings window");
+            surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;
+            surroundingsForm.Show();
+        };
+    });
 
     /// <summary>
     /// Marshal to the UI thread, tolerating the form being torn down between the
