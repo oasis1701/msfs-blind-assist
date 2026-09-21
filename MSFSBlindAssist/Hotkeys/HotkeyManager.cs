@@ -56,9 +56,6 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_SHOW_RMP = 9242;         // Ctrl+Shift+R (A380 Radio Management Panel) — input mode
         private const int HOTKEY_C680_OTHER_MFD_GTC = 9270; // Ctrl+Shift+M (Citation Sovereign+: the other seat's MFD touchscreen) — input mode
         private const int HOTKEY_C680_OTHER_PFD_GTC = 9271; // Alt+Shift+R (Citation Sovereign+: the other seat's PFD touchscreen) — input mode
-        private const int HOTKEY_ENGINE_RPM = 9272;         // P (engine RPM readout: N1 and N2) — output mode
-        private const int HOTKEY_ENGINE_POWER = 9273;       // E (engine power readout: N1, fuel flow, levers) — output mode
-        private const int HOTKEY_ENGINE_TEMPS = 9274;       // Shift+O (engine temperatures: ITT, oil) — output mode
         private const int HOTKEY_SHOW_DCDU = 9251;        // Ctrl+Shift+D (A32NX DCDU / CPDLC window) — input mode
         private const int HOTKEY_VATSIM_MUTE = 9252;      // Alt+V (Toggle VATSIM announcements) — output mode
         private const int HOTKEY_ND_WAYPOINT = 9243;      // Ctrl+W (FBW ND TO-waypoint: name/distance/bearing) — output mode
@@ -120,6 +117,16 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
+
+        // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a
+        // piston single answers them with manifold pressure and mixture, a FADEC diesel
+        // with load percent, a turboprop with torque and ITT. The action says WHAT is being
+        // asked, and each aircraft definition says what that means on its own engine - the
+        // same shape as the V-speed keys, which mean one thing on an Airbus and another on
+        // a DA40.
+        private const int HOTKEY_READ_ENGINE_RPM = 9260;
+        private const int HOTKEY_READ_ENGINE_POWER = 9261;
+        private const int HOTKEY_READ_ENGINE_TEMPS = 9262;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
         private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
 
@@ -315,6 +322,15 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_MACH_SPEED:
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
                             break;
+                        case HOTKEY_READ_ENGINE_RPM:
+                            TriggerHotkey(HotkeyAction.ReadEngineRpm);
+                            break;
+                        case HOTKEY_READ_ENGINE_POWER:
+                            TriggerHotkey(HotkeyAction.ReadEnginePower);
+                            break;
+                        case HOTKEY_READ_ENGINE_TEMPS:
+                            TriggerHotkey(HotkeyAction.ReadEngineTemps);
+                            break;
                         case HOTKEY_LANDING_RATE:
                             TriggerHotkey(HotkeyAction.ReadLastLandingRate);
                             break;
@@ -400,15 +416,6 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_FLAPS:
                             TriggerHotkey(HotkeyAction.ReadFlaps);
-                            break;
-                        case HOTKEY_ENGINE_RPM:
-                            TriggerHotkey(HotkeyAction.ReadEngineRpm);
-                            break;
-                        case HOTKEY_ENGINE_POWER:
-                            TriggerHotkey(HotkeyAction.ReadEnginePower);
-                            break;
-                        case HOTKEY_ENGINE_TEMPS:
-                            TriggerHotkey(HotkeyAction.ReadEngineTemps);
                             break;
                         case HOTKEY_GEAR:
                             TriggerHotkey(HotkeyAction.ReadGear);
@@ -759,9 +766,6 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL, MOD_CONTROL | MOD_SHIFT, 0x43); // Ctrl+Shift+C (A380 live ECL)
             RegisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY, MOD_NONE, 0x46);  // F (Fuel Quantity)
             RegisterHotKey(windowHandle, HOTKEY_FLAPS, MOD_NONE, 0x4C);          // L (Flaps)
-            RegisterHotKey(windowHandle, HOTKEY_ENGINE_RPM, MOD_NONE, 0x50);     // P (Engine RPM: N1 and N2)
-            RegisterHotKey(windowHandle, HOTKEY_ENGINE_POWER, MOD_NONE, 0x45);   // E (Engine power: N1, fuel flow, levers)
-            RegisterHotKey(windowHandle, HOTKEY_ENGINE_TEMPS, MOD_SHIFT, 0x4F);  // Shift+O (Engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_GEAR, MOD_SHIFT, 0x47);          // Shift+G (Gear)
             RegisterHotKey(windowHandle, HOTKEY_ALTIMETER, MOD_NONE, 0x42);      // B (Altimeter)
             RegisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG, MOD_SHIFT, 0x57); // Shift+W (Gross Weight KG)
@@ -789,6 +793,13 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x4E);          // Alt+N (Read ND)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
+
+            // Output mode: P, E and Shift+O. All three were free on every modifier before
+            // this - checked against the whole registration table rather than assumed,
+            // because a silently lost registration is a key that does nothing with no error.
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x4F);      // Shift+O (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
@@ -874,9 +885,6 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_CHECKLIST_ECL);
             UnregisterHotKey(windowHandle, HOTKEY_FUEL_QUANTITY);
             UnregisterHotKey(windowHandle, HOTKEY_FLAPS);
-            UnregisterHotKey(windowHandle, HOTKEY_ENGINE_RPM);
-            UnregisterHotKey(windowHandle, HOTKEY_ENGINE_POWER);
-            UnregisterHotKey(windowHandle, HOTKEY_ENGINE_TEMPS);
             UnregisterHotKey(windowHandle, HOTKEY_GEAR);
             UnregisterHotKey(windowHandle, HOTKEY_ALTIMETER);
             UnregisterHotKey(windowHandle, HOTKEY_GROSS_WEIGHT_KG);
@@ -905,6 +913,9 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
@@ -1296,6 +1307,13 @@ public class HotkeyManager : IDisposable
         ReadAirspeedTrue,
         ReadGroundSpeed,
         ReadMachSpeed,
+
+        // General-aviation engine readouts. What they MEAN is the aircraft's business:
+        // load percent on a FADEC diesel, manifold pressure and mixture on a piston,
+        // torque and ITT on a turboprop.
+        ReadEngineRpm,
+        ReadEnginePower,
+        ReadEngineTemps,
         ReadLastLandingRate,
         ReadLastLandingPeakG,
         ReadVerticalSpeed,
@@ -1343,9 +1361,6 @@ public class HotkeyManager : IDisposable
         ShowChecklistECL,
         ReadFuelQuantity,
         ReadFlaps,
-        ReadEngineRpm,
-        ReadEnginePower,
-        ReadEngineTemps,
         ReadGear,
         ReadAltimeter,
         FCUSetBaro,

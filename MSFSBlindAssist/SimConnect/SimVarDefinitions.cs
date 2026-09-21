@@ -31,6 +31,18 @@ public class SimVarDefinition
     public bool OnlyAnnounceValueDescriptionMatches { get; set; }  // True to only announce when value matches a ValueDescriptions key (within tolerance), skip intermediate values
 
     /// <summary>
+    /// How far a delivered value must move from the cached one to count as a CHANGE — to fire
+    /// SimVarUpdated (unless force-read). Null, the default, means the shared
+    /// <see cref="SimConnectManager.ChangeTolerance"/> (0.001); both delivery paths apply it through
+    /// <see cref="SimConnectManager.IsValueChange"/>. Widen it only for a var whose readers need a
+    /// coarse line and whose ripple costs work — the TFDi MD-11's DC bus voltage (0.5 V) feeds a
+    /// power gate that needs only the 20 V line. The cache still takes every delivery, so a drift
+    /// slower than the tolerance per sample never fires a change: never widen a var whose reader
+    /// acts on a small cumulative change.
+    /// </summary>
+    public double? ChangeTolerance { get; set; }
+
+    /// <summary>
     /// When true, exclude this variable from the batched continuous monitoring (GenericBatch1..5)
     /// and register it as its own per-second continuous subscription. Used when the batched read
     /// has been observed to deliver wrong/oscillating values due to data-definition position
@@ -99,6 +111,39 @@ public class SimVarDefinition
     public double SliderMin { get; set; } = 0;
     public double SliderMax { get; set; } = 100;
     public string? StateVariable { get; set; }  // LVar name to read for actual button on/off state (e.g., I_ indicator for S_ switch buttons)
+
+    /// <summary>
+    /// Variable KEYS this control's SPOKEN STATE depends on, for definitions that compose the
+    /// state themselves through <see cref="Aircraft.IAircraftDefinition.TryDescribeControlState"/>
+    /// (the TFDi MD-11: a button's legend lamps, its latching var and the DC-power gate).
+    /// MainForm relabels the control through that hook whenever any listed key — or the
+    /// control's own key — updates. Null (the default) means the control has no composed
+    /// state and the older <see cref="StateVariable"/> / ValueDescriptions labelling applies.
+    /// </summary>
+    public IReadOnlyList<string>? StateVariables { get; set; }
+
+    /// <summary>
+    /// Maps a raw value onto the <see cref="ValueDescriptions"/> KEY that describes it, for a
+    /// variable whose keys are positions but whose value is a continuous travel — the TFDi MD-11
+    /// gear lever: keys {0 Up, 1 Down} from the control map, value 0-25 with Down at &gt;= 20. Null
+    /// (the default) means the raw value IS the key. Consulted through
+    /// <see cref="DescriptionKeyFor"/> by EVERY panel path that turns a delivered value into a
+    /// description — the combo's build-time seed and its refresh, and the read-only status box's
+    /// build-time seed and its refresh. All four, deliberately: wiring only the two combo sites
+    /// left a var that is both classifier-backed and read-only rendering as a bare number on the
+    /// panel and keeping that number forever, because the status lookup never asked. A pick still
+    /// writes the KEY, and the raw value still reaches every other reader (the SimConnect cache,
+    /// hotkey read-outs, the MD-11 walker) untouched.
+    ///
+    /// Known limit: a combo pick caches its own KEY as the value until the next delivery, so a
+    /// classifier whose key space overlaps its value space can mislabel a combo REBUILT inside
+    /// that window (the gear lever's Down key, 1, classifies as Up — travel 1 genuinely is up).
+    /// It heals on the next real delivery; do not try to make the classifier idempotent on keys.
+    /// </summary>
+    public Func<double, double>? ValueToDescriptionKey { get; set; }
+
+    /// <summary>The ValueDescriptions key for <paramref name="value"/>: through <see cref="ValueToDescriptionKey"/> when set, else the value itself.</summary>
+    public double DescriptionKeyFor(double value) => ValueToDescriptionKey?.Invoke(value) ?? value;
 
     // ----- ARINC429 auto-decode -----
     // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low
