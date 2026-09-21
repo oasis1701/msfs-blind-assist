@@ -14,6 +14,9 @@ public class SurroundingsCatalogCacheTests
     private static SurroundingsBuild One(string name = "Narrows Aviation") => new(
         new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, "Tower 118.5.");
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
+    /// <summary>Continuations run asynchronously so completing a gate never drags the rest of the
+    /// test onto the build thread that set it.</summary>
+    private static TaskCompletionSource Gate() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     [Fact]
     public async Task Concurrent_callers_share_one_build_and_the_facts_ride_along()
@@ -53,6 +56,44 @@ public class SurroundingsCatalogCacheTests
         Assert.Equal(1, builds);
         now += SurroundingsCatalogCache.FailureMemory + TimeSpan.FromSeconds(1);
         await cache.GetAsync("KTIW");
+        Assert.Equal(2, builds);
+    }
+
+    [Fact]
+    public async Task A_build_finishing_after_an_invalidation_does_not_evict_the_replacement_build()
+    {
+        // The only interleaving where TWO builds for one airport overlap: build 1 is still running
+        // when the OSM fetch invalidates the airport, so build 2 starts beside it. Build 1 must
+        // leave build 2's in-flight entry alone when it finishes — evict it and the next caller
+        // starts a THIRD build, and the two race to be the catalog that lands.
+        var started = new[] { Gate(), Gate(), Gate() };
+        var release = new[] { Gate(), Gate(), Gate() };
+        int builds = 0;
+        var cache = new SurroundingsCatalogCache
+        {
+            BuildSupplier = _ =>
+            {
+                int n = Interlocked.Increment(ref builds);
+                started[n - 1].SetResult();
+                release[n - 1].Task.Wait(Wait);
+                return One($"build {n}");
+            },
+        };
+
+        var first = cache.GetAsync("KTIW");
+        await started[0].Task;
+        cache.Invalidate("KTIW");                       // the OSM fetch landed
+        var second = cache.GetAsync("KTIW");
+        await started[1].Task;                          // both builds are now in flight
+
+        release[0].SetResult();
+        Assert.Equal("build 1", (await first)!.Features[0].Name);
+        Assert.Same(second, cache.GetAsync("KTIW"));    // a third caller JOINS build 2
+
+        release[1].SetResult();
+        Assert.Equal("build 2", (await second)!.Features[0].Name);
+        Assert.True(cache.TryGetCached("KTIW", out var cached));
+        Assert.Equal("build 2", cached!.Features[0].Name);
         Assert.Equal(2, builds);
     }
 

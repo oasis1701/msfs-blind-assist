@@ -100,6 +100,7 @@ public sealed class SurroundingsCatalogCache
         }
         catch (Exception ex) { failure = ex; }
 
+        string outcome;
         lock (_lock)
         {
             if (_inFlight.TryGetValue(icao, out var t) && ReferenceEquals(t, self())) _inFlight.Remove(icao);
@@ -109,28 +110,39 @@ public sealed class SurroundingsCatalogCache
             bool current = _epoch == epoch && (_generation.TryGetValue(icao, out var g) ? g : 0) == generation;
             if (failure != null)
             {
-                Log.Warn("Surroundings", $"catalog build failed for {icao}: {failure.Message}");
                 // The FAILURE belongs to its generation too: a database switch pulls the provider
                 // out from under a running build, which is exactly what makes it throw, and
                 // remembering that failure past the Clear() would blank the airport for a minute
                 // on the NEW database. Not recording it costs at most one extra attempt — the
-                // build that follows records its own failure.
+                // build that follows records its own failure. Which of the two happened decides
+                // whether the next 2 s poll retries or stays quiet for a minute, so say it.
                 if (current) _failedAt[icao] = _utcNow();
+                Log.Warn("Surroundings", $"catalog build failed for {icao}: {failure.Message}, remembered={(current ? "true" : "false")}");
                 return _byIcao.TryGetValue(icao, out var previous) ? previous : null;
             }
             if (current) { _byIcao[icao] = built!; _failedAt.Remove(icao); }
+            // Named while the fields that decide it are still under the lock. A discarded build is
+            // the mechanism "the OSM buildings never appear" gets diagnosed from, so the one line
+            // this build writes must never read as though the catalog had been cached.
+            outcome = current ? "stored"
+                : _epoch != epoch ? "discarded (cache cleared mid-build)"
+                : "discarded (invalidated mid-build)";
         }
-        Log.Debug("Surroundings", $"catalog {icao}: {built!.Features.Count} features, token={token}");
+        Log.Debug("Surroundings", $"catalog {icao}: {built!.Features.Count} features, token={token}, {outcome}");
         return built;
     }
 
     /// <summary>
     /// A non-building read: true and <paramref name="catalog"/> set only when a catalog for
-    /// <paramref name="icao"/> is already cached AND not stale under the same
-    /// GateDataSource.ShouldRebuildGateList staleness check <see cref="GetAsync"/> applies — never
-    /// calls BuildSupplier. For a caller (AirportSurroundingsMonitor's UI-thread timer tick, the
-    /// taxi dialog's Place list) that must never trigger the possibly-slow first-time scenery
-    /// scan/DB read itself; it asks GetAsync for the build instead and revisits this later.
+    /// <paramref name="icao"/> is already cached AND fresh under GateDataSource.ShouldRebuildGateList
+    /// — never calls BuildSupplier. That is the same rule <see cref="GetAsync"/> applies before it
+    /// decides to build, but STRICTER than what GetAsync can end up returning: on its two degraded
+    /// paths (a build that just failed, and a failure still inside <see cref="FailureMemory"/>) it
+    /// hands back whatever was last cached WITHOUT that freshness check, because a stale catalog
+    /// beats none, where this reports a miss. For a caller (AirportSurroundingsMonitor's UI-thread
+    /// timer tick, the taxi dialog's Place list) that must never trigger the possibly-slow
+    /// first-time scenery scan/DB read itself; it asks GetAsync for the build instead and revisits
+    /// this later.
     /// </summary>
     public bool TryGetCached(string icao, out AirportFeatureCatalog? catalog)
     {
