@@ -26,7 +26,9 @@ public static class SettingsManager
     private static UserSettings? _currentSettings;
     private static readonly object _lock = new object();
 
-    private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
+    // Internal, not private: UserSettings.Clone round-trips through these SAME options so a
+    // clone is exactly what Save → Load would produce — including any converter added here later.
+    internal static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
     {
         WriteIndented = true,
         PropertyNameCaseInsensitive = true
@@ -193,7 +195,7 @@ public static class SettingsManager
             {
                 lock (_lock)
                 {
-                    // Every known mutation site for the six *DisabledMonitorVariables lists
+                    // Every known mutation site for the seven *DisabledMonitorVariables lists
                     // (monitor-manager ItemCheck handlers, ToggleECAMMonitoring,
                     // SeedFenixMonitorDefaults) calls Save immediately after mutating — so this
                     // is the single choke point that keeps the HashSet sidecars from going stale.

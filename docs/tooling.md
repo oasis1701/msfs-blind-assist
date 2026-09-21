@@ -189,7 +189,7 @@ These are full mini-projects with `package.json` and tests — not Coherent-eval
 | Project | Transport | Purpose |
 |---|---|---|
 | `tools/fbw-mcdu-probe/` | SimBridge MCDU websocket `ws://localhost:8380/interfaces/v1/mcdu` | Node CLI to inspect/drive/capture the **A32NX** MCDU without the C# app: `watch` / `press` / `type` / `replay` (`--export` JSONL captures; `replay` re-renders a capture offline). **`mcdu-format.js` is the authoritative decode reference** and must stay in sync with `Services/FbwMcduFormat.cs`; `node --test` (`mcdu-format.test.js`) covers it. See its `README.md`. |
-| `tools/flypad-shell-test/` | jsdom (no sim) | The canonical **keyed-DOM-reconcile spec** for the flyPad WebView2 shell. `reconcile.test.js` fails on idx-keying and passes on content-keying — it encodes why the shell keys by content, not scrape idx (stops NVDA focus jumps). Mirror any reconcile change here. The reference shell is `Resources/flypad-shell.html`. |
+| `tools/flypad-shell-test/` | jsdom (no sim) | The canonical **keyed-DOM-reconcile spec** for the flyPad WebView2 shell (`npm ci && npm test`, also run in CI by the `efb-readers` job). `reconcile.test.js` fails on idx-keying and passes on content-keying — it encodes why the shell keys by content, not scrape idx (stops NVDA focus jumps). Mirror any reconcile change here. The reference shell is `Resources/flypad-shell.html`. `efb-shell.test.js` is different in kind: it extracts the SHIPPING `PageHtml` string out of `Forms/FBWA380/FbwEfbForm.cs`, loads it under jsdom and drives `window.__render`, so it exercises the real shell every EFB window renders (today: the `announceChange` post-press gate) rather than the mirror. |
 | `tools/efb-dom-tool.js` | CDP over `:19999` (Node 18+) | Live CDP scraper/clicker for the **A32NX EFB**: `node tools/efb-dom-tool.js state|scrape|click …`. A Node counterpart to `fp_run.ps1` for the flyPad bridge. |
 
 ---
@@ -227,14 +227,18 @@ These were the **first exploratory scripts** that discovered the no-injection Co
 
 ---
 
-## 7. Pre-existing tools (out of scope — do not modify)
+## 7. Pre-existing tools, and other standalone non-Coherent probes (out of scope — do not fold in)
 
 Two console apps predate the FBW work and are **not** Coherent tools. Documented here only so you don't mistake them for debugger tooling:
 
 - **`tools/PMDGDispatchTester/`** — a console REPL that probes which PMDG NG3 dispatch shape a switch accepts against a live sim. Compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>`. Builds as part of `MSFSBlindAssist.sln`.
 - **`tools/CDUTest/`** — fires a single CDA-write or `TransmitClientEvent` at one chosen PMDG event. Builds on its own (`dotnet build tools/CDUTest`).
 
-Leave these alone. (Details in `CLAUDE.md` → Build Commands.)
+Leave these two alone. (Details in `CLAUDE.md` → Build Commands.)
+
+A third tool lives in this same out-of-scope-for-Coherent bucket — no debugger, no live sim, standalone build — but unlike the two above it is a maintained, re-runnable **measurement** harness rather than a fixed probe, so "leave alone" doesn't apply to it:
+
+- **`tools/StandBridgeSweep/`** — sweeps a real navdata database and reports the PR #235 stand-bridge figures: bridge count, distinct airports touched, and the four safety invariants (no bridge on or across runway pavement, none ending on a hold-short node, a stand, or another stand's lead-in chain), plus how many otherwise-unreachable stands the bridges bring onto the main taxi network. It links the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic — the same linked-`<Compile>` idea `PMDGDispatchTester` uses for the CDA struct above, so its output can never drift from what `TaxiGraph.BridgeOrphanParkingIslands` actually builds. Builds on its own (`dotnet build tools/StandBridgeSweep`), not as part of the solution. **Re-run it before trusting any change to the bridging rule or its safety checks** — see the "Stranded stand stubs are reattached; unreachable destinations are refused" write-up in `docs/taxi-guidance.md` for the currently measured figures.
 
 ---
 

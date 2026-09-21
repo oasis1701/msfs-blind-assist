@@ -1,0 +1,1 @@
+If you land on a different runway, or the other end of the one you planned for, guidance now tells you at touchdown and guides you to a suitable exit on the runway you are actually on. The manual landing assist switches to that runway too.

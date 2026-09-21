@@ -569,6 +569,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Default: no composed state — MainForm labels the control from StateVariable /
+    /// ValueDescriptions as before. Aircraft whose state lives in several variables (MD-11
+    /// legend lamps) override this.
+    /// </summary>
+    public virtual bool TryDescribeControlState(string varKey, out string stateText)
+    {
+        stateText = "";
+        return false;
+    }
+
+    /// <summary>
     /// Generic ARINC429 decode. If the var is flagged <see cref="SimConnect.SimVarDefinition.IsArinc429"/>,
     /// decode the raw double via <see cref="SimConnect.Arinc429Word"/> and return "&lt;value&gt; &lt;unit&gt;"
     /// (SSM NormalOperation/FunctionalTest) or the not-available text. Returns false for non-ARINC vars so
@@ -734,6 +745,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual void ResetAnnouncementBaselines() { }
 
     /// <inheritdoc />
+    public virtual void OnSimContextReset() { }
+
+    /// <inheritdoc />
+    public virtual void OnContinuousBatchDelivered(int batchNum) { }
+
+    /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>
     public virtual string? DeferredFlushWatchVariable => null;
 
@@ -752,63 +769,114 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public virtual bool HasOwnIcingAnnouncer => false;
 
+    // One capture at a time, app-wide — the scene description takes the same gate, because the
+    // camera both of them capture is the SIMULATOR's, not this definition's. See
+    // Services/DisplayReadGate for why it is shared and why it must be released before any dialog.
+
     /// <summary>
-    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
-    /// Shared by all aircraft definitions that support Gemini display capture.
+    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via the
+    /// selected AI provider. Shared by all aircraft definitions that support display capture.
+    ///
+    /// With <paramref name="instrumentView"/>, the simulator camera is first moved to that
+    /// instrument view (0-based index into the aircraft's cameras.cfg instrument cameras) — the
+    /// pilot presses nothing in the sim to get the display on screen. The camera STAYS there: the
+    /// pilot's previous view is often a user-saved custom camera, which the sim reports as a
+    /// pilot-view index it refuses on the way back (measured 2026-09-09), so a restore was a silent
+    /// no-op for exactly the pilots who used one; they return with their own view key instead.
+    /// Without it the flow is exactly what it always was: the current view is captured.
     /// </summary>
     protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
                                       string displayName,
                                       ScreenReaderAnnouncer announcer,
-                                      System.Windows.Forms.Form parentForm)
+                                      System.Windows.Forms.Form parentForm,
+                                      Services.InstrumentViewRequest? instrumentView = null)
     {
+        if (!Services.DisplayReadGate.Shared.TryEnter())
+        {
+            announcer.Announce(Services.DisplayReadGate.BusyMessage);
+            return;
+        }
+
+        // Held until the gate is released BELOW. MessageBox.Show does not return until the pilot
+        // dismisses the dialog, so showing one inside the guarded region held the gate for as long
+        // as it stood — and every later display read, on every aircraft, then answered "already in
+        // progress" when nothing was.
+        (string Caption, string Body, System.Windows.Forms.MessageBoxIcon Icon)? dialog = null;
         try
         {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var aiProvider = Services.AiProviderFactory.Create();
-
-            if (!screenshotService.IsMsfsWindowAvailable())
+            try
             {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
+                announcer.Announce($"Capturing {displayName}...");
 
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
+                var screenshotService = new Services.ScreenshotService();
+                var aiProvider = Services.AiProviderFactory.Create();
+
+                if (!screenshotService.IsMsfsWindowAvailable())
+                {
+                    announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                    return;
+                }
+
+                Services.InstrumentViewSession? view = null;
+                if (instrumentView != null)
+                {
+                    view = await new Services.InstrumentViewSwitcher(instrumentView.Camera).EnterAsync(instrumentView.ViewIndex);
+                    if (view.Outcome == Services.InstrumentViewOutcome.NotInCockpit)
+                    {
+                        announcer.Announce("Switch to a cockpit view first.");
+                        return;
+                    }
+                    if (!view.Verified)
+                    {
+                        // "Could not confirm", never "could not switch": Switch and Unknown both ATTEMPT the
+                        // write before verifying — and InstrumentViewSwitcher swallows a write that THROWS
+                        // and polls anyway — so either the write or the read-back failed, and the camera may
+                        // or may not have moved. "Could not confirm" is the honest claim in both cases.
+                        announcer.Announce("Could not confirm the cockpit view switch; reading what is on screen.");
+                    }
+                }
+
+                byte[]? screenshot = await screenshotService.CaptureAsync();
+
+                if (screenshot == null || screenshot.Length == 0)
+                {
+                    announcer.Announce($"Failed to capture {displayName} screenshot.");
+                    return;
+                }
+
+                string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
+
+                var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+                resultForm.ShowForm();
+
+                announcer.Announce($"{displayName} analysis ready.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
             {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
+                announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
+                dialog = ("API Key Required",
+                    "AI provider API key is not configured.\n\n" +
+                    "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
+                    "File > Settings > AI tab",
+                    System.Windows.Forms.MessageBoxIcon.Warning);
             }
-
-            string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
-
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
+            catch (Exception ex)
+            {
+                announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+                dialog = ("Error",
+                    $"Error analyzing {displayName}:\n\n{ex.Message}",
+                    System.Windows.Forms.MessageBoxIcon.Error);
+            }
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        finally
         {
-            announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "AI provider API key is not configured.\n\n" +
-                "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
-                "File > Settings > AI tab",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
+            Services.DisplayReadGate.Shared.Exit();
         }
-        catch (Exception ex)
+
+        if (dialog is { } pending)
         {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
+            System.Windows.Forms.MessageBox.Show(parentForm, pending.Body, pending.Caption,
+                System.Windows.Forms.MessageBoxButtons.OK, pending.Icon);
         }
     }
 

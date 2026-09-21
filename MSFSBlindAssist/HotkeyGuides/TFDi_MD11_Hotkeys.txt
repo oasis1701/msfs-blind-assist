@@ -1,0 +1,347 @@
+TFDi DESIGN MD-11 HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+
+READ THIS FIRST - WHAT THIS AIRCRAFT CAN AND CANNOT DO
+
+All three MCDUs read fully, as text - Left, Center and Right. Press left bracket, then Shift+M,
+to open the MCDU window. TFDi publish the MCDU screens as text specifically so tools like this
+one can read them, so this is the real screen, live, not a reconstruction.
+
+The EFB reads too - press left bracket, then Shift+T. All of it: Dispatch, Payload, Perf,
+Charts, Services, State and Options.
+
+The six display units (PFD, ND, EAD, SD) and the standby instrument are drawn from inside the
+aircraft's own code module with no text behind them, so there is no live PFD or EICAS readout
+the way the Airbus and Boeing have. They ARE readable, though, by AI vision: press Alt+P, Alt+N,
+Alt+E, Alt+S or Alt+I in output mode (see AI Display Reading below). The app moves the
+simulator's camera to the right instrument view for you; press your own view key afterwards
+to go back to the view you were in.
+
+One consequence worth knowing: the flight mode annunciator is on the PFD and nowhere else, so
+Alt+P is the way to hear PROF, LAND ARMED, ALT HOLD and the rest. What the app can read
+directly is what the flight control panel itself shows. The heading window goes to dashes while
+NAV is flying the aircraft, and the speed window goes to dashes while FMS speed is, so NAV and
+FMS Speed are reported as engaged or not engaged from those windows. PROF and Approach/Land have
+no such cue - their state lives only on the annunciator - so the panel never reports them as
+engaged. The mode buttons themselves only report that they were pressed, which is not the same
+thing as the mode engaging.
+
+What replaces the screens: TFDi publish the numbers a sighted pilot would read off the glass as
+separate values, and MSFS Blind Assist reads those instead. That is where your V-speeds,
+minimums, altimeters, autopilot state, APU state, engine N1 and fuel quantities come from. They
+live in the Read-outs section (Ctrl+1) as well as on the keys below.
+
+
+THE FLIGHT CONTROL PANEL - Press Ctrl+P in input mode
+
+The MD-11's flight control panel is what other aircraft call the MCP or FCU. The window opens on
+the Autoflight button, which reads its state: "Autoflight: AP 1, ATS on", or "Autoflight: off".
+NAV and FMS Speed read "engaged" or "not engaged" (from the panel's own windows, see above), and
+the four mode selects read their current mode: "IAS / Mach: Mach", "Heading / Track: Heading",
+"VS / FPA: V/S", "Altitude Unit: feet". PROF, Approach/Land, Go Around, the knob push and pull
+buttons, the vertical speed wheel and the autothrust disconnects have no state to show and read
+as plain buttons. Every button has its own Alt+letter, which the screen reader speaks with the
+button; two are not the first letter: Approach/Land is Alt+O (Alt+P is PROF) and Wheel up is
+Alt+W (Alt+U is Altitude Unit; Wheel down is Alt+D).
+
+Shift+Tab from the Autoflight button reaches a status list with the four windows and the
+autopilot and autothrottle: "Speed: Mach 0.82", "Heading: dashed, NAV engaged", "Altitude: 36000
+feet", "Vertical speed: dashed, not engaged", "Autopilot: AP 1", "Autothrottle: on". It updates
+live while you read it. The bank angle limiter and the Dial-A-Flap take-off angle are at the
+bottom of the window.
+
+Typing values in (press left bracket first for input mode) - these accept a typed value, no
+knob-winding:
+  Ctrl+H     Set heading
+  Ctrl+S     Set speed. Type knots (250) or a Mach number (0.82) - it works out which from
+             the number itself, and sets the unit for you.
+  Ctrl+A     Set altitude
+  Ctrl+V     Set vertical speed. Type feet per minute (-1500) or a flight path angle (-3).
+  Ctrl+B     Set the altimeters - captain, first officer and standby together, from one entry.
+             Type hPa (1013) or inHg (29.92); each altimeter is set in whichever unit its own
+             display shows. The Standard button sets standard pressure on all three. The
+             captain's setting is read back a moment later when it changed ("Altimeter: 1020,
+             30.12", or "Altimeter standard" when you set standard pressure). All three
+             altimeters are checked a moment after that, and you only hear about one that did
+             not take ("Standby altimeter not set, reads 1012, 29.88").
+
+Each dialog also carries the related buttons, in the order you are likely to want them after
+the value: the heading dialog has the knob's Push and Pull, then NAV (engaged or not engaged),
+then Track / Heading last; the speed dialog Push, Pull, FMS Speed, then IAS / Mach last; the
+altitude dialog PROF first, then Push and Pull - it has no Feet / Metres button, because the
+value you type is always feet; the window's own unit is the "Altitude Unit Select" row of the
+Flight Control Panel in the Glareshield section. The vertical speed dialog has the wheel. The
+same buttons are in the Ctrl+P window.
+
+Note on modes: the dialogs set and read the SELECTED values and their units. NAV and FMS Speed
+are reported from the panel's dashed windows; PROF and an armed approach live on the flight mode
+annunciator, which cannot be read, so they are never reported as engaged.
+
+
+THE MCDU - Press left bracket, then Shift+M
+
+The MD-11 has three MCDUs and all three are readable independently. The window opens on the
+Left (Captain's) unit. Shift+M on its own does nothing - the left bracket is what puts the app
+into input mode first. (In OUTPUT mode - right bracket - Shift+M reads the METAR instead.)
+
+  Ctrl+Shift+L / C / R    Switch between the Left, Center and Right MCDU
+  Alt+Home                Jump to the screen (then use the arrow keys to read it line by line)
+  Alt+S                   Jump to the scratchpad entry box
+
+Typing: put your text in the scratchpad box and press Enter. It is typed into the aircraft one
+key at a time, exactly as if you had pressed them.
+
+Line select keys - two layouts, switch them in FMC Settings:
+  Ctrl+1..6   Left line select keys 1 to 6     (default layout)
+  Alt+1..6    Right line select keys 1 to 6    (default layout)
+  F1..F6      Left line select keys 1 to 6     (alternate layout)
+  F7..F12     Right line select keys 1 to 6    (alternate layout)
+
+The screen lines are numbered to match: the line that reads "3:" is the one Ctrl+3 acts on.
+
+Pages:
+  Alt+I   Init          Alt+E   Perf          Alt+F   Fpln       Alt+Shift+F  Sec Fpln
+  Alt+P   Prog          Alt+R   Ref           Alt+N   Nav Rad    Alt+X        Fix
+  Alt+D   Dir Intc      Alt+T   To Appr       Alt+O   Eng Out    Alt+M        Menu
+
+Editing and moving around:
+  Backspace or Alt+C      Clr - deletes ONE character (this is what the real CLR key does)
+  Delete                  Clear the WHOLE scratchpad in one keystroke, then says "Scratchpad
+                          cleared". (The aircraft has no clear-all key, so this presses Clr for
+                          you, checking the screen after each, and stops the moment it is empty.)
+  Page Up / Alt+Up        Slew up
+  Page Down / Alt+Down    Slew down
+  Right Arrow (on the screen), or Alt+Right anywhere    Next page
+
+The MD-11 has no EXEC key, no DEL key and no PREV PAGE key - the real aircraft does not have
+them. It slews with the up and down keys and confirms with the line select keys instead.
+
+The MCDU's four lights are spoken when they come on. MSG is the important one: it means the
+FMS has put a message in the scratchpad for you. FAIL, DSPY and OFST are also reported.
+
+
+OUTPUT MODE - Press right bracket to activate
+
+Flaps:
+  L          Read flap handle position (always includes the Dial-A-Flap angle when the
+             handle is in the Dial-A-Flap detent)
+
+Flight control panel - what is SELECTED, with the mode it is in:
+  Shift+H    Read selected heading, or track if the window is in track mode. A dashed window
+             reads "Selected heading dashed, NAV engaged".
+  Shift+S    Read selected speed, in knots or as a Mach number. Dashed reads "FMS speed engaged".
+  Shift+A    Read selected altitude, in feet or metres
+  Shift+V    Read selected vertical speed, or flight path angle. Dashed reads "not engaged".
+
+  PROF and Approach/Land show only on the flight mode annunciator - read it with Alt+P (AI
+  Display Reading, below).
+
+Characteristic Speeds:
+  Shift+1    Read slat retraction speed (VSR)
+  Shift+2    Read flap retraction speed (VFR)
+
+  V1, VR and V2 do not have a key yet - read them in the Read-outs section, V-Speeds panel.
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Aircraft state:
+  F          Read fuel, tank by tank, with a total (pounds). Includes the auxiliary and tail
+             trim tanks, which the sim's own fuel readout has no place for.
+  Shift+F    Read the same in kilograms
+  Shift+G    Read gear lever position
+  B          Read the captain's altimeter in both units, "Altimeter: 1013, 29.92", or
+             "Altimeter standard"
+  W          Read gross weight (pounds)
+  Shift+W    Read gross weight (kilograms)
+
+AI Display Reading (needs an AI provider and its key in File > Settings > AI tab):
+  Alt+P      Read the captain's PFD, flight mode annunciator first
+  Alt+N      Read the captain's ND
+  Alt+E      Read the EAD - the engine and alert display, this aircraft's EICAS: engine
+             gauges, thrust limit, flap and slat, and every alert with its colour
+  Alt+S      Read the SD - the system display, whatever page it is showing. To read another
+             page, press its cue button first (Pedestal section, System Display Control Panel)
+  Alt+I      Read the standby instrument on the forward pedestal. It is small in that view, so
+             this one reads best on a high-resolution display
+  Alt+D      Describe the outside scene
+  You press nothing in the simulator to get the display on screen: the app switches to the
+  instrument camera view that frames the display (view 1 for the PFD, ND and EAD, view 3 for
+  the SD, view 4 for the standby) and captures, within a second. It stays in that view - press
+  your own view key to go back, for example to a cabin or wing view. The app does not try to
+  put the view back itself: the simulator reports a saved custom camera in a form it then
+  refuses to switch to, so a restore worked only for the built-in views and silently did
+  nothing for a custom one. If the simulator is in an external or drone camera the app says
+  "Switch to a cockpit view first" and does nothing.
+  If the switch cannot be confirmed (the simulator is paused or on a menu) the app says "Could
+  not confirm the cockpit view switch; reading what is on screen" and reads whatever is on
+  screen. The camera may have moved all the same. One read runs at a time: a second key while
+  one is in progress is refused out loud.
+
+
+INDICATOR LIGHTS ON THE PANELS
+
+Every panel's indicator lights are in its Status Display, one list at the end of the panel.
+Press Ctrl+3 to jump to it and arrow through the rows: "AC Bus 1: Off", "External Power AVAIL
+light: On". It updates live and F5 refreshes it. The lights are no longer separate tab stops, so
+Tab moves only between the controls you can operate. A light on a dead bus reads "unpowered".
+The Read-outs section works the same way: each of its panels is one list, with units - "V1: 152
+knots", "Captain altimeter: standard", "Tank 1: 12000 pounds".
+
+The Read-outs section has an Engines panel with N1 for all three engines ("Engine 1 N1: 25.4
+percent"), between Autoflight Status and APU Status.
+
+
+TAKE-OFF ROLL
+
+"V1", "Rotate" and "V2" are called as the FMS speeds are reached, the way the PMDG Boeings do
+it (TFDi's MD-11 plays no callouts of its own). They need V1 and VR set in the FMS - the
+Read-outs section's V-Speeds panel shows what it has - and they arm only on the ground below 40
+knots, so a rejected take-off re-arms for the next attempt and a landing can never fire them.
+"N1 70 percent" is called on the first engine to reach it, where the autothrottle takes over.
+Takeoff Assist (Ctrl+T) adds "80 knots" and "100 knots". Mute any of the three V-speed calls in
+Ctrl+M under V1, Rotate speed and V2.
+
+The speeds themselves are announced as the FMS sets them, the way the PMDG Boeings do it, as
+one sentence: "V1 145, VR 150, V2 158, slat retraction speed 190, flap retraction speed 210
+knots". Starting the app with the speeds already entered says nothing; a change to a speed, or
+the FMS computing a new set, does. Each speed is muted by its own row in Ctrl+M - V1, Rotate
+speed, V2, Slat retraction speed, Flap retraction speed - and simply drops out of the sentence.
+
+
+MINIMUMS
+
+The EFIS Captain and EFIS First Officer panels each have a Minimums field next to the minimums
+knob: type the minimums in feet and press Set. The aircraft applies a typed value to the BARO
+minimums; if the minimums mode switch beside it is on Radio, you are told so ("Captain baro
+minimums set to 500 feet. Minimums mode is Radio, showing 200 feet") and the display keeps
+showing the radio value until you switch the mode to Baro. The minimums rows in Read-outs say
+which mode they show ("200 feet, radio").
+
+
+TESTS
+
+Every test button on this aircraft is hold-to-test, so MSFS Blind Assist holds it for three
+seconds and the lights that come on are announced as they light. The one exception is the
+annunciator light test, which stays a tap: held, it would light every annunciator on the
+aircraft at once and bury you in several hundred announcements. (The weather radar's TEST is
+a mode selection, not a test button, and is not held either.) The fire test is one button
+for the whole aircraft - "Engine and APU Fire Test" lights all three engine FIRE lights, the
+APU FIRE light and the master warning together (TFDi's own label says "APU"; it tests every
+loop). The aircraft has no stall, overspeed or per-engine fire-loop test switch; those exist
+only as warnings in flight.
+
+
+BACKGROUND ANNOUNCEMENTS - Ctrl+M
+
+The MD-11 announces 532 indicator lights as they change. That is deliberate: with no readable
+displays, those lights ARE this aircraft's instrument panel, and a light coming on is
+something you would otherwise have no way to notice. It is also a lot of talking.
+
+Ctrl+M opens the monitor manager, the same one every other aircraft has: type in the search
+box to narrow the list ("fuel" finds every fuel lamp), use the Show filter to see only the
+muted rows, and uncheck an item to stop it announcing. The list is sorted by spoken name, and
+your choices are remembered between sessions.
+
+Also announced as they change: autopilot engagement, autothrottle engagement, the captain's
+altimeter setting (once the knob stops moving), APU state, the COM radios ("COM 1 active
+135.500" - active and standby for COM 1, 2 and 3, so a tuner click and a frequency swap both read
+back; each radio has its own line in Ctrl+M), and flap movement ("flaps moving" then the new
+position - which on an aircraft with no flap gauge is your only confirmation that a selection
+actually took).
+
+
+THE RADIOS
+
+The Pedestal section opens with a Radios panel. For each of COM 1, 2 and 3 it lists the active
+and standby frequencies, a "COM n Standby" field (type the frequency in megahertz, 124.9 or
+124.900, and press Set or Enter) and a "COM n Transfer" button that swaps the standby into the
+active slot. Both read back through the announcements above: after Set you hear "COM 1 standby
+124.900", after Transfer "COM 1 active 124.900" and the new standby. If the aircraft refuses a
+change you hear that instead ("COM 1 standby did not change, still 121.500"). The three radio
+control panels further down the Pedestal are the aircraft's own knobs and buttons, unchanged.
+
+
+THE TRANSPONDER
+
+The Pedestal section's Transponder panel has a Squawk field: type the four digits and press Set
+(or Enter). MSFS Blind Assist presses the aircraft's own keypad for you, then reads the
+transponder back and tells you what it actually shows - "Squawk 1200", or "Squawk entry did not
+take, the transponder reads 5473" if the aircraft refused it. The current code is the panel's
+first row, "Squawk code". The eight digit keys are not listed any more; the field replaces them.
+Ident, Clear, the mode knob, the system select and the TCAS filter are where they were.
+Whenever the squawk changes - a hardware transponder, the sim's own keys, an assignment from
+ATC - it is announced ("Squawk 1200"). Mute it in Ctrl+M under "Squawk code".
+
+
+THE SPEEDBRAKE
+
+The Pedestal section's Speedbrake panel has two rows. "Spoilers" is the lever's travel:
+Retracted, 1/3 extended, 2/3 extended, Fully extended. "Ground spoilers" is the lever's pull:
+Not armed, Armed, or Extended once they have deployed by themselves on landing. Choose Armed
+to arm them for landing (the lever must be retracted first, and you are told so if it is not);
+choose Not armed to disarm. Both rows announce as they change, so moving a hardware lever
+reads its detent aloud ("Spoilers 2/3 extended") and arming reads "Ground spoilers armed". A
+change the aircraft refuses is spoken as such.
+
+
+THE FLAP HANDLE
+
+The MD-11 has ONE handle for flaps and slats together, plus a separate Dial-A-Flap thumbwheel
+that chooses the exact take-off flap angle. Clean to fully extended, the detents are:
+
+  Flap Up / Slat Retracted   flaps and slats stowed - the clean-flight position
+  Flap 0 / Slat Extended     slats out, flaps still zero: low-speed margin without flap drag
+  Dial-A-Flap                the take-off detent; the ANGLE comes from the thumbwheel
+  Flap 28                    mainly the go-around setting
+  Flap 35                    a normal landing setting - less drag than 50
+  Flap 50                    maximum landing flaps: more drag, lower speed, not always needed
+
+So from clean, each successive step down gives: 0/EXT, then Dial-A-Flap, then 28, 35, 50.
+
+There is a physical gate at 28 so the handle cannot slip straight between the take-off range
+and the landing range. That is why 28 is a detent of its own rather than a step on the way
+past: a go-around from 35 or 50 retracts to 28 FIRST.
+
+Dial-A-Flap sets the take-off flap angle anywhere from 10 to 25 degrees - 10, 15, 18, 20, 22
+and so on. Put the handle in the Dial-A-Flap detent and the flaps extend to whatever the
+thumbwheel says. Because the handle position and the selected angle are two separate things,
+every flap readout tells you both: "Dial-A-Flap, 15 degrees".
+
+Both live in the Flaps section:
+  Flap Handle panel     -> the six detents above
+  Dial-A-Flap panel     -> the take-off angle, 10 to 25 degrees, one degree at a time
+
+
+HOW THE CONTROLS WORK
+
+Every switch, knob and button on the MD-11 is operated by sending the aircraft an event -
+that is how TFDi built it, and it is the only supported way in. When you pick a value in a
+combo box, MSFS Blind Assist works the control toward that position and checks the aircraft
+after each step, rather than assuming it got there.
+
+If a control will not move, you will hear so ("... did not move. It may be guarded, unpowered,
+or inhibited."). That message is deliberate: on an aircraft whose panels you cannot see, a
+selection that silently failed would look exactly like one that worked.
+
+Indicator lights are announced when they change, since a lamp lighting up is something you
+would otherwise have no way of noticing. If a phase of flight gets too chatty, use the monitor
+manager (Ctrl+M) to silence the ones you do not want.
