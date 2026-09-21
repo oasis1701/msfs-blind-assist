@@ -18,7 +18,8 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// while ground speed is within the taxi speed band; a pass held back by the global gap OR by
 /// ground speed outside that band stays PENDING while the building is still in range, and fires
 /// — still describing the side and range it had at its OWN closest point, never the tick that
-/// finally releases it — once every condition allows. No clock inside: the caller passes `now`.
+/// finally releases it — once every condition allows, or is dropped unspoken once
+/// <see cref="PendingExpiry"/> has gone by. No clock inside: the caller passes `now`.
 /// </summary>
 public sealed class PassingCalloutGate
 {
@@ -52,12 +53,21 @@ public sealed class PassingCalloutGate
     public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5), GlobalGap = TimeSpan.FromSeconds(10),
                                     TrackExpiry = TimeSpan.FromSeconds(30), RepeatMemory = TimeSpan.FromMinutes(10);
 
+    /// <summary>How long a pass waits for its conditions before it is given up on. A pass held by
+    /// the global gap or by ground speed keeps its own closest-point side and range, which is only
+    /// worth saying while the building is still THERE: pass one, stop inside its radius (below
+    /// <see cref="MinSpeedKts"/> nothing may fire) and taxi on three minutes later, and the pilot
+    /// heard "Passing X, on the left" about somewhere they no longer were. Long enough for the 10 s
+    /// <see cref="GlobalGap"/> and a late tick on top, short enough that what is described is still
+    /// beside the aircraft. An expired pass is consumed silently, exactly like a non-abeam one.</summary>
+    public static readonly TimeSpan PendingExpiry = TimeSpan.FromSeconds(20);
+
     // Min/MinRel freeze the instant Passed is set (Evaluate gates their update on !Passed): the
     // pair describes the pass exactly as it was JUDGED by IsAbeam at arm time, so a later, deeper
     // sample arriving while the pass sits out the global gap or excess speed — a second approach
     // after a turn back toward the building, a non-convex footprint's second local minimum, bearing
     // noise near a stop — can never drift what the pass reports once it finally fires.
-    private sealed class Track { public string Key = ""; public double First, Min, MinRel, AnchorLat, AnchorLon; public DateTime LastSeen; public bool Passed, Pending; }
+    private sealed class Track { public string Key = ""; public double First, Min, MinRel, AnchorLat, AnchorLon; public DateTime LastSeen, PendingAt; public bool Passed, Pending; }
     private sealed class FiredRecord { public string Key = ""; public double Lat, Lon; public DateTime FiredAt; }
 
     private readonly List<Track> _tracks = new();
@@ -170,8 +180,13 @@ public sealed class PassingCalloutGate
             {
                 t.Passed = true;
                 t.Pending = IsAbeam(t.MinRel);   // tail-first, or a turn away before reaching it: consumed silently
+                t.PendingAt = now;
             }
-            if (!t.Pending || !mayFire) continue;
+            if (!t.Pending) continue;
+            // Checked ABOVE mayFire, not below it: the pass this exists for is one held by ground
+            // speed, where mayFire is false on every tick and a check below would never be reached.
+            if (now - t.PendingAt >= PendingExpiry) { t.Pending = false; continue; }
+            if (!mayFire) continue;
             var fired = FindFired(key, n.Feature.Lat, n.Feature.Lon);
             if (fired != null && now - fired.FiredAt < PerFeatureRepeat) { t.Pending = false; continue; }
             if (fire == null || d < fire.DistanceMetres) { fire = n; fireTrack = t; }     // nearest first
@@ -190,4 +205,15 @@ public sealed class PassingCalloutGate
     }
 
     public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastAny = null; }
+
+    /// <summary>
+    /// Forget the approaches in progress, and NOTHING else — for a caller that has just been handed
+    /// a different catalog INSTANCE (a late OSM answer, a GSX publish). A feature's geometry BASIS
+    /// can change across such a rebuild — a stand cluster becomes a building outline — so the next
+    /// range a same-identity track sees is a STEP rather than the next sample of an approach: a
+    /// premature pass one way, a lost one the other. The fired memory and the global gap are facts
+    /// about what the PILOT has just been told and survive: a full <see cref="Reset"/> here would
+    /// let a building announced a moment ago be announced again on the very next approach.
+    /// </summary>
+    public void RebaselineTracks() => _tracks.Clear();
 }

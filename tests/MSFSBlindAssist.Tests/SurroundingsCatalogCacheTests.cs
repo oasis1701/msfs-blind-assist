@@ -1,18 +1,20 @@
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// The cache's contract: ONE build per ICAO at a time, a build written back only if nothing
 /// invalidated that airport while it ran, a remembered failure so a 2 s poll cannot hammer a
-/// broken build, and the same GateDataSource.ShouldRebuildGateList staleness rule on both read
-/// paths. Every wait here is gated on an event, never a sleep.
+/// broken build, a DEGRADED build that expires on time so the tier it went without is asked
+/// again, and the same GateDataSource.ShouldRebuildGateList staleness rule on both read paths.
+/// Every wait here is gated on an event, never a sleep.
 /// </summary>
 public class SurroundingsCatalogCacheTests
 {
-    private static SurroundingsBuild One(string name = "Narrows Aviation") => new(
-        new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, "Tower 118.5.");
+    private static SurroundingsBuild One(string name = "Narrows Aviation", bool degraded = false) => new(
+        new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, "Tower 118.5.", degraded);
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     /// <summary>Continuations run asynchronously so completing a gate never drags the rest of the
     /// test onto the build thread that set it.</summary>
@@ -134,6 +136,64 @@ public class SurroundingsCatalogCacheTests
         Assert.True(cache.TryGetCached("KJFK", out _));
         await cache.GetAsync("KJFK");
         Assert.Equal(2, builds);
+    }
+
+    [Fact]
+    public async Task A_build_that_went_without_an_optional_tier_is_rebuilt_once_its_lifetime_is_up()
+    {
+        // A null OSM fetch raises no FeaturesUpdated (the continuation needs a non-empty result),
+        // so nothing invalidates the airport and nothing asks the store again once its own failure
+        // memory expires. Without an expiry the OSM-less catalog was simply the catalog, for the
+        // session — which is what made the careful null-versus-empty handling below it buy nothing.
+        int builds = 0; var now = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
+        var cache = new SurroundingsCatalogCache(() => now) { BuildSupplier = _ => { builds++; return One($"build {builds}", degraded: true); } };
+        Assert.Equal("build 1", (await cache.GetAsync("KTIW"))!.Features[0].Name);
+
+        now += SurroundingsCatalogCache.DegradedLifetime - TimeSpan.FromSeconds(1);
+        Assert.True(cache.TryGetCached("KTIW", out var still));            // served, not rebuilt, in the meantime
+        Assert.Equal("build 1", still!.Features[0].Name);
+        await cache.GetAsync("KTIW");
+        Assert.Equal(1, builds);
+
+        now += TimeSpan.FromSeconds(2);
+        Assert.False(cache.TryGetCached("KTIW", out _));
+        Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
+        Assert.Equal(2, builds);
+    }
+
+    [Fact]
+    public async Task A_complete_build_never_goes_stale_on_time_alone()
+    {
+        int builds = 0; var now = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
+        var cache = new SurroundingsCatalogCache(() => now) { BuildSupplier = _ => { builds++; return One(); } };
+        await cache.GetAsync("KTIW");
+        now += SurroundingsCatalogCache.DegradedLifetime + TimeSpan.FromHours(1);
+        Assert.True(cache.TryGetCached("KTIW", out _));
+        await cache.GetAsync("KTIW");
+        Assert.Equal(1, builds);
+    }
+
+    [Fact]
+    public void The_degraded_lifetime_is_the_stores_own_failure_memory()
+        => Assert.Equal(OnlineFeatureStore.FailureMemory, SurroundingsCatalogCache.DegradedLifetime);
+
+    [Fact]
+    public async Task A_degraded_build_that_straddles_an_invalidation_is_still_discarded()
+    {
+        // The degraded flag must not buy a stale build a way back in: the generation check still
+        // decides whether anything is written at all, and only then does the flag decide how long.
+        int builds = 0; using var started = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
+        var cache = new SurroundingsCatalogCache
+        {
+            BuildSupplier = _ => { int n = Interlocked.Increment(ref builds); if (n == 1) { started.Set(); release.Wait(Wait); } return One($"build {n}", degraded: true); },
+        };
+        var first = cache.GetAsync("KTIW");
+        Assert.True(started.Wait(Wait));
+        cache.Invalidate("KTIW");
+        release.Set();
+        Assert.Equal("build 1", (await first)!.Features[0].Name);
+        Assert.False(cache.TryGetCached("KTIW", out _));
+        Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
     }
 
     [Fact]

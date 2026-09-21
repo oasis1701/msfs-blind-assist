@@ -17,8 +17,8 @@ public class OnlineFeatureStoreTests
         var a = store.GetAsync("KTIW", 0, 0, null, Long);
         var b = store.GetAsync("ktiw", 0, 0, null, Long);
         gate.SetResult(OneHangar);
-        Assert.Single(await a); Assert.Single(await b);
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Single((await a).Features); Assert.Single((await b).Features);
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(1, fetches);
     }
 
@@ -30,10 +30,10 @@ public class OnlineFeatureStoreTests
         var store = new OnlineFeatureStore((_, _, _, _, _) => gate.Task) { Enabled = true };
         store.FeaturesUpdated += icao => updated.TrySetResult(icao);
 
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Short));
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Short)).Features);
         gate.SetResult(OneHangar);
         Assert.Equal("KTIW", await updated.Task.WaitAsync(Long));
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Short));
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Short)).Features);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class OnlineFeatureStoreTests
         int events = 0;
         var store = new OnlineFeatureStore((_, _, _, _, _) => Task.FromResult<IReadOnlyList<AirportFeature>?>(OneHangar)) { Enabled = true };
         store.FeaturesUpdated += _ => events++;
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(0, events);
     }
 
@@ -51,7 +51,7 @@ public class OnlineFeatureStoreTests
     {
         int fetches = 0;
         var store = new OnlineFeatureStore((_, _, _, _, _) => { fetches++; return Task.FromResult<IReadOnlyList<AirportFeature>?>(OneHangar); });
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(0, fetches);
     }
 
@@ -60,8 +60,8 @@ public class OnlineFeatureStoreTests
     {
         int fetches = 0; var now = new DateTime(2026, 9, 20, 12, 0, 0, DateTimeKind.Utc);
         var store = new OnlineFeatureStore((_, _, _, _, _) => { fetches++; return Task.FromResult<IReadOnlyList<AirportFeature>?>(null); }, () => now) { Enabled = true };
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Long));
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(1, fetches);
         now += OnlineFeatureStore.FailureMemory + TimeSpan.FromSeconds(1);
         await store.GetAsync("KTIW", 0, 0, null, Long);
@@ -72,7 +72,7 @@ public class OnlineFeatureStoreTests
     public async Task A_throwing_fetch_never_escapes()
     {
         var store = new OnlineFeatureStore((_, _, _, _, _) => throw new InvalidOperationException("boom")) { Enabled = true };
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
     }
 
     [Fact]
@@ -86,12 +86,12 @@ public class OnlineFeatureStoreTests
         })
         { Enabled = true };
 
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(1, fetches);                                          // served from the cache
 
         store.Clear();
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);
         Assert.Equal(2, fetches);
     }
 
@@ -107,17 +107,51 @@ public class OnlineFeatureStoreTests
         { Enabled = true };
         store.FeaturesUpdated += _ => Interlocked.Increment(ref events);
 
-        Assert.Empty(await store.GetAsync("KTIW", 0, 0, null, Short));     // gives up: the event is armed
+        Assert.Empty((await store.GetAsync("KTIW", 0, 0, null, Short)).Features);     // gives up: the event is armed
         var sharing = store.GetAsync("KTIW", 0, 0, null, Long);            // shares that same fetch
 
         store.Clear();
         first.SetResult(OneHangar);
 
-        Assert.Empty(await sharing);          // completing the awaited fetch is the barrier: it has landed
+        Assert.Empty((await sharing).Features);          // completing the awaited fetch is the barrier: it has landed
         Assert.Equal(0, events);              // …and landed on nothing, so nobody is told to rebuild
         Assert.Equal(1, fetches);
 
-        Assert.Single(await store.GetAsync("KTIW", 0, 0, null, Long));     // a fresh fetch, not the discarded one
+        Assert.Single((await store.GetAsync("KTIW", 0, 0, null, Long)).Features);     // a fresh fetch, not the discarded one
         Assert.Equal(2, fetches);
+    }
+
+    [Fact]
+    public async Task An_airport_with_no_buildings_is_SERVED_not_failed()
+    {
+        // The distinction the caller needs and cannot make for itself: an empty list from a mirror
+        // that answered is a FACT about the airport, while an empty list from a mirror that timed
+        // out or refused is a gap to come back for. Inferring it from the list would treat every
+        // building-less airport as permanently degraded, rebuilding its catalog every five minutes.
+        var store = new OnlineFeatureStore((_, _, _, _, _) => Task.FromResult<IReadOnlyList<AirportFeature>?>(Array.Empty<AirportFeature>())) { Enabled = true };
+        var served = await store.GetAsync("KTIW", 0, 0, null, Long);
+        Assert.Empty(served.Features);
+        Assert.Equal(OnlineFeatureStatus.Served, served.Status);
+        Assert.Equal(OnlineFeatureStatus.Served, (await store.GetAsync("KTIW", 0, 0, null, Long)).Status);   // and from the cache
+    }
+
+    [Fact]
+    public async Task A_caller_that_gives_up_waiting_reports_PENDING_and_a_refusal_reports_FAILED()
+    {
+        var gate = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
+        var store = new OnlineFeatureStore((_, _, _, _, _) => gate.Task) { Enabled = true };
+        Assert.Equal(OnlineFeatureStatus.Pending, (await store.GetAsync("KTIW", 0, 0, null, Short)).Status);
+        gate.SetResult(null);                                              // the mirror refused
+        Assert.Equal(OnlineFeatureStatus.Failed, (await store.GetAsync("KTIW", 0, 0, null, Long)).Status);
+        Assert.Equal(OnlineFeatureStatus.Failed, (await store.GetAsync("KTIW", 0, 0, null, Long)).Status);   // and while remembered
+    }
+
+    [Fact]
+    public async Task A_tier_the_pilot_switched_off_is_DISABLED_and_is_not_a_gap()
+    {
+        var store = new OnlineFeatureStore((_, _, _, _, _) => Task.FromResult<IReadOnlyList<AirportFeature>?>(OneHangar));
+        Assert.Equal(OnlineFeatureStatus.Disabled, (await store.GetAsync("KTIW", 0, 0, null, Long)).Status);
+        store.Enabled = true;
+        Assert.Equal(OnlineFeatureStatus.Disabled, (await store.GetAsync(" ", 0, 0, null, Long)).Status);
     }
 }

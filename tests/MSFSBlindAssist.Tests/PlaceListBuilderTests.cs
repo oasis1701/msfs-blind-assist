@@ -57,7 +57,7 @@ public class PlaceListBuilderTests
         Assert.Null(entry.Spot);
         Assert.Null(entry.HeadingDeg);        // no "align with" toward a building: arrive and stop
         Assert.Equal(99, entry.NodeId);
-        Assert.Equal("Cessna Service Hangar, end of taxiway", entry.Label);
+        Assert.Equal("Cessna Service Hangar, nearest taxiway point", entry.Label);   // the node is any routable one in reach, not a taxiway END
         Assert.Empty(PlaceListBuilder.Build(Cat(Place(FeatureKind.Hangar, "Far Hangar", 47.2700, -122.5700)), None, None,
             (lat, lon) => new NearestNode(99, 47.2720, -122.5700, 222.0), Any));          // beyond 100 m: not routable
     }

@@ -14,7 +14,8 @@ public class SurroundingsTierTests
         var one = Feature("Hangar 7");
         var two = Feature("Fire Station");
         var read = SurroundingsTier.Read("scenery", "KTIW", () => new[] { one, two });
-        Assert.Equal(new[] { one, two }, read);
+        Assert.Equal(new[] { one, two }, read.Features);
+        Assert.False(read.Failed);
     }
 
     [Fact]
@@ -24,7 +25,11 @@ public class SurroundingsTierTests
         // tier fails. An escape here fails the WHOLE catalog build, and the cache retries it
         // every 60 s for as long as the airport is current.
         var read = SurroundingsTier.Read("scenery", "KTIW", () => throw new InvalidOperationException("disk gone"));
-        Assert.Empty(read);
+        Assert.Empty(read.Features);
+        // …and SAYS it failed. An empty list alone cannot tell "this airport has no scenery
+        // package" from "the package could not be read": the first is complete, the second is a
+        // catalog that must expire and be built again rather than stand as the answer.
+        Assert.True(read.Failed);
     }
 
     [Fact]
@@ -33,7 +38,8 @@ public class SurroundingsTierTests
         // The dangerous shape: the tier returns fine and blows up later, when the caller walks it.
         // Only materialising INSIDE the try catches this.
         var read = SurroundingsTier.Read("osm", "KTIW", Lazy);
-        Assert.Empty(read);
+        Assert.Empty(read.Features);
+        Assert.True(read.Failed);
 
         static IEnumerable<AirportFeature> Lazy()
         {
@@ -45,7 +51,11 @@ public class SurroundingsTierTests
     [Fact]
     public void A_tier_that_answers_with_nothing_at_all_is_an_empty_list_not_a_null()
     {
-        Assert.Empty(SurroundingsTier.Read("gsx", "KTIW", () => Array.Empty<AirportFeature>()));
-        Assert.Empty(SurroundingsTier.Read("gsx", "KTIW", () => null!));
+        foreach (var read in new[] { SurroundingsTier.Read("gsx", "KTIW", () => Array.Empty<AirportFeature>()),
+                                     SurroundingsTier.Read("gsx", "KTIW", () => null!) })
+        {
+            Assert.Empty(read.Features);
+            Assert.False(read.Failed);          // nothing to add is not a failure
+        }
     }
 }

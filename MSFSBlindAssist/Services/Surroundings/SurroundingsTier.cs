@@ -22,19 +22,25 @@ namespace MSFSBlindAssist.Services.Surroundings;
 /// </summary>
 public static class SurroundingsTier
 {
-    /// <summary>What <paramref name="read"/> produced, or nothing if it failed.</summary>
-    public static IReadOnlyList<AirportFeature> Read(string tier, string icao, Func<IEnumerable<AirportFeature>> read)
+    /// <summary>What a tier produced, and whether it FAILED rather than simply having nothing to
+    /// add. Both are the same empty list and they are not the same fact: an airport with no scenery
+    /// package is completely described without one, while a package that would not read leaves a
+    /// catalog that must expire and be built again rather than stand as the answer.</summary>
+    public readonly record struct TierRead(IReadOnlyList<AirportFeature> Features, bool Failed);
+
+    /// <summary>What <paramref name="read"/> produced, or nothing — and which of the two.</summary>
+    public static TierRead Read(string tier, string icao, Func<IEnumerable<AirportFeature>> read)
     {
         try
         {
-            return read()?.ToList() ?? (IReadOnlyList<AirportFeature>)Array.Empty<AirportFeature>();
+            return new(read()?.ToList() ?? (IReadOnlyList<AirportFeature>)Array.Empty<AirportFeature>(), false);
         }
         catch (Exception ex)
         {
             // Plain Exception on purpose, and never silent: an OutOfMemoryException here is a
             // fact about one tier's workload, and the line below is how it is ever found out.
             Log.Warn("Surroundings", $"{icao}: {tier} tier failed, building without it: {ex.Message}");
-            return Array.Empty<AirportFeature>();
+            return new(Array.Empty<AirportFeature>(), true);
         }
     }
 }

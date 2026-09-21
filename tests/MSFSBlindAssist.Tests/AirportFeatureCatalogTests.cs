@@ -1,4 +1,8 @@
+using System.Text.Json;
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.Surroundings;
+using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -10,6 +14,118 @@ public class AirportFeatureCatalogTests
     private static AirportFeature N(FeatureKind k, string name, double lat, double lon, bool generic = false, FeatureSource src = FeatureSource.Navdata, params (double, double)[] members)
         => new() { Kind = k, Name = name, NameIsGeneric = generic, Lat = lat, Lon = lon, Source = src,
                    Members = members.Length == 0 ? null : members.Select(m => new LatLon(m.Item1, m.Item2)).ToList() };
+
+    // ── KTIW, the PR's reference airport: real navdata stands + the real OSM reply ───────────
+    //
+    // The 11 parking rows of KTIW, read ONCE from %APPDATA%\MSFSBlindAssist\databases\fs2024.sqlite
+    // and embedded here as the navdata facts they are — this test never opens a database. Types are
+    // LittleNavMapProvider.MapParkingType's: 3 = RAMP_GA_SMALL, 4 = RAMP_GA_MEDIUM, both GA ramp;
+    // navdata's parking name "P" becomes "Parking". The odd numbers are one row of 6 stands to the
+    // north, the even ones a row of 5 about 600 m south, and NavdataFeatureSource clusters each into
+    // its own generic "GA ramp" (RampLinkMetres 80, at least 3 stands).
+    private static readonly (int Number, int Type, double Lat, double Lon)[] KtiwStands =
+    {
+        (1,  3, 47.27431869506836,   -122.57439422607422), (2,  4, 47.269439697265625,  -122.57501983642578),
+        (3,  3, 47.274192810058594,  -122.57440948486328), (4,  4, 47.269107818603516,  -122.57505798339844),
+        (5,  3, 47.27407455444336,   -122.5744400024414),  (6,  4, 47.26865768432617,   -122.57512664794922),
+        (7,  3, 47.27395248413086,   -122.57445526123047), (8,  4, 47.26814651489258,   -122.57530212402344),
+        (9,  3, 47.27383041381836,   -122.57447814941406), (10, 4, 47.267799377441406,  -122.57539367675781),
+        (11, 3, 47.273712158203125,  -122.57450866699219),
+    };
+
+    /// <summary>Both tiers a KTIW catalog is built from: the navdata GA ramps and the real Overpass
+    /// reply this PR ships as a fixture (4 unnamed apron polygons, 20 hangars, a tower).</summary>
+    private static List<AirportFeature> KtiwFeatures()
+    {
+        var stands = KtiwStands
+            .Select(s => new ParkingSpot { Name = "Parking", Number = s.Number, Type = s.Type, Latitude = s.Lat, Longitude = s.Lon })
+            .ToList();
+        var features = new List<AirportFeature>(NavdataFeatureSource.Read(stands, null));
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-area-ktiw.json")));
+        features.AddRange(doc.RootElement.GetProperty("elements").EnumerateArray()
+            .Select(OsmFeatureClassifier.Classify).Where(f => f != null).Select(f => f!));
+        return features;
+    }
+
+    [Fact]
+    public void At_KTIW_every_stand_is_standing_on_the_ramp_that_owns_it()
+    {
+        // The defect this pins: the 6-stand ramp adopted the 66,471 m² main apron (which contains
+        // the OTHER row's stands too) and the 5-stand ramp adopted a 2,335 m² neighbour containing
+        // none of its own, so Nearest measured to a polygon instead of to the stands. Parked on the
+        // southern row, a pilot heard the ramp they were standing on named 12-85 m away.
+        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        foreach (var s in KtiwStands)
+        {
+            var owner = Assert.Single(cat.Features, f => f.Members != null
+                && f.Members.Any(m => TaxiGeo.HaversineMeters(m.Lat, m.Lon, s.Lat, s.Lon) <= 1.0));
+            Assert.InRange(SurroundingsGeometry.Nearest(s.Lat, s.Lon, owner).Metres, 0.0, 1.0);
+        }
+    }
+
+    [Fact]
+    public void A_feature_never_carries_a_footprint_its_own_members_are_outside_of()
+    {
+        foreach (var f in AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures()).Features)
+            if (f.Footprint != null && f.Members is { Count: > 0 })
+                Assert.Contains(f.Members, m => SurroundingsGeometry.Contains(f.Footprint, m.Lat, m.Lon));
+    }
+
+    [Fact]
+    public void At_KTIW_a_stand_inside_the_main_apron_still_has_a_zone_to_be_on()
+    {
+        // Keeping the ramps' own stand geometry must not cost the polygon a pilot is STANDING on:
+        // SurroundingsReport.Zone needs an Apron footprint to test containment against, so the
+        // unnamed apron survives as its own feature rather than being merged into a ramp.
+        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var stand = KtiwStands.Single(s => s.Number == 2);
+        var zone = SurroundingsReport.Zone(cat, stand.Lat, stand.Lon);
+        Assert.NotNull(zone);
+        Assert.Equal(FeatureKind.Apron, zone!.Kind);
+        Assert.NotNull(zone.Footprint);
+    }
+
+    [Fact]
+    public void A_named_building_beside_one_stand_does_not_inherit_a_600_metre_row()
+    {
+        // The mirror of the KTIW case, in Members instead of Footprint. Measured cluster extents:
+        // KMEM's cargo rows run 686 m, KSNA's GA ramp 1,296 m, KLNK's 1,016 m. A proper name 30 m
+        // from ONE stand absorbs the generic cluster (fourth branch) — and inheriting its members
+        // would report the building at 0 m from the far end of the row.
+        var row = new[] { (35.0400, -89.9800), (35.0430, -89.9800), (35.0454, -89.9800) };     // ~601 m end to end
+        var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0428, -89.9800, true, FeatureSource.Navdata, row);
+        var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);   // ~30 m from the first stand
+        var one = Assert.Single(AirportFeatureCatalog.Build("KMEM", "v", new[] { cluster, building }).Features);
+        Assert.Equal("FedEx Cargo", one.Name);
+        Assert.Null(one.Members);
+        Assert.True(SurroundingsGeometry.Nearest(35.0454, -89.9800, one).Metres > 500.0);
+    }
+
+    /// <summary>A square of <paramref name="side"/> metres whose south-west corner sits
+    /// <paramref name="eastMetres"/> east of longitude 0, on the equator — where a degree of
+    /// longitude and a degree of latitude are the same 111,320 m, so the metres are exact.</summary>
+    private static IReadOnlyList<LatLon> Square(double eastMetres, double side)
+    {
+        const double M = 111_320.0;
+        double w = eastMetres / M, e = (eastMetres + side) / M, n = side / M;
+        return new[] { new LatLon(0.0, w), new LatLon(0.0, e), new LatLon(n, e), new LatLon(n, w) };
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_apron_polygons_26_metres_apart_are_two_aprons_whatever_the_order(bool reversed)
+    {
+        // KTIW again, in miniature: two of its four unnamed aprons sit 26.4 m apart and a third
+        // 27.9 m from one of those, well inside Apron's 50 m merge radius — so with OSM alone the
+        // element order decided which polygon survived, and dropping the big one takes the zone a
+        // pilot is standing in with it. Two rings that neither contain nor overlap are two aprons.
+        var a = Square(0, 20); var b = Square(46, 20);                     // 26 m between the near edges
+        LatLon ca = SurroundingsGeometry.Centroid(a), cb = SurroundingsGeometry.Centroid(b);
+        var west = F(FeatureKind.Apron, "", ca.Lat, ca.Lon, FeatureSource.Osm, fp: a);
+        var east = F(FeatureKind.Apron, "", cb.Lat, cb.Lon, FeatureSource.Osm, fp: b);
+        var input = reversed ? new[] { east, west } : new[] { west, east };
+        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", input).Features.Count);
+    }
 
     [Fact]
     public void Same_kind_within_radius_collapses_to_the_higher_rank()

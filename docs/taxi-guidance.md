@@ -815,11 +815,12 @@ as long as the airport was current.
 **Identity needs the NAME and the DISTANCE together.** Features are walked
 highest-`Rank` first, so the first one standing in a cluster is the winner, and
 the loser's footprint, detail or member list is folded into it when the winner
-lacks one.
+lacks one *and the geometry describes the winner* (see below).
 
 | Case | Rule |
 |---|---|
 | Different `FeatureKind` | Never the same feature. |
+| Shapes that cannot be one body | Never the same feature — `GeometryMayBeOneBody`, asked ahead of every row below. |
 | `Tower` | Distance only, within the merge radius — one airport, one tower ("Control Tower" / "Control Tower 1"). |
 | Both carry a proper name | Same name AND within `SameNameRadiusMetres`. |
 | One carries a proper name | Within `MergeRadiusMetres` — a real name absorbs a synthesized or missing one. |
@@ -836,11 +837,48 @@ Distance alone (the rule this replaced) dropped KMSP's Concourse B, 109 m from
 A, and 7,236 numbered helipads. Name alone (the old "a Concourse matches
 another Concourse by letter at any distance" rule) merged the KJFK pair.
 
+**Geometry is only donated where it DESCRIBES the winner.** Every row above
+decides identity from a name and a distance between representative points,
+which says nothing about whether one outline really is the other — and a merge
+hands the winner the loser's geometry, which `SurroundingsGeometry.Nearest`
+then measures to. Four rules, all of them paid for at KTIW:
+
+- A winner that already has `Members` **never adopts a `Footprint`**. Its own
+  stands are its geometry, and `Nearest` reads a footprint FIRST, so one
+  adopted ring silently replaces them.
+- A loser's `Members` are adopted only when **every one of them** lies within
+  `SameNameRadiusMetres` of the winner's own geometry (`MembersDescribe`,
+  measured through `Nearest`, never centroid to centroid).
+- An **unnamed ring and a stand cluster of kind `Apron`/`DeicePad` are
+  different features** and never merge. The ring is pavement, the cluster is
+  the stands parked on some pavement, and one ring routinely covers several
+  rows. Kept apart, the ring stays a polygon `SurroundingsReport.Zone` can put
+  the aircraft inside and the cluster stays "GA ramp", measured to its stands.
+- **Ring versus ring with neither proper-named** is one body only when one
+  CONTAINS the other's representative point — never on a bare radius between
+  edges. A shared PROPER name is different evidence and still merges two halves
+  of one split OSM way.
+
+Measured at KTIW (11 stands, the 4 unnamed aprons of
+`Fixtures/osm-features-area-ktiw.json`): the 6-stand "GA ramp" adopted the
+66,471 m² main apron — which contains the OTHER row's 5 stands too — and the
+5-stand ramp adopted a 2,335 m² neighbour containing none of its own. Parked on
+the southern row, a pilot heard "On the GA ramp." and then the ramp they were
+standing on named as somewhere else: P2 74 m to the right, P4 38 m, P6 12 m
+ahead, P8 47 m, P10 85 m. Two of those four aprons sit 26.4 m apart and a third
+27.9 m from one of them, so with OSM alone the element ORDER decided which
+polygon survived — and dropping the 66,471 m² one takes the zone with it. The
+mirror case is a proper-named point 30 m from ONE stand of a row that runs
+686 m (KMEM cargo), 1,016 m (KLNK GA) or 1,296 m (KSNA GA): inherited whole, it
+reports itself 0 m from the far end of the row.
+
 **The supersede pass.** A navdata concourse is a GUESS from the BGL gate-name
 enum. When a GSX feature is built from at least half the same stands (within
 15 m each), the navdata one is REMOVED outright rather than merged — the two
 differ in both kind and name, so `SameFeature` can never reconcile them, and
-GSX is the one to believe (measured at KJFK; see [gsx.md](gsx.md)).
+GSX is the one to believe (measured at KJFK; see [gsx.md](gsx.md)). The GSX
+clusters are snapshot before the `RemoveAll`, which compacts the very list its
+predicate would otherwise be querying.
 
 **Distance and bearing are always taken to the same point**
 (`SurroundingsGeometry.Nearest`): the nearest edge of a footprint, else the
@@ -879,10 +917,26 @@ change.
   failure as well: a database switch pulls the provider out from under a
   running build, which is exactly what makes it throw, and remembering THAT
   failure would blank the airport for a minute on the new database.
+- **Degraded lifetime.** A build that went WITHOUT an optional tier —
+  `SurroundingsBuild.Degraded`, set when `SurroundingsTier.Read` caught an
+  exception or when the OSM store answered `Pending`/`Failed` rather than
+  `Served` — is fresh only for `DegradedLifetime`, which IS
+  `OnlineFeatureStore.FailureMemory` (5 minutes), referenced rather than
+  copied: rebuilding sooner only re-reads a failure the store is still
+  remembering. Everything else here is invalidated by an EVENT, and the one
+  event that would cover this, `FeaturesUpdated`, is raised only when a late
+  fetch SUCCEEDS — so without the lifetime a tier-less catalog simply became
+  the catalog for the session, and nothing asked the store again once its own
+  failure memory ran out. Degraded is never inferred from an EMPTY list: an
+  airport can legitimately have no mapped buildings. While the rebuild runs,
+  `GetAsync`'s degraded paths still serve the stored entry and `TryGetCached`
+  reports a miss, which costs the monitor a poll or two — the same as a first
+  build.
 - **Say which happened.** The one debug line a build writes ends `stored`,
-  `discarded (invalidated mid-build)` or `discarded (cache cleared mid-build)`.
-  A discarded build must never read as though it had been cached — that line is
-  how "the OSM buildings never appear" gets diagnosed.
+  `discarded (invalidated mid-build)` or `discarded (cache cleared mid-build)`,
+  plus `, degraded` when it is. A discarded build must never read as though it
+  had been cached — that line is how "the OSM buildings never appear" gets
+  diagnosed.
 
 ### Which airport — `CurrentAirport.Resolve`
 
@@ -980,7 +1034,7 @@ baseline this replaced was a one-shot 5-minute timestamp that lapsed during any
 normal preflight, after which the terminal the aircraft had been parked at all
 along was announced anyway.
 
-Three rules the gate cannot lose:
+Five rules the gate cannot lose:
 
 - **A track's identity is kind + name AND POSITION** — an incoming feature
   continues an existing track only within `SameFeatureMetres` (40 m) of that
@@ -1006,6 +1060,21 @@ Three rules the gate cannot lose:
   would name the wrong side, or a direction that is not a side at all. Because
   a pass only ever arms from an abeam minimum, what comes back is always left
   or right.
+- **A pass that cannot fire is given up on**, after `PendingExpiry` (20 s from
+  arming) — comfortably past the 10 s global gap and a late tick, short enough
+  that what it describes is still beside the aircraft. Pass a building, stop
+  inside its radius (below `MinSpeedKts` nothing may fire) and taxi on three
+  minutes later, and the held callout named somewhere the aircraft no longer
+  was. Checked ABOVE the speed/gap test, because in exactly that case the test
+  below it is never reached. An expired pass is consumed silently.
+- **A catalog swap re-baselines the tracks.** When the instance
+  `TryGetCached` hands back differs from the previous tick's, the monitor calls
+  `RebaselineTracks()`: a rebuild can change a feature's geometry BASIS (a
+  stand cluster becomes a building outline), so a track carried across it sees
+  a range STEP rather than the next sample of an approach — a premature pass
+  one way, a lost one the other. It clears the approaches and KEEPS the fired
+  memory and the global gap; a full `Reset()` there would let a building
+  announced a moment ago be announced again.
 
 Callouts are **silent on runway pavement**. `SuppressCheck` reads Takeoff
 Assist, docking and the taxi states (`LandingRollout`, `LiningUp`, `HoldShort`,
@@ -1013,8 +1082,33 @@ Assist, docking and the taxi states (`LandingRollout`, `LiningUp`, `HoldShort`,
 `announcer.Suppressed` — but a takeoff flown without the assist, or a landing
 without an exit plan, leaves all of those idle, so `RunwayProbe`
 (`TaxiGuidanceManager.IsOnRunwayPavement`) asks the pavement itself. That probe
-answers only from a graph that is ALREADY built and never builds one, because
-its caller is a UI-thread timer; null means "no graph to ask".
+answers only from geometry that is ALREADY in hand and never builds a graph,
+because its caller is a UI-thread timer; null means "nothing to ask".
+
+**The probe keeps its runway shapes.** They are memoised by AIRPORT as well as
+by graph instance, and answer when neither graph is available —
+`RunwayShapeSource` owns the ordering (active graph, Where-Am-I graph, memo).
+The probe's OWN warm-up calls `DescribeCurrentLocation`, whose `GetTaxiPaths`
+starts the background taxiway-name fetch; when that lands,
+`OnAirportDataUpdated` nulls the Where-Am-I graph. Losing the graph seconds
+after the first answer is therefore the ORDINARY sequence, and keyed on the
+graph instance alone the probe then answered null for the ~60 s until
+`ShouldWarmProbe` allowed another warm-up — during which null does not silence
+anything, so callouts were permitted on a runway (a landing with no exit plan,
+a flight started on the runway). Runway pavement does not depend on taxiway
+NAMES, so shapes built before the fetch are still right after it. The memo is
+dropped only with the graph cache it shadows (`ClearWhereAmICache`) and
+replaced when a graph for a different airport is probed — never by the name
+fetch, which is the one invalidation it must outlive. `RefreshDatabaseProvider`
+calls `ClearWhereAmICache` for exactly this reason: the same airport can carry
+different runway geometry in the two databases.
+
+**The first ground tick of a flight only takes its sample.** The airborne
+branch returns without ever requesting a position, so `LastKnownPosition` can
+still be the DEPARTURE airport's when the wheels are down. Resolving an airport
+from it names the wrong one — and keeps naming it for up to the 30 s ICAO
+refresh — and ranks that airport's catalog against a position a flight away.
+
 `Taxiing` is deliberately NOT suppressed — a pilot under active taxi guidance
 is exactly who this is for.
 
@@ -1067,7 +1161,7 @@ feature onto navdata pavement, **by position**, in this order:
    at);
 3. failing that, a taxi node within `MaxNodeMetres` (100 m) that
    `TaxiAssistForm.NearestRoutableNode` has cleared of hold-short nodes and
-   runway pavement — "end of taxiway" must not mean "on the runway";
+   runway pavement — the "nearest taxiway point" must not be on a runway;
 4. failing all three, the place is not routable and is not listed.
 
 Among the stands in range it prefers one that is a MEMBER of the feature (a
@@ -1091,8 +1185,8 @@ stand." on nearly every FBO route. Resolving against the selectable list by
 position removes the join entirely.
 
 Each entry reads "Narrows Aviation, FBO, Parking 12" — or "…, Gate 7A" for a
-lettered gate, "…, Spot 12" for a letterless one, "…, end of taxiway" when only
-a node was found — the place, its kind, and the stand the pilot will actually
+lettered gate, "…, Spot 12" for a letterless one, "…, nearest taxiway point"
+when only a node was found — the place, its kind, and the stand the pilot will actually
 be guided to. The kind word is left out when the name already says it ("Fuel,
 Parking"), and a spaced dash in the name becomes a comma because
 `RouteReachabilityMessages.SpokenDestinationName` cuts a label at its first
@@ -1182,6 +1276,20 @@ quick and builds without them when it is not —
   aerodrome — the one that takes the fallback path every time — for the whole
   session. A fallback that ANSWERS with zero elements is an empty, non-null list
   and is cached as such.
+- **"Retried" is only true end to end because of the degraded lifetime.**
+  `GetAsync` reports an `OnlineFeatureStatus` alongside the features —
+  `Served` (a mirror answered, with buildings or with the fact that there are
+  none), `Pending` (the caller's wait ran out; the fetch runs on), `Failed`,
+  `Disabled` — and `BuildSurroundings` marks the catalog `Degraded` on the
+  middle two, so `SurroundingsCatalogCache` expires it after
+  `DegradedLifetime` and the next `GetAsync` asks the store again. Without
+  that, a null fetch raised no `FeaturesUpdated` (the continuation requires a
+  non-empty result), nothing invalidated the airport, and the careful
+  null-versus-empty distinction above bought nothing: the OSM-less catalog was
+  simply the catalog for the session. A late fetch that SUCCEEDS still
+  invalidates at once through `FeaturesUpdated`, unchanged. The status is what
+  the caller needs and cannot derive: an empty list is the honest answer for an
+  airport with no mapped buildings AND the answer when nobody replied.
 - **`Clear()` runs on a database switch**, beside `surroundingsCache.Clear()`,
   because the box a fallback result was filtered against comes from the navdata
   database. It bumps an epoch and drops in-flight entries; a fetch that started
@@ -1360,12 +1468,20 @@ because it dropped the model library of ten real Community packages.)
   is box-filtered — with no box it is dropped entirely. A bare radius admits
   road filling stations.
 - Feature identity is the NAME **and** the distance together; a navdata
-  concourse yields to the GSX feature built from the same stands.
+  concourse yields to the GSX feature built from the same stands. Geometry is
+  donated in a merge only where it DESCRIBES the winner: a winner with
+  `Members` never takes a ring, a cluster is adopted only when every member is
+  within `SameNameRadiusMetres` of the winner, an unnamed ring and an
+  apron/de-ice stand cluster are different features, and two unnamed rings are
+  one body only by containment.
 - A model name is spoken only after `SceneryModelNameClassifier` has produced
   human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
 - Passing callouts are queued, fire at the closest point of approach with no
-  baseline, are frozen at arm time, and are silent on runway pavement as well
-  as under every guidance phase that already speaks.
+  baseline, are frozen at arm time, are given up on after `PendingExpiry`, are
+  re-baselined (never `Reset`) when the catalog instance changes, and are
+  silent on runway pavement as well as under every guidance phase that already
+  speaks. The runway probe keeps its shapes per AIRPORT so the taxiway-name
+  fetch — which its own warm-up starts — cannot blind it.
 - The catalog is never built on the UI thread, and neither background job a
   monitor tick can start may run during a rollout.
 - The scenery scan opens only the packages `scenery_local_path` names, or the

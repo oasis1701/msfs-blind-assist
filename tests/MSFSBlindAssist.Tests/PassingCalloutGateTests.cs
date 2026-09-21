@@ -442,4 +442,85 @@ public class PassingCalloutGateTests
         Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 90) }, 10, T0.AddSeconds(10)));
         Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 10, T0.AddSeconds(12)));     // still nothing -- the track stays consumed
     }
+
+    // ---- Final review: a catalog swap re-baselines the tracks, and a pending pass expires ----
+
+    [Fact]
+    public void A_catalog_swap_forgets_the_approaches_in_progress()
+    {
+        // A late OSM answer or a GSX publish replaces the catalog INSTANCE, and a feature's geometry
+        // BASIS can change with it (a stand cluster becomes a building outline), so the very next
+        // range for a same-identity track is a STEP, not a step along an approach: a premature
+        // "Passing X" one way, a lost one the other. The approaches so far are what must go.
+        var gate = new PassingCalloutGate();
+        var conc = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Null(gate.Evaluate(At(conc, 140), 10, T0));
+        Assert.Null(gate.Evaluate(At(conc, 60), 10, T0.AddSeconds(2)));    // closing recorded
+        gate.RebaselineTracks();
+        Assert.Equal(0, gate.TrackCount);
+        Assert.Null(gate.Evaluate(At(conc, 70), 10, T0.AddSeconds(4)));    // would have "opened" the old minimum
+        Assert.Null(gate.Evaluate(At(conc, 140), 10, T0.AddSeconds(6)));
+    }
+
+    [Theory]
+    [InlineData(false, 0)]     // re-baselined: the building is still inside its own five-minute window
+    [InlineData(true, 1)]      // a full Reset forgets that too, and says it again
+    public void Only_a_full_Reset_lets_a_just_announced_building_be_announced_again(bool fullReset, int expected)
+    {
+        var gate = new PassingCalloutGate();
+        var conc = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Single(Drive(gate, conc, T0, 140, 80, 60, 70));
+        if (fullReset) gate.Reset(); else gate.RebaselineTracks();
+        Assert.Equal(expected, Drive(gate, conc, T0.AddSeconds(30), 140, 80, 60, 70, 140).Count);
+    }
+
+    [Fact]
+    public void A_re_baseline_keeps_the_global_gap_so_the_next_building_is_not_stacked_on_the_last_callout()
+    {
+        var gate = new PassingCalloutGate();
+        var a = Feat(FeatureKind.Concourse, "Concourse A", 33.6400);
+        var b = Feat(FeatureKind.Fuel, "Avfuel", 33.6413);
+        Assert.Null(gate.Evaluate(At(a, 140), 10, T0));
+        Assert.Null(gate.Evaluate(At(a, 60), 10, T0.AddSeconds(2)));
+        Assert.NotNull(gate.Evaluate(At(a, 70), 10, T0.AddSeconds(4)));    // fires: the global gap starts here
+        gate.RebaselineTracks();
+        Assert.Null(gate.Evaluate(At(b, 90), 10, T0.AddSeconds(6)));
+        Assert.Null(gate.Evaluate(At(b, 60), 10, T0.AddSeconds(8)));
+        Assert.Null(gate.Evaluate(At(b, 70), 10, T0.AddSeconds(10)));      // arms, but still inside the 10 s gap
+        Assert.NotNull(gate.Evaluate(At(b, 80), 10, T0.AddSeconds(16)));
+    }
+
+    /// <summary>Arms a pass at T0+4 while stopped, holds the aircraft beside the building (so the
+    /// track is fed and never simply expires), then moves off `releaseAt` seconds after the arm.</summary>
+    private static NearbyFeature? PassHeldFor(TimeSpan afterArming)
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Null(gate.Evaluate(At(h, 140), 10, T0));
+        Assert.Null(gate.Evaluate(At(h, 60), 10, T0.AddSeconds(2)));
+        var armed = T0.AddSeconds(4);
+        Assert.Null(gate.Evaluate(At(h, 70), 0.5, armed));                 // opens and arms — but below MinSpeedKts nothing may fire
+        var release = armed + afterArming;
+        for (var t = armed.AddSeconds(2); t < release; t = t.AddSeconds(2))
+            Assert.Null(gate.Evaluate(At(h, 70), 0.5, t));                 // stopped beside it, still in range
+        return gate.Evaluate(At(h, 80), 10, release);                      // taxis on
+    }
+
+    [Fact]
+    public void A_pass_held_until_the_building_is_no_longer_beside_the_aircraft_is_dropped_never_said_late()
+    {
+        // Pass a building, stop within its radius for three minutes — below MinSpeedKts nothing may
+        // fire — then move off. "Passing Concourse B, on the left." three minutes after the fact
+        // describes somewhere the aircraft no longer is.
+        Assert.Null(PassHeldFor(TimeSpan.FromMinutes(3)));
+    }
+
+    [Fact]
+    public void The_pending_expiry_boundary_is_exact()
+    {
+        // Comfortably longer than the 10 s global gap plus a late tick, so an ordinary deferred pass
+        // still speaks; short enough that what it describes is still beside the aircraft.
+        Assert.NotNull(PassHeldFor(PassingCalloutGate.PendingExpiry - TimeSpan.FromSeconds(1)));
+        Assert.Null(PassHeldFor(PassingCalloutGate.PendingExpiry + TimeSpan.FromSeconds(1)));
+    }
 }

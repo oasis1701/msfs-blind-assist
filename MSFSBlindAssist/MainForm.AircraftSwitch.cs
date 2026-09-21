@@ -1311,6 +1311,14 @@ public partial class MainForm
         // navdata airport box, which this switch has just changed.
         onlineFeatures?.Clear();
 
+        // And the ad-hoc Where-Am-I graph, with the runway shapes memoised from it. Both were
+        // built from the provider this switch replaced, and the same airport can carry different
+        // runway geometry and different stand names in the two databases. The memo answers the
+        // passing-callout monitor's "am I on a runway?" and is deliberately built to OUTLIVE the
+        // taxiway-name fetch that drops the graph, so a database switch is the one thing left that
+        // has to say so. Active guidance's own graph is a different field and is untouched.
+        taxiGuidanceManager?.ClearWhereAmICache();
+
         // And anything holding runway GEOMETRY from the old database. Both of these captured a
         // whole runway list when the pilot set them up, and both now use it at touchdown to decide
         // which runway the aircraft is on — the landing-exit plan to choose the rollout's

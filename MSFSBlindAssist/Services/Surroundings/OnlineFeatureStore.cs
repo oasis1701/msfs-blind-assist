@@ -11,6 +11,26 @@ namespace MSFSBlindAssist.Services.Surroundings;
 /// catalog once the fetch lands. Before this existed nothing in the surroundings paths asked for
 /// the fetch at all — a pilot pressing only Ctrl+Shift+L never got an OSM name.
 /// </summary>
+/// <summary>
+/// What one <see cref="OnlineFeatureStore.GetAsync"/> call got. The caller cannot read this off the
+/// feature list: an empty list is the honest answer for an airport with no mapped buildings AND the
+/// answer when the mirror never replied, and only the second is a gap worth coming back for.
+/// </summary>
+public enum OnlineFeatureStatus
+{
+    /// <summary>The tier is switched off, or there was no airport to ask about. Nothing is owed.</summary>
+    Disabled,
+    /// <summary>A mirror answered — with buildings, or with the fact that there are none.</summary>
+    Served,
+    /// <summary>The caller's wait ran out; the fetch is still running and will raise FeaturesUpdated if it lands.</summary>
+    Pending,
+    /// <summary>The fetch refused or threw, here or recently enough to still be remembered.</summary>
+    Failed,
+}
+
+/// <summary>Features and how they were come by — see <see cref="OnlineFeatureStatus"/>.</summary>
+public readonly record struct OnlineFeatureResult(IReadOnlyList<AirportFeature> Features, OnlineFeatureStatus Status);
+
 public sealed class OnlineFeatureStore
 {
     public delegate Task<IReadOnlyList<AirportFeature>?> Fetcher(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct);
@@ -32,15 +52,15 @@ public sealed class OnlineFeatureStore
     public bool Enabled { get; set; }
     public event Action<string>? FeaturesUpdated;
 
-    public async Task<IReadOnlyList<AirportFeature>> GetAsync(string icao, double lat, double lon, AirportFacilities? box, TimeSpan maxWait)
+    public async Task<OnlineFeatureResult> GetAsync(string icao, double lat, double lon, AirportFacilities? box, TimeSpan maxWait)
     {
-        if (!Enabled || string.IsNullOrWhiteSpace(icao)) return None;
+        if (!Enabled || string.IsNullOrWhiteSpace(icao)) return new(None, OnlineFeatureStatus.Disabled);
         string key = icao.Trim().ToUpperInvariant();
         Task<IReadOnlyList<AirportFeature>?> task;
         lock (_lock)
         {
-            if (_byIcao.TryGetValue(key, out var cached)) return cached;
-            if (_failedAt.TryGetValue(key, out var when) && _utcNow() - when < FailureMemory) return None;
+            if (_byIcao.TryGetValue(key, out var cached)) return new(cached, OnlineFeatureStatus.Served);
+            if (_failedAt.TryGetValue(key, out var when) && _utcNow() - when < FailureMemory) return new(None, OnlineFeatureStatus.Failed);
             if (!_inFlight.TryGetValue(key, out task!))
             {
                 // The epoch is read HERE, under the lock, not inside the lambda: the lambda runs
@@ -60,7 +80,10 @@ public sealed class OnlineFeatureStore
 
         try
         {
-            return (await task.WaitAsync(maxWait).ConfigureAwait(false)) ?? None;
+            var result = await task.WaitAsync(maxWait).ConfigureAwait(false);
+            // Null is the fetcher's "I could not", empty is its "there is nothing here" — the whole
+            // reason this method reports a status rather than leaving the caller to guess.
+            return result == null ? new(None, OnlineFeatureStatus.Failed) : new(result, OnlineFeatureStatus.Served);
         }
         catch (TimeoutException)
         {
@@ -72,7 +95,7 @@ public sealed class OnlineFeatureStore
                 if (t.Status == TaskStatus.RanToCompletion && t.Result is { Count: > 0 })
                     try { FeaturesUpdated?.Invoke(key); } catch (Exception ex) { Log.Warn("Surroundings", $"FeaturesUpdated handler failed: {ex.Message}"); }
             }, TaskScheduler.Default);
-            return None;
+            return new(None, OnlineFeatureStatus.Pending);
         }
     }
 

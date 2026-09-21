@@ -1880,20 +1880,43 @@ public partial class MainForm
         var named = MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, gateDataSource, icao);
         features.AddRange(MSFSBlindAssist.Navigation.Surroundings.NavdataFeatureSource.Read(named, facilities));
 
-        features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("GSX", icao, () =>
+        // DEGRADED means an optional tier was not SERVED — it threw, refused, or was still out when
+        // the wait ran out — so this list is what could be had rather than what there is, and the
+        // cache gives it a lifetime instead of treating it as the answer for the session. A tier
+        // that simply has nothing to add is not degraded, and neither is one that cannot run here
+        // at all (switched off, or an airport with no facilities row to bound it): nothing is owed
+        // and a rebuild would only find the same absence.
+        bool degraded = false;
+
+        var gsx = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("GSX", icao, () =>
             MSFSBlindAssist.Navigation.Surroundings.GsxTerminalFeatureSource.Read(
-                MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao))));
+                MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao)));
+        features.AddRange(gsx.Features);
+        degraded |= gsx.Failed;
 
         // Bounded wait ON A POOL THREAD (this method never runs on the UI thread): include the
         // buildings when the mirror answers within 3 s; otherwise build without them and let
-        // FeaturesUpdated invalidate this catalog when the fetch lands.
+        // FeaturesUpdated invalidate this catalog when the fetch lands — which it does only when
+        // that late fetch SUCCEEDS, so a refusal is carried by the degraded flag instead.
         if (onlineFeatures != null && facilities != null)
-            features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
-                onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
-                              .GetAwaiter().GetResult()));
+        {
+            var status = MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Disabled;
+            var osm = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
+            {
+                var got = onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
+                                        .GetAwaiter().GetResult();
+                status = got.Status;
+                return got.Features;
+            });
+            features.AddRange(osm.Features);
+            degraded |= osm.Failed
+                || status is MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Pending
+                          or MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Failed;
+        }
 
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
-            features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
+        {
+            var scenery = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
             {
                 var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
                 bool byCensus = false;
@@ -1906,10 +1929,13 @@ public partial class MainForm
                     if (community != null) { dirs = sceneryCensus.Locate(community, facilities).ToList(); byCensus = dirs.Count > 0; }
                 }
                 return sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus);
-            }));
+            });
+            features.AddRange(scenery.Features);
+            degraded |= scenery.Failed;
+        }
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.
-        return new(features, facilities?.DescribeFacts() ?? "");
+        return new(features, facilities?.DescribeFacts() ?? "", degraded);
     }
 
     /// <summary>Newest request wins: a slow first lookup must not speak (or open a window) after

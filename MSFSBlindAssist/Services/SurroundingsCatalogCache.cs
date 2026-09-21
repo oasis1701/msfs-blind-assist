@@ -1,12 +1,18 @@
 using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.Surroundings;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
 /// <summary>What one build of an airport's surroundings produced: every tier's features already
 /// merged into one list by the supplier, plus the airport's "fuel and frequencies" line so a
-/// consumer reads it off the catalog instead of a second database lookup.</summary>
-public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, string Facts);
+/// consumer reads it off the catalog instead of a second database lookup.
+///
+/// <para><paramref name="Degraded"/> says an OPTIONAL tier was not served — it timed out, refused,
+/// or threw — so this list is what could be had, not what there is. The supplier sets it; the cache
+/// turns it into an expiry (<see cref="SurroundingsCatalogCache.DegradedLifetime"/>). It must never
+/// be inferred from an empty list: an airport really can have no mapped buildings.</para></summary>
+public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, string Facts, bool Degraded = false);
 
 /// <summary>
 /// One AirportFeatureCatalog per ICAO. Staleness is the same shape as TaxiGuidanceManager's
@@ -33,14 +39,30 @@ public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, s
 /// from whatever was cached before, so the monitor's 2 s poll cannot hammer a broken build — but
 /// only when it is still current by the same generation check, so a failure caused BY a database
 /// switch cannot blank the airport on the new database.
+///
+/// DEGRADED LIFETIME: a build that went WITHOUT an optional tier (<see cref="SurroundingsBuild"/>'s
+/// Degraded) is fresh only for <see cref="DegradedLifetime"/>. Everything else here is invalidated
+/// by an EVENT, and the one event that would cover this — OnlineFeatureStore.FeaturesUpdated — is
+/// raised only when a late fetch SUCCEEDS. A fetch that refused, or a tier that threw, raises
+/// nothing at all, so without an expiry the tier-less catalog simply became the catalog for the
+/// session and the store was never asked again after its own failure memory ran out.
 /// </summary>
 public sealed class SurroundingsCatalogCache
 {
     public static readonly TimeSpan FailureMemory = TimeSpan.FromSeconds(60);
 
+    /// <summary>How long a catalog built without an optional tier is served before it is built
+    /// again. It IS <see cref="OnlineFeatureStore.FailureMemory"/> — referenced, not copied — because
+    /// the two are one decision: rebuilding any sooner only re-reads a failure the store is still
+    /// remembering, and the rebuild exists precisely to ask it once that memory has expired.</summary>
+    public static readonly TimeSpan DegradedLifetime = OnlineFeatureStore.FailureMemory;
+
+    /// <summary>A cached catalog and the two things staleness needs besides its version token.</summary>
+    private sealed record Entry(AirportFeatureCatalog Catalog, bool Degraded, DateTime BuiltAt);
+
     private readonly object _lock = new();
     private readonly Func<DateTime> _utcNow;
-    private readonly Dictionary<string, AirportFeatureCatalog> _byIcao = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Entry> _byIcao = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Task<AirportFeatureCatalog?>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> _generation = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DateTime> _failedAt = new(StringComparer.OrdinalIgnoreCase);
@@ -59,7 +81,16 @@ public sealed class SurroundingsCatalogCache
 
     // The ONE staleness rule both read paths use (they used to carry a copy each).
     private AirportFeatureCatalog? FreshOrNull(string icao, string token)
-        => _byIcao.TryGetValue(icao, out var c) && !GateDataSource.ShouldRebuildGateList(c.Version, token) ? c : null;
+    {
+        if (!_byIcao.TryGetValue(icao, out var e)) return null;
+        if (GateDataSource.ShouldRebuildGateList(e.Catalog.Version, token)) return null;
+        if (e.Degraded && _utcNow() - e.BuiltAt >= DegradedLifetime) return null;
+        return e.Catalog;
+    }
+
+    /// <summary>Whatever was last cached for this airport, freshness NOT considered — the answer
+    /// GetAsync's two degraded paths give, where a stale catalog beats none.</summary>
+    private AirportFeatureCatalog? LastCached(string icao) => _byIcao.TryGetValue(icao, out var e) ? e.Catalog : null;
 
     /// <summary>
     /// The cached catalog for <paramref name="icao"/>, building it on a thread-pool thread when
@@ -76,7 +107,7 @@ public sealed class SurroundingsCatalogCache
             var fresh = FreshOrNull(icao, token);
             if (fresh != null) return Task.FromResult<AirportFeatureCatalog?>(fresh);
             if (_failedAt.TryGetValue(icao, out var when) && _utcNow() - when < FailureMemory)
-                return Task.FromResult<AirportFeatureCatalog?>(_byIcao.TryGetValue(icao, out var previous) ? previous : null);
+                return Task.FromResult(LastCached(icao));
             if (_inFlight.TryGetValue(icao, out var running)) return running;
 
             // Captured HERE, under the lock, before the work is queued: read inside the build and
@@ -94,10 +125,11 @@ public sealed class SurroundingsCatalogCache
 
     private AirportFeatureCatalog? Build(string icao, string token, long epoch, long generation, Func<Task<AirportFeatureCatalog?>> self)
     {
-        AirportFeatureCatalog? built = null; Exception? failure = null;
+        AirportFeatureCatalog? built = null; Exception? failure = null; bool degraded = false;
         try
         {
             var b = BuildSupplier(icao);
+            degraded = b.Degraded;
             built = AirportFeatureCatalog.Build(icao, token, b.Features, b.Facts);
         }
         catch (Exception ex) { failure = ex; }
@@ -120,9 +152,9 @@ public sealed class SurroundingsCatalogCache
                 // whether the next 2 s poll retries or stays quiet for a minute, so say it.
                 if (current) _failedAt[icao] = _utcNow();
                 Log.Warn("Surroundings", $"catalog build failed for {icao}: {failure.Message}, remembered={(current ? "true" : "false")}");
-                return _byIcao.TryGetValue(icao, out var previous) ? previous : null;
+                return LastCached(icao);
             }
-            if (current) { _byIcao[icao] = built!; _failedAt.Remove(icao); }
+            if (current) { _byIcao[icao] = new Entry(built!, degraded, _utcNow()); _failedAt.Remove(icao); }
             // Named while the fields that decide it are still under the lock. A discarded build is
             // the mechanism "the OSM buildings never appear" gets diagnosed from, so the one line
             // this build writes must never read as though the catalog had been cached.
@@ -130,7 +162,7 @@ public sealed class SurroundingsCatalogCache
                 : _epoch != epoch ? "discarded (cache cleared mid-build)"
                 : "discarded (invalidated mid-build)";
         }
-        Log.Debug("Surroundings", $"catalog {icao}: {built!.Features.Count} features, token={token}, {outcome}");
+        Log.Debug("Surroundings", $"catalog {icao}: {built!.Features.Count} features, token={token}, {outcome}{(degraded ? ", degraded" : "")}");
         return built;
     }
 
@@ -145,6 +177,10 @@ public sealed class SurroundingsCatalogCache
     /// timer tick, the taxi dialog's Place list) that must never trigger the possibly-slow
     /// first-time scenery scan/DB read itself; it asks GetAsync for the build instead and revisits
     /// this later.
+    ///
+    /// <para>The same asymmetry covers a DEGRADED entry past its lifetime: this reports a miss for
+    /// the few seconds the rebuild takes, while GetAsync keeps serving the old one. The monitor's
+    /// callouts pause for a poll or two, which is what a first build already costs it.</para>
     /// </summary>
     public bool TryGetCached(string icao, out AirportFeatureCatalog? catalog)
     {

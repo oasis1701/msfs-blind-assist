@@ -20,10 +20,11 @@ public static class OsmFeatureClassifier
         if (aeroway is "taxiway" or "parking_position" or "gate" or "holding_position" or "runway") return null;
 
         string name = Tag(tags, "name"), op = Tag(tags, "operator");
+        bool nameIsRef = false;
         if (name.Length == 0 && (aeroway is "apron" or "terminal" || building == "terminal"))
         {
             string r = Tag(tags, "ref");
-            if (r.Any(char.IsLetter) && !r.Contains(';')) name = r;
+            if (r.Any(char.IsLetter) && !r.Contains(';')) { name = r; nameIsRef = true; }
         }
         string nameAndOp = (name + " " + op).Trim();
 
@@ -58,9 +59,27 @@ public static class OsmFeatureClassifier
 
         return new AirportFeature
         {
-            Kind = kind.Value, Name = name.Trim(), Lat = lat, Lon = lon, Footprint = footprint,
+            Kind = kind.Value, Name = SpeakableName(name.Trim(), nameIsRef, kind.Value), Lat = lat, Lon = lon, Footprint = footprint,
             Source = FeatureSource.Osm, Detail = op.Length > 0 && kind == FeatureKind.Fbo ? $"operator {op}" : null,
         };
+    }
+
+    /// <summary>
+    /// A designator borrowed from `ref` is given the word for what it is: "Apron A", "Terminal T2".
+    /// A ref is a REFERENCE, and spoken bare it reached the pilot as "On the A." and "A, to the
+    /// left, 100 metres" — which names nothing they can look for. It stays a PROPER name (it is
+    /// OSM's own designator for this apron, and must still outrank an unnamed neighbour in the
+    /// catalog merge), so only the wording changes.
+    ///
+    /// <para>Two refs are left alone: one carrying WHITESPACE, which is prose somebody put in the
+    /// wrong tag rather than a designator (the live "De-icing pad"), and one that already says the
+    /// kind's own word. A real `name` is never touched at all.</para>
+    /// </summary>
+    private static string SpeakableName(string name, bool fromRef, FeatureKind kind)
+    {
+        if (!fromRef || name.Any(char.IsWhiteSpace)) return name;
+        string word = FeatureKindWords.Generic(kind);
+        return word.Length == 0 || name.Contains(word, StringComparison.OrdinalIgnoreCase) ? name : $"{word} {name}";
     }
 
     private static FeatureKind TerminalKind(JsonElement tags, string name, string nameAndOp)

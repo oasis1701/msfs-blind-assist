@@ -74,13 +74,19 @@ public static class PlaceListBuilder
     /// <summary>"Narrows Aviation, FBO, Parking 12". The kind word is left out when the name already
     /// says it ("Fuel, Parking"); the stand is named as it is everywhere else in the app; a spaced
     /// dash becomes a comma because RouteReachabilityMessages.SpokenDestinationName cuts a label at
-    /// its first " - ".</summary>
+    /// its first " - ".
+    ///
+    /// <para>With no stand in reach the place ends at "nearest taxiway point", which is what
+    /// <c>nearestRoutableNode</c> actually returns — any routable node within
+    /// <see cref="MaxNodeMetres"/>, wherever along a taxiway it happens to be. "End of taxiway"
+    /// said something else entirely, and it is the wording the Progressive Taxi terminator uses for
+    /// a place that really IS one.</para></summary>
     internal static string Label(AirportFeature f, ParkingSpot? spot)
     {
         string name = f.SpokenName.Replace(" - ", ", ");
         string kind = FeatureKindWords.Generic(f.Kind);
         string kindWord = kind == "FBO" ? kind : kind.ToLowerInvariant();
-        string where = spot?.DescribeIdentity() ?? "end of taxiway";
+        string where = spot?.DescribeIdentity() ?? "nearest taxiway point";
         return name.Contains(kindWord, StringComparison.OrdinalIgnoreCase) ? $"{name}, {where}" : $"{name}, {kindWord}, {where}";
     }
 }

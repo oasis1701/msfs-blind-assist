@@ -62,6 +62,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private Task? _probeWarm;
     private (double Lat, double Lon)? _lastSeen;
     private bool _resetWhileAirborne;
+    private AirportFeatureCatalog? _lastCatalog;
 
     public bool Enabled { get; set; }
     /// <summary>True while callouts must stay silent because a FEATURE says so — takeoff assist,
@@ -93,6 +94,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // its only effect is a graph cached for an airport we have just stopped tracking.
         _probeWarmedIcao = ""; _probeWarmedAt = DateTime.MinValue; _probeNoGraphLogged = false; _probeWarm = null;
         _lastSeen = null;
+        _lastCatalog = null;
     }
 
     /// <summary>
@@ -157,6 +159,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // A teleport moves every tracked building by hundreds of metres in one poll, so a range
         // that had been closing reads as "now opening" — a false "Passing X" at the moment of the
         // teleport. The tracks describe a continuous drive; they do not survive being moved.
+        bool firstGroundSample = _lastSeen == null;
         if (_lastSeen is { } last && IsPositionJump(last.Lat, last.Lon, p.Latitude, p.Longitude))
         {
             // No ICAO in the line: the resolve that names it runs below, and a jump can land here
@@ -165,6 +168,14 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             Log.Debug("Surroundings", "position jump: passing-callout tracks dropped");
         }
         _lastSeen = (p.Latitude, p.Longitude);
+
+        // The FIRST ground tick of a flight reads a position that may PREDATE the liftoff: the
+        // airborne branch above returns without ever requesting one, so LastKnownPosition can still
+        // hold the departure airport's until this tick's own request comes back. Resolving from it
+        // names the wrong airport — and keeps naming it for up to IcaoRefresh (30 s) — and ranks
+        // that airport's catalog against a position a flight away. Take the sample; act from the
+        // next tick, 2 s later.
+        if (firstGroundSample) return;
 
         var provider = _provider();
         if (provider == null) return;
@@ -179,7 +190,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 // never the nearest reference point (which is a heliport at a third of the
                 // stands at some hubs), and short idents included.
                 string next = CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) ?? "";
-                if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); }
+                if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); _lastCatalog = null; }
             }
             if (_icao.Length == 0) return;
 
@@ -205,6 +216,18 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 return;
             }
             if (catalog == null || catalog.Features.Count == 0) return;
+
+            // A rebuild (a late OSM answer, a GSX publish, a degraded catalog past its lifetime)
+            // hands back a different INSTANCE, and a feature's geometry basis can change with it —
+            // a stand cluster becomes a building outline — so a track carried across the swap sees
+            // a range STEP rather than the next sample of an approach. Only the approaches go; what
+            // the pilot has already been told is not re-said (RebaselineTracks, never Reset).
+            if (!ReferenceEquals(catalog, _lastCatalog))
+            {
+                if (_lastCatalog != null) _gate.RebaselineTracks();
+                _lastCatalog = catalog;
+            }
+
             if (suppressed) return;
 
             // ONE probe read per tick, serving BOTH things that need it: the warm-up decision
@@ -271,10 +294,16 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // Reached with sameAirport only on a retry, i.e. a warm-up that left the probe unable to
         // answer. Said once per airport: the no-data case leaves no other trace at all, and
         // repeating it every minute would bury the line that matters.
+        //
+        // What the line may claim is exactly what is known. A probe that has ever answered for this
+        // airport keeps answering from its runway-shape memo, which the online taxiway-name fetch
+        // no longer takes away — so reaching here means the warm-up never produced geometry at all,
+        // not that it produced some and lost it. The two causes left are the airport having no taxi
+        // data to build from and the build throwing; nothing here can tell them apart.
         if (sameAirport && !_probeNoGraphLogged)
         {
             _probeNoGraphLogged = true;
-            Log.Debug("Surroundings", $"runway probe: no graph for {_icao} after a warm-up (no taxi data, or the build failed); retrying at most once a minute");
+            Log.Debug("Surroundings", $"runway probe: {_icao} still cannot be answered after a warm-up — no taxi data for it, or the build failed; retrying at most once a minute");
         }
 
         _probeWarmedIcao = _icao; _probeWarmedAt = now;

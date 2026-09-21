@@ -50,7 +50,22 @@ public class OsmFeatureClassifierTests
         Assert.Equal(FeatureKind.Hangar, hangar.Kind);
         Assert.False(hangar.HasName);
         Assert.False(One(Node("\"aeroway\":\"terminal\",\"ref\":\"222;223\""))!.HasName);   // a list is not a name either
-        Assert.Equal("T2", One(Node("\"aeroway\":\"terminal\",\"ref\":\"T2\""))!.Name);
+    }
+
+    [Fact]
+    public void A_designator_borrowed_from_ref_is_spoken_with_the_word_for_what_it_is()
+    {
+        // A ref is a REFERENCE, not a name: spoken bare it came out as "On the A." and
+        // "A, to the left, 100 metres", which names nothing a pilot can look for.
+        Assert.Equal("Apron A", One(Node("\"aeroway\":\"apron\",\"ref\":\"A\""))!.Name);
+        Assert.Equal("Terminal T2", One(Node("\"aeroway\":\"terminal\",\"ref\":\"T2\""))!.Name);
+        // It stays a PROPER name — OSM gave this apron that designator, and an unnamed neighbour
+        // must not outrank it in the catalog merge.
+        Assert.True(One(Node("\"aeroway\":\"apron\",\"ref\":\"A\""))!.HasProperName);
+        // A real `name` is never touched, and neither is a ref that is already prose (the de-icing
+        // pad below) or that already says the word.
+        Assert.Equal("West Apron", One(Node("\"aeroway\":\"apron\",\"name\":\"West Apron\""))!.Name);
+        Assert.Equal("Apron", One(Node("\"aeroway\":\"apron\",\"ref\":\"Apron\""))!.Name);
     }
 
     [Fact]
@@ -68,7 +83,7 @@ public class OsmFeatureClassifierTests
     {
         var pad = One(Node("\"aeroway\":\"apron\",\"ref\":\"De-icing pad\""))!;
         Assert.Equal(FeatureKind.DeicePad, pad.Kind);
-        Assert.Equal("De-icing pad", pad.Name);
+        Assert.Equal("De-icing pad", pad.Name);      // already words: nothing is prefixed to it
     }
 
     [Theory]
