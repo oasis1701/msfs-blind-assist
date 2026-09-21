@@ -135,6 +135,50 @@ public class SceneryPackageCensusTests : IDisposable
     }
 
     [Fact]
+    public void A_cache_row_with_no_path_is_dropped_and_the_good_rows_still_serve()
+    {
+        // A hand-edited or half-corrupted census.json can be valid JSON and still carry a row
+        // naming nothing. Indexing the dictionary on that null threw out of Locate, out of
+        // BuildSurroundings, and cost the pilot the WHOLE surroundings catalog at that airport.
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        string cache = Path.Combine(_root, "cache");
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+
+        string file = Path.Combine(cache, "census.json");
+        string good = File.ReadAllText(file);
+        int firstRow = good.IndexOf("[{", StringComparison.Ordinal) + 1;
+        File.WriteAllText(file, good.Insert(firstRow, "null,{\"Path\":null,\"Cells\":[[6728,-16886,9999]]},{\"Path\":\"\",\"Cells\":[]},"));
+
+        Assert.Equal(pkg, Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl)));
+    }
+
+    [Fact]
+    public void A_scan_that_could_not_read_every_file_is_used_but_never_cached()
+    {
+        // A BGL the simulator has open exclusively is a MOMENT, not a property of the package:
+        // its placements are missing from this pass, so freezing that count until layout.json
+        // changes would hide the package for the rest of the install's life.
+        Package("good", 30, 33.6400, -84.4300);
+        string partial = Package("partial", 30, 33.6410, -84.4300);
+        string locked = Path.Combine(partial, "scenery", "locked.bgl");
+        File.WriteAllBytes(locked, BglPlacementReaderTests.BuildBgl((33.6420, -84.4300, 0.0, Guid.NewGuid())));
+        string cache = Path.Combine(_root, "cache");
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            // What WAS read still counts for this call — the package is not hidden meanwhile.
+            Assert.Equal(2, new SceneryPackageCensus(cache).Locate(Community, Katl).Count);
+            string json = File.ReadAllText(Path.Combine(cache, "census.json"));
+            Assert.Contains("good", json);
+            Assert.DoesNotContain("partial", json);
+        }
+
+        // Released: the next lookup reads it again rather than serving the short count.
+        Assert.Equal(2, new SceneryPackageCensus(cache).Locate(Community, Katl).Count);
+        Assert.Contains("partial", File.ReadAllText(Path.Combine(cache, "census.json")));
+    }
+
+    [Fact]
     public void A_package_that_was_uninstalled_leaves_the_cache()
     {
         Package("stays", 30, 33.6400, -84.4300);

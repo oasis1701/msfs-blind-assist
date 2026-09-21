@@ -19,24 +19,35 @@ public static class MsfsPackagesLocator
 {
     /// <summary>The first <c>InstalledPackagesPath "…"</c> value in the file, or null.</summary>
     internal static string? ParseInstalledPackagesPath(IEnumerable<string> userCfgLines)
+        => ParseInstalledPackagesPaths(userCfgLines).FirstOrDefault();
+
+    /// <summary>Every <c>InstalledPackagesPath "…"</c> value the file names, in file order —
+    /// what <see cref="TryReadUserCfg"/> walks, because it takes the first that is a folder on
+    /// disk rather than the first that is written down.</summary>
+    internal static IEnumerable<string> ParseInstalledPackagesPaths(IEnumerable<string> userCfgLines)
     {
         foreach (var line in userCfgLines)
         {
             string? value = ValueOnLine(line);
-            if (value != null) return value;
+            if (value != null) yield return value;
         }
-        return null;
     }
 
     /// <summary>
     /// The quoted value on one line, or null when the line does not carry the key or carries it
     /// unquoted. Deliberately matched with IndexOf rather than a prefix test: that is what the
     /// method this replaced did, and it is also how the key is found on an indented line.
-    /// NOTE that it therefore also matches <c>InstalledPackagesPathNextBoot</c> — a relocation
-    /// that has not happened yet — which <see cref="Services.AircraftCfgCatalog"/> and
-    /// <see cref="Services.Gsx.GsxAirplaneProfile"/> both exclude. It stays matched here because
-    /// the caller below skips any value that is not a folder on disk and keeps reading, and a
-    /// NextBoot path that has not been moved to yet does not exist.
+    ///
+    /// KNOWN RESIDUAL, deliberately preserved rather than fixed: it therefore also matches
+    /// <c>InstalledPackagesPathNextBoot</c>, and the caller takes the first value that is a
+    /// folder ON DISK — but the simulator writes that key once the user has PICKED the
+    /// destination folder in-sim, and that folder normally already exists. So a NextBoot line
+    /// preceding the active key wins during a relocation, which is the common case rather than
+    /// a corner one. <see cref="Services.AircraftCfgCatalog"/>,
+    /// <see cref="Services.Gsx.GsxAirplaneProfile"/> and
+    /// <see cref="Patching.EFBModPackageManager"/> all exclude the key; this reader does not,
+    /// because the navdata database build has always resolved its base path this way and
+    /// changing it is a behaviour change that belongs in its own commit, not in a move.
     /// </summary>
     private static string? ValueOnLine(string line)
     {
@@ -129,10 +140,8 @@ public static class MsfsPackagesLocator
                 return null;
             }
 
-            foreach (string line in File.ReadLines(configPath))
+            foreach (string path in ParseInstalledPackagesPaths(File.ReadLines(configPath)))
             {
-                string? path = ValueOnLine(line);
-                if (path == null) continue;
                 if (Directory.Exists(path)) return path;
                 Log.Debug("Database", $"InstalledPackagesPath found but directory doesn't exist: {path}");
             }

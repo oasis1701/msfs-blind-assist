@@ -118,11 +118,16 @@ public sealed class SceneryPackageCensus
                     seen.Add(hit);
                     continue;
                 }
-                var fresh = new PackageCells { Path = dir, LayoutLength = len, LayoutTicks = ticks, Cells = Scan(dir) };
-                known[dir] = fresh;
-                seen.Add(fresh);
+                var (cells, complete) = Scan(dir);
+                var fresh = new PackageCells { Path = dir, LayoutLength = len, LayoutTicks = ticks, Cells = cells };
+                seen.Add(fresh);                                // what WAS read still counts for this call
                 rescanned++;
-                changed = true;
+                // Only a scan that read every file is worth keeping. A file the simulator had open
+                // exclusively is a moment, not a property of the package — cached, its short count
+                // would be frozen until layout.json next changes, hiding the package for the rest
+                // of the install's life. An out-of-date row must not survive the attempt either.
+                if (complete) { known[dir] = fresh; changed = true; }
+                else if (known.Remove(dir)) changed = true;
             }
 
             // A package that was uninstalled must leave, or the cache grows for the life of the
@@ -187,12 +192,19 @@ public sealed class SceneryPackageCensus
         catch { return true; }
     }
 
-    /// <summary>How many placements the package has in each 0.005° cell. One try/catch per file:
-    /// one bad BGL costs its own placements, never the package's.</summary>
-    private static List<int[]> Scan(string dir)
+    /// <summary>
+    /// How many placements the package has in each 0.005° cell, and whether every file it holds
+    /// was read. One try/catch per file: one bad BGL costs its own placements, never the package's
+    /// — but it does cost the scan its COMPLETE flag, and only a complete scan is cached. A BGL
+    /// that cannot be OPENED is a lock or a permission, both of which pass; a BGL whose contents
+    /// are rubbish does not reach here at all, because <see cref="BglPlacementReader"/> answers
+    /// with what parsed rather than throwing.
+    /// </summary>
+    private static (List<int[]> Cells, bool Complete) Scan(string dir)
     {
         var cells = new Dictionary<(int Lat, int Lon), int>();
         string leaf = Path.GetFileName(dir.TrimEnd('\\', '/'));
+        bool complete = true;
         try
         {
             foreach (string bgl in Directory.EnumerateFiles(dir, "*.bgl", BglFiles))
@@ -208,14 +220,23 @@ public sealed class SceneryPackageCensus
                         cells[key] = cells.GetValueOrDefault(key) + 1;
                     }
                 }
-                catch (Exception ex) { Log.Warn("SceneryIndex", $"census: {leaf}: {Path.GetFileName(bgl)}: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    complete = false;
+                    Log.Warn("SceneryIndex", $"census: {leaf}: {Path.GetFileName(bgl)}: {ex.Message}");
+                }
             }
         }
-        catch (Exception ex) { Log.Warn("SceneryIndex", $"census: {leaf}: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            // The enumerator itself gave up, so whole files were never even looked at.
+            complete = false;
+            Log.Warn("SceneryIndex", $"census: {leaf}: {ex.Message}");
+        }
 
         var result = new List<int[]>(cells.Count);
         foreach (var ((lat, lon), count) in cells) result.Add(new[] { lat, lon, count });
-        return result;
+        return (result, complete);
     }
 
     /// <summary>The packages with at least <see cref="MinPlacementsInBox"/> placements in cells
@@ -256,7 +277,16 @@ public sealed class SceneryPackageCensus
                 var cached = JsonSerializer.Deserialize<CacheFile>(File.ReadAllText(path));
                 // Another schema's fields mean nothing here, so the document is rebuilt rather
                 // than partly believed.
-                if (cached is { Packages: not null } && cached.SchemaVersion == CurrentSchemaVersion) return cached;
+                if (cached is { Packages: not null } && cached.SchemaVersion == CurrentSchemaVersion)
+                {
+                    // A hand-edited or half-corrupted document can be valid JSON and still carry a
+                    // row that names nothing. Drop the ROW, not the file — the rest still spares a
+                    // rescan — and drop it HERE, at the trust boundary, so nothing downstream has
+                    // to keep asking. Indexing the lookup below on such a row threw out of Locate,
+                    // out of BuildSurroundings, and cost the pilot the whole catalog.
+                    cached.Packages.RemoveAll(p => p is null || string.IsNullOrEmpty(p.Path));
+                    return cached;
+                }
             }
         }
         catch (Exception ex) { Log.Warn("SceneryIndex", $"rebuilding {CacheFileName}: {ex.Message}"); }

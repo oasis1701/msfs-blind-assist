@@ -54,6 +54,16 @@ public class MsfsPackagesLocatorTests : IDisposable
     }
 
     [Fact]
+    public void Every_value_the_file_names_is_offered_in_file_order()
+    {
+        // What the file reader walks: it needs each candidate in turn, because it takes the first
+        // one that is a folder on disk. The singular above is this sequence's first element.
+        var lines = new[] { "Video 1", "InstalledPackagesPathNextBoot \"D:\\NotYet\"", "InstalledPackagesPath \"D:\\Active\"" };
+        Assert.Equal(new[] { "D:\\NotYet", "D:\\Active" }, MsfsPackagesLocator.ParseInstalledPackagesPaths(lines));
+        Assert.Empty(MsfsPackagesLocator.ParseInstalledPackagesPaths(new[] { "Video 1", "InstalledPackagesPath" }));
+    }
+
+    [Fact]
     public void The_roaming_config_is_read_first_and_an_unknown_simulator_reads_only_the_fs2020_one()
     {
         string fs2020 = WriteUserCfg("Roaming/Microsoft Flight Simulator", Path.Combine(_root, "p2020"));

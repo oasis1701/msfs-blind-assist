@@ -1869,30 +1869,42 @@ public partial class MainForm
 
         var gateDataSource = BuildGateDataSource();
         var facilities = (provider as MSFSBlindAssist.Database.IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
+
+        // NAVDATA is the required base — the airport box and the facts line come from it, so its
+        // failure really is the build's. Every tier after it is an ADDITION and is read through
+        // SurroundingsTier, which keeps an optional tier's failure from costing the pilot the
+        // stands and terminals already in hand (a failed build is cached as failed and retried
+        // every 60 s, so one bad mirror reply or one edited cache file meant total silence).
         var named = MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, gateDataSource, icao);
         features.AddRange(MSFSBlindAssist.Navigation.Surroundings.NavdataFeatureSource.Read(named, facilities));
-        var selectable = MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao);
-        features.AddRange(MSFSBlindAssist.Navigation.Surroundings.GsxTerminalFeatureSource.Read(selectable));
+
+        features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("GSX", icao, () =>
+            MSFSBlindAssist.Navigation.Surroundings.GsxTerminalFeatureSource.Read(
+                MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao))));
+
         // Bounded wait ON A POOL THREAD (this method never runs on the UI thread): include the
         // buildings when the mirror answers within 3 s; otherwise build without them and let
         // FeaturesUpdated invalidate this catalog when the fetch lands.
         if (onlineFeatures != null && facilities != null)
-            features.AddRange(onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
-                                            .GetAwaiter().GetResult());
+            features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
+                onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
+                              .GetAwaiter().GetResult()));
+
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
-        {
-            var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
-            bool byCensus = false;
-            if (dirs.Count == 0)
+            features.AddRange(MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
             {
-                // An MSFS 2024 navdata build names no package for ANY airport — find it by where its
-                // objects stand. Header-only and disk-cached; this method is already on a pool thread.
-                string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
-                string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion);
-                if (community != null) { dirs = sceneryCensus.Locate(community, facilities).ToList(); byCensus = dirs.Count > 0; }
-            }
-            features.AddRange(sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus));
-        }
+                var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
+                bool byCensus = false;
+                if (dirs.Count == 0)
+                {
+                    // An MSFS 2024 navdata build names no package for ANY airport — find it by where its
+                    // objects stand. Header-only and disk-cached; this method is already on a pool thread.
+                    string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
+                    string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion);
+                    if (community != null) { dirs = sceneryCensus.Locate(community, facilities).ToList(); byCensus = dirs.Count > 0; }
+                }
+                return sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus);
+            }));
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.
         return new(features, facilities?.DescribeFacts() ?? "");
