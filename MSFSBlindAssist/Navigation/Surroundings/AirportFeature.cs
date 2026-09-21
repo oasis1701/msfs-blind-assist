@@ -2,7 +2,8 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 
 public enum FeatureKind { Terminal, Concourse, Fbo, Hangar, Tower, Fuel, Cargo, FireStation, Helipad, Apron, DeicePad, Office, Other }
 
-/// <summary>Where a feature came from. Also the merge tie-break order in AirportFeatureCatalog.</summary>
+/// <summary>Where a feature came from. NOT the merge tie-break order — that is
+/// AirportFeatureCatalog.Rank, which also weighs whether the name is real or synthesized.</summary>
 public enum FeatureSource { Navdata, Gsx, Osm, Scenery }
 
 public readonly record struct LatLon(double Lat, double Lon);

@@ -67,7 +67,7 @@ public class SurroundingsReportTests
     {
         Assert.Equal("X. Nothing within 600 metres.", SurroundingsReport.Compose("X.", "X", Cat(F(FeatureKind.Tower, "T", 700, 0)), Lat, Lon, 0.0, Metres));
         Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", null, Lat, Lon, 0.0, Metres));
-        Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", AirportFeatureCatalog.Empty("KXYZ"), Lat, Lon, 0.0, Metres));
+        Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", AirportFeatureCatalog.Build("KXYZ", "", Array.Empty<AirportFeature>()), Lat, Lon, 0.0, Metres));
     }
 
     [Fact]
