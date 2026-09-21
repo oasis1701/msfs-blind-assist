@@ -1850,10 +1850,12 @@ public partial class MainForm
 
     /// <summary>
     /// Every surroundings tier for one airport, merged into one list, plus the airport's facts
-    /// line. Tiers are appended here as they land: navdata (this task), GSX terminals, OSM,
-    /// scenery. This is SurroundingsCatalogCache.BuildSupplier — which a first-time scenery scan
-    /// and DB read can make slow (Directory.EnumerateFiles + File.ReadAllBytes over every BGL in a
-    /// package, under a lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
+    /// line. Four tiers, in this order: navdata stands (the required base — the airport box and
+    /// the facts line come from it), GSX terminals, OSM buildings via OnlineFeatureStore, and the
+    /// installed scenery package, located by scenery_local_path or, where navdata names none, by
+    /// SceneryPackageCensus. This is SurroundingsCatalogCache.BuildSupplier — which a first-time
+    /// scenery scan and DB read can make slow (every BGL in a package opened once, under a
+    /// per-package lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
     /// NEVER on the UI thread and NEVER from a per-frame position update. That is also what makes
     /// the bounded online-feature wait below safe. A fresh GateDataSource per call for the same
     /// reason ParkingSpotSupplier builds one, but only ONE build for the whole call (shared

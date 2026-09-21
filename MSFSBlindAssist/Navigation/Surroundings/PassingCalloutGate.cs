@@ -143,6 +143,9 @@ public sealed class PassingCalloutGate
     /// tick's bearing could then name the wrong side, or a direction that isn't a side at all
     /// ("behind"/"ahead"). Because Pending only ever arms when the minimum sample was abeam (45-135
     /// degrees either side), the returned bearing is always a genuine side — never behind or ahead.
+    /// That pair is FROZEN the instant the pass arms (Min/MinRel stop updating once Passed is set
+    /// — see Track's own comment), so a later, deeper sample arriving while the pass waits out the
+    /// gap cannot drift what it eventually reports.
     /// </summary>
     public NearbyFeature? Evaluate(IReadOnlyList<NearbyFeature> nearby, double groundSpeedKts, DateTime now)
     {

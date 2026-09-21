@@ -6,7 +6,8 @@ public readonly record struct ScenePlacement(double Lat, double Lon, double Head
 
 /// <summary>
 /// Reads LibraryObject placements out of an MSFS scenery BGL. Layout measured 2026-09-06 on
-/// Orbx KTIW, imaginesim KATL and Axonos KJAC (see the plan/spec). Two record layouts are in
+/// Orbx KTIW, imaginesim KATL and Axonos KJAC, and written up in docs/taxi-guidance.md under
+/// "The scenery tier — readers, clutter nets and caches". Two record layouts are in
 /// the wild: the classic 64-byte record (model GUID at +44) and the 92-byte record the MSFS
 /// 2024 SDK writes (GUID at +72; +44 holds the latitude as a double instead, so a reader still
 /// looking at +44 there reads garbage). The GUID is always the 16 bytes immediately before the
@@ -96,7 +97,9 @@ public static class BglPlacementReader
             if (!Fill(bgl, HeaderSize, table)) return result;
 
             long totalRead = 0;
-            byte[] data = Array.Empty<byte>();   // rented/grown across entries — a legitimate multi-entry file never churns the LOH
+            // One plain array (no pool), reused across entries and reallocated only when an entry
+            // needs more than the last one did — a legitimate multi-entry file never churns the LOH.
+            byte[] data = Array.Empty<byte>();
             for (int s = 0; s < sections; s++)
             {
                 int e = s * SectionEntrySize;

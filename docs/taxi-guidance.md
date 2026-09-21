@@ -628,8 +628,15 @@ Hotkeys are identical across all supported aircraft.
 | `Y` | Announce taxi status (current taxiway, next turn, distance to destination) |
 | `Ctrl+Y` | Repeat current instruction |
 | `Alt+Y` | Where Am I — announces current taxiway, gate, or runway at nearest airport (works any time). On `Alt+Y` rather than `Shift+Y` because `Shift+Y` in output mode is `HOTKEY_STATUS_DISPLAY`. |
-| `Alt+L` | Look around — announces where you are, the apron/concourse you are in, then the nearest terminals, hangars, FBOs, tower, fuel and cargo with direction and distance. Ground-only, ~800 ms of DB/OSM/scenery lookup run off the UI thread. |
+| `Alt+L` | Look around — announces where you are, the apron/concourse you are in, then the nearest terminals, hangars, FBOs, tower, fuel and cargo with direction and distance. Ground-only; the whole DB/OSM/scenery lookup runs off the UI thread. |
 | `Ctrl+Shift+L` | Surroundings window — opens a read-only list of everything within 1 km, nearest first, reusing `SayIntentionsInfoForm`. |
+
+Both `L` chords are output-mode keys like every other row above: press `]` first, then the
+chord. Three aircraft guides list the same chord for a WINDOW-LOCAL function (the FBW A380 MFD's
+`Alt+L` = FUEL & LOAD, the iFly FMC's `Alt+L` = LEGS, the TFDi MD-11 MCDU's `Ctrl+Shift+L` =
+switch to the left MCDU). Those are focus-scoped WinForms handlers and are unaffected without
+`]`; while output mode is armed the global chord wins — the same precedence the already-shipped
+`Alt+V` / `Alt+D` / `Alt+E` have.
 
 ### Input mode (press `[`)
 
@@ -680,7 +687,7 @@ Four properties worth knowing before touching this:
 - **The four graph-build sites are `TaxiGuidanceManager.DescribeCurrentLocation` / `TryDetectRunwayUnderAircraft` / `LoadRoute` (its no-prebuilt-graph branch) and the two forms (`TaxiAssistForm`, `LandingExitForm`).** The manager's three go through the injectable `TaxiGuidanceManager.ParkingSpotSupplier`, which **defaults to `dataProvider.GetParkingSpots`** when unwired — that default is what keeps the xUnit suite and any non-MainForm caller byte-identical to the pre-seam behaviour. `LandingExitForm` is in scope despite never speaking a stand name: the graph it builds is handed to `LandingExitPlanner.SetExit`, passed to `LoadRoute` as `prebuiltGraph`, becomes `TaxiGuidanceManager._graph`, and `DescribeCurrentLocation` **prefers** that graph — so it supplies the Where-Am-I stand names for the whole rollout and taxi-in.
 - **It runs off the UI thread.** Where-Am-I and the takeoff-assist runway probe both reach their graph builds from inside a `RequestAircraftPositionAsync` callback, so MainForm's supplier builds a fresh `GateDataSource` per call rather than sharing one with the UI thread (its per-ICAO caches are plain `Dictionary`). That is affordable only because every call site is a graph build — once per airport, then cached. **Never put the supplier on a position update.**
 
-## Airport surroundings (Alt+L, Ctrl+Shift+L, passing callouts, Place destinations)
+## Airport surroundings (Look around, the Surroundings window, passing callouts, Place destinations)
 
 Where Am I answers "what is under the aircraft." This feature answers "what is
 AROUND it" — the terminal, hangar, FBO, tower, fuel and cargo a sighted pilot
@@ -695,9 +702,14 @@ plus the installed scenery package's own placement data.
   cargo, GA sizes), `parking.airline_codes` (set on ~1,700 gates), the
   concourse letter on every gate, `has_avgas`/`has_jetfuel`, `helipad`, `apron`
   polygons and `com` — none of it read anywhere in the app before this.
-  `airport.tower_lonx/laty` is **NULL on all 41,866 rows** of the current
-  navdatareader build even where `has_tower_object = 1`, so the tower never
-  comes from navdata; it comes from OSM or the scenery scan only.
+  `airport.tower_lonx/laty` **depends on the simulator the database was built
+  from**: NULL on an MSFS 2020 build, but populated for 1,952 of 84,278
+  airports on an MSFS 2024 one (measured 2026-09-21). So the tower comes from
+  navdata when navdata has it, and from OSM or the scenery scan otherwise —
+  which is why `AirportFacilities.TowerLat/TowerLon` are nullable. (An earlier
+  version of this document said the column was NULL on every row and the tower
+  therefore never came from navdata. That was true of the MSFS 2020 build it
+  was measured on and is false on an MSFS 2024 one.)
 - **OSM** at KATL names all seven concourses, the North/South/Domestic
   terminals, FedEx/UPS cargo, 15 named aprons, the fire station, the tower and
   201 gates. At KJAC it names the General Aviation Terminal with its FBO
@@ -715,70 +727,189 @@ plus the installed scenery package's own placement data.
   it by GUID) was built and measured as a spike — see "Rejected: base-library
   index" below.
 
-### Three tiers, in priority order
+### Four tiers, and how they rank
 
-| Rank | Source | What it uniquely contributes |
-|---|---|---|
-| 40 (highest) | OSM (`OsmFeatureClassifier`) | Named terminals/concourses, FBOs with operator, named aprons/de-ice pads, hangars, fire station, tower, cargo |
-| 30 | Scenery (`SceneryModelNameClassifier`) | What THIS scenery actually models, including hangars OSM leaves unnamed |
-| 20 | GSX terminals (`GsxTerminalFeatureSource`) | Terminal/concourse names from GSX's own selectable gate list, right where navdata's letter grouping is wrong (measured at KJFK) |
-| 10 | Navdata (`NavdataFeatureSource`) | Works on every airport with no network and no add-on scenery |
-| 0 | Unnamed | Kept only when the kind is self-describing (a hangar is "a hangar"); an unnamed `Other` is dropped |
+`MainForm.BuildSurroundings(icao)` is the cache's `BuildSupplier`. It reads
+navdata, then GSX, then OSM, then the scenery package, concatenates them, and
+`AirportFeatureCatalog.Build` merges the result (next section) — so the order
+below is the RANK order the merge applies, not the read order.
+
+| Source | What it uniquely contributes |
+|---|---|
+| OSM (`OsmFeatureClassifier`) | Named terminals/concourses, FBOs with operator, named aprons/de-ice pads, hangars, fire station, tower, cargo |
+| Scenery (`SceneryModelNameClassifier`) | What THIS scenery actually models, including hangars OSM leaves unnamed |
+| GSX terminals (`GsxTerminalFeatureSource`) | Terminal/concourse names from GSX's own selectable gate list, right where navdata's letter grouping is wrong (measured at KJFK) |
+| Navdata (`NavdataFeatureSource`) | Works at every airport with no network and no add-on scenery |
+
+`AirportFeatureCatalog.Rank` weighs the **name first** — a proper name (100)
+beats a synthesized label like "Fuel" or "GA ramp" (50) beats none (0) — and
+only then the source (OSM 40, scenery 30, GSX 20, navdata 10). So a named
+scenery hangar outranks an unnamed OSM one. An unnamed feature is still kept
+when its kind is self-describing (a hangar is "a hangar"); an unnamed `Other`
+is dropped.
+
+**Navdata is the required base — every other tier is optional and isolated.**
+The airport box and the "airport facts" line come from navdata, so its failure
+really is the build's. The GSX, OSM and scenery tiers are each read through
+`SurroundingsTier.Read(tier, icao, …)`, which turns a throw into one `Log.Warn`
+and an empty list. Read in a straight line, one corrupted `census.json` row or
+one odd mirror reply failed the WHOLE catalog build — navdata stands and GSX
+places included — and the cache then retried that failing build every 60 s for
+as long as the airport was current.
 
 - **`NavdataFeatureSource`** infers concourses from gate letters (via
   `MapParkingName`) with a majority-airline `Detail` when ≥ 60 % of the coded
   gates in a group share one airline; groups fuel/cargo/GA-ramp `parking` rows
-  within their cluster radius into one `Fuel`/`Cargo`/`Apron` feature each;
-  reads helipads; and reads `AirportFacilities` (avgas/jet flags, `com`
-  frequencies, bounding box, `scenery_local_path`) for the window's "airport
-  facts" row — **not** `tower_lonx/laty`, which is NULL on every row.
-- **`OsmFeatureClassifier`** classifies the widened Overpass query (terminals,
-  hangars, aprons/de-ice pads, towers, fuel, fire stations, named
-  offices/buildings) into `FeatureKind`s using the same lexicon-matching idiom
-  as the FBO/cargo/office split. The query is scoped to the
-  `aeroway=aerodrome` area carrying the airport's `icao=` tag; the fallback
-  (no such area, or an empty result) reruns with the existing `around:5000`
-  radius but bbox-filters the result against the navdata airport extent — a
-  bare radius is what let the KTIW Chevron in. Feature data rides the same
-  in-memory `TaxiDataCache` as every other OSM datum — no disk cache, same
-  ODbL "produced work" position as the rest of this pipeline.
-- **`SceneryPackageLocator`** opens only the folders `airport.scenery_local_path`
-  names — never the whole Community tree. `BglPlacementReader` (pure,
-  byte-level BGL parsing) plus `ModelLibNameReader` (regex over the raw bytes
-  for `<ModelInfo … guid="…" name="…">`) hand named placements to
-  `SceneryModelNameClassifier`, which tokenises the raw model name, strips a
-  leading ICAO token, classifies on keywords, drops a stop-list of
-  non-building tokens (fences, lights, vehicles, jetways…), folds part numbers
-  and merges same-stem multi-part models (`concourse_a_01..03`) into one
-  feature at their placement centroid. **A raw model name (`KTIW_*`,
-  `concourse_a_02`) never reaches speech** — only the classifier's human-text
-  output does. Results are cached on disk (see Settings & caching below); the
-  scan is LAZY — it runs on the first `Alt+L` / `Ctrl+Shift+L` / Place
-  destination lookup / monitor catalog build for an airport, not at airport
-  load, on a thread-pool thread and never on the UI thread or a position
-  update.
+  into `Fuel`/`Cargo`/`Apron` features; reads helipads and — where the database
+  has them — the tower coordinates; and reads `AirportFacilities` (avgas/jet
+  flags, `com` frequencies, bounding box, `scenery_local_path`) for the
+  window's "airport facts" row. Every group is clustered **in space**
+  (`SurroundingsGeometry.SingleLinkage` — `GateLinkMetres` 200 m for gate
+  letters and directional ramps, `RampLinkMetres` 80 m for fuel, cargo and GA
+  ramps), never one centroid per name: a name-wide centroid put LLBG's "North
+  ramp" 904 m from its nearest stand and spread 186 of 314 inferred concourses
+  over more than 300 m.
+- **`OsmFeatureClassifier`** is deliberately STRICT: a named building is a
+  feature only when its own name says aviation (the `FeatureLexicon` FBO or
+  cargo vocabulary, and not a landside word like "car park" or "hotel"). The
+  earlier "any named building is an office" rule turned EGLL's car parks, bus
+  station and escape shafts — and 174 numbered buildings at EDDF — into spoken,
+  routable places. Road fuel (`amenity=fuel`) is not aircraft fuel and is not
+  matched at all; `ref` stands in for a missing name only on an apron or a
+  terminal, and only when it carries a letter and is not a `;`-separated list.
+- **`OsmFeatureSource`** owns the query. It is scoped to the
+  `aeroway=aerodrome` area carrying the airport's `icao=` tag; when OSM has not
+  tagged that area, one `around:3000` fallback runs and its result is kept only
+  inside the navdata airport box grown `FallbackBoxMarginMetres` (500 m). A
+  bare radius is what let the KTIW Chevron in, and with **no** box the fallback
+  result is dropped entirely — fail closed. OSM feature data has its own
+  in-memory store (`OnlineFeatureStore`), no disk cache, same ODbL "produced
+  work" position as the rest of this pipeline. See "The OSM buildings query"
+  below for why it must never be fused back into the taxiway-name query.
+- **`SceneryPackageLocator`** opens only the folders
+  `airport.scenery_local_path` names — never the whole Community tree — and
+  `SceneryPackageCensus` finds the package by where its objects stand when
+  navdata names none. `BglPlacementReader` (pure, byte-level BGL parsing, by
+  seeking) plus `ModelLibNameReader` (a streamed byte search for `<ModelInfo …
+  guid="…" name="…">`) hand named placements to `SceneryModelNameClassifier`,
+  which tokenises the raw model name, strips a leading ICAO and vendor token,
+  classifies on keywords, drops a stop-list of non-building tokens (fences,
+  lights, vehicles, jetways, containers, dollies…), folds part numbers and
+  collapses the parts of one multi-part building (`concourse_a_01..03`) onto
+  one name. **A raw model name (`KTIW_*`, `concourse_a_02`) never reaches
+  speech** — only the classifier's human-text output does. The scan is LAZY: it
+  runs on the first catalog build for an airport, on a thread-pool thread,
+  never on the UI thread or a position update. See "The scenery tier" below.
 - **`GsxTerminalFeatureSource`** groups `ParkingSpotSource.GetSelectableGates`
-  entries by their `TerminalName` into `Terminal`/`Concourse` features —
-  never from the graph.
+  entries by their `TerminalName` into features — never from the graph. A bare
+  category header ("Parking", "Ramp", "Gates", "Stand"…) is a profile author's
+  section divider, not a place, and is skipped; a group of one is skipped too.
+  The **kind** is derived from the header text AND the grouped stands' own
+  parking types (`KindOf`: cargo words or a 60 % cargo-stand majority → Cargo,
+  FBO words → Fbo, concourse words → Concourse, a 60 % GA-ramp majority →
+  Apron, else Terminal), because the header is free text and a cargo ramp typed
+  `Terminal` took the one Terminal slot in the Look-around sentence.
 
-### Merge — `AirportFeatureCatalog`
+### Merge — `AirportFeatureCatalog.SameFeature`
 
-Two features of the same `FeatureKind` within a kind-specific radius (Tower
-100 m, Terminal/Concourse 150 m, Hangar 40 m, Fuel 60 m, others 50 m) collapse
-to one; the winner is the highest-ranked named feature per the table above,
-and the loser's footprint/detail are kept if the winner lacks one. A
-`Concourse` additionally matches another `Concourse` by letter regardless of
-distance between the gate centroid and the named building. The catalog is
-cached per ICAO in `SurroundingsCatalogCache`, invalidated the same two ways
-the Where-Am-I graph cache is — `GateDataSource.GetGateListVersion` via
-`ShouldRebuildGateList`, and `AirportDataUpdated` from the augmentation
-fetch — and never built on the UI thread: the hotkeys run the lookup in
-`Task.Run` and marshal only speech/the window back; `AirportSurroundingsMonitor`
-reads `TryGetCached` on its 2 s poll and kicks off exactly one background
-build when nothing usable is cached yet, never a synchronous build on the
-timer tick.
+**Identity needs the NAME and the DISTANCE together.** Features are walked
+highest-`Rank` first, so the first one standing in a cluster is the winner, and
+the loser's footprint, detail or member list is folded into it when the winner
+lacks one.
 
-### `Alt+L` — Look around
+| Case | Rule |
+|---|---|
+| Different `FeatureKind` | Never the same feature. |
+| `Tower` | Distance only, within the merge radius — one airport, one tower ("Control Tower" / "Control Tower 1"). |
+| Both carry a proper name | Same name AND within `SameNameRadiusMetres`. |
+| One carries a proper name | Within `MergeRadiusMetres` — a real name absorbs a synthesized or missing one. |
+| Neither | Within `MergeRadiusMetres`, and the names must match unless one is missing ("Helipad 1" is not "Helipad 2"). |
+
+`MergeRadiusMetres`: Tower 100 m, Terminal/Concourse 150 m, Hangar 40 m,
+Fuel 60 m, others 50 m. `SameNameRadiusMetres` doubles that, except
+Terminal/Concourse, which take 300 m — a pier is long, but KJFK's two
+"Concourse B" piers are 1.3 km apart and must stay two. Distance between two
+features honours each one's own footprint/member geometry in both directions,
+and the smaller wins.
+
+Distance alone (the rule this replaced) dropped KMSP's Concourse B, 109 m from
+A, and 7,236 numbered helipads. Name alone (the old "a Concourse matches
+another Concourse by letter at any distance" rule) merged the KJFK pair.
+
+**The supersede pass.** A navdata concourse is a GUESS from the BGL gate-name
+enum. When a GSX feature is built from at least half the same stands (within
+15 m each), the navdata one is REMOVED outright rather than merged — the two
+differ in both kind and name, so `SameFeature` can never reconcile them, and
+GSX is the one to believe (measured at KJFK; see [gsx.md](gsx.md)).
+
+**Distance and bearing are always taken to the same point**
+(`SurroundingsGeometry.Nearest`): the nearest edge of a footprint, else the
+nearest member stand, else the representative point. Pairing
+distance-to-the-wall with bearing-to-the-roof-centroid read a pier 60 m to the
+left as "ahead, 60 metres". Inside a footprint the distance is 0 and the
+bearing is to the centroid.
+
+### The catalog cache — `SurroundingsCatalogCache`
+
+One `AirportFeatureCatalog` per ICAO, plus the airport's facts line, so a
+consumer reads it off the catalog instead of a second database lookup.
+Staleness is the same shape as the Where-Am-I graph cache: a version token
+(`GateDataSource.GetGateListVersion`) compared through
+`ShouldRebuildGateList`, plus `Invalidate(icao)` — whose one production caller
+is `OnlineFeatureStore.FeaturesUpdated`, i.e. an OSM answer that landed after
+the build gave up on it — and `Clear()` from a database switch or a settings
+change.
+
+- **Async and single-flight.** `GetAsync` always hands the build to a
+  thread-pool thread — a first-time scenery scan and DB read can make it slow —
+  and a second caller for the same airport joins the build already running.
+  Its callers (both hotkeys, the passing-callout monitor and the taxi dialog)
+  each used to carry an in-flight guard of their own. `TryGetCached` is the
+  non-building counterpart for a UI-thread caller that must not itself trigger
+  that build.
+- **Generation-checked.** A finished build is written back only if nothing
+  invalidated that airport while it ran. The old unconditional store lost every
+  `Invalidate`/`Clear` that landed mid-build — an OSM-less catalog (the 3 s
+  fetch gave up, the answer arrived at 3.2 s) or an old-database one was then
+  served for the rest of the session. The awaiter still gets its result; it is
+  simply not cached, so the next `GetAsync` rebuilds.
+- **Failure memory, also generation-checked.** A build that threw is remembered
+  for `FailureMemory` (60 s) and answered from whatever was cached before, so a
+  2 s poll cannot hammer a broken build. The generation check applies to the
+  failure as well: a database switch pulls the provider out from under a
+  running build, which is exactly what makes it throw, and remembering THAT
+  failure would blank the airport for a minute on the new database.
+- **Say which happened.** The one debug line a build writes ends `stored`,
+  `discarded (invalidated mid-build)` or `discarded (cache cleared mid-build)`.
+  A discarded build must never read as though it had been cached — that line is
+  how "the OSM buildings never appear" gets diagnosed.
+
+### Which airport — `CurrentAirport.Resolve`
+
+Every surroundings path (both hotkeys, the monitor, the Place list) asks the
+same question, and the answer is `CurrentAirportResolver.Pick`: among the
+airports the provider lists within 5 NM, the nearest by TRUE distance that has
+taxi paths and whose navdata bounding box (grown 300 m) contains the aircraft;
+failing that the nearest with taxi paths within 3 NM; failing that the nearest
+of any kind within 5 NM. Idents of any length.
+
+It replaces `GetNearbyAirportICAOs(…)[0]` filtered to 4-character ICAOs, which
+is ordered by unscaled |Δlat| + |Δlon| to the reference point. Measured on
+fs2024: the old rule sent 2,371 stands at 212 airports to a neighbouring field
+(111 of KSNA's 201 stands went to a heliport) and could never resolve the 2,454
+fields with a 3-character ident. Replayed over every stand, 301,865 of 302,142
+(99.91 %) now resolve to their own airport, against 93.4 % before; 270 of the
+remaining 277 are duplicate airport records for one physical field. No
+constants were tuned.
+
+The legacy query survives as a fallback for **one** case: a provider that
+supplied no candidates at all (the interface's default implementation, a test
+double, genuinely nothing within 5 NM). It must never run as a second opinion
+on candidates `Pick` considered and declined — it has no true-distance filter,
+so it hands back exactly the corner-of-the-box airport 5–7 NM out that `Pick`
+had just refused, chosen by the metric this exists to retire.
+
+### Look around — output `]` then `Alt+L`
 
 Ground-only, same `_lastOnGround` gate and "In flight." answer as Where Am I.
 One `AnnounceImmediate` utterance from `SurroundingsReport.Compose`, same as
@@ -788,100 +919,409 @@ Where Am I:
 {Where-Am-I line}. {Zone}. {Feature 1}, {direction}, {distance}. … (up to 4)
 ```
 
-`{Zone}` is the innermost containing Apron/DeicePad footprint ("On the
-Commercial Ramp.") or, failing that, the nearest Concourse/Terminal within
-120 m ("At Concourse B."); omitted when neither applies. Features are
-nearest-first within 600 m, at most one per kind except Hangar and Fbo (a GA
-field is all hangars), capped at 4, the zone feature excluded; two or more
-unnamed hangars in the top 4 collapse to "Hangars, to the left, 80 metres."
-Directions come from `RelativeDirection.Describe` (see below); distances from
-`DistanceFormatter` on the pilot's `GroundDistanceUnit`. "No surroundings data
-for {icao}." when the catalog itself is empty; "Nothing within 600 metres."
-when it has features but none in range.
+`{Zone}` is the **first** Apron/DeicePad footprint in the catalog that contains
+the aircraft ("On the Commercial Ramp.") or, failing that, the nearest
+Concourse/Terminal within 120 m ("At Concourse B."); omitted when neither
+applies. (The catalog is sorted by kind then name, so with overlapping aprons
+the one that wins is the first of that order, not the smallest — nothing here
+measures area.) Features are nearest-first within 600 m, at most one per kind
+except Hangar and Fbo (a GA field is all hangars), capped at 4, the zone
+feature excluded; two or more unnamed hangars in range collapse to "Hangars, to
+the left, 80 metres." Directions come from `RelativeDirection.Describe` (see
+below); distances from `DistanceFormatter` on the pilot's `GroundDistanceUnit`.
+"No surroundings data for {icao}." when the catalog itself is empty; "Nothing
+within 600 metres." when it has features but none in range.
 
 `RelativeDirection` (`Services/RelativeDirection.cs`) is
 `GroundTrafficMonitor.DescribeDirection` lifted out to a shared helper — one
 phrasing app-wide, same thresholds (20/70/110/160), pinned by a test so the
 ground-traffic phrasing cannot drift out from under this feature.
 
-### `Ctrl+Shift+L` — Surroundings window
+### Surroundings window — output `]` then `Ctrl+Shift+L`
 
 Reuses `SayIntentionsInfoForm` (the sectioned read-only ListBox window,
 title parameter set to "Surroundings at {icao}") rather than a new form — the
-same reasoning as the flight-information window: a list item braille as a
+same reasoning as the flight-information window: a list item brailles as a
 discrete unit and announces its position, and item 0 is pre-selected so
 tabbing in speaks the section and first row in one utterance. First row is
 "Airport" facts (avgas/jet fuel flags + Tower/Ground/ATIS/CTAF/UNICOM/AWOS/ASOS
-frequencies from `com`, Hz converted to MHz) when tier-1 facts exist, then
-"Nearby, N items" — everything within 1 km, nearest first. Not live-updating;
-reopen the chord for a fresh snapshot.
+frequencies from `com`, Hz converted to MHz) when the catalog carries a facts
+line, then "Nearby, N items" — everything within 1 km, nearest first. With
+neither, nothing is opened: the caller SPEAKS "Nothing within …" instead of
+putting an empty window in front of the pilot, the same rule the flight-info
+window follows. Not live-updating; reopen the chord for a fresh snapshot.
+
+Both chords run the whole lookup — which airport, the catalog build, the
+compose — inside `Task.Run` and marshal only the speech or the window back to
+the UI thread (`MainForm.RunSurroundingsLookup`, the ONE path they share), and
+newest-press-wins, so a slow first lookup never speaks after the pilot has
+pressed again.
 
 ### Passing callouts (opt-in, default off)
 
 `AirportSurroundingsMonitor` polls the aircraft's own position on a 2 s UI
 timer (mirrors `GroundTrafficMonitor`'s shape — the taxi position stream is
 taxi-scoped and off with no route loaded, so this cannot ride it), re-resolves
-the nearest ICAO at most every 30 s, and hands the ranked feature list to the
-pure `PassingCalloutGate`. A feature fires when: it is announceable (Terminal,
-Concourse, Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only when NAMED),
-its distance is within its kind's pass radius (Concourse/Terminal 150 m,
-Tower 200 m, others 100 m) **and** its relative bearing is in the abeam window
-(45°–135° either side), it has not fired for that feature in the last 5
-minutes, no callout of any kind has fired in the last 10 s, and ground speed
-is 2–40 kt. The monitor is **baseline-first**: on the first tick after
-(re)start it marks every feature that would fire right now as already seen,
-so starting up parked at the gate does not recite the terminal — but a
-terminal that is still AHEAD at that moment is left unmarked, so it speaks
-normally once it comes abeam a moment later.
+the airport at most every 30 s, and hands the ranked feature list (within
+250 m) to the pure `PassingCalloutGate`.
 
-Suppressed entirely while takeoff assist is active, docking `IsActive`, or
-taxi guidance is in `LandingRollout`, `LiningUp`, `HoldShort`,
-`ProgressiveHold`, `BacktrackingOnRunway`/`BacktrackDeparture`, or
-`announcer.Suppressed`. The phrase is "Passing {Name}, {left|right}." — side
-only, no distance, no advice — always queued (`Announce`), never
-`AnnounceImmediate`. Reset (forget everything seen, re-baseline) on aircraft
-switch, sim reconnect, and turnaround liftoff — the same trio every other
-baseline-first monitor in this app observes.
+**A building is PASSED at its closest point of approach** — the range closed by
+at least `MinApproachMetres` (15 m) and has since opened by `OpeningMetres`
+(5 m) — while the building is inside its kind's pass radius (Concourse/Terminal
+150 m, Tower 200 m, others 100 m) and is announceable (Terminal, Concourse,
+Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only when NAMED). It then
+fires at most once per building per 5 minutes, once globally per 10 s, and only
+while ground speed is 2–40 kt.
+
+**There is no baseline and must not be one.** Parked beside a terminal, or
+pushed back from one, the range never closes, so nothing is recited. The
+baseline this replaced was a one-shot 5-minute timestamp that lapsed during any
+normal preflight, after which the terminal the aircraft had been parked at all
+along was announced anyway.
+
+Three rules the gate cannot lose:
+
+- **A track's identity is kind + name AND POSITION** — an incoming feature
+  continues an existing track only within `SameFeatureMetres` (40 m) of that
+  track's last-seen position, and the 5-minute repeat memory uses the same
+  identity. Two announceable features can legitimately share a name (navdata's
+  per-cluster generic "Fuel"/"Cargo", two same-named piers, several same-named
+  scenery clutter clusters); keyed on the name alone, the nearer one's minimum
+  made the farther one's still-closing range read instantly as "opening" — a
+  false "Passing X". **Never widen that 40 m**: safety comes from
+  `MergeRadiusMetres`, whose smallest value is Hangar's 40 m, so for a generic
+  hangar pair the margin is zero, not "half" of anything.
+- **The closest sample must itself have been ABEAM** (45°–135° either side),
+  judged at the MINIMUM-range sample and never at the detection tick — at 40 kt
+  with a 2 s poll that tick can sit 40+ m past the true closest point, where a
+  genuinely abeam building already reads well past 135°. This is also what
+  excludes a building approached tail-first during a pushback (the range closes
+  backwards, then "opens" as the aircraft taxies away). A non-abeam minimum is
+  consumed silently.
+- **The pass freezes the moment it arms.** `Evaluate` returns the distance and
+  bearing the building had at its OWN closest point, not the tick that releases
+  it. A pass held back by the 10 s global gap or by ground speed outside the
+  band can fire 10–25 s later, through a turn; announcing the current bearing
+  would name the wrong side, or a direction that is not a side at all. Because
+  a pass only ever arms from an abeam minimum, what comes back is always left
+  or right.
+
+Callouts are **silent on runway pavement**. `SuppressCheck` reads Takeoff
+Assist, docking and the taxi states (`LandingRollout`, `LiningUp`, `HoldShort`,
+`ProgressiveHold`, `BacktrackingOnRunway`/`BacktrackDeparture`), plus
+`announcer.Suppressed` — but a takeoff flown without the assist, or a landing
+without an exit plan, leaves all of those idle, so `RunwayProbe`
+(`TaxiGuidanceManager.IsOnRunwayPavement`) asks the pavement itself. That probe
+answers only from a graph that is ALREADY built and never builds one, because
+its caller is a UI-thread timer; null means "no graph to ask".
+`Taxiing` is deliberately NOT suppressed — a pilot under active taxi guidance
+is exactly who this is for.
+
+**Neither background job a tick can start may run at a bad moment.** One
+policy, `MayStartBuild(suppressed, groundSpeedKts)`, gates both the first-time
+catalog build and the probe's own graph warm-up. The warm-up is the heavier of
+the two: it holds `TaxiGuidanceManager._stateLock` across the taxi paths,
+the parking list, the runway rows and the graph build. Ungated, the first
+ground tick after a touchdown started it at ~120 kt and the next tick blocked
+the UI thread — the SimConnect pump, the queued announcer and the hotkeys — for
+the length of it, during the rollout. Waiting costs at most a late FIRST
+callout. **Never "fix" a busy lock with `Monitor.TryEnter` in the probe**: a
+null answer does not silence anything, so lock-busy would PERMIT callouts on
+the runway. The probe is read once per tick (not at all on a suppressed tick)
+and that single read feeds both the warm-up decision and the silence;
+`ShouldWarmProbe` is pure, retries at most once per `ProbeWarmRetry` (60 s)
+while the probe still cannot answer, and never starts a second warm-up while
+one runs.
+
+The phrase is "Passing {Name}, {left|right}." — side only, no distance, no
+advice — always queued (`Announce`), never `AnnounceImmediate`.
+
+The gate forgets every track and every recent fire when MainForm calls
+`AirportSurroundingsMonitor.Reset()` — an aircraft switch, a sim reconnect, a
+database switch — and the monitor resets it itself on an airport change, once
+per airborne episode (a building still closing at rotation would read as
+"opening" on the rollout), and on a position JUMP of more than `JumpMetres`
+(250 m — six times the 41 m a 40 kt aircraft covers in one poll, so only a
+teleport, slew or flight reload trips it, and the only cost of tripping it
+anyway is a forgotten track, never a wrong callout). It needs no
+turnaround-liftoff reset the way a baseline-first monitor does: the airborne
+episode already covers it, and there is no baseline to re-take.
 
 ### Taxi to a place
 
 The pilot can route to a feature — an FBO or hangar after landing, the fuel
-island, a terminal — without the feature ever entering the graph.
-`FeatureDestinationResolver.Resolve` maps a feature onto the nearest navdata
-**parking spot within 150 m** (preferring the stand type that matches the
-place — GA-ramp types for an FBO/hangar/office, FUEL stands for fuel, cargo
-stands for cargo, gate types for a terminal/concourse — else any non-vehicle
-stand in range), failing that the nearest **taxi node within 100 m**, failing
-that the place is not routable and is not listed. Routable kinds: Fbo,
-Hangar, Fuel, Terminal, Concourse, Cargo, FireStation, DeicePad, Office —
-never Tower, Helipad, Apron, or Other.
+island, a terminal — without the feature ever entering the graph. The Taxi
+Assist form's destination-type combo gains **Place** (index 4, beside Deice
+Area), and `PlaceListBuilder.Build` (pure, tested) resolves each routable
+feature onto navdata pavement, **by position**, in this order:
 
-The Taxi Assist form's destination-type combo gains **Place** (index 4,
-beside Deice Area). Each entry reads "Narrows Aviation, FBO, Parking 12" — or
-"…, Gate 7A" for a lettered gate, "…, Spot 12" for a letterless one, "…, end
-of taxiway" when the resolver only found a node — the place, its kind, and
-the stand the pilot will actually be guided to. It fills the same destination
-maps the gate/deice branches fill, so Calculate, `LoadRoute`, docking and the
-GSX stop offset need no Place-specific code; a Place that resolved only to a
-node routes there with docking cleared. SayIntentions "taxi to the FBO" as a
-clearance candidate is deferred until a live capture shows SI phrasing a
-place rather than a stand.
+1. a stand of the **selectable** list within `MaxStandMetres` (150 m);
+2. failing that, a stand **only navdata lists** (`EnsureNavdataOnlyStands` —
+   GSX's list excludes Vehicle and Fuel stands and drops those with no usable
+   heading, which is exactly the kind of spot an FBO, hangar or fuel place ends
+   at);
+3. failing that, a taxi node within `MaxNodeMetres` (100 m) that
+   `TaxiAssistForm.NearestRoutableNode` has cleared of hold-short nodes and
+   runway pavement — "end of taxiway" must not mean "on the runway";
+4. failing all three, the place is not routable and is not listed.
+
+Among the stands in range it prefers one that is a MEMBER of the feature (a
+concourse resolves to one of its own gates, the most central) and then one
+whose type matches the place — GA-ramp or dock types for an FBO, hangar, office
+or fire station, FUEL stands for fuel, cargo stands for cargo, gate types for a
+terminal or concourse — else the nearest non-vehicle stand. Routable kinds are
+Fbo, Hangar, Fuel, Terminal, Concourse, Cargo, FireStation and Office; never
+Tower, Helipad, Apron, DeicePad or Other. (De-ice pads have their own
+destination type.)
+
+**Never resolve a place through a `(Name, Number, Suffix)` join.** The version
+this replaced resolved onto a navdata stand and then looked for "the same"
+stand in the selectable list that way. That identity collides — measured on
+fs2024, 104 groups at 34 airports in navdata alone, the widest 4 km apart at
+OIIE — so the route, docking and `gate.select` could go to a different stand
+than the label named; and it usually found no twin at all, because GSX leaves a
+ramp stand's `Name` empty where navdata's `P` maps to "Parking", which sent an
+identifier-less spot to `gate.select` and produced "GSX could not prepare this
+stand." on nearly every FBO route. Resolving against the selectable list by
+position removes the join entirely.
+
+Each entry reads "Narrows Aviation, FBO, Parking 12" — or "…, Gate 7A" for a
+lettered gate, "…, Spot 12" for a letterless one, "…, end of taxiway" when only
+a node was found — the place, its kind, and the stand the pilot will actually
+be guided to. The kind word is left out when the name already says it ("Fuel,
+Parking"), and a spaced dash in the name becomes a comma because
+`RouteReachabilityMessages.SpokenDestinationName` cuts a label at its first
+" - ". Duplicate labels get a "(2)" suffix.
+
+It fills the same destination maps the gate branch fills, so Calculate,
+`LoadRoute`, docking and the GSX stop offset need no Place-specific code:
+
+- **A stand entry** targets the stand's own position and heading, exactly as
+  the Gate / Parking type does for that stand.
+- **A node-only entry** writes NO heading and NO lineup target, so arrival
+  takes the "no lineup data — just stop" path instead of aligning the nose on a
+  building, and docking is cleared.
+- **`gate.select` is sent for a Place only when its stand carries a
+  `GsxIdentifier`** — `TaxiAssistForm.ShouldSendGateSelect(destinationTypeIndex,
+  spot)` is the one pure rule Gate and Place share. A navdata-only stand has no
+  identifier and GSX is not asked.
+- The same two stand filters the Gate list applies — wingspan fit and
+  hide-occupied — apply to a Place, so it cannot route a heavy onto a commuter
+  stand or onto an occupied one.
+
+**The list awaits its catalog; there is no "warmed once per ICAO" latch.** A
+miss starts one warm-up (`WarmPlaces`), which repopulates once the cache holds
+a catalog; the latch that used to stand in for this outlived every cache
+invalidation and left the list empty behind a false "No places to route to".
+One bounded retry covers the sequence the cache is designed to produce — the
+build gave up on the 3 s OSM fetch, the answer landed at 3.2 s and invalidated
+the airport, so the finished build was discarded rather than cached — and a
+build that genuinely failed is not retried at all (the cache's own failure
+memory owns that). Only the warm-up that still OWNS the form's Place state may
+touch it; a superseded one logs a line and changes nothing.
+
+**A pending selection the rebuilt list no longer carries leaves NOTHING
+selected, never item 0** — item 0 plus Calculate would route to, and
+`gate.select`, a place the pilot never chose; cleared, Calculate aborts with
+"Please select a destination." instead. The pilot's own later pick always wins
+over an armed pending, and `PopulateDestinations` does not auto-seat item 0
+while a Place pending is armed, so a live selection found at the settle can
+only be the pilot's. A loss caused by the gate-source refresh speaks the shared
+`GateListUpdatedMessage`, queued, while the form is visible; a loss inside a
+silent destination restore says nothing; and when nothing is listed at all only
+the none-found line is spoken, because "choose again" would be an instruction
+to choose from an empty list.
+
+SayIntentions "taxi to the FBO" as a clearance candidate is deferred until a
+live capture shows SI phrasing a place rather than a stand.
+
+### The OSM buildings query
+
+**The buildings have their own request, store and event, and must never ride
+the taxiway-name query again.** Fused into it, the feature cost that query
+three ways, all measured:
+
+- `out tags geom center` returned ways with **no geometry**. Overpass honours
+  only the LAST geometry modifier, so adding `center` for the building centroids
+  silently dropped the vertex arrays every OSM taxiway name is derived from.
+  `OsmTaxiSource.BuildQuery` is byte-identical to its pre-feature text and ends
+  `out tags geom;`; the building centres come from `bounds` instead.
+- A mirror with no area database answered the whole fused query with an empty
+  HTTP 200, which was then cached as "this airport has no taxiway names".
+  `OverpassClient` now treats a body whose `remark` starts "runtime error" as a
+  FAILED mirror and rotates on.
+- Taxiway names waited on a second round-trip before being returned.
+
+`OsmFeatureSource.BuildAreaQuery` asks the `aeroway=aerodrome` area carrying the
+airport's `icao=` tag. When OSM has not tagged that area — which is common at
+smaller fields — `BuildFallbackQuery` reruns without the generic named-building
+clauses at `around:3000`, and `KeepInsideBox` keeps only what falls inside the
+navdata airport box grown `FallbackBoxMarginMetres` (500 m; the box is the exact
+hull of the airport's own records, so at KTIW its own control tower sits 15 m
+outside it). **With no box at all the fallback result is dropped entirely** —
+fail closed, because a filling station on the road outside the field must never
+become "Fuel, ahead". Every embedded coordinate is `InvariantCulture`-formatted:
+`.` in a custom numeric format is the decimal-point PLACEHOLDER, so a
+comma-decimal locale would emit `around:3000,47,2679,-122,5781`, which every
+mirror answers 400 to.
+
+`OnlineFeatureStore` is the tier's cache: per ICAO, in memory only, one fetch in
+flight per airport, and `GetAsync` waits a BOUNDED time (3 s from
+`BuildSurroundings`) so the catalog can include the buildings when the mirror is
+quick and builds without them when it is not —
+`FeaturesUpdated` then invalidates that catalog once the fetch lands.
+
+- **A failed fetch is not an empty airport.** Every mirror refusing means
+  `FetchAsync` returns null, which is remembered for `FailureMemory` (5 minutes)
+  and retried. Caching the empty list instead would silence an untagged
+  aerodrome — the one that takes the fallback path every time — for the whole
+  session. A fallback that ANSWERS with zero elements is an empty, non-null list
+  and is cached as such.
+- **`Clear()` runs on a database switch**, beside `surroundingsCache.Clear()`,
+  because the box a fallback result was filtered against comes from the navdata
+  database. It bumps an epoch and drops in-flight entries; a fetch that started
+  before the `Clear()` writes nothing back and reports nothing.
+- The give-up is `task.WaitAsync(maxWait)`, never
+  `WhenAny(task, Task.Delay(…))` — the house rule; the latter arms a timer
+  nothing cancels when the fetch wins.
+
+### The scenery tier — readers, clutter nets and caches
+
+**Record layout** (`BglPlacementReader`, measured 2026-09-06 on Orbx KTIW,
+imaginesim KATL and Axonos KJAC; the 92-byte variant 2026-09-20). A BGL opens
+with magic `0x19920201` and a `0x38`-byte header whose section count sits at
+`+0x14`; the section table that follows is 20-byte entries, and only the
+SceneryObject section (`0x25`) matters. Its entry gives a subsection count,
+offset and size; each subsection entry ends with the offset and size of its
+placement data. Inside that data, records are `[id:u16][size:u16]` and a
+LibraryObject is id `0x0B`: longitude at `+4`, latitude at `+8`, heading at
+`+22`, and **the model GUID is the 16 bytes immediately before the trailing
+4-byte scale field, i.e. at `size − 20`**. Two layouts are in the wild — the
+classic 64-byte record (GUID at `+44`) and the 92-byte record the MSFS 2024 SDK
+writes (GUID at `+72`, where `+44` holds the latitude as a double instead), so a
+reader fixed at `+44` reads garbage from the newer one: it resolved 0 of 7,557
+placements at iniBuilds LMML. `size − 20` is right for both. Measured across
+~35 Community packages, 33 use 64-byte records and 2 (iniBuilds LMML, Glideslope
+KMEM) use 92-byte ones.
+
+**Neither reader loads a whole file, and there is no size cap.**
+`BglPlacementReader.Read(Stream)` seeks the header, the section table and the
+SceneryObject subsections only; `ModelLibNameReader` streams the file looking
+for the ASCII bytes `<ModelInfo` and decodes only each tag (≤ 1 KB). The old
+whole-file Latin-1 string cost ~3× the file size and forced a 600 MB skip that
+dropped the model library — every name — of ten real airport packages. Both are
+bounds-checked at every step: a truncated or foreign file yields whatever parsed
+cleanly, never an exception. `BglPlacementReader` is additionally bounded by a
+CUMULATIVE byte budget per call (`DefaultMaxTotalBytes`, 128 MB), not only per
+buffer — a corrupt or hostile file can declare millions of small, individually
+in-bounds entries that all point at one region, which would otherwise refill a
+64 MB buffer millions of times.
+
+**Two clutter nets, and both are needed.** No word list can tell a baggage
+dolly named after the cargo ramp it serves from a building; no structural rule
+can tell a 46-part terminal from a 41-container blob, because both are one dense
+cluster.
+
+- *Lexical*, in `SceneryModelNameClassifier`: a stop word ("interior",
+  "dolly", "container", "tug"…), a stop-list phrase (fences, lights, vehicles,
+  jetways…), or no kind word at all condemns the model. Every rule is pinned by
+  a measured package name in `SceneryModelNameClassifierTests` — **extend that
+  table first**. Every regex is `static readonly` + `CultureInvariant` (the
+  tr-TR dotless-i trap) and none is built per call.
+- *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
+  clusters is ground equipment. `MaxClusters` is 40 for hangars whatever their
+  name (a real field has dozens), else 8 for a generic label and 3 for a proper
+  one; `MaxPlacements` 200 / 40 / 12 the same way. A real building becomes one
+  feature **per spatial cluster**, never a package-wide average — that put MK
+  Studios BIKF's seven "DS Hangar" buildings, 2.3 km apart, at a single phantom
+  point between them.
+
+**`FeatureKind.Terminal` and `FeatureKind.Concourse` are exempt from the
+PLACEMENT cap** (`PlacementCapApplies`), and the exemption is **by kind** on
+purpose. Authors routinely model a terminal as dozens of separate parts standing
+in one place, which the classifier deliberately collapses onto one name — so
+counting them as "too many placements" threw away the building a pilot most
+wants named. Measured across 34 Community packages: NO terminal or concourse
+group was clutter, while the cap had dropped EDDB's "Terminal A"/"B"/"C"
+(46/49/49 parts, one cluster each) and its generic "Terminal" (175 parts in one
+764 m cluster), KPHX "Terminal L" (21 parts at a single coordinate) and KATL
+"Terminal E". Every group the cap legitimately removed was ground equipment
+(EIDW's 41 containers in one 252 m blob, KPDX's 130 "Ramp Cargo Fedex", KMEM's
+40 "Trailer UPS", ENGM's five "Ground Fuel N" fleets). The CLUSTER cap still
+applies to every kind, and EGSS's real 4-cluster "Inflite Jet Centre" is an
+accepted, recorded residual. Same measurement, end to end: 308,833 placements →
+837 features before the clutter rule → 533 after.
+
+**The cache stores RAW placements (schema 2).** Each model name that could name
+a feature, with every point it was placed at — nothing in the cache is
+classified. So the airport that ASKS decides the names ("KPWT_Hangar_07" is
+Hangar 7 at KPWT and somebody else's building at KTIW), and a change to HOW a
+name classifies reaches a pilot whose cache is already warm. One axis is not
+free that way: which names are cached is `MightBeFeature`'s verdict at BUILD
+time, so **widening the classifier's kind keywords needs a
+`CurrentSchemaVersion` bump**. A schema-2 document with no `Models` key at all
+deserialises to null and is rebuilt; `"Models":[]` is a real answer and is
+believed. Written to a `.tmp` and moved into place, so a crash never leaves a
+truncated cache to be read as a package with fewer buildings.
+
+**Which package.** `SceneryPackageLocator` returns the folders
+`airport.scenery_local_path` names — never the whole Community tree. An MSFS
+2024 navdata build records that column for NO airport, so `SceneryPackageCensus`
+answers instead, from where each package's objects stand: a HEADER-ONLY pass per
+BGL (section table and placement subsections, never a model library's bulk),
+counting placements into 0.005° cells, disk-cached per package on `layout.json`'s
+length and mtime. A package scores by the cells that reach the airport box grown
+300 m, and needs `MinPlacementsInBox` (20) to count — below that is a livery's
+hangar, a city pack's edge, or one static aircraft on the ramp. **Community
+only**; Official/OneStore is never scanned. Measured on a real Community folder:
+40 scenery packages of 88 (the other 48 carry no `layout.json`, or a
+`manifest.json` naming another `content_type`, and no BGL of theirs is opened at
+all), 2,443 BGLs, 21.3 MB read, 2.58 s cold and 16 ms warm, and it
+found the right package at KATL, EGLL, KJFK, LMML, EDDF, KSEA, EHAM
+(`flytampa-amsterdam` — no ICAO in its folder name), OMDB, OMDU, EGSS and KMEM,
+and correctly NONE at KTIW and KSNA. A cache row naming nothing is dropped at
+load; a `Scan` that could not read every file serves that call but is not
+cached, or one moment's exclusive lock would freeze a short count until
+`layout.json` next changes. The census also runs on an MSFS 2020 database
+whenever navdata names no package for the airport.
+
+Both enumerations use
+`EnumerationOptions { RecurseSubdirectories, IgnoreInaccessible,
+MatchCasing.CaseInsensitive, AttributesToSkip = 0 }`. `IgnoreInaccessible`
+because the `SearchOption` overload throws from the ENUMERATOR, outside the
+per-file catch; `CaseInsensitive` because packages ship both `modelLib.BGL` and
+`objects.bgl`; and **`AttributesToSkip = 0` deliberately** — the default skips
+Hidden and System files, and reparse points must be FOLLOWED, because add-on
+linker tools put whole Community packages behind junctions and a census that
+skipped them would find nothing for exactly the pilots with the most scenery.
+The census adds `MaxRecursionDepth = 12`, which is what ends a junction cycle;
+the indexer does not need it, because it opens only the one package navdata
+named.
+
+`MsfsPackagesLocator` is the ONE resolver of `InstalledPackagesPath` (four
+locations, two per simulator; `NavdataReaderBuilder` delegates to it). Its
+`IndexOf` match also matches `InstalledPackagesPathNextBoot`, and that is
+PRESERVED deliberately rather than fixed: the navdata database build has always
+resolved its base path this way, and changing it is a behaviour change that
+belongs in its own commit.
 
 ### Settings & caching
 
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox ("KTIW: 36 features from orbx-airport-ktiw-tacoma-narrows") |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus " (located by Community scan)" when the census found the package |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under
 `%APPDATA%\MSFSBlindAssist\scenery-index\<leaf>-<hash8>.json`, keyed on the
-package's `layout.json` size + mtime (rebuilt when either changes) plus a
-schema version and enum names, hashed from the full package path — this is
-the user's own local package, so there is no licensing question the way OSM
-data raises one. OSM feature data itself gets **no** disk cache and stays
-in-memory for the session, same as every other OSM datum this app fetches.
+package's `layout.json` length + mtime (rebuilt when either changes) plus the
+schema version, and hashed from the FULL package path so two installs sharing a
+leaf folder name never share a cache file. The census shares that folder as
+`census.json`. This is the user's own local package, so a disk cache raises none
+of the licensing questions OSM data does. OSM feature data itself gets **no**
+disk cache and stays in memory for the session, same as every other OSM datum
+this app fetches.
 
 ### Rejected: base-library (Asobo) model-name index
 
@@ -890,31 +1330,40 @@ packages in ~10 s, to try to resolve the roughly-half of KATL/KJAC placements
 that reference the base library by GUID. Of the unresolved placements at
 KATL (16), KJAC (121) and KTIW (80), **zero** classify as a building — Asobo's
 base library holds no generic airport buildings, only world landmarks
-(a telecom tower, a cargo ship, military vehicles). Two facts recorded for
-anyone re-attempting this: the Asobo libraries are named `Asobo_*.BGL`, not
-`modelLib*.bgl`, and two of them are 1.2–1.4 GB, past the 2 GB object ceiling
-`ModelLibNameReader`'s whole-file read can hold (a streaming scan would be
-needed; every Community package measured so far tops out around 100 MB,
-which the whole-file read handles fine).
+(a telecom tower, a cargo ship, military vehicles). One fact recorded for anyone
+re-attempting this: the Asobo libraries are named `Asobo_*.BGL`, not
+`modelLib*.bgl`. (The spike's second finding — that two of them are 1.2–1.4 GB,
+past what a whole-file read can hold — no longer applies: `ModelLibNameReader`
+streams, and the 600 MB skip that went with the whole-file read was removed
+because it dropped the model library of ten real Community packages.)
 
 ### Invariants
 
 - Surroundings features are **readout only** — never handed to
   `TaxiGraph.Build`, never a node, never a routing/hold-short input. The ONE
-  way a place becomes a destination is `FeatureDestinationResolver`, which
-  resolves it onto a navdata stand within 150 m (else a taxi node within
-  100 m) — the route target is the stand, never the building.
-- OSM feature data stays **in-memory**, same as every other OSM datum; only
-  the scenery index (the user's own local files) is disk-cached.
-- The OSM query is scoped to the aerodrome AREA, with a bbox post-filter on
-  the radius fallback — a bare radius admits road gas stations and hotels.
-- A model name is spoken only after the classifier has produced human text;
-  raw `KTIW_*` / `concourse_a_02` strings never reach speech.
-- Passing callouts are queued, baseline-first, abeam-only, throttled, and
-  suppressed under every guidance phase that already speaks.
-- The scenery scan runs only over the packages `scenery_local_path` names,
-  never the whole Community tree, and never on the UI thread or a position
-  update.
+  way a place becomes a destination is `PlaceListBuilder`, which resolves it BY
+  POSITION onto a selectable stand within 150 m, else a navdata-only stand,
+  else a taxi node within 100 m that is neither a hold-short nor on runway
+  pavement — the route target is the stand or node, never the building, and
+  never a `(Name, Number, Suffix)` join.
+- OSM buildings have their **own** request, store and event; never fuse them
+  back into the taxiway-name query. OSM data stays in memory; only the scenery
+  index (the user's own local files) is disk-cached.
+- The OSM query is scoped to the aerodrome AREA, and the `around:3000` fallback
+  is box-filtered — with no box it is dropped entirely. A bare radius admits
+  road filling stations.
+- Feature identity is the NAME **and** the distance together; a navdata
+  concourse yields to the GSX feature built from the same stands.
+- A model name is spoken only after `SceneryModelNameClassifier` has produced
+  human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
+- Passing callouts are queued, fire at the closest point of approach with no
+  baseline, are frozen at arm time, and are silent on runway pavement as well
+  as under every guidance phase that already speaks.
+- The catalog is never built on the UI thread, and neither background job a
+  monitor tick can start may run during a rollout.
+- The scenery scan opens only the packages `scenery_local_path` names, or the
+  ones the Community census identified — never Official/OneStore, and never on
+  the UI thread or a position update.
 
 ## Taxi Assist Form (route entry)
 

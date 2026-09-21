@@ -12,7 +12,9 @@ public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, s
 /// One AirportFeatureCatalog per ICAO. Staleness is the same shape as TaxiGuidanceManager's
 /// Where-Am-I graph cache: a version token compared through GateDataSource.ShouldRebuildGateList
 /// (rebuild on upgrade/refresh, never on a transient GSX downgrade), plus explicit Invalidate()
-/// from the augmentation fetch and Clear() from a database switch or a settings change.
+/// — whose one production caller is OnlineFeatureStore.FeaturesUpdated, an OSM answer landing
+/// after the build gave up waiting for it — and Clear() from a database switch or a settings
+/// change.
 ///
 /// ASYNC and SINGLE-FLIGHT: GetAsync always hands the build to a thread-pool thread (a first-time
 /// scenery scan and DB read can make it slow), and a second caller for the same airport joins the

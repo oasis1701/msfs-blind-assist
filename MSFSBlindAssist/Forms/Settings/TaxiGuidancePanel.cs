@@ -469,8 +469,10 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         };
 
         // Opt-in "Passing Concourse B, on the left." callouts while taxiing, fed by the
-        // same surroundings catalog the scenery index above and the Where-Am-I readout
-        // draw from. Placed directly below the scenery-index status box.
+        // same surroundings catalog the Look Around hotkey and the Surroundings window
+        // read (the scenery index above is one of its tiers). NOT the Where-Am-I readout,
+        // which answers from the taxi graph alone. Placed directly below the scenery-index
+        // status box.
         surroundingsCalloutsCheckBox = new CheckBox
         {
             Text = "Announce airport buildings as you taxi past them",

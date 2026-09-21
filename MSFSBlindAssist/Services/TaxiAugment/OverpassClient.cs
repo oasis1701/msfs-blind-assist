@@ -16,8 +16,9 @@ public sealed class OverpassClient
     {
         _http = http;
         // Overpass returns HTTP 406 for a request with NO User-Agent, so the shared client MUST
-        // send one or every OSM fetch silently fails (+osm=0 at every airport — the catch in
-        // FetchAsync swallows the 406). Guard against a caller that already set one (the client is
+        // send one or every OSM fetch silently fails (+osm=0 at every airport — PostAsync reads a
+        // 406 as just another failed mirror, blacklists it and moves on, so with no UA every
+        // mirror "fails" and the call ends as a plain null). Guard against a caller that already set one (the client is
         // shared with the apt.dat source). Verified live: no UA -> 406 / 0 elements; with UA -> 200.
         if (_http.DefaultRequestHeaders.UserAgent.Count == 0)
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("MSFSBlindAssist/1.0 (taxi-augment)");

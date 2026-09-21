@@ -2870,13 +2870,18 @@ public class TaxiAssistForm : Form
     /// genuinely FAILED with nothing cached returns null and is not retried at all: the cache's
     /// own failure memory owns that.</para>
     /// </summary>
+    private void WarmPlacesThenRepopulate(string icao)
+        => WarmPlaces(icao, silentRestore: _suppressPlaceAnnounce, isRetry: false);
+
+    /// <summary>The body of <see cref="WarmPlacesThenRepopulate"/> — read its summary first.</summary>
+    /// <param name="icao">The airport this warm-up was started for; re-checked at the settle,
+    /// because the form may have moved on while the build ran.</param>
     /// <param name="silentRestore">Captured at START and carried, because it is the one half of
     /// "may this warm-up speak?" that cannot be re-read later: <see cref="RestoreDestinationState"/>
     /// puts <c>_suppressPlaceAnnounce</c> back in its <c>finally</c>, long before the settle runs.
     /// VISIBILITY is deliberately NOT carried — each line reads it when it is about to be said.</param>
-    private void WarmPlacesThenRepopulate(string icao)
-        => WarmPlaces(icao, silentRestore: _suppressPlaceAnnounce, isRetry: false);
-
+    /// <param name="isRetry">True for the one rebuild <see cref="WarmPlacesThenRepopulate"/>
+    /// describes: it says nothing new of its own and can never start a third round.</param>
     private async void WarmPlaces(string icao, bool silentRestore, bool isRetry)
     {
         if (SurroundingsCatalogAsync == null || _placesWarmUp != null) return;
