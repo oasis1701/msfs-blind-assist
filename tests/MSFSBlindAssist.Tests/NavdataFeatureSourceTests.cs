@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -11,19 +12,23 @@ public class NavdataFeatureSourceTests
     [Fact]
     public void Two_or_more_lettered_gates_become_a_concourse_at_their_centroid()
     {
+        // 111 m per hop (well inside GateLinkMetres) so all three single-link into one cluster;
+        // the old 222 m spacing relied on the un-clustered name-wide grouping this PR replaces.
         var spots = new List<ParkingSpot>
         {
             Spot("B", 1, 10, 33.640, -84.430, "DAL"),
-            Spot("B", 2, 10, 33.642, -84.430, "DAL"),
-            Spot("B", 3, 11, 33.644, -84.430, "AAL"),
+            Spot("B", 2, 10, 33.641, -84.430, "DAL"),
+            Spot("B", 3, 11, 33.642, -84.430, "AAL"),
             Spot("C", 9, 10, 33.650, -84.420),           // alone: no concourse
         };
         var features = NavdataFeatureSource.Read(spots, null);
         var b = Assert.Single(features, f => f.Kind == FeatureKind.Concourse);
         Assert.Equal("Concourse B", b.Name);
-        Assert.InRange(b.Lat, 33.6419, 33.6421);
+        Assert.InRange(b.Lat, 33.6409, 33.6411);
         Assert.Equal("Delta gates", b.Detail);          // 2 of 3 coded gates = 67 % ≥ 60 %
         Assert.Equal(FeatureSource.Navdata, b.Source);
+        Assert.Equal(3, b.Members!.Count);
+        Assert.False(b.NameIsGeneric);
     }
 
     [Fact]
@@ -100,5 +105,55 @@ public class NavdataFeatureSourceTests
         };
         Assert.Equal("Avgas. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95.", fac.DescribeFacts());
         Assert.Equal("", new AirportFacilities { Icao = "X" }.DescribeFacts());
+    }
+
+    [Fact]
+    public void A_letter_reused_by_two_terminals_is_two_concourses_not_one_phantom_between_them()
+    {
+        // KJFK with GSX lettering: T4-B and T8-B are 1.3 km apart. One name-wide centroid put
+        // "Concourse B" 179 m from any gate.
+        var spots = new List<ParkingSpot>();
+        for (int i = 0; i < 6; i++) spots.Add(Spot("B", 20 + i, 10, 40.6400 + i * 0.0004, -73.7800));
+        for (int i = 0; i < 6; i++) spots.Add(Spot("B", 1 + i, 10, 40.6400 + i * 0.0004, -73.7950));   // ~1.27 km west
+        var bs = NavdataFeatureSource.Read(spots, null).Where(f => f.Kind == FeatureKind.Concourse).ToList();
+        Assert.Equal(2, bs.Count);
+        Assert.All(bs, b => { Assert.Equal("Concourse B", b.Name); Assert.Equal(6, b.Members!.Count); Assert.False(b.NameIsGeneric); });
+        Assert.All(bs, b => Assert.True(b.Members!.Min(m => TaxiGeo.HaversineMeters(b.Lat, b.Lon, m.Lat, m.Lon)) < 60));
+    }
+
+    [Fact]
+    public void One_long_pier_is_one_concourse()
+    {
+        var spots = Enumerable.Range(0, 12).Select(i => Spot("C", i + 1, 10, 33.6400 + i * 0.0005, -84.4300)).ToList();   // 55 m apart, ~610 m long
+        var only = Assert.Single(NavdataFeatureSource.Read(spots, null), f => f.Kind == FeatureKind.Concourse);
+        Assert.Equal(12, only.Members!.Count);
+    }
+
+    [Fact]
+    public void One_contiguous_GA_ramp_is_one_feature_not_one_per_60_metres()
+    {
+        var spots = Enumerable.Range(0, 12).Select(i => Spot("Parking", i + 1, 4, 40.8500, -96.7600 + i * 0.0006)).ToList();   // ~50 m apart, 550 m long
+        var ramp = Assert.Single(NavdataFeatureSource.Read(spots, null), f => f.Kind == FeatureKind.Apron);
+        Assert.Equal("GA ramp", ramp.Name);
+        Assert.True(ramp.NameIsGeneric);
+        Assert.Equal(12, ramp.Members!.Count);
+    }
+
+    [Fact]
+    public void A_directional_name_used_on_two_aprons_is_two_ramps()
+    {
+        var spots = new List<ParkingSpot> { Spot("North", 1, 4, 32.0100, 34.8800), Spot("North", 2, 4, 32.0104, 34.8800),
+                                            Spot("North", 3, 4, 32.0300, 34.8800), Spot("North", 4, 4, 32.0304, 34.8800) };
+        Assert.Equal(2, NavdataFeatureSource.Read(spots, null).Count(f => f.Name == "North ramp"));
+    }
+
+    [Fact]
+    public void The_tower_comes_from_navdata_when_navdata_has_it()
+    {
+        var with = new AirportFacilities { Icao = "KTIW", TowerLat = 47.269379, TowerLon = -122.574707 };
+        var tower = Assert.Single(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), with), f => f.Kind == FeatureKind.Tower);
+        Assert.Equal("Control tower", tower.SpokenName);
+        Assert.False(tower.HasProperName);
+        Assert.DoesNotContain(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), new AirportFacilities { Icao = "KATL" }), f => f.Kind == FeatureKind.Tower);
     }
 }
