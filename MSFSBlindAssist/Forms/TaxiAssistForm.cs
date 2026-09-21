@@ -2714,7 +2714,16 @@ public class TaxiAssistForm : Form
         // mode that happens on every gate-search KEYSTROKE — a holding-point call-out per
         // keystroke is noise over the letters the pilot is typing. The type change that
         // legitimately warrants the call-out speaks it itself (OnDestTypeChanged).
-        if (cmbDestination.Items.Count > 0)
+        //
+        // NEVER while a Place re-seat is pending. That pending owes the pilot either their own
+        // place back or NOTHING SELECTED, and seating item 0 meanwhile is the exact outcome it
+        // exists to prevent. It also keeps "with no pilot involvement" TRUE as a signal: any
+        // populate pass landing between the arm and the settle — a fit or hide-occupied toggle,
+        // which rebuild this list for Place too — would otherwise leave item 0 selected, and the
+        // settle reads a live selection as the pilot's own deliberate pick. ApplyPendingPlaceSelection
+        // resolves the selection instead, including the settle's own populate one line below it.
+        if (cmbDestination.Items.Count > 0
+            && !(cmbDestType.SelectedIndex == 4 && _pendingPlaceSelection != null))
             SelectDestinationSilently(0);
     }
 
@@ -2861,15 +2870,20 @@ public class TaxiAssistForm : Form
     /// genuinely FAILED with nothing cached returns null and is not retried at all: the cache's
     /// own failure memory owns that.</para>
     /// </summary>
+    /// <param name="silentRestore">Captured at START and carried, because it is the one half of
+    /// "may this warm-up speak?" that cannot be re-read later: <see cref="RestoreDestinationState"/>
+    /// puts <c>_suppressPlaceAnnounce</c> back in its <c>finally</c>, long before the settle runs.
+    /// VISIBILITY is deliberately NOT carried — each line reads it when it is about to be said.</param>
     private void WarmPlacesThenRepopulate(string icao)
-        => WarmPlaces(icao, speak: !_suppressPlaceAnnounce && Visible, isRetry: false);
+        => WarmPlaces(icao, silentRestore: _suppressPlaceAnnounce, isRetry: false);
 
-    private async void WarmPlaces(string icao, bool speak, bool isRetry)
+    private async void WarmPlaces(string icao, bool silentRestore, bool isRetry)
     {
         if (SurroundingsCatalogAsync == null || _placesWarmUp != null) return;
         // The retry is the same warm-up continuing, so it says nothing new — only its
-        // settle (AnnouncePlacesReady below) still reaches the pilot.
-        if (speak && !isRetry) _announcer.Announce($"Loading places for {icao}.");
+        // settle (AnnouncePlacesReady below) still reaches the pilot. Visibility read HERE,
+        // because this line is spoken here.
+        if (!silentRestore && !isRetry && Visible) _announcer.Announce($"Loading places for {icao}.");
         var mine = SurroundingsCatalogAsync(icao);
         _placesWarmUp = mine;
         Navigation.Surroundings.AirportFeatureCatalog? built = null;
@@ -2922,7 +2936,7 @@ public class TaxiAssistForm : Form
             {
                 // Built, then discarded by an invalidation that overtook it. Rebuild ONCE — never
                 // a loop: the retry cannot reach this branch again.
-                WarmPlaces(icao, speak, isRetry: true);
+                WarmPlaces(icao, silentRestore, isRetry: true);
                 return;
             }
 
@@ -2949,12 +2963,17 @@ public class TaxiAssistForm : Form
                 PopulateDestinations();
             }
             bool lostToGateSourceRefresh = ApplyPendingPlaceSelection();
-            if (speak) AnnouncePlacesReady();
+            // VISIBILITY AT THE SETTLE, not at the start — the same rule the line below has always
+            // used. A warm-up begun while the dialog was hidden and settling while it is OPEN is
+            // exactly when the pilot is standing in front of the list wanting to know why it is
+            // empty; start-time visibility left them that empty list with nothing said at all.
+            if (!silentRestore && Visible) AnnouncePlacesReady();
             // The gate path's OWN words for the same event — the pilot's chosen destination did
             // not survive a rebuild GSX triggered — said only now that it is known to be true.
             // Last, so the sentence they must act on ends the sequence; QUEUED, because this is a
             // background GSX event arriving long after the click, not an echo of anything the
-            // pilot just did.
+            // pilot just did. NOT gated on silentRestore: a restore's silence covers its own
+            // narration, not an unrelated GSX event that took the pilot's destination away.
             if (lostToGateSourceRefresh && Visible) _announcer.Announce(GateListUpdatedMessage);
         }
         catch (Exception ex)
@@ -3011,9 +3030,12 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>
-    /// Spoken once a Place-list background warm-up lands and the list has been rebuilt from the
-    /// now-cached catalog — the pilot heard "Loading places for {icao}." when the warm-up
-    /// started, and needs a follow-up either way (count, or "still nothing here").
+    /// Spoken once a Place-list background warm-up lands — a count, or "still nothing here". It is
+    /// the follow-up to "Loading places for {icao}." where the pilot heard that, and the only
+    /// explanation of an empty list where they did not (a warm-up begun hidden, settling once they
+    /// have the dialog open). The caller decides: it says this only while the form is VISIBLE at
+    /// the moment of settling — speaking a count into a dialog the pilot has closed is noise, and
+    /// leaving an open one unexplained is the failure this answers.
     /// </summary>
     private void AnnouncePlacesReady()
     {
