@@ -858,6 +858,19 @@ then measures to. Four rules, all of them paid for at KTIW:
   CONTAINS the other's representative point — never on a bare radius between
   edges. A shared PROPER name is different evidence and still merges two halves
   of one split OSM way.
+- A **stand cluster the other feature does not describe** is not that feature at
+  all. Refusing the donation is not enough, because the merge would still
+  consume the cluster: KMEM's cargo rows run 686 m, and a proper-named building
+  30 m from ONE end absorbed the whole row on the strength of that one stand, so
+  a pilot at the far end — 600 m away — was left with no cargo area near them.
+  The good case is untouched: a cluster whose every member really is within
+  `SameNameRadiusMetres` still merges into ONE feature carrying the proper name
+  and taking the stands as its geometry.
+
+The first three rules live in `SameFeature`, through `GeometryMayBeOneBody`,
+which is asked LAST — of the few pairs the name and the distance have already
+accepted, because it can walk a whole stand cluster against a ring. Both halves
+are symmetric, so `SameFeature(a, b) == SameFeature(b, a)`.
 
 Measured at KTIW (11 stands, the 4 unnamed aprons of
 `Fixtures/osm-features-area-ktiw.json`): the 6-stand "GA ramp" adopted the
@@ -973,16 +986,53 @@ Where Am I:
 {Where-Am-I line}. {Zone}. {Feature 1}, {direction}, {distance}. … (up to 4)
 ```
 
-`{Zone}` is the **first** Apron/DeicePad footprint in the catalog that contains
-the aircraft ("On the Commercial Ramp.") or, failing that, the nearest
-Concourse/Terminal within 120 m ("At Concourse B."); omitted when neither
-applies. (The catalog is sorted by kind then name, so with overlapping aprons
-the one that wins is the first of that order, not the smallest — nothing here
-measures area.) Features are nearest-first within 600 m, at most one per kind
-except Hangar and Fbo (a GA field is all hangars), capped at 4, the zone
-feature excluded; two or more unnamed hangars in range collapse to "Hangars, to
-the left, 80 metres." Directions come from `RelativeDirection.Describe` (see
-below); distances from `DistanceFormatter` on the pilot's `GroundDistanceUnit`.
+`{Zone}` is where the aircraft IS, in four rungs, best evidence first:
+
+1. a **named** Apron/DeicePad footprint containing it ("On the Commercial
+   Ramp.") — a name is what a pilot can act on;
+2. else the Apron/DeicePad whose **stands** it is among, nearest member within
+   `ZoneMemberMetres` ("On the GA ramp."). A navdata ramp has no outline at all,
+   it IS its stands, so without this rung the ramp a pilot is parked on could
+   only ever be reported as something nearby — and at KTIW the anonymous OSM
+   polygon underneath took its place, so they heard "On the Apron." and then
+   their own ramp named 0 m away;
+3. else **any** containing footprint, named or not ("On the Apron.");
+4. else the nearest Concourse/Terminal within `ZoneNearMetres` ("At Concourse
+   B."); omitted when none of the four applies.
+
+`ZoneMemberMetres` is 40 m — about one stand spacing, which is what an aircraft
+in the lane between two rows is from the nearest of them. Measured on fs2024,
+nearest-neighbour spacing between GA stands: KTIW median 14.0 m / p90 39.2 m,
+KSNA (180 stands) 23.9 / 39.3, KLNK (319) 27.1 / 42.4, KJAC 13.8 / 23.4. It also
+clears the stands themselves (KTIW's are 23 and 33 m in radius; the median GA
+stand in the database is 23 m) and stays under Apron's 50 m merge radius, so it
+can never reach further than the catalog would call one ramp. (Rungs 1 and 3
+take the FIRST match in catalog order — sorted by kind then name — so with
+overlapping aprons the winner is the first of that order, not the smallest;
+nothing here measures area.)
+
+Features are nearest-first within 600 m, at most one per kind except Hangar and
+Fbo (a GA field is all hangars), capped at 4. Excluded: the zone itself, and any
+other Apron/DeicePad the aircraft is **standing on** — after "On the GA ramp."
+the pilot must not also hear "Apron, here" about the pavement under it. A GROUND
+zone additionally spends its own kind, so no second ramp is named at all: at
+KTIW the other GA ramp is 590 m away and shares the generic name the pilot has
+just heard for where they are, which is the one-name-two-places confusion again.
+
+**Nothing at zero range gets a direction.** At or below `ZeroRangeMetres` a
+feature reads "{name}, here." — the bearing to something the aircraft is
+standing on or inside is degenerate, so the side it produces is arbitrary and a
+blind pilot has nothing to check it against. The floor is sized from what the
+reader would say: `DistanceFormatter` rounds metres under 100 to the nearest 5
+(so under 2.5 m reads "0 metres") and feet under 200 to the nearest 25 (so under
+12.5 ft reads "0 feet"), and the larger of the two — 12.5 ft, 3.81 m — is the
+floor, so neither unit can produce a zero with a side attached to it. The window
+takes the same wording; it lists the zone too, being an inventory rather than a
+spoken "where am I".
+
+Two or more unnamed hangars in range collapse to "Hangars, to the left, 80
+metres." Directions come from `RelativeDirection.Describe` (see below);
+distances from `DistanceFormatter` on the pilot's `GroundDistanceUnit`.
 "No surroundings data for {icao}." when the catalog itself is empty; "Nothing
 within 600 metres." when it has features but none in range.
 
@@ -1470,10 +1520,14 @@ because it dropped the model library of ten real Community packages.)
 - Feature identity is the NAME **and** the distance together; a navdata
   concourse yields to the GSX feature built from the same stands. Geometry is
   donated in a merge only where it DESCRIBES the winner: a winner with
-  `Members` never takes a ring, a cluster is adopted only when every member is
-  within `SameNameRadiusMetres` of the winner, an unnamed ring and an
-  apron/de-ice stand cluster are different features, and two unnamed rings are
-  one body only by containment.
+  `Members` never takes a ring; an unnamed ring and an apron/de-ice stand
+  cluster are different features; two unnamed rings are one body only by
+  containment; and a cluster with a member further out than
+  `SameNameRadiusMetres` is a different feature, not a silently consumed one.
+- The zone is the pavement the aircraft is ON — a named apron outline, else the
+  ramp whose stands it is among, else any outline, else the nearest
+  concourse/terminal — and nothing it is standing on is ALSO offered as nearby.
+  Nothing at zero range is given a direction: "{name}, here.".
 - A model name is spoken only after `SceneryModelNameClassifier` has produced
   human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
 - Passing callouts are queued, fire at the closest point of approach with no

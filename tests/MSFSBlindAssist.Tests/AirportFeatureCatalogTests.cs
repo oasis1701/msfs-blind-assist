@@ -71,34 +71,99 @@ public class AirportFeatureCatalogTests
                 Assert.Contains(f.Members, m => SurroundingsGeometry.Contains(f.Footprint, m.Lat, m.Lon));
     }
 
-    [Fact]
-    public void At_KTIW_a_stand_inside_the_main_apron_still_has_a_zone_to_be_on()
+    /// <summary>How many times `needle` appears in `haystack`.</summary>
+    private static int Count(string haystack, string needle)
     {
-        // Keeping the ramps' own stand geometry must not cost the polygon a pilot is STANDING on:
-        // SurroundingsReport.Zone needs an Apron footprint to test containment against, so the
-        // unnamed apron survives as its own feature rather than being merged into a ramp.
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
-        var stand = KtiwStands.Single(s => s.Number == 2);
-        var zone = SurroundingsReport.Zone(cat, stand.Lat, stand.Lon);
-        Assert.NotNull(zone);
-        Assert.Equal(FeatureKind.Apron, zone!.Kind);
-        Assert.NotNull(zone.Footprint);
+        int n = 0;
+        for (int i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal)) n++;
+        return n;
     }
 
     [Fact]
-    public void A_named_building_beside_one_stand_does_not_inherit_a_600_metre_row()
+    public void At_KTIW_the_ramp_you_are_parked_on_IS_the_zone_and_nothing_is_named_at_zero_range()
+    {
+        // The whole point of the pass, end to end: the ramp the aircraft is standing on is where it
+        // IS, not a nearby thing — and "GA ramp, to the left, 0 metres" gave a blind pilot a side
+        // computed from a degenerate bearing, under a generic name they had just heard for the
+        // anonymous pavement. One apron-kind mention per readout, and no zero distance anywhere.
+        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        foreach (var s in KtiwStands)
+        {
+            string said = SurroundingsReport.Compose($"Parking {s.Number} at KTIW.", "KTIW", cat, s.Lat, s.Lon, 0.0,
+                                                     m => $"{Math.Round(m)} metres");
+            Assert.StartsWith($"Parking {s.Number} at KTIW. On the GA ramp.", said);
+            Assert.DoesNotContain(", 0 metres", said);   // leading comma: "520 metres" ends in "0 metres" too
+            Assert.Equal(1, Count(said, "GA ramp") + Count(said, "Apron"));
+        }
+    }
+
+    [Fact]
+    public void At_KTIW_out_on_the_pavement_between_the_rows_the_zone_is_the_apron_itself()
+    {
+        // Inside the 66,471 m² apron and 230 m from the nearest stand — well beyond
+        // ZoneMemberMetres, so there is no ramp to be "at" and the polygon answers, as it always
+        // did. The member rung must not reach across an apron to the nearest row.
+        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var zone = SurroundingsReport.Zone(cat, 47.2715, -122.5748);
+        Assert.NotNull(zone);
+        Assert.Equal(FeatureKind.Apron, zone!.Kind);
+        Assert.False(zone.HasName);
+        Assert.Contains("On the Apron.", SurroundingsReport.Compose("X.", "KTIW", cat, 47.2715, -122.5748, 0.0, m => $"{Math.Round(m)} metres"));
+    }
+
+    [Fact]
+    public void At_KTIW_the_pavement_under_the_stands_survives_as_its_own_feature()
+    {
+        // Keeping the ramps' own stand geometry must not cost the polygon a pilot is STANDING on.
+        // It is what answers out on the apron away from any row (the test above), and it only has
+        // the chance because it is no longer merged into a ramp. All four of the fixture's aprons
+        // survive; the one holding the stands is the 66,471 m² main apron, 49 vertices.
+        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var aprons = cat.Features.Where(f => f.Kind == FeatureKind.Apron && f.Footprint != null).ToList();
+        Assert.Equal(4, aprons.Count);
+        var stand = KtiwStands.Single(s => s.Number == 2);
+        Assert.Single(aprons, a => SurroundingsGeometry.Contains(a.Footprint!, stand.Lat, stand.Lon));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_named_building_beside_one_stand_of_a_600_metre_row_is_a_SECOND_place(bool reversed)
     {
         // The mirror of the KTIW case, in Members instead of Footprint. Measured cluster extents:
         // KMEM's cargo rows run 686 m, KSNA's GA ramp 1,296 m, KLNK's 1,016 m. A proper name 30 m
-        // from ONE stand absorbs the generic cluster (fourth branch) — and inheriting its members
-        // would report the building at 0 m from the far end of the row.
+        // from ONE stand absorbs the generic cluster under the name rule alone — and inheriting its
+        // members would then report the building at 0 m from the far end of the row. Refusing the
+        // members is not enough: the cluster is a real place and consuming it leaves a pilot at the
+        // far end with no cargo area near them at all.
         var row = new[] { (35.0400, -89.9800), (35.0430, -89.9800), (35.0454, -89.9800) };     // ~601 m end to end
         var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0428, -89.9800, true, FeatureSource.Navdata, row);
         var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);   // ~30 m from the first stand
-        var one = Assert.Single(AirportFeatureCatalog.Build("KMEM", "v", new[] { cluster, building }).Features);
+        Assert.False(AirportFeatureCatalog.SameFeature(cluster, building));
+        Assert.False(AirportFeatureCatalog.SameFeature(building, cluster));                     // and symmetrically
+
+        var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
+        var cat = AirportFeatureCatalog.Build("KMEM", "v", input);
+        Assert.Equal(2, cat.Features.Count);
+        var kept = Assert.Single(cat.Features, f => f.Name == "Cargo ramp");
+        Assert.Equal(3, kept.Members!.Count);                                                   // the row keeps its stands…
+        Assert.True(kept.NameIsGeneric);                                                        // …and its synthesized name
+        Assert.InRange(SurroundingsGeometry.Nearest(35.0454, -89.9800, kept).Metres, 0.0, 1.0); // …and answers at the far end
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_cluster_the_named_building_really_does_describe_still_becomes_one_place(bool reversed)
+    {
+        // The good case, kept: every stand within SameNameRadiusMetres of the building, so the row
+        // IS the building's ramp. One feature, the proper name, the stands as its geometry.
+        var row = new[] { (35.0400, -89.9800), (35.0404, -89.9800), (35.0408, -89.9800) };     // ~89 m end to end
+        var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0404, -89.9800, true, FeatureSource.Navdata, row);
+        var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);
+        var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
+        var one = Assert.Single(AirportFeatureCatalog.Build("KMEM", "v", input).Features);
         Assert.Equal("FedEx Cargo", one.Name);
-        Assert.Null(one.Members);
-        Assert.True(SurroundingsGeometry.Nearest(35.0454, -89.9800, one).Metres > 500.0);
+        Assert.Equal(3, one.Members!.Count);
     }
 
     /// <summary>A square of <paramref name="side"/> metres whose south-west corner sits

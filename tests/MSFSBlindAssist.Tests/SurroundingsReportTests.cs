@@ -103,6 +103,61 @@ public class SurroundingsReportTests
         Assert.DoesNotContain("Hangar,", said);
     }
 
+    // ---- Final review follow-up: the ramp you are ON is the zone, and zero range has no side ----
+
+    [Fact]
+    public void A_named_apron_you_are_inside_outranks_a_stand_cluster_you_are_standing_at()
+    {
+        // Both rungs are live at once: the aircraft is inside the named ring AND on one of the
+        // cluster's stands. The NAME is what a pilot can act on, so the ring wins. (The pair does
+        // not merge: the cluster's far stand is 200 m out, well past Apron's same-name radius, so
+        // the cluster does not describe the ring — see SameFeature.)
+        var ring = new[] { new LatLon(-0.0005, -0.0005), new LatLon(-0.0005, 0.0005), new LatLon(0.0005, 0.0005), new LatLon(0.0005, -0.0005) };
+        var cat = Cat(F(FeatureKind.Apron, "South Apron", 0, 0, fp: ring),
+                      new AirportFeature { Kind = FeatureKind.Apron, Name = "GA ramp", NameIsGeneric = true, Source = FeatureSource.Navdata,
+                                           Lat = Lat + 100 / 111_320.0, Lon = Lon,
+                                           Members = new[] { new LatLon(Lat, Lon), new LatLon(Lat + 200 / 111_320.0, Lon) } });
+        Assert.Equal(2, cat.Features.Count);
+        Assert.Equal("South Apron", SurroundingsReport.Zone(cat, Lat, Lon)?.Name);
+        // …and the ramp underfoot is never ALSO offered as somewhere nearby.
+        string s = SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres);
+        Assert.Equal("X. On the South Apron. Nothing within 600 metres.", s);
+    }
+
+    [Fact]
+    public void A_stand_cluster_you_are_at_is_the_zone_when_no_named_apron_contains_you()
+    {
+        var cluster = new AirportFeature { Kind = FeatureKind.Apron, Name = "GA ramp", NameIsGeneric = true, Source = FeatureSource.Navdata,
+                                           Lat = Lat, Lon = Lon, Members = new[] { new LatLon(Lat, Lon) } };
+        Assert.Equal("GA ramp", SurroundingsReport.Zone(Cat(cluster), Lat, Lon)?.Name);
+        // …but only while the aircraft is AT it: one stand spacing out, there is nothing to be on.
+        var far = new AirportFeature { Kind = FeatureKind.Apron, Name = "GA ramp", NameIsGeneric = true, Source = FeatureSource.Navdata,
+                                       Lat = Lat, Lon = Lon,
+                                       Members = new[] { new LatLon(Lat + (SurroundingsReport.ZoneMemberMetres + 5) / 111_320.0, Lon) } };
+        Assert.Null(SurroundingsReport.Zone(Cat(far), Lat, Lon));
+    }
+
+    [Fact]
+    public void Nothing_at_zero_range_is_ever_given_a_direction()
+    {
+        // A hangar the aircraft is inside: the bearing to it is degenerate and the distance rounds
+        // to zero in both units, so "Cessna Hangar, ahead, 0 metres" was a side that meant nothing
+        // and a number that said nothing.
+        var ring = new[] { new LatLon(-0.0003, -0.0003), new LatLon(-0.0003, 0.0003), new LatLon(0.0003, 0.0003), new LatLon(0.0003, -0.0003) };
+        var cat = Cat(F(FeatureKind.Hangar, "Cessna Hangar", 0, 0, fp: ring));
+        Assert.Equal("X. Cessna Hangar, here.", SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+
+        var sections = SurroundingsReport.BuildSections("X", cat, "", Lat, Lon, 0.0, Metres);
+        Assert.Equal(new[] { "Cessna Hangar, here" }, Assert.Single(sections).Items);
+    }
+
+    [Fact]
+    public void A_feature_just_past_the_zero_range_floor_still_gets_its_direction_and_distance()
+    {
+        var cat = Cat(F(FeatureKind.Hangar, "Cessna Hangar", SurroundingsReport.ZeroRangeMetres + 1.0, 0));
+        Assert.Contains("Cessna Hangar, ahead,", SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+    }
+
     [Fact]
     public void The_window_never_has_an_empty_list_and_never_hard_codes_a_unit()
     {

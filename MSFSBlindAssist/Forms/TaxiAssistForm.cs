@@ -2538,8 +2538,8 @@ public class TaxiAssistForm : Form
                         _destinationHeadingTrueMap[entry.Label] = heading;   // parking heading is true heading
                         _destinationThresholdMap[entry.Label] = (entry.Lat, entry.Lon);
                     }
-                    // else an "end of taxiway" place: NO heading and NO lineup target, so arrival takes
-                    // the "no lineup data — just stop" path instead of aligning the nose on a building.
+                    // else a "nearest taxiway point" place: NO heading and NO lineup target, so arrival
+                    // takes the "no lineup data — just stop" path instead of aligning the nose on a building.
                     if (entry.Spot != null) _destinationSpotMap[entry.Label] = entry.Spot;
                     cmbDestination.Items.Add(entry.Label);
                 }
@@ -2836,7 +2836,7 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>The nearest node a Place may END at when it has no stand: never a hold-short node
-    /// and never on runway pavement — "end of taxiway" must not mean "on the runway".</summary>
+    /// and never on runway pavement — the "nearest taxiway point" must not be on a runway.</summary>
     private Navigation.Surroundings.NearestNode? NearestRoutableNode(double lat, double lon)
     {
         if (_graph == null) return null;

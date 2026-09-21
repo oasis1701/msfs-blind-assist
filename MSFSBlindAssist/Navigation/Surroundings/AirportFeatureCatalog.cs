@@ -62,8 +62,10 @@ public sealed class AirportFeatureCatalog
     /// loser's geometry, so a wrong answer here is a wrong distance in a blind pilot's ear.
     /// Called only from <see cref="SameFeature"/>, i.e. always on two features of the same kind.
     ///
-    /// <para>Two combinations are refused, both of them ones where nothing but proximity was ever
-    /// claimed:</para>
+    /// <para>Three combinations are refused, all of them ones where nothing but proximity was ever
+    /// claimed. A refusal here is a refused MERGE, not merely a refused donation: geometry that does
+    /// not describe the other feature is evidence they are different bodies, and different bodies
+    /// are two places — not one that quietly swallowed the other.</para>
     /// <list type="bullet">
     /// <item>RING vs RING with neither proper-named: two outlines are two bodies unless one holds
     /// the other's representative point. KTIW's four unnamed aprons include a pair 26.4 m apart and
@@ -77,6 +79,14 @@ public sealed class AirportFeatureCatalog
     /// BOTH GA ramps' stands. Kept apart, the ring stays a polygon
     /// <see cref="SurroundingsReport.Zone"/> can put the aircraft inside and the cluster stays
     /// "GA ramp", measured to its own stands.</item>
+    /// <item>A STAND CLUSTER the other feature does not DESCRIBE — some member further from it than
+    /// <see cref="SameNameRadiusMetres"/> (<see cref="MembersDescribe"/>). A building and a row of
+    /// stands that runs past it are two places: KMEM's cargo rows are 686 m long, and a proper-named
+    /// building 30 m from ONE end used to absorb the whole row on the strength of that one stand, so
+    /// a pilot at the far end — 600 m away — was left with no cargo area near them at all. The good
+    /// case is untouched: a cluster whose every member really is within reach still merges, and the
+    /// winner keeps its name and takes the stands as its geometry. Asked in BOTH directions, which
+    /// is also what keeps this predicate symmetric.</item>
     /// </list>
     /// </summary>
     private static bool GeometryMayBeOneBody(AirportFeature a, AirportFeature b)
@@ -85,8 +95,11 @@ public sealed class AirportFeatureCatalog
             return a.HasProperName || b.HasProperName
                 || SurroundingsGeometry.Contains(a.Footprint!, b.Lat, b.Lon)
                 || SurroundingsGeometry.Contains(b.Footprint!, a.Lat, a.Lon);
-        if (a.Kind is FeatureKind.Apron or FeatureKind.DeicePad)
-            return !(IsRing(a) && !a.HasName && IsCluster(b)) && !(IsRing(b) && !b.HasName && IsCluster(a));
+        if (a.Kind is FeatureKind.Apron or FeatureKind.DeicePad
+            && ((IsRing(a) && !a.HasName && IsCluster(b)) || (IsRing(b) && !b.HasName && IsCluster(a))))
+            return false;
+        if (IsCluster(a) && !MembersDescribe(b, a.Members)) return false;
+        if (IsCluster(b) && !MembersDescribe(a, b.Members)) return false;
         return true;
     }
 
@@ -107,34 +120,42 @@ public sealed class AirportFeatureCatalog
     /// <item>neither proper-named — "Helipad 1" is not "Helipad 2"; the shapes left here are two
     /// points, or a point and a cluster, the ring pairs having been settled above.</item>
     /// </list>
+    ///
+    /// <para>The shape question is asked LAST, of the few pairs the name and the distance have
+    /// already accepted: it can walk a whole stand cluster against a ring, while the distance test
+    /// is a couple of scans, so putting it first would pay that cost for every pair of every kind.
+    /// Both halves are symmetric, so <c>SameFeature(a, b) == SameFeature(b, a)</c>.</para>
     /// </summary>
     public static bool SameFeature(AirportFeature a, AirportFeature b)
     {
         if (a.Kind != b.Kind) return false;
-        if (!GeometryMayBeOneBody(a, b)) return false;
         double d = Apart(a, b);
-        if (a.Kind == FeatureKind.Tower) return d <= MergeRadiusMetres(a.Kind);           // one tower: "Control Tower" / "Control Tower 1"
-        bool sameName = string.Equals(Norm(a.Name), Norm(b.Name), StringComparison.OrdinalIgnoreCase);
-        if (a.HasProperName && b.HasProperName) return sameName && d <= SameNameRadiusMetres(a.Kind);
-        if (a.HasProperName || b.HasProperName) return d <= MergeRadiusMetres(a.Kind);    // a real name absorbs a synthesized or missing one
-        return d <= MergeRadiusMetres(a.Kind) && (sameName || !a.HasName || !b.HasName);  // "Helipad 1" is not "Helipad 2"
+        bool byName;
+        if (a.Kind == FeatureKind.Tower) byName = d <= MergeRadiusMetres(a.Kind);         // one tower: "Control Tower" / "Control Tower 1"
+        else
+        {
+            bool sameName = string.Equals(Norm(a.Name), Norm(b.Name), StringComparison.OrdinalIgnoreCase);
+            byName = a.HasProperName && b.HasProperName ? sameName && d <= SameNameRadiusMetres(a.Kind)
+                   : a.HasProperName || b.HasProperName ? d <= MergeRadiusMetres(a.Kind)  // a real name absorbs a synthesized or missing one
+                   : d <= MergeRadiusMetres(a.Kind) && (sameName || !a.HasName || !b.HasName);   // "Helipad 1" is not "Helipad 2"
+        }
+        return byName && GeometryMayBeOneBody(a, b);
     }
 
     /// <summary>
-    /// Would the loser's stand cluster describe the WINNER? Only when EVERY member lies within the
-    /// kind's <see cref="SameNameRadiusMetres"/> of the winner's own geometry — measured through
+    /// Does <paramref name="other"/> DESCRIBE this stand cluster? Only when EVERY member lies within
+    /// the kind's <see cref="SameNameRadiusMetres"/> of it — measured through
     /// <see cref="SurroundingsGeometry.Nearest"/>, the same reader the readout uses, never centroid
     /// to centroid. A cluster is single-linkage, so one row runs as far as the pavement does
     /// (measured: KMEM cargo 686 m, KLNK GA 1,016 m, KSNA GA 1,296 m) while the merge that reached
-    /// it only ever proved ONE member was close: inherited whole, a named building 30 m from the
-    /// first stand then reports itself 0 m away from the far end of the row.
+    /// it only ever proved ONE member was close.
     /// </summary>
-    private static bool MembersDescribe(AirportFeature winner, IReadOnlyList<LatLon>? members)
+    private static bool MembersDescribe(AirportFeature other, IReadOnlyList<LatLon>? members)
     {
         if (members == null || members.Count == 0) return false;
-        double limit = SameNameRadiusMetres(winner.Kind);
+        double limit = SameNameRadiusMetres(other.Kind);
         foreach (var m in members)
-            if (SurroundingsGeometry.Nearest(m.Lat, m.Lon, winner).Metres > limit) return false;
+            if (SurroundingsGeometry.Nearest(m.Lat, m.Lon, other).Metres > limit) return false;
         return true;
     }
 
@@ -152,9 +173,12 @@ public sealed class AirportFeatureCatalog
             // a footprint FIRST, so one adopted ring silently replaces them — KTIW's 6-stand GA
             // ramp took the 66,471 m² main apron and its 5-stand neighbour took a 2,335 m² polygon
             // containing none of its stands, which is how a pilot parked on a ramp was told it lay
-            // 74 m to their right. A cluster is donated only when MembersDescribe agrees.
+            // 74 m to their right. The loser's STANDS need no test here: SameFeature would not have
+            // matched these two at all unless MembersDescribe already agreed they belong together
+            // (GeometryMayBeOneBody) — a cluster that does not describe the winner is a separate
+            // place and is still standing in `kept`.
             var footprint = winner.Footprint ?? (winner.Members == null ? f.Footprint : null);
-            var members = winner.Members ?? (MembersDescribe(winner, f.Members) ? f.Members : null);
+            var members = winner.Members ?? f.Members;
             string? detail = winner.Detail ?? f.Detail;
             if (footprint != winner.Footprint || members != winner.Members || detail != winner.Detail)
             {
