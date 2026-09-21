@@ -1366,6 +1366,25 @@ not do this — queued, while the dialog is visible, and it REPLACES that settle
 count line. The gate-source-refresh and restore origins keep their existing label
 rule untouched.
 
+**A background settle speaks that sentence for a RESTORE-origin pending too, and
+that is deliberate.** A SayIntentions probe fails, `RestoreDestinationState` arms
+the pilot's pre-probe place (kept, because a warm-up is in flight), and the
+refresh then renames or drops it. The probe's own silence rule — "probing leaves
+no mark" — covers the probe's narration, not a background refresh that removed
+the destination while it ran: what took it away is the refresh, so the sentence
+is true and actionable, and the alternative is a silently cleared destination and
+a baffling "Please select a destination." at the next Calculate. A FOREGROUND
+settle on the same pending still says nothing.
+
+Which of the two a settling warm-up is comes from `ResolveWarmUpBackground`:
+`_placesWarmUpBackground` answers only while the form still names that warm-up's
+ticket — the one state in which it could have been promoted, and the one in which
+a `false` there means "promoted" rather than "cleared by an airport load" — and
+otherwise the warm-up's own start-time parameter is all that is still true about
+it. Read blindly, a background refresh outliving a `LoadAirportDataCoreAsync`
+reset with no successor announced a count nobody asked for and skipped the rename
+fallback.
+
 **A pending selection the rebuilt list no longer carries leaves NOTHING
 selected, never item 0** — item 0 plus Calculate would route to, and
 `gate.select`, a place the pilot never chose; cleared, Calculate aborts with
@@ -1379,12 +1398,13 @@ warm-up passes the token check again with the list still empty, so its own
 `previous` is null, and unguarded it wiped the label the first one had armed —
 the pilot's place was never re-seated and nothing was said about it. Where a
 silent restore's label outlives such a request the surviving origin is the
-restore's, so the loss stays silent: the restore is a probe undoing itself and
-the pilot performed no action there.
+restore's, so a FOREGROUND settle stays silent about the loss: the restore is a
+probe undoing itself and the pilot performed no action there.
 
 A loss caused by the gate-source refresh speaks the shared
-`GateListUpdatedMessage`, queued, while the form is visible; a loss inside a
-silent destination restore says nothing; and when nothing is listed at all only
+`GateListUpdatedMessage`, queued, while the form is visible; a loss on a
+foreground settle from any other origin — a silent destination restore, a live
+pick preserved across a rebuild — says nothing; and when nothing is listed at all only
 the list's own line is spoken, because "choose again" would be an instruction
 to choose from an empty list. That line says which KIND of empty it is
 (`DescribePlaceList`): "No places to route to at {icao}." for a catalog that

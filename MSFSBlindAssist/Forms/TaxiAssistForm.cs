@@ -353,7 +353,9 @@ public class TaxiAssistForm : Form
     /// 0, the rule <see cref="RefreshDestinationsIfGateSourceChanged"/> states for the gate list —
     /// and the origin decides whether the pilot is told: a destination lost to a GATE-SOURCE
     /// REFRESH gets the gate path's own words, while one lost to a silent destination RESTORE says
-    /// nothing at all ("probing leaves no mark"). An empty <see cref="Label"/> means "nothing was
+    /// nothing on a FOREGROUND settle ("probing leaves no mark" — the pilot performed no action
+    /// there). It does speak on a BACKGROUND one, where a refresh nobody asked for is what removed
+    /// the destination: see <see cref="ClassifyPlaceSelectionLoss"/>. An empty <see cref="Label"/> means "nothing was
     /// selected before the rebuild — keep it that way", which is the same branch the gate path
     /// takes for an already-cleared selection.</summary>
     internal readonly record struct PendingPlaceSelection(string? Label, bool FromGateSourceRefresh);
@@ -387,9 +389,11 @@ public class TaxiAssistForm : Form
     /// destination." invites exactly that second press.</para>
     /// <para>The ORIGIN FLAG follows the label that survives, which is what keeps the loss message
     /// truthful. When a silent RESTORE's label outlives a gate-source refresh's empty request the
-    /// surviving origin is the restore's, so the loss says nothing: the restore is a probe undoing
-    /// itself ("probing leaves no mark"), the pilot performed no action there, and the import that
-    /// triggered it is already composing its own single utterance for them.</para>
+    /// surviving origin is the restore's, so a FOREGROUND settle says nothing about the loss: the
+    /// restore is a probe undoing itself ("probing leaves no mark"), the pilot performed no action
+    /// there, and the import that triggered it is already composing its own single utterance for
+    /// them. A BACKGROUND settle does speak, because there the loss is the refresh's doing rather
+    /// than the probe's — see <see cref="ClassifyPlaceSelectionLoss"/>.</para>
     /// </summary>
     internal static PendingPlaceSelection MergePendingPlaceSelection(
         PendingPlaceSelection? existing, PendingPlaceSelection incoming)
@@ -1656,7 +1660,9 @@ public class TaxiAssistForm : Form
             // repopulates the list some time AFTER this method has returned — so the label to
             // put back is handed to that warm-up rather than looked up below, where the list
             // is still empty. Restore origin: a label the rebuilt list no longer carries clears
-            // the selection SILENTLY, because the pilot performed no action here.
+            // the selection, silently where the settle is a foreground one — the pilot performed
+            // no action here — but spoken where a BACKGROUND refresh is what removed it
+            // (ClassifyPlaceSelectionLoss), which the probe did not cause and cannot excuse.
             if (priorType == 4)
                 ArmPendingPlaceSelection(priorDestination, fromGateSourceRefresh: false);
 
@@ -2982,9 +2988,17 @@ public class TaxiAssistForm : Form
                 $"Place warm-up for {icao} was superseded by a newer one; leaving its pending selection alone.");
             return;
         }
-        // The FIELD, not the parameter: OnDestTypeChanged can have PROMOTED this warm-up to a
-        // foreground one since it started, and then it owes the pilot an ordinary settle.
-        bool background = _placesWarmUpBackground;
+        // BOTH sources, and which one is the truth depends on whether the form still names this
+        // ticket. The FIELD carries a PROMOTION OnDestTypeChanged may have made since this warm-up
+        // started, and promotion can only ever happen while the field still names us. But the
+        // ownership test above also passes when the field is NULL, which LoadAirportDataCoreAsync
+        // does: in its synchronous populate stretch this build can store its catalog, the populate
+        // then finds it fresh and starts NO successor, and this continuation arrives to a field
+        // that was cleared rather than promoted — read blindly it said "foreground", so a refresh
+        // nobody asked for announced a count and skipped the rename fallback. There, the warm-up's
+        // own start-time parameter is all that is true about it. Read BEFORE either is cleared.
+        bool background = ResolveWarmUpBackground(
+            ReferenceEquals(_placesWarmUp, mine), _placesWarmUpBackground, backgroundRefresh);
         _placesWarmUp = null;
         _placesWarmUpBackground = false;
 
@@ -3144,8 +3158,9 @@ public class TaxiAssistForm : Form
     /// while the maps still held it. The catalog renames places without moving them, so a label
     /// that is gone is not the same fact as a place that is.</param>
     /// <returns>Whose doing the lost selection was, or <see cref="PlaceSelectionLoss.None"/> when
-    /// nothing was lost or nothing may be said about it — a silent destination restore returns
-    /// None however it ends, because the pilot performed no action there.</returns>
+    /// nothing was lost or nothing may be said about it — a restore-origin pending returns None on
+    /// a FOREGROUND settle, because the pilot performed no action there, but not on a background
+    /// one, where the refresh is what took the destination away.</returns>
     private PlaceSelectionLoss ApplyPendingPlaceSelection(bool backgroundRefresh = false, PlaceTarget? previousTarget = null)
     {
         if (_pendingPlaceSelection is not { } pending) return PlaceSelectionLoss.None;
@@ -3175,9 +3190,11 @@ public class TaxiAssistForm : Form
         if (cmbDestination.Items.Count > 0) cmbDestination.SelectedIndex = -1;
         if (string.IsNullOrEmpty(pending.Label)) return PlaceSelectionLoss.None;
 
-        // Bare facts, no invented origin story: the flag says only whether this loss MAY be
-        // announced, and three different requests set it false (a silent destination restore, a
-        // live selection preserved across the rebuild, a selection deliberately left clear).
+        // Bare facts, no invented origin story: the flag says only where the request CAME FROM.
+        // Three set it false — a silent destination restore, a live selection preserved across the
+        // rebuild, a selection deliberately left clear — and on a BACKGROUND settle the first two
+        // are still announced, in the Place list's own words, because what removed the destination
+        // there was the refresh rather than whatever armed the pending.
         _taxiFormLog.Info(
             $"Place list for {_currentIcao} rebuilt; previous destination '{pending.Label}' is no longer listed " +
             $"(listed={cmbDestination.Items.Count} fromGateSourceRefresh={(pending.FromGateSourceRefresh ? "true" : "false")}).");
@@ -3194,14 +3211,21 @@ public class TaxiAssistForm : Form
 
     /// <summary>Whose doing a lost Place selection was, which decides the words and whether there
     /// are any. GSX's gate list moving and the surroundings catalog renaming a place are different
-    /// events with different remedies, and a silent restore or an empty list is neither.</summary>
+    /// events with different remedies, and an empty list is neither.</summary>
     internal enum PlaceSelectionLoss { None, GateSourceRefresh, BackgroundRefresh }
 
     /// <summary>The rule behind <see cref="ApplyPendingPlaceSelection"/>'s return value. Nothing
     /// was lost if there was no label, or it was put back (by name or by target); nothing is said
     /// over an EMPTY list, because "choose again" would be an instruction to choose from nothing;
-    /// and a loss on neither of the two announceable origins — a silent destination restore, a
-    /// live pick preserved across a rebuild — stays silent as it always has.</summary>
+    /// and a FOREGROUND settle on a pending armed by anything but a gate-source refresh stays
+    /// silent as it always has — a silent destination restore, a live pick preserved across a
+    /// rebuild: the pilot performed no action there.
+    /// <para>A BACKGROUND settle is the deliberate exception, and it reaches a restore-origin
+    /// pending too: a SayIntentions probe fails, <see cref="RestoreDestinationState"/> arms the
+    /// pilot's pre-probe place (kept, because a warm-up is in flight), and the refresh then renames
+    /// or drops it. What took the destination away is the REFRESH, not the probe, so the sentence
+    /// is true and actionable — and the alternative is a silently cleared destination and a
+    /// baffling "Please select a destination." at the next Calculate.</para></summary>
     internal static PlaceSelectionLoss ClassifyPlaceSelectionLoss(
         bool hadLabel, bool reseated, bool listEmpty, bool fromGateSourceRefresh, bool backgroundRefresh)
         => !hadLabel || reseated || listEmpty ? PlaceSelectionLoss.None
@@ -3288,6 +3312,14 @@ public class TaxiAssistForm : Form
         bool promote = warmUpInFlight && warmUpIsBackground && !silentRestore;
         return new PlaceModeEntry(promote, promote && visible);
     }
+
+    /// <summary>Whether a settling warm-up is still a BACKGROUND one. <c>_placesWarmUpBackground</c>
+    /// answers only while the form still names this warm-up's ticket — that is the only state in
+    /// which it could have been PROMOTED, and also the only one in which a <c>false</c> there means
+    /// "promoted" rather than "cleared by an airport load". Otherwise the warm-up's own start-time
+    /// parameter is all that is still true about it.</summary>
+    internal static bool ResolveWarmUpBackground(bool stillOwnsTicket, bool fieldValue, bool startedAsBackground)
+        => stillOwnsTicket ? fieldValue : startedAsBackground;
 
     /// <summary>
     /// The one sentence the Place list says about itself, or NULL when there is no airport to

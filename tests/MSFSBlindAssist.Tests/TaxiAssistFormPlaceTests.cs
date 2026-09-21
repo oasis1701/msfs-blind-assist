@@ -172,6 +172,21 @@ public class TaxiAssistFormPlaceTests
         Assert.False(entry.SpeakLoading);
     }
 
+    [Fact]
+    public void A_settle_that_no_longer_owns_the_ticket_falls_back_to_how_it_started()
+    {
+        // The promotion lives in a FIELD, which LoadAirportDataCoreAsync clears. In its
+        // synchronous populate stretch a background warm-up's build can store its catalog, the
+        // populate then finds it fresh and starts NO successor — so the old continuation reaches
+        // the settle with the ticket gone (the ownership test's "field is null" disjunct) and the
+        // field already false. Read blindly, a refresh nobody asked for announced a count and
+        // skipped the rename fallback. The field is the truth only while it still names us.
+        Assert.True(TaxiAssistForm.ResolveWarmUpBackground(stillOwnsTicket: false, fieldValue: false, startedAsBackground: true));
+        Assert.False(TaxiAssistForm.ResolveWarmUpBackground(stillOwnsTicket: false, fieldValue: true, startedAsBackground: false));
+        // Still ours: the field wins, which is how a promotion reaches the settle at all.
+        Assert.False(TaxiAssistForm.ResolveWarmUpBackground(stillOwnsTicket: true, fieldValue: false, startedAsBackground: true));
+    }
+
     // ---- A selection that could not be put back (Classify/DescribePlaceSelectionLoss) ----
 
     [Fact]
@@ -212,15 +227,30 @@ public class TaxiAssistFormPlaceTests
     }
 
     [Fact]
-    public void Neither_a_silent_restore_nor_an_empty_list_nor_a_cleared_selection_is_announced()
+    public void Neither_a_foreground_settle_nor_an_empty_list_nor_a_cleared_selection_is_announced()
     {
-        // A restore says nothing however it ends; "choose again" over an empty list would be an
-        // instruction to choose from nothing; and a selection that was already clear lost nothing.
+        // A FOREGROUND settle on a restore-origin pending says nothing — the pilot performed no
+        // action there; "choose again" over an empty list would be an instruction to choose from
+        // nothing; and a selection that was already clear lost nothing.
         Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
             TaxiAssistForm.ClassifyPlaceSelectionLoss(true, false, listEmpty: false, fromGateSourceRefresh: false, backgroundRefresh: false));
         Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
             TaxiAssistForm.ClassifyPlaceSelectionLoss(true, false, listEmpty: true, fromGateSourceRefresh: false, backgroundRefresh: true));
         Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
             TaxiAssistForm.ClassifyPlaceSelectionLoss(hadLabel: false, reseated: false, listEmpty: false, fromGateSourceRefresh: true, backgroundRefresh: true));
+    }
+
+    [Fact]
+    public void A_restore_origin_pending_a_BACKGROUND_refresh_cannot_put_back_IS_announced()
+    {
+        // DELIBERATE, and the one case where a restore-origin pending speaks. A SayIntentions
+        // probe fails and RestoreDestinationState arms the pilot's pre-probe place (kept, because
+        // a warm-up is in flight); the background refresh then renames or drops it. What took the
+        // destination away is the REFRESH, not the probe — so the sentence is true and actionable,
+        // and the alternative is a silently cleared destination and a baffling "Please select a
+        // destination." at the next Calculate. Silent on a foreground settle, spoken here.
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.BackgroundRefresh,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(hadLabel: true, reseated: false, listEmpty: false,
+                fromGateSourceRefresh: false, backgroundRefresh: true));
     }
 }
