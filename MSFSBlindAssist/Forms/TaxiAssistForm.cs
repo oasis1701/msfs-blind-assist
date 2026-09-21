@@ -2462,10 +2462,11 @@ public class TaxiAssistForm : Form
         else if (isPlace)
         {
             // PLACE path: FBOs, hangars, fuel, terminals, cargo from the surroundings catalog,
-            // each RESOLVED onto navdata pavement by FeatureDestinationResolver (a stand within
-            // 150 m, else a taxi node within 100 m). Fills the same maps as the gate and deice
-            // branches so Calculate, LoadRoute and docking need no Place-specific code. A feature
-            // that resolves to nothing is not listed — there is no way to taxi to it.
+            // each RESOLVED onto navdata pavement by PlaceListBuilder (a stand of the selectable
+            // list within 150 m, chosen by POSITION rather than a name join, else a taxi node
+            // within 100 m). Fills the same maps as the gate and deice branches so Calculate,
+            // LoadRoute and docking need no Place-specific code. A feature that resolves to
+            // nothing is not listed — there is no way to taxi to it.
             //
             // SurroundingsCatalogCached is a lock-only read — it must NEVER trigger the cache's
             // possible first-time scenery scan/DB read on this UI thread (this method runs
@@ -2522,12 +2523,24 @@ public class TaxiAssistForm : Form
             }
             else
             {
-                var named = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, _currentIcao);
-                // GSX's own list, computed once outside the loop — carries the stop position, so
-                // a Place that resolves onto a GSX-known stand can dock to the actual VDGS stop
-                // rather than the raw navdata point (docking fidelity: matches what the Gate/
-                // Parking destination type would use for that same stand).
-                var selectable = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
+                // The SELECTABLE list only for now (Task 14 adds the navdata-only fallback) —
+                // GSX's own, so a Place that resolves onto a GSX-known stand carries its stop
+                // position and GsxIdentifier exactly as the Gate destination type does. Node
+                // resolution mirrors the gate branch below: nearest graph node within 100 m,
+                // else -1 (PlaceListBuilder then treats the stand as unreachable, same as a
+                // stand the pilot's own fit/search filters would have dropped).
+                const double MAX_PLACE_STAND_TO_GRAPH_M = 100.0;
+                var selectableSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
+                var selectable = new List<Navigation.Surroundings.StandCandidate>(selectableSpots.Count);
+                foreach (var spot in selectableSpots)
+                {
+                    int nodeId = -1;
+                    var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
+                    if (nearNode != null && TaxiGraph.CalculateDistanceMeters(nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude) <= MAX_PLACE_STAND_TO_GRAPH_M)
+                        nodeId = nearNode.NodeId;
+                    selectable.Add(new Navigation.Surroundings.StandCandidate(spot, nodeId));
+                }
+
                 Navigation.Surroundings.NearestNode? Nearest(double lat, double lon)
                 {
                     var n = _graph.FindNearestNode(lat, lon);
@@ -2536,47 +2549,20 @@ public class TaxiAssistForm : Form
                         TaxiGraph.CalculateDistanceMeters(n.Latitude, n.Longitude, lat, lon));
                 }
 
-                foreach (var feature in catalog.Features.Where(f => Navigation.Surroundings.FeatureDestinationResolver.IsRoutable(f.Kind))
-                                                        .OrderBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase))
+                var entries = Navigation.Surroundings.PlaceListBuilder.Build(catalog, selectable,
+                    Array.Empty<Navigation.Surroundings.StandCandidate>(), Nearest, standAllowed: _ => true);
+                foreach (var entry in entries)
                 {
-                    var dest = Navigation.Surroundings.FeatureDestinationResolver.Resolve(feature, named, Nearest);
-                    if (dest == null) continue;
-
-                    int nodeId = dest.NodeId;
-                    double destLat = dest.Lat, destLon = dest.Lon, destHeading = dest.HeadingDeg;
-                    ParkingSpot? spotForMap = dest.Spot;
-
-                    if (dest.Spot != null)
+                    if (_destinationNodeMap.ContainsKey(entry.Label)) continue;
+                    _destinationNodeMap[entry.Label] = entry.NodeId;
+                    if (entry.HeadingDeg is double heading)
                     {
-                        // Same-identity stand in GSX's own list (Name/Number/Suffix, all
-                        // OrdinalIgnoreCase) — when found, dock to ITS stop position/heading
-                        // instead of the navdata spot's raw lat/lon/heading.
-                        var gsxSpot = selectable.FirstOrDefault(s =>
-                            string.Equals(s.Name, dest.Spot.Name, StringComparison.OrdinalIgnoreCase) &&
-                            s.Number == dest.Spot.Number &&
-                            string.Equals(s.Suffix, dest.Spot.Suffix, StringComparison.OrdinalIgnoreCase));
-                        if (gsxSpot != null)
-                        {
-                            spotForMap = gsxSpot;
-                            destLat = gsxSpot.StopLatitude ?? gsxSpot.Latitude;
-                            destLon = gsxSpot.StopLongitude ?? gsxSpot.Longitude;
-                            destHeading = gsxSpot.StopHeading ?? gsxSpot.Heading;
-                        }
-
-                        var nearNode = _graph.FindNearestNode(destLat, destLon);
-                        if (nearNode == null) continue;
-                        if (TaxiGraph.CalculateDistanceMeters(nearNode.Latitude, nearNode.Longitude, destLat, destLon) > 100.0) continue;
-                        nodeId = nearNode.NodeId;
+                        _destinationHeadingMap[entry.Label] = heading;
+                        _destinationHeadingTrueMap[entry.Label] = heading;
                     }
-
-                    string label = Navigation.Surroundings.FeatureDestinationResolver.Label(dest);
-                    if (_destinationNodeMap.ContainsKey(label)) continue;
-                    _destinationNodeMap[label] = nodeId;
-                    _destinationHeadingMap[label] = destHeading;
-                    _destinationHeadingTrueMap[label] = destHeading;
-                    _destinationThresholdMap[label] = (destLat, destLon);
-                    if (spotForMap != null) _destinationSpotMap[label] = spotForMap;
-                    cmbDestination.Items.Add(label);
+                    _destinationThresholdMap[entry.Label] = (entry.Lat, entry.Lon);
+                    if (entry.Spot != null) _destinationSpotMap[entry.Label] = entry.Spot;
+                    cmbDestination.Items.Add(entry.Label);
                 }
             }
         }
