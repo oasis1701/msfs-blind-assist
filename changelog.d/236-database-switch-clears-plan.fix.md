@@ -1,0 +1,1 @@
+Switching simulator or rebuilding your navigation database now clears a pending landing-exit plan and disarms the manual landing assist, and says so. Both remembered runway positions from the old database, which the new one can name or place differently.

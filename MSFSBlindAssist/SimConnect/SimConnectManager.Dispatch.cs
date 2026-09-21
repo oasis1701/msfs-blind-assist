@@ -42,6 +42,7 @@ public partial class SimConnectManager
         if ((SYSTEM_EVENT_ID)data.uEventID == SYSTEM_EVENT_ID.AircraftLoaded)
         {
             Log.Debug("SimConnect", $"AircraftLoaded system event: {data.szFileName}");
+            AircraftLoaded?.Invoke(this, data.szFileName ?? string.Empty);
             // Re-read ATC MODEL so AircraftIcaoTypeDetected fires for the newly loaded aircraft.
             RequestAircraftInfo();
         }
@@ -53,6 +54,14 @@ public partial class SimConnectManager
         if ((int)data.dwRequestID >= (int)DATA_REQUESTS.INDIVIDUAL_VARIABLE_BASE)
         {
             ProcessIndividualVariableResponse((int)data.dwRequestID, (SingleValue)data.dwData[0]);
+            return;
+        }
+
+        // A camera read answers under its OWN id from the small range counting up from
+        // REQUEST_CAMERA_VIEW (CameraReadWaiters), so it is matched by range, not by a case label.
+        if (_cameraReads.Owns((int)data.dwRequestID))
+        {
+            CompleteCameraViewRead((int)data.dwRequestID, (CameraViewData)data.dwData[0]);
             return;
         }
 
@@ -1494,5 +1503,11 @@ public partial class SimConnectManager
         {
             pmdgDataManager.ProcessClientData(data);
         }
+
+        // Forward client data to the MD-11 MCDU manager. It claims only its own six request ids
+        // (a subscription and a start-up snapshot per unit) and returns false for anything else,
+        // so the order relative to PMDG doesn't matter — the two never register overlapping ids
+        // (the MD-11's are namespaced into 0x4D44xxxx).
+        md11McduDataManager?.HandleClientData(data);
     }
 }

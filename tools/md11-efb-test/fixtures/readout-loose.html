@@ -1,0 +1,10 @@
+<!-- Synthetic: three children, so neither row rule matches and the generic walk meets the
+     disabled input itself. It must still read as a read-out, never an edit box.
+     The input sits directly after its label, not last: A.labelInfo's existing sibling walk
+     (pre-Task-6, shared by every other field) binds to the NEAREST preceding named element, so
+     with the label two siblings back it would bind "(computed)" instead of "Note". -->
+<div class="flex items-center">
+  <span>Note</span>
+  <input type="text" disabled value="42">
+  <span>(computed)</span>
+</div>

@@ -1,0 +1,1 @@
+Runway-crossing warnings keep working after a landing that ends without a taxi route — after vacating the runway from the runway-end countdown, or after backtracking. Previously you taxied to the stand with those warnings switched off.
