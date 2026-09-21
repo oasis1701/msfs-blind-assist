@@ -52,6 +52,11 @@ public sealed class PassingCalloutGate
     public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5), GlobalGap = TimeSpan.FromSeconds(10),
                                     TrackExpiry = TimeSpan.FromSeconds(30), RepeatMemory = TimeSpan.FromMinutes(10);
 
+    // Min/MinRel freeze the instant Passed is set (Evaluate gates their update on !Passed): the
+    // pair describes the pass exactly as it was JUDGED by IsAbeam at arm time, so a later, deeper
+    // sample arriving while the pass sits out the global gap or excess speed — a second approach
+    // after a turn back toward the building, a non-convex footprint's second local minimum, bearing
+    // noise near a stop — can never drift what the pass reports once it finally fires.
     private sealed class Track { public string Key = ""; public double First, Min, MinRel, AnchorLat, AnchorLon; public DateTime LastSeen; public bool Passed, Pending; }
     private sealed class FiredRecord { public string Key = ""; public double Lat, Lon; public DateTime FiredAt; }
 
@@ -156,7 +161,7 @@ public sealed class PassingCalloutGate
                 _tracks.Add(t);
             }
             t.LastSeen = now; t.AnchorLat = n.Feature.Lat; t.AnchorLon = n.Feature.Lon;
-            if (d < t.Min) { t.Min = d; t.MinRel = n.RelativeBearingDeg; }
+            if (!t.Passed && d < t.Min) { t.Min = d; t.MinRel = n.RelativeBearingDeg; }   // frozen once armed: see Track's own comment
 
             if (!t.Passed && t.First - t.Min >= MinApproachMetres && d >= t.Min + OpeningMetres)
             {

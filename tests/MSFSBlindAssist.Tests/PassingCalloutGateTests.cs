@@ -365,4 +365,81 @@ public class PassingCalloutGateTests
     {
         Assert.Equal(shouldFire, FiresAtMinBearing(minRel));
     }
+
+    // ---- Fix round 2: a pass is frozen the moment it arms -- Min/MinRel cannot drift afterward ----
+
+    [Fact]
+    public void A_pass_is_frozen_the_moment_it_arms_so_a_deeper_sample_while_held_by_the_gap_does_not_drift_the_announced_side()
+    {
+        // Worked example from the review: arms at 60 m / +95 (abeam right), held by the global gap
+        // (started by a first building's fire); a later, deeper, off-side sample must not overwrite
+        // the pair IsAbeam already judged -- the eventual release must still say "right", not
+        // whatever the drifted reading would have said.
+        var gate = new PassingCalloutGate();
+        var first = Feat(FeatureKind.Concourse, "First Building");
+        var second = Feat(FeatureKind.Concourse, "Second Building");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 140, 90), new NearbyFeature(second, 140, 95) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 85, 90), new NearbyFeature(second, 110, 95) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 60, 90), new NearbyFeature(second, 90, 95) }, 10, T0.AddSeconds(4)));
+        Assert.NotNull(gate.Evaluate(new[] { new NearbyFeature(first, 70, 90), new NearbyFeature(second, 60, 95) }, 10, T0.AddSeconds(6)));   // first fires (starts the gap); second's own minimum so far: 60 m at +95
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 70, 95) }, 10, T0.AddSeconds(8)));     // second opens/arms at +95 (abeam right) -- held by the gap
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 50, -30) }, 10, T0.AddSeconds(10)));   // a DEEPER, off-side sample while pending: must NOT overwrite the armed pair
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 55, -30) }, 10, T0.AddSeconds(12)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 65, -30) }, 10, T0.AddSeconds(14)));
+        var hit = gate.Evaluate(new[] { new NearbyFeature(second, 75, -30) }, 10, T0.AddSeconds(16));      // gap clears
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);
+        Assert.Equal(95, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void The_mirror_case_on_the_left_also_stays_frozen_at_the_armed_pair()
+    {
+        var gate = new PassingCalloutGate();
+        var first = Feat(FeatureKind.Concourse, "First Building");
+        var second = Feat(FeatureKind.Concourse, "Second Building");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 140, 90), new NearbyFeature(second, 140, -95) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 85, 90), new NearbyFeature(second, 110, -95) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(first, 60, 90), new NearbyFeature(second, 90, -95) }, 10, T0.AddSeconds(4)));
+        Assert.NotNull(gate.Evaluate(new[] { new NearbyFeature(first, 70, 90), new NearbyFeature(second, 60, -95) }, 10, T0.AddSeconds(6)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 70, -95) }, 10, T0.AddSeconds(8)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 50, 30) }, 10, T0.AddSeconds(10)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 55, 30) }, 10, T0.AddSeconds(12)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(second, 65, 30) }, 10, T0.AddSeconds(14)));
+        var hit = gate.Evaluate(new[] { new NearbyFeature(second, 75, 30) }, 10, T0.AddSeconds(16));
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);
+        Assert.Equal(-95, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void A_pass_held_back_by_excess_speed_also_stays_frozen_at_the_armed_pair()
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Fast Pass Building");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 100) }, 45, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 100) }, 45, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 100) }, 45, T0.AddSeconds(4)));    // minimum so far: 60 m at 100 degrees
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 70, 100) }, 45, T0.AddSeconds(6)));     // opens/arms at 100 (abeam) -- held by excess speed (45 kt > MaxSpeedKts)
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 50, -60) }, 45, T0.AddSeconds(8)));    // a DEEPER, off-side sample while still fast: must NOT overwrite
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 55, -60) }, 45, T0.AddSeconds(10)));
+        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 65, -60) }, 10, T0.AddSeconds(12));       // slows into the band, building still in range
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);
+        Assert.Equal(100, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void A_non_abeam_minimum_consumed_silently_is_not_resurrected_by_a_later_deeper_abeam_sample()
+    {
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Concourse B");
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 20) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 20) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 20) }, 10, T0.AddSeconds(4)));     // minimum so far: 60 m at 20 degrees -- not abeam
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 70, 20) }, 10, T0.AddSeconds(6)));      // opens: consumed silently (20 degrees is not abeam)
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 50, 90) }, 10, T0.AddSeconds(8)));     // a DEEPER, ABEAM sample on the SAME (already-consumed) track
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 90) }, 10, T0.AddSeconds(10)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 10, T0.AddSeconds(12)));     // still nothing -- the track stays consumed
+    }
 }
