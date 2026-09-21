@@ -87,13 +87,14 @@ public partial class TaxiGuidanceManager
         // RIGHT to come around", contradicting the tone on the exact flight being fixed.
         // Do not remove this conversion.
         double aircraftHeadingMagVar = 0.0,
-        // Whether the route may start held (TaxiRoute.StartHoldRunway). Not while the aircraft is still
-        // on the landing runway, where the hold would stop it: LandingExitPlanner's touchdown route and
-        // RetargetLandingExit's route to another exit pass false; both landing handoff re-routes
-        // (UpdateLandingRollout's and TryEarlyExitHandoff's) pass offRunwayAtHandoff. A false route's
-        // crossings log line reads phase=touchdown. Whatever this says, the pass sets no start hold
-        // while the aircraft stands on any runway's pavement.
-        bool allowStartHold = true)
+        // Whether this route is being adopted FOR THE LANDING ROLLOUT — LandingExitPlanner's
+        // touchdown route, RetargetLandingExit's route to another exit, and both landing-handoff
+        // re-routes. It LABELS the "Route crossings:" log line (phase=touchdown) and does nothing
+        // else: whether the route may start held is now decided by the pass, from the aircraft's own
+        // position and ground speed, which is the whole of PR #238 deferred finding §2. The old
+        // `allowStartHold` bool travelled bool -> "load"/"touchdown" string -> bool, so a fourth
+        // phase or a typo silently disabled start holds with no compile error.
+        bool landingRolloutRoute = false)
     {
         lock (_stateLock)
         {
@@ -491,7 +492,7 @@ public partial class TaxiGuidanceManager
             if (userRunwayHoldShorts != null && userRunwayHoldShorts.Count > 0 && taxiwaySequence != null)
             {
                 runwayHoldShortWarning = ApplyUserRunwayHoldShorts(
-                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, allowStartHold);
+                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, _lastGroundSpeedKts);
             }
 
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
@@ -618,7 +619,7 @@ public partial class TaxiGuidanceManager
 
             AdoptRoute(
                 route, isRunwayDestination, destinationName,
-                aircraftLat, aircraftLon, phase: allowStartHold ? "load" : "touchdown");
+                aircraftLat, aircraftLon, phase: landingRolloutRoute ? "touchdown" : "load");
             _currentSegmentIndex = 0;
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
@@ -1867,23 +1868,27 @@ public partial class TaxiGuidanceManager
     /// </summary>
     /// <param name="phase">"load", "recalc" or "touchdown" (a route adopted for the landing rollout) — recorded in the log line so they are
     /// separable. The recalc produced no line at all before, which is why it took a segment-
-    /// cursor reset to prove it had even happened. The phase also gates the start hold
-    /// (<see cref="TaxiRoute.StartHoldRunway"/>): only "load" may set one.</param>
+    /// cursor reset to prove it had even happened. It is a LABEL and nothing else: the start hold
+    /// (<see cref="TaxiRoute.StartHoldRunway"/>) is decided by the pass itself, from the aircraft's
+    /// position and ground speed (PR #238 deferred finding §2). The old re-derivation
+    /// (<c>allowStartHold: phase == "load"</c>) made a typo in this string silently disable start
+    /// holds with no compile error.</param>
     private void ApplyAutoHoldShortPasses(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
         double aircraftLat, double aircraftLon, string phase)
     {
         // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
-        // The start hold is allowed only when LoadRoute adopts the route: a recalculation is built
-        // from a moving aircraft that may already be committed to the crossing. The aircraft's
-        // position is the route's first point and decides which stops it has already passed.
+        // The aircraft's position is the route's first point, decides which stops it has already
+        // passed, and — with its ground speed — decides whether the route may start held: a start
+        // hold stops the aircraft where it stands, so it is an instruction to an aircraft that IS
+        // standing. A recalculation is built from a moving aircraft, which is what keeps one from
+        // starting held without a phase string to re-derive it from.
         if (_graph != null)
         {
             RouteRunwayCrossings.InsertRunwayHoldShorts(
                 route, _graph.RunwayCenterlines,
                 isRunwayDestination ? destinationName : "",
-                allowStartHold: phase == "load",
-                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon));
+                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon, _lastGroundSpeedKts));
         }
 
         // One line per route ADOPTED. Answering "did that route really drive across 08L?" for the
@@ -1974,7 +1979,7 @@ public partial class TaxiGuidanceManager
         Dictionary<int, string> userRunwayHoldShorts,
         double aircraftLat,
         double aircraftLon,
-        bool allowStartHold)
+        double groundSpeedKts)
     {
         if (_graph == null) return null;
 
@@ -2057,8 +2062,8 @@ public partial class TaxiGuidanceManager
 
             switch (RouteRunwayCrossings.ApplyUserRunwayHold(
                         route, targetRwy, _graph.RunwayCenterlines, runwayId, runStart,
-                        allowStartHold: allowStartHold,
-                        aircraft: new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon)))
+                        aircraft: new RouteRunwayCrossings.AircraftPosition(
+                            aircraftLat, aircraftLon, groundSpeedKts)))
             {
                 case RouteRunwayCrossings.UserRunwayHoldResult.NotOnRoute:
                     unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");

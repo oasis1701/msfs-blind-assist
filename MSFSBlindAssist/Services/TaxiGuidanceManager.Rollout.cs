@@ -780,7 +780,7 @@ public partial class TaxiGuidanceManager
                     prebuiltGraph: _graph,
                     announceSummary: false,
                     // Still on the landing runway, a start hold would stop the aircraft on it.
-                    allowStartHold: offRunwayAtHandoff);
+                    landingRolloutRoute: true);
                 handoffRerouted = rerouteErr == null;
                 if (handoffRerouted)
                 {
@@ -1592,7 +1592,7 @@ public partial class TaxiGuidanceManager
             startTaxiwayName: startTwy,
             // A start hold only once the aircraft is off the runway, as at UpdateLandingRollout's
             // handoff: on the pavement it would stop the aircraft there.
-            allowStartHold: offRunwayAtHandoff);
+            landingRolloutRoute: true);
 
         if (err != null)
         {
@@ -2093,8 +2093,8 @@ public partial class TaxiGuidanceManager
                 prebuiltGraph: _graph,
                 announceSummary: false,
                 isRunwayDestination: false,
-                // Adopted for the landing rollout, not at the handoff: never starts held.
-                allowStartHold: false);
+                // Adopted for the landing rollout: labels the crossings log line phase=touchdown.
+                landingRolloutRoute: true);
 
             if (error == null)
             {

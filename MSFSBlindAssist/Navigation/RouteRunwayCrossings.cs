@@ -281,11 +281,21 @@ public static class RouteRunwayCrossings
     /// <summary>
     /// Where the aircraft stands, for the passes that judge a route from the aircraft's own position:
     /// the route's first point for classification, whether a stop is already passed
-    /// (<see cref="RouteProgressMeters"/>) and whether the aircraft is on a runway. Callers with no
-    /// position to offer (tests, the probe) pass null: classification then starts at node 0 and
-    /// nothing is passed.
+    /// (<see cref="RouteProgressMeters"/>), whether the aircraft is on a runway, and whether it is
+    /// standing still. Callers with no position to offer (tests, the probe) pass null:
+    /// classification then starts at node 0 and nothing is passed.
     /// </summary>
-    public readonly record struct AircraftPosition(double Lat, double Lon);
+    /// <param name="GroundSpeedKts">
+    /// PR #238 deferred finding §2. A start hold stops the aircraft WHERE IT STANDS, so it is an
+    /// instruction to an aircraft that is standing: above
+    /// <see cref="RolloutExitGate.NoExitStoppedGroundSpeedKts"/> the aircraft is already rolling and
+    /// committed to where it is going, and no start hold is set. This is the ONE thing the deleted
+    /// <c>allowStartHold</c> bool genuinely encoded that the pass could not see for itself — every
+    /// other half of that bool was a second, differently-shaped answer to "is the aircraft on the
+    /// runway", which <see cref="RunwayUnder"/> already answers, in the same frame, correctly.
+    /// Defaults to 0 (standing) so a caller with no speed to offer behaves as it always did.
+    /// </param>
+    public readonly record struct AircraftPosition(double Lat, double Lon, double GroundSpeedKts = 0.0);
 
     /// <summary>
     /// How far past a stop point, measured along the route, the aircraft must be before no hold is
@@ -689,13 +699,16 @@ public static class RouteRunwayCrossings
     /// is not placed.</para>
     /// </summary>
     /// <param name="destinationName">The runway destination as spoken ("Runway 33L"), or "" for other routes.</param>
-    /// <param name="allowStartHold">True only when <c>LoadRoute</c> adopts a fresh route (phase "load"); false on a recalculation and on a route adopted for the landing rollout (phase "touchdown").</param>
-    /// <param name="aircraft">Where the aircraft stands. Null (tests, the probe): classification starts at node 0 and nothing is passed.</param>
+    /// <param name="aircraft">
+    /// Where the aircraft stands, how fast, and therefore whether a start hold is an instruction it
+    /// can take. Null (tests, the probe): classification starts at node 0, nothing is passed and the
+    /// aircraft counts as standing. There is no <c>allowStartHold</c> flag any more — see
+    /// <see cref="AircraftPosition.GroundSpeedKts"/> and PR #238 deferred finding §2.
+    /// </param>
     public static IReadOnlyList<TaxiRouteRunwayEvent> InsertRunwayHoldShorts(
         TaxiRoute route,
         IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
         string destinationName,
-        bool allowStartHold,
         AircraftPosition? aircraft = null)
     {
         // A null runway list is a wiring error; returning "no runways met" would present it as a
@@ -717,7 +730,7 @@ public static class RouteRunwayCrossings
 
             string? preferred = destinationStrip ? destBare : null;
             bool held = PlaceHold(route, passage, preferred, userLabel: null,
-                allowStartHold, runways, aircraft, out string announcedDesignator);
+                runways, aircraft, out string announcedDesignator);
             route.RunwayEvents.Add(new TaxiRouteRunwayEvent
             {
                 Kind = passage.Kind,
@@ -756,7 +769,6 @@ public static class RouteRunwayCrossings
         IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
         string runwayId,
         int runStartSegmentIndex,
-        bool allowStartHold,
         AircraftPosition? aircraft = null)
     {
         ArgumentNullException.ThrowIfNull(route);
@@ -771,7 +783,7 @@ public static class RouteRunwayCrossings
 
         string pick = runwayId.Trim();
         return PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
-                allowStartHold, runways, aircraft, out _)
+                runways, aircraft, out _)
             ? UserRunwayHoldResult.Held
             : UserRunwayHoldResult.NotHeld;
     }
@@ -831,7 +843,7 @@ public static class RouteRunwayCrossings
     /// </param>
     private static bool PlaceHold(
         TaxiRoute route, RunwayPassage passage, string? preferred, string? userLabel,
-        bool allowStartHold, IReadOnlyList<TaxiGraph.RunwayCenterline> runways, AircraftPosition? aircraft,
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways, AircraftPosition? aircraft,
         out string announcedDesignator)
     {
         string announceAs = preferred ?? passage.Designator;
@@ -850,10 +862,23 @@ public static class RouteRunwayCrossings
 
         if (stop.NodeIndex == 0)
         {
-            // A start hold stops the aircraft where it stands: never on a runway's pavement, and not
-            // once the aircraft has rolled past the start node.
-            if (!allowStartHold || IsPassed(route.Segments, 0, aircraft)
-                || (aircraft is { } position && RunwayUnder(runways, position.Lat, position.Lon) != null))
+            // A start hold stops the aircraft where it stands: never on a runway's pavement, not once
+            // the aircraft has rolled past the start node, and only while it is actually standing.
+            //
+            // Those three are ONE question each, asked of the aircraft's own state, and they replace
+            // the deleted allowStartHold bool (PR #238 deferred finding §2). That bool was computed at
+            // the landing-handoff sites as !IsWithinRolloutRunwayLaterally — lateral-only,
+            // single-runway, along-track unbounded, +10 m margin, 200 ft default width — and then
+            // RunwayUnder asked the same question again, extent-bounded, zero-margin, 75 ft default.
+            // Every disagreement cost a legitimate start hold: an aircraft off the far END of the
+            // runway is still inside the infinite strip, one 5 m outside the pavement edge is inside
+            // the margin, and on a width-less centreline the two disagree over a 7.6 m band by
+            // construction. Since PR #238 a refused start hold is also SPOKEN ("with no hold short
+            // point for runway X"), so each of those is audible.
+            if (IsPassed(route.Segments, 0, aircraft)) return false;
+            if (aircraft is { } position
+                && (position.GroundSpeedKts > RolloutExitGate.NoExitStoppedGroundSpeedKts
+                    || RunwayUnder(runways, position.Lat, position.Lon) != null))
                 return false;
             route.StartHoldRunway = route.StartHoldRunway is null
                 ? userLabel ?? $"runway {announceAs}"

@@ -17,8 +17,16 @@ public class RunwayHoldPlacementTests
     private static TaxiRoute RouteOf(params TaxiNode[] nodes) => new() { Segments = Route(nodes) };
 
     private static IReadOnlyList<TaxiRouteRunwayEvent> Pass(TaxiRoute route, TaxiGraph.RunwayCenterline[] runways,
-        string destination = "", bool allowStartHold = true, AircraftPosition? aircraft = null)
-        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, destination, allowStartHold, aircraft);
+        string destination = "", AircraftPosition? aircraft = null)
+        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, destination, aircraft);
+
+    /// <summary>
+    /// A route adopted from a MOVING aircraft — a recalculation, or one adopted for the landing
+    /// rollout. Since PR #238 deferred finding §2 that is expressed as what it is (ground speed)
+    /// rather than as an `allowStartHold` flag the caller had to derive from a phase string.
+    /// </summary>
+    private static AircraftPosition Rolling(double eastM, double northM, double kts = 12.0)
+        => new(Lat(northM), Lon(eastM), kts);
 
     private static TaxiRoute Lebl() => RouteOf(
         Node(1, 1000, 250), Node(2, 1000, 105, TaxiNodeType.HoldShort, "runway 06L at D5"),
@@ -196,9 +204,13 @@ public class RunwayHoldPlacementTests
     [Fact]
     public void A_recalculated_route_never_starts_held()
     {
+        // A recalculation is built from a MOVING aircraft — off-route detection does not even fire
+        // below OFF_ROUTE_MIN_GS_KTS — and a start hold stops the aircraft where it stands, so it is
+        // an instruction to an aircraft that is standing. That is what keeps a recalculated route
+        // from starting held now that the `allowStartHold` flag is gone (§2).
         var route = RouteOf(Node(1, 1000, 35), Node(2, 1000, 10), Node(3, 1000, -60));
 
-        var ev = Assert.Single(Pass(route, new[] { EastWest() }, allowStartHold: false));
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, aircraft: Rolling(1000, 35)));
 
         Assert.Null(route.StartHoldRunway);
         Assert.False(ev.Held);
@@ -406,13 +418,13 @@ public class RunwayHoldPlacementTests
         var runway = EastWest();
         var picked = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
         Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
-            picked, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
+            picked, runway, new[] { runway }, "27", runStartSegmentIndex: 0));
         Assert.True(picked.Segments[0].IsHoldShortPoint);
         Assert.Equal("runway 27", picked.Segments[0].HoldShortRunway);
 
         var late = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
         Assert.Equal(UserRunwayHoldResult.NotOnRoute, RouteRunwayCrossings.ApplyUserRunwayHold(
-            late, runway, new[] { runway }, "27", runStartSegmentIndex: 3, allowStartHold: true));
+            late, runway, new[] { runway }, "27", runStartSegmentIndex: 3));
         Assert.All(late.Segments, s => Assert.False(s.IsHoldShortPoint));
     }
 
@@ -424,7 +436,7 @@ public class RunwayHoldPlacementTests
         var route = RouteOf(Node(1, 500, -60), Node(2, 500, 60));
 
         Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
-            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
+            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0));
 
         Assert.Equal("runway 27", route.StartHoldRunway);
         Assert.False(route.Segments[0].IsHoldShortPoint);
@@ -437,14 +449,14 @@ public class RunwayHoldPlacementTests
         var runways = new[] { EastWest("11", "29"), runway14 };
 
         Assert.Equal(UserRunwayHoldResult.NotHeld, RouteRunwayCrossings.ApplyUserRunwayHold(
-            AlongElevenAcrossFourteen(), runway14, runways, "14", runStartSegmentIndex: 0, allowStartHold: true));
+            AlongElevenAcrossFourteen(), runway14, runways, "14", runStartSegmentIndex: 0));
         Assert.Equal(UserRunwayHoldResult.NotOnRoute, RouteRunwayCrossings.ApplyUserRunwayHold(
             AlongElevenAcrossFourteen(), EastWest("09", "27", northM: 5000), runways, "09",
-            runStartSegmentIndex: 0, allowStartHold: true));
+            runStartSegmentIndex: 0));
 
         var leblRunway = EastWest("06L", "24R");
         Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
-            Lebl(), leblRunway, new[] { leblRunway }, "06L", runStartSegmentIndex: 0, allowStartHold: true));
+            Lebl(), leblRunway, new[] { leblRunway }, "06L", runStartSegmentIndex: 0));
     }
 
     [Fact]
@@ -454,7 +466,7 @@ public class RunwayHoldPlacementTests
 
         var picked = LeblWithEndOfTaxiwayStop();
         Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
-            picked, runway, new[] { runway }, "06L", runStartSegmentIndex: 0, allowStartHold: true));
+            picked, runway, new[] { runway }, "06L", runStartSegmentIndex: 0));
         Assert.Equal("runway 06L", picked.Segments[2].HoldShortRunway);
 
         // The automatic pass never touches a pilot's "end of taxiway" label.
@@ -518,8 +530,8 @@ public class RunwayHoldPlacementTests
     public void Missing_runways_fail_loudly_and_a_missing_route_meets_nothing()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            RouteRunwayCrossings.InsertRunwayHoldShorts(Lebl(), null!, "", allowStartHold: true));
-        Assert.Empty(RouteRunwayCrossings.InsertRunwayHoldShorts(null!, new[] { EastWest() }, "", allowStartHold: true));
+            RouteRunwayCrossings.InsertRunwayHoldShorts(Lebl(), null!, ""));
+        Assert.Empty(RouteRunwayCrossings.InsertRunwayHoldShorts(null!, new[] { EastWest() }, ""));
     }
 
     [Fact]
@@ -566,7 +578,7 @@ public class RunwayHoldPlacementTests
         var route = RouteOf(Node(1, 500, -300), Node(2, 500, -100), Node(3, 500, 0), Node(4, 500, 100));
 
         Assert.Equal(UserRunwayHoldResult.Held, RouteRunwayCrossings.ApplyUserRunwayHold(
-            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0, allowStartHold: true));
+            route, runway, new[] { runway }, "27", runStartSegmentIndex: 0));
         var events = Pass(route, new[] { runway });
 
         Assert.Equal("runway 27", route.Segments[0].HoldShortRunway);
@@ -615,11 +627,127 @@ public class RunwayHoldPlacementTests
         var runways = new[] { EastWest("09", "27"), NorthSouth("01", "19", eastM: 1200, fromNorthM: -1500, toNorthM: 1500) };
         var route = RouteOf(Node(1, 900, 35), Node(2, 1000, 0), Node(3, 1300, 0), Node(4, 1300, -60));
 
-        var events = Pass(route, runways, allowStartHold: false);
+        var events = Pass(route, runways, aircraft: Rolling(900, 35));
 
         Assert.Null(route.StartHoldRunway);
         Assert.Equal(2, events.Count);
         Assert.All(events, e => Assert.False(e.Held));
         Assert.All(route.Segments, s => Assert.False(s.IsHoldShortPoint));
+    }
+}
+
+// PR #238 deferred finding §2: `allowStartHold` was a SECOND, differently-shaped answer to "is the
+// aircraft on the runway".
+//
+// Both landing-handoff sites computed it as !IsWithinRolloutRunwayLaterally(lat, lon) — a predicate
+// that is lateral-only, single-runway, along-track UNBOUNDED, carries a 10 m margin and falls back
+// to a 200 ft width — and handed it to a pass that then asked the same question again through
+// RunwayUnder -> RunwayShape.Contains, which is extent-bounded, zero-margin and falls back to 75 ft.
+// The two disagree on the same lat/lon in the same call chain, and every disagreement DROPS a
+// legitimate start hold, which since PR #238 is announced out loud as "with no hold short point for
+// runway X".
+//
+// The parameter is gone. What it genuinely encoded that the pass could not see — "the aircraft is
+// moving / already committed" — is supplied as ground speed instead.
+public class StartHoldWithoutTheFlagTests
+{
+    private static TaxiRoute RouteOf(params TaxiNode[] nodes) => new() { Segments = Route(nodes) };
+
+    private static IReadOnlyList<TaxiRouteRunwayEvent> Pass(
+        TaxiRoute route, TaxiGraph.RunwayCenterline[] runways, AircraftPosition? aircraft = null)
+        => RouteRunwayCrossings.InsertRunwayHoldShorts(route, runways, "", aircraft);
+
+    // A route whose only safe stop is its own start node, with the aircraft standing there.
+    private static TaxiRoute StartsAtItsOnlyStop() =>
+        RouteOf(Node(1, 1000, 35), Node(2, 1000, 10), Node(3, 1000, -60));
+
+    [Fact]
+    public void A_standing_aircraft_still_starts_held()
+    {
+        var route = StartsAtItsOnlyStop();
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, new AircraftPosition(Lat(35), Lon(1000), 0.0)));
+
+        Assert.Equal("runway 09", route.StartHoldRunway);
+        Assert.True(ev.Held);
+    }
+
+    // The replacement for the deleted flag: an aircraft already rolling is committed to where it is
+    // going, so a stop at its own position is not an instruction it can take. This is what keeps a
+    // recalculated route — always built from a moving aircraft — from starting held.
+    [Fact]
+    public void A_rolling_aircraft_never_starts_held()
+    {
+        var route = StartsAtItsOnlyStop();
+        var ev = Assert.Single(Pass(route, new[] { EastWest() }, new AircraftPosition(Lat(35), Lon(1000), 12.0)));
+
+        Assert.Null(route.StartHoldRunway);
+        Assert.False(ev.Held);
+    }
+
+    [Fact]
+    public void The_stopped_boundary_is_the_codebase_s_own_stopped_line()
+    {
+        var atTheLine = StartsAtItsOnlyStop();
+        Pass(atTheLine, new[] { EastWest() },
+            new AircraftPosition(Lat(35), Lon(1000), RolloutExitGate.NoExitStoppedGroundSpeedKts));
+        Assert.Equal("runway 09", atTheLine.StartHoldRunway);
+
+        var justOver = StartsAtItsOnlyStop();
+        Pass(justOver, new[] { EastWest() },
+            new AircraftPosition(Lat(35), Lon(1000), RolloutExitGate.NoExitStoppedGroundSpeedKts + 0.1));
+        Assert.Null(justOver.StartHoldRunway);
+    }
+
+    // DIVERGENCE 1 (§2): an aircraft that has rolled off the FAR END of the runway — a short field,
+    // an overrun, a backtrack turnaround — is still inside the lateral-only predicate's infinite
+    // strip, so offRunwayAtHandoff read false and its re-route's start hold was refused. The pass's
+    // own RunwayUnder is extent-bounded and says, correctly, that it is not on the runway.
+    [Fact]
+    public void An_aircraft_stopped_past_the_runway_end_still_starts_held()
+    {
+        // 09/27 runs east 0..3000. The aircraft sits 250 m PAST the 27 end, ON the axis — inside the
+        // lateral-only predicate's infinite strip, outside RunwayShape's extent — and its route
+        // crosses 01/19 with nowhere earlier to stop.
+        var runways = new[] { EastWest("09", "27"), NorthSouth("01", "19", eastM: 3300, fromNorthM: -1500, toNorthM: 1500) };
+        var route = RouteOf(Node(1, 3250, 0), Node(2, 3350, 0));
+
+        var ev = Assert.Single(Pass(route, runways, new AircraftPosition(Lat(0), Lon(3250), 0.0)));
+
+        Assert.Equal("runway 01", route.StartHoldRunway);
+        Assert.True(ev.Held);
+    }
+
+    // DIVERGENCE 2 (§2): an aircraft a few metres outside the pavement edge is inside the lateral
+    // predicate's 10 m margin — "still on the runway" — while RunwayUnder, which carries no margin,
+    // says it is off. The start hold it was refused is legitimate.
+    [Fact]
+    public void An_aircraft_stopped_just_outside_the_pavement_edge_still_starts_held()
+    {
+        // Half-width 30 m: the aircraft is 35 m out, i.e. off the pavement but inside the 40 m band
+        // the rollout predicate calls "laterally on the runway". Its route crosses 01/19 with
+        // nowhere earlier to stop.
+        var runways = new[] { EastWest("09", "27"), NorthSouth("01", "19", eastM: 1300, fromNorthM: -1500, toNorthM: 1500) };
+        var route = RouteOf(Node(1, 1250, 35), Node(2, 1350, 35));
+
+        var ev = Assert.Single(Pass(route, runways, new AircraftPosition(Lat(35), Lon(1250), 0.0)));
+
+        // 01/19 is one pavement and the crossing sits just past its midfield, so the stop is named
+        // after the 19 end — NameAt's own closer-end rule, unrelated to this finding.
+        Assert.Equal("runway 19", route.StartHoldRunway);
+        Assert.True(ev.Held);
+    }
+
+    // Unchanged and load-bearing: whatever the speed, no start hold while the aircraft stands on any
+    // runway's pavement — that stop would be in the worst possible place.
+    [Fact]
+    public void A_stopped_aircraft_on_a_runway_still_never_starts_held()
+    {
+        var runways = new[] { EastWest("11", "29"), NorthSouth("14", "32", eastM: 1000, fromNorthM: 45, toNorthM: 3000) };
+        var route = RouteOf(Node(1, 940, 35), Node(2, 1000, 80), Node(3, 1000, 200));
+
+        var ev = Assert.Single(Pass(route, runways, new AircraftPosition(Lat(0), Lon(940), 0.0)));
+
+        Assert.Null(route.StartHoldRunway);
+        Assert.False(ev.Held);
     }
 }
