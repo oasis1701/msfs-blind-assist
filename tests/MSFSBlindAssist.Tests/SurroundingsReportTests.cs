@@ -137,6 +137,36 @@ public class SurroundingsReportTests
         Assert.Null(SurroundingsReport.Zone(Cat(far), Lat, Lon));
     }
 
+    /// <summary>A ramp of `count` stands running north from `dLatMetres`, 30 m apart.</summary>
+    private static AirportFeature Ramp(string name, double dLatMetres, int count = 2)
+        => new() { Kind = FeatureKind.Apron, Name = name, NameIsGeneric = name == "GA ramp", Source = FeatureSource.Navdata,
+                   Lat = Lat + dLatMetres / 111_320.0, Lon = Lon,
+                   Members = Enumerable.Range(0, count).Select(i => new LatLon(Lat + (dLatMetres + i * 30) / 111_320.0, Lon)).ToList() };
+
+    [Fact]
+    public void A_differently_named_ramp_nearby_is_still_named_under_an_anonymous_zone()
+    {
+        // The zone is the unnamed OSM polygon the aircraft is inside ("On the Apron."), which says
+        // nothing about a REAL ramp 300 m away. Spending the whole Apron kind on an anonymous zone
+        // silenced the one feature in range a pilot could actually have asked for by name.
+        var ring = new[] { new LatLon(-0.0005, -0.0005), new LatLon(-0.0005, 0.0005), new LatLon(0.0005, 0.0005), new LatLon(0.0005, -0.0005) };
+        var cat = Cat(F(FeatureKind.Apron, "", 0, 0, fp: ring), Ramp("North Apron", 300));
+        string s = SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres);
+        Assert.Contains("On the Apron.", s);
+        Assert.Contains("North Apron, ahead, 300 metres.", s);
+    }
+
+    [Fact]
+    public void A_ramp_sharing_the_zones_name_is_the_one_that_is_skipped()
+    {
+        // KTIW in miniature: two navdata ramps 600 m apart, both called "GA ramp". The zone names
+        // the one underfoot, so naming the other one — same words, different place — is the
+        // one-name-two-places confusion. A neighbour with a name of its own is unaffected.
+        var cat = Cat(Ramp("GA ramp", 0), Ramp("GA ramp", 400), Ramp("South Apron", 250));
+        string s = SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres);
+        Assert.Equal("X. On the GA ramp. South Apron, ahead, 250 metres.", s);
+    }
+
     [Fact]
     public void Nothing_at_zero_range_is_ever_given_a_direction()
     {

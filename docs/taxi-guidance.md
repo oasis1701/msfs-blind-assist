@@ -846,9 +846,6 @@ then measures to. Four rules, all of them paid for at KTIW:
 - A winner that already has `Members` **never adopts a `Footprint`**. Its own
   stands are its geometry, and `Nearest` reads a footprint FIRST, so one
   adopted ring silently replaces them.
-- A loser's `Members` are adopted only when **every one of them** lies within
-  `SameNameRadiusMetres` of the winner's own geometry (`MembersDescribe`,
-  measured through `Nearest`, never centroid to centroid).
 - An **unnamed ring and a stand cluster of kind `Apron`/`DeicePad` are
   different features** and never merge. The ring is pavement, the cluster is
   the stands parked on some pavement, and one ring routinely covers several
@@ -858,19 +855,39 @@ then measures to. Four rules, all of them paid for at KTIW:
   CONTAINS the other's representative point — never on a bare radius between
   edges. A shared PROPER name is different evidence and still merges two halves
   of one split OSM way.
-- A **stand cluster the other feature does not describe** is not that feature at
-  all. Refusing the donation is not enough, because the merge would still
-  consume the cluster: KMEM's cargo rows run 686 m, and a proper-named building
-  30 m from ONE end absorbed the whole row on the strength of that one stand, so
-  a pilot at the far end — 600 m away — was left with no cargo area near them.
-  The good case is untouched: a cluster whose every member really is within
-  `SameNameRadiusMetres` still merges into ONE feature carrying the proper name
-  and taking the stands as its geometry.
+- A **stand cluster the other feature does not describe** — some member further
+  from it than `SameNameRadiusMetres` (`MembersDescribe`, measured through
+  `Nearest`, never centroid to centroid) — is not that feature at all. Refusing
+  the donation is not enough, because the merge would still consume the cluster:
+  KMEM's cargo rows run 686 m, and a proper-named building 30 m from ONE end
+  absorbed the whole row on the strength of that one stand, so a pilot at the far
+  end — 600 m away — was left with no cargo area near them. The good case is
+  untouched: a cluster whose every member really is within reach still merges
+  into ONE feature carrying the proper name and taking the stands as its
+  geometry, and the back-fill adopts those stands with no further test, because
+  a pair that did not pass this rule never merged at all.
 
-The first three rules live in `SameFeature`, through `GeometryMayBeOneBody`,
-which is asked LAST — of the few pairs the name and the distance have already
-accepted, because it can walk a whole stand cluster against a ring. Both halves
-are symmetric, so `SameFeature(a, b) == SameFeature(b, a)`.
+The FIRST rule lives in `Build`'s back-fill, which is where a winner decides
+what it may KEEP. The other THREE live in `SameFeature`, through
+`GeometryMayBeOneBody`, which is asked LAST — of the few pairs the name and the
+distance have already accepted, because it can walk a whole stand cluster
+against a ring. Both halves are symmetric, so
+`SameFeature(a, b) == SameFeature(b, a)`.
+
+**One accepted residual of the cluster rule: two survivors can now share a
+PROPER name.** A navdata `Concourse B` is letter-chained at
+`NavdataFeatureSource.GateLinkMetres` (200 m), so it can run well past one pier,
+while an OSM `Concourse B` ring may cover only part of it — a member then lies
+beyond `SameNameRadiusMetres` of the ring, `GeometryMayBeOneBody` refuses, and
+BOTH survive under the same name. The same shape exists for a GSX terminal
+header (`GsxTerminalFeatureSource`) that groups remote stands with a pier's.
+They merged before. The cost is two identical names in the Ctrl+Shift+L list
+and, since `PassingCalloutGate` identity is kind + name + POSITION, possibly two
+"Passing Concourse B" callouts on one taxi. Both features are real and both
+statements are true, so this is a residual and not a defect — merging them anyway
+was rejected because the merged feature would then report ITSELF 0 m from a
+stand hundreds of metres from the building, which is exactly the KMEM failure
+the rule exists to stop.
 
 Measured at KTIW (11 stands, the 4 unnamed aprons of
 `Fixtures/osm-features-area-ktiw.json`): the 6-stand "GA ramp" adopted the
@@ -1014,10 +1031,13 @@ nothing here measures area.)
 Features are nearest-first within 600 m, at most one per kind except Hangar and
 Fbo (a GA field is all hangars), capped at 4. Excluded: the zone itself, and any
 other Apron/DeicePad the aircraft is **standing on** — after "On the GA ramp."
-the pilot must not also hear "Apron, here" about the pavement under it. A GROUND
-zone additionally spends its own kind, so no second ramp is named at all: at
-KTIW the other GA ramp is 590 m away and shares the generic name the pilot has
-just heard for where they are, which is the one-name-two-places confusion again.
+the pilot must not also hear "Apron, here" about the pavement under it — and any
+ground feature whose SPOKEN NAME is the one the zone line just used. At KTIW the
+other GA ramp is 590 m away and is called "GA ramp" too, so naming it is the
+one-name-two-places confusion, not information. The test is the NAME and never
+the kind: a zone that spent its whole kind also silenced the one apron in range
+a pilot could have asked for BY name — inside an anonymous OSM polygon ("On the
+Apron.") a real "North Apron" 300 m away went unmentioned.
 
 **Nothing at zero range gets a direction.** At or below `ZeroRangeMetres` a
 feature reads "{name}, here." — the bearing to something the aircraft is
@@ -1526,8 +1546,9 @@ because it dropped the model library of ten real Community packages.)
   `SameNameRadiusMetres` is a different feature, not a silently consumed one.
 - The zone is the pavement the aircraft is ON — a named apron outline, else the
   ramp whose stands it is among, else any outline, else the nearest
-  concourse/terminal — and nothing it is standing on is ALSO offered as nearby.
-  Nothing at zero range is given a direction: "{name}, here.".
+  concourse/terminal — and neither what it is standing on nor anything sharing
+  the zone's own spoken name is ALSO offered as nearby; a differently named
+  neighbour still is. Nothing at zero range is given a direction: "{name}, here.".
 - A model name is spoken only after `SceneryModelNameClassifier` has produced
   human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
 - Passing callouts are queued, fire at the closest point of approach with no

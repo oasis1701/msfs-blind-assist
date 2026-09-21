@@ -112,6 +112,19 @@ public static class SurroundingsReport
         return best;
     }
 
+    /// <summary>
+    /// Would naming this piece of ground repeat the words the zone line just used? KTIW has two
+    /// navdata ramps 600 m apart and BOTH are "GA ramp", so "On the GA ramp." followed by "GA ramp,
+    /// to the left, 591 metres" is the one-name-two-places confusion, not information.
+    ///
+    /// <para>The test is the NAME, never the kind. A zone that spent its whole kind also silenced
+    /// the one apron in range a pilot could have asked for BY name: inside an anonymous OSM polygon
+    /// ("On the Apron.") a real "North Apron" 300 m away went unmentioned.</para>
+    /// </summary>
+    private static bool RepeatsZoneName(AirportFeature f, AirportFeature? zone)
+        => zone != null && IsGround(zone) && IsGround(f)
+           && string.Equals(f.SpokenName, zone.SpokenName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>"{name}, here." at zero range, else "{name}, {direction}, {distance}." — the
     /// spoken form. <see cref="RelativeDirection.Describe"/> is never asked about a bearing taken
     /// from a point the aircraft is standing on.</summary>
@@ -133,10 +146,10 @@ public static class SurroundingsReport
 
         // The zone has said where the aircraft IS; nothing it is standing on may also be offered as
         // somewhere nearby ("On the GA ramp." then "Apron, here" about the pavement under it), and
-        // a ground zone has answered for its kind — a SECOND generic ramp under the very name the
-        // pilot just heard, 590 m away at KTIW, is the one-name-two-places confusion again.
+        // neither may a second piece of ground the zone has ALREADY NAMED.
         var ranked = Rank(cat, lat, lon, hdgTrue, SpeakRadiusMetres)
-            .Where(n => !ReferenceEquals(n.Feature, zone) && !IsStandingOn(n.Feature, lat, lon)).ToList();
+            .Where(n => !ReferenceEquals(n.Feature, zone) && !IsStandingOn(n.Feature, lat, lon) && !RepeatsZoneName(n.Feature, zone))
+            .ToList();
         if (ranked.Count == 0)
         {
             parts.Add($"Nothing within {formatDistance(SpeakRadiusMetres)}.");
@@ -149,7 +162,6 @@ public static class SurroundingsReport
         int unnamedHangars = ranked.Count(n => n.Feature.Kind == FeatureKind.Hangar && !n.Feature.HasName);
         var spoken = new List<NearbyFeature>();
         var kindsUsed = new HashSet<FeatureKind>();
-        if (zone != null && IsGround(zone)) kindsUsed.Add(zone.Kind);
         NearbyFeature? firstUnnamedHangar = null;
         foreach (var n in ranked)
         {

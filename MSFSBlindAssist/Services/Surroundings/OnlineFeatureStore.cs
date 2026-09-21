@@ -5,13 +5,6 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Services.Surroundings;
 
 /// <summary>
-/// The OSM building tier's cache: per ICAO, in memory only, one fetch in flight per airport.
-/// GetAsync waits a BOUNDED time so a catalog build can include the buildings when the mirror is
-/// quick; when it is not, the caller builds without them and FeaturesUpdated invalidates that
-/// catalog once the fetch lands. Before this existed nothing in the surroundings paths asked for
-/// the fetch at all — a pilot pressing only Ctrl+Shift+L never got an OSM name.
-/// </summary>
-/// <summary>
 /// What one <see cref="OnlineFeatureStore.GetAsync"/> call got. The caller cannot read this off the
 /// feature list: an empty list is the honest answer for an airport with no mapped buildings AND the
 /// answer when the mirror never replied, and only the second is a gap worth coming back for.
@@ -31,6 +24,13 @@ public enum OnlineFeatureStatus
 /// <summary>Features and how they were come by — see <see cref="OnlineFeatureStatus"/>.</summary>
 public readonly record struct OnlineFeatureResult(IReadOnlyList<AirportFeature> Features, OnlineFeatureStatus Status);
 
+/// <summary>
+/// The OSM building tier's cache: per ICAO, in memory only, one fetch in flight per airport.
+/// GetAsync waits a BOUNDED time so a catalog build can include the buildings when the mirror is
+/// quick; when it is not, the caller builds without them and FeaturesUpdated invalidates that
+/// catalog once the fetch lands. Before this existed nothing in the surroundings paths asked for
+/// the fetch at all — a pilot pressing only Ctrl+Shift+L never got an OSM name.
+/// </summary>
 public sealed class OnlineFeatureStore
 {
     public delegate Task<IReadOnlyList<AirportFeature>?> Fetcher(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct);
