@@ -30,7 +30,6 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
     private bool _baselined;
-    private volatile bool _buildInFlight;
 
     public bool Enabled { get; set; }
     /// <summary>True while callouts must stay silent (takeoff assist, rollout, docking, lineup/hold, announcer suppressed).</summary>
@@ -72,17 +71,13 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
             // Never build synchronously on this UI-thread timer tick — a first-time scenery
             // scan/DB read would stall the whole message pump. TryGetCached is a lock-only read;
-            // when nothing usable is cached yet (or it's stale), kick off ONE background build
-            // and evaluate callouts on a later tick once it lands in the cache.
+            // when nothing usable is cached yet (or it's stale), ask for the background build and
+            // evaluate callouts on a later tick once it lands in the cache. No in-flight guard of
+            // our own: GetAsync is single-flight per ICAO and remembers a failed build, so this
+            // 2 s poll can neither stack builds nor hammer a broken one.
             if (!_cache.TryGetCached(_icao, out var catalog))
             {
-                if (!_buildInFlight)
-                {
-                    _buildInFlight = true;
-                    string icaoToBuild = _icao;
-                    Task.Run(() => _cache.Get(icaoToBuild))
-                        .ContinueWith(_ => _buildInFlight = false, TaskScheduler.Default);
-                }
+                _ = _cache.GetAsync(_icao);
                 return;
             }
             if (catalog == null || catalog.Features.Count == 0) return;

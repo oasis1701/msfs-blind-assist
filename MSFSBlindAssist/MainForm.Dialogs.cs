@@ -744,7 +744,9 @@ public partial class MainForm
             // TaxiAssistForm.SurroundingsCatalogCached/SurroundingsCatalogWarmUp.
             taxiAssistForm.SurroundingsCatalogCached = icao =>
                 surroundingsCache.TryGetCached(icao, out var cached) ? cached : null;
-            taxiAssistForm.SurroundingsCatalogWarmUp = icao => Task.Run(() => { surroundingsCache.Get(icao); });
+            // GetAsync does the Task.Run itself and is single-flight, so this never stacks a
+            // second build on top of one already running for the same airport.
+            taxiAssistForm.SurroundingsCatalogWarmUp = icao => surroundingsCache.GetAsync(icao);
         }
 
         return taxiAssistForm;

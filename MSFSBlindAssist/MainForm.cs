@@ -723,7 +723,7 @@ public partial class MainForm : Form
         // Surroundings catalog: same token as the Where-Am-I graph so a GSX publish re-letters
         // the inferred concourses too. Built on demand from the hotkey handler, never per frame.
         surroundingsCache.VersionSupplier = icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
-        surroundingsCache.FeatureSupplier = BuildSurroundingsFeatures;
+        surroundingsCache.BuildSupplier = BuildSurroundings;
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager

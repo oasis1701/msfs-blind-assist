@@ -1849,23 +1849,22 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// Every surroundings tier for one airport, merged into one list. Tiers are appended here
-    /// as they land: navdata (this task), GSX terminals, OSM, scenery. Runs inside
-    /// SurroundingsCatalogCache.Get — which a first-time scenery scan and DB read can make slow
-    /// (Directory.EnumerateFiles + File.ReadAllBytes over every BGL in a package, under a lock) —
-    /// so every caller reaches this on a THREAD-POOL thread (a Task.Run started by the Alt+L /
-    /// Ctrl+Shift+L hotkey handlers, or by AirportSurroundingsMonitor's own background build).
-    /// NEVER on the UI thread and NEVER from a per-frame position update — a fresh
-    /// GateDataSource per call for the same reason ParkingSpotSupplier builds one, but only
-    /// ONE build for the whole call (shared between the named-spots and selectable-gates
-    /// reads below) — the "never share a GateDataSource across threads" rule is about the UI
-    /// thread's own per-ICAO caches, not about paying for a second build on this same
-    /// thread-pool call.
+    /// Every surroundings tier for one airport, merged into one list, plus the airport's facts
+    /// line. Tiers are appended here as they land: navdata (this task), GSX terminals, OSM,
+    /// scenery. This is SurroundingsCatalogCache.BuildSupplier — which a first-time scenery scan
+    /// and DB read can make slow (Directory.EnumerateFiles + File.ReadAllBytes over every BGL in a
+    /// package, under a lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
+    /// NEVER on the UI thread and NEVER from a per-frame position update. That is also what makes
+    /// the bounded online-feature wait below safe. A fresh GateDataSource per call for the same
+    /// reason ParkingSpotSupplier builds one, but only ONE build for the whole call (shared
+    /// between the named-spots and selectable-gates reads below) — the "never share a
+    /// GateDataSource across threads" rule is about the UI thread's own per-ICAO caches, not
+    /// about paying for a second build on this same thread-pool call.
     /// </summary>
-    private IReadOnlyList<MSFSBlindAssist.Navigation.Surroundings.AirportFeature> BuildSurroundingsFeatures(string icao)
+    private MSFSBlindAssist.Services.SurroundingsBuild BuildSurroundings(string icao)
     {
         var provider = airportDataProvider;
-        if (provider == null) return Array.Empty<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>();
+        if (provider == null) return new(Array.Empty<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>(), "");
         var features = new List<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>();
 
         var gateDataSource = BuildGateDataSource();
@@ -1885,7 +1884,9 @@ public partial class MainForm
             var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
             features.AddRange(sceneryIndexer.GetFeatures(icao, dirs));
         }
-        return features;
+        // The facts line rides on the catalog: the window that speaks it would otherwise re-read
+        // it from the database on every open.
+        return new(features, facilities?.DescribeFacts() ?? "");
     }
 
     /// <summary>
@@ -1901,7 +1902,7 @@ public partial class MainForm
         {
             // position is a struct copy handed to us by the SimConnect callback (dispatched on
             // the UI thread via WndProc). Capture it and run the whole lookup — nearby-ICAO,
-            // DescribeCurrentLocation, and surroundingsCache.Get (a first-time scenery scan/DB
+            // DescribeCurrentLocation, and the surroundings catalog (a first-time scenery scan/DB
             // read) — on a thread-pool thread, or a first uncached scan stalls the WinForms
             // message pump: every hotkey, taxi-guidance tone update and queued announcement.
             // Marshal only the final announcement back to the UI thread.
@@ -1922,7 +1923,11 @@ public partial class MainForm
                         string whereAmI = taxiGuidanceManager.DescribeCurrentLocation(airportDataProvider, icao, position.Latitude, position.Longitude);
                         // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
                         double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
-                        var catalog = surroundingsCache.Get(icao);
+                        // This whole body is a Task.Run, so there is no captured
+                        // SynchronizationContext to deadlock against: blocking here parks a pool
+                        // thread while the cache's own build thread works, and JOINS a build
+                        // another caller already started instead of duplicating it.
+                        var catalog = surroundingsCache.GetAsync(icao).GetAwaiter().GetResult();
                         announcement = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.Compose(
                             whereAmI, icao, catalog, position.Latitude, position.Longitude, hdgTrue,
                             m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
@@ -1952,7 +1957,7 @@ public partial class MainForm
         simConnectManager.RequestAircraftPositionAsync(position =>
         {
             // Same reasoning as AnnounceLookAround: capture the position (a struct copy handed
-            // to us on the UI thread) and run the whole lookup, including surroundingsCache.Get's
+            // to us on the UI thread) and run the whole lookup, including the catalog build's
             // possible first-time scenery scan/DB read, off the UI thread. Only the window Show()
             // is marshalled back.
             Task.Run(() =>
@@ -1968,14 +1973,15 @@ public partial class MainForm
                     else
                     {
                         icao = nearby[0];
-                        var catalog = surroundingsCache.Get(icao);
+                        // On a pool thread with no captured context, joining any build already
+                        // running for this airport — see AnnounceLookAround.
+                        var catalog = surroundingsCache.GetAsync(icao).GetAwaiter().GetResult();
                         if (catalog == null || catalog.Features.Count == 0) failure = $"No surroundings data for {icao}.";
                         else
                         {
-                            var facilities = (airportDataProvider as MSFSBlindAssist.Database.IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
                             double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
                             sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
-                                icao, catalog, facilities?.DescribeFacts() ?? "", position.Latitude, position.Longitude, hdgTrue,
+                                icao, catalog, catalog.Facts, position.Latitude, position.Longitude, hdgTrue,
                                 m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
                         }
                     }
