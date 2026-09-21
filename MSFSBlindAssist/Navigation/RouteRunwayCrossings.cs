@@ -782,22 +782,15 @@ public static class RouteRunwayCrossings
     /// a runway then still meets that runway from where the aircraft stands; an aircraft standing on a runway
     /// starts on it, so a route leaving it meets nothing. An aircraft already on the route is not prepended:
     /// one past a runway would invent a crossing from where it stands back to node 0.
+    ///
+    /// <para>The rule itself lives on <see cref="RunwayRouteClassifier.NodesFrom"/> (PR #238 deferred
+    /// finding §1) because the landing re-crossing guard needs the SAME question asked the same way —
+    /// it had no prepend at all, and the classifier's "started on the runway and vacated" branch made
+    /// that silently accept a route back across the landing runway.</para>
     /// </summary>
     private static IReadOnlyList<TaxiNode?> ClassificationNodes(
         TaxiRoute route, AircraftPosition? aircraft, out bool aircraftPrepended)
-    {
-        var nodes = RunwayRouteClassifier.NodesFrom(route.Segments, 0);
-        aircraftPrepended = aircraft is { } candidate
-            && RouteProgressMeters(route.Segments, candidate.Lat, candidate.Lon) <= StopPassedToleranceMetres;
-        if (!aircraftPrepended || aircraft is not { } position) return nodes;
-        // Node id 0 is the graph's "not set" sentinel: right for a point that never enters a graph.
-        var withAircraft = new List<TaxiNode?>(nodes.Count + 1)
-        {
-            new TaxiNode { NodeId = 0, Latitude = position.Lat, Longitude = position.Lon },
-        };
-        withAircraft.AddRange(nodes);
-        return withAircraft;
-    }
+        => RunwayRouteClassifier.NodesFrom(route.Segments, 0, aircraft, out aircraftPrepended);
 
     /// <summary>
     /// A passage classified with the aircraft prepended, back in the route's own node indices. An emitted

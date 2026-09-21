@@ -429,3 +429,202 @@ public class RolloutCrossingDeclineSupersedeTests
         Assert.False(RolloutRunwayReCrossing.DeclineSupersedesCallout(600, 500, -20, Lead));
     }
 }
+
+// PR #238 deferred finding §1: the guard is blind when the route's own anchor node is ON the
+// pavement.
+//
+// RunwayRouteClassifier deliberately emits no passage when the FIRST node it judges is already on
+// the runway ("no entry: the route started on the runway and vacated"). RouteReCrossesRunway built
+// its node list from segments[fromSegmentIndex].FromNode — the node BEHIND the aircraft — and,
+// unlike the hold pass, never prepended the aircraft's own position. So a handoff route whose A*
+// anchor sits on the pavement (the PR's own KATL fixture has B1 about 2.5 m from the 26R
+// centreline) and whose first edge spans to the far side opened its run with no preceding clear
+// node: no passage, guard false, handoff ACCEPTED, and the tone steered back across the landing
+// runway.
+//
+// The fix is the shared aircraft-prepend (RunwayRouteClassifier.NodesFrom's position overload), so
+// "the aircraft is the route's first point until it has rolled 10 m" has ONE definition instead of
+// a rule the docs state generally and the hold pass implemented privately.
+public class RolloutRunwayReCrossingAircraftPrependTests
+{
+    private static RouteRunwayCrossings.AircraftPosition At(double eastM, double northM)
+        => new(RunwayFixture.Lat(northM), RunwayFixture.Lon(eastM));
+
+    // Node 0 on the pavement, first edge straight to the far side. With the aircraft — off the
+    // pavement, behind that node — prepended, the run opens with a clear node in front of it and
+    // the crossing is seen.
+    [Fact]
+    public void A_route_whose_first_node_is_on_the_pavement_re_crosses_once_the_aircraft_is_prepended()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, 0.0),      // A* anchor, ON the runway
+            RunwayFixture.Node(2, 1000.0, -90.0),    // far side
+            RunwayFixture.Node(3, 1100.0, -90.0));
+
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy));
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(1000.0, 90.0)));
+    }
+
+    // The same route with the aircraft still ON the pavement is nothing: it started on the runway
+    // and left, which is exactly what the classifier's runEntry == -1 branch means.
+    [Fact]
+    public void The_same_route_with_the_aircraft_on_the_pavement_is_still_nothing()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, 0.0),
+            RunwayFixture.Node(2, 1000.0, -90.0),
+            RunwayFixture.Node(3, 1100.0, -90.0));
+
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(990.0, 0.0)));
+    }
+
+    // The KORD 10R W5 end exit: the junction sits 29 cm past the centerline and the aircraft is
+    // still on the runway. Prepending must not turn that into a re-crossing — it is the false
+    // positive that cost the handoff its "Continue rolling to taxiway W5" loop.
+    [Fact]
+    public void A_same_side_exit_centimetres_over_the_line_is_still_not_a_re_crossing()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 2800.0, 0.0),
+            RunwayFixture.Node(2, 2950.0, -0.292),
+            RunwayFixture.Node(3, 2960.0, -60.0));
+
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(2700.0, 0.0)));
+    }
+
+    // Once the aircraft has rolled along the route it is no longer the route's first point —
+    // otherwise a crossing would be invented from where it stands back to node 0.
+    [Fact]
+    public void An_aircraft_that_has_rolled_along_the_route_is_not_prepended()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, 0.0),
+            RunwayFixture.Node(2, 1000.0, -90.0),
+            RunwayFixture.Node(3, 1100.0, -90.0));
+
+        // 40 m down the first segment, well past StopPassedToleranceMetres.
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(1000.0, -40.0)));
+    }
+
+    // The prepend is judged against the segments being JUDGED, not the whole route: the guard runs
+    // from _currentSegmentIndex onward, so progress must be measured from that node.
+    [Fact]
+    public void The_prepend_is_measured_from_the_segment_the_guard_starts_at()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 400.0, 90.0),      // already behind the aircraft
+            RunwayFixture.Node(2, 1000.0, 0.0),      // cursor sits here, ON the runway
+            RunwayFixture.Node(3, 1000.0, -90.0),
+            RunwayFixture.Node(4, 1100.0, -90.0));
+
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 1, rwy, At(1000.0, 90.0)));
+    }
+
+    // THE MIRROR HALF, checked before this could ship: does prepending the aircraft turn an
+    // ordinary vacate into a refusal? Measured on the shipped fs2024 database, 1,950 of the
+    // sampled handoff-shaped route/runway pairs across 300 airports have their A* anchor node ON a
+    // runway's pavement, at 0.4-12.5 m lateral — so "aircraft(clear) -> anchor(on) -> away the
+    // same side" would read as an ENTRY and refuse a perfectly good exit, which is the reported
+    // mirror failure ("Exit guidance ended: no usable route from here. Stop and hold position").
+    //
+    // What stops it is the prepend's OWN condition, not a special case: an aircraft that has
+    // vacated has rolled more than StopPassedToleranceMetres along the route it is flying, so it
+    // is not the route's first point any more and is not prepended at all. The handoff route is
+    // built FROM the aircraft's position, so this is the ordinary shape, not a lucky one. Pinned
+    // here because a future widening of the prepend window would silently re-open it.
+    // ... but the same shape that carries on to the FAR side is the KATL defect and must refuse.
+    [Fact]
+    public void The_same_anchor_node_with_the_route_leaving_by_the_far_side_is_still_refused()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, 0.4),
+            RunwayFixture.Node(2, 1050.0, 70.0),     // far side from the aircraft
+            RunwayFixture.Node(3, 1200.0, 90.0));
+
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(1000.0, -45.0)));
+    }
+
+    // The drop is narrow on purpose: it applies only to the run that begins at the route's OWN
+    // first node, i.e. the pavement immediately behind the aircraft. A route that starts clear and
+    // drives back onto the runway further along is still refused, prepend or no prepend — that is
+    // the pinned "driving back onto the landing runway from a taxiway" case.
+    [Fact]
+    public void A_route_that_starts_clear_and_drives_back_on_later_is_still_refused()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, -90.0),
+            RunwayFixture.Node(2, 1000.0, -10.0),    // onto the pavement
+            RunwayFixture.Node(3, 1100.0, -90.0));
+
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, At(1000.0, -95.0)));
+    }
+
+    [Fact]
+    public void A_null_position_behaves_exactly_as_the_positionless_overload()
+    {
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 1000.0, 0.0),
+            RunwayFixture.Node(2, 1000.0, -90.0),
+            RunwayFixture.Node(3, 1100.0, -90.0));
+
+        Assert.Equal(
+            RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy),
+            RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, null));
+    }
+}
+
+// The shared prepend itself, at the level it now lives: one definition of "the aircraft is the
+// route's first point until it has rolled 10 m", used by the hold pass and the landing guard.
+public class RunwayRouteClassifierNodesFromTests
+{
+    private static RouteRunwayCrossings.AircraftPosition At(double eastM, double northM)
+        => new(RunwayFixture.Lat(northM), RunwayFixture.Lon(eastM));
+
+    private static List<TaxiRouteSegment> ThreeLegs() => RunwayFixture.Route(
+        RunwayFixture.Node(1, 0.0, 0.0),
+        RunwayFixture.Node(2, 100.0, 0.0),
+        RunwayFixture.Node(3, 200.0, 0.0));
+
+    [Fact]
+    public void A_standstill_aircraft_becomes_the_first_node()
+    {
+        var nodes = RunwayRouteClassifier.NodesFrom(ThreeLegs(), 0, At(-5.0, 0.0), out bool prepended);
+        Assert.True(prepended);
+        Assert.Equal(4, nodes.Count);
+    }
+
+    [Fact]
+    public void An_aircraft_that_has_rolled_on_is_not_prepended()
+    {
+        var nodes = RunwayRouteClassifier.NodesFrom(ThreeLegs(), 0, At(60.0, 0.0), out bool prepended);
+        Assert.False(prepended);
+        Assert.Equal(3, nodes.Count);
+    }
+
+    [Fact]
+    public void Without_a_position_nothing_is_prepended()
+    {
+        var nodes = RunwayRouteClassifier.NodesFrom(ThreeLegs(), 0, null, out bool prepended);
+        Assert.False(prepended);
+        Assert.Equal(3, nodes.Count);
+    }
+
+    // From a later cursor the node list starts at that segment's FromNode, and the prepend is
+    // judged against the remaining segments — an aircraft at that node is still the first point
+    // even though it is 100 m along the whole route.
+    [Fact]
+    public void From_a_later_cursor_progress_is_measured_from_that_segment()
+    {
+        var nodes = RunwayRouteClassifier.NodesFrom(ThreeLegs(), 1, At(100.0, 0.0), out bool prepended);
+        Assert.True(prepended);
+        Assert.Equal(3, nodes.Count);   // aircraft + FromNode(seg 1) + ToNode(seg 1)
+    }
+}

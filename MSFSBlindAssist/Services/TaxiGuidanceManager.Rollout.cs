@@ -893,7 +893,7 @@ public partial class TaxiGuidanceManager
                 // The reachability guard passed it, and could not have caught it: it
                 // measures only the FIRST segment's cross-track, and B1 started right at
                 // the aircraft.
-                if (HandoffRouteReCrossesLandingRunway())
+                if (HandoffRouteReCrossesLandingRunway(lat, lon))
                 {
                     string rwyName = _rolloutRunway?.RunwayID ?? "the runway";
 
@@ -1740,7 +1740,7 @@ public partial class TaxiGuidanceManager
             // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
             // identically, and this method was the last ungated one once before
             // (commit 29b8bcbf). See the other site for the KATL 26R defect.
-            if (HandoffRouteReCrossesLandingRunway())
+            if (HandoffRouteReCrossesLandingRunway(lat, lon))
             {
                 // Gated identically to the UpdateLandingRollout site: DECLINE only while the
                 // aircraft is still ON the runway with the exit ahead; otherwise CONCLUDE.
@@ -2229,13 +2229,16 @@ public partial class TaxiGuidanceManager
     /// the question does not. This method was the last ungated handoff site once before
     /// (commit 29b8bcbf), and a future third site should call this rather than re-derive it.</para>
     /// </summary>
-    private bool HandoffRouteReCrossesLandingRunway()
+    /// <param name="lat">The aircraft's live latitude — see the aircraft-prepend note above.</param>
+    /// <param name="lon">The aircraft's live longitude.</param>
+    private bool HandoffRouteReCrossesLandingRunway(double lat, double lon)
         => _route != null
            && Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
                   _route.Segments,
                   _currentSegmentIndex,
                   Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
-                      _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID));
+                      _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID),
+                  new Navigation.RouteRunwayCrossings.AircraftPosition(lat, lon));
 
     /// <summary>
     /// "Turn left" / "Gentle right" for the currently targeted landing exit, from the

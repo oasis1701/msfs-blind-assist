@@ -49,11 +49,35 @@ public static class RolloutRunwayReCrossing
         IReadOnlyList<TaxiRouteSegment>? segments,
         int fromSegmentIndex,
         TaxiGraph.RunwayCenterline? runway)
+        => RouteReCrossesRunway(segments, fromSegmentIndex, runway, aircraft: null);
+
+    /// <summary>
+    /// As above, with the aircraft as the route's first point while it has not rolled 10 m along
+    /// the segments being judged (<see cref="RunwayRouteClassifier.NodesFrom"/>'s position
+    /// overload — the SAME rule the automatic hold pass uses, which is the point of the overload).
+    ///
+    /// <para>PR #238 deferred finding §1. Without the aircraft, the node list starts at
+    /// <c>segments[fromSegmentIndex].FromNode</c> — the node BEHIND the aircraft — and the
+    /// classifier emits nothing at all when that node is already on the runway. The A* anchor
+    /// routinely IS on the pavement while the aircraft is on or beside the landing runway (the
+    /// KATL fixture's B1 sits about 2.5 m from the 26R centreline), so a first edge straight to
+    /// the far side produced no passage, the guard returned false and the re-crossing handoff was
+    /// accepted — the very KATL 26R failure this guard exists to refuse.</para>
+    ///
+    /// <para>An aircraft still ON the pavement prepends a node on the runway, so the route starts
+    /// on it and vacates: nothing is reported, exactly as before. That is the KORD 10R W5 end-exit
+    /// case, and it must stay that way.</para>
+    /// </summary>
+    public static bool RouteReCrossesRunway(
+        IReadOnlyList<TaxiRouteSegment>? segments,
+        int fromSegmentIndex,
+        TaxiGraph.RunwayCenterline? runway,
+        RouteRunwayCrossings.AircraftPosition? aircraft)
     {
         if (segments is null || runway is null) return false;
         if (fromSegmentIndex < 0 || fromSegmentIndex >= segments.Count) return false;
 
-        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex);
+        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex, aircraft);
         return RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway)).Count > 0;
     }
 
