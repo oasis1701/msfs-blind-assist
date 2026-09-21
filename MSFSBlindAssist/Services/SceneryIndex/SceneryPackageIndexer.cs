@@ -14,8 +14,10 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// table, neither pulling the file into memory — and what is cached is the RAW result: each model
 /// name that could name a feature, with every point it was placed at. Nothing in the cache is
 /// classified, so the airport that ASKS decides the names ("KPWT_Hangar_07" is Hangar 7 at KPWT
-/// and somebody else's building at KTIW), and a classifier fix reaches a pilot whose cache is
-/// already warm. Cached per package as JSON under cacheDir — the user's OWN local files, so a
+/// and somebody else's building at KTIW), and a change to how a name classifies reaches a pilot
+/// whose cache is already warm. One axis is NOT free that way: which names are cached is
+/// MightBeFeature's verdict at build time, so ADDING a kind keyword needs a schema bump (see
+/// CurrentSchemaVersion). Cached per package as JSON under cacheDir — the user's OWN local files, so a
 /// disk cache is fine (unlike OSM data) — keyed on the full package path and stamped with
 /// layout.json's length + mtime; written to a .tmp and moved into place, so a crash never leaves
 /// a truncated cache for a later run to read, and a cache of another schema is rebuilt, not read.
@@ -54,6 +56,16 @@ public sealed class SceneryPackageIndexer
     /// hull of the airport's own records — so a placement is judged against the box grown by this.</summary>
     public const double BoxMarginMetres = 500.0;
 
+    /// <summary>Every *.bgl under the package. IgnoreInaccessible because the SearchOption overload
+    /// throws from the ENUMERATOR — outside the per-file catch below — so one folder the user
+    /// cannot read cost the whole package; CaseInsensitive because packages ship both "modelLib.BGL"
+    /// and "objects.bgl"; AttributesToSkip 0 to keep the SearchOption overload's behaviour, which
+    /// reads hidden and system files (EnumerationOptions would skip them by default).</summary>
+    private static readonly EnumerationOptions BglFiles = new()
+    {
+        RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive, AttributesToSkip = 0,
+    };
+
     // A named building stands in one place, or a few (an author splits it into parts, or a second
     // one really exists). A generic name is this app's own label ("Terminal", "Fuel"), shared by
     // unrelated models, so it is allowed more of both. Hangars are the exception a real field needs.
@@ -78,9 +90,17 @@ public sealed class SceneryPackageIndexer
     /// 130 "Ramp Cargo Fedex", KMEM's 40 "Trailer UPS", ENGM's five "Ground Fuel N" fleets.
     /// The exemption is by KIND and must stay so: a 46-part terminal and a 41-container blob are
     /// both ONE dense cluster, so no cluster-count rule can tell them apart.
+    /// The trade it accepts: an exempt kind's group is no longer bounded before
+    /// SurroundingsGeometry.SingleLinkage, which is O(n²) and re-runs on every GetFeatures call.
+    /// Measured, that is a non-event — the largest real group is EDDB's 175 parts (~15k haversines)
+    /// and a warm pass over all 34 packages takes 6-7 ms — so it is recorded, not guarded against.
     /// </summary>
     private static bool PlacementCapApplies(FeatureKind kind) => kind is not (FeatureKind.Terminal or FeatureKind.Concourse);
 
+    // BUMP THIS when a change would make an existing cache wrong. A change to how a name
+    // CLASSIFIES needs no bump (the cache holds raw names), but WIDENING the classifier's kind
+    // keywords does: the names that reach the cache are the ones MightBeFeature accepted at build
+    // time, so a name a new keyword would now recognise was filtered out and is not in there.
     private const int CurrentSchemaVersion = 2;
     // Schema 2 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
@@ -92,7 +112,11 @@ public sealed class SceneryPackageIndexer
         public long LayoutTicks { get; set; }
         public int Placements { get; set; }
         public int Unresolved { get; set; }
-        public List<Model> Models { get; set; } = new();
+        /// <summary>Deliberately nullable with NO property initializer, so a document that carries
+        /// no Models key at all deserialises to null and is REBUILT. With an initializer it came
+        /// back as an empty list, indistinguishable from a package that really models nothing —
+        /// the guard below read as a check and was inert.</summary>
+        public List<Model>? Models { get; set; }
     }
     private sealed class Model { public string Name { get; set; } = ""; public List<double[]> Points { get; set; } = new(); }   // [lat, lon]
 
@@ -132,7 +156,7 @@ public sealed class SceneryPackageIndexer
     private static List<AirportFeature> FeaturesOf(CacheFile cf, string icao, AirportFacilities? box)
     {
         var groups = new Dictionary<(FeatureKind, string), (bool Generic, List<LatLon> Points)>();
-        foreach (var m in cf.Models)
+        foreach (var m in cf.Models!)      // LoadOrBuild returns a cache whose Models it either validated or just built
         {
             var c = SceneryModelNameClassifier.Classify(m.Name, icao);      // once per distinct model, at READ time, for the asking airport
             if (c == null) continue;
@@ -204,7 +228,7 @@ public sealed class SceneryPackageIndexer
 
             var names = new Dictionary<Guid, string>();
             var placements = new List<ScenePlacement>();
-            foreach (var bgl in Directory.EnumerateFiles(dir, "*.bgl", SearchOption.AllDirectories))
+            foreach (var bgl in Directory.EnumerateFiles(dir, "*.bgl", BglFiles))
             {
                 // One bad file costs its own names and placements, never the package's. No size cap:
                 // both readers are streamed/seeking, and the 600 MB one used to drop the model
@@ -233,12 +257,13 @@ public sealed class SceneryPackageIndexer
                 pts.Add(new[] { p.Lat, p.Lon });
             }
 
+            var models = new List<Model>(byName.Count);
+            foreach (var (model, pts) in byName) models.Add(new Model { Name = model, Points = pts });
             var cf = new CacheFile { SchemaVersion = CurrentSchemaVersion, LayoutLength = len, LayoutTicks = ticks,
-                                     Placements = placements.Count, Unresolved = unresolved };
-            foreach (var (model, pts) in byName) cf.Models.Add(new Model { Name = model, Points = pts });
+                                     Placements = placements.Count, Unresolved = unresolved, Models = models };
             Persist(cachePath, cf);
             _memo[cachePath] = cf;
-            Log.Info("SceneryIndex", $"indexed {leafName}: {cf.Models.Count} models, {placements.Count} placements, {unresolved} without a model name");
+            Log.Info("SceneryIndex", $"indexed {leafName}: {models.Count} models, {placements.Count} placements, {unresolved} without a model name");
             return cf;
         }
     }

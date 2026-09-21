@@ -2,6 +2,7 @@
 // objects BGL placing them. Same synthetic builder as BglPlacementReaderTests. MakePackage() is the
 // original three-model package (two parts of one concourse, one fence); MakePackage(name, …) places
 // whatever a test names, at whatever coordinates it needs.
+using System.Globalization;
 using System.Text;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
@@ -85,6 +86,27 @@ public class SceneryPackageIndexerTests : IDisposable
     }
 
     [Fact]
+    public void A_second_session_reads_the_features_back_from_the_cache_file()
+    {
+        // The DISK half of the cache, which no same-indexer call can reach any more — the memo
+        // answers first. A new indexer over the same folder, the package's BGLs gone, must still
+        // know the airport; otherwise every cold start re-reads them (VHHH ships a 2.9 GB library).
+        string pkg = MakePackage("session", ("KXYZ_Fire_Station", 40.00050, -75.0005), ("KXYZ_Fire_Station", 40.00077, -75.0005),
+                                            ("kxyz_cargo_terminal", 40.00100, -75.0020));
+        string cache = Path.Combine(_root, "c15");
+        var built = new SceneryPackageIndexer(cache).GetFeatures("KXYZ", new[] { pkg }, null);
+
+        foreach (var bgl in Directory.GetFiles(Path.Combine(pkg, "scenery"))) File.Delete(bgl);
+        var fromDisk = new SceneryPackageIndexer(cache).GetFeatures("KXYZ", new[] { pkg }, null);
+
+        Assert.Equal(2, built.Count);                                   // "Fire Station" (2 members) and a generic "Terminal"
+        Assert.Equal(built.Select(Describe), fromDisk.Select(Describe));
+    }
+
+    private static (FeatureKind, string, bool, double, double, int) Describe(AirportFeature f)
+        => (f.Kind, f.Name, f.NameIsGeneric, Math.Round(f.Lat, 9), Math.Round(f.Lon, 9), f.Members!.Count);
+
+    [Fact]
     public void A_cache_written_by_an_older_schema_is_rebuilt_never_half_read()
     {
         string pkg = MakePackage();
@@ -92,13 +114,45 @@ public class SceneryPackageIndexerTests : IDisposable
         Assert.Single(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null));
 
         // Schema 1 cached CLASSIFIED features — a shape this build must not read a single field of.
+        // The document carries the package's REAL stamp AND a Models array, so neither the stamp
+        // check nor the missing-Models check can reject it and the schema number is the only thing
+        // left that can: with a wrong stamp, or no Models key (as a real schema-1 file has), this
+        // test would pass with the schema comparison deleted. Believed, it would name Hangar 99.
         string cachePath = Assert.Single(Directory.GetFiles(cache, "*.json"));
-        File.WriteAllText(cachePath, "{\"SchemaVersion\":1,\"LayoutLength\":2,\"LayoutTicks\":0,\"Placements\":3,\"Unresolved\":0," +
-                                     "\"Features\":[{\"Kind\":\"Hangar\",\"Name\":\"Phantom\",\"Lat\":1.0,\"Lon\":2.0}]}");
+        File.WriteAllText(cachePath, "{\"SchemaVersion\":1," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0," +
+                                     "\"Features\":[{\"Kind\":\"Hangar\",\"Name\":\"Phantom\",\"Lat\":1.0,\"Lon\":2.0}]," +
+                                     "\"Models\":[{\"Name\":\"PHANTOM_Hangar_99\",\"Points\":[[1.0,2.0]]}]}");
 
         var rebuilt = new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null);
         Assert.Equal("Concourse A", Assert.Single(rebuilt).Name);
         Assert.Contains("\"SchemaVersion\":2", File.ReadAllText(cachePath));
+    }
+
+    [Fact]
+    public void A_cache_carrying_no_models_at_all_is_rebuilt_but_one_carrying_none_is_believed()
+    {
+        string pkg = MakePackage();
+        string cache = Path.Combine(_root, "cache");
+        Assert.Single(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null));
+        string cachePath = Assert.Single(Directory.GetFiles(cache, "*.json"));
+
+        // No Models key: the document says nothing about the package's models, which is not the
+        // same as saying it has none. Rebuilt — the BGLs are still there, so the concourse returns.
+        File.WriteAllText(cachePath, "{\"SchemaVersion\":2," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0}");
+        Assert.Equal("Concourse A", Assert.Single(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null)).Name);
+
+        // An EMPTY list does say it has none (a package with no buildings), and is believed.
+        File.WriteAllText(cachePath, "{\"SchemaVersion\":2," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0,\"Models\":[]}");
+        Assert.Empty(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null));
+    }
+
+    /// <summary>The package's own layout.json length and mtime, so a hand-written cache document
+    /// passes the stamp check and only the field under test can reject it.</summary>
+    private static string RealStamp(string pkg)
+    {
+        var layout = new FileInfo(Path.Combine(pkg, "layout.json"));
+        return $"\"LayoutLength\":{layout.Length.ToString(CultureInfo.InvariantCulture)}," +
+               $"\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture)}";
     }
 
     [Fact]
