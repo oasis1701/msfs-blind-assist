@@ -29,7 +29,6 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
-    private bool _baselined;
 
     public bool Enabled { get; set; }
     /// <summary>True while callouts must stay silent (takeoff assist, rollout, docking, lineup/hold, announcer suppressed).</summary>
@@ -43,13 +42,13 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         _timer.Start();
     }
 
-    /// <summary>Aircraft switch, reconnect, turnaround liftoff: forget what was seen and re-baseline.</summary>
-    public void Reset() { _gate.Reset(); _baselined = false; _icao = ""; _icaoAt = DateTime.MinValue; }
+    /// <summary>Aircraft switch, reconnect, turnaround liftoff: forget what was seen.</summary>
+    public void Reset() { _gate.Reset(); _icao = ""; _icaoAt = DateTime.MinValue; }
 
     private void OnTick(object? sender, EventArgs e)
     {
         if (!Enabled || !_sim.IsConnected) return;
-        if (_sim.LastKnownOnGround != true) { _baselined = false; return; }
+        if (_sim.LastKnownOnGround != true) return;
         _sim.RequestAircraftPosition();
         var pos = _sim.LastKnownPosition;
         if (pos == null) return;
@@ -67,7 +66,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 // never the nearest reference point (which is a heliport at a third of the
                 // stands at some hubs), and short idents included.
                 string next = CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) ?? "";
-                if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); _baselined = false; }
+                if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); }
             }
             if (_icao.Length == 0) return;
 
@@ -86,7 +85,6 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
             double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
             var ranked = SurroundingsReport.Rank(catalog, p.Latitude, p.Longitude, hdgTrue, 250.0);
-            if (!_baselined) { _gate.Baseline(ranked, now); _baselined = true; return; }
             if (SuppressCheck?.Invoke() == true || _announcer.Suppressed) return;
 
             var hit = _gate.Evaluate(ranked, p.GroundSpeedKnots, now);

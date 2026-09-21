@@ -1,22 +1,29 @@
+using MSFSBlindAssist.Services.TaxiAugment;
+
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
 /// <summary>
-/// Pure decision state for "Passing X, on the left." Fires for one feature per tick at most,
-/// nearest first, only when abeam and inside the kind's radius, inside the taxi speed band,
-/// at most once per feature per five minutes and once globally per ten seconds. Baseline():
-/// anything that would fire on this tick is marked as seen — a start-up abeam of the terminal
-/// must not recite it; a terminal AHEAD at pushback is left unmarked so it speaks when it comes
-/// abeam. No clock inside: the caller passes `now`.
+/// Pure decision state for "Passing X, on the left." A building is PASSED when its range was
+/// closing and is now opening — the closest point of approach — while it is inside its kind's
+/// radius and the aircraft is at taxi speed. Parked beside a terminal, or pushed back from one, the
+/// range never closes, so nothing is recited and no baseline is needed (the old one-shot baseline
+/// was a 5-minute timestamp that lapsed during any normal preflight). Once per feature per five
+/// minutes, once globally per ten seconds; a pass held back only by the global gap stays pending
+/// while the building is still in range. No clock inside: the caller passes `now`.
 /// </summary>
 public sealed class PassingCalloutGate
 {
     public const double MinSpeedKts = 2.0, MaxSpeedKts = 40.0;
-    public const double AbeamMinDeg = 45.0, AbeamMaxDeg = 135.0;
-    public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5);
-    public static readonly TimeSpan GlobalGap = TimeSpan.FromSeconds(10);
+    public const double MinApproachMetres = 15.0, OpeningMetres = 5.0, TrackRestartMetres = 300.0;
+    public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5), GlobalGap = TimeSpan.FromSeconds(10),
+                                    TrackExpiry = TimeSpan.FromSeconds(30), RepeatMemory = TimeSpan.FromMinutes(10);
 
-    private readonly Dictionary<string, DateTime> _lastByFeature = new(StringComparer.Ordinal);
+    private sealed class Track { public double First, Min, AnchorLat, AnchorLon; public DateTime LastSeen; public bool Passed, Pending; }
+    private readonly Dictionary<string, Track> _tracks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTime> _lastFired = new(StringComparer.Ordinal);
     private DateTime? _lastAny;
+
+    internal int TrackCount => _tracks.Count;
 
     public static double PassRadiusMetres(FeatureKind k) => k switch
     {
@@ -33,36 +40,42 @@ public sealed class PassingCalloutGate
         _ => false,
     };
 
-    private static string Key(AirportFeature f) => $"{f.Kind}|{f.SpokenName}|{f.Lat:F4}|{f.Lon:F4}";
+    // Kind + name only: a rebuilt catalog may nudge a merged centroid, and that is the same building.
+    private static string Key(AirportFeature f) => $"{(int)f.Kind}|{f.SpokenName.Trim().ToUpperInvariant()}";
 
-    private static bool InRange(NearbyFeature n)
+    public NearbyFeature? Evaluate(IReadOnlyList<NearbyFeature> nearby, double groundSpeedKts, DateTime now)
     {
-        double abs = Math.Abs(n.RelativeBearingDeg);
-        return n.DistanceMetres <= PassRadiusMetres(n.Feature.Kind) && abs >= AbeamMinDeg && abs <= AbeamMaxDeg;
-    }
-
-    public void Baseline(IEnumerable<NearbyFeature> inRange, DateTime now)
-    {
-        foreach (var n in inRange)
-            if (IsAnnounceable(n.Feature) && InRange(n))
-                _lastByFeature[Key(n.Feature)] = now;
-    }
-
-    public NearbyFeature? Evaluate(IReadOnlyList<NearbyFeature> ranked, double groundSpeedKts, DateTime now)
-    {
-        if (groundSpeedKts < MinSpeedKts || groundSpeedKts > MaxSpeedKts) return null;
-        if (_lastAny is DateTime last && now - last < GlobalGap) return null;
-        foreach (var n in ranked.OrderBy(x => x.DistanceMetres))   // nearest first, whatever order the caller used
+        Prune(now);
+        bool mayFire = groundSpeedKts >= MinSpeedKts && groundSpeedKts <= MaxSpeedKts
+                       && !(_lastAny is DateTime last && now - last < GlobalGap);
+        NearbyFeature? fire = null; string? fireKey = null;
+        foreach (var n in nearby)
         {
-            if (!IsAnnounceable(n.Feature) || !InRange(n)) continue;
-            string key = Key(n.Feature);
-            if (_lastByFeature.TryGetValue(key, out var seen) && now - seen < PerFeatureRepeat) continue;
-            _lastByFeature[key] = now;
-            _lastAny = now;
-            return n;
+            if (!IsAnnounceable(n.Feature) || n.DistanceMetres > PassRadiusMetres(n.Feature.Kind)) continue;
+            string key = Key(n.Feature); double d = n.DistanceMetres;
+            if (!_tracks.TryGetValue(key, out var t)
+                || TaxiGeo.HaversineMeters(t.AnchorLat, t.AnchorLon, n.Feature.Lat, n.Feature.Lon) > TrackRestartMetres)
+                _tracks[key] = t = new Track { First = d, Min = d, AnchorLat = n.Feature.Lat, AnchorLon = n.Feature.Lon };
+            t.LastSeen = now; t.AnchorLat = n.Feature.Lat; t.AnchorLon = n.Feature.Lon;
+            if (d < t.Min) t.Min = d;
+
+            if (!t.Passed && t.First - t.Min >= MinApproachMetres && d >= t.Min + OpeningMetres)
+            { t.Passed = true; t.Pending = true; }
+            if (!t.Pending || !mayFire) continue;
+            if (_lastFired.TryGetValue(key, out var said) && now - said < PerFeatureRepeat) { t.Pending = false; continue; }
+            if (fire == null || d < fire.DistanceMetres) { fire = n; fireKey = key; }     // nearest first
         }
-        return null;
+        if (fire == null) return null;
+        _tracks[fireKey!].Pending = false;
+        _lastFired[fireKey!] = now; _lastAny = now;
+        return fire;
     }
 
-    public void Reset() { _lastByFeature.Clear(); _lastAny = null; }
+    private void Prune(DateTime now)
+    {
+        foreach (var k in _tracks.Where(kv => now - kv.Value.LastSeen > TrackExpiry).Select(kv => kv.Key).ToList()) _tracks.Remove(k);
+        foreach (var k in _lastFired.Where(kv => now - kv.Value > RepeatMemory).Select(kv => kv.Key).ToList()) _lastFired.Remove(k);
+    }
+
+    public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastAny = null; }
 }
