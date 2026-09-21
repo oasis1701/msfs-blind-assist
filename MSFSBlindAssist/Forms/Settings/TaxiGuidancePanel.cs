@@ -442,8 +442,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
         // Reads the installed scenery package on disk for named buildings (hangars,
         // concourses, tower…) at add-on airports, offline, cached under %APPDATA%.
-        // Placed after the online-names attribution rather than a "callouts" checkbox that
-        // does not exist on this panel yet — leave room below for one.
+        // Placed after the online-names attribution and directly above its own status box;
+        // the passing-callouts checkbox follows that.
         sceneryIndexEnabledCheckBox = new CheckBox
         {
             Text = "Read installed scenery for airport buildings (offline)",
@@ -452,7 +452,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleName = "Read installed scenery for airport buildings (offline)",
             AccessibleDescription = "When enabled, reads the add-on airport package on disk for named "
                 + "hangars, concourses, the tower and other modeled buildings and includes them in the "
-                + "surroundings readout. No network use. Applies on the next airport."
+                + "surroundings readout. No network use. With an MSFS 2024 database the package is found "
+                + "by a one-time scan of the Community folder's scenery headers. Applies immediately."
         };
 
         // Read-only status readout for the scenery indexer's last run — a Label is not in the

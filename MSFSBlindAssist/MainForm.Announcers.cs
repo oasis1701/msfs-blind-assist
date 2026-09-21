@@ -1882,7 +1882,16 @@ public partial class MainForm
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
         {
             var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
-            features.AddRange(sceneryIndexer.GetFeatures(icao, dirs, facilities));
+            bool byCensus = false;
+            if (dirs.Count == 0)
+            {
+                // An MSFS 2024 navdata build names no package for ANY airport — find it by where its
+                // objects stand. Header-only and disk-cached; this method is already on a pool thread.
+                string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
+                string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion);
+                if (community != null) { dirs = sceneryCensus.Locate(community, facilities).ToList(); byCensus = dirs.Count > 0; }
+            }
+            features.AddRange(sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus));
         }
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.

@@ -60,8 +60,13 @@ public partial class MainForm : Form
 
     // Tier 3 of the surroundings feature: reads the installed scenery package's placement
     // BGLs for named buildings, cached on disk per package under %APPDATA%.
-    private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageIndexer sceneryIndexer =
-        new(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MSFSBlindAssist", "scenery-index"));
+    private static readonly string SceneryIndexCacheDir =
+        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MSFSBlindAssist", "scenery-index");
+    private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageIndexer sceneryIndexer = new(SceneryIndexCacheDir);
+
+    // Which package models the airport, when navdata does not say — an MSFS 2024 database names
+    // none for any airport. Shares the indexer's cache folder; its own census.json there.
+    private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageCensus sceneryCensus = new(SceneryIndexCacheDir);
 
     private ChecklistForm? checklistForm;
 

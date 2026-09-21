@@ -1,0 +1,164 @@
+// A fake Community folder: each package is a layout.json, a manifest.json naming its content type
+// and one objects BGL placing N models at a coordinate. Same synthetic BGL builder as
+// BglPlacementReaderTests — never a payware file.
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services.SceneryIndex;
+
+namespace MSFSBlindAssist.Tests;
+
+public class SceneryPackageCensusTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "msfsba-census-" + Guid.NewGuid().ToString("N"));
+    public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
+    private string Community => Path.Combine(_root, "Community");
+    private static readonly AirportFacilities Katl = new() { Icao = "KATL", LeftLon = -84.45, RightLon = -84.40, TopLat = 33.66, BottomLat = 33.62 };
+
+    private string Package(string name, int count, double lat, double lon, string contentType = "SCENERY")
+    {
+        string dir = Path.Combine(Community, name, "scenery");
+        Directory.CreateDirectory(dir);
+        var objs = Enumerable.Range(0, count).Select(i => (lat + i * 0.0001, lon, 0.0, Guid.NewGuid())).ToArray();
+        File.WriteAllBytes(Path.Combine(dir, "objects.bgl"), BglPlacementReaderTests.BuildBgl(objs));
+        File.WriteAllText(Path.Combine(Community, name, "layout.json"), "{}");
+        File.WriteAllText(Path.Combine(Community, name, "manifest.json"), $"{{\"content_type\":\"{contentType}\"}}");
+        return Path.Combine(Community, name);
+    }
+
+    [Fact]
+    public void Finds_the_package_whose_objects_stand_on_the_airport_and_nothing_else()
+    {
+        string here = Package("flytampa-somewhere", 30, 33.6400, -84.4300);        // no ICAO in the folder name — position decides
+        Package("other-airport", 30, 34.2000, -84.4300);                           // ~60 km north
+        Package("a-few-objects", 5, 33.6400, -84.4300);                            // below the threshold: a livery's hangar, a city pack's edge
+        Package("an-aircraft", 30, 33.6400, -84.4300, contentType: "AIRCRAFT");    // not scenery: never scanned
+        var found = new SceneryPackageCensus(Path.Combine(_root, "cache")).Locate(Community, Katl);
+        Assert.Equal(here, Assert.Single(found));
+    }
+
+    [Fact]
+    public void A_second_lookup_is_served_from_the_disk_cache_and_a_changed_package_is_rescanned()
+    {
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        string cache = Path.Combine(_root, "cache");
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+
+        File.Delete(Path.Combine(pkg, "scenery", "objects.bgl"));                  // prove nothing is re-read
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+
+        File.WriteAllText(Path.Combine(pkg, "layout.json"), "{ \"changed\": true }");   // the package was updated
+        Assert.Empty(new SceneryPackageCensus(cache).Locate(Community, Katl));
+    }
+
+    [Fact]
+    public void A_missing_folder_or_a_broken_package_never_throws()
+    {
+        Assert.Empty(new SceneryPackageCensus(Path.Combine(_root, "cache")).Locate(Path.Combine(_root, "nope"), Katl));
+        Directory.CreateDirectory(Path.Combine(Community, "broken", "scenery"));
+        File.WriteAllText(Path.Combine(Community, "broken", "layout.json"), "{}");
+        File.WriteAllBytes(Path.Combine(Community, "broken", "scenery", "x.bgl"), new byte[] { 9, 9, 9 });
+        Assert.Empty(new SceneryPackageCensus(Path.Combine(_root, "cache2")).Locate(Community, Katl));
+    }
+
+    [Fact]
+    public void An_empty_community_folder_finds_nothing_and_writes_no_cache()
+    {
+        Directory.CreateDirectory(Community);
+        string cache = Path.Combine(_root, "cache");
+        Assert.Empty(new SceneryPackageCensus(cache).Locate(Community, Katl));
+        Assert.False(File.Exists(Path.Combine(cache, "census.json")));             // nothing was learned, so nothing is written
+    }
+
+    [Fact]
+    public void A_package_that_keeps_its_bgls_outside_a_scenery_folder_is_scanned_all_the_same()
+    {
+        // The scan walks the package, not a fixed "scenery" subfolder: authors ship BGLs under
+        // scenery\<icao>\, under a vendor folder, or beside layout.json.
+        string dir = Path.Combine(Community, "loose");
+        Directory.CreateDirectory(Path.Combine(dir, "deep", "deeper"));
+        var objs = Enumerable.Range(0, 30).Select(i => (33.6400 + i * 0.0001, -84.4300, 0.0, Guid.NewGuid())).ToArray();
+        File.WriteAllBytes(Path.Combine(dir, "deep", "deeper", "objects.BGL"), BglPlacementReaderTests.BuildBgl(objs));
+        File.WriteAllText(Path.Combine(dir, "layout.json"), "{}");                 // no manifest at all: still scanned
+        Assert.Equal(dir, Assert.Single(new SceneryPackageCensus(Path.Combine(_root, "cache")).Locate(Community, Katl)));
+    }
+
+    [Fact]
+    public void Packages_over_the_threshold_come_back_highest_first_and_never_more_than_the_cap()
+    {
+        string most = Package("most", 60, 33.6400, -84.4300);
+        string mid = Package("mid", 45, 33.6410, -84.4300);
+        string few = Package("few", 30, 33.6420, -84.4300);
+        Package("fewest", 25, 33.6430, -84.4300);                                  // a fourth over the bar: cut by MaxPackages
+        Package("under", SceneryPackageCensus.MinPlacementsInBox - 1, 33.6440, -84.4300);
+
+        var found = new SceneryPackageCensus(Path.Combine(_root, "cache")).Locate(Community, Katl);
+        Assert.Equal(new[] { most, mid, few }, found);
+        Assert.Equal(SceneryPackageCensus.MaxPackages, found.Count);
+    }
+
+    [Fact]
+    public void A_box_with_no_extent_still_matches_what_stands_on_it_and_null_island_matches_nothing()
+    {
+        // An airport whose navdata hull collapsed to a point (one record) still has the margin
+        // around it; (0, 0) is a real coordinate to a box test and must match nothing here.
+        Package("kxyz", 30, 33.6400, -84.4300);
+        var point = new AirportFacilities { Icao = "KXYZ", LeftLon = -84.4300, RightLon = -84.4300, TopLat = 33.6410, BottomLat = 33.6410 };
+        var nullIsland = new AirportFacilities { Icao = "ZZZZ", LeftLon = 0, RightLon = 0, TopLat = 0, BottomLat = 0 };
+        var census = new SceneryPackageCensus(Path.Combine(_root, "cache"));
+
+        Assert.Single(census.Locate(Community, point));
+        Assert.Empty(census.Locate(Community, nullIsland));
+    }
+
+    [Fact]
+    public void A_cache_written_by_another_schema_is_ignored_whole_and_rebuilt()
+    {
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        string cache = Path.Combine(_root, "cache");
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+        string file = Path.Combine(cache, "census.json");
+        Assert.Contains("\"SchemaVersion\":1", File.ReadAllText(file));
+
+        // Another schema's fields mean nothing here. This document would otherwise be believed:
+        // it carries the package's REAL stamp and a plausible Cells array.
+        var layout = new FileInfo(Path.Combine(pkg, "layout.json"));
+        File.WriteAllText(file, "{\"SchemaVersion\":99,\"Packages\":[{\"Path\":\"" + pkg.Replace("\\", "\\\\") + "\"," +
+                                $"\"LayoutLength\":{layout.Length},\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks}," +
+                                "\"Cells\":[[9999,9999,5000]]}]}");
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));    // rebuilt from the BGLs, not from cell 9999
+        Assert.Contains("\"SchemaVersion\":1", File.ReadAllText(file));
+
+        // A document carrying no Cells key says nothing about where the package's objects stand,
+        // which is not the same as saying it has none — rebuilt rather than believed.
+        File.WriteAllText(file, "{\"SchemaVersion\":1,\"Packages\":[{\"Path\":\"" + pkg.Replace("\\", "\\\\") + "\"," +
+                                $"\"LayoutLength\":{layout.Length},\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks}}}]}}");
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+    }
+
+    [Fact]
+    public void A_package_that_was_uninstalled_leaves_the_cache()
+    {
+        Package("stays", 30, 33.6400, -84.4300);
+        string going = Package("going", 30, 33.6410, -84.4300);
+        string cache = Path.Combine(_root, "cache");
+        Assert.Equal(2, new SceneryPackageCensus(cache).Locate(Community, Katl).Count);
+
+        Directory.Delete(going, recursive: true);
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+        Assert.DoesNotContain("going", File.ReadAllText(Path.Combine(cache, "census.json")));
+    }
+
+    [Fact]
+    public void Two_threads_locating_at_once_both_get_the_package_and_write_one_cache_file()
+    {
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        string cache = Path.Combine(_root, "cache");
+        var census = new SceneryPackageCensus(cache);
+
+        var found = new IReadOnlyList<string>[8];
+        Parallel.For(0, found.Length, i => found[i] = census.Locate(Community, Katl));
+
+        Assert.All(found, f => Assert.Equal(pkg, Assert.Single(f)));
+        Assert.Single(Directory.GetFiles(cache, "*.json"));
+        Assert.Empty(Directory.GetFiles(cache, "*.tmp"));       // the half-written file is never left behind
+    }
+}
