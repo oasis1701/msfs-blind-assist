@@ -1904,19 +1904,31 @@ public partial class MainForm
 
     /// <summary>
     /// The ONE path both surroundings hotkeys take: guards → position → pool hop → which airport →
-    /// catalog → UI marshal. The provider is captured in a LOCAL on the UI thread: the field can be
-    /// swapped by a database switch while the pool thread is still working. `compose` runs on the
-    /// pool thread and returns the action to run on the UI thread.
+    /// catalog → UI marshal. The provider this method's OWN work uses — the airport resolution and
+    /// DescribeCurrentLocation — is captured in a LOCAL on the UI thread, so a database switch
+    /// cannot swap it out from under a lookup in flight. That guarantee stops at the catalog: the
+    /// cache's BuildSupplier (BuildSurroundings) reads the `airportDataProvider` FIELD on its own
+    /// pool thread and so may see the new database. Harmless, because RefreshDatabaseProvider
+    /// Clear()s the cache and the cache's generation check then discards a build that straddled
+    /// the switch instead of caching it. `compose` runs on the pool thread and returns the action
+    /// to run on the UI thread.
     /// </summary>
     private void RunSurroundingsLookup(LatestRequest requests, bool needWhereAmI, Func<SurroundingsLookup, Action> compose)
     {
         var provider = airportDataProvider;
         if (provider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
         if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
-        int ticket = requests.Next();
 
         simConnectManager.RequestAircraftPositionAsync(position =>
         {
+            // The ticket is taken HERE, not at the press. RequestAircraftPositionAsync silently
+            // returns without ever invoking this callback when SimConnect is not connected (or
+            // the request throws), so a ticket taken at the press would be burned by a press that
+            // can never produce an answer — and, being newer, would suppress the previous press's
+            // in-flight one. The pilot got total silence from two presses. Taken here, only a
+            // press that actually has a position competes, and the newest of those wins.
+            int ticket = requests.Next();
+
             // position is a struct copy handed to us by the SimConnect callback (dispatched on the
             // UI thread via WndProc). Everything below it — the airport resolution, DescribeCurrentLocation
             // and the catalog build's possible first-time scenery scan/DB read — runs on a thread-pool

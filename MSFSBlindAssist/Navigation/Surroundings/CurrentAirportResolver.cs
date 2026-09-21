@@ -31,6 +31,8 @@ public static class CurrentAirportResolver
         return null;
     }
 
+    /// <summary>Assumes LeftLon &lt;= RightLon, as the box SQL feeding it always has: a box
+    /// spanning ±180° fails this test and the airport degrades to the distance passes.</summary>
     private static bool Contains(AirportCandidate c, double lat, double lon)
     {
         double dLat = BoxMarginMetres / 111_320.0;
