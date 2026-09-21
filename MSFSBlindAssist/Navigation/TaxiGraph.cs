@@ -2328,59 +2328,25 @@ public class TaxiGraph
             // Strict: the runway shape's own half-width, no margin. Stricter than DescribeLocation
             // because takeoff-assist centerline math depends on the chosen runway actually being the
             // one under the aircraft — a 5 m fudge could mis-attribute when the aircraft is sitting on
-            // a high-speed exit immediately adjacent to a runway. The threshold point, heading and
-            // end choice below are unchanged.
-            if (!RunwayShape.For(rwy).Contains(lat, lon, 0.0)) continue;
+            // a high-speed exit immediately adjacent to a runway.
+            var shape = RunwayShape.For(rwy);
+            if (!shape.Contains(lat, lon, 0.0)) continue;
 
-            // Pick the end whose takeoff heading is closer to the aircraft's
-            // heading. End 1's takeoff heading is HeadingDeg1; end 2's is
-            // HeadingDeg1 + 180 (mod 360).
-            double hdg1 = NormalizeHeading(rwy.HeadingDeg1);
-            double hdg2 = NormalizeHeading(rwy.HeadingDeg1 + 180.0);
-            double diff1 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg1));
-            double diff2 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg2));
-
-            if (diff1 <= diff2)
-            {
-                runwayId = rwy.Name1;
-                thresholdLat = rwy.Lat1;
-                thresholdLon = rwy.Lon1;
-                runwayHeadingTrue = hdg1;
-            }
-            else
-            {
-                runwayId = rwy.Name2;
-                thresholdLat = rwy.Lat2;
-                thresholdLon = rwy.Lon2;
-                runwayHeadingTrue = hdg2;
-            }
-
-            // Fallback if the chosen end has an empty Name (shouldn't happen
-            // in well-formed navdata, but defensive — an empty designator
-            // would propagate into the spoken callout). When we fall over to
-            // the other end's name, also re-point the threshold + heading to
-            // that other end so the geometry stays consistent with the name.
-            // If both names are empty, leave the geometry on the originally
-            // chosen end — the empty runwayId will be the caller's signal
-            // that data is malformed, but threshold + heading remain valid
-            // approximations.
-            if (string.IsNullOrEmpty(runwayId))
-            {
-                if (rwy.Name1.Length > 0)
-                {
-                    runwayId = rwy.Name1;
-                    thresholdLat = rwy.Lat1;
-                    thresholdLon = rwy.Lon1;
-                    runwayHeadingTrue = hdg1;
-                }
-                else if (rwy.Name2.Length > 0)
-                {
-                    runwayId = rwy.Name2;
-                    thresholdLat = rwy.Lat2;
-                    thresholdLon = rwy.Lon2;
-                    runwayHeadingTrue = hdg2;
-                }
-            }
+            // The END, its threshold and its heading come from that SAME shape, together
+            // (PR #238 deferred finding §5). They used to be picked from rwy.HeadingDeg1 and
+            // rwy.Lat1/Lat2 — the START-ROW frame — while DescribeLocation named the end through
+            // RunwayShape.NameAt, the pavement frame, so on a name-swapped centreline (AYCH, OIII,
+            // URWW, EDVQ: measured, four of 405) the two answered OPPOSITE ENDS at the same point.
+            // A blind pilot asking Where-Am-I was told one runway while the takeoff-assist reference
+            // seeded at the same spot carried the other, along with that end's threshold.
+            //
+            // The threshold is still a `start` row — runway-destination lineup anchors on the start
+            // table — but the row paired with this end BY POSITION rather than by name index.
+            var end = shape.DepartureEndFor(aircraftHeadingTrue);
+            runwayId = end.Designator;
+            thresholdLat = end.ThresholdLat;
+            thresholdLon = end.ThresholdLon;
+            runwayHeadingTrue = end.HeadingTrue;
 
             return true;
         }

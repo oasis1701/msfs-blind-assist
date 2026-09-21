@@ -51,6 +51,9 @@ public sealed class RunwayShape
     private readonly double _metersPerDegLon;
     private readonly double _ux;
     private readonly double _uy;
+    // The start row paired with each END BY POSITION — never by name index. See DepartureEndFor.
+    private readonly (double Lat, double Lon) _startRowAtEnd1;
+    private readonly (double Lat, double Lon) _startRowAtEnd2;
 
     public TaxiGraph.RunwayCenterline Centerline { get; }
     public double Lat1 { get; }
@@ -98,6 +101,77 @@ public sealed class RunwayShape
         }
         ExtentMinMeters = min;
         ExtentMaxMeters = max;
+
+        // Pair each end with the start row NEAREST IT ALONG THE AXIS. On sound data that is the row
+        // whose name the end carries; on a name-swapped centreline it is the other one, which is the
+        // whole of PR #238 deferred finding §5. The pairing carries the THRESHOLD only — the NAME
+        // stays the shape's own (Name1 belongs to end 1, as the runway table orders the pavement).
+        double rowA = Project(centerline.Lat1, centerline.Lon1).Along;
+        double rowB = Project(centerline.Lat2, centerline.Lon2).Along;
+        bool rowAIsNearerEnd1 = Math.Abs(rowA) <= Math.Abs(rowB);
+        _startRowAtEnd1 = rowAIsNearerEnd1
+            ? (centerline.Lat1, centerline.Lon1) : (centerline.Lat2, centerline.Lon2);
+        _startRowAtEnd2 = rowAIsNearerEnd1
+            ? (centerline.Lat2, centerline.Lon2) : (centerline.Lat1, centerline.Lon1);
+    }
+
+    /// <summary>
+    /// One end of the runway, with its name, its lineup anchor and its takeoff heading — the three
+    /// things a caller must never mix frames on.
+    /// </summary>
+    /// <param name="Designator">The end's name, from the shape (the PAVEMENT frame, as <see cref="NameAt"/> reads it).</param>
+    /// <param name="ThresholdLat">The <c>start</c> row nearest this end BY POSITION: runway-destination lineup anchors on the start table, which is what accounts for displaced thresholds and starter extensions.</param>
+    /// <param name="HeadingTrue">The true bearing of a departure from this end, measured along the shape's own axis.</param>
+    public readonly record struct RunwayEndAnchor(
+        string Designator, double ThresholdLat, double ThresholdLon, double HeadingTrue);
+
+    /// <summary>The true bearing from end 1 to end 2, measured on the shape's own axis.</summary>
+    public double HeadingFromEnd1Deg
+    {
+        get
+        {
+            if (IsDegenerate) return 0.0;
+            double deg = Math.Atan2(_ux, _uy) * (180.0 / Math.PI);
+            return deg < 0.0 ? deg + 360.0 : deg;
+        }
+    }
+
+    /// <summary>
+    /// The end whose takeoff heading is nearer <paramref name="aircraftHeadingTrue"/> — the end the
+    /// aircraft is departing FROM — with its name, lineup anchor and heading taken together.
+    ///
+    /// <para>PR #238 deferred finding §5. <c>TryGetRunwayAtPosition</c> migrated its MEMBERSHIP test
+    /// to this class but still picked the END from the centreline's <c>HeadingDeg1</c> and
+    /// <c>Lat1/Lat2</c> — the START-ROW frame — while Where-Am-I named it through
+    /// <see cref="NameAt"/>, the pavement frame. On a name-swapped centreline the two are reversed,
+    /// and measured over 405 centrelines at 300 fs2024 airports, four disagreed outright (AYCH,
+    /// OIII, URWW, EDVQ): a blind pilot asking Where-Am-I was told one runway while the
+    /// takeoff-assist reference seeded at the same spot carried the other. Everything here comes
+    /// from ONE frame, so name, threshold and heading can no longer disagree.</para>
+    ///
+    /// <para>The threshold is still a <c>start</c> row, never the pavement end — the lineup
+    /// invariant — but the row PAIRED WITH THIS END BY POSITION rather than by name index.</para>
+    /// </summary>
+    public RunwayEndAnchor DepartureEndFor(double aircraftHeadingTrue)
+    {
+        double heading1 = HeadingFromEnd1Deg;
+        double heading2 = (heading1 + 180.0) % 360.0;
+        bool fromEnd1 = AngleBetween(aircraftHeadingTrue, heading1) <= AngleBetween(aircraftHeadingTrue, heading2);
+
+        // An end with no designator falls back to the other's name, and takes that end's geometry
+        // with it so the answer stays self-consistent (the pre-existing malformed-navdata rule).
+        if (fromEnd1 && string.IsNullOrEmpty(Name1) && !string.IsNullOrEmpty(Name2)) fromEnd1 = false;
+        else if (!fromEnd1 && string.IsNullOrEmpty(Name2) && !string.IsNullOrEmpty(Name1)) fromEnd1 = true;
+
+        return fromEnd1
+            ? new RunwayEndAnchor(Name1, _startRowAtEnd1.Lat, _startRowAtEnd1.Lon, heading1)
+            : new RunwayEndAnchor(Name2, _startRowAtEnd2.Lat, _startRowAtEnd2.Lon, heading2);
+    }
+
+    private static double AngleBetween(double a, double b)
+    {
+        double d = Math.Abs((a - b) % 360.0);
+        return d > 180.0 ? 360.0 - d : d;
     }
 
     public static RunwayShape For(TaxiGraph.RunwayCenterline centerline)
