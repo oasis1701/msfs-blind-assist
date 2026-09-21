@@ -1033,18 +1033,24 @@ Fbo (a GA field is all hangars), capped at 4. Excluded: the zone itself, and any
 other Apron/DeicePad the aircraft is **standing on** — after "On the GA ramp."
 the pilot must not also hear "Apron, here" about the pavement under it.
 
-**Under a GROUND zone, a second piece of ground earns a slot only as a named
-place** (`AddsNothingBesideGroundZone`): it must carry a proper name of its own
-AND not the one the zone line just used. Anonymous pavement 12 m from the ramp
-the aircraft is parked on is the pavement that ramp belongs to — it names
-nothing a pilot can act on, and it spends one of the four slots a building
-should have. A second "GA ramp" 590 m away at KTIW is the one-name-two-places
-confusion. Neither half is a test of the KIND: spending the zone's whole kind
-silenced a real "North Apron" 300 m from an anonymous polygon the aircraft sat
-in, and a named place beside a ramp is still named. With NO ground zone — out on
-a taxiway, or under a concourse/terminal zone — nothing has been said about the
-pavement and "Apron, ahead, 200 metres" is the readout doing its job, so it
-stays.
+**Under a GROUND zone, a second piece of ground has to add something of its
+own** (`AddsNothingBesideGroundZone`). Two ways it does not: it is an **Apron
+with no name at all**, which speaks as the bare kind word — "Apron, ahead,
+12 metres" beside the ramp the aircraft is parked on IS that ramp's pavement, it
+names nothing a pilot can act on, and it spends one of the four slots a building
+should have; or it carries **the zone's own spoken name** — KTIW's second "GA
+ramp" 590 m away is the one-name-two-places confusion.
+
+Everything else beside a ramp still speaks, and the two exclusions are
+deliberately narrow. Not "no PROPER name": `NavdataFeatureSource` marks "North
+ramp"/"South ramp" and "GA ramp" `NameIsGeneric`, yet each names ONE ramp rather
+than all of them and is what a controller calls that pavement. Not the KIND
+either, in either direction — an unnamed **de-ice pad** speaks as "De-ice pad",
+where the kind word is the whole information, while spending the zone's whole
+kind silenced a real "North Apron" 300 m from an anonymous polygon the aircraft
+sat in. And with NO ground zone — out on a taxiway, or under a
+concourse/terminal zone — nothing has been said about the pavement, so even an
+unnamed "Apron, ahead, 200 metres" is the readout doing its job and stays.
 
 **Nothing at zero range gets a direction.** At or below `ZeroRangeMetres` a
 feature reads "{name}, here." — the bearing to something the aircraft is
@@ -1554,10 +1560,11 @@ because it dropped the model library of ten real Community packages.)
 - The zone is the pavement the aircraft is ON — a named apron outline, else the
   ramp whose stands it is among, else any outline, else the nearest
   concourse/terminal — and what it is standing on is never ALSO offered as
-  nearby. Under a ground zone a second piece of ground is spoken only as a named
-  place (its own proper name, and not the zone's); with no ground zone an
-  unnamed apron in range is spoken as before. Nothing at zero range is given a
-  direction: "{name}, here.".
+  nearby. Under a ground zone the only ground left unsaid is an apron with NO
+  name (that ramp's own pavement) and anything carrying the zone's own name; a
+  synthesized "North ramp", a de-ice pad and every named place still speak, and
+  with no ground zone an unnamed apron in range speaks as before. Nothing at
+  zero range is given a direction: "{name}, here.".
 - A model name is spoken only after `SceneryModelNameClassifier` has produced
   human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
 - Passing callouts are queued, fire at the closest point of approach with no

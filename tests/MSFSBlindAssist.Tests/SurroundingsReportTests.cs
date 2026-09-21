@@ -181,6 +181,33 @@ public class SurroundingsReportTests
     }
 
     [Fact]
+    public void A_synthesized_name_that_still_DISTINGUISHES_the_ramp_is_spoken_beside_the_zone()
+    {
+        // NavdataFeatureSource labels a directional ramp "North ramp" and marks it NameIsGeneric,
+        // so it has no PROPER name — but it is what a controller calls that pavement, and a pilot
+        // can act on it. The no-name half of the rule is about ANONYMOUS apron pavement, not about
+        // a synthesized label that names one ramp rather than all of them.
+        var north = new AirportFeature { Kind = FeatureKind.Apron, Name = "North ramp", NameIsGeneric = true, Source = FeatureSource.Navdata,
+                                         Lat = Lat + 300 / 111_320.0, Lon = Lon, Members = new[] { new LatLon(Lat + 300 / 111_320.0, Lon) } };
+        Assert.True(north.HasName);
+        Assert.False(north.HasProperName);
+        var cat = Cat(Ramp("GA ramp", 0), north);
+        Assert.Equal("X. On the GA ramp. North ramp, ahead, 300 metres.",
+                     SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+    }
+
+    [Fact]
+    public void An_unnamed_de_ice_pad_beside_the_ramp_is_spoken_because_its_KIND_is_the_information()
+    {
+        // "De-ice pad, ahead, 200 metres" is worth a slot with no name at all — the kind word is
+        // what a pilot wanted. "Apron" is not: beside the ramp you are parked on it is the pavement
+        // that ramp belongs to.
+        var cat = Cat(Ramp("GA ramp", 0), F(FeatureKind.DeicePad, "", 200, 0));
+        Assert.Equal("X. On the GA ramp. De-ice pad, ahead, 200 metres.",
+                     SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+    }
+
+    [Fact]
     public void Away_from_any_ramp_an_unnamed_apron_is_real_information_and_is_spoken()
     {
         // Out on a taxiway there is no ground zone, so nothing has been said about the pavement

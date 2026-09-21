@@ -114,25 +114,35 @@ public static class SurroundingsReport
 
     /// <summary>
     /// The zone line has already said which pavement the aircraft is on, so a SECOND piece of
-    /// ground is worth one of the four slots only when it is a PLACE — a name of its own, and not
-    /// the one just spoken. Two ways to fail that:
+    /// ground has to add something of its own to be worth one of the four slots. Two ways it does
+    /// not:
     /// <list type="bullet">
-    /// <item>no proper name (<see cref="AirportFeature.HasProperName"/>): "Apron, ahead, 12 metres"
-    /// beside the ramp the aircraft is parked on is the pavement that ramp belongs to. It names
-    /// nothing a pilot can act on and it spends a slot a building should have.</item>
+    /// <item>ANONYMOUS APRON PAVEMENT — an <see cref="FeatureKind.Apron"/> with no name at all
+    /// (<see cref="AirportFeature.HasName"/>), which speaks as the bare kind word. "Apron, ahead,
+    /// 12 metres" beside the ramp the aircraft is parked on IS the pavement that ramp belongs to:
+    /// it names nothing a pilot can act on and it spends a slot a building should have.</item>
     /// <item>the zone's own spoken name: KTIW has two navdata ramps 600 m apart and BOTH are
     /// "GA ramp", so "On the GA ramp." then "GA ramp, to the left, 591 metres" is the
     /// one-name-two-places confusion.</item>
     /// </list>
     ///
+    /// <para>Deliberately NOT <see cref="AirportFeature.HasProperName"/>, which is one notch too
+    /// wide: <c>NavdataFeatureSource</c> marks "North ramp"/"South ramp" and "GA ramp"
+    /// <c>NameIsGeneric</c>, yet those name ONE ramp rather than all of them and are what a
+    /// controller calls that pavement. And deliberately apron-only: an unnamed
+    /// <see cref="FeatureKind.DeicePad"/> speaks as "De-ice pad", where the KIND is the whole
+    /// information.</para>
+    ///
     /// <para>Both halves apply only UNDER A GROUND ZONE. With no zone, or a concourse/terminal one,
     /// nothing has been said about the pavement and an unnamed "Apron, ahead, 200 metres" out on a
-    /// taxiway is the readout doing its job. Never test the KIND instead: spending the zone's whole
-    /// kind silenced a real "North Apron" 300 m from an anonymous polygon the aircraft sat in.</para>
+    /// taxiway is the readout doing its job. Never test the KIND alone instead: spending the zone's
+    /// whole kind silenced a real "North Apron" 300 m from an anonymous polygon the aircraft sat
+    /// in.</para>
     /// </summary>
     private static bool AddsNothingBesideGroundZone(AirportFeature f, AirportFeature? zone)
         => zone != null && IsGround(zone) && IsGround(f)
-           && (!f.HasProperName || string.Equals(f.SpokenName, zone.SpokenName, StringComparison.OrdinalIgnoreCase));
+           && ((f.Kind == FeatureKind.Apron && !f.HasName)
+               || string.Equals(f.SpokenName, zone.SpokenName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>"{name}, here." at zero range, else "{name}, {direction}, {distance}." — the
     /// spoken form. <see cref="RelativeDirection.Describe"/> is never asked about a bearing taken
