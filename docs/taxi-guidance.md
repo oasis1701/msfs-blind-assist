@@ -535,12 +535,45 @@ Why also list non-connected taxiways: occasional ATC clearances skip a taxiway t
 
 ### Runway crossings and entries
 
-> **Known open items.** Ten reviewed findings in this area and the landing-rollout path were
-> deliberately deferred, with measurements, tripwires and fixes written up in
-> [docs/design/2026-09-16-pr238-deferred-runway-findings-plan.md](design/2026-09-16-pr238-deferred-runway-findings-plan.md).
-> Read §0 of that document — the derived-constant tripwire — before changing any tolerance here.
-> ⚠ TEMPORARY: the PR that closes the last item deletes that file, this banner and the
-> `CLAUDE.md` index entry, per its own teardown checklist.
+> **⚠ THE DERIVED-CONSTANT TRIPWIRE — read before changing any tolerance in this area or the
+> landing rollout.** Several rollout constants are **arithmetic consequences** of two margins, and
+> nothing in the code, the compiler or the tests links them:
+>
+> | Constant | Where | Derived from |
+> |---|---|---|
+> | `RolloutExitGate.VacatedShortAlongTrackFeet` = 350 | `RolloutExitGate.cs` | the exact **5 m** gap between the exit-node corridor (`halfWidth + HandoffReachMarginM`, 15 m) and the pavement boundary (`halfWidth + RunwayClearMarginM`, 10 m) |
+> | `RolloutExitGate.EarlyVacateMaxPassedFeet` = 1400 | `RolloutExitGate.cs` | same gap |
+> | the 25 m corridor clamp (`HandoffReachDefaultHalfWidthM`) | handoff reachability | same gap |
+> | `RolloutExitGate.RunwayClearMarginM` = 10 | `RolloutExitGate.cs` | the codebase's ONE definition of "off the runway" |
+> | `RolloutExitGate.DefaultRunwayWidthFeet` = 200 | `RolloutExitGate.cs` | fallback half-width, **different** from `RunwayShape.DefaultHalfWidthMeters` (75 ft) |
+>
+> Change a half-width or either margin and those three numbers silently stop being derived. There is
+> no compile error, and the boundary tests keep passing because they pin the *old* arithmetic.
+> `RunwayVacateResolver` additionally keeps its **own** copy of the 75 ft default and its own
+> `SameRunwayLateralM = 30.0`, the latter calibrated against the residual scatter left by
+> `TaxiGraph.SnapStartToRunwayCenterline` — so loosening the snap invalidates it too. **Re-derive all
+> five before touching any of them, and say so in the commit message.**
+>
+> **⚠ TWO THINGS IN THIS AREA WERE MEASURED AND DELIBERATELY LEFT ALONE. Do not "fix" either.**
+>
+> 1. **The narrow lateral band is correct.** It was reported that replacing the fixed 75 ft default
+>    with the runway table's real half-width loses off-centreline detection (at 8 m off, 53 of 419
+>    runways missed against the old behaviour). Measurement refutes it: the nearest off-runway graph
+>    node sits **3.2 m** from a runway centreline at p0 and **5.1 m** at p1 (re-measured on a 2026-09
+>    fs2024 build: 4.2 m and 5.8 m over 381 runways), and at SC99 a taxiway node is **4.2 m** from
+>    the centreline of a runway whose half-width is **4.0 m**. There is no headroom to widen the band
+>    without claiming the adjacent taxiway, and 42,661 of 48,321 runways are narrower than 150 ft, so
+>    the strict real-width test is right for most of the database.
+>    `RunwayShape.MaxPlausibleHalfWidthMeters` does not disturb this — it only narrows a half-width
+>    computed from a MALFORMED `runway.width` row (over 400 ft) and never widens a band.
+> 2. **`RouteProgressMeters` returning `0.0` for both "at the route start" and "not near this route"**
+>    reads like a bug and is not. The 30 m `RouteJoinMaxCrossTrackMetres` bound exists so that an
+>    aircraft stopped at the KORD 04L hold line, 90 m beside a route that starts along the runway, is
+>    still treated as the route's first point and keeps its start hold. The "fabricated start holds"
+>    originally measured came from displacing the aircraft perpendicular to its own route by up to
+>    1,500 m, which production cannot produce because the route is built from the aircraft's position.
+>    Separating the two meanings would undo the KORD guard. If you touch it, keep the prepend
+>    behaviour identical and change only the naming.
 
 FAA AIM 4-3-18 and ICAO Doc 4444 require an aircraft to hold short of every runway it crosses, with an explicit clearance for each. Guidance holds before every runway a route **crosses or enters**, reports every one of them, and places each stop off the pavement. The rules live in pure code — `Navigation/RunwayShape`, `Navigation/RunwayRouteClassifier`, `Navigation/RouteRunwayCrossings` — pinned by `RunwayShapeTests`, `RunwayRouteClassifierTests`, `RunwayHoldPlacementTests`, `RunwayEventDescriptionTests` and `RunwayMembershipTests`.
 
