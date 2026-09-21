@@ -1882,7 +1882,7 @@ public partial class MainForm
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
         {
             var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
-            features.AddRange(sceneryIndexer.GetFeatures(icao, dirs));
+            features.AddRange(sceneryIndexer.GetFeatures(icao, dirs, facilities));
         }
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.
