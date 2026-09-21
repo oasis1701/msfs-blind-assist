@@ -88,6 +88,8 @@ Time:
 Position:
   C          Read Nearest City
   Ctrl+Shift+T  Cold Temperature Altitude Correction calculator
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
 
 AI Display Reading (needs an AI provider configured in Settings > AI tab):
   Alt+P      Describe the PFD (Primary Flight Display)

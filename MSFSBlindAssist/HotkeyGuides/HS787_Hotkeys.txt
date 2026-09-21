@@ -94,6 +94,8 @@ Cockpit Display Read-outs:
 Displays and Windows:
   Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
   Shift+L    Location Info
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
   Shift+M    Show VATSIM METAR Report
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing

@@ -190,6 +190,19 @@ public class HotkeyManager : IDisposable
         internal const uint SI_BUILD_TAXI_ROUTE_KEY = 0x59; // Y
         internal const string SayIntentionsBuildTaxiRouteChordText = "Ctrl+Shift+Y";
 
+        // Alt+L and Ctrl+Shift+L follow the same pattern as SayIntentionsBuildTaxiRouteChordText
+        // above: registration constants plus the human-readable chord, so the registration and
+        // the guide text can never drift apart.
+        internal const uint LOOK_AROUND_MODIFIERS = MOD_ALT;
+        internal const uint LOOK_AROUND_KEY = 0x4C; // L
+        // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
+        internal const string LookAroundChordText = "Alt+L";
+
+        internal const uint SHOW_SURROUNDINGS_MODIFIERS = MOD_CONTROL | MOD_SHIFT;
+        internal const uint SHOW_SURROUNDINGS_KEY = 0x4C; // L
+        // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
+        internal const string SurroundingsWindowChordText = "Ctrl+Shift+L";
+
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
         private bool outputHotkeyModeActive = false;
@@ -798,8 +811,8 @@ public class HotkeyManager : IDisposable
             // chord was held by the (now-retired) STATUS Display hotkey; it stays on Alt+Y so
             // existing users' muscle memory and all guides remain valid.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
-            RegisterHotKey(windowHandle, HOTKEY_LOOK_AROUND, MOD_ALT, 0x4C);                    // Alt+L (Look around)
-            RegisterHotKey(windowHandle, HOTKEY_SHOW_SURROUNDINGS, MOD_CONTROL | MOD_SHIFT, 0x4C); // Ctrl+Shift+L (Surroundings window)
+            RegisterHotKey(windowHandle, HOTKEY_LOOK_AROUND, LOOK_AROUND_MODIFIERS, LOOK_AROUND_KEY);                    // Alt+L (Look around)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_SURROUNDINGS, SHOW_SURROUNDINGS_MODIFIERS, SHOW_SURROUNDINGS_KEY); // Ctrl+Shift+L (Surroundings window)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
             RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
 

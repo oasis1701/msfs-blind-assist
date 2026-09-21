@@ -195,6 +195,8 @@ AI Display Reading (needs an AI provider and its key in File > Settings > AI tab
   not confirm the cockpit view switch; reading what is on screen" and reads whatever is on
   screen. The camera may have moved all the same. One read runs at a time: a second key while
   one is in progress is refused out loud.
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
 
 
 INDICATOR LIGHTS ON THE PANELS
