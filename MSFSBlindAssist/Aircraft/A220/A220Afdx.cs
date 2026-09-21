@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist.Aircraft.A220;
+﻿namespace MSFSBlindAssist.Aircraft.A220;
 
 /// <summary>
 /// The A220's AFDX CommBus data (flight guidance, FCP selections, trim) plus the pure
@@ -250,6 +250,21 @@ internal static class A220Afdx
         int rest = (int)Math.Round(Math.Abs(target - firstLanding) / step);
         return Math.Clamp(1 + rest, 1, 220);
     }
+
+    /// <summary>
+    /// True when the last burst carried the knob PAST the target, so the target sits
+    /// between two selectable values and the one we are on is the closest reachable.
+    ///
+    /// A SIGN CHANGE in the remaining delta is what says that. The walk used to test
+    /// "this round got no closer" (<c>|delta| &gt;= |prevDelta|</c>) instead, which cannot
+    /// tell a straddle from a round that merely UNDER-delivered — clicks lost in transport,
+    /// or a step estimate that was too large — and announced a value tens of degrees out as
+    /// "nearest selectable to 137". That is the "it often stops short" report. Under-delivery
+    /// keeps the sign and costs one more round; a real straddle still stops at once.
+    /// </summary>
+    internal static bool WalkStraddled(double delta, double prevDelta)
+        => !double.IsNaN(prevDelta) && Math.Sign(delta) != 0
+           && Math.Sign(delta) != Math.Sign(prevDelta);
 
     /// <summary>
     /// True when a burst moved so much more (or less) per click than expected that the

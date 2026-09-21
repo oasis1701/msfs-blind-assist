@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
 using MSFSBlindAssist.SimConnect;
 using System.Windows.Forms;
@@ -171,23 +171,35 @@ public partial class SynapticA220Definition
                 // "nearest selectable" WITHOUT EVER MOVING THE KNOB — which is exactly the
                 // "I set 270 and it stopped at 239" report. Never quit before trying.
                 bool measured = false;
-                double prevAbsDelta = double.NaN;
+                double prevDelta = double.NaN;
+                bool calcFallback = false;
 
                 double cur = await ReadAsync();
-                for (int round = 0; round < 8 && !cts.IsCancellationRequested; round++)
+                for (int round = 0; round < 10 && !cts.IsCancellationRequested; round++)
                 {
                     double delta = target - cur;
                     if (headingWrap) delta = WrapHeadingDelta(delta);
                     if (Math.Abs(delta) <= tolerance) { Finish(cur, exact: true); return; }
 
-                    // Endgame guard: a single click took us FURTHER from the target, so we
-                    // are straddling the grid and the previous value was the closest one.
-                    if (measured && !double.IsNaN(prevAbsDelta) && Math.Abs(delta) >= prevAbsDelta)
+                    // Endgame guard: the knob STRADDLED the target — the last burst carried
+                    // it past, so the target is between two selectable values and the one we
+                    // are on is the closest. A SIGN CHANGE is what says that, not "this round
+                    // got no closer", which is what this used to test.
+                    //
+                    // The difference is the whole "it often stops short" report. A round that
+                    // simply UNDER-delivers (some clicks lost, or a step estimate that was too
+                    // large) leaves the delta the same sign and merely smaller — or briefly
+                    // not smaller at all — and the old test read that as "cannot get closer"
+                    // and announced a value tens of degrees out as "nearest selectable to
+                    // 137". Under-delivery now just costs another round, and there are ten.
+                    // A genuine straddle still stops immediately: the metres-mode altitude
+                    // selector steps ~492 ft, so 5085 → 6000 lands on 6069 and the sign flips.
+                    if (measured && A220.A220Afdx.WalkStraddled(delta, prevDelta))
                     {
                         Finish(cur, exact: false);
                         return;
                     }
-                    prevAbsDelta = Math.Abs(delta);
+                    prevDelta = delta;
 
                     // AIM, never hunt. The knob only stops on multiples of its step from
                     // wherever it is, so the best reachable value is `round(delta/step)`
@@ -211,7 +223,8 @@ public partial class SynapticA220Definition
                             return;
                         }
                     }
-                    await FireKnobBurstAsync(simConnect, delta > 0 ? upEvent : downEvent, clicks, cts.Token);
+                    await FireKnobBurstAsync(simConnect, delta > 0 ? upEvent : downEvent, clicks,
+                                             cts.Token, calcFallback);
                     await SettleAsync();
 
                     double after = await ReadAsync();
@@ -220,6 +233,15 @@ public partial class SynapticA220Definition
                     double moved = Math.Abs(signed);
                     if (moved < 1e-6)
                     {
+                        // Nothing moved. If that was the FIRST burst and it went out by
+                        // TransmitClientEvent, the direct path may not reach this aircraft on
+                        // this setup — drop to the calculator path (the transport every other
+                        // A220 control uses) and try the same burst again before giving up.
+                        if (!calcFallback && !measured)
+                        {
+                            calcFallback = true;
+                            continue;
+                        }
                         announcer.AnnounceImmediate($"{valueName} knob is not responding — value unchanged at {fmt(cur)}.");
                         return;
                     }
@@ -277,24 +299,42 @@ public partial class SynapticA220Definition
     /// <summary>
     /// Fire <paramref name="clicks"/> knob events, ONE PER CALL, paced.
     ///
-    /// Do not batch several "(&gt;K:EVENT)" statements into one calc string to save round
-    /// trips. This was the suspected cause of erratic walks (2026-07-31 live: "often it
-    /// stops before reaching") and is now MEASURED: on 2026-09-21, four
-    /// <c>(&gt;K:AP_ALT_VAR_INC)</c> in one calc string moved the selector by exactly ONE
-    /// click (2100 → 2200), as did three of them from 0 (→ 1000). The aircraft's WASM
-    /// samples the event once per frame, so a batch of n is applied as 1 — and the walk
-    /// measures its step from the distance covered, so a batch feeds it a step n times too
-    /// small and it walks on that. One event per call is deterministic, and the speed came
-    /// from the 30 Hz read-back anyway, not from batching: even a 180° heading change is
-    /// ~4 s of clicks.
+    /// Sent by TransmitClientEvent (<see cref="SimConnectManager.SendEvent"/>), NOT the
+    /// calculator path the rest of this definition uses, and measured on the live aircraft
+    /// on 2026-09-21 before the change: three HEADING_BUG_INC fired back to back moved the
+    /// bug 246 → 249, and six HEADING_BUG_DEC moved it 249 → 243. Every event landed. The
+    /// knob events are plain stock K: events, so they need no MobiFlight module, and the
+    /// direct path is better on both counts the walks care about:
+    ///
+    ///   * RELIABILITY. The calc path writes each click as a command string into
+    ///     MobiFlight's single command area; a click written before the module has read the
+    ///     previous one is simply lost, which is a walk that "often stops before reaching"
+    ///     (2026-07-31). TransmitClientEvent has no such slot — SimConnect queues the
+    ///     events and the aircraft's handler runs once per event.
+    ///   * SPEED. No calc string to format, no seq prefix, no module round trip, so the
+    ///     pacing comes down from 25 ms to 8 ms: a 108° heading change goes from ~2.7 s of
+    ///     audible ticking to ~0.9 s.
+    ///
+    /// STILL ONE EVENT PER SEND. Do NOT batch several "(&gt;K:EVENT)" statements into one
+    /// calc string: measured the same day, four <c>(&gt;K:AP_ALT_VAR_INC)</c> in ONE string
+    /// moved the selector by exactly ONE click (2100 → 2200), because a single RPN
+    /// evaluation latches the event once. That is a property of the STRING, not of the
+    /// rate — separate events fired simultaneously all land, as the bursts above show.
+    ///
+    /// The calc path stays as the FALLBACK, chosen per walk: if the first burst moved
+    /// nothing at all, every later burst in that walk goes back through
+    /// <see cref="FireKeyEvent"/>. A setup where TransmitClientEvent does not reach this
+    /// aircraft therefore degrades to exactly the old behaviour rather than to a dead knob.
     /// </summary>
     private async Task FireKnobBurstAsync(SimConnectManager simConnect, string eventName,
-        int clicks, System.Threading.CancellationToken token)
+        int clicks, System.Threading.CancellationToken token, bool useCalcPath = false)
     {
+        bool direct = !useCalcPath && simConnect.CanSendEvent;
         for (int sent = 0; sent < clicks && !token.IsCancellationRequested; sent++)
         {
-            FireKeyEvent(simConnect, eventName);
-            await System.Threading.Tasks.Task.Delay(25, token);
+            if (direct) simConnect.SendEvent(eventName);
+            else FireKeyEvent(simConnect, eventName);
+            await System.Threading.Tasks.Task.Delay(direct ? 8 : 25, token);
         }
     }
 

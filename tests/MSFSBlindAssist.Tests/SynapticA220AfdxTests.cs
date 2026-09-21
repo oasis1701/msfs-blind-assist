@@ -242,6 +242,39 @@ public class SynapticA220AfdxTests
         Assert.False(StepIsWrongRing(perClick: 100, expectedStep: 100));
     }
 
+    // ---- walk endgame: straddle vs under-delivery ---------------------------
+
+    /// <summary>
+    /// A straddle is a SIGN CHANGE in the remaining delta — the burst carried the knob
+    /// past the target, so the value it is on is the closest reachable one.
+    /// </summary>
+    [Fact]
+    public void WalkStraddled_TrueWhenTheBurstWentPastTheTarget()
+    {
+        Assert.True(WalkStraddled(delta: -69, prevDelta: 915));   // metres altitude, 5085 -> 6069
+        Assert.True(WalkStraddled(delta: 0.4, prevDelta: -0.6));  // 1 deg heading step
+    }
+
+    /// <summary>
+    /// The "it often stops short" bug: a round that merely UNDER-delivers — clicks lost in
+    /// transport, or a step estimate that was too large — keeps the delta's SIGN, and must
+    /// cost one more round rather than ending the walk tens of degrees out. The old test
+    /// (|delta| >= |prevDelta|) could not tell these apart.
+    /// </summary>
+    [Theory]
+    [InlineData(-18.0, -108.0)]   // asked 108 deg, ~90 clicks landed
+    [InlineData(-108.0, -108.0)]  // a round that delivered nothing at all
+    [InlineData(-120.0, -108.0)]  // and one that somehow went backwards
+    public void WalkStraddled_FalseWhenTheRoundOnlyUnderDelivered(double delta, double prevDelta)
+        => Assert.False(WalkStraddled(delta, prevDelta));
+
+    [Fact]
+    public void WalkStraddled_FalseOnTheFirstRoundAndOnAnExactLanding()
+    {
+        Assert.False(WalkStraddled(delta: -108, prevDelta: double.NaN));  // nothing to compare
+        Assert.False(WalkStraddled(delta: 0, prevDelta: 5));              // landed ON it
+    }
+
     [Fact]
     public void StepIsWrongRing_SafeOnAZeroOrMissingMeasurement()
     {
