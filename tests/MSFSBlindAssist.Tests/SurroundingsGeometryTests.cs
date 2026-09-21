@@ -70,4 +70,58 @@ public class SurroundingsGeometryTests
         Assert.Equal("Control tower", Point(FeatureKind.Tower, 0, 0, " ").SpokenName);
         Assert.Equal("Narrows Aviation", Point(FeatureKind.Fbo, 0, 0, "Narrows Aviation").SpokenName);
     }
+
+    private static AirportFeature Poly(params (double lat, double lon)[] ring) => new()
+    {
+        Kind = FeatureKind.Concourse, Name = "Concourse B", Source = FeatureSource.Osm,
+        Lat = ring.Average(p => p.lat), Lon = ring.Average(p => p.lon),
+        Footprint = ring.Select(p => new LatLon(p.lat, p.lon)).ToList(),
+    };
+
+    [Fact]
+    public void Distance_and_bearing_are_taken_to_the_SAME_point_of_a_footprint()
+    {
+        // A 700 m east-west pier. The aircraft is 60 m south of its wall, 300 m short of its centroid.
+        var pier = Poly((0.0010, 0.0000), (0.0010, 0.0063), (0.0014, 0.0063), (0.0014, 0.0000));
+        var near = SurroundingsGeometry.Nearest(0.00046, 0.0005, pier);
+        Assert.InRange(near.Metres, 55, 65);
+        // Due north: the wall beside us, NOT the ~74° to the roof centroid. The nearest point on the
+        // wall projects to local x=0 exactly for this geometry (verified independently), so this
+        // lands ON the 0/360 seam rather than a few thousandths short of it — accept either
+        // representation of due north and reject anything approaching the centroid's ~74°.
+        double fromNorth = Math.Min(near.BearingTrueDeg, 360.0 - near.BearingTrueDeg);
+        Assert.InRange(fromNorth, 0, 5);
+        // Heading east, that is "to the left" — the centroid bearing would have said "ahead".
+        Assert.InRange(SurroundingsGeometry.RelativeBearingDeg(near.BearingTrueDeg % 360.0, 90.0), -95, -85);
+    }
+
+    [Fact]
+    public void Inside_a_footprint_is_zero_metres()
+    {
+        var pier = Poly((0.0010, 0.0000), (0.0010, 0.0063), (0.0014, 0.0063), (0.0014, 0.0000));
+        Assert.Equal(0.0, SurroundingsGeometry.Nearest(0.0012, 0.0030, pier).Metres);
+    }
+
+    [Fact]
+    public void A_stand_derived_feature_is_as_near_as_its_nearest_member()
+    {
+        var f = new AirportFeature
+        {
+            Kind = FeatureKind.Concourse, Name = "Concourse B", Source = FeatureSource.Navdata, Lat = 0.0030, Lon = 0.0,
+            Members = new[] { new LatLon(0.0010, 0.0), new LatLon(0.0030, 0.0), new LatLon(0.0050, 0.0) },
+        };
+        var near = SurroundingsGeometry.Nearest(0.0005, 0.0, f);      // 55 m south of the first gate, 280 m from the centroid
+        Assert.InRange(near.Metres, 50, 60);
+        Assert.InRange(near.BearingTrueDeg, -0.001, 0.5);
+    }
+
+    [Fact]
+    public void Single_linkage_follows_a_chain_and_splits_at_a_gap()
+    {
+        var pts = new[] { new LatLon(0, 0), new LatLon(0, 0.0009), new LatLon(0, 0.0018), new LatLon(0, 0.0200) };   // 100 m, 100 m, then 2 km
+        var clusters = SurroundingsGeometry.SingleLinkage(pts, p => p, 150.0);
+        Assert.Equal(2, clusters.Count);
+        Assert.Equal(3, clusters.Max(c => c.Count));
+        Assert.Single(SurroundingsGeometry.SingleLinkage(pts, p => p, 2500.0));
+    }
 }

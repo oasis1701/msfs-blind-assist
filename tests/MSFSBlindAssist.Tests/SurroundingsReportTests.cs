@@ -82,4 +82,37 @@ public class SurroundingsReportTests
         Assert.Equal("Nearby, 2 items", sections[1].Heading);
         Assert.Equal(new[] { "Control Tower, to the right, 150 metres", "Concourse B, Delta gates, ahead, 300 metres" }, sections[1].Items);
     }
+
+    // NOTE: the file's existing Metres(double) helper above (rounds to the nearest 10) is reused
+    // here instead of redeclaring one that rounds to whole metres — the two new tests below never
+    // assert an exact formatted distance other than 1000 (a multiple of 10, where both round the
+    // same), so a second same-signature Metres would only be a compile-time duplicate.
+    private static AirportFeature Pt(FeatureKind k, string name, double lat, double lon)
+        => new() { Kind = k, Name = name, Lat = lat, Lon = lon, Source = FeatureSource.Navdata };
+
+    [Fact]
+    public void Several_unnamed_hangars_read_as_Hangars_even_when_the_cap_is_reached_first()
+    {
+        var cat = AirportFeatureCatalog.Build("X", "v", new[]
+        {
+            Pt(FeatureKind.Tower, "Control Tower", 0.0005, 0), Pt(FeatureKind.Fuel, "Avfuel", 0.0010, 0),
+            Pt(FeatureKind.Cargo, "FedEx", 0.0015, 0), Pt(FeatureKind.Hangar, "", 0.0020, 0), Pt(FeatureKind.Hangar, "", 0.0030, 0),
+        });
+        string said = SurroundingsReport.Compose("On taxiway A at X.", "X", cat, 0, 0, 0, Metres);
+        Assert.Contains("Hangars,", said);          // two in range: plural, although only one slot was left
+        Assert.DoesNotContain("Hangar,", said);
+    }
+
+    [Fact]
+    public void The_window_never_has_an_empty_list_and_never_hard_codes_a_unit()
+    {
+        var far = AirportFeatureCatalog.Build("X", "v", new[] { Pt(FeatureKind.Tower, "Control Tower", 0.5, 0.5) });   // ~78 km away
+        Assert.Empty(SurroundingsReport.BuildSections("X", far, "", 0, 0, 0, Metres));                                  // nothing to show: the caller SPEAKS instead
+
+        var withFacts = SurroundingsReport.BuildSections("X", far, "Tower 118.5.", 0, 0, 0, Metres);
+        Assert.Equal(2, withFacts.Count);
+        Assert.All(withFacts, s => Assert.NotEmpty(s.Items));
+        Assert.Equal("Nothing within 1000 metres.", Assert.Single(withFacts[1].Items));
+        Assert.DoesNotContain("kilometre", string.Join(" ", withFacts.SelectMany(s => s.Items).Concat(withFacts.Select(s => s.Heading))));
+    }
 }

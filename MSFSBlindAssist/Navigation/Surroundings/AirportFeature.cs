@@ -23,9 +23,18 @@ public sealed class AirportFeature
     public required FeatureSource Source { get; init; }
     /// <summary>Short qualifier spoken after the name in the window: "Delta gates", "operator Jackson Hole Aviation".</summary>
     public string? Detail { get; init; }
+    /// <summary>Stand/placement positions of a stand- or placement-derived feature (e.g. a concourse
+    /// synthesized from its gates). When set, SurroundingsGeometry.Nearest measures to the nearest
+    /// member instead of the centroid in Lat/Lon.</summary>
+    public IReadOnlyList<LatLon>? Members { get; init; }
+    /// <summary>True when Name is a synthesized label ("Fuel", "GA ramp", "Helipad 2"), not a proper
+    /// name a source actually gave this feature.</summary>
+    public bool NameIsGeneric { get; init; }
 
     public bool HasName => !string.IsNullOrWhiteSpace(Name);
     public string SpokenName => HasName ? Name.Trim() : FeatureKindWords.Generic(Kind);
+    /// <summary>HasName and NOT a synthesized label — a real name a source gave this feature.</summary>
+    public bool HasProperName => HasName && !NameIsGeneric;
 }
 
 public static class FeatureKindWords

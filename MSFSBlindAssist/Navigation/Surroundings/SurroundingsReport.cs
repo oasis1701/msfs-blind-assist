@@ -22,10 +22,9 @@ public static class SurroundingsReport
         var list = new List<NearbyFeature>();
         foreach (var f in cat.Features)
         {
-            double d = SurroundingsGeometry.DistanceMetres(lat, lon, f);
-            if (d > maxMetres) continue;
-            double rel = SurroundingsGeometry.RelativeBearingDeg(lat, lon, hdgTrue, f.Lat, f.Lon);
-            list.Add(new NearbyFeature(f, d, rel));
+            var near = SurroundingsGeometry.Nearest(lat, lon, f);
+            if (near.Metres > maxMetres) continue;
+            list.Add(new NearbyFeature(f, near.Metres, SurroundingsGeometry.RelativeBearingDeg(near.BearingTrueDeg, hdgTrue)));
         }
         return list.OrderBy(n => n.DistanceMetres).ToList();
     }
@@ -66,16 +65,19 @@ public static class SurroundingsReport
             return string.Join(" ", parts);
         }
 
+        // Counted over the whole speak radius, not just what the capped loop below gets to: with the
+        // cap reached by the first unnamed hangar, a second one just past it never got visited, and
+        // the loop-local counter stayed at 1 — "Hangar, ..." (singular) for two hangars in range.
+        int unnamedHangars = ranked.Count(n => n.Feature.Kind == FeatureKind.Hangar && !n.Feature.HasName);
         var spoken = new List<NearbyFeature>();
         var kindsUsed = new HashSet<FeatureKind>();
-        NearbyFeature? firstUnnamedHangar = null; int unnamedHangars = 0;
+        NearbyFeature? firstUnnamedHangar = null;
         foreach (var n in ranked)
         {
             if (spoken.Count >= MaxSpoken) break;
             var f = n.Feature;
             if (f.Kind == FeatureKind.Hangar && !f.HasName)
             {
-                unnamedHangars++;
                 if (firstUnnamedHangar == null) { firstUnnamedHangar = n; spoken.Add(n); }
                 continue;
             }
@@ -95,16 +97,21 @@ public static class SurroundingsReport
     public static IReadOnlyList<InfoSection> BuildSections(string icao, AirportFeatureCatalog cat, string facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
     {
         var sections = new List<InfoSection>();
-        if (!string.IsNullOrWhiteSpace(facts))
-            sections.Add(new InfoSection("Airport", new[] { facts.Trim() }));
-
         var ranked = Rank(cat, lat, lon, hdgTrue, WindowRadiusMetres);
+        bool hasFacts = !string.IsNullOrWhiteSpace(facts);
+        // Nothing to show at all → EMPTY, and the caller SPEAKS "Nothing within …" instead of opening
+        // a window onto an empty list (the SayIntentions info-window rule this form is borrowed from).
+        if (!hasFacts && ranked.Count == 0) return sections;
+        if (hasFacts) sections.Add(new InfoSection("Airport", new[] { facts.Trim() }));
+
         var items = ranked.Select(n =>
         {
             string detail = string.IsNullOrWhiteSpace(n.Feature.Detail) ? "" : $", {n.Feature.Detail}";
             return $"{n.Feature.SpokenName}{detail}, {RelativeDirection.Describe(n.RelativeBearingDeg)}, {formatDistance(n.DistanceMetres)}";
         }).ToList();
-        sections.Add(new InfoSection(items.Count == 0 ? "Nearby, nothing within 1 kilometre" : $"Nearby, {items.Count} items", items));
+        sections.Add(items.Count == 0
+            ? new InfoSection("Nearby", new[] { $"Nothing within {formatDistance(WindowRadiusMetres)}." })
+            : new InfoSection($"Nearby, {items.Count} items", items));
         return sections;
     }
 }
