@@ -1508,6 +1508,53 @@ public partial class TaxiGuidanceManager : IDisposable
         return $"{description} at {icao}.";
     }
 
+    // Runway shapes memoised per graph INSTANCE: RunwayShape.For allocates (and allocates a
+    // second shape inside its own pavement check), so a 2 s poll would otherwise rebuild the
+    // whole set every tick. A rebuilt graph is a different instance, so the memo can never
+    // outlive the geometry it was built from.
+    private TaxiGraph? _runwayShapesGraph;
+    private IReadOnlyList<RunwayShape>? _runwayShapes;
+
+    /// <summary>
+    /// Is this point on any runway's pavement at <paramref name="icao"/>? Answers ONLY from a graph
+    /// that is already built (the active guidance graph, else the Where-Am-I cache) — it never
+    /// builds one, because its caller is a UI-thread timer. Null means "no graph to ask".
+    ///
+    /// <para>Deliberately does NOT consult the gate-list token the Where-Am-I cache is keyed on:
+    /// that token exists because STAND NAMES are frozen into the graph's nodes at build time, and
+    /// a runway's geometry is the same whichever list named the stands — so a graph too stale to
+    /// name a gate is still exactly right for this question, and reading the token would put a
+    /// supplier call on a per-tick path.</para>
+    ///
+    /// <para>Takes _stateLock like every other reader of the graph pair, so a tick can block for
+    /// as long as a background <see cref="DescribeCurrentLocation"/> holds it building a graph —
+    /// once per airport, and the same wait the locked status readers already take.</para>
+    /// </summary>
+    public bool? IsOnRunwayPavement(string icao, double lat, double lon)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return null;
+
+        IReadOnlyList<RunwayShape> shapes;
+        lock (_stateLock)
+        {
+            TaxiGraph? graph =
+                _graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase) ? _graph
+                : _whereAmICachedGraph != null && string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase) ? _whereAmICachedGraph
+                : null;
+            if (graph == null) return null;
+
+            if (!ReferenceEquals(graph, _runwayShapesGraph) || _runwayShapes == null)
+            {
+                _runwayShapes = RunwayPavement.BuildShapes(graph.RunwayCenterlines);
+                _runwayShapesGraph = graph;
+            }
+            shapes = _runwayShapes;
+        }
+        // Outside the lock on a local reference — the shape list is immutable once built, exactly
+        // as DescribeCurrentLocation runs DescribeLocation on its own local graph.
+        return RunwayPavement.IsOnPavement(lat, lon, shapes);
+    }
+
     /// <summary>
     /// Invalidates the "Where Am I" graph cache. Call on aircraft change or when the
     /// user explicitly wants a fresh graph (rare). Takes _stateLock to serialize against

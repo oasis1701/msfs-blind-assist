@@ -808,6 +808,11 @@ public partial class MainForm : Form
                 || taxiGuidanceManager.State is TaxiGuidanceState.LandingRollout or TaxiGuidanceState.LiningUp
                     or TaxiGuidanceState.HoldShort or TaxiGuidanceState.ProgressiveHold
                     or TaxiGuidanceState.BacktrackingOnRunway or TaxiGuidanceState.BacktrackDeparture,
+            // None of the states above is on during a takeoff flown without Takeoff Assist or a
+            // landing without an exit plan, so the pavement is asked directly.
+            RunwayProbe = (icao, lat, lon) => taxiGuidanceManager.IsOnRunwayPavement(icao, lat, lon),
+            // DescribeCurrentLocation builds and caches the Where-Am-I graph IsOnRunwayPavement reads.
+            WarmRunwayProbe = (provider, icao, lat, lon) => taxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon),
         };
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
