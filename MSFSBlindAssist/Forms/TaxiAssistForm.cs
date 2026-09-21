@@ -328,9 +328,20 @@ public class TaxiAssistForm : Form
     private Task? _placesWarmUp;
     // True while a programmatic type restore must stay silent (RestoreDestinationState).
     private bool _suppressPlaceAnnounce;
-    // A Place label to re-select once an async repopulate lands, always silently — a restore
-    // (RestoreDestinationState) or a gate-source refresh that found the catalog rebuilding.
-    private string? _placeToReselect;
+
+    /// <summary>What an async Place repopulate must put back when it lands, and WHERE the request
+    /// came from. A label the rebuilt list no longer carries leaves NOTHING selected — never item
+    /// 0, the rule <see cref="RefreshDestinationsIfGateSourceChanged"/> states for the gate list —
+    /// and the origin decides whether the pilot is told: a destination lost to a GATE-SOURCE
+    /// REFRESH gets the gate path's own words, while one lost to a silent destination RESTORE says
+    /// nothing at all ("probing leaves no mark"). An empty <see cref="Label"/> means "nothing was
+    /// selected before the rebuild — keep it that way", which is the same branch the gate path
+    /// takes for an already-cleared selection.</summary>
+    private readonly record struct PendingPlaceSelection(string? Label, bool FromGateSourceRefresh);
+
+    // Consumed by exactly one warm-up settle, and dropped whenever that settle's occasion is gone
+    // (the airport, the destination type or the form itself) so it can never outlive it.
+    private PendingPlaceSelection? _pendingPlaceSelection;
 
     // Gate-branch cache (Fix: per-keystroke gate-list rebuild). PopulateDestinations
     // runs on every txtGateSearch keystroke, every chkFitFilter toggle, and on each
@@ -1580,14 +1591,17 @@ public class TaxiAssistForm : Form
         _suppressHoldingPointAnnounce = true;
         // Place mode speaks two lines of its own — "Loading places for {icao}." and the
         // no-places line — neither of which belongs to a restore that performs no action.
+        bool priorSuppressPlace = _suppressPlaceAnnounce;
         _suppressPlaceAnnounce = true;
         try
         {
             // Restoring Place mode can find nothing cached and start a warm-up, which
             // repopulates the list some time AFTER this method has returned — so the label to
             // put back is handed to that warm-up rather than looked up below, where the list
-            // is still empty.
-            if (priorType == 4) _placeToReselect = priorDestination;
+            // is still empty. Restore origin: a label the rebuilt list no longer carries clears
+            // the selection SILENTLY, because the pilot performed no action here.
+            if (priorType == 4)
+                _pendingPlaceSelection = new PendingPlaceSelection(priorDestination, FromGateSourceRefresh: false);
 
             // Type first: leaving gate mode blanks the gate search, which would undo the
             // search restore if it ran the other way round.
@@ -1599,13 +1613,14 @@ public class TaxiAssistForm : Form
             if (!string.IsNullOrEmpty(priorDestination))
             {
                 int index = cmbDestination.Items.IndexOf(priorDestination);
-                if (index >= 0)
-                {
-                    cmbDestination.SelectedIndex = index;
-                    // Seated synchronously after all: nothing is left for a warm-up to do.
-                    if (priorType == 4) _placeToReselect = null;
-                }
+                if (index >= 0) cmbDestination.SelectedIndex = index;
             }
+
+            // The list above is FINAL unless the type switch started a warm-up, so with none in
+            // flight the synchronous lookup just made has already owned the answer and nothing is
+            // left for a settle to put back. Dropping it here is what stops the request outliving
+            // its occasion and being consumed by some unrelated later warm-up.
+            if (_placesWarmUp == null) _pendingPlaceSelection = null;
 
             // Both boxes are runway-only, and the intersection list is rebuilt against
             // whichever runway is selected — so this has to run AFTER the destination is
@@ -1618,7 +1633,7 @@ public class TaxiAssistForm : Form
         finally
         {
             _suppressHoldingPointAnnounce = priorSuppressAnnounce;
-            _suppressPlaceAnnounce = false;
+            _suppressPlaceAnnounce = priorSuppressPlace;
         }
     }
 
@@ -2073,7 +2088,7 @@ public class TaxiAssistForm : Form
         // nothing, so dropping the handle here simply lets the new airport start its own; the
         // pending re-select belongs to the old airport's labels and goes with it.
         _placesWarmUp = null;
-        _placeToReselect = null;
+        _pendingPlaceSelection = null;
         _graphSourceToken = "";
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
@@ -2831,13 +2846,18 @@ public class TaxiAssistForm : Form
     /// per ICAO" latch was papering over (and that latch outlived every cache invalidation,
     /// leaving the list empty with a false "No places to route to").
     ///
-    /// <para>ONE retry, and only for the sequence the cache is designed to produce: the warm-up
-    /// gave up on the 3 s online-feature fetch, the answer landed at 3.2 s and INVALIDATED the
-    /// airport, so the finished build was discarded rather than cached
-    /// (<c>SurroundingsCatalogCache</c>'s generation check). The awaited task still hands back a
-    /// catalog while the cache holds nothing, and the rebuild that follows is fast — the OSM
-    /// features are already in the store. A build that genuinely FAILED returns null and is not
-    /// retried: the cache's own failure memory owns that.</para>
+    /// <para>ONE retry, whenever the task hands back a catalog the cache does not hold. The
+    /// sequence it exists for is the one the cache is designed to produce: the warm-up gave up on
+    /// the 3 s online-feature fetch, the answer landed at 3.2 s and INVALIDATED the airport, so
+    /// the finished build was discarded rather than cached (<c>SurroundingsCatalogCache</c>'s
+    /// generation check); the rebuild that follows is fast, because the OSM features are already
+    /// in the store. The same branch also catches a SECOND, harmless case: a failure still inside
+    /// the cache's <c>FailureMemory</c> with a STALE catalog stored, where <c>GetAsync</c> hands
+    /// that catalog back while the freshness-checking <c>TryGetCached</c> reports a miss. The
+    /// retry there answers from the failure memory again and settles — bounded at one either way,
+    /// and one wasted round is cheaper than telling the two apart from out here. A build that
+    /// genuinely FAILED with nothing cached returns null and is not retried at all: the cache's
+    /// own failure memory owns that.</para>
     /// </summary>
     private void WarmPlacesThenRepopulate(string icao)
         => WarmPlaces(icao, speak: !_suppressPlaceAnnounce && Visible, isRetry: false);
@@ -2863,26 +2883,99 @@ public class TaxiAssistForm : Form
         await Task.Yield();
         if (ReferenceEquals(_placesWarmUp, mine)) _placesWarmUp = null;
 
-        if (IsDisposed || _graph == null || cmbDestType.SelectedIndex != 4
-            || !string.Equals(icao, _currentIcao, StringComparison.OrdinalIgnoreCase)) return;
-
-        var catalog = SurroundingsCatalogCached?.Invoke(icao);
-        if (catalog == null && built != null && !isRetry)
+        // Everything below is wrapped like RefreshTrafficThenRepopulate's body, the method this
+        // one is shaped after: PopulateDestinations reaches file and DB work, and an exception
+        // escaping an async void goes to Application.ThreadException, skipping the settle in
+        // silence. Never rethrown — the list being stale is not worth taking the app down.
+        try
         {
-            // Built, then discarded by an invalidation that overtook it. Rebuild ONCE — never a
-            // loop: the retry cannot reach this branch again.
-            WarmPlaces(icao, speak, isRetry: true);
-            return;
+            if (IsDisposed || !IsHandleCreated || _graph == null || cmbDestType.SelectedIndex != 4
+                || !string.Equals(icao, _currentIcao, StringComparison.OrdinalIgnoreCase))
+            {
+                // The occasion for the pending re-seat is gone with the airport, the destination
+                // type or the form, so the label goes with it — left standing it would be
+                // consumed by some later warm-up, clearing a selection that has nothing to do
+                // with it. (The retry below returns WITHOUT clearing: it is the same occasion.)
+                _pendingPlaceSelection = null;
+                return;
+            }
+
+            var catalog = SurroundingsCatalogCached?.Invoke(icao);
+            if (catalog == null && built != null && !isRetry)
+            {
+                // Built, then discarded by an invalidation that overtook it. Rebuild ONCE — never
+                // a loop: the retry cannot reach this branch again.
+                WarmPlaces(icao, speak, isRetry: true);
+                return;
+            }
+
+            if (catalog != null)
+            {
+                // The pilot may already be browsing this list — a warm-up from an earlier pass
+                // can still be in flight over a list a refresh has since rebuilt — and
+                // PopulateDestinations re-seats item 0, silently moving the destination out from
+                // under them. Capture what is selected NOW and put it back after, the same rule
+                // RefreshTrafficThenRepopulate applies to the gate list. An explicit pending
+                // request outranks it; a selection deliberately cleared (index -1 over a
+                // non-empty list) is preserved as such; a cold list nobody has chosen from yet
+                // has nothing to preserve and keeps its item 0.
+                if (_pendingPlaceSelection == null
+                    && (cmbDestination.SelectedItem != null
+                        || (cmbDestination.SelectedIndex < 0 && cmbDestination.Items.Count > 0)))
+                    _pendingPlaceSelection = new PendingPlaceSelection(
+                        cmbDestination.SelectedItem?.ToString(), FromGateSourceRefresh: false);
+                PopulateDestinations();
+            }
+            bool lostToGateSourceRefresh = ApplyPendingPlaceSelection();
+            if (speak) AnnouncePlacesReady();
+            // The gate path's OWN words for the same event — the pilot's chosen destination did
+            // not survive a rebuild GSX triggered — said only now that it is known to be true.
+            // Last, so the sentence they must act on ends the sequence; QUEUED, because this is a
+            // background GSX event arriving long after the click, not an echo of anything the
+            // pilot just did.
+            if (lostToGateSourceRefresh && Visible) _announcer.Announce(GateListUpdatedMessage);
+        }
+        catch (Exception ex)
+        {
+            _taxiFormLog.Error($"Place list refresh for {icao} failed: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// Puts back what an async repopulate owes the pilot: their own Place if the rebuilt list
+    /// still carries it, otherwise NOTHING SELECTED — never item 0.
+    /// <see cref="PopulateDestinations"/> has just seated item 0, and a Calculate on that would
+    /// route to (and, for a stand GSX published, <c>gate.select</c>) a place the pilot never
+    /// chose; with the selection cleared it aborts with "Please select a destination." instead.
+    /// The same rule <see cref="RefreshDestinationsIfGateSourceChanged"/> applies to the gate
+    /// list, on the one path where the loss can only be discovered asynchronously.
+    /// </summary>
+    /// <returns>True when a destination the pilot had chosen was lost AND the request came from a
+    /// gate-source refresh — the one origin that may be announced. A silent destination restore
+    /// returns false however it ends: the pilot performed no action there.</returns>
+    private bool ApplyPendingPlaceSelection()
+    {
+        if (_pendingPlaceSelection is not { } pending) return false;
+        _pendingPlaceSelection = null;
+
+        int idx = string.IsNullOrEmpty(pending.Label) ? -1 : cmbDestination.Items.IndexOf(pending.Label);
+        if (idx >= 0)
+        {
+            SelectDestinationSilently(idx);
+            return false;
         }
 
-        if (catalog != null) PopulateDestinations();
-        if (_placeToReselect != null)
-        {
-            int idx = cmbDestination.Items.IndexOf(_placeToReselect);
-            if (idx >= 0) SelectDestinationSilently(idx);
-            _placeToReselect = null;
-        }
-        if (speak) AnnouncePlacesReady();
+        // Either the label is gone from the rebuilt list, or nothing was selected before it and
+        // must not become item 0 now (the gate path's "keep it cleared" branch, carried across
+        // the await).
+        if (cmbDestination.Items.Count > 0) cmbDestination.SelectedIndex = -1;
+        if (string.IsNullOrEmpty(pending.Label)) return false;
+
+        _taxiFormLog.Info(
+            $"Place list for {_currentIcao} rebuilt after a " +
+            $"{(pending.FromGateSourceRefresh ? "gate-source refresh" : "destination restore")}; " +
+            $"previous destination '{pending.Label}' is no longer listed.");
+        return pending.FromGateSourceRefresh;
     }
 
     /// <summary>
@@ -2947,15 +3040,22 @@ public class TaxiAssistForm : Form
 
         // A Place list is rebuilt ASYNCHRONOUSLY. The surroundings catalog is versioned on this
         // same token (MainForm wires SurroundingsCatalogCache.VersionSupplier to it), so the
-        // rebuild above found nothing cached, listed nothing and started one warm-up. Nothing is
+        // rebuild above found nothing cached, listed NOTHING and started one warm-up. Nothing is
         // KNOWN to be lost yet — "Please choose the destination again." would be a false claim
-        // about a list that is merely loading and will most likely carry the pilot's own place —
-        // so stay quiet and hand that label to the warm-up, which re-seats it silently. Until it
-        // lands the list is empty, so a Calculate reaching this aborts with "Please select a
-        // destination.", which is what is actually true.
-        if (cmbDestType.SelectedIndex == 4 && _placesWarmUp != null)
+        // about a list that is merely loading and may well still carry the pilot's own place — so
+        // stay quiet HERE and hand the label to that warm-up, which re-seats it silently if it
+        // survived and, if it did not, clears the selection and speaks those same words THEN,
+        // once they are true. Until it lands the list is empty, so a Calculate reaching this
+        // aborts with "Please select a destination.", which is what is actually true.
+        //
+        // The EMPTY test is what limits this to a rebuild that has not happened yet. A warm-up
+        // from an EARLIER pass can still be in flight over a list this rebuild has just filled
+        // (GetAsync is single-flight, so the catalog can be stored by another consumer's join
+        // while this form's own continuation is still queued) — there the answer is knowable now,
+        // and deferring it let Calculate run on the item 0 the rebuild had seated.
+        if (cmbDestType.SelectedIndex == 4 && _placesWarmUp != null && cmbDestination.Items.Count == 0)
         {
-            _placeToReselect = previous;
+            _pendingPlaceSelection = new PendingPlaceSelection(previous, FromGateSourceRefresh: true);
             return false;
         }
 
