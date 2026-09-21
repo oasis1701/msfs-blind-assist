@@ -13,7 +13,13 @@ public readonly record struct ScenePlacement(double Lat, double Lon, double Head
 /// record's trailing 4-byte scale field, so both layouts are read via <c>size − 20</c>. Measured
 /// 2026-09-20 across ~35 Community packages: 33 use 64-byte records, 2 (iniBuilds LMML,
 /// Glideslope KMEM) use 92-byte records. Bounds-checked at every step: a truncated or foreign
-/// file yields whatever parsed cleanly, never an exception.
+/// file yields whatever parsed cleanly, never an exception. Every single buffer (one section's
+/// subsection table, one entry's placement data) is capped at <see cref="MaxSubsectionBytes"/>,
+/// but nothing stops a corrupt/hostile file from declaring millions of small, individually
+/// in-bounds entries that all point at the same region — so <see cref="DefaultMaxTotalBytes"/>
+/// additionally bounds the CUMULATIVE bytes read/scanned across one call; once spent, the read
+/// ends and returns whatever was parsed so far, same as any other hostile-input exit, rather
+/// than keep allocating and re-scanning for as long as the file keeps declaring more entries.
 /// </summary>
 public static class BglPlacementReader
 {
@@ -26,11 +32,25 @@ public static class BglPlacementReader
     private const double LatScale = 180.0 / (2.0 * (1 << 28));
     private const int MaxSubsectionBytes = 64 * 1024 * 1024;
 
-    public static List<ScenePlacement> Read(ReadOnlySpan<byte> b)
+    // Real placement files are tiny (the largest measured, iniBuilds LMML, carries 5,841
+    // 92-byte records ≈ 0.5 MB; a header-only scan of 2,451 real BGLs read 21.3 MB in total) —
+    // 128 MB leaves over 200x headroom for one file while still ending a pathological read in a
+    // bounded, small amount of work instead of hours.
+    private const long DefaultMaxTotalBytes = 128L * 1024 * 1024;
+
+    public static List<ScenePlacement> Read(ReadOnlySpan<byte> b) => Read(b, DefaultMaxTotalBytes);
+
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> (see the class summary). The span
+    /// overload allocates nothing on a slice, so the only cost a pathological subsection table
+    /// buys here is CPU time re-scanning the same bytes and repeatedly re-adding the same
+    /// placements to the result — <paramref name="maxTotalBytes"/> bounds that too, counted as
+    /// bytes scanned rather than bytes read off a stream.</summary>
+    internal static List<ScenePlacement> Read(ReadOnlySpan<byte> b, long maxTotalBytes)
     {
         var result = new List<ScenePlacement>();
         if (b.Length < HeaderSize || U32(b, 0) != Magic) return result;
         uint sections = U32(b, 0x14);
+        long totalRead = 0;
         for (uint s = 0; s < sections; s++)
         {
             int e = HeaderSize + (int)s * SectionEntrySize;
@@ -47,7 +67,10 @@ public static class BglPlacementReader
                 uint dataOff = U32(b, so + subEntry - 8), dataSize = U32(b, so + subEntry - 4);
                 if (dataOff > int.MaxValue || dataOff >= b.Length) continue;
                 long end = Math.Min((long)dataOff + dataSize, b.Length);
-                ReadRecords(b.Slice((int)dataOff, (int)(end - dataOff)), result);
+                long sliceLen = end - dataOff;
+                if (totalRead + sliceLen > maxTotalBytes) return result;    // cumulative budget spent: end the whole read
+                totalRead += sliceLen;
+                ReadRecords(b.Slice((int)dataOff, (int)sliceLen), result);
             }
         }
         return result;
@@ -55,7 +78,10 @@ public static class BglPlacementReader
 
     /// <summary>Header, section table and the SceneryObject (0x25) subsections only, by seeking —
     /// never the whole file. Same result as the span overload; never throws.</summary>
-    public static List<ScenePlacement> Read(Stream bgl)
+    public static List<ScenePlacement> Read(Stream bgl) => Read(bgl, DefaultMaxTotalBytes);
+
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> — see the class summary.</summary>
+    internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes)
     {
         var result = new List<ScenePlacement>();
         try
@@ -69,6 +95,8 @@ public static class BglPlacementReader
             byte[] table = new byte[(int)sections * SectionEntrySize];
             if (!Fill(bgl, HeaderSize, table)) return result;
 
+            long totalRead = 0;
+            byte[] data = Array.Empty<byte>();   // rented/grown across entries — a legitimate multi-entry file never churns the LOH
             for (int s = 0; s < sections; s++)
             {
                 int e = s * SectionEntrySize;
@@ -77,7 +105,9 @@ public static class BglPlacementReader
                 if (subCount == 0 || subSize < 16 || subSize > MaxSubsectionBytes || (long)subOff + subSize > length) continue;
                 int subEntry = (int)(subSize / subCount);
                 if (subEntry < 16) continue;
+                if (totalRead + subSize > maxTotalBytes) return result;    // cumulative budget spent: end the whole read
                 byte[] subs = new byte[subSize];
+                totalRead += subSize;
                 if (!Fill(bgl, subOff, subs)) continue;
 
                 for (int i = 0; i < subCount; i++)
@@ -86,8 +116,10 @@ public static class BglPlacementReader
                     if (so + subEntry > subs.Length) break;
                     uint dataOff = U32(subs, so + subEntry - 8), dataSize = U32(subs, so + subEntry - 4);
                     if (dataSize == 0 || dataSize > MaxSubsectionBytes || (long)dataOff + dataSize > length) continue;
-                    byte[] data = new byte[dataSize];
-                    if (Fill(bgl, dataOff, data)) ReadRecords(data, result);
+                    if (totalRead + dataSize > maxTotalBytes) return result;    // cumulative budget spent: end the whole read
+                    if (data.Length < dataSize) data = new byte[dataSize];
+                    totalRead += dataSize;
+                    if (Fill(bgl, dataOff, data, (int)dataSize)) ReadRecords(data.AsSpan(0, (int)dataSize), result);
                 }
             }
         }
@@ -95,11 +127,13 @@ public static class BglPlacementReader
         return result;
     }
 
-    private static bool Fill(Stream s, long at, byte[] into)
+    private static bool Fill(Stream s, long at, byte[] into) => Fill(s, at, into, into.Length);
+
+    private static bool Fill(Stream s, long at, byte[] into, int count)
     {
         s.Position = at;
         int have = 0;
-        while (have < into.Length) { int n = s.Read(into, have, into.Length - have); if (n <= 0) return false; have += n; }
+        while (have < count) { int n = s.Read(into, have, count - have); if (n <= 0) return false; have += n; }
         return true;
     }
 

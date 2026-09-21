@@ -36,6 +36,60 @@ public class BglPlacementReaderTests
 
     internal static byte[] BuildBgl(params (double lat, double lon, double hdg, Guid guid)[] objs) => BuildBgl(64, objs);
 
+    // One 0x25 section whose `entryCount` subsection-table entries all point at the SAME 64-byte
+    // record — the shape that, with no cumulative read budget, makes Read(Stream) allocate and
+    // re-scan the same buffer once per entry. ~entryCount*16 bytes (16 bytes/entry).
+    private static byte[] BuildManyEntriesSameData(int entryCount, Guid guid)
+    {
+        const int header = 0x38, sectionEntry = 20, subTableEntry = 16, rec = 64;
+        int sectionTable = header, subTable = sectionTable + sectionEntry, data = subTable + entryCount * subTableEntry;
+        var b = new byte[data + rec];
+        void U32(int at, uint v) => BitConverter.TryWriteBytes(b.AsSpan(at, 4), v);
+        void U16(int at, ushort v) => BitConverter.TryWriteBytes(b.AsSpan(at, 2), v);
+
+        U32(0x00, 0x19920201); U32(0x14, 1);
+        U32(sectionTable + 0, 0x25); U32(sectionTable + 4, 1); U32(sectionTable + 8, (uint)entryCount);
+        U32(sectionTable + 12, (uint)subTable); U32(sectionTable + 16, (uint)(entryCount * subTableEntry));
+        for (int i = 0; i < entryCount; i++)
+        {
+            int so = subTable + i * subTableEntry;
+            U32(so + 8, (uint)data); U32(so + 12, rec);   // every entry: the SAME dataOff/dataSize
+        }
+
+        U16(data, 0x0B); U16(data + 2, rec);
+        U32(data + 4, (uint)Math.Round((14.477 + 180.0) * (3.0 * (1 << 28)) / 360.0));
+        U32(data + 8, (uint)Math.Round((90.0 - 35.857) * (2.0 * (1 << 28)) / 180.0));
+        guid.ToByteArray().CopyTo(b, data + rec - 20);
+        return b;
+    }
+
+    // One 0x25 section whose `guids.Length` subsection-table entries each point at their OWN
+    // distinct 64-byte record — a legitimate multi-subsection file, none of it repeated.
+    private static byte[] BuildManyEntriesDistinctData(params Guid[] guids)
+    {
+        const int header = 0x38, sectionEntry = 20, subTableEntry = 16, rec = 64;
+        int entryCount = guids.Length;
+        int sectionTable = header, subTable = sectionTable + sectionEntry, firstData = subTable + entryCount * subTableEntry;
+        var b = new byte[firstData + entryCount * rec];
+        void U32(int at, uint v) => BitConverter.TryWriteBytes(b.AsSpan(at, 4), v);
+        void U16(int at, ushort v) => BitConverter.TryWriteBytes(b.AsSpan(at, 2), v);
+
+        U32(0x00, 0x19920201); U32(0x14, 1);
+        U32(sectionTable + 0, 0x25); U32(sectionTable + 4, 1); U32(sectionTable + 8, (uint)entryCount);
+        U32(sectionTable + 12, (uint)subTable); U32(sectionTable + 16, (uint)(entryCount * subTableEntry));
+        for (int i = 0; i < entryCount; i++)
+        {
+            int so = subTable + i * subTableEntry;
+            int p = firstData + i * rec;
+            U32(so + 8, (uint)p); U32(so + 12, rec);
+            U16(p, 0x0B); U16(p + 2, rec);
+            U32(p + 4, (uint)Math.Round((10.0 + i + 180.0) * (3.0 * (1 << 28)) / 360.0));
+            U32(p + 8, (uint)Math.Round((90.0 - (10.0 + i)) * (2.0 * (1 << 28)) / 180.0));
+            guids[i].ToByteArray().CopyTo(b, p + rec - 20);
+        }
+        return b;
+    }
+
     [Fact]
     public void Reads_position_heading_and_guid_of_each_library_object()
     {
@@ -107,6 +161,46 @@ public class BglPlacementReaderTests
         Assert.Empty(BglPlacementReader.Read(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(new string('x', 4096)))));
         byte[] bgl = BuildBgl((1.0, 2.0, 0.0, Guid.NewGuid()));
         Assert.Empty(BglPlacementReader.Read(new MemoryStream(bgl.Take(bgl.Length - 30).ToArray())));   // record cut short
+    }
+
+    [Fact]
+    public void A_cumulative_budget_ends_the_stream_read_before_scanning_every_duplicate_entry()
+    {
+        var g = Guid.NewGuid();
+        const int entryCount = 5000, rec = 64;
+        byte[] bgl = BuildManyEntriesSameData(entryCount, g);          // ~78 KB fixture; unbounded work would be entryCount*rec = 320,000 bytes
+        const long budget = 100_000;                                  // subs table alone is entryCount*16 = 80,000 — leaves ~20,000 for data reads
+        using var counting = new CountingStream(new MemoryStream(bgl));
+
+        var placed = BglPlacementReader.Read(counting, budget);
+
+        Assert.NotEmpty(placed);
+        Assert.True(placed.Count < entryCount, $"parsed all {placed.Count} of {entryCount} entries — the budget never engaged");
+        Assert.All(placed, p => Assert.Equal(g, p.ModelGuid));
+        Assert.True(counting.BytesRead <= budget + rec, $"read {counting.BytesRead} bytes against a {budget}-byte budget");
+        Assert.True(counting.BytesRead < (long)entryCount * rec, $"read {counting.BytesRead} bytes — the unbounded total would be {(long)entryCount * rec}");
+    }
+
+    [Fact]
+    public void The_span_overloads_cumulative_budget_also_stops_a_pathological_scan()
+    {
+        var g = Guid.NewGuid();
+        const int entryCount = 5000;
+        byte[] bgl = BuildManyEntriesSameData(entryCount, g);
+        var placed = BglPlacementReader.Read(bgl, 100_000L);
+        Assert.NotEmpty(placed);
+        Assert.True(placed.Count < entryCount, $"parsed all {placed.Count} of {entryCount} entries — the budget never engaged");
+        Assert.All(placed, p => Assert.Equal(g, p.ModelGuid));
+    }
+
+    [Fact]
+    public void A_legitimate_multi_subsection_file_under_the_budget_returns_every_placement()
+    {
+        var guids = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        byte[] bgl = BuildManyEntriesDistinctData(guids);
+        var placed = BglPlacementReader.Read(new MemoryStream(bgl));    // default (128 MB) budget — this ~1 KB file is nowhere near it
+        Assert.Equal(guids.Length, placed.Count);
+        for (int i = 0; i < guids.Length; i++) Assert.Equal(guids[i], placed[i].ModelGuid);
     }
 
     private sealed class CountingStream(Stream inner) : Stream

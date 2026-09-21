@@ -39,4 +39,20 @@ public class ModelLibNameReaderTests
     [Fact]
     public void An_unterminated_tag_at_the_end_of_the_file_is_ignored()
         => Assert.Empty(ModelLibNameReader.Read(new MemoryStream(Encoding.Latin1.GetBytes("<ModelInfo guid=\"{")), 64));
+
+    [Fact]
+    public void An_over_long_unterminated_tag_is_abandoned_and_a_later_well_formed_tag_is_still_found()
+    {
+        var guid = Guid.NewGuid();
+        string overLong = "<ModelInfo" + new string('x', 1100);          // > MaxTagBytes (1024) with no '>' anywhere
+        string wellFormed = $"<ModelInfo guid=\"{{{guid}}}\" name=\"Foo\">";
+        // Padding keeps the stream from reaching EOF on the first fill, so the abandonment is
+        // exercised with eof == false, not the "cut by the chunk edge" branch.
+        string xml = overLong + wellFormed + new string('\0', 3000);
+        byte[] bytes = Encoding.Latin1.GetBytes(xml);
+
+        var names = ModelLibNameReader.Read(new MemoryStream(bytes), 2048);   // buf = chunkBytes + MaxTagBytes = 3072
+
+        Assert.Equal("Foo", names[guid]);
+    }
 }
