@@ -2083,10 +2083,12 @@ public class TaxiAssistForm : Form
         // _graph == null path in this form already early-returns.
         _graph = null;
 
-        // A new airport (or gate-list token change) is being loaded. A warm-up still running
-        // for the OLD airport fails WarmPlacesThenRepopulate's _currentIcao check and does
-        // nothing, so dropping the handle here simply lets the new airport start its own; the
-        // pending re-select belongs to the old airport's labels and goes with it.
+        // A new airport (or gate-list token change) is being loaded. Dropping the handle lets the
+        // populate that follows start a warm-up of its own. The one still running does NOT simply
+        // fall away: on a same-airport TOKEN move its _currentIcao check passes, so it is the
+        // OWNERSHIP test in WarmPlaces — not this line — that stops a superseded warm-up speaking
+        // for state its successor now owns. The pending re-select belongs to the list being
+        // replaced and goes with it.
         _placesWarmUp = null;
         _pendingPlaceSelection = null;
         _graphSourceToken = "";
@@ -2881,7 +2883,22 @@ public class TaxiAssistForm : Form
         // and that line would both speak. The yield makes every path behave like the ordinary
         // slow build: one message-pump turn later, with the guards below re-read.
         await Task.Yield();
-        if (ReferenceEquals(_placesWarmUp, mine)) _placesWarmUp = null;
+
+        // OWNERSHIP. A NEWER warm-up can have taken the form's Place state over while this one was
+        // in flight: LoadAirportDataCoreAsync drops _placesWarmUp, and the populate that follows
+        // starts its own — which on a same-airport gate-TOKEN move is for this very ICAO, so the
+        // _currentIcao guard below would let this stale settle straight through. It owns the
+        // pending re-seat too, and may already have armed one from the refresh arm or from
+        // RestoreDestinationState. So a superseded settle touches NOTHING and lets its successor
+        // do the work: clearing (or consuming) that pending is exactly the silent item-0 selection
+        // the pending exists to prevent, one warm-up removed.
+        if (!(_placesWarmUp == null || ReferenceEquals(_placesWarmUp, mine)))
+        {
+            _taxiFormLog.Info(
+                $"Place warm-up for {icao} was superseded by a newer one; leaving its pending selection alone.");
+            return;
+        }
+        _placesWarmUp = null;
 
         // Everything below is wrapped like RefreshTrafficThenRepopulate's body, the method this
         // one is shaped after: PopulateDestinations reaches file and DB work, and an exception
@@ -2909,21 +2926,26 @@ public class TaxiAssistForm : Form
                 return;
             }
 
+            // THE PILOT'S OWN MOST RECENT CHOICE WINS, over anything armed before it. The list
+            // can be filled by another populate pass while this warm-up is in flight (the fit and
+            // hide-occupied handlers rebuild it for Place too), and a place selected in that
+            // window is a deliberate act: replacing it with the pre-refresh label — or clearing it
+            // and saying "choose again" — would override the very choice that sentence asks for.
+            // Recorded as a plain preservation, so it is put back after the rebuild and says
+            // nothing: they have already chosen again. Only with NOTHING selected does an armed
+            // pending apply. This is also the rule RefreshTrafficThenRepopulate states for the
+            // gate list, and it must be read BEFORE PopulateDestinations re-seats item 0.
+            string? live = cmbDestination.SelectedItem?.ToString();
+            if (!string.IsNullOrEmpty(live))
+                _pendingPlaceSelection = new PendingPlaceSelection(live, FromGateSourceRefresh: false);
+
             if (catalog != null)
             {
-                // The pilot may already be browsing this list — a warm-up from an earlier pass
-                // can still be in flight over a list a refresh has since rebuilt — and
-                // PopulateDestinations re-seats item 0, silently moving the destination out from
-                // under them. Capture what is selected NOW and put it back after, the same rule
-                // RefreshTrafficThenRepopulate applies to the gate list. An explicit pending
-                // request outranks it; a selection deliberately cleared (index -1 over a
-                // non-empty list) is preserved as such; a cold list nobody has chosen from yet
-                // has nothing to preserve and keeps its item 0.
-                if (_pendingPlaceSelection == null
-                    && (cmbDestination.SelectedItem != null
-                        || (cmbDestination.SelectedIndex < 0 && cmbDestination.Items.Count > 0)))
-                    _pendingPlaceSelection = new PendingPlaceSelection(
-                        cmbDestination.SelectedItem?.ToString(), FromGateSourceRefresh: false);
+                // A selection deliberately cleared (index -1 over a non-empty list) is preserved
+                // as such across the rebuild; a cold list nobody has chosen from yet has nothing
+                // to preserve and keeps its item 0.
+                if (_pendingPlaceSelection == null && cmbDestination.Items.Count > 0)
+                    _pendingPlaceSelection = new PendingPlaceSelection(null, FromGateSourceRefresh: false);
                 PopulateDestinations();
             }
             bool lostToGateSourceRefresh = ApplyPendingPlaceSelection();
@@ -2971,10 +2993,20 @@ public class TaxiAssistForm : Form
         if (cmbDestination.Items.Count > 0) cmbDestination.SelectedIndex = -1;
         if (string.IsNullOrEmpty(pending.Label)) return false;
 
+        // Bare facts, no invented origin story: the flag says only whether this loss MAY be
+        // announced, and three different requests set it false (a silent destination restore, a
+        // live selection preserved across the rebuild, a selection deliberately left clear).
         _taxiFormLog.Info(
-            $"Place list for {_currentIcao} rebuilt after a " +
-            $"{(pending.FromGateSourceRefresh ? "gate-source refresh" : "destination restore")}; " +
-            $"previous destination '{pending.Label}' is no longer listed.");
+            $"Place list for {_currentIcao} rebuilt; previous destination '{pending.Label}' is no longer listed " +
+            $"(listed={cmbDestination.Items.Count} fromGateSourceRefresh={(pending.FromGateSourceRefresh ? "true" : "false")}).");
+
+        // NOTHING IS LISTED AT ALL — the settle rebuilt nothing (a build that failed, or a second
+        // discard) or the airport genuinely has no places. "Please choose the destination again."
+        // would be an instruction to choose from an empty list, and AnnouncePlacesReady's "No
+        // places to route to at {icao}." is already the whole truth. The pending is still dropped:
+        // there is no selection left to protect.
+        if (cmbDestination.Items.Count == 0) return false;
+
         return pending.FromGateSourceRefresh;
     }
 
