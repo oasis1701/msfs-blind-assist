@@ -310,34 +310,27 @@ public class TaxiAssistForm : Form
     /// <c>SurroundingsCatalogCache.TryGetCached</c>). MUST NEVER trigger the cache's possible
     /// first-time scenery scan/DB read — that can only run off the UI thread, and this property
     /// is invoked synchronously from <c>PopulateDestinations</c>. Null means "not cached yet",
-    /// which is what triggers <see cref="SurroundingsCatalogWarmUp"/>, never a synchronous build.
+    /// which is what starts one <see cref="SurroundingsCatalogAsync"/> warm-up, never a
+    /// synchronous build.
     /// </summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<string, Navigation.Surroundings.AirportFeatureCatalog?>? SurroundingsCatalogCached { get; set; }
 
-    /// <summary>
-    /// Kicks off the (possibly slow) catalog build for an ICAO on a thread-pool thread (MainForm
-    /// wires <c>Task.Run(() => surroundingsCache.Get(icao))</c>) and returns the Task so the
-    /// "Place" branch can repopulate once it lands. Never awaited synchronously on the UI thread.
-    /// </summary>
+    /// <summary>The catalog for an ICAO, built (once, off the UI thread) if need be —
+    /// <c>SurroundingsCatalogCache.GetAsync</c>, which is itself single-flight, so this can
+    /// never stack a second build on one already running. Awaited from the UI thread, so
+    /// everything after the await runs on the UI thread too: there is no cross-thread state in
+    /// this branch.</summary>
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public Func<string, Task>? SurroundingsCatalogWarmUp { get; set; }
+    public Func<string, Task<Navigation.Surroundings.AirportFeatureCatalog?>>? SurroundingsCatalogAsync { get; set; }
 
-    // Set to the ICAO a Place-list warm-up is currently building for, and cleared when that
-    // warm-up's continuation runs — guards against stacking a second background build while one
-    // is already in flight (mirrors AirportSurroundingsMonitor's single _buildInFlight bool).
-    private string? _placesWarmingIcao;
-
-    // Set to the ICAO a Place-list warm-up has already COMPLETED for, in this form's lifetime —
-    // regardless of whether that warm-up actually landed a catalog. Without this, a catalog
-    // build that keeps failing (SurroundingsCatalogCache.Get swallows and never caches on
-    // failure) let every re-entrant PopulateDestinations() see catalog == null with the warming
-    // guard reset, start a NEW warm-up, and re-announce "Loading places for {icao}." forever —
-    // a self-perpetuating loop stomping its own "No places…" follow-up. A warm-up may start only
-    // when this does NOT match _currentIcao; cleared alongside _placesWarmingIcao whenever a
-    // different airport (or gate-list token) is loaded, so a genuinely new airport still gets
-    // one warm-up attempt.
-    private string? _placesWarmedIcao;
+    // The one Place warm-up in flight, or null. UI thread only.
+    private Task? _placesWarmUp;
+    // True while a programmatic type restore must stay silent (RestoreDestinationState).
+    private bool _suppressPlaceAnnounce;
+    // A Place label to re-select once an async repopulate lands, always silently — a restore
+    // (RestoreDestinationState) or a gate-source refresh that found the catalog rebuilding.
+    private string? _placeToReselect;
 
     // Gate-branch cache (Fix: per-keystroke gate-list rebuild). PopulateDestinations
     // runs on every txtGateSearch keystroke, every chkFitFilter toggle, and on each
@@ -368,6 +361,12 @@ public class TaxiAssistForm : Form
     private List<(ParkingSpot spot, int nodeId)>? _cachedGateSpots;
     private string _cachedGateSpotsIcao = "";
     private string _cachedGateSpotsSourceToken = "";
+
+    // Navdata stands the SELECTABLE list does not carry (GSX drops fuel and headingless stands).
+    // A Place may still end there — without a GSX identity, so gate.select is never sent for it.
+    // Keyed on the same (ICAO, gate-list token) pair as _cachedGateSpots and reset with it: the
+    // set is defined by SUBTRACTING the selectable list, so it moves whenever that list does.
+    private List<Navigation.Surroundings.StandCandidate>? _cachedNavdataOnlyStands;
 
     // Docking guidance manager: receives the selected gate so proximity audio
     // and lateral tone can guide the pilot to the stop position. Set in
@@ -555,7 +554,8 @@ public class TaxiAssistForm : Form
             // The pilot asserting the filter outranks an import's latched suppression
             // (same rule as chkHideOccupied below).
             _suppressFitFilter = false;
-            if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+            // Both stand-backed lists honour this filter, so both rebuild under it.
+            if (cmbDestType.SelectedIndex is 1 or 4) PopulateDestinations();
         };
         y += 20;
 
@@ -580,7 +580,8 @@ public class TaxiAssistForm : Form
         {
             // The pilot asserting the filter outranks an import's latched suppression.
             _suppressOccupiedFilter = false;
-            if (cmbDestType.SelectedIndex == 1) PopulateDestinations();
+            // Both stand-backed lists honour this filter, so both rebuild under it.
+            if (cmbDestType.SelectedIndex is 1 or 4) PopulateDestinations();
         };
         y += 20;
 
@@ -1577,8 +1578,17 @@ public class TaxiAssistForm : Form
         // call-out when the pilot next selects that runway ("probing leaves no mark").
         bool priorSuppressAnnounce = _suppressHoldingPointAnnounce;
         _suppressHoldingPointAnnounce = true;
+        // Place mode speaks two lines of its own — "Loading places for {icao}." and the
+        // no-places line — neither of which belongs to a restore that performs no action.
+        _suppressPlaceAnnounce = true;
         try
         {
+            // Restoring Place mode can find nothing cached and start a warm-up, which
+            // repopulates the list some time AFTER this method has returned — so the label to
+            // put back is handed to that warm-up rather than looked up below, where the list
+            // is still empty.
+            if (priorType == 4) _placeToReselect = priorDestination;
+
             // Type first: leaving gate mode blanks the gate search, which would undo the
             // search restore if it ran the other way round.
             if (priorType >= 0 && cmbDestType.SelectedIndex != priorType)
@@ -1589,7 +1599,12 @@ public class TaxiAssistForm : Form
             if (!string.IsNullOrEmpty(priorDestination))
             {
                 int index = cmbDestination.Items.IndexOf(priorDestination);
-                if (index >= 0) cmbDestination.SelectedIndex = index;
+                if (index >= 0)
+                {
+                    cmbDestination.SelectedIndex = index;
+                    // Seated synchronously after all: nothing is left for a warm-up to do.
+                    if (priorType == 4) _placeToReselect = null;
+                }
             }
 
             // Both boxes are runway-only, and the intersection list is rebuilt against
@@ -1600,7 +1615,11 @@ public class TaxiAssistForm : Form
             RestoreIntersectionState(priorIntersection, priorIntersectionLabel);
             if (chkCatIiiHold.Checked != priorCatIiiHold) chkCatIiiHold.Checked = priorCatIiiHold;
         }
-        finally { _suppressHoldingPointAnnounce = priorSuppressAnnounce; }
+        finally
+        {
+            _suppressHoldingPointAnnounce = priorSuppressAnnounce;
+            _suppressPlaceAnnounce = false;
+        }
     }
 
     /// <summary>Puts the intersection-departure box and its selection back after a failed
@@ -2049,11 +2068,12 @@ public class TaxiAssistForm : Form
         // _graph == null path in this form already early-returns.
         _graph = null;
 
-        // A new airport (or gate-list token change) is being loaded — the Place warm-up
-        // guards are per-ICAO-lifetime and must not carry over from whatever airport was
-        // loaded before, or a genuinely new airport would never get its own warm-up attempt.
-        _placesWarmingIcao = null;
-        _placesWarmedIcao = null;
+        // A new airport (or gate-list token change) is being loaded. A warm-up still running
+        // for the OLD airport fails WarmPlacesThenRepopulate's _currentIcao check and does
+        // nothing, so dropping the handle here simply lets the new airport start its own; the
+        // pending re-select belongs to the old airport's labels and goes with it.
+        _placesWarmUp = null;
+        _placeToReselect = null;
         _graphSourceToken = "";
         // Invalidate the gate-branch resolution cache — the new airport has a
         // different graph + parking layout. The cache is also re-validated by
@@ -2062,6 +2082,7 @@ public class TaxiAssistForm : Form
         _cachedGateSpots = null;
         _cachedGateSpotsIcao = "";
         _cachedGateSpotsSourceToken = "";
+        _cachedNavdataOnlyStands = null;
         // A previous import's occupied-stand and wingspan suppressions belonged to that
         // airport's assigned gate; the pilot's own filter settings own the new airport's
         // list.
@@ -2462,105 +2483,46 @@ public class TaxiAssistForm : Form
         else if (isPlace)
         {
             // PLACE path: FBOs, hangars, fuel, terminals, cargo from the surroundings catalog,
-            // each RESOLVED onto navdata pavement by PlaceListBuilder (a stand of the selectable
-            // list within 150 m, chosen by POSITION rather than a name join, else a taxi node
-            // within 100 m). Fills the same maps as the gate and deice branches so Calculate,
-            // LoadRoute and docking need no Place-specific code. A feature that resolves to
-            // nothing is not listed — there is no way to taxi to it.
+            // each RESOLVED onto navdata pavement by PlaceListBuilder (pure, tested): a stand of
+            // the selectable list within 150 m chosen by POSITION rather than a name join, else a
+            // stand only navdata lists, else a taxi node within 100 m. Fills the same maps as the
+            // gate and deice branches so Calculate, LoadRoute and docking need no Place-specific
+            // code. A feature that resolves to nothing is not listed — there is no way to taxi
+            // to it.
             //
             // SurroundingsCatalogCached is a lock-only read — it must NEVER trigger the cache's
             // possible first-time scenery scan/DB read on this UI thread (this method runs
-            // synchronously from OnDestTypeChanged). When nothing is cached yet, kick off ONE
-            // background warm-up via SurroundingsCatalogWarmUp and repopulate once it lands —
-            // the list stays empty for THIS pass, mirroring AirportSurroundingsMonitor's
-            // cached-or-one-background-build pattern.
-            //
-            // A warm-up may start only ONCE per ICAO for this form's lifetime — guarded by
-            // _placesWarmedIcao, not just "no warm-up currently in flight". Without the
-            // already-warmed check, a catalog build that keeps failing (Get swallows and never
-            // caches on failure) would let every re-entrant call here see catalog == null with
-            // the in-flight guard freshly cleared, start a NEW warm-up, and re-announce "Loading
-            // places for {icao}." forever — a self-perpetuating loop that stomps its own
-            // "No places…" follow-up every time. One failed attempt is enough to conclude there
-            // is nothing to list; the pilot is told once and the list simply stays empty after
-            // that until a different airport is loaded.
+            // synchronously from OnDestTypeChanged). A miss starts ONE awaited warm-up and this
+            // pass lists nothing.
             var catalog = SurroundingsCatalogCached?.Invoke(_currentIcao);
             if (catalog == null)
-            {
-                bool alreadyWarmed = string.Equals(_placesWarmedIcao, _currentIcao, StringComparison.OrdinalIgnoreCase);
-                if (SurroundingsCatalogWarmUp != null && _placesWarmingIcao == null && !alreadyWarmed && IsHandleCreated)
-                {
-                    string icaoAtStart = _currentIcao;
-                    _placesWarmingIcao = icaoAtStart;
-                    _announcer.Announce($"Loading places for {icaoAtStart}.");
-                    SurroundingsCatalogWarmUp(icaoAtStart).ContinueWith(_ =>
-                    {
-                        // Recorded FIRST, before the BeginInvoke attempt below — a thrown
-                        // BeginInvoke (form closing mid-warm-up) must never leave the
-                        // in-flight guard armed forever, and this ICAO must count as
-                        // "warmed" (attempted) regardless of whether the marshal succeeds.
-                        _placesWarmedIcao = icaoAtStart;
-                        _placesWarmingIcao = null;
-                        try
-                        {
-                            BeginInvoke(new Action(() =>
-                            {
-                                if (IsDisposed) return;
-                                if (cmbDestType.SelectedIndex == 4
-                                    && string.Equals(icaoAtStart, _currentIcao, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    // _placesWarmedIcao now matches _currentIcao, so this
-                                    // re-entrant PopulateDestinations() will NOT start another
-                                    // warm-up even if the catalog is still null.
-                                    PopulateDestinations();
-                                    AnnouncePlacesReady();
-                                }
-                            }));
-                        }
-                        catch (InvalidOperationException) { }
-                    });
-                }
-            }
+                WarmPlacesThenRepopulate(_currentIcao);
             else
             {
-                // The SELECTABLE list only for now (Task 14 adds the navdata-only fallback) —
-                // GSX's own, so a Place that resolves onto a GSX-known stand carries its stop
-                // position and GsxIdentifier exactly as the Gate destination type does. Node
-                // resolution mirrors the gate branch below: nearest graph node within 100 m,
-                // else -1 (PlaceListBuilder then treats the stand as unreachable, same as a
-                // stand the pilot's own fit/search filters would have dropped).
-                const double MAX_PLACE_STAND_TO_GRAPH_M = 100.0;
-                var selectableSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
-                var selectable = new List<Navigation.Surroundings.StandCandidate>(selectableSpots.Count);
-                foreach (var spot in selectableSpots)
-                {
-                    int nodeId = -1;
-                    var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
-                    if (nearNode != null && TaxiGraph.CalculateDistanceMeters(nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude) <= MAX_PLACE_STAND_TO_GRAPH_M)
-                        nodeId = nearNode.NodeId;
-                    selectable.Add(new Navigation.Surroundings.StandCandidate(spot, nodeId));
-                }
+                var gateSpots = EnsureGateSpotCache();
+                var selectable = gateSpots.Select(g => new Navigation.Surroundings.StandCandidate(g.spot, g.nodeId)).ToList();
+                var navdataOnly = EnsureNavdataOnlyStands(gateSpots);
 
-                Navigation.Surroundings.NearestNode? Nearest(double lat, double lon)
-                {
-                    var n = _graph.FindNearestNode(lat, lon);
-                    if (n == null) return null;
-                    return new Navigation.Surroundings.NearestNode(n.NodeId, n.Latitude, n.Longitude,
-                        TaxiGraph.CalculateDistanceMeters(n.Latitude, n.Longitude, lat, lon));
-                }
+                // The same two filters the Gate list applies — a Place must not route a heavy onto a
+                // commuter stand, or onto a stand with an aircraft on it. One traffic snapshot per pass.
+                bool fit = ShouldApplyFitFilter(chkFitFilter.Checked, _suppressFitFilter, _aircraftWingspan);
+                var ground = chkHideOccupied.Checked && !_suppressOccupiedFilter && _tcasService != null
+                    ? _tcasService.GetTraffic(onGround: true) : null;
+                bool Allowed(ParkingSpot s) => (!fit || s.FitsAircraft(_aircraftWingspan))
+                    && (ground == null || ground.Count == 0 || SpotIsOccupied(ground, s.Latitude, s.Longitude) == null);
 
-                var entries = Navigation.Surroundings.PlaceListBuilder.Build(catalog, selectable,
-                    Array.Empty<Navigation.Surroundings.StandCandidate>(), Nearest, standAllowed: _ => true);
-                foreach (var entry in entries)
+                foreach (var entry in Navigation.Surroundings.PlaceListBuilder.Build(catalog, selectable, navdataOnly, NearestRoutableNode, Allowed))
                 {
-                    if (_destinationNodeMap.ContainsKey(entry.Label)) continue;
                     _destinationNodeMap[entry.Label] = entry.NodeId;
                     if (entry.HeadingDeg is double heading)
                     {
+                        // A STAND: same target and heading the Gate / Parking type uses for it.
                         _destinationHeadingMap[entry.Label] = heading;
-                        _destinationHeadingTrueMap[entry.Label] = heading;
+                        _destinationHeadingTrueMap[entry.Label] = heading;   // parking heading is true heading
+                        _destinationThresholdMap[entry.Label] = (entry.Lat, entry.Lon);
                     }
-                    _destinationThresholdMap[entry.Label] = (entry.Lat, entry.Lon);
+                    // else an "end of taxiway" place: NO heading and NO lineup target, so arrival takes
+                    // the "no lineup data — just stop" path instead of aligning the nose on a building.
                     if (entry.Spot != null) _destinationSpotMap[entry.Label] = entry.Spot;
                     cmbDestination.Items.Add(entry.Label);
                 }
@@ -2590,52 +2552,7 @@ public class TaxiAssistForm : Form
             // Routing endpoint = nearest graph node to the parking spot
             // (within 100 m); if the graph has no reachable node within that
             // radius, the spot is dropped — there's no way to taxi there.
-            const double MAX_PARKING_TO_GRAPH_M = 100.0;
-
-            // ── Load-once resolution (cached per airport) ──────────────────────
-            // Resolve the heavy per-airport work — GetGates + per-spot nearest-node
-            // lookup + distance gate — ONCE per ICAO into _cachedGateSpots. This is
-            // what made every keystroke expensive: it re-enumerated GSX profile
-            // directories / re-ran the uncached navdata DB query and walked the graph
-            // per spot, synchronously on the UI thread (a screen-reader-responsiveness
-            // hazard). The search text and fit filter do NOT affect node resolution,
-            // so caching it is behaviour-preserving.
-            //
-            // ...ONCE per (ICAO, gate-list SOURCE). The token compare is the one thing added
-            // to the per-keystroke path, and it is a property read: GateDataSource does no
-            // file or DB work to answer it. It is what makes a list bound from the fallback
-            // before GSX published this airport rebuild the moment GSX does — the
-            // descent-pre-plan / pre-publish scenario described at the field.
-            string sourceToken = CurrentGateSourceToken();
-            if (_cachedGateSpots == null
-                || !_cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)
-                || Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, sourceToken))
-            {
-                // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
-                // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
-                // needs GsxIdentifier, and TerminalName is what tells two identically-named stands
-                // apart. Plus this scenery's online gate aliases (GSX bypasses GetParkingSpots, but
-                // GSX stands carry spot codes that don't match real gate numbers, and the alias is
-                // what lets the pilot pick the ATC gate).
-                var sourceSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
-                var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
-                foreach (var spot in sourceSpots)
-                {
-                    int nodeId = -1; // -1 = no reachable taxi-graph node (kept, marked "(no taxi route)")
-                    var nearNode = _graph.FindNearestNode(spot.Latitude, spot.Longitude);
-                    if (nearNode != null)
-                    {
-                        double dist = TaxiGraph.CalculateDistanceMeters(
-                            nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
-                        if (dist <= MAX_PARKING_TO_GRAPH_M)
-                            nodeId = nearNode.NodeId;
-                    }
-                    resolved.Add((spot, nodeId));
-                }
-                _cachedGateSpots = resolved;
-                _cachedGateSpotsIcao = _currentIcao;
-                _cachedGateSpotsSourceToken = sourceToken;
-            }
+            var gateSpots = EnsureGateSpotCache();
 
             // ── Per-pass filter + ordering (cheap, in-memory) ─────────────────
             // Category display order matching GateTeleportForm: gates first
@@ -2648,7 +2565,7 @@ public class TaxiAssistForm : Form
                 ["Dock"] = 9, ["Other"] = 10
             };
 
-            IEnumerable<(ParkingSpot spot, int nodeId)> filtered = _cachedGateSpots;
+            IEnumerable<(ParkingSpot spot, int nodeId)> filtered = gateSpots;
 
             // Gate search filter: type-to-filter on name+number+suffix. Run against
             // the cached resolved list per keystroke (GateSearchFilter operates on
@@ -2656,7 +2573,7 @@ public class TaxiAssistForm : Form
             if (!string.IsNullOrEmpty(txtGateSearch.Text))
             {
                 var matched = new HashSet<ParkingSpot>(
-                    Services.GateSearchFilter.Filter(_cachedGateSpots.Select(r => r.spot).ToList(), txtGateSearch.Text));
+                    Services.GateSearchFilter.Filter(gateSpots.Select(r => r.spot).ToList(), txtGateSearch.Text));
                 filtered = filtered.Where(r => matched.Contains(r.spot));
             }
 
@@ -2784,6 +2701,190 @@ public class TaxiAssistForm : Form
             SelectDestinationSilently(0);
     }
 
+    /// <summary>A stand with no reachable taxi-graph node within this radius has no route to
+    /// it. The gate list keeps such a spot and marks it "(no taxi route)"; the Place list
+    /// resolves it to -1, which PlaceListBuilder treats as unreachable.</summary>
+    private const double MAX_PARKING_TO_GRAPH_M = 100.0;
+
+    /// <summary>
+    /// The SELECTABLE stands for the loaded airport, each already paired with its routing node —
+    /// resolved ONCE per (ICAO, gate-list SOURCE) into <see cref="_cachedGateSpots"/>.
+    ///
+    /// <para>This is the heavy per-airport work: <c>GetGates</c> (directory enumeration / an
+    /// uncached navdata DB query at .py-only airports like EDDF) plus a <c>FindNearestNode</c> and
+    /// a distance check per spot, all synchronously on the UI thread — and
+    /// <see cref="PopulateDestinations"/> runs on every gate-search keystroke. Neither the search
+    /// text nor the fit filter affects node resolution, so caching it is behaviour-preserving.</para>
+    ///
+    /// <para>Keyed on the gate-list TOKEN as well as the ICAO. The compare is the one thing added
+    /// to the per-keystroke path and it is a property read — <c>GateDataSource</c> does no file or
+    /// DB work to answer it. It is what makes a list bound from the .ini/navdata fallback BEFORE
+    /// GSX published this airport rebuild the moment GSX does (the descent-pre-plan /
+    /// pre-publish scenario described at the field).</para>
+    /// </summary>
+    private List<(ParkingSpot spot, int nodeId)> EnsureGateSpotCache()
+    {
+        string sourceToken = CurrentGateSourceToken();
+        if (_cachedGateSpots != null
+            && _cachedGateSpotsIcao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)
+            && !Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, sourceToken))
+            return _cachedGateSpots;
+
+        // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
+        // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
+        // needs GsxIdentifier, and TerminalName is what tells two identically-named stands
+        // apart. Plus this scenery's online gate aliases (GSX bypasses GetParkingSpots, but
+        // GSX stands carry spot codes that don't match real gate numbers, and the alias is
+        // what lets the pilot pick the ATC gate).
+        var sourceSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
+        var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
+        foreach (var spot in sourceSpots)
+        {
+            int nodeId = -1; // -1 = no reachable taxi-graph node (kept, marked "(no taxi route)")
+            var nearNode = _graph?.FindNearestNode(spot.Latitude, spot.Longitude);
+            if (nearNode != null)
+            {
+                double dist = TaxiGraph.CalculateDistanceMeters(
+                    nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude);
+                if (dist <= MAX_PARKING_TO_GRAPH_M)
+                    nodeId = nearNode.NodeId;
+            }
+            resolved.Add((spot, nodeId));
+        }
+        _cachedGateSpots = resolved;
+        _cachedGateSpotsIcao = _currentIcao;
+        _cachedGateSpotsSourceToken = sourceToken;
+        // The navdata-only set is defined by SUBTRACTING the selectable list, so it is stale
+        // the moment that list is rebuilt.
+        _cachedNavdataOnlyStands = null;
+        return resolved;
+    }
+
+    /// <summary>
+    /// The stands navdata lists that the SELECTABLE list does not — GSX's list excludes Vehicle
+    /// and Fuel stands and drops the ones it finds no usable heading for, which is exactly the
+    /// kind of spot an FBO, hangar or fuel place ends at. So this is a SECOND-CHOICE source for
+    /// <c>PlaceListBuilder</c>, behind the selectable list; it carries no <c>GsxIdentifier</c>,
+    /// which is why <see cref="ShouldSendGateSelect"/> never asks GSX to prepare one.
+    ///
+    /// <para>"Not in the selectable list" is decided by POSITION (within 10 m of a selectable
+    /// stand), never by name: the two lists name the same stand differently often enough that a
+    /// name join would list it twice — the very defect
+    /// <c>Services.ParkingSpotSource</c> exists to prevent.</para>
+    ///
+    /// <para>The navdata list handed back by <c>GetNamedSpots</c> may be the instance the provider
+    /// holds, so it is only ever READ here.</para>
+    /// </summary>
+    private List<Navigation.Surroundings.StandCandidate> EnsureNavdataOnlyStands(
+        List<(ParkingSpot spot, int nodeId)> selectable)
+    {
+        // EnsureGateSpotCache drops this whenever it rebuilds, so the ICAO/token keys it
+        // checked are the ones this list was built under.
+        if (_cachedNavdataOnlyStands != null) return _cachedNavdataOnlyStands;
+
+        const double SAME_STAND_M = 10.0;
+        var named = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, _currentIcao);
+        var extra = new List<Navigation.Surroundings.StandCandidate>();
+        foreach (var spot in named)
+        {
+            bool alreadySelectable = false;
+            foreach (var (s, _) in selectable)
+            {
+                if (TaxiGraph.CalculateDistanceMeters(s.Latitude, s.Longitude, spot.Latitude, spot.Longitude) <= SAME_STAND_M)
+                {
+                    alreadySelectable = true;
+                    break;
+                }
+            }
+            if (alreadySelectable) continue;
+
+            int nodeId = -1;
+            var nearNode = _graph?.FindNearestNode(spot.Latitude, spot.Longitude);
+            if (nearNode != null
+                && TaxiGraph.CalculateDistanceMeters(nearNode.Latitude, nearNode.Longitude, spot.Latitude, spot.Longitude) <= MAX_PARKING_TO_GRAPH_M)
+                nodeId = nearNode.NodeId;
+            extra.Add(new Navigation.Surroundings.StandCandidate(spot, nodeId));
+        }
+        _cachedNavdataOnlyStands = extra;
+        return extra;
+    }
+
+    /// <summary>The nearest node a Place may END at when it has no stand: never a hold-short node
+    /// and never on runway pavement — "end of taxiway" must not mean "on the runway".</summary>
+    private Navigation.Surroundings.NearestNode? NearestRoutableNode(double lat, double lon)
+    {
+        if (_graph == null) return null;
+        var n = _graph.FindNearestNode(lat, lon);
+        if (n == null) return null;
+        if (Navigation.RunwayPavement.IsOnPavement(n.Latitude, n.Longitude, _graph.RunwayCenterlines)) return null;
+        // Same test TaxiGraph's own landing-exit scan uses for "this is a hold line".
+        if (n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort) return null;
+        return new Navigation.Surroundings.NearestNode(n.NodeId, n.Latitude, n.Longitude,
+            TaxiGraph.CalculateDistanceMeters(n.Latitude, n.Longitude, lat, lon));
+    }
+
+    /// <summary>
+    /// Builds the surroundings catalog for <paramref name="icao"/> off the UI thread and
+    /// repopulates once it lands. Same shape as <see cref="RefreshTrafficThenRepopulate"/>. It
+    /// repopulates ONLY when the cache now holds a catalog — a miss here must never re-enter
+    /// <see cref="PopulateDestinations"/>'s Place branch, which is the loop the old "warmed once
+    /// per ICAO" latch was papering over (and that latch outlived every cache invalidation,
+    /// leaving the list empty with a false "No places to route to").
+    ///
+    /// <para>ONE retry, and only for the sequence the cache is designed to produce: the warm-up
+    /// gave up on the 3 s online-feature fetch, the answer landed at 3.2 s and INVALIDATED the
+    /// airport, so the finished build was discarded rather than cached
+    /// (<c>SurroundingsCatalogCache</c>'s generation check). The awaited task still hands back a
+    /// catalog while the cache holds nothing, and the rebuild that follows is fast — the OSM
+    /// features are already in the store. A build that genuinely FAILED returns null and is not
+    /// retried: the cache's own failure memory owns that.</para>
+    /// </summary>
+    private void WarmPlacesThenRepopulate(string icao)
+        => WarmPlaces(icao, speak: !_suppressPlaceAnnounce && Visible, isRetry: false);
+
+    private async void WarmPlaces(string icao, bool speak, bool isRetry)
+    {
+        if (SurroundingsCatalogAsync == null || _placesWarmUp != null) return;
+        // The retry is the same warm-up continuing, so it says nothing new — only its
+        // settle (AnnouncePlacesReady below) still reaches the pilot.
+        if (speak && !isRetry) _announcer.Announce($"Loading places for {icao}.");
+        var mine = SurroundingsCatalogAsync(icao);
+        _placesWarmUp = mine;
+        Navigation.Surroundings.AirportFeatureCatalog? built = null;
+        try { built = await mine; }
+        catch (Exception ex) { _taxiFormLog.Info($"Place warm-up for {icao} failed: {ex.Message}"); }
+        // NEVER settle on the caller's stack. GetAsync can answer SYNCHRONOUSLY — its failure
+        // memory hands back a completed Task.FromResult for a minute after a build threw — and
+        // the caller is PopulateDestinations itself, which OnDestTypeChanged is part-way through.
+        // Continuing inline would re-enter PopulateDestinations, and would clear _placesWarmUp
+        // before OnDestTypeChanged's "No places to route to" check reads it, so the settle below
+        // and that line would both speak. The yield makes every path behave like the ordinary
+        // slow build: one message-pump turn later, with the guards below re-read.
+        await Task.Yield();
+        if (ReferenceEquals(_placesWarmUp, mine)) _placesWarmUp = null;
+
+        if (IsDisposed || _graph == null || cmbDestType.SelectedIndex != 4
+            || !string.Equals(icao, _currentIcao, StringComparison.OrdinalIgnoreCase)) return;
+
+        var catalog = SurroundingsCatalogCached?.Invoke(icao);
+        if (catalog == null && built != null && !isRetry)
+        {
+            // Built, then discarded by an invalidation that overtook it. Rebuild ONCE — never a
+            // loop: the retry cannot reach this branch again.
+            WarmPlaces(icao, speak, isRetry: true);
+            return;
+        }
+
+        if (catalog != null) PopulateDestinations();
+        if (_placeToReselect != null)
+        {
+            int idx = cmbDestination.Items.IndexOf(_placeToReselect);
+            if (idx >= 0) SelectDestinationSilently(idx);
+            _placeToReselect = null;
+        }
+        if (speak) AnnouncePlacesReady();
+    }
+
     /// <summary>
     /// Spoken once a Place-list background warm-up lands and the list has been rebuilt from the
     /// now-cached catalog — the pilot heard "Loading places for {icao}." when the warm-up
@@ -2828,7 +2929,10 @@ public class TaxiAssistForm : Form
     /// was rebuilt, the selection survived, or nothing was selected to begin with.</returns>
     private bool RefreshDestinationsIfGateSourceChanged()
     {
-        if (_graph == null || cmbDestType.SelectedIndex != 1) return false;
+        // Place is here for the same reason Gate is: its list is built from EnsureGateSpotCache,
+        // so a Place list bound before GSX published the airport carries the same identifier-less
+        // stands, and is rebuilt on the same token move.
+        if (_graph == null || cmbDestType.SelectedIndex is not (1 or 4)) return false;
 
         string token = CurrentGateSourceToken();
         // Upgrade/refresh only — a transient drop downgrades the token and must NOT
@@ -2840,6 +2944,20 @@ public class TaxiAssistForm : Form
 
         string? previous = cmbDestination.SelectedItem?.ToString();
         PopulateDestinations();
+
+        // A Place list is rebuilt ASYNCHRONOUSLY. The surroundings catalog is versioned on this
+        // same token (MainForm wires SurroundingsCatalogCache.VersionSupplier to it), so the
+        // rebuild above found nothing cached, listed nothing and started one warm-up. Nothing is
+        // KNOWN to be lost yet — "Please choose the destination again." would be a false claim
+        // about a list that is merely loading and will most likely carry the pilot's own place —
+        // so stay quiet and hand that label to the warm-up, which re-seats it silently. Until it
+        // lands the list is empty, so a Calculate reaching this aborts with "Please select a
+        // destination.", which is what is actually true.
+        if (cmbDestType.SelectedIndex == 4 && _placesWarmUp != null)
+        {
+            _placeToReselect = previous;
+            return false;
+        }
 
         if (string.IsNullOrEmpty(previous))
         {
@@ -2938,8 +3056,11 @@ public class TaxiAssistForm : Form
         bool isGate = cmbDestType.SelectedIndex == 1;
         bool isProgressive = cmbDestType.SelectedIndex == 2;
         bool isRunway = cmbDestType.SelectedIndex == 0;
-        chkFitFilter.Visible = isGate && _aircraftWingspan > 0;
-        chkHideOccupied.Visible = isGate && _tcasService != null;
+        // A Place resolves onto a stand, so the two stand filters apply to it exactly as they
+        // do to the gate list — and a filter the pilot cannot see is a filter they cannot undo.
+        bool isPlace = cmbDestType.SelectedIndex == 4;
+        chkFitFilter.Visible = (isGate || isPlace) && _aircraftWingspan > 0;
+        chkHideOccupied.Visible = (isGate || isPlace) && _tcasService != null;
         lblGateSearch.Visible = isGate;
         txtGateSearch.Visible = isGate;
         if (!isGate)
@@ -2994,11 +3115,12 @@ public class TaxiAssistForm : Form
         if (cmbDestType.SelectedIndex == 3 && cmbDestination.Items.Count == 0)
             _announcer.AnnounceImmediate("No deicing areas at this airport.");
 
-        // Suppressed while a background warm-up is in flight (_placesWarmingIcao != null) —
-        // PopulateDestinations already queued "Loading places for {icao}." in that case, and
-        // AnnouncePlacesReady speaks the follow-up once the warm-up lands; speaking "No places…"
-        // here too would have both announcements talking over each other.
-        if (cmbDestType.SelectedIndex == 4 && cmbDestination.Items.Count == 0 && _placesWarmingIcao == null)
+        // Suppressed while a warm-up is in flight (_placesWarmUp != null) — PopulateDestinations
+        // already queued "Loading places for {icao}." in that case, and AnnouncePlacesReady
+        // speaks the follow-up once it lands; speaking "No places…" here too would have both
+        // announcements talking over each other. Suppressed for a silent restore as well
+        // (_suppressPlaceAnnounce), which performs no pilot-visible action at all.
+        if (isPlace && cmbDestination.Items.Count == 0 && _placesWarmUp == null && !_suppressPlaceAnnounce)
             _announcer.AnnounceImmediate($"No places to route to at {_currentIcao}.");
 
         // Entering gate mode: kick a traffic sweep and rebuild once it lands, so the
@@ -4790,9 +4912,9 @@ public class TaxiAssistForm : Form
         if (standstillParts.Count > 0)
             _announcer.AnnounceImmediate(string.Join(" ", standstillParts));
 
-        // GSX gate auto-select: fire-and-forget when heading to a gate and
-        // the feature is enabled. Conditions:
-        //   - destination is a gate (not runway, not progressive taxi, not deice area)
+        // GSX gate auto-select: fire-and-forget when the destination is one GSX can prepare
+        // (ShouldSendGateSelect — which destination types ask, and for a Place which stands)
+        // and the feature is enabled. Conditions:
         //   - setting is on
         //   - a selector was provided (i.e. GsxService existed in this session when
         //     MainForm built this form) — no separate live "is GSX running" check is
@@ -4805,14 +4927,12 @@ public class TaxiAssistForm : Form
         // GSX parking stand, which has no deice-pad equivalent. DockingGuidanceManager
         // handles deice guidance via SetDestinationGate (spot.IsDeiceArea is true)
         // without any GSX Remote API interaction.
-        if (!isRunwayDest
-            && cmbDestType.SelectedIndex != 3
-            && SettingsManager.Current.GsxAutoSelectGateOnRoute
-            && _gsxGateSelector != null
-            && _destinationSpotMap.TryGetValue(destName, out var gsxSpot))
+        _destinationSpotMap.TryGetValue(destName, out var selectSpot);
+        if (ShouldSendGateSelect(cmbDestType.SelectedIndex, selectSpot)
+            && SettingsManager.Current.GsxAutoSelectGateOnRoute && _gsxGateSelector != null)
         {
             // Do NOT await — route loading must not block on the GSX round trip.
-            _ = SelectGsxGateAsync(gsxSpot);
+            _ = SelectGsxGateAsync(selectSpot!);
         }
 
         // Form stays open so the user can read the summary box while
@@ -4820,6 +4940,18 @@ public class TaxiAssistForm : Form
         // or by switching focus elsewhere; Stop Guidance button is also
         // available without re-opening.
     }
+
+    /// <summary>Gate / Parking always asks (an identifier-less spot reports "could not prepare" —
+    /// the documented .ini/navdata fallback, a degraded gate list the pilot should know about). A
+    /// PLACE asks only for a stand GSX itself published: most FBO, hangar and fuel places end on a
+    /// stand GSX never listed, and "GSX could not prepare this stand." after every such route was a
+    /// false alarm. Runway, progressive and de-ice never ask.</summary>
+    internal static bool ShouldSendGateSelect(int destinationTypeIndex, ParkingSpot? spot) => spot != null && destinationTypeIndex switch
+    {
+        1 => true,
+        4 => !string.IsNullOrEmpty(spot.GsxIdentifier),
+        _ => false,
+    };
 
     /// <summary>
     /// Sends <c>gate.select</c> for <paramref name="spot"/> via <see cref="_gsxGateSelector"/>
