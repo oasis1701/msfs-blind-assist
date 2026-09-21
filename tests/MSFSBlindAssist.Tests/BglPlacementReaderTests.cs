@@ -6,13 +6,14 @@ namespace MSFSBlindAssist.Tests;
 
 public class BglPlacementReaderTests
 {
-    internal static byte[] BuildBgl(params (double lat, double lon, double hdg, Guid guid)[] objs)
+    internal static byte[] BuildBgl(int rec, params (double lat, double lon, double hdg, Guid guid)[] objs)
     {
-        const int header = 0x38, sectionEntry = 20, subEntry = 16, rec = 64;
+        const int header = 0x38, sectionEntry = 20, subEntry = 16;
         int sectionTable = header, subTable = sectionTable + sectionEntry, data = subTable + subEntry;
         var b = new byte[data + objs.Length * rec];
         void U32(int at, uint v) => BitConverter.TryWriteBytes(b.AsSpan(at, 4), v);
         void U16(int at, ushort v) => BitConverter.TryWriteBytes(b.AsSpan(at, 2), v);
+        void F64(int at, double v) => BitConverter.TryWriteBytes(b.AsSpan(at, 8), v);
 
         U32(0x00, 0x19920201); U32(0x14, 1);
         U32(sectionTable + 0, 0x25); U32(sectionTable + 4, 1); U32(sectionTable + 8, 1);
@@ -22,15 +23,18 @@ public class BglPlacementReaderTests
         int p = data;
         foreach (var (lat, lon, hdg, guid) in objs)
         {
-            U16(p, 0x0B); U16(p + 2, rec);
+            U16(p, 0x0B); U16(p + 2, (ushort)rec);
             U32(p + 4, (uint)Math.Round((lon + 180.0) * (3.0 * (1 << 28)) / 360.0));
             U32(p + 8, (uint)Math.Round((90.0 - lat) * (2.0 * (1 << 28)) / 180.0));
             U16(p + 22, (ushort)Math.Round(hdg * 65536.0 / 360.0));
-            guid.ToByteArray().CopyTo(b, p + 44);
+            if (rec == 92) { F64(p + 44, lat); F64(p + 52, lon); }   // as the real 92-byte record does, so a reader still looking at +44 reads garbage
+            guid.ToByteArray().CopyTo(b, p + rec - 20);
             p += rec;
         }
         return b;
     }
+
+    internal static byte[] BuildBgl(params (double lat, double lon, double hdg, Guid guid)[] objs) => BuildBgl(64, objs);
 
     [Fact]
     public void Reads_position_heading_and_guid_of_each_library_object()
@@ -72,5 +76,48 @@ public class BglPlacementReaderTests
         // Section entry 0 lives at 0x38: (type, flags, subCount, offset, size). Poison the subsection offset.
         BitConverter.TryWriteBytes(bgl.AsSpan(0x38 + 12, 4), 0xFFFFFFF0u);
         Assert.Empty(BglPlacementReader.Read(bgl));
+    }
+
+    [Theory]
+    [InlineData(64)] [InlineData(92)]
+    public void The_model_guid_sits_20_bytes_before_the_end_of_the_record_whatever_its_size(int recordSize)
+    {
+        var g = Guid.Parse("540e0601-b3bb-44b4-88a6-e44d5f60ccaf");
+        var placed = BglPlacementReader.Read(BuildBgl(recordSize, (35.857, 14.477, 90.0, g)));
+        var only = Assert.Single(placed);
+        Assert.Equal(g, only.ModelGuid);                 // 92-byte records (MSFS 2024 SDK): +72, not +44
+        Assert.InRange(only.Lat, 35.8569, 35.8571);
+    }
+
+    [Fact]
+    public void The_stream_reader_matches_the_span_reader_and_never_reads_past_the_placements()
+    {
+        var g1 = Guid.NewGuid(); var g2 = Guid.NewGuid();
+        byte[] bgl = BuildBgl((47.27064, -122.57373, 277.0, g1), (47.26765, -122.57497, 7.0, g2));
+        byte[] padded = bgl.Concat(new byte[4 * 1024 * 1024]).ToArray();       // a model library's bulk after the tables
+        using var counting = new CountingStream(new MemoryStream(padded));
+        Assert.Equal(BglPlacementReader.Read(bgl), BglPlacementReader.Read(counting));
+        Assert.True(counting.BytesRead < 64 * 1024, $"read {counting.BytesRead} bytes of a {padded.Length}-byte file");
+    }
+
+    [Fact]
+    public void A_truncated_or_foreign_stream_yields_what_parsed_and_never_throws()
+    {
+        Assert.Empty(BglPlacementReader.Read(new MemoryStream(new byte[10])));
+        Assert.Empty(BglPlacementReader.Read(new MemoryStream(System.Text.Encoding.ASCII.GetBytes(new string('x', 4096)))));
+        byte[] bgl = BuildBgl((1.0, 2.0, 0.0, Guid.NewGuid()));
+        Assert.Empty(BglPlacementReader.Read(new MemoryStream(bgl.Take(bgl.Length - 30).ToArray())));   // record cut short
+    }
+
+    private sealed class CountingStream(Stream inner) : Stream
+    {
+        public long BytesRead { get; private set; }
+        public override int Read(byte[] buffer, int offset, int count) { int n = inner.Read(buffer, offset, count); BytesRead += n; return n; }
+        public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+        public override bool CanRead => true; public override bool CanSeek => true; public override bool CanWrite => false;
+        public override long Length => inner.Length;
+        public override long Position { get => inner.Position; set => inner.Position = value; }
+        public override void Flush() { } public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

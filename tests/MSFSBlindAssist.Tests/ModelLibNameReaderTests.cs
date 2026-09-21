@@ -19,4 +19,24 @@ public class ModelLibNameReaderTests
         Assert.Equal("concourse_a_02", names[Guid.Parse("8dc82808-32c8-4c75-8fc5-bbc825565b12")]);
         Assert.Equal("tower_01", names[Guid.Parse("a611c36a-df97-4154-a1f1-65a8fbec9bd0")]);
     }
+
+    [Fact]
+    public void A_tag_cut_in_two_by_a_chunk_edge_is_still_read()
+    {
+        var g1 = Guid.NewGuid(); var g2 = Guid.NewGuid();
+        string xml = new string('\0', 300) + $"<ModelInfo guid=\"{{{g1}}}\" version=\"1.1\" name=\"MLA0117\">" + new string('\0', 500)
+                   + $"<ModelInfo name=\"kpdx_concourse_B\" guid=\"{{{g2}}}\"/>" + new string('\0', 200);
+        byte[] bytes = Encoding.Latin1.GetBytes(xml);
+        var whole = ModelLibNameReader.Read(bytes);
+        for (int chunk = 64; chunk <= 1024; chunk += 37)                       // every alignment of tag vs chunk edge
+        {
+            var streamed = ModelLibNameReader.Read(new MemoryStream(bytes), chunk);
+            Assert.Equal(whole, streamed);
+        }
+        Assert.Equal("MLA0117", whole[g1]); Assert.Equal("kpdx_concourse_B", whole[g2]);
+    }
+
+    [Fact]
+    public void An_unterminated_tag_at_the_end_of_the_file_is_ignored()
+        => Assert.Empty(ModelLibNameReader.Read(new MemoryStream(Encoding.Latin1.GetBytes("<ModelInfo guid=\"{")), 64));
 }
