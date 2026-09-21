@@ -610,10 +610,14 @@ public static class RouteRunwayCrossings
             if (walked > CrossingHoldLookbackMetres) break;
 
             var node = NodeAt(segments, k);
-            var projected = node == null ? (0.0, 0.0) : shape.Project(node.Latitude, node.Longitude);
+            // Projected ONCE per node: walk 1 asks two different questions of the same point (is it
+            // on the pavement, and is a hold line here usable) and used to re-project for the second.
+            (double Along, double Lateral) at = node == null
+                ? (0.0, 0.0)
+                : shape.Project(node.Latitude, node.Longitude);
             if (node != null && k < walkStart)
             {
-                if (shape.ContainsAlongLateral(projected.Item1, projected.Item2, 0.0)
+                if (shape.ContainsAlongLateral(at.Along, at.Lateral, 0.0)
                     || IsOnAnyRunway(others, node)) break;
             }
             if (node != null && (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort))
@@ -627,7 +631,7 @@ public static class RouteRunwayCrossings
                 // 7.2 m out on a 4.0 m half-width), where walk 2 below, which invents a stop of its own,
                 // demands the full clear margin. Extent-aware since PR #238 §3 — an on-axis scenery hold
                 // line BEYOND the runway end used to read as a node on the pavement and be rejected.
-                if (shape.IsClearOfAt(projected.Item1, projected.Item2, 0.0)
+                if (shape.IsClearOfAt(at.Along, at.Lateral, 0.0)
                     && !IsOnAnyRunway(others, node))
                     return new HoldStop(k, IsExistingStop(segments, k));
             }

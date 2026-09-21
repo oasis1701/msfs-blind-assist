@@ -64,6 +64,21 @@ public static class RunwayHoldStages
             : $"Stop. Hold short of {holdShortLabel}. Press continue when cleared for runway {firstRunway}.";
 
     /// <summary>
+    /// The STATUS answer while a staged hold is part-way through: the same "holding short of …"
+    /// sentence the unstaged hold gives, but ending on the runway the NEXT press authorises.
+    ///
+    /// <para>Found in flight (KJFK 31L+04L, 2026-09-21): the staged hold itself worked, but a status
+    /// query mid-stage still answered "… Press continue when cleared.", naming both runways as
+    /// though nothing had been cleared and never saying which one was still outstanding. A pilot who
+    /// asks where they stand had to remember it themselves — exactly what this feature exists to
+    /// stop. The label still names every runway the stop guards, because that is what the stop IS.</para>
+    /// </summary>
+    public static string ComposeStatus(string? holdShortLabel, string nextRunway)
+        => string.IsNullOrEmpty(holdShortLabel)
+            ? $"Holding short. Press continue when cleared for runway {nextRunway}."
+            : $"Holding short of {holdShortLabel}. Press continue when cleared for runway {nextRunway}.";
+
+    /// <summary>
     /// The sentence a Continue produces when another runway's clearance is still outstanding: the
     /// aircraft does NOT move, so it must not read like a resume.
     ///

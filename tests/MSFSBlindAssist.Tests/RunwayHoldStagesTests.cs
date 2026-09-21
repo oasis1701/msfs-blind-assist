@@ -94,4 +94,26 @@ public class RunwayHoldStagesTests
         Assert.Contains("Still holding", s, System.StringComparison.Ordinal);
         Assert.DoesNotContain("Continuing", s, System.StringComparison.OrdinalIgnoreCase);
     }
+
+    // Found by the in-sim test (KJFK 31L+04L, 2026-09-21). The staged hold itself worked, but the
+    // STATUS query (taxi status / Ctrl+Y's sibling) still answered "Holding short of runway 31L at K
+    // and runway 04L. Press continue when cleared." — naming BOTH runways as though nothing had been
+    // cleared, and not saying which runway the next press authorises. A pilot who asks where they
+    // stand mid-stage has to remember it themselves, which is exactly what this feature exists to
+    // stop.
+    [Fact]
+    public void The_status_line_names_the_runway_still_outstanding()
+    {
+        Assert.Equal(
+            "Holding short of runway 31L at K and runway 04L. Press continue when cleared for runway 04L.",
+            RunwayHoldStages.ComposeStatus("runway 31L at K and runway 04L", "04L"));
+    }
+
+    [Fact]
+    public void A_label_less_staged_status_still_reads_as_a_sentence()
+    {
+        Assert.Equal(
+            "Holding short. Press continue when cleared for runway 09.",
+            RunwayHoldStages.ComposeStatus(null, "09"));
+    }
 }
